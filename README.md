@@ -5,7 +5,7 @@ OceanBaseÊÇ°¢Àï¼¯ÍÅÑĞ·¢µÄ¿ÉÀ©Õ¹µÄ¹ØÏµÊı¾İ¿â£¬ÊµÏÖÁËÊıÇ§ÒÚÌõ¼ÇÂ¼¡¢Êı°ÙTBÊı¾İÉÏµÄ¿
 <h1>·¢ĞĞÈÕÖ¾</h1>
 2013/03/04£¬ÕûÀíÌá½»ÁËV0.3.1´úÂëºÍÏà¹Ø¼¼ÊõÎÄµµ¡£
 <h1>×ÊÔ´ÁĞ±í</h1>
-
+* [OceanBase½éÉÜ](https://github.com/xiusiyan/oceanbase/wiki)
 * [OceanBase¼Ü¹¹](https://github.com/xiusiyan/oceanbase/tree/master/doc/oceanbase%E6%9E%B6%E6%9E%84%E5%92%8C%E6%8E%A5%E5%8F%A3)
 * [ChunkServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [mergeServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
