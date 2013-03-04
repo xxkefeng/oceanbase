@@ -6,9 +6,12 @@ OceanBaseÊÇ°¢Àï¼¯ÍÅÑĞ·¢µÄ¿ÉÀ©Õ¹µÄ¹ØÏµÊı¾İ¿â£¬ÊµÏÖÁËÊıÇ§ÒÚÌõ¼ÇÂ¼¡¢Êı°ÙTBÊı¾İÉÏµÄ¿
 2013/03/04£¬ÕûÀíÌá½»ÁËV0.3.1´úÂëºÍÏà¹Ø¼¼ÊõÎÄµµ¡£
 <h1>×ÊÔ´ÁĞ±í</h1>
 
-*[OceanBase¼Ü¹¹](https://github.com/xiusiyan/oceanbase/tree/master/doc/oceanbase%E6%9E%B6%E6%9E%84%E5%92%8C%E6%8E%A5%E5%8F%A3)
-*[ChunkServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
-*[mergeServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
-*[rootServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
-*[updateServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
-*[ÔËÎ¬ÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
+* [OceanBase¼Ü¹¹](https://github.com/xiusiyan/oceanbase/tree/master/doc/oceanbase%E6%9E%B6%E6%9E%84%E5%92%8C%E6%8E%A5%E5%8F%A3)
+* [ChunkServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
+* [mergeServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
+* [rootServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
+* [updateServerÉè¼ÆÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
+* [ÔËÎ¬ÎÄµµ](https://github.com/xiusiyan/oceanbase/tree/master/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
+<h1>ÆäËû</h1>
+* [Committers]
+* [TODO]
