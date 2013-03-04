@@ -14,5 +14,3 @@ OceanBaseÊÇ°¢Àï¼¯ÍÅÑĞ·¢µÄ¿ÉÀ©Õ¹µÄ¹ØÏµÊı¾İ¿â£¬ÊµÏÖÁËÊıÇ§ÒÚÌõ¼ÇÂ¼¡¢Êı°ÙTBÊı¾İÉÏµÄ¿
 * [ÔËÎ¬ÎÄµµ](https://github.com/alibaba/oceanbase/tree/master/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
 * [TODO List](https://github.com/alibaba/oceanbase/wiki/TODO-List)
 <br>
-<h1>ÆäËû</h1>
-* [Committers]
