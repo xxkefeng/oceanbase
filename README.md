@@ -1,16 +1,17 @@
-OceanBaseÊÇ°¢Àï¼¯ÍÅÑĞ·¢µÄ¿ÉÀ©Õ¹µÄ¹ØÏµÊı¾İ¿â£¬ÊµÏÖÁËÊıÇ§ÒÚÌõ¼ÇÂ¼¡¢Êı°ÙTBÊı¾İÉÏµÄ¿çĞĞ¿ç±íÊÂÎñ£¬½ØÖ¹µ½2012Äê8ÔÂÎªÖ¹£¬Ö§³ÖÁËÊÕ²Ø¼Ğ¡¢Ö±Í¨³µ±¨±í¡¢ÌìÃ¨ÆÀ¼ÛµÈOLTPºÍOLAPÔÚÏßÒµÎñ£¬ÏßÉÏÊı¾İÁ¿ÒÑ¾­³¬¹ıÒ»Ç§ÒÚÌõ¡£
+OceanBaseæ˜¯é˜¿é‡Œé›†å›¢ç ”å‘çš„å¯æ‰©å±•çš„å…³ç³»æ•°æ®åº“ï¼Œå®ç°äº†æ•°åƒäº¿æ¡è®°å½•ã€æ•°ç™¾TBæ•°æ®ä¸Šçš„è·¨è¡Œè·¨è¡¨äº‹åŠ¡ï¼Œæˆªæ­¢åˆ°2012å¹´8æœˆä¸ºæ­¢ï¼Œæ”¯æŒäº†æ”¶è—å¤¹ã€ç›´é€šè½¦æŠ¥è¡¨ã€å¤©çŒ«è¯„ä»·ç­‰OLTPå’ŒOLAPåœ¨çº¿ä¸šåŠ¡ï¼Œçº¿ä¸Šæ•°æ®é‡å·²ç»è¶…è¿‡ä¸€åƒäº¿æ¡ã€‚
 
-´ÓÄ£¿é»®·ÖµÄ½Ç¶È¿´£¬OceanBase¿ÉÒÔ»®·ÖÎªËÄ¸öÄ£¿é£ºÖ÷¿Ø·şÎñÆ÷RootServer¡¢¸üĞÂ·şÎñÆ÷UpdateServer¡¢»ù×¼Êı¾İ·şÎñÆ÷ChunkServerÒÔ¼°ºÏ²¢·şÎñÆ÷MergeServer¡£OceanBaseÏµÍ³ÄÚ²¿°´ÕÕÊ±¼äÏß½«Êı¾İ»®·ÖÎª»ù×¼Êı¾İºÍÔöÁ¿Êı¾İ£¬»ù×¼Êı¾İÊÇÖ»¶ÁµÄ£¬ËùÓĞµÄĞŞ¸Ä¸üĞÂµ½ÔöÁ¿Êı¾İÖĞ£¬ÏµÍ³ÄÚ²¿Í¨¹ıºÏ²¢²Ù×÷¶¨ÆÚ½«ÔöÁ¿Êı¾İÈÚºÏµ½»ù×¼Êı¾İÖĞ¡£
+ä»æ¨¡å—åˆ’åˆ†çš„è§’åº¦çœ‹ï¼ŒOceanBaseå¯ä»¥åˆ’åˆ†ä¸ºå››ä¸ªæ¨¡å—ï¼šä¸»æ§æœåŠ¡å™¨RootServerã€æ›´æ–°æœåŠ¡å™¨UpdateServerã€åŸºå‡†æ•°æ®æœåŠ¡å™¨ChunkServerä»¥åŠåˆå¹¶æœåŠ¡å™¨MergeServerã€‚OceanBaseç³»ç»Ÿå†…éƒ¨æŒ‰ç…§æ—¶é—´çº¿å°†æ•°æ®åˆ’åˆ†ä¸ºåŸºå‡†æ•°æ®å’Œå¢é‡æ•°æ®ï¼ŒåŸºå‡†æ•°æ®æ˜¯åªè¯»çš„ï¼Œæ‰€æœ‰çš„ä¿®æ”¹æ›´æ–°åˆ°å¢é‡æ•°æ®ä¸­ï¼Œç³»ç»Ÿå†…éƒ¨é€šè¿‡åˆå¹¶æ“ä½œå®šæœŸå°†å¢é‡æ•°æ®èåˆåˆ°åŸºå‡†æ•°æ®ä¸­ã€‚
 
-<h1>·¢ĞĞÈÕÖ¾</h1>
-2013/03/04£¬ÕûÀíÌá½»ÁËV0.3.1´úÂëºÍÏà¹Ø¼¼ÊõÎÄµµ¡£
-<h1>×ÊÔ´ÁĞ±í</h1>
-* [OceanBase½éÉÜ](https://github.com/alibaba/oceanbase/wiki)
-* [OceanBase¼Ü¹¹](https://github.com/alibaba/oceanbase/tree/master/doc/oceanbase%E6%9E%B6%E6%9E%84%E5%92%8C%E6%8E%A5%E5%8F%A3)
-* [ChunkServerÉè¼ÆÎÄµµ](https://github.com/alibaba/oceanbase/tree/master/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
-* [mergeServerÉè¼ÆÎÄµµ](https://github.com/alibaba/oceanbase/tree/master/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
-* [rootServerÉè¼ÆÎÄµµ](https://github.com/alibaba/oceanbase/tree/master/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
-* [updateServerÉè¼ÆÎÄµµ](https://github.com/alibaba/oceanbase/tree/master/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
-* [ÔËÎ¬ÎÄµµ](https://github.com/alibaba/oceanbase/tree/master/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
+<h1>å‘è¡Œæ—¥å¿—</h1>
+2013/03/04ï¼Œæ•´ç†æäº¤äº†V0.3.1ä»£ç å’Œç›¸å…³æŠ€æœ¯æ–‡æ¡£ã€‚
+<h1>èµ„æºåˆ—è¡¨</h1>
+* [OceanBaseä»‹ç»](https://github.com/alibaba/oceanbase/wiki)
+* [OceanBaseæ¶æ„](https://github.com/alibaba/oceanbase/tree/master/doc/oceanbase%E6%9E%B6%E6%9E%84%E5%92%8C%E6%8E%A5%E5%8F%A3)
+* [ChunkServerè®¾è®¡æ–‡æ¡£](https://github.com/alibaba/oceanbase/tree/master/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
+* [mergeServerè®¾è®¡æ–‡æ¡£](https://github.com/alibaba/oceanbase/tree/master/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
+* [rootServerè®¾è®¡æ–‡æ¡£](https://github.com/alibaba/oceanbase/tree/master/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
+* [updateServerè®¾è®¡æ–‡æ¡£](https://github.com/alibaba/oceanbase/tree/master/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
+* [è¿ç»´æ–‡æ¡£](https://github.com/alibaba/oceanbase/tree/master/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
 * [TODO List](https://github.com/alibaba/oceanbase/wiki/TODO-List)
+* [OceanBaseæ·˜å®å¼€æºç«™](http://oceanbase.taobao.org/)
 <br>
