@@ -4,6 +4,23 @@ OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千�
 
 <h1>发行日志</h1>
 2013/03/04，整理提交了V0.3.1代码和相关技术文档。
+
+<h1>特性</h1>
+透明化对动态数据的访问，作为OB集群的数据计算代理层；  
+应用事件驱动模型，将跨tablet的查询并发执行降低OLAP请求的延迟；  
+使用新负载均衡算法，消除不均衡访问增强系统整体QPS吞吐量；  
+对大请求支持流式访问接口，提升OLAP大请求的数据吞吐；  
+支持复杂表达式过滤条件，支持Sum,Count等聚合函数，支持GroupBy、Orderby等运算符；  
+CS旁路导入    
+tablet合并  
+线上版本平滑升级(lsyncserver)  
+去除对HA的依赖，由rootserver选主  
+实现挂载多台备机  
+实现准实时备份的主备集群  
+增加hash+btree双索引机制  
+优化memtable内存占用  
+新的负载均衡策略  
+
 <h1>资源列表</h1>
 * [OceanBase介绍](https://github.com/alibaba/oceanbase/wiki)
 * [OceanBase架构](https://github.com/alibaba/oceanbase/tree/master/doc/oceanbase%E6%9E%B6%E6%9E%84%E5%92%8C%E6%8E%A5%E5%8F%A3)
