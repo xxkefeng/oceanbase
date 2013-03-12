@@ -13,13 +13,13 @@
     <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
     <![endif]-->
 
-    <title>Oceanbase by alibaba</title>
+    <title>OceanBase by alibaba</title>
   </head>
 
   <body>
     <header>
       <div class="inner">
-        <h1>Oceanbase</h1>
+        <h1>OceanBase</h1>
         <h2></h2>
         <a href="https://github.com/alibaba/oceanbase" class="button"><small>View project on</small>GitHub</a>
       </div>
@@ -28,8 +28,9 @@
     <div id="content-wrapper">
       <div class="inner clearfix">
         <section id="main-content">
-          <p><img src="https://raw.github.com/alibaba/oceanbase/master/doc/%E5%9B%BE%E7%89%87%E5%A4%B9/logo.jpg" alt="logo">
-OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千亿条记录、数百TB数据上的跨行跨表事务，截止到2012年8月为止，支持了收藏夹、直通车报表、天猫评价等OLTP和OLAP在线业务，线上数据量已经超过一千亿条。</p>
+          <p><img src="https://raw.github.com/alibaba/oceanbase/master/doc/%E5%9B%BE%E7%89%87%E5%A4%B9/logo.jpg" alt="logo"><a href="https://github.com/alibaba/oceanbase/wiki/Oceanbase">English Version</a></p>
+
+<p>OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千亿条记录、数百TB数据上的跨行跨表事务，截止到2012年8月为止，支持了收藏夹、直通车报表、天猫评价等OLTP和OLAP在线业务，线上数据量已经超过一千亿条。</p>
 
 <p>从模块划分的角度看，OceanBase可以划分为四个模块：主控服务器RootServer、更新服务器UpdateServer、基准数据服务器ChunkServer以及合并服务器MergeServer。OceanBase系统内部按照时间线将数据划分为基准数据和增量数据，基准数据是只读的，所有的修改更新到增量数据中，系统内部通过合并操作定期将增量数据融合到基准数据中。</p>
 
@@ -39,7 +40,7 @@ OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千�
 
 <h1>特性</h1>
 
-<ol>
+<ul>
 <li>透明化对动态数据的访问，作为OB集群的数据计算代理层；<br>
 </li>
 <li>应用事件驱动模型，将跨tablet的查询并发执行降低OLAP请求的延迟；<br>
@@ -68,7 +69,7 @@ OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千�
 </li>
 <li>新的负载均衡策略<br>
 </li>
-</ol><h1>资源列表</h1>
+</ul><h1>资源列表</h1>
 
 <ul>
 <li><a href="https://github.com/alibaba/oceanbase/wiki">OceanBase介绍</a></li>
