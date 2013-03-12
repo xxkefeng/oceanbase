@@ -23,12 +23,12 @@ tablet合并
 
 <h1>资源列表</h1>
 * [OceanBase介绍](https://github.com/alibaba/oceanbase/wiki)
-* [OceanBase架构](https://github.com/alibaba/oceanbase/tree/master/doc/oceanbase%E6%9E%B6%E6%9E%84%E5%92%8C%E6%8E%A5%E5%8F%A3)
+* [OceanBase架构](https://github.com/alibaba/oceanbase/wiki/OceanBase%E6%9E%B6%E6%9E%84%E4%BB%8B%E7%BB%8D%E5%85%A8%E6%96%87)
 * [ChunkServer设计文档](https://github.com/alibaba/oceanbase/tree/master/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [mergeServer设计文档](https://github.com/alibaba/oceanbase/tree/master/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [rootServer设计文档](https://github.com/alibaba/oceanbase/tree/master/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [updateServer设计文档](https://github.com/alibaba/oceanbase/tree/master/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [运维文档](https://github.com/alibaba/oceanbase/tree/master/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
-* [TODO List](https://github.com/alibaba/oceanbase/wiki/TODO-List)
 * [OceanBase淘宝开源站](http://oceanbase.taobao.org/)
+* [TODO List](https://github.com/alibaba/oceanbase/wiki/TODO-List)
 <br>
