@@ -10,7 +10,7 @@ OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千�
 应用事件驱动模型，将跨tablet的查询并发执行降低OLAP请求的延迟；  
 使用新负载均衡算法，消除不均衡访问增强系统整体QPS吞吐量；  
 对大请求支持流式访问接口，提升OLAP大请求的数据吞吐；  
-支持复杂表达式过滤条件，支持Sum,?Count等聚合函数，支持GroupBy、Orderby等运算符；  
+支持复杂表达式过滤条件，支持Sum,Count等聚合函数，支持GroupBy、Orderby等运算符；  
 CS旁路导入    
 tablet合并  
 线上版本平滑升级(lsyncserver)  
