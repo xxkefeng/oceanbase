@@ -17,11 +17,8 @@ OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千�
 支持复杂表达式过滤条件，支持Sum,?Count等聚合函数，支持GroupBy、Orderby等运算符；
 
 CS旁路导入  
-
 tablet合并  
-
 线上版本平滑升级(lsyncserver)  
-
 去除对HA的依赖，由rootserver选主  
 
 实现挂载多台备机  
