@@ -33,5 +33,5 @@ OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千�
 * [updateServer设计文档](https://github.com/alibaba/oceanbase/tree/master/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [运维文档](https://github.com/alibaba/oceanbase/tree/master/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
 * [OceanBase淘宝开源站](http://oceanbase.taobao.org/)
-* [TODO List](https://github.com/alibaba/oceanbase/wiki/TODO-List)
+* [Project Plan](https://github.com/alibaba/oceanbase/wiki/Project-Plan) 
 <br>
