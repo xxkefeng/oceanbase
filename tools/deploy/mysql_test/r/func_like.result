@@ -1,0 +1,32 @@
+drop table if exists t1;
+create table t1 (a varchar(10) primary key);
+insert into t1 values ('a'),('abc'),('abcd'),('hello'),('test');
+select * from t1 where a like 'abc%';
+a
+abc
+abcd
+select * from t1 where a like 'ABC%';
+a
+select * from t1 where a like 'test%';
+a
+test
+select * from t1 where a like 'te_t';
+a
+test
+select * from t1 where a like '%a%';
+a
+a
+abc
+abcd
+select * from t1 where a like '%abcd%';
+a
+abcd
+select * from t1 where a like '%abc\d%';
+a
+abcd
+drop table t1;
+create table t1 (a varchar(10) primary key);
+insert into t1 values ('a'), ('a\\b');
+select * from t1 where a like 'a\\%';
+a
+drop table t1;
