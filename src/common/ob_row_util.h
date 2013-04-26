@@ -15,9 +15,9 @@
  */
 #ifndef _OB_ROW_UTIL_H
 #define _OB_ROW_UTIL_H 1
-#include "common/ob_string_buf.h"
-#include "common/ob_string.h"
 #include "ob_row.h"
+#include "ob_rowkey.h"
+
 namespace oceanbase
 {
   namespace common
@@ -56,7 +56,7 @@ namespace oceanbase
          */
         static int convert(const common::ObString &compact_row, ObRow &row);
 
-        static int convert(const common::ObString &compact_row, ObRow &row, ObString *rowkey);
+        static int convert(const common::ObString &compact_row, ObRow &row, ObRowkey *rowkey, ObObj *rowkey_buf);
     };
   } // end namespace common
 } // end namespace oceanbase

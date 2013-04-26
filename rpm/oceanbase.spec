@@ -10,38 +10,47 @@
 # Version: $id$
 #
 # Authors:
-#   MaoQi maoqi@taobao.com
+#   MaoQi maoqi@alipay.com
 #
 
 Name: %NAME
 Version: %VERSION
 Release: %{RELEASE}
-#Release: 1
 Summary: TaoBao distributed database
-Group: Application
-URL: http:://yum.corp.alimama.com
+Group: Applications/Databases
+URL: http://oceanbase.alibaba-inc.com/
 Packager: taobao
 License: GPL
 Vendor: TaoBao
 Prefix:%{_prefix}
 Source:%{NAME}-%{VERSION}.tar.gz
 BuildRoot: %(pwd)/%{name}-root
-BuildRequires: t-csrd-tbnet-devel >= 1.0.7 lzo >= 2.06 snappy >= 1.0.2 numactl-devel >= 0.9.8 libaio-devel >= 0.3 openssl-devel >= 0.9.8e
+BuildRequires: t-csrd-tbnet-devel >= 1.0.8 lzo >= 2.06 snappy >= 1.0.2 libaio-devel >= 0.3 t_libeasy-devel >= 1.0.12 openssl-devel >= 0.9.8 mysql-devel >= 5.0.77
+Requires: lzo >= 2.06 snappy >= 1.0.2 libaio >= 0.3 openssl >= 0.9.8 perl-DBI
 
-%package -n oceanbase-dump
-summary: Oceanbase dump tools
-group: Development/Libraries
+%package -n oceanbase-utils
+summary: OceanBase utility programs
+group: Development/Tools
 Version: %VERSION
 Release: %{RELEASE}
-#Release: 1
 
-%define dump_prefix /home/admin/obdump
+
+%package -n oceanbase-devel
+summary: OceanBase client library
+group: Development/Libraries
+Version: %VERSION
+BuildRequires:curl >= 7.29.0 mysql-devel >= 5.0.77
+Requires: curl >= 7.29.0 mysql-devel >= 5.0.77
+Release: %{RELEASE}
 
 %description
 OceanBase is a distributed database
 
-%description -n oceanbase-dump
-Oceanbase dumper 
+%description -n oceanbase-utils
+OceanBase utility programs
+
+%description -n oceanbase-devel
+OceanBase client library
 
 %define _unpackaged_files_terminate_build 0
 
@@ -51,75 +60,73 @@ Oceanbase dumper
 %build
 chmod u+x build.sh
 ./build.sh init
-./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes --with-tblib-root=/opt/csr/common
-#./configure --prefix=%{_prefix} --with-test-case=no --with-release=yes
+./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes --with-tblib-root=/opt/csr/common --with-easy-root=/usr --with-easy-lib-path=/usr/lib64
 make %{?_smp_mflags}
-#make
 
 %install
-rm -rf $RPM_BUILD_ROOT
-
-#build dir for obdumper
-mkdir -p $RPM_BUILD_ROOT%{dump_prefix}/bin
-mkdir -p $RPM_BUILD_ROOT%{dump_prefix}/conf
-mkdir -p $RPM_BUILD_ROOT%{dump_prefix}/data
-mkdir -p $RPM_BUILD_ROOT%{dump_prefix}/tmp_log
-
 make DESTDIR=$RPM_BUILD_ROOT install
-
-mv $RPM_BUILD_ROOT%{_prefix}/etc/obdump.sh         $RPM_BUILD_ROOT%{dump_prefix}
-mv $RPM_BUILD_ROOT%{_prefix}/bin/obdump            $RPM_BUILD_ROOT%{dump_prefix}/bin
-mv $RPM_BUILD_ROOT%{_prefix}/etc/ob_check_done.sh  $RPM_BUILD_ROOT%{dump_prefix}/bin
-mv $RPM_BUILD_ROOT%{_prefix}/etc/dumper.ini        $RPM_BUILD_ROOT%{dump_prefix}/conf
-mv $RPM_BUILD_ROOT%{_prefix}/etc/dumper.ini_master $RPM_BUILD_ROOT%{dump_prefix}/conf
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(0755, admin, admin)
-%{_prefix}/oceanbase.sh
-%{_prefix}/cs_init.sh
-%{_prefix}/ups_init.sh
-%{_prefix}/sysctl.conf
-%{_prefix}/snmpd.conf
+%dir %{_prefix}/etc
+%dir %{_prefix}/bin
+%dir %{_prefix}/lib
+%config(noreplace) %{_prefix}/etc/schema.ini
+%config(noreplace) %{_prefix}/etc/lsyncserver.conf.template
+%config %{_prefix}/etc/sysctl.conf
+%config %{_prefix}/etc/snmpd.conf
 %{_prefix}/bin/rootserver
 %{_prefix}/bin/updateserver
 %{_prefix}/bin/mergeserver
 %{_prefix}/bin/chunkserver
 %{_prefix}/bin/rs_admin
 %{_prefix}/bin/ups_admin
-#%{_prefix}/bin/cs_admin
+%{_prefix}/bin/cs_admin
 %{_prefix}/bin/ob_ping
-%{_prefix}/bin/ups_mon
 %{_prefix}/bin/str2checkpoint
 %{_prefix}/bin/checkpoint2str
-%{_prefix}/bin/schema_reader
 %{_prefix}/bin/lsyncserver
-%{_prefix}/bin/msyncclient
-%{_prefix}/bin/ob_import
+%{_prefix}/bin/dumpsst
 %{_prefix}/bin/log_reader
-%{_prefix}/bin/importserver.py
-%{_prefix}/bin/importcli.py
-%{_prefix}/bin/copy_sstable.py
-%{_prefix}/bin/mrsstable.jar
-%{_prefix}/bin/dispatch.sh
-%{_prefix}/lib
-%{_prefix}/etc
+%{_prefix}/lib/liblzo_1.0.a
+%{_prefix}/lib/liblzo_1.0.la
+%{_prefix}/lib/liblzo_1.0.so
+%{_prefix}/lib/liblzo_1.0.so.0
+%{_prefix}/lib/liblzo_1.0.so.0.0.0
+%{_prefix}/lib/libmrsstable.a
+%{_prefix}/lib/libmrsstable.la
+%{_prefix}/lib/libmrsstable.so
+%{_prefix}/lib/libmrsstable.so.0
+%{_prefix}/lib/libmrsstable.so.0.0.0
+%{_prefix}/lib/libnone.a
+%{_prefix}/lib/libnone.la
+%{_prefix}/lib/libnone.so
+%{_prefix}/lib/libnone.so.0
+%{_prefix}/lib/libnone.so.0.0.0
+%{_prefix}/lib/libsnappy_1.0.a
+%{_prefix}/lib/libsnappy_1.0.la
+%{_prefix}/lib/libsnappy_1.0.so
+%{_prefix}/lib/libsnappy_1.0.so.0
+%{_prefix}/lib/libsnappy_1.0.so.0.0.0
+%{_prefix}/bin/oceanbase.pl
+%config %{_prefix}/etc/oceanbase.conf.template
+%{_prefix}/tests/
 
-%files -n oceanbase-dump
-# files for oceanbase-dump
+%files -n oceanbase-utils
 %defattr(0755, admin, admin)
-%{dump_prefix}/obdump.sh
-%{dump_prefix}/bin/obdump
-%{dump_prefix}/bin/ob_check_done.sh
-%{dump_prefix}/conf/dumper.ini
-%{dump_prefix}/conf/dumper.ini_master
-%{dump_prefix}/data
-%{dump_prefix}/tmp_log
+%{_prefix}/bin/ob_import
+
+%files -n oceanbase-devel
+%defattr(0755, admin, admin)
+%dir %{_prefix}/lib
+%dir %{_prefix}/etc
+%{_prefix}/lib/libobsql.so.0.0.0
+%{_prefix}/lib/libobsql.a
+%config(noreplace) %{_prefix}/etc/libobsql.conf
+%config(noreplace) %{_prefix}/etc/libobsqlrc
 
 %post
-chown -R admin:admin /home/admin/oceanbase
-mv %{_prefix}/cs_init.sh %{_prefix}/bin
-mv %{_prefix}/ups_init.sh %{_prefix}/bin
-
+chown -R admin:admin $RPM_INSTALL_PREFIX

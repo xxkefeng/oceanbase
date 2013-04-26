@@ -13,10 +13,14 @@
  *   Zhifeng YANG <zhuweng.yzf@taobao.com>
  *
  */
+#include <regex.h>
 #include <cmath>
+#include "utility.h"
 #include "ob_expr_obj.h"
+#include "ob_string_buf.h"
 #include "ob_string_search.h"
-
+#include "ob_malloc.h"
+#include "ob_obj_cast.h"
 using namespace oceanbase::common;
 
 void ObExprObj::assign(const ObObj &obj)
@@ -55,6 +59,9 @@ void ObExprObj::assign(const ObObj &obj)
       break;
     case ObDoubleType:
       obj.get_double(v_.double_);
+      break;
+    case ObExtendType:
+      obj.get_ext(v_.ext_);
       break;
     default:
       TBSYS_LOG(ERROR, "invalid value type=%d", obj.get_type());
@@ -100,8 +107,11 @@ int ObExprObj::to(ObObj &obj) const
     case ObDoubleType:
       obj.set_double(v_.double_);
       break;
+    case ObExtendType:
+      obj.set_ext(v_.ext_);
+      break;
     default:
-      TBSYS_LOG(ERROR, "invalid value type=%d", obj.get_type());
+      TBSYS_LOG(ERROR, "invalid value type=%d", get_type());
       ret = OB_ERR_UNEXPECTED;
       break;
   }
@@ -133,7 +143,8 @@ inline bool ObExprObj::is_numeric() const
   return ((type_ == ObIntType)
           || (type_ == ObDecimalType)
           || (type_ == ObFloatType)
-          || (type_ == ObDoubleType));
+          || (type_ == ObDoubleType)
+          || (type_ == ObBoolType));
 }
 
 inline int ObExprObj::get_timestamp(int64_t & timestamp) const
@@ -254,169 +265,212 @@ int ObExprObj::compare_same_type(const ObExprObj &other) const
   return cmp;
 }
 
-inline int ObExprObj::type_promotion(const ObExprObj &this_obj, const ObExprObj &other,
-                                     ObExprObj &promoted_obj, const ObExprObj *&p_this, const ObExprObj *&p_other)
+// @return ObMaxType when not supporting
+// do not promote where comparing with the same type
+static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
+{
+  {
+    /*Null compare with XXX*/
+    ObNullType, ObNullType, ObNullType,
+    ObNullType, ObNullType, ObNullType,
+    ObNullType, ObNullType, ObNullType,
+    ObNullType, ObNullType, ObNullType,
+    ObNullType
+  }
+  ,
+  {
+    /*Int compare with XXX*/
+    ObNullType/*Null*/, ObIntType/*Int*/, ObFloatType,
+    ObDoubleType, ObIntType, ObIntType,
+    ObIntType, ObMaxType/*Seq, not_support*/, ObIntType,
+    ObIntType, ObMaxType/*Extend*/, ObBoolType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Float compare with XXX*/
+    ObNullType/*Null*/, ObFloatType, ObFloatType,
+    ObDoubleType, ObFloatType, ObFloatType,
+    ObFloatType, ObMaxType/*Seq*/, ObFloatType,
+    ObFloatType, ObMaxType/*Extend*/, ObBoolType,
+    ObDoubleType
+  }
+  ,
+  {
+    /*Double compare with XXX*/
+    ObNullType/*Null*/, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObBoolType,
+    ObDoubleType
+  }
+  ,
+  {
+    /*DateTime compare with XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObDateTimeType, ObPreciseDateTimeType,
+    ObDateTimeType, ObMaxType/*Seq*/, ObPreciseDateTimeType,
+    ObPreciseDateTimeType, ObMaxType/*Extend*/, ObBoolType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*PreciseDateTime compare with XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObPreciseDateTimeType, ObPreciseDateTimeType,
+    ObPreciseDateTimeType, ObMaxType/*Seq*/, ObPreciseDateTimeType,
+    ObPreciseDateTimeType, ObMaxType/*Extend*/, ObBoolType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Varchar compare with XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObDateTimeType, ObPreciseDateTimeType,
+    ObVarcharType, ObMaxType/*Seq*/, ObCreateTimeType,
+    ObModifyTimeType, ObMaxType/*Extend*/, ObBoolType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Seq compare with XXX*/
+    ObNullType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType
+  }
+  ,
+  {
+    /*CreateTime compare with XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObPreciseDateTimeType, ObPreciseDateTimeType,
+    ObCreateTimeType, ObMaxType/*Seq*/, ObCreateTimeType,
+    ObPreciseDateTimeType, ObMaxType/*Extend*/, ObBoolType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*ModifyTime compare with XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObPreciseDateTimeType, ObPreciseDateTimeType,
+    ObModifyTimeType, ObMaxType/*Seq*/, ObPreciseDateTimeType,
+    ObModifyTimeType, ObMaxType/*Extend*/, ObBoolType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Extend compare with XXX*/
+    ObNullType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType
+  }
+  ,
+  {
+    /*Bool compare with XXX*/
+    ObNullType/*Null*/, ObBoolType, ObBoolType,
+    ObBoolType, ObBoolType, ObBoolType,
+    ObBoolType, ObMaxType/*Seq*/, ObBoolType,
+    ObBoolType, ObMaxType/*Extend*/, ObBoolType,
+    ObBoolType
+  }
+  ,
+  {
+    /*Decimal compare with XXX*/
+    ObNullType/*Null*/, ObDecimalType, ObDoubleType,
+    ObDoubleType, ObDecimalType, ObDecimalType,
+    ObDecimalType, ObMaxType/*Seq*/, ObDecimalType,
+    ObDecimalType, ObMaxType/*Extend*/, ObBoolType,
+    ObDecimalType
+  }
+};
+
+struct IntegrityChecker1
+{
+  IntegrityChecker1()
+  {
+    for (ObObjType t1 = static_cast<ObObjType>(ObMinType+1);
+         t1 < ObMaxType;
+         t1 = static_cast<ObObjType>(t1 + 1))
+    {
+      for (ObObjType t2 = static_cast<ObObjType>(ObMinType+1);
+           t2 < ObMaxType;
+           t2 = static_cast<ObObjType>(t2 + 1))
+      {
+        OB_ASSERT(COMPARE_TYPE_PROMOTION[t1][t2] == COMPARE_TYPE_PROMOTION[t2][t1]);
+      }
+    }
+  }
+} COMPARE_TYPE_PROMOTION_CHECKER;
+
+inline int ObExprObj::type_promotion(ObObjType type_promote_map[ObMaxType][ObMaxType],
+                                     const ObExprObj &this_obj, const ObExprObj &other,
+                                     ObExprObj &promoted_obj1, ObExprObj &promoted_obj2,
+                                     const ObExprObj *&p_this, const ObExprObj *&p_other)
 {
   int ret = OB_SUCCESS;
   ObObjType this_type = this_obj.get_type();
   ObObjType other_type = other.get_type();
-  switch(this_type)
+  OB_ASSERT(ObMinType < this_type && this_type < ObMaxType);
+  OB_ASSERT(ObMinType < other_type && other_type < ObMaxType);
+  ObObjType res_type = type_promote_map[this_type][other_type];
+  if (ObNullType == res_type)
   {
-    case ObNullType:
-      ret = OB_RESULT_UNKNOWN;
-      break;
-    case ObIntType:
+    ret = OB_RESULT_UNKNOWN;
+  }
+  else if (ObMaxType == res_type)
+  {
+    TBSYS_LOG(ERROR, "invalid obj type for type promotion, this=%d other=%d", this_type, other_type);
+    ret = OB_ERR_UNEXPECTED;
+  }
+  else
+  {
+    p_this = &this_obj;
+    p_other = &other;
+    if (this_type != res_type)
     {
-      switch(other_type)
+      ObObjCastParams params;
+      if (OB_SUCCESS != (ret = OB_OBJ_CAST[this_type][res_type](params, this_obj, promoted_obj1)))
       {
-        case ObNullType:
-          ret = OB_RESULT_UNKNOWN;
-          break;
-        case ObIntType:
-          // same type
-          p_this = &this_obj;
-          p_other = &other;
-          break;
-        case ObFloatType:
-          // int vs float
-          promoted_obj.type_ = ObFloatType;
-          promoted_obj.v_.float_ = static_cast<float>(this_obj.v_.int_);
-          p_this = &promoted_obj;
-          p_other = &other;
-          break;
-        case ObDoubleType:
-          // int vs double
-          promoted_obj.type_ = ObDoubleType;
-          promoted_obj.v_.double_ = static_cast<double>(this_obj.v_.int_);
-          p_this = &promoted_obj;
-          p_other = &other;
-          break;
-        case ObDecimalType:
-          // int vs decimal
-          promoted_obj.type_ = ObDecimalType;
-          promoted_obj.num_.from(this_obj.v_.int_);
-          p_this = &promoted_obj;
-          p_other = &other;
-          break;
-        default:
-          ret = OB_INVALID_ARGUMENT;
-          TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-          break;
+        TBSYS_LOG(WARN, "failed to cast object, err=%d from_type=%d to_type=%d",
+                  ret, this_type, res_type);
       }
-      break;
+      else
+      {
+        p_this = &promoted_obj1;
+      }
     }
-    case ObFloatType:
+    if (OB_SUCCESS == ret && other_type != res_type)
     {
-      switch(other_type)
+      ObObjCastParams params;
+      if (OB_SUCCESS != (ret = OB_OBJ_CAST[other_type][res_type](params, other, promoted_obj2)))
       {
-        case ObNullType:
-          ret = OB_RESULT_UNKNOWN;
-          break;
-        case ObIntType:
-          // float vs int
-          promoted_obj.type_ = ObFloatType;
-          promoted_obj.v_.float_ = static_cast<float>(other.v_.int_);
-          p_this = &this_obj;
-          p_other = &promoted_obj;
-          break;
-        case ObFloatType:
-          // same type
-          p_this = &this_obj;
-          p_other = &other;
-          break;
-        case ObDoubleType:
-          // float vs double
-          promoted_obj.type_ = ObDoubleType;
-          promoted_obj.v_.double_ = static_cast<double>(this_obj.v_.float_);
-          p_this = &promoted_obj;
-          p_other = &other;
-          break;
-        case ObDecimalType:
-          // float vs decimal
-          ret = OB_NOT_IMPLEMENT;
-          break;
-        default:
-          ret = OB_INVALID_ARGUMENT;
-          TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-          break;
+        TBSYS_LOG(WARN, "failed to cast object, err=%d from_type=%d to_type=%d",
+                  ret, this_type, res_type);
       }
-      break;
+      else
+      {
+        p_other = &promoted_obj2;
+      }
     }
-    case ObDoubleType:
+  }
+  return ret;
+}
+
+inline int ObExprObj::compare_type_promotion(const ObExprObj &this_obj, const ObExprObj &other,
+                                             ObExprObj &promoted_obj1, ObExprObj &promoted_obj2,
+                                             const ObExprObj *&p_this, const ObExprObj *&p_other)
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = type_promotion(COMPARE_TYPE_PROMOTION, this_obj, other,
+                                          promoted_obj1, promoted_obj2, p_this, p_other)))
+  {
+    if (OB_RESULT_UNKNOWN != ret)
     {
-      switch(other_type)
-      {
-        case ObNullType:
-          ret = OB_RESULT_UNKNOWN;
-          break;
-        case ObIntType:
-          // double vs int
-          promoted_obj.type_ = ObDoubleType;
-          promoted_obj.v_.double_ = static_cast<double>(other.v_.int_);
-          p_this = &this_obj;
-          p_other = &promoted_obj;
-          break;
-        case ObFloatType:
-          // double vs float
-          promoted_obj.type_ = ObDoubleType;
-          promoted_obj.v_.double_ = static_cast<double>(other.v_.float_);
-          p_this = &this_obj;
-          p_other = &promoted_obj;
-          break;
-        case ObDoubleType:
-          // same type
-          p_this = &this_obj;
-          p_other = &other;
-          break;
-        case ObDecimalType:
-          // double vs decimal
-          ret = OB_NOT_IMPLEMENT;
-          break;
-        default:
-          ret = OB_INVALID_ARGUMENT;
-          TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-          break;
-      }
-      break;
+      TBSYS_LOG(WARN, "invalid type promote for compare, err=%d", ret);
     }
-    case ObDecimalType:
-    {
-      switch(other_type)
-      {
-        case ObNullType:
-          ret = OB_RESULT_UNKNOWN;
-          break;
-        case ObIntType:
-          // decimal vs int
-          promoted_obj.type_ = ObDecimalType;
-          promoted_obj.num_.from(other.v_.int_);
-          p_this = &this_obj;
-          p_other = &promoted_obj;
-          break;
-        case ObFloatType:
-          // decimal vs float
-          ret = OB_NOT_IMPLEMENT;
-          break;
-        case ObDoubleType:
-          // decimal vs double
-          ret = OB_NOT_IMPLEMENT;
-          break;
-        case ObDecimalType:
-          // same type
-          p_this = &this_obj;
-          p_other = &other;
-          break;
-        default:
-          ret = OB_INVALID_ARGUMENT;
-          TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-          break;
-      }
-      break;
-    }
-    default:
-      ret = OB_INVALID_ARGUMENT;
-      TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-      break;
   }
   return ret;
 }
@@ -424,40 +478,17 @@ inline int ObExprObj::type_promotion(const ObExprObj &this_obj, const ObExprObj 
 int ObExprObj::compare(const ObExprObj &other, int &cmp) const
 {
   int ret = OB_SUCCESS;
-  if (OB_UNLIKELY(!can_compare(other)))
+  ObExprObj promoted1;
+  ObExprObj promoted2;
+  const ObExprObj *p_this = NULL;
+  const ObExprObj *p_other = NULL;
+  if (OB_SUCCESS != (ret = compare_type_promotion(*this, other, promoted1, promoted2, p_this, p_other)))
   {
-    TBSYS_LOG(ERROR, "can not be compared, this_type=%d other_type=%d",
-              get_type(), other.get_type());
-    ret = OB_OBJ_TYPE_ERROR;
+    ret = OB_RESULT_UNKNOWN;
   }
   else
   {
-    ObObjType this_type = get_type();
-    ObObjType other_type = other.get_type();
-    if (this_type == ObNullType || other_type == ObNullType)
-    {
-      ret = OB_RESULT_UNKNOWN;
-    }
-    // both are not null
-    else if (this_type == other_type || (this->is_datetime() && other.is_datetime()))
-    {
-      cmp = this->compare_same_type(other);
-    }
-    else
-    {
-      OB_ASSERT(is_numeric() && other.is_numeric());
-      ObExprObj promoted_value;
-      const ObExprObj *p_this = NULL;
-      const ObExprObj *p_other = NULL;
-      if (OB_SUCCESS != (ret = type_promotion(*this, other, promoted_value, p_this, p_other)))
-      {
-        TBSYS_LOG(WARN, "failed to promote type, err=%d", ret);
-      }
-      else
-      {
-        cmp = p_this->compare_same_type(*p_other);
-      }
-    }
+    cmp = p_this->compare_same_type(*p_other);
   }
   return ret;
 }
@@ -835,6 +866,163 @@ int ObExprObj::lnot(ObExprObj &res) const
   }
   return ret;
 }
+////////////////////////////////////////////////////////////////
+// arithmetic operations
+////////////////////////////////////////////////////////////////
+// @return ObMaxType when not supporting
+static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
+{
+  {
+    /*Null +/- XXX*/
+    ObNullType, ObNullType, ObNullType,
+    ObNullType, ObNullType, ObNullType,
+    ObNullType, ObNullType, ObNullType,
+    ObNullType, ObNullType, ObNullType,
+    ObNullType
+  }
+  ,
+  {
+    /*Int +/- XXX*/
+    ObNullType/*Null*/, ObIntType/*Int*/, ObFloatType,
+    ObDoubleType, ObIntType, ObIntType,
+    ObIntType, ObMaxType/*Seq, not_support*/, ObIntType,
+    ObIntType, ObMaxType/*Extend*/, ObIntType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Float +/- XXX*/
+    ObNullType/*Null*/, ObFloatType, ObFloatType,
+    ObDoubleType, ObFloatType, ObFloatType,
+    ObFloatType, ObMaxType/*Seq*/, ObFloatType,
+    ObFloatType, ObMaxType/*Extend*/, ObFloatType,
+    ObDoubleType
+  }
+  ,
+  {
+    /*Double +/- XXX*/
+    ObNullType/*Null*/, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
+    ObDoubleType
+  }
+  ,
+  {
+    /*DateTime +/- XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObIntType, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
+    ObIntType, ObMaxType/*Extend*/, ObIntType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*PreciseDateTime +/- XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObIntType, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
+    ObIntType, ObMaxType/*Extend*/, ObIntType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Varchar +/- XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObIntType, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
+    ObIntType, ObMaxType/*Extend*/, ObIntType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Seq +/- XXX*/
+    ObNullType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType
+  }
+  ,
+  {
+    /*CreateTime +/- XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObIntType, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
+    ObIntType, ObMaxType/*Extend*/, ObIntType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*ModifyTime +/- XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObIntType, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
+    ObIntType, ObMaxType/*Extend*/, ObIntType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Extend +/- XXX*/
+    ObNullType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType
+  }
+  ,
+  {
+    /*Bool +/- XXX*/
+    ObNullType/*Null*/, ObIntType, ObFloatType,
+    ObDoubleType, ObIntType, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
+    ObIntType, ObMaxType/*Extend*/, ObIntType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Decimal +/- XXX*/
+    ObNullType/*Null*/, ObDecimalType, ObDoubleType,
+    ObDoubleType, ObDecimalType, ObDecimalType,
+    ObDecimalType, ObMaxType/*Seq*/, ObDecimalType,
+    ObDecimalType, ObMaxType/*Extend*/, ObDecimalType,
+    ObDecimalType
+  }
+};
+
+struct IntegrityChecker2
+{
+  IntegrityChecker2()
+  {
+    for (ObObjType t1 = static_cast<ObObjType>(ObMinType+1);
+         t1 < ObMaxType;
+         t1 = static_cast<ObObjType>(t1 + 1))
+    {
+      for (ObObjType t2 = static_cast<ObObjType>(ObMinType+1);
+           t2 < ObMaxType;
+           t2 = static_cast<ObObjType>(t2 + 1))
+      {
+        OB_ASSERT(ARITHMETIC_TYPE_PROMOTION[t1][t2] == ARITHMETIC_TYPE_PROMOTION[t2][t1]);
+      }
+    }
+  }
+} ARITHMETIC_TYPE_PROMOTION_CHECKER;
+
+inline int ObExprObj::arith_type_promotion(const ObExprObj &this_obj, const ObExprObj &other,
+                                     ObExprObj &promoted_obj1, ObExprObj &promoted_obj2,
+                                     const ObExprObj *&p_this, const ObExprObj *&p_other)
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = type_promotion(ARITHMETIC_TYPE_PROMOTION, this_obj, other,
+                                          promoted_obj1, promoted_obj2, p_this, p_other)))
+  {
+    if (OB_RESULT_UNKNOWN != ret)
+    {
+      TBSYS_LOG(WARN, "invalid type promote for arithmetic, err=%d", ret);
+    }
+  }
+  return ret;
+}
 
 inline int ObExprObj::add_same_type(const ObExprObj &other, ObExprObj &res) const
 {
@@ -867,10 +1055,11 @@ inline int ObExprObj::add_same_type(const ObExprObj &other, ObExprObj &res) cons
 int ObExprObj::add(ObExprObj &other, ObExprObj &res)
 {
   int ret = OB_SUCCESS;
-  ObExprObj promoted_value;
+  ObExprObj promoted1;
+  ObExprObj promoted2;
   const ObExprObj *p_this = NULL;
   const ObExprObj *p_other = NULL;
-  if (OB_SUCCESS != (ret = type_promotion(*this, other, promoted_value, p_this, p_other)))
+  if (OB_SUCCESS != (ret = arith_type_promotion(*this, other, promoted1, promoted2, p_this, p_other)))
   {
     if (OB_RESULT_UNKNOWN == ret)
     {
@@ -916,10 +1105,11 @@ inline int ObExprObj::sub_same_type(const ObExprObj &other, ObExprObj &res) cons
 int ObExprObj::sub(ObExprObj &other, ObExprObj &res)
 {
   int ret = OB_SUCCESS;
-  ObExprObj promoted_value;
+  ObExprObj promoted1;
+  ObExprObj promoted2;
   const ObExprObj *p_this = NULL;
   const ObExprObj *p_other = NULL;
-  if (OB_SUCCESS != (ret = type_promotion(*this, other, promoted_value, p_this, p_other)))
+  if (OB_SUCCESS != (ret = arith_type_promotion(*this, other, promoted1, promoted2, p_this, p_other)))
   {
     if (OB_RESULT_UNKNOWN == ret)
     {
@@ -965,10 +1155,11 @@ inline int ObExprObj::mul_same_type(const ObExprObj &other, ObExprObj &res) cons
 int ObExprObj::mul(ObExprObj &other, ObExprObj &res)
 {
   int ret = OB_SUCCESS;
-  ObExprObj promoted_value;
+  ObExprObj promoted1;
+  ObExprObj promoted2;
   const ObExprObj *p_this = NULL;
   const ObExprObj *p_other = NULL;
-  if (OB_SUCCESS != (ret = type_promotion(*this, other, promoted_value, p_this, p_other)))
+  if (OB_SUCCESS != (ret = arith_type_promotion(*this, other, promoted1, promoted2, p_this, p_other)))
   {
     if (OB_RESULT_UNKNOWN == ret)
     {
@@ -983,187 +1174,258 @@ int ObExprObj::mul(ObExprObj &other, ObExprObj &res)
   return ret;
 }
 
-inline int ObExprObj::type_promotion_for_div(const ObExprObj &this_obj, const ObExprObj &other,
-                                             ObExprObj &promoted_obj1, ObExprObj &promoted_obj2,
-                                             const ObExprObj *&p_this, const ObExprObj *&p_other,
-                                             bool int_div_as_double)
+// @return ObMaxType when not supporting
+// int div int result in double
+static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
+{
+  {
+    /*Null div XXX*/
+    ObNullType, ObNullType, ObNullType,
+    ObNullType, ObNullType, ObNullType,
+    ObNullType, ObNullType, ObNullType,
+    ObNullType, ObNullType, ObNullType,
+    ObNullType
+  }
+  ,
+  {
+    /*Int div XXX*/
+    ObNullType/*Null*/, ObDoubleType/*Int*/, ObFloatType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq, not_support*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Float div XXX*/
+    ObNullType/*Null*/, ObFloatType, ObFloatType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObFloatType,
+    ObDoubleType
+  }
+  ,
+  {
+    /*Double div XXX*/
+    ObNullType/*Null*/, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
+    ObDoubleType
+  }
+  ,
+  {
+    /*DateTime div XXX*/
+    ObNullType/*Null*/, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*PreciseDateTime div XXX*/
+    ObNullType/*Null*/, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Varchar div XXX*/
+    ObNullType/*Null*/, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Seq div XXX*/
+    ObNullType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType
+  }
+  ,
+  {
+    /*CreateTime div XXX*/
+    ObNullType/*Null*/, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*ModifyTime div XXX*/
+    ObNullType/*Null*/, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Extend div XXX*/
+    ObNullType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType, ObMaxType, ObMaxType,
+    ObMaxType
+  }
+  ,
+  {
+    /*Bool div XXX*/
+    ObNullType/*Null*/, ObDoubleType, ObFloatType,
+    ObDoubleType, ObDoubleType, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
+    ObDecimalType
+  }
+  ,
+  {
+    /*Decimal div XXX*/
+    ObNullType/*Null*/, ObDecimalType, ObDoubleType,
+    ObDoubleType, ObDecimalType, ObDecimalType,
+    ObDecimalType, ObMaxType/*Seq*/, ObDecimalType,
+    ObDecimalType, ObMaxType/*Extend*/, ObDecimalType,
+    ObDecimalType
+  }
+};
+
+struct IntegrityChecker3
+{
+  IntegrityChecker3()
+  {
+    for (ObObjType t1 = static_cast<ObObjType>(ObMinType+1);
+         t1 < ObMaxType;
+         t1 = static_cast<ObObjType>(t1 + 1))
+    {
+      for (ObObjType t2 = static_cast<ObObjType>(ObMinType+1);
+           t2 < ObMaxType;
+           t2 = static_cast<ObObjType>(t2 + 1))
+      {
+        OB_ASSERT(DIV_TYPE_PROMOTION[t1][t2] == DIV_TYPE_PROMOTION[t2][t1]);
+      }
+    }
+  }
+} DIV_TYPE_PROMOTION_CHECKER;
+
+inline int ObExprObj::cast_to_int(int64_t &val) const
 {
   int ret = OB_SUCCESS;
-  ObObjType this_type = this_obj.get_type();
-  ObObjType other_type = other.get_type();
-  switch(this_type)
+  ObExprObj casted_obj;
+
+  if (OB_UNLIKELY(this->get_type() == ObNullType))
   {
-    case ObNullType:
-      ret = OB_RESULT_UNKNOWN;
-      break;
-    case ObIntType:
+    // TBSYS_LOG(WARN, "should not be null");
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else
+  {
+    ObObjCastParams params;
+    if (OB_SUCCESS != (ret = OB_OBJ_CAST[this->get_type()][ObIntType](params, *this, casted_obj)))
     {
-      switch(other_type)
-      {
-        case ObNullType:
-          ret = OB_RESULT_UNKNOWN;
-          break;
-        case ObIntType:
-          // same type
-          if (int_div_as_double)
-          {
-            promoted_obj1.type_ = ObDoubleType;
-            promoted_obj1.v_.double_ = static_cast<double>(this_obj.v_.int_);
-            promoted_obj2.type_ = ObDoubleType;
-            promoted_obj2.v_.double_ = static_cast<double>(other.v_.int_);
-            p_this = &promoted_obj1;
-            p_other = &promoted_obj2;
-          }
-          else
-          {
-            promoted_obj1.type_ = ObDecimalType;
-            promoted_obj1.num_.from(this_obj.v_.int_);
-            promoted_obj2.type_ = ObDecimalType;
-            promoted_obj2.num_.from(other.v_.int_);
-            p_this = &promoted_obj1;
-            p_other = &promoted_obj2;
-          }
-          break;
-        case ObFloatType:
-          // int vs float
-          promoted_obj1.type_ = ObFloatType;
-          promoted_obj1.v_.float_ = static_cast<float>(this_obj.v_.int_);
-          p_this = &promoted_obj1;
-          p_other = &other;
-          break;
-        case ObDoubleType:
-          // int vs double
-          promoted_obj1.type_ = ObDoubleType;
-          promoted_obj1.v_.double_ = static_cast<double>(this_obj.v_.int_);
-          p_this = &promoted_obj1;
-          p_other = &other;
-          break;
-        case ObDecimalType:
-          // int vs decimal
-          promoted_obj1.type_ = ObDecimalType;
-          promoted_obj1.num_.from(this_obj.v_.int_);
-          p_this = &promoted_obj1;
-          p_other = &other;
-          break;
-        default:
-          ret = OB_INVALID_ARGUMENT;
-          TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-          break;
-      }
-      break;
+      // don't report WARN when type NOT_SUPPORT
+      /*
+      TBSYS_LOG(WARN, "failed to cast object, err=%d from_type=%d to_type=%d",
+          ret, this->get_type(), ObVarcharType);
+      */
     }
-    case ObFloatType:
+    else
     {
-      switch(other_type)
-      {
-        case ObNullType:
-          ret = OB_RESULT_UNKNOWN;
-          break;
-        case ObIntType:
-          // float vs int
-          promoted_obj1.type_ = ObFloatType;
-          promoted_obj1.v_.float_ = static_cast<float>(other.v_.int_);
-          p_this = &this_obj;
-          p_other = &promoted_obj1;
-          break;
-        case ObFloatType:
-          // same type
-          p_this = &this_obj;
-          p_other = &other;
-          break;
-        case ObDoubleType:
-          // float vs double
-          promoted_obj1.type_ = ObDoubleType;
-          promoted_obj1.v_.double_ = static_cast<double>(this_obj.v_.float_);
-          p_this = &promoted_obj1;
-          p_other = &other;
-          break;
-        case ObDecimalType:
-          // float vs decimal
-          ret = OB_NOT_IMPLEMENT;
-          break;
-        default:
-          ret = OB_INVALID_ARGUMENT;
-          TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-          break;
-      }
-      break;
+      val = casted_obj.get_int();
     }
-    case ObDoubleType:
+  }
+  return ret;
+}
+
+
+inline int ObExprObj::cast_to_varchar(ObString &varchar, ObStringBuf &mem_buf) const
+{
+  int ret = OB_SUCCESS;
+  ObExprObj casted_obj;
+  char max_tmp_buf[128]; // other type to varchar won't takes too much space, assume 128, should be enough
+  ObString tmp_str(128, 128, max_tmp_buf);
+
+  if (OB_UNLIKELY(this->get_type() == ObNullType))
+  {
+    //TBSYS_LOG(WARN, "should not be null");
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else if (OB_LIKELY(this->get_type() != ObVarcharType))
+  {
+    casted_obj.set_varchar(tmp_str);
+    ObObjCastParams params;
+    if (OB_SUCCESS != (ret = OB_OBJ_CAST[this->get_type()][ObVarcharType](params, *this, casted_obj)))
     {
-      switch(other_type)
-      {
-        case ObNullType:
-          ret = OB_RESULT_UNKNOWN;
-          break;
-        case ObIntType:
-          // double vs int
-          promoted_obj1.type_ = ObDoubleType;
-          promoted_obj1.v_.double_ = static_cast<double>(other.v_.int_);
-          p_this = &this_obj;
-          p_other = &promoted_obj1;
-          break;
-        case ObFloatType:
-          // double vs float
-          promoted_obj1.type_ = ObDoubleType;
-          promoted_obj1.v_.double_ = static_cast<double>(other.v_.float_);
-          p_this = &this_obj;
-          p_other = &promoted_obj1;
-          break;
-        case ObDoubleType:
-          // same type
-          p_this = &this_obj;
-          p_other = &other;
-          break;
-        case ObDecimalType:
-          // double vs decimal
-          ret = OB_NOT_IMPLEMENT;
-          break;
-        default:
-          ret = OB_INVALID_ARGUMENT;
-          TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-          break;
-      }
-      break;
+      // don't report WARN when type NOT_SUPPORT
+      /*
+      TBSYS_LOG(WARN, "failed to cast object, err=%d from_type=%d to_type=%d",
+          ret, this->get_type(), ObVarcharType);
+      */
     }
-    case ObDecimalType:
+    else if (OB_SUCCESS != (ret = mem_buf.write_string(casted_obj.get_varchar(), &varchar)))
     {
-      switch(other_type)
-      {
-        case ObNullType:
-          ret = OB_RESULT_UNKNOWN;
-          break;
-        case ObIntType:
-          // decimal vs int
-          promoted_obj1.type_ = ObDecimalType;
-          promoted_obj1.num_.from(other.v_.int_);
-          p_this = &this_obj;
-          p_other = &promoted_obj1;
-          break;
-        case ObFloatType:
-          // decimal vs float
-          ret = OB_NOT_IMPLEMENT;
-          break;
-        case ObDoubleType:
-          // decimal vs double
-          ret = OB_NOT_IMPLEMENT;
-          break;
-        case ObDecimalType:
-          // same type
-          p_this = &this_obj;
-          p_other = &other;
-          break;
-        default:
-          ret = OB_INVALID_ARGUMENT;
-          TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-          break;
-      }
-      break;
+      TBSYS_LOG(WARN, "fail to allocate memory for string. ret=%d", ret);
     }
-    default:
-      ret = OB_INVALID_ARGUMENT;
-      TBSYS_LOG(WARN, "cannot compare or do arithmetic, this_type=%d other_type=%d", this_type, other_type);
-      break;
+  }
+  else if (OB_UNLIKELY(OB_SUCCESS != (ret = mem_buf.write_string(this->get_varchar(), &varchar))))
+  {
+    TBSYS_LOG(WARN, "fail to allocate memory for string. ret=%d", ret);
+  }
+  return ret;
+}
+
+int ObExprObj::cast_to(int32_t dest_type, ObExprObj &result, ObStringBuf &mem_buf) const
+{
+  int err = OB_SUCCESS;
+  ObObjCastParams params;
+  ObString varchar;
+  if (dest_type == ObVarcharType)
+  {
+    if (OB_SUCCESS != (err = this->cast_to_varchar(varchar, mem_buf)))
+    {
+      err = OB_SUCCESS;
+      result.set_null();
+    }
+    else
+    {
+      result.set_varchar(varchar);
+    }
+  }
+  else if (dest_type > ObMinType && dest_type < ObMaxType)
+  {
+    if (OB_SUCCESS != (err = OB_OBJ_CAST[this->get_type()][dest_type](params, *this, result)))
+    {
+      err = OB_SUCCESS;
+      result.set_null();
+    }
+  }
+  else
+  {
+    err = OB_INVALID_ARGUMENT;
+  }
+  return err;
+}
+
+inline int ObExprObj::div_type_promotion(const ObExprObj &this_obj, const ObExprObj &other,
+                                         ObExprObj &promoted_obj1, ObExprObj &promoted_obj2,
+                                         const ObExprObj *&p_this, const ObExprObj *&p_other,
+                                         bool int_div_as_double)
+{
+  int ret = OB_SUCCESS;
+  UNUSED(int_div_as_double);
+  if (OB_SUCCESS != (ret = type_promotion(DIV_TYPE_PROMOTION, this_obj, other,
+                                          promoted_obj1, promoted_obj2, p_this, p_other)))
+  {
+    if (OB_RESULT_UNKNOWN != ret)
+    {
+      TBSYS_LOG(WARN, "invalid type promote for compare, err=%d", ret);
+    }
   }
   return ret;
 }
@@ -1207,8 +1469,8 @@ int ObExprObj::div(ObExprObj &other, ObExprObj &res, bool int_div_as_double)
     ObExprObj promoted_value2;
     const ObExprObj *p_this = NULL;
     const ObExprObj *p_other = NULL;
-    if (OB_SUCCESS != (ret = type_promotion_for_div(*this, other, promoted_value1,
-                                                    promoted_value2, p_this, p_other, int_div_as_double)))
+    if (OB_SUCCESS != (ret = div_type_promotion(*this, other, promoted_value1,
+                                                promoted_value2, p_this, p_other, int_div_as_double)))
     {
       if (OB_RESULT_UNKNOWN == ret)
       {
@@ -1224,27 +1486,84 @@ int ObExprObj::div(ObExprObj &other, ObExprObj &res, bool int_div_as_double)
   return ret;
 }
 
+inline int ObExprObj::mod_type_promotion(const ObExprObj &this_obj, const ObExprObj &other,
+                                         ObExprObj &promoted_obj1, ObExprObj &promoted_obj2,
+                                         const ObExprObj *&p_this, const ObExprObj *&p_other)
+{
+  int ret = OB_SUCCESS;
+  ObObjType this_type = this_obj.get_type();
+  ObObjType other_type = other.get_type();
+  OB_ASSERT(ObMinType < this_type && this_type < ObMaxType);
+  OB_ASSERT(ObMinType < other_type && other_type < ObMaxType);
+  p_this = &this_obj;
+  p_other = &other;
+  if (ObNullType == this_type
+      || ObNullType == other_type)
+  {
+    ret = OB_RESULT_UNKNOWN;
+  }
+  if (OB_SUCCESS == ret && ObIntType != this_type)
+  {
+    ObObjCastParams params;
+    if (OB_SUCCESS != (ret = OB_OBJ_CAST[this_type][ObIntType](params, this_obj, promoted_obj1)))
+    {
+      TBSYS_LOG(WARN, "failed to cast obj to int, err=%d this_type=%d",
+                ret, this_type);
+    }
+    else
+    {
+      p_this = &promoted_obj1;
+    }
+  }
+  if (OB_SUCCESS == ret && ObIntType != other_type)
+  {
+    ObObjCastParams params;
+    if (OB_SUCCESS != (ret = OB_OBJ_CAST[other_type][ObIntType](params, other, promoted_obj2)))
+    {
+      TBSYS_LOG(WARN, "failed to cast obj to int, err=%d this_type=%d",
+                ret, other_type);
+    }
+    else
+    {
+      p_other = &promoted_obj2;
+    }
+  }
+  return ret;
+}
+
+/* 取模运算结果为整数 */
 int ObExprObj::mod(const ObExprObj &other, ObExprObj &res) const
 {
-  int err = OB_SUCCESS;
-
-  /* 取模运算必须在整数之间进行，结果为整数 */
-  if (ObIntType != get_type() || ObIntType != other.get_type())
+  int ret = OB_SUCCESS;
+  ObExprObj promoted_obj1;
+  ObExprObj promoted_obj2;
+  const ObExprObj *p_this = this;
+  const ObExprObj *p_other = &other;
+  if (OB_SUCCESS != (ret = mod_type_promotion(*this, other, promoted_obj1, promoted_obj2,
+                                              p_this, p_other)))
   {
-    err = OB_INVALID_ARGUMENT;
+    if (OB_RESULT_UNKNOWN == ret)
+    {
+      ret = OB_SUCCESS;
+    }
     res.set_null();
-  }
-  else if(other.is_zero())
-  {
-    res.set_null();
-    err = OB_DIVISION_BY_ZERO;
   }
   else
   {
-    res.type_ = ObIntType;
-    res.v_.int_ = this->v_.int_ % other.v_.int_;
+    OB_ASSERT(ObIntType == p_this->type_);
+    OB_ASSERT(ObIntType == p_other->type_);
+    if (p_other->is_zero())
+    {
+      res.set_null();
+      ret = OB_DIVISION_BY_ZERO;
+    }
+    else
+    {
+      res.type_ = ObIntType;
+      res.v_.int_ = p_this->v_.int_ % p_other->v_.int_;
+    }
   }
-  return err;
+  return ret;
 }
 
 int ObExprObj::negate(ObExprObj &res) const
@@ -1299,6 +1618,329 @@ int ObExprObj::old_like(const ObExprObj &pattern, ObExprObj &result) const
   return err;
 }
 
+int ObExprObj::substr(const ObExprObj &start_pos_obj, const ObExprObj &expect_length_obj, ObExprObj &result, ObStringBuf &mem_buf) const
+{
+  int ret = OB_SUCCESS;
+  int64_t start_pos = 0;
+  int64_t expect_length = 0;
+  ObString varchar;
+
+  // get start pos value
+  if (start_pos_obj.is_null() || expect_length_obj.is_null())
+  {
+    result.set_null();
+  }
+  else if (OB_SUCCESS != (ret = start_pos_obj.cast_to_int(start_pos)))
+  {
+    result.set_null();
+  }
+  else if (OB_SUCCESS != (ret = expect_length_obj.cast_to_int(expect_length)))
+  {
+    result.set_null();
+  }
+  else
+  {
+    ret = this->substr(static_cast<int32_t>(start_pos), static_cast<int32_t>(expect_length), result, mem_buf);
+  }
+  return ret;
+}
+
+int ObExprObj::substr(const ObExprObj &start_pos, ObExprObj &result, ObStringBuf &mem_buf) const
+{
+  ObExprObj max_guess_len;
+  max_guess_len.set_int(OB_MAX_VALID_COLUMN_ID);
+  return substr(start_pos, max_guess_len, result, mem_buf);
+}
+
+
+
+int ObExprObj::substr(const int32_t start_pos, const int32_t expect_length_of_str, ObExprObj &result, ObStringBuf &mem_buf) const
+{
+  int err = OB_SUCCESS;
+  ObString varchar;
+
+  if (OB_UNLIKELY(this->get_type() == ObNullType))
+  {
+    result.set_null();
+  }
+  else if (OB_SUCCESS != (err = this->cast_to_varchar(varchar, mem_buf)))
+  {
+    result.set_null();
+  }
+  else
+  {
+    if (OB_UNLIKELY(varchar.length() <= 0 || expect_length_of_str <= 0))
+    {
+      // empty result string
+      varchar.assign(NULL, 0);
+    }
+    else
+    {
+      int32_t start = start_pos;
+      int32_t res_len = 0;
+      start  = (start > 0) ? start : ((start == 0) ? 1 : start + varchar.length() + 1);
+      if (OB_UNLIKELY(start <= 0 || start > varchar.length()))
+      {
+        varchar.assign(NULL, 0);
+      }
+      else
+      {
+        if (start + expect_length_of_str - 1 > varchar.length())
+        {
+          res_len = varchar.length() - start + 1;
+        }
+        else
+        {
+          res_len = expect_length_of_str;
+        }
+        varchar.assign(const_cast<char*>(varchar.ptr() + start - 1), res_len);
+      }
+    }
+    result.set_varchar(varchar);
+  }
+  return err;
+}
+
+
+int ObExprObj::upper_case(ObExprObj &result, ObStringBuf &mem_buf) const
+{
+  ObString varchar;
+  int ret = OB_SUCCESS;
+
+  if (OB_UNLIKELY(this->get_type() == ObNullType))
+  {
+    result.set_null();
+  }
+  else
+  {
+    if (OB_SUCCESS != (ret = this->cast_to_varchar(varchar, mem_buf)))
+    {
+      ret = OB_SUCCESS;
+      result.set_null();
+    }
+    else
+    {
+      for (int i = 0; i < varchar.length(); i++)
+      {
+        varchar.ptr()[i] = static_cast<char>(toupper(varchar.ptr()[i]));
+      }
+      result.set_varchar(varchar);
+    }
+  }
+  return ret;
+}
+
+int ObExprObj::lower_case(ObExprObj &result, ObStringBuf &mem_buf) const
+{
+  ObString varchar;
+  int ret = OB_SUCCESS;
+
+  if (OB_UNLIKELY(this->get_type() == ObNullType))
+  {
+    result.set_null();
+  }
+  else
+  {
+    if (OB_SUCCESS != (ret = this->cast_to_varchar(varchar, mem_buf)))
+    {
+      ret = OB_SUCCESS;
+      result.set_null();
+    }
+    else
+    {
+      for (int i = 0; i < varchar.length(); i++)
+      {
+        varchar.ptr()[i] = static_cast<char>(tolower(varchar.ptr()[i]));
+      }
+      result.set_varchar(varchar);
+    }
+  }
+  return ret;
+}
+
+int ObExprObj::concat(const ObExprObj &other, ObExprObj &result, ObStringBuf &mem_buf) const
+{
+  int ret = OB_SUCCESS;
+  char tmp_buf[OB_MAX_VARCHAR_LENGTH];
+  ObString this_varchar;
+  ObString that_varchar;
+  //__thread char tmp_buf[OB_MAX_VARCHAR_LENGTH];
+  if (get_type() == ObNullType || other.get_type() == ObNullType)
+  {
+    result.set_null();
+  }
+  else
+  {
+    if (OB_SUCCESS != (ret = this->cast_to_varchar(this_varchar, mem_buf)))
+    {
+      TBSYS_LOG(WARN, "fail to cast obj to varchar. ret=%d", ret);
+      result.set_null();
+    }
+    else if (OB_SUCCESS != (ret = other.cast_to_varchar(that_varchar, mem_buf)))
+    {
+      TBSYS_LOG(WARN, "fail to cast obj to varchar. ret=%d", ret);
+      result.set_null();
+    }
+    else
+    {
+      int32_t this_len = this_varchar.length();
+      int32_t other_len = that_varchar.length();
+      ObString tmp_varchar;
+      ObString varchar;
+      if (this_len + other_len > OB_MAX_VARCHAR_LENGTH)
+      {
+        //FIXME: 合并后的字符串长度超过了最大限制，结果设置为NULL
+        result.set_null();
+        ret = OB_BUF_NOT_ENOUGH;
+      }
+      else
+      {
+        memcpy(tmp_buf, this_varchar.ptr(), this_len);
+        memcpy(tmp_buf + this_len, that_varchar.ptr(), other_len);
+        tmp_varchar.assign(tmp_buf, this_len + other_len);
+        if (OB_SUCCESS != (ret = mem_buf.write_string(tmp_varchar, &varchar)))
+        {
+          result.set_null();
+          TBSYS_LOG(WARN, "fail to write string to membuf. ret=%d", ret);
+        }
+        else
+        {
+          result.set_varchar(varchar);
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+int ObExprObj::trim(const ObExprObj &trimType, const ObExprObj &trimPattern, ObExprObj &result, ObStringBuf &mem_buf) const
+{
+  int err = OB_SUCCESS;
+  int64_t type = 0;
+  ObString pattern;
+  ObString src;
+  ObString varchar;
+  int32_t start = 0;
+  int32_t end = 0;
+
+  if (OB_SUCCESS != (err = trimType.get_int(type)))
+  {
+    TBSYS_LOG(WARN, "fail to get trim type. err=%d", err);
+  }
+  else if (OB_SUCCESS != (err = trimPattern.cast_to_varchar(pattern, mem_buf)))
+  {
+    TBSYS_LOG(WARN, "fail to get trim pattern. err=%d", err);
+  }
+  else if (pattern.length() <= 0)
+  {
+    err = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(WARN, "trim pattern is empty");
+  }
+  else if (OB_SUCCESS != (err = this->cast_to_varchar(src, mem_buf)))
+  {
+    TBSYS_LOG(WARN, "fail to get trim source. err=%d", err);
+  }
+  else
+  {
+    if (type == 0) // both
+    {
+      lrtrim(src, pattern, start, end);
+    }
+    else if (type == 1) // leading
+    {
+      ltrim(src, pattern, start);
+      end = src.length();
+    }
+    else if (type == 2) // trailing
+    {
+      start = 0;
+      rtrim(src, pattern, end);
+    }
+    else
+    {
+      err = OB_INVALID_ARGUMENT;
+    }
+  }
+  if (OB_SUCCESS == err)
+  {
+    varchar.assign(src.ptr() + start, end - start);
+    result.set_varchar(varchar);
+  }
+  else
+  {
+    result.set_null();
+  }
+  return err;
+}
+
+
+int ObExprObj::lrtrim(const ObString src, const ObString pattern, int32_t &start, int32_t &end) const
+{
+  int32_t i = 0;
+  start = 0;
+  end = src.length();
+  for (i = 0; i <= src.length() - pattern.length(); i += pattern.length())
+  {
+    if (0 == memcmp(src.ptr() + i, pattern.ptr(), pattern.length()))
+    {
+      start += pattern.length();
+    }
+    else
+    {
+      break;
+    }
+  }
+  for (i = src.length() - pattern.length(); i >= start; i -= pattern.length())
+  {
+    if (0 == memcmp(src.ptr() + i, pattern.ptr(), pattern.length()))
+    {
+      end -= pattern.length();
+    }
+    else
+    {
+      break;
+    }
+  }
+  return OB_SUCCESS;
+}
+
+
+int ObExprObj::ltrim(const ObString src, const ObString pattern, int32_t &start) const
+{
+  int32_t i = 0;
+  start = 0;
+  for (i = 0; i <= src.length() - pattern.length(); i += pattern.length())
+  {
+    if (0 == memcmp(src.ptr() + i, pattern.ptr(), pattern.length()))
+    {
+      start += pattern.length();
+    }
+    else
+    {
+      break;
+    }
+  }
+  return OB_SUCCESS;
+}
+
+int ObExprObj::rtrim(const ObString src, const ObString pattern, int32_t &end) const
+{
+  int32_t i = 0;
+  end = src.length();
+  for (i = src.length() - pattern.length(); i >= 0; i -= pattern.length())
+  {
+    if (0 == memcmp(src.ptr() + i, pattern.ptr(), pattern.length()))
+    {
+      end -= pattern.length();
+    }
+    else
+    {
+      break;
+    }
+  }
+  return OB_SUCCESS;
+}
+
 int ObExprObj::like(const ObExprObj &pattern, ObExprObj &result) const
 {
   int err = OB_SUCCESS;
@@ -1318,10 +1960,8 @@ int ObExprObj::like(const ObExprObj &pattern, ObExprObj &result) const
   }
   else
   {
-    // TODO: 对于常量字符串，此处可以优化。无需每次计算sign
-    uint64_t pattern_sign = ObStringSearch::cal_print(pattern.varchar_);
-    int64_t pos = ObStringSearch::kr_search(pattern.varchar_, pattern_sign, this->varchar_);
-    result.set_bool(pos >= 0);
+    bool b = ObStringSearch::is_matched(pattern.varchar_, this->varchar_);
+    result.set_bool(b == true);
   }
   return err;
 }
@@ -1345,54 +1985,10 @@ int ObExprObj::not_like(const ObExprObj &pattern, ObExprObj &result) const
   }
   else
   {
-    // TODO: 对于常量字符串，此处可以优化。无需每次计算sign
-    uint64_t pattern_sign = ObStringSearch::cal_print(pattern.varchar_);
-    int64_t pos = ObStringSearch::kr_search(pattern.varchar_, pattern_sign, this->varchar_);
-    result.set_bool(pos < 0);
+    bool b = ObStringSearch::is_matched(pattern.varchar_, this->varchar_);
+    result.set_bool(b != true);
   }
   return err;
-}
-
-void ObExprObj::set_int(const int64_t value)
-{
-  ObObj obj;
-  obj.set_int(value);
-  this->assign(obj);
-}
-
-void ObExprObj::set_datetime(const ObDateTime& value)
-{
-  ObObj obj;
-  obj.set_datetime(value);
-  this->assign(obj);
-}
-
-void ObExprObj::set_precise_datetime(const ObPreciseDateTime& value)
-{
-  ObObj obj;
-  obj.set_precise_datetime(value);
-  this->assign(obj);
-}
-
-void ObExprObj::set_varchar(const ObString& value)
-{
-  ObObj obj;
-  obj.set_varchar(value);
-  this->assign(obj);
-}
-
-void ObExprObj::set_modifytime(const ObModifyTime& value)
-{
-  ObObj obj;
-  obj.set_modifytime(value);
-  this->assign(obj);
-}
-
-void ObExprObj::set_createtime(const ObCreateTime& value)
-{
-  ObObj obj;
-  obj.set_createtime(value);
-  this->assign(obj);
 }
 
 int ObExprObj::set_decimal(const char* dec_str)
@@ -1415,20 +2011,6 @@ int ObExprObj::set_decimal(const char* dec_str)
     this->assign(obj);
   }
   return ret;
-}
-
-void ObExprObj::set_float(const float value)
-{
-  ObObj obj;
-  obj.set_float(value);
-  this->assign(obj);
-}
-
-void ObExprObj::set_double(const double value)
-{
-  ObObj obj;
-  obj.set_double(value);
-  this->assign(obj);
 }
 
 void ObExprObj::set_varchar(const char* value)
@@ -1544,22 +2126,234 @@ int ObExprObj::get_decimal(char * buf, const int64_t buf_len) const
   return ret;
 }
 
-bool ObExprObj::is_null() const
+int ObExprObj::unhex(ObExprObj &res, ObStringBuf & mem_buf)
 {
-  bool ret = false;
-  int err = OB_SUCCESS;
+  int ret = OB_SUCCESS;
+  ObString result;
   ObObj obj;
-  if (OB_SUCCESS != (err = this->to(obj)))
+  if (get_type() != ObVarcharType)
   {
-    TBSYS_LOG(WARN, "failed to convert to obj, err=%d", err);
+    res.set_null();
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(WARN, "type not match, ret=%d", ret);
+  }
+  else if (varchar_.length() % 2 != 0)
+  {
+    res.set_null();
+    ret = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(WARN, "length is odd, ret=%d", ret);
   }
   else
   {
-    ret = obj.is_null();
+    int i = 0;
+    char value = 0;
+    char *buf = reinterpret_cast<char*>(mem_buf.alloc(varchar_.length() / 2 + 1));
+    if (NULL == buf)
+    {
+      res.set_null();
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      TBSYS_LOG(ERROR, "alloc memory failed, ret=%d", ret);
+    }
+    else
+    {
+      for (i = 0;i < varchar_.length();i = i + 2)
+      {
+        char &c1 = (varchar_.ptr())[i];
+        char &c2 = (varchar_.ptr())[i + 1];
+        if (isxdigit(c1) && isxdigit(c2))
+        {
+          if (c1 >= 'a' && c1 <= 'f')
+          {
+            value = (char)((c1 - 'a' + 10) * 16);
+          }
+          else if (c1 >= 'A' && c1 <= 'F')
+          {
+            value = (char)((c1 - 'A' + 10) * 16);
+          }
+          else
+          {
+            value = (char)((c1 - '0') * 16);
+          }
+          if (c2 >= 'a' && c2 <= 'f')
+          {
+            value = (char)(value + (c2 - 'a' + 10));
+          }
+          else if (c2 >= 'A' && c2 <= 'F')
+          {
+            value = (char)(value + (c2 - 'A' + 10));
+          }
+          else
+          {
+            value = (char)(value + (c2 - '0'));
+          }
+          buf[i / 2] = value;
+
+        }
+        else
+        {
+          ret = OB_ERR_UNEXPECTED;
+          res.set_null();
+          TBSYS_LOG(WARN, "data invalid, ret=%d", ret);
+          break;
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        result.assign_ptr(buf, varchar_.length() / 2);
+        obj.set_varchar(result);
+        res.assign(obj);
+      }
+    }
   }
   return ret;
 }
-
+int ObExprObj::ip_to_int(ObExprObj &res)
+{
+  int ret = OB_SUCCESS;
+  ObObj obj;
+  if (OB_UNLIKELY(get_type() != ObVarcharType))
+  {
+    res.set_null();
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(WARN, "type not match, ret=%d", ret);
+  }
+  else
+  {
+    char buf[16];
+    if (varchar_.length() > 15)
+    {
+      res.set_null();
+      ret = OB_INVALID_ARGUMENT;
+      TBSYS_LOG(WARN, "ip format invalid, ret=%d", ret);
+    }
+    else
+    {
+      memcpy(buf, varchar_.ptr(), varchar_.length());
+      int len = varchar_.length();
+      buf[len] = '\0';
+      int cnt = 0;
+      for (int i = 0;i < len; ++i)
+      {
+        if (varchar_.ptr()[i] == '.')
+        {
+          cnt++;
+        }
+      }
+      if (cnt != 3)
+      {
+        obj.set_null();
+        TBSYS_LOG(WARN, "ip format invalid");
+      }
+      else
+      {
+        struct in_addr addr;
+        int err = inet_aton(buf, &addr);
+        if (err != 0)
+        {
+          obj.set_int(addr.s_addr);
+        }
+        else
+        {
+          obj.set_null();
+          TBSYS_LOG(WARN, "ip format invalid");
+        }
+      }
+      res.assign(obj);
+    }
+  }
+  return ret;
+}
+int ObExprObj::int_to_ip(ObExprObj &res, ObStringBuf &mem_buf)
+{
+  int ret = OB_SUCCESS;
+  ObString result;
+  ObObj obj;
+  if (OB_UNLIKELY(get_type() != ObIntType))
+  {
+    res.set_null();
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(WARN, "type not match, ret=%d", ret);
+  }
+  else
+  {
+    // 255.255.255.255  共15 bit
+    char *buf = reinterpret_cast<char*>(mem_buf.alloc(16));
+    if (NULL == buf)
+    {
+      res.set_null();
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      TBSYS_LOG(ERROR, "alloc memory failed, ret=%d", ret);
+    }
+    else
+    {
+      int cnt = snprintf(buf, 16, "%ld.%ld.%ld.%ld",
+          (v_.int_ & 0xFF),
+          (v_.int_ >> 8) & 0xFF,
+          (v_.int_ >> 16) & 0xFF,
+          (v_.int_ >> 24) & 0xFF);
+      OB_ASSERT(cnt > 0);
+      result.assign_ptr(buf, cnt);
+      obj.set_varchar(result);
+      res.assign(obj);
+    }
+  }
+  return ret;
+}
+int ObExprObj::hex(ObExprObj &res, ObStringBuf & mem_buf)
+{
+  int ret = OB_SUCCESS;
+  int cnt = 0;
+  ObString result;
+  ObObj obj;
+  if (get_type() == ObVarcharType)
+  {
+    int i = 0;
+    char *buf = reinterpret_cast<char*>(mem_buf.alloc(varchar_.length() * 2 + 1));
+    if (NULL == buf)
+    {
+      res.set_null();
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      TBSYS_LOG(ERROR, "alloc memory failed, ret=%d", ret);
+    }
+    else
+    {
+      for (i = 0;i < varchar_.length(); ++i)
+      {
+        char &c = (varchar_.ptr())[i];
+        cnt = snprintf(buf + i * 2, 3, "%02hhx", c);
+        OB_ASSERT(cnt == 2);
+      }
+      result.assign_ptr(buf, varchar_.length() * 2);
+      obj.set_varchar(result);
+      res.assign(obj);
+    }
+  }
+  else if (get_type() == ObIntType)
+  {
+    char *buf = reinterpret_cast<char*>(mem_buf.alloc(16 + 1));
+    if (NULL == buf)
+    {
+      res.set_null();
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      TBSYS_LOG(ERROR, "alloc memory failed, ret=%d", ret);
+    }
+    else
+    {
+      cnt = snprintf(buf, 16 + 1, "%lx", v_.int_);
+      OB_ASSERT(cnt > 0);
+      result.assign_ptr(buf, cnt);
+      obj.set_varchar(result);
+      res.assign(obj);
+    }
+  }
+  else
+  {
+    ret = OB_INVALID_ARGUMENT;
+    res.set_null();
+    TBSYS_LOG(WARN, "type not match, ret=%d", ret);
+  }
+  return ret;
+}
 int ObExprObj::varchar_length(ObExprObj &res) const
 {
   int ret = OB_SUCCESS;
@@ -1585,10 +2379,11 @@ ObObj ObExprObj::type_arithmetic(const ObObj& t1, const ObObj& t2)
   v1.type_ = t1.get_type();
   ObExprObj v2;
   v2.type_ = t2.get_type();
-  ObExprObj promoted_value;
+  ObExprObj promoted1;
+  ObExprObj promoted2;
   const ObExprObj *p_this = NULL;
   const ObExprObj *p_other = NULL;
-  if (OB_SUCCESS != (err = type_promotion(v1, v2, promoted_value, p_this, p_other)))
+  if (OB_SUCCESS != (err = arith_type_promotion(v1, v2, promoted1, promoted2, p_this, p_other)))
   {
     TBSYS_LOG(WARN, "failed to promote type, err=%d", err);
   }
@@ -1631,7 +2426,7 @@ ObObj ObExprObj::type_div(const ObObj& t1, const ObObj& t2, bool int_div_as_doub
   ObExprObj promoted_value2;
   const ObExprObj *p_this = NULL;
   const ObExprObj *p_other = NULL;
-  if (OB_SUCCESS != (err = type_promotion_for_div(v1, v2, promoted_value1, promoted_value2,
+  if (OB_SUCCESS != (err = div_type_promotion(v1, v2, promoted_value1, promoted_value2,
                                                   p_this, p_other, int_div_as_double)))
   {
     TBSYS_LOG(WARN, "failed to promote type, err=%d", err);
@@ -1651,13 +2446,23 @@ ObObj ObExprObj::type_mod(const ObObj& t1, const ObObj& t2)
 {
   ObObj ret;
   ret.meta_.type_ = ObNullType;
-  if (ObIntType == t1.get_type() && ObIntType == t2.get_type())
+  int err = OB_SUCCESS;
+  ObExprObj v1;
+  v1.type_ = t1.get_type();
+  ObExprObj v2;
+  v2.type_ = t2.get_type();
+  ObExprObj promoted_obj1;
+  ObExprObj promoted_obj2;
+  const ObExprObj *p_this = &v1;
+  const ObExprObj *p_other = &v2;
+  if (OB_SUCCESS != (err = mod_type_promotion(v1, v2, promoted_obj1, promoted_obj2,
+                                              p_this, p_other)))
   {
-    ret.meta_.type_ = ObIntType;
+    TBSYS_LOG(WARN, "failed to promote type, err=%d type1=%d type2=%d", err, t1.get_type(), t2.get_type());
   }
   else
   {
-    TBSYS_LOG(WARN, "not supported type for mod, t1=%d t2=%d", t1.get_type(), t2.get_type());
+    ret.meta_.type_ = ObIntType;
   }
   return ret;
 }
@@ -1694,4 +2499,11 @@ ObObj ObExprObj::type_varchar_length(const ObObj& t1)
     ret.meta_.type_ = ObIntType;
   }
   return ret;
+}
+
+int64_t ObExprObj::to_string(char* buffer, const int64_t length) const
+{
+  ObObj tmp;
+  this->to(tmp);
+  return tmp.to_string(buffer, length);
 }

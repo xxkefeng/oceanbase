@@ -3,12 +3,29 @@
 #include "updateserver/ob_table_mgr.h"
 #include "test_helper.h"
 #include "test_utils.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace oceanbase;
 using namespace common;
 using namespace updateserver;
 
+static CharArena allocator_;
 #define UPS ObUpdateServerMain::get_instance()->get_update_server()
+
+class MockLogMgr : public ObILogWriter
+{
+  public:
+    int switch_log_file(uint64_t &new_log_file_id)
+    {
+      TBSYS_LOG(INFO, "[MOCK] new_log_file_id=%lu", new_log_file_id);
+      return OB_SUCCESS;
+    };
+    int write_replay_point(uint64_t replay_point)
+    {
+      TBSYS_LOG(INFO, "[MOCK] replay_point=%lu", replay_point);
+      return OB_SUCCESS;
+    };
+};
 
 void fill_memtable(MemTable &memtable)
 {
@@ -18,7 +35,7 @@ void fill_memtable(MemTable &memtable)
 
   cellinfo.op_type.set_ext(ObActionFlag::OP_INSERT);
   cellinfo.cell_info.table_id_ = 1001;
-  cellinfo.cell_info.row_key_.assign((char*)"rk0001_00000000000", 17);
+  cellinfo.cell_info.row_key_ = make_rowkey("rk0001_00000000000", &allocator_);
   cellinfo.cell_info.column_id_ = 5;
   cellinfo.cell_info.value_.set_int(1023);
   int ret = mutator.get_mutator().add_cell(cellinfo);
@@ -28,11 +45,11 @@ void fill_memtable(MemTable &memtable)
   ret = mutator.get_mutator().add_cell(cellinfo);
   assert(OB_SUCCESS == ret);
 
-  cellinfo.cell_info.row_key_.assign((char*)"rk0002_00000000000", 17);
+  cellinfo.cell_info.row_key_ = make_rowkey("rk0002_00000000000", &allocator_);
   ret = mutator.get_mutator().add_cell(cellinfo);
   assert(OB_SUCCESS == ret);
 
-  cellinfo.cell_info.row_key_.assign((char*)"rk0003_00000000000", 17);
+  cellinfo.cell_info.row_key_ = make_rowkey("rk0003_00000000000", &allocator_);
   ret = mutator.get_mutator().add_cell(cellinfo);
   assert(OB_SUCCESS == ret);
 
@@ -85,12 +102,12 @@ void get_table(TableMgr &tm, const ObList<ITableEntity*> &tlist)
 
     //ret = table_entity->get(trans_descriptor, table_id, row_key, cf, titer);
     //assert(OB_SUCCESS == ret);
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = table_id;
     range.border_flag_.set_inclusive_start();
     range.border_flag_.set_inclusive_end();
-    range.start_key_.assign_ptr((char*)"rk0001_0000000000", 17);
-    range.end_key_.assign_ptr((char*)"rk0002_0000000000", 17);
+    range.start_key_ =  make_rowkey("rk0001_00000000000", &allocator_);
+    range.end_key_ =  make_rowkey("rk0002_00000000000", &allocator_);
     //range.border_flag_.set_min_value();
     //range.border_flag_.set_max_value();
     ObScanParam scan_param;
@@ -132,34 +149,33 @@ int main(int argc, char **argv)
   char *root = argv[1];
   char *raid = argv[2];
   char *store = argv[3];
-  TableMgr tm;
+  MockLogMgr mlm;
+  TableMgr tm(mlm);
   SSTableMgr &sstm = UPS.get_sstable_mgr();
   CommonSchemaManagerWrapper schema_mgr;
   tbsys::CConfig config;
   schema_mgr.parse_from_file("test_schema.ini", config);
   UPS.get_table_mgr().set_schemas(schema_mgr);
 
-  common::ObiRole obi_role;
-  ObUpsRoleMgr role_mgr;
-  ObUpsSlaveMgr slave_mgr;
-  ObReplayLogSrc replay_log_src;
-  role_mgr.set_role(ObUpsRoleMgr::MASTER);
-  int ret = slave_mgr.init(&role_mgr, &UPS.get_ups_rpc_stub(), 1000000);
-  assert(OB_SUCCESS == ret);
-  ret = UPS.get_log_mgr().init("./commitlog", 64 * 1024 * 1024, &replay_log_src, &(UPS.get_table_mgr()), &slave_mgr, &obi_role, &role_mgr, 0);
-  assert(OB_SUCCESS == ret);
-  ret = UPS.get_log_mgr().replay_local_log();
-  assert(OB_SUCCESS == ret);
-  UPS.get_log_mgr().start_log(5, 30);
+  //common::ObiRole obi_role;
+  //ObUpsRoleMgr role_mgr;
+  //ObUpsSlaveMgr slave_mgr;
+  //ObLogReplayWorker replay_log_worker;
+  //ObReplayLogSrc replay_log_src;
+  //ObLogCursor start_cursor;
+  //role_mgr.set_role(ObUpsRoleMgr::MASTER);
+  //int ret = slave_mgr.init(&role_mgr, &UPS.get_ups_rpc_stub(), 1000000);
+  //assert(OB_SUCCESS == ret);
+  //ret = UPS.get_log_mgr().init("./commitlog", 64 * 1024 * 1024, &replay_log_worker, &replay_log_src, &(UPS.get_table_mgr()), &slave_mgr, &obi_role, &role_mgr, 0);
+  //assert(OB_SUCCESS == ret);
+  //ret = UPS.get_log_mgr().replay_local_log();
+  //assert(OB_SUCCESS == ret);
+  //UPS.get_log_mgr().start_log(set_cursor(start_cursor, 5, 30, 0));
 
-  ret = tm.init();
+  int ret = tm.init();
   assert(OB_SUCCESS == ret);
 
-  sstable::ObBlockCacheConf bc_conf;
-  bc_conf.block_cache_memsize_mb = 100;
-  sstable::ObBlockIndexCacheConf bic_conf;
-  bic_conf.cache_mem_size = 100 * 1024 * 1024;
-  ret = UPS.get_sstable_query().init(bc_conf, bic_conf);
+  ret = UPS.get_sstable_query().init(100<<20, 100<<20);
   assert(OB_SUCCESS == ret);
 
   ret = sstm.init(root, raid, store);

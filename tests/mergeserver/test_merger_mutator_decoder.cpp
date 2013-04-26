@@ -11,10 +11,12 @@
 #include "common/ob_get_param.h"
 #include "common/ob_mutator.h"
 #include "ob_mutator_param_decoder.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
+static CharArena allocator_;
 
 int main(int argc, char **argv)
 {
@@ -49,10 +51,10 @@ TEST_F(TestMutatorParamDecoder, test_decode)
   char * rowkey = (char*)"row_key";
   ObString table_name;
   ObString column_name;
-  ObString row_key;
+  ObRowkey row_key;
   table_name.assign(tablename, static_cast<int32_t>(strlen(tablename)));
   column_name.assign(columnname, static_cast<int32_t>(strlen(columnname)));
-  row_key.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+  row_key = make_rowkey(rowkey, &allocator_);
 
   ObMutator mutator;
   int64_t count = 20;

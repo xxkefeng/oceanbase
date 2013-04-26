@@ -6,11 +6,10 @@
 
 #include "common/ob_schema.h"
 #include "common/ob_malloc.h"
-#include "ob_ms_btreemap.h"
+#include "common/location/ob_btree_map.h"
 
 using namespace std;
 using namespace oceanbase::common;
-using namespace oceanbase::mergeserver;
 
 int main(int argc, char **argv)
 {
@@ -45,14 +44,14 @@ TEST_F(TestBtreeMap, test_set)
   ObBtreeMap<int, int> tree;
   EXPECT_TRUE(OB_SUCCESS != tree.set(1, 3, old));
   EXPECT_TRUE(OB_SUCCESS == tree.create(10));
-  
+
   int MAX_COUNT = 100;
   for (int i = 0; i < MAX_COUNT; ++i)
   {
     old = 0;
     EXPECT_TRUE(OB_SUCCESS == tree.set(i, i * 2, old));
     EXPECT_TRUE(0 == old);
-  
+
     EXPECT_TRUE(OB_SUCCESS == tree.set(i, i * 3, old));
     EXPECT_TRUE(i * 2 == old);
   }
@@ -64,7 +63,7 @@ TEST_F(TestBtreeMap, test_get)
   int value = 0;
   EXPECT_TRUE(OB_SUCCESS != tree.get(1, value));
   EXPECT_TRUE(OB_SUCCESS == tree.create(10));
-  
+
   int MAX_COUNT = 100;
   int old = 0;
   for (int i = 0; i < MAX_COUNT; ++i)
@@ -72,7 +71,7 @@ TEST_F(TestBtreeMap, test_get)
     old = 0;
     EXPECT_TRUE(OB_SUCCESS == tree.set(i, i * 2, old));
     EXPECT_TRUE(0 == old);
-  
+
     EXPECT_TRUE(OB_SUCCESS == tree.set(i, i * 3, old));
     EXPECT_TRUE(i * 2 == old);
 
@@ -99,7 +98,7 @@ TEST_F(TestBtreeMap, test_erase)
     old = 0;
     EXPECT_TRUE(OB_SUCCESS == tree.set(i, i * 2, old));
     EXPECT_TRUE(0 == old);
-  
+
     EXPECT_TRUE(OB_SUCCESS == tree.set(i, i * 3, old));
     EXPECT_TRUE(i * 2 == old);
 
@@ -120,7 +119,7 @@ TEST_F(TestBtreeMap, test_erase)
     EXPECT_TRUE(value == i * 3);
     EXPECT_TRUE(OB_SUCCESS != tree.erase(i, value));
   }
-  
+
   for (int i = 0; i < MAX_COUNT; ++i)
   {
     EXPECT_TRUE(OB_SUCCESS != tree.get(i, value));
@@ -141,7 +140,7 @@ TEST_F(TestBtreeMap, test_size)
     old = 0;
     EXPECT_TRUE(OB_SUCCESS == tree.set(i, i * 2, old));
     EXPECT_TRUE(0 == old);
-  
+
     EXPECT_TRUE(OB_SUCCESS == tree.set(i, i * 3, old));
     EXPECT_TRUE(i * 2 == old);
 
@@ -163,7 +162,7 @@ TEST_F(TestBtreeMap, test_size)
     EXPECT_TRUE(OB_SUCCESS != tree.erase(i, value));
     EXPECT_TRUE(MAX_COUNT - i - 1 == tree.size());
   }
-  
+
   for (int i = 0; i < MAX_COUNT; ++i)
   {
     EXPECT_TRUE(OB_SUCCESS != tree.get(i, value));

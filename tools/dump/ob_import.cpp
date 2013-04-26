@@ -9,17 +9,27 @@ using namespace std;
 
 using namespace oceanbase::common;
 
+extern bool g_gbk_encoding;
+extern bool g_print_lineno_taggle;
+
 ObRowBuilder::ObRowBuilder(ObSchemaManagerV2 *schema, const char *table_name, 
-                           int input_column_nr, const RecordDelima &delima)
+                           int input_column_nr, const RecordDelima &delima,
+                           bool has_nop_flag, char nop_flag, 
+                           bool has_null_flag, char null_flag)
 {
   schema_ = schema;
   table_name_ = table_name;
   memset(columns_desc_, 0, sizeof(columns_desc_));
-  memset(rowkey_desc_, 0, sizeof(rowkey_desc_));
+  //memset(rowkey_desc_, 0, sizeof(rowkey_desc_));
   input_column_nr_ = input_column_nr;
   atomic_set(&lineno_, 0);
   rowkey_max_size_ = OB_MAX_ROW_KEY_LENGTH;
   delima_ = delima;
+  columns_desc_nr_ = 0;
+  has_nop_flag_ = has_nop_flag;
+  nop_flag_ = nop_flag;
+  has_null_flag_ = has_null_flag;
+  null_flag_ = null_flag;
 }
 
 
@@ -28,11 +38,11 @@ ObRowBuilder::~ObRowBuilder()
   TBSYS_LOG(INFO, "Processed lines = %d", atomic_read(&lineno_));
 }
 
-int ObRowBuilder::set_column_desc(std::vector<ColumnDesc> &columns)
+int ObRowBuilder::set_column_desc(const std::vector<ColumnDesc> &columns)
 {
   int ret = OB_SUCCESS;
 
-  columns_desc_nr_ = static_cast<int32_t>(columns.size());
+  //columns_desc_nr_ = static_cast<int32_t>(columns.size());
   for (size_t i = 0; i < columns.size(); i++) {
     const ObColumnSchemaV2 *col_schema = 
       schema_->get_column_schema(table_name_, columns[i].name.c_str());
@@ -47,10 +57,11 @@ int ObRowBuilder::set_column_desc(std::vector<ColumnDesc> &columns)
     if (col_schema) {
       //ObModifyTimeType, ObCreateTimeType update automaticly, skip
       if (col_schema->get_type() != ObModifyTimeType &&
-          col_schema->get_type() != ObCreateTimeType)
-        columns_desc_[offset].schema = col_schema;
-      else                   
-        columns_desc_[offset].schema = NULL;
+          col_schema->get_type() != ObCreateTimeType) {
+        columns_desc_[columns_desc_nr_].schema = col_schema;
+        columns_desc_[columns_desc_nr_].offset = offset;
+        columns_desc_nr_++;
+      }
     } else {
       ret = OB_ERROR;
       TBSYS_LOG(ERROR, "column:%s is not a legal column in table %s", 
@@ -59,11 +70,46 @@ int ObRowBuilder::set_column_desc(std::vector<ColumnDesc> &columns)
     }
   }
 
+  //schema_->print_info();
+  const ObTableSchema *table_schema = schema_->get_table_schema(table_name_);
+  if (table_schema != NULL) {
+    const ObRowkeyInfo &rowkey_info = table_schema->get_rowkey_info();
+    rowkey_desc_nr_ = rowkey_info.get_size();
+    assert(rowkey_desc_nr_ < (int64_t)kMaxRowkeyDesc);
+
+    for(int64_t i = 0;i < rowkey_info.get_size(); i++) {
+      ObRowkeyColumn rowkey_column;
+      rowkey_info.get_column(i, rowkey_column);
+
+      TBSYS_LOG(INFO, "rowkey_info idx=%ld, column_id = %ld", i, rowkey_column.column_id_);
+      int64_t idx = 0;
+      for(;idx < columns_desc_nr_; idx++) {
+        const ObColumnSchemaV2 *schema = columns_desc_[idx].schema;
+        if (NULL == schema) {
+          continue;
+        }
+        if (rowkey_column.column_id_ == schema->get_id()) {
+          break;
+        }
+      }
+      rowkey_offset_[i] = idx;
+      if (idx == OB_MAX_COLUMN_NUMBER) {
+        TBSYS_LOG(ERROR, "%ldth rowkey column is not specified", i);
+        ret = OB_ERROR;
+        break;
+      }
+    }
+  } else {
+    ret = OB_ERROR;
+    TBSYS_LOG(ERROR, "no such table %s in schema", table_name_);
+  }
+
   return ret;
 }
 
 
-int ObRowBuilder::set_rowkey_desc(std::vector<RowkeyDesc> &rowkeys)
+/*
+int ObRowBuilder::set_rowkey_desc(const std::vector<RowkeyDesc> &rowkeys)
 {
   int ret = OB_SUCCESS;
 
@@ -105,6 +151,7 @@ int ObRowBuilder::set_rowkey_desc(std::vector<RowkeyDesc> &rowkeys)
 
   return ret;
 }
+*/
 
 bool ObRowBuilder::check_valid()
 {
@@ -119,7 +166,7 @@ bool ObRowBuilder::check_valid()
 }
 
 
-int ObRowBuilder::build_tnx(RecordBlock &block, DbTranscation *tnx)
+int ObRowBuilder::build_tnx(RecordBlock &block, DbTranscation *tnx) const
 {
   int ret = OB_SUCCESS;
   int token_nr = kMaxRowkeyDesc + OB_MAX_COLUMN_NUMBER;
@@ -128,265 +175,226 @@ int ObRowBuilder::build_tnx(RecordBlock &block, DbTranscation *tnx)
   Slice slice;
   block.reset();
   while (block.next_record(slice)) {
-    Tokenizer::tokenize(slice, delima_, token_nr, tokens);
+    if (g_gbk_encoding) {
+      if (RecordDelima::CHAR_DELIMA == delima_.delima_type() && delima_.get_char_delima() < 128u) {
+        Tokenizer::tokenize_gbk(slice, static_cast<char>(delima_.get_char_delima()), token_nr, tokens);
+      }
+      else {
+        ret = OB_NOT_SUPPORTED;
+        TBSYS_LOG(ERROR, "short delima or delima great than 128 is not support in gbk encoding");
+        break;
+      }
+    }
+    else {
+      Tokenizer::tokenize(slice, delima_, token_nr, tokens);
+    }
     if (token_nr != input_column_nr_) {
-      TBSYS_LOG(ERROR, "corrupted data files, please check it, input_col_nr=%d, rear_nr=%d", input_column_nr_, token_nr);
+      TBSYS_LOG(ERROR, "corrupted data files, please check it, input column number=%d, real nr=%d", input_column_nr_, token_nr);
       ret = OB_ERROR;
       break;
     }
 
     atomic_add(1, &lineno_);
+    if (g_print_lineno_taggle) {
+      g_print_lineno_taggle = false;
+      TBSYS_LOG(INFO, "proccessed line no [%d]", atomic_read(&lineno_));
+    }
 
-    ObString rowkey;
+    ObRowkey rowkey;
     ret = create_rowkey(rowkey, tokens);
     if (ret != OB_SUCCESS) {
       TBSYS_LOG(ERROR, "can't rowkey, quiting");
     }
 
-    RowMutator *mutator = NULL;
+    RowMutator mutator;
     if (ret == OB_SUCCESS) {
-      ret = tnx->insert_mutator(table_name_, rowkey, mutator);
+      ret = tnx->insert_mutator(table_name_, rowkey, &mutator);
       if (ret != OB_SUCCESS) {
         TBSYS_LOG(ERROR, "can't create insert mutator , table=%s", table_name_);
       }
     }
 
     if (ret == OB_SUCCESS) {
-      ret = setup_content(mutator, tokens);
+      ret = setup_content(&mutator, tokens);
       if (ret != OB_SUCCESS) {
         TBSYS_LOG(ERROR, "can't transcation content, table=%s", table_name_);
       }
     }
 
-    if (mutator != NULL) {
-      tnx->free_row_mutator(mutator);
-    }
-
-    if (ret != OB_SUCCESS)
+    if (ret != OB_SUCCESS) {
+      TBSYS_LOG(ERROR, "failed slice[%.*s]", static_cast<int>(slice.size()), slice.data());
       break;
+    }
   }
 
   return ret;
 }
 
-int ObRowBuilder::create_rowkey(ObString &rowkey, TokenInfo *tokens)
+int ObRowBuilder::create_rowkey(ObRowkey &rowkey, TokenInfo *tokens) const
 {
   int ret = OB_SUCCESS;
-  char *buffer = NULL;
-  int64_t pos = 0;
-
+  //static __thread ObObj buffer[kMaxRowkeyDesc];
   ObMemBuf *mbuf = GET_TSI_MULT(ObMemBuf, TSI_MBUF_ID);
-  if (mbuf == NULL || mbuf->ensure_space(rowkey_max_size_)) {
+
+  if (mbuf == NULL || mbuf->ensure_space(rowkey_desc_nr_ * sizeof(ObObj))) {
     ret = OB_ERROR;
     TBSYS_LOG(ERROR, "can't create object from TSI, or ObMemBuff can't alloc memory");
   }
 
   if (ret == OB_SUCCESS) {
-    int64_t buff_len = mbuf->get_buffer_size();
-    buffer = mbuf->get_buffer();
-
-    for(size_t i = 0;i < rowkey_desc_nr_; i++) {
-      RowkeyDesc &desc = rowkey_desc_[i];
-
-      TokenInfo *token = &tokens[desc.offset];
-      switch (desc.type) {
-       case INT8:
-         {
-           int8_t v = 0;
-           if (token->len != 0) {
-             v = static_cast<int8_t>(atoi(token->token));
-           }
-           ret = serialization::encode_i8(buffer, buff_len, pos, v);
-
-           if (ret != OB_SUCCESS) {
-             TBSYS_LOG(ERROR, "can't serialize rowkey, INT8, pos=%zu",i );
-           }
-         }
-         break;
-       case INT16:
-         {
-           int16_t v = 0;
-           if (token->len != 0) {
-             v = static_cast<int16_t>(atoi(token->token));
-           }
-
-           ret = serialization::encode_i16(buffer, buff_len, pos, v);
-           if (ret != OB_SUCCESS) {
-             TBSYS_LOG(ERROR, "can't serialize rowkey, INT16, pos=%zu", i);
-           }
-         }
-         break;
-       case INT64:
-         {
-           int64_t v = 0;
-           if (token->len != 0) {
-             v = static_cast<int64_t>(atol(token->token));
-           }
-
-           ret = serialization::encode_i64(buffer, buff_len, pos, v);
-           if (ret != OB_SUCCESS) {
-             TBSYS_LOG(ERROR, "can't serialize rowkey, INT64, pos=%zu",i);
-           }
-         }
-         break;
-       case INT32:
-         {
-           int32_t v = 0;
-           if (token->len != 0) {
-             v = static_cast<int32_t>(atoi(token->token));
-           }
-
-           ret = serialization::encode_i32(buffer, buff_len, pos, v);
-           if (ret != OB_SUCCESS) {
-             TBSYS_LOG(ERROR, "can't serialize rowkey, INT32, pos=%zu", i);
-           }
-         }
-         break;
-       case VARCHAR:
-         {
-           if ((buff_len - pos) < token->len) {
-             ret = OB_ERROR;
-             TBSYS_LOG(ERROR, "can't serialize rowkey VARCHR, buff_len=%ld, token_len = %ld",
-                       buff_len, token->len);
-           } else {
-             memcpy(buffer + pos, token->token, token->len);
-             pos += token->len;
-           }
-           TBSYS_LOG(DEBUG, "VARCHAR token=%s, len=%ld", token->token, token->len);
-         }
-         break;
-       case DATETIME:
-         {
-           ObDateTime t;
-           ret = transform_date_to_time(token->token, static_cast<int32_t>(token->len), t);
-           if (OB_SUCCESS != ret)
-           {
-             TBSYS_LOG(ERROR, "transform_date_to_time error");
-           }
-           else
-           {
-             ret = serialization::encode_i64(buffer, buff_len, pos,
-                  t * 1000 * 1000L);
-             if (ret != OB_SUCCESS) {
-               TBSYS_LOG(ERROR, "can't serialize rowkey, INT64, pos=%ld",i);
-             }
-           }
-         }
-         break;
-       default:
-         TBSYS_LOG(ERROR, "not supported rowkey type");
-      }
-
-      if (ret != OB_SUCCESS) {                  /* break loop */
+    ObObj *buffer = (ObObj *)mbuf->get_buffer();
+    for(int64_t i = 0;i < rowkey_desc_nr_; i++) {
+      ObObj obj;
+      if ((ret = make_obobj(columns_desc_[rowkey_offset_[i]], obj, tokens)) != OB_SUCCESS) {
+        TBSYS_LOG(WARN, "create rowkey failed, pos = %ld", i);
         break;
       }
+      buffer[i] = obj;
+    }
+    rowkey.assign(buffer, rowkey_desc_nr_);
+  }
+
+  return ret;
+}
+
+int ObRowBuilder::make_obobj(const ColumnInfo &column_info, ObObj &obj, TokenInfo *tokens) const
+{
+  int ret = OB_SUCCESS;
+  if (NULL == column_info.schema) {
+    ret = OB_ERROR;
+    TBSYS_LOG(ERROR, "column_info schema is null");
+    return ret;
+  }
+
+  int token_idx = column_info.offset;
+  int type = column_info.schema->get_type();
+  const char *token = tokens[token_idx].token;
+  int token_len = static_cast<int32_t>(tokens[token_idx].len);
+  bool is_null = false;
+
+  if (1 == token_len && NULL != token) {
+    if (null_flag_ == token[0]) {
+      is_null = true;
     }
   }
 
-  if (ret == OB_SUCCESS) {
-    rowkey.assign_ptr(buffer, static_cast<int32_t>(pos));
+  if (has_null_flag_ && is_null) {
+    obj.set_null();
   }
+  else {
+    switch(type) {
+     case ObIntType:
+       {
+         int64_t lv = 0;
+         if (token_len != 0)
+           lv = atol(token);
 
-  return ret;
-}
-
-int ObRowBuilder::make_obobj(int token_idx, ObObj &obj, TokenInfo *tokens)
-{
-  int type = columns_desc_[token_idx].schema->get_type();
-  const char *token = tokens[token_idx].token;
-  int token_len = static_cast<int32_t>(tokens[token_idx].len);
-  int ret = OB_SUCCESS;
-
-  switch(type) {
-   case ObIntType:
-     {
-       int64_t lv = 0;
+         obj.set_int(lv);
+       }
+       break;
+     case ObFloatType:
        if (token_len != 0)
-         lv = atol(token);
-
-       obj.set_int(lv);
-     }
-     break;
-   case ObFloatType:
-     if (token_len != 0)
-       obj.set_float(strtof(token, NULL));
-     else
-       obj.set_float(0);
-     break;
-
-   case ObDoubleType:
-     if (token_len != 0)
-       obj.set_double(strtod(token, NULL));
-     else
-       obj.set_double(0);
-     break;
-   case ObDateTimeType:
-     {
-       ObDateTime t = 0;
-       ret = transform_date_to_time(token, token_len, t);
-       if (OB_SUCCESS != ret)
-       {
-         TBSYS_LOG(ERROR,"transform_date_to_time error");
-       }
+         obj.set_float(strtof(token, NULL));
        else
-       {
-         obj.set_datetime(t);
-       }
-     }
-     break;
-   case ObVarcharType:
-     {
-       ObString bstring;
-       bstring.assign_ptr(const_cast<char *>(token),token_len);
-       obj.set_varchar(bstring);
-     }
-     break;
-   case ObPreciseDateTimeType:
-     {
-       ObDateTime t = 0;
-       ret = transform_date_to_time(token, token_len, t);
-       if (OB_SUCCESS != ret)
-       {
-         TBSYS_LOG(ERROR,"transform_date_to_time error");
-       }
+         obj.set_float(0);
+       break;
+
+     case ObDoubleType:
+       if (token_len != 0)
+         obj.set_double(strtod(token, NULL));
        else
+         obj.set_double(0);
+       break;
+     case ObDateTimeType:
        {
-         obj.set_precise_datetime(t * 1000 * 1000L); //seconds -> ms
+         ObDateTime t = 0;
+         ret = transform_date_to_time(token, token_len, t);
+         if (OB_SUCCESS != ret)
+         {
+           TBSYS_LOG(ERROR,"transform_date_to_time error");
+         }
+         else
+         {
+           obj.set_datetime(t);
+         }
        }
-     }
-     break;
-   default:
-     TBSYS_LOG(ERROR,"unexpect type index: %d", type);
-     ret = OB_ERROR;
-     break;
+       break;
+     case ObVarcharType:
+       {
+         ObString bstring;
+         bstring.assign_ptr(const_cast<char *>(token),token_len);
+         obj.set_varchar(bstring);
+       }
+       break;
+     case ObPreciseDateTimeType:
+       {
+         ObDateTime t = 0;
+         ret = transform_date_to_time(token, token_len, t);
+         if (OB_SUCCESS != ret)
+         {
+           TBSYS_LOG(ERROR,"transform_date_to_time error");
+         }
+         else
+         {
+           obj.set_precise_datetime(t * 1000 * 1000L); //seconds -> ms
+         }
+       }
+       break;
+     default:
+       TBSYS_LOG(ERROR,"unexpect type index: %d", type);
+       ret = OB_ERROR;
+       break;
+    }
   }
 
   return ret;
 }
 
-int ObRowBuilder::setup_content(RowMutator *mutator, TokenInfo *tokens)
+int ObRowBuilder::setup_content(RowMutator *mutator, TokenInfo *tokens) const
 {
   int ret = OB_SUCCESS;
 
-  for(int i = 0;i < OB_MAX_COLUMN_NUMBER && ret == OB_SUCCESS; i++) {
+  const ObRowkeyInfo &rowkey_info = schema_->get_table_schema(table_name_)->get_rowkey_info();
+  for(int i = 0;i < columns_desc_nr_ && ret == OB_SUCCESS; i++) {
     const ObColumnSchemaV2 *schema = columns_desc_[i].schema;
     if (NULL == schema) {
       continue;
     }
 
+    if (rowkey_info.is_rowkey_column(schema->get_id())) {
+      continue;
+    }
+
     ObObj obj;
-    ret = make_obobj(i, obj, tokens);
-    if (ret == OB_SUCCESS) {
-      ret = mutator->add(schema->get_name(), obj);
-      if (ret != OB_SUCCESS) {
-        TBSYS_LOG(ERROR, "can't add column to row mutator");
-        break;
-      } else {
-        TBSYS_LOG(DEBUG, "obj idx=%d, name=%s", i, schema->get_name());
-        obj.dump();
+
+    const char *token = tokens[columns_desc_[i].offset].token;
+    int token_len = static_cast<int32_t>(tokens[columns_desc_[i].offset].len);
+    bool is_nop = false;
+
+    if (token_len == 1 && NULL != token) {
+      if (token[0] == nop_flag_) {
+        is_nop = true;
       }
-    } else {
-      TBSYS_LOG(ERROR, "can't make obobj, column=%s", schema->get_name());
+    }
+
+    if (!has_nop_flag_ || !is_nop) {
+      ret = make_obobj(columns_desc_[i], obj, tokens);
+      if (ret == OB_SUCCESS) {
+        ret = mutator->add(schema->get_name(), obj);
+        if (ret != OB_SUCCESS) {
+          TBSYS_LOG(ERROR, "can't add column to row mutator");
+          break;
+        } else {
+          TBSYS_LOG(DEBUG, "obj idx=%d, name=%s", columns_desc_[i].offset, schema->get_name());
+          obj.dump();
+        }
+      } else {
+        TBSYS_LOG(ERROR, "can't make obobj, column=%s", schema->get_name());
+      }
+    }
+    else
+    {
+      TBSYS_LOG(DEBUG, "nop token, offset[%d]", columns_desc_[i].offset);
     }
   }
 

@@ -70,6 +70,21 @@ namespace oceanbase
       return buf;
     }
 
+    int64_t ObLogCursor::to_string(char* buf, const int64_t limit) const
+    {
+      int64_t len = -1;
+      if (NULL == buf || 0 >= limit)
+      {
+        TBSYS_LOG(ERROR, "Null buf");
+      }
+      else if (0 >= (len = snprintf(buf, limit, "ObLogCursor{file_id=%ld, log_id=%ld, offset=%ld}",
+                                    file_id_, log_id_, offset_)) || len >= limit)
+      {
+        TBSYS_LOG(ERROR, "Buf not enough, buf=%p[%ld]", buf, limit);
+      }
+      return len;
+    }
+
     int ObLogCursor::next_entry(ObLogEntry& entry, const LogCommand cmd, const char* log_data, const int64_t data_len) const
     {
       int err = OB_SUCCESS;
@@ -117,7 +132,7 @@ namespace oceanbase
 
     bool ObLogCursor::newer_than(const ObLogCursor& that) const
     {
-      return file_id_ > that.file_id_  || (file_id_ == that.file_id_ && log_id_ > that.file_id_);
+      return file_id_ > that.file_id_  || (file_id_ == that.file_id_ && log_id_ > that.log_id_);
     }
     
     bool ObLogCursor::equal(const ObLogCursor& that) const

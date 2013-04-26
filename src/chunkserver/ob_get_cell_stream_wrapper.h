@@ -19,12 +19,9 @@
 #include "common/ob_client_manager.h"
 #include "common/ob_server.h"
 #include "common/thread_buffer.h"
-#include "ob_rpc_stub.h"
 #include "ob_rpc_proxy.h"
-#include "ob_schema_manager.h"
-//#include "ob_get_cell_stream.h"
+#include "ob_get_cell_stream.h"
 #include "ob_scan_cell_stream.h"
-#include "ob_join_get_cell_stream.h"
 
 namespace oceanbase
 {
@@ -42,12 +39,11 @@ namespace oceanbase
       ~ObGetCellStreamWrapper();
 
       // get cell stream used for join
-      ObJoinGetCellStream *get_ups_get_cell_stream();
+      ObGetCellStream *get_ups_get_cell_stream();
       // get cell stream used for merge
       ObScanCellStream *get_ups_scan_cell_stream();
     private:
-//      ObGetCellStream get_cell_stream_;
-      ObJoinGetCellStream get_cell_stream_;
+      ObGetCellStream get_cell_stream_;
       ObScanCellStream scan_cell_stream_;
     };
   }

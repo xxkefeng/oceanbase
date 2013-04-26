@@ -15,6 +15,7 @@
  */
 #include "ob_sort.h"
 #include "common/utility.h"
+#include "ob_physical_plan.h"
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
@@ -25,6 +26,16 @@ ObSort::ObSort()
 
 ObSort::~ObSort()
 {
+}
+
+void ObSort::reset()
+{
+  ObSingleChildPhyOperator::clear();
+  sort_columns_.clear();
+  mem_size_limit_ = 0;
+  in_mem_sort_.reset();
+  merge_sort_.reset();
+  sort_reader_ = &in_mem_sort_;
 }
 
 void ObSort::set_mem_size_limit(const int64_t limit)
@@ -95,53 +106,59 @@ int ObSort::get_row_desc(const common::ObRowDesc *&row_desc) const
 int ObSort::do_sort()
 {
   int ret = OB_SUCCESS;
-  in_mem_sort_.set_sort_columns(sort_columns_);
-  merge_sort_.set_sort_columns(sort_columns_);
   bool need_merge = false;
   const common::ObRow *input_row = NULL;
-  while(OB_SUCCESS == ret
-        && OB_SUCCESS == (ret = child_op_->get_next_row(input_row)))
+  if (OB_SUCCESS != (ret = in_mem_sort_.set_sort_columns(sort_columns_)))
   {
-    if (OB_SUCCESS != (ret = in_mem_sort_.add_row(*input_row)))
+    TBSYS_LOG(WARN, "fail to set sort columns for in_mem_sort. ret=%d", ret);
+  }
+  else
+  {
+    merge_sort_.set_sort_columns(sort_columns_); // pointer assign, return void
+    while(OB_SUCCESS == ret
+        && OB_SUCCESS == (ret = child_op_->get_next_row(input_row)))
     {
-      TBSYS_LOG(WARN, "failed to add row, err=%d", ret);
+      if (OB_SUCCESS != (ret = in_mem_sort_.add_row(*input_row)))
+      {
+        TBSYS_LOG(WARN, "failed to add row, err=%d", ret);
+      }
+      else if (need_dump())
+      {
+        if (OB_SUCCESS != (ret = in_mem_sort_.sort_rows()))
+        {
+          TBSYS_LOG(WARN, "failed to sort, err=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = merge_sort_.dump_run(in_mem_sort_)))
+        {
+          TBSYS_LOG(WARN, "failed to dump, err=%d", ret);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "need merge sort");
+          in_mem_sort_.reset();
+          need_merge = true;
+          sort_reader_ = &merge_sort_;
+        }
+      }
+    } // end while
+    if (OB_ITER_END == ret)
+    {
+      ret = OB_SUCCESS;
     }
-    else if (need_dump())
+    if (OB_SUCCESS == ret)
     {
+      // sort the last run
       if (OB_SUCCESS != (ret = in_mem_sort_.sort_rows()))
       {
         TBSYS_LOG(WARN, "failed to sort, err=%d", ret);
       }
-      else if (OB_SUCCESS != (ret = merge_sort_.dump_run(in_mem_sort_)))
+      else if (need_merge && 0 < in_mem_sort_.get_row_count())
       {
-        TBSYS_LOG(WARN, "failed to dump, err=%d", ret);
-      }
-      else
-      {
-        TBSYS_LOG(INFO, "need merge sort");
-        in_mem_sort_.reset();
-        need_merge = true;
-        sort_reader_ = &merge_sort_;
-      }
-    }
-  } // end while
-  if (OB_ITER_END == ret)
-  {
-    ret = OB_SUCCESS;
-  }
-  if (OB_SUCCESS == ret)
-  {
-    // sort the last run
-    if (OB_SUCCESS != (ret = in_mem_sort_.sort_rows()))
-    {
-      TBSYS_LOG(WARN, "failed to sort, err=%d", ret);
-    }
-    else if (need_merge && 0 < in_mem_sort_.get_row_count())
-    {
-      merge_sort_.set_final_run(in_mem_sort_);
-      if (OB_SUCCESS != (ret = merge_sort_.build_merge_heap()))
-      {
-        TBSYS_LOG(WARN, "failed to build heap, err=%d", ret);
+        merge_sort_.set_final_run(in_mem_sort_);
+        if (OB_SUCCESS != (ret = merge_sort_.build_merge_heap()))
+        {
+          TBSYS_LOG(WARN, "failed to build heap, err=%d", ret);
+        }
       }
     }
   }
@@ -155,14 +172,24 @@ inline bool ObSort::need_dump() const
 
 int ObSort::get_next_row(const common::ObRow *&row)
 {
-  return sort_reader_->get_next_row(row);
+  int ret = OB_SUCCESS;
+  if (OB_UNLIKELY(NULL != my_phy_plan_ && my_phy_plan_->is_timeout()))
+  {
+    TBSYS_LOG(WARN, "execution timeout, ts=%ld", my_phy_plan_->get_timeout_timestamp());
+    ret = OB_PROCESS_TIMEOUT;
+  }
+  else
+  {
+    ret = sort_reader_->get_next_row(row);
+  }
+  return ret;
 }
 
 int64_t ObSort::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
   databuff_printf(buf, buf_len, pos, "Sort(columns=[");
-  for (int64_t i = 0; i < sort_columns_.count(); ++i)
+  for (int32_t i = 0; i < sort_columns_.count(); ++i)
   {
     if (OB_INVALID_ID != sort_columns_.at(i).table_id_)
     {
@@ -181,11 +208,97 @@ int64_t ObSort::to_string(char* buf, const int64_t buf_len) const
       databuff_printf(buf, buf_len, pos, ",");
     }
   }
-  databuff_printf(buf, buf_len, pos, "], mem_size_limit=%ld)\n", mem_size_limit_);
+  databuff_printf(buf, buf_len, pos, "])\n");
   if (NULL != child_op_)
   {
     int64_t pos2 = child_op_->to_string(buf+pos, buf_len-pos);
     pos += pos2;
   }
   return pos;
+}
+
+DEFINE_SERIALIZE(ObSort)
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, sort_columns_.count())))
+  {
+    TBSYS_LOG(WARN, "fail to encode sort columns count:ret[%d]", ret);
+  }
+  else
+  {
+    for (int64_t i=0;OB_SUCCESS == ret && i<sort_columns_.count();i++)
+    {
+      if (OB_SUCCESS != (ret = sort_columns_.at(i).serialize(buf, buf_len, pos)))
+      {
+        TBSYS_LOG(WARN, "fail to serialize sort column:ret[%d]", ret);
+      }
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, mem_size_limit_)))
+    {
+      TBSYS_LOG(WARN, ":ret[%d]", ret);
+    }
+  }
+  return ret;
+}
+
+DEFINE_DESERIALIZE(ObSort)
+{
+  int ret = OB_SUCCESS;
+  int64_t sort_columns_count = 0;
+  ObSortColumn sort_column;
+
+  if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &sort_columns_count)))
+  {
+    TBSYS_LOG(WARN, "decode sort_columns_count fail:ret[%d]", ret);
+  }
+  else
+  {
+    sort_columns_.clear();
+    for (int64_t i=0;OB_SUCCESS == ret && i<sort_columns_count;i++)
+    {
+      if (OB_SUCCESS != (ret = sort_column.deserialize(buf, data_len, pos)))
+      {
+        TBSYS_LOG(WARN, ":ret[%d]", ret);
+      }
+      else if (OB_SUCCESS != (ret = sort_columns_.push_back(sort_column)))
+      {
+        TBSYS_LOG(WARN, "fail to add sort column to array:ret[%d]", ret);
+      }
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &mem_size_limit_)))
+    {
+      TBSYS_LOG(WARN, "fail to decode mem_size_limit_:ret[%d]", ret);
+    }
+  }
+  return ret;
+}
+
+DEFINE_GET_SERIALIZE_SIZE(ObSort)
+{
+  int64_t size = 0;
+  size += serialization::encoded_length_vi64(sort_columns_.count());
+  for (int64_t i=0;i<sort_columns_.count();i++)
+  {
+    size += sort_columns_.at(i).get_serialize_size();
+  }
+  size += serialization::encoded_length_vi64(mem_size_limit_);
+  return size;
+}
+
+void ObSort::assign(const ObSort &other)
+{
+  sort_columns_ = other.get_sort_columns();
+  mem_size_limit_ = other.get_mem_size_limit();
+}
+
+ObPhyOperatorType ObSort::get_type() const
+{
+  return PHY_SORT;
 }

@@ -35,7 +35,7 @@ def monitor_role_attrs(ob):
         else:
             return 'Unknown'
     def get_written_clog_cursor(**ups):
-        cmd = sub2('$localdir/tools/ups_admin -a $ip -p $port -t get_clog_cursor', ups)
+        cmd = sub2('$ups_admin_cmd -a $ip -p $port -t get_clog_cursor', ups)
         match = re.search('log_file_id=([0-9]+), log_seq_id=([0-9]+), log_offset=([0-9]+)', popen(cmd))
         if match: return int(match.group(1)), int(match.group(2)), int(match.group(3))
         else: return 0, 0, -1
@@ -67,7 +67,7 @@ def monitor_obi_attrs(ob):
         return len(set(log_id_list)) == 1
     def get_max_log_id_list(ups_list, timeout=3):
         def get_max_log_seq(ups):
-            cmd = sub2('$localdir/tools/ups_admin -a $ip -p $port -t get_max_log_seq', ups)
+            cmd = sub2('$ups_admin_cmd -a $ip -p $port -t get_max_log_seq', ups)
             match = re.search('max_log_seq=([-0-9]+)', popen(cmd))
             return match and int(match.group(1)) or -1
         return async_get(async_map(get_max_log_seq, ups_list), timeout)

@@ -52,7 +52,7 @@ bool ObMutatorHelper::check_inner_stat() const
   return (NULL != mutator_);
 }
 
-int ObMutatorHelper::add_column(const char* table_name, const ObString& rowkey, const char* column_name, const ObObj& value, ObMutator* mutator)
+int ObMutatorHelper::add_column(const char* table_name, const ObRowkey& rowkey, const char* column_name, const ObObj& value, ObMutator* mutator)
 {
   int ret = OB_SUCCESS;
   ObString tname;
@@ -106,12 +106,89 @@ int ObMutatorHelper::init(ObMutator* mutator)
   return ret;
 }
 
-int ObMutatorHelper::update(const char* table_name, const ObString& rowkey, const KV& kv)
+int ObMutatorHelper::update(const char* table_name, const ObRowkey& rowkey, const KV& kv)
 {
   return insert(table_name, rowkey, kv);
 }
 
-int ObMutatorHelper::insert(const char* table_name, const ObString& rowkey, const KV& kv)
+int common::kv_to_rowkey(const KV& kv, ObRowkey& rowkey, ObObj* rowkey_obj, int32_t obj_buf_count)
+{
+  int ret = OB_SUCCESS;
+
+  if(OB_SUCCESS != kv.get_exec_status())
+  {
+    ret = kv.get_exec_status();
+    TBSYS_LOG(WARN, "kv.get_exec_status[%d]", kv.get_exec_status());
+  }
+
+  if(OB_SUCCESS == ret && kv.count() > obj_buf_count)
+  {
+    ret = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(WARN, "kv.count[%ld] > obj_buf_count[%d]", kv.count(), obj_buf_count);
+  }
+
+  kv_pair element;
+  for(int32_t i=0;i<kv.count() && OB_SUCCESS == ret;i++)
+  {
+    ret = kv.at(i, element);
+    if(OB_SUCCESS != ret)
+    {
+      ret = OB_ERROR;
+      TBSYS_LOG(WARN, "get element from kv array fail");
+    }
+    if(OB_SUCCESS == ret)
+    {
+      rowkey_obj[i] = element.obj_;
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    rowkey.assign(rowkey_obj, kv.count());
+  }
+  return ret;
+}
+
+int ObMutatorHelper::update(const char* table_name, const KV& rowkey_kv, const KV& kv)
+{
+  return insert(table_name, rowkey_kv, kv);
+}
+
+int ObMutatorHelper::insert(const char* table_name, const KV& rowkey_kv, const KV& kv)
+{
+  int ret = OB_SUCCESS;
+
+  ObRowkey rowkey;
+  ObObj rowkey_obj[rowkey_kv.count()];
+
+  ret = common::kv_to_rowkey(rowkey_kv, rowkey, rowkey_obj, static_cast<int32_t>(rowkey_kv.count())); 
+
+  if(OB_SUCCESS == ret)
+  {
+    ret = insert(table_name, rowkey, kv);
+  }
+
+  return ret;
+}
+
+int ObMutatorHelper::del_row(const char* table_name, const KV& rowkey_kv)
+{
+  int ret = OB_SUCCESS;
+
+  ObRowkey rowkey;
+  ObObj rowkey_obj[rowkey_kv.count()];
+
+  ret = common::kv_to_rowkey(rowkey_kv, rowkey, rowkey_obj, static_cast<int32_t>(rowkey_kv.count())); 
+
+  if(OB_SUCCESS == ret)
+  {
+    ret = del_row(table_name, rowkey);
+  }
+
+  return ret;
+}
+
+int ObMutatorHelper::insert(const char* table_name, const ObRowkey& rowkey, const KV& kv)
 {
   int ret = OB_SUCCESS;
 
@@ -160,7 +237,7 @@ int ObMutatorHelper::insert(const char* table_name, const ObString& rowkey, cons
   return ret;
 }
 
-int ObMutatorHelper::del_row(const char* table_name, const ObString& rowkey)
+int ObMutatorHelper::del_row(const char* table_name, const ObRowkey& rowkey)
 {
   int ret = OB_SUCCESS;
 

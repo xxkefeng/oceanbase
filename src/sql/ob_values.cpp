@@ -40,8 +40,16 @@ int ObValues::add_values(const common::ObRow &value)
 
 int ObValues::open()
 {
+  int ret = OB_SUCCESS;
   curr_row_.set_row_desc(row_desc_);
-  return OB_SUCCESS;
+  if (NULL != child_op_)
+  {
+    if (OB_SUCCESS != (ret = load_data()))
+    {
+      TBSYS_LOG(WARN, "failed to load data from child op, err=%d", ret);
+    }
+  }
+  return ret;
 }
 
 int ObValues::close()
@@ -76,6 +84,110 @@ int ObValues::get_row_desc(const common::ObRowDesc *&row_desc) const
 int64_t ObValues::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
-  databuff_printf(buf, buf_len, pos, "Values()\n");
+  databuff_printf(buf, buf_len, pos, "Values(row_store=%s)\n", to_cstring(row_store_));
+  if (NULL != child_op_)
+  {
+    pos += child_op_->to_string(buf+pos, buf_len-pos);
+  }
   return pos;
+}
+
+DEFINE_SERIALIZE(ObValues)
+{
+  int ret = OB_SUCCESS;
+  int64_t tmp_pos = pos;
+  if (OB_SUCCESS != (ret = row_desc_.serialize(buf, buf_len, tmp_pos)))
+  {
+    TBSYS_LOG(WARN, "serialize row_desc fail ret=%d buf=%p buf_len=%ld pos=%ld", ret, buf, buf_len, tmp_pos);
+  }
+  else if (OB_SUCCESS != (ret = row_store_.serialize(buf, buf_len, tmp_pos)))
+  {
+    TBSYS_LOG(WARN, "serialize row_store fail ret=%d buf=%p buf_len=%ld pos=%ld", ret, buf, buf_len, tmp_pos);
+  }
+  else
+  {
+    pos = tmp_pos;
+  }
+  return ret;
+}
+
+DEFINE_DESERIALIZE(ObValues)
+{
+  int ret = OB_SUCCESS;
+  int64_t tmp_pos = pos;
+  if (OB_SUCCESS != (ret = row_desc_.deserialize(buf, data_len, tmp_pos)))
+  {
+    TBSYS_LOG(WARN, "serialize row_desc fail ret=%d buf=%p data_len=%ld pos=%ld", ret, buf, data_len, tmp_pos);
+  }
+  else if (OB_SUCCESS != (ret = row_store_.deserialize(buf, data_len, tmp_pos)))
+  {
+    TBSYS_LOG(WARN, "serialize row_store fail ret=%d buf=%p data_len=%ld pos=%ld", ret, buf, data_len, tmp_pos);
+  }
+  else
+  {
+    pos = tmp_pos;
+  }
+  return ret;
+}
+
+DEFINE_GET_SERIALIZE_SIZE(ObValues)
+{
+  return (row_desc_.get_serialize_size() + row_store_.get_serialize_size());
+}
+
+int ObValues::load_data()
+{
+  int ret = OB_SUCCESS;
+  int err = OB_SUCCESS;
+  const ObRow *row = NULL;
+  const ObRowDesc *row_desc = NULL;
+  const ObRowStore::StoredRow *stored_row = NULL;
+
+  if (OB_SUCCESS != (ret = child_op_->open()))
+  {
+    TBSYS_LOG(WARN, "fail to open rpc scan:ret[%d]", ret);
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = child_op_->get_row_desc(row_desc)))
+    {
+      TBSYS_LOG(WARN, "fail to get row_desc:ret[%d]", ret);
+    }
+    else
+    {
+      row_desc_ = *row_desc;
+    }
+  }
+
+  while (OB_SUCCESS == ret)
+  {
+    ret = child_op_->get_next_row(row);
+    if (OB_ITER_END == ret)
+    {
+      ret = OB_SUCCESS;
+      break;
+    }
+    else if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "fail to get next row from rpc scan");
+    }
+    else
+    {
+      TBSYS_LOG(DEBUG, "load data from child, row=%s", to_cstring(*row));
+      if (OB_SUCCESS != (ret = row_store_.add_row(*row, stored_row)))
+      {
+        TBSYS_LOG(WARN, "fail to add row:ret[%d]", ret);
+      }
+    }
+  }
+  if (OB_SUCCESS != (err = child_op_->close()))
+  {
+    TBSYS_LOG(WARN, "fail to close rpc scan:err[%d]", err);
+    if (OB_SUCCESS == ret)
+    {
+      ret = err;
+    }
+  }
+  return ret;
 }

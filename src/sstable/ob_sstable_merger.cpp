@@ -71,7 +71,8 @@ namespace oceanbase
       ObBlockCache& block_cache, 
       ObBlockIndexCache& block_index_cache,
       ObSSTableReader* readers[], 
-      const int64_t reader_size)
+      const int64_t reader_size, 
+      const ObNewRange& new_range)
     {
       int ret = OB_SUCCESS;
 
@@ -79,6 +80,11 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "invalid sstable file path, path_ptr=%p, path_len=%d",
                   sstable_path.ptr(), sstable_path.length());
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (new_range.empty())
+      {
+        TBSYS_LOG(WARN, "invalid empty range for sstable merge");
         ret = OB_INVALID_ARGUMENT;
       }
       else if (OB_SUCCESS != (ret = check_readers_param(readers, reader_size)))
@@ -96,7 +102,7 @@ namespace oceanbase
         trailer_ = &readers[0]->get_trailer();
         sstable_schema_ = readers[0]->get_schema();
 
-        ret = merge_column_groups(readers, reader_size);
+        ret = merge_column_groups(readers, reader_size, new_range);
       }
 
       return ret;
@@ -129,7 +135,7 @@ namespace oceanbase
     }
 
     int ObSSTableMerger::merge_column_groups(
-      ObSSTableReader* readers[], const int64_t reader_size)
+      ObSSTableReader* readers[], const int64_t reader_size, const ObNewRange& new_range)
     {
       int ret = OB_SUCCESS;
       uint64_t column_group_ids[OB_MAX_COLUMN_GROUP_NUMBER];
@@ -166,7 +172,7 @@ namespace oceanbase
           reset_for_next_column_group();
         }
 
-        if (OB_SUCCESS == ret && OB_SUCCESS != (ret = finish_sstable()))
+        if (OB_SUCCESS == ret && OB_SUCCESS != (ret = finish_sstable(new_range)))
         {
           TBSYS_LOG(WARN, "close sstable failed, ret=%d", ret);
         }
@@ -269,7 +275,7 @@ namespace oceanbase
           if (OB_SUCCESS == ret && ROW_START == row_status)
           { 
             // first cell in current row, set rowkey and table info.
-            row_.set_row_key(cell_->row_key_);
+            row_.set_rowkey(cell_->row_key_);
             row_.set_table_id(cell_->table_id_);
             row_.set_column_group_id(column_group_id);
             row_status = ROW_GROWING;
@@ -301,12 +307,11 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       ObString table_name_string;
-      ObRange range;
+      ObNewRange range;
 
       //(min, max) range
       range.table_id_ = trailer_->get_first_table_id();
-      range.border_flag_.set_min_value();
-      range.border_flag_.set_max_value();
+      range.set_whole_range();
 
       scan_param_.set(range.table_id_, table_name_string, range);
       /**
@@ -315,7 +320,7 @@ namespace oceanbase
        */
       scan_param_.set_is_result_cached(false); 
       scan_param_.set_is_read_consistency(false);
-      scan_param_.set_read_mode(ObScanParam::PREREAD);
+      scan_param_.set_read_mode(ScanFlag::ASYNCREAD);
 
       //(0, max) version range
       ObVersionRange version_range;
@@ -372,13 +377,17 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSSTableMerger::finish_sstable()
+    int ObSSTableMerger::finish_sstable(const ObNewRange& new_range)
     {
       int ret = OB_SUCCESS;
       int64_t trailer_offset = 0;
       current_sstable_size_ = 0;
 
-      if (OB_SUCCESS != (ret = writer_.close_sstable(trailer_offset, 
+      if (OB_SUCCESS != (ret = writer_.set_tablet_range(new_range)))
+      {
+        TBSYS_LOG(ERROR, "failed to set tablet range for sstable writer");
+      }
+      else if (OB_SUCCESS != (ret = writer_.close_sstable(trailer_offset, 
         current_sstable_size_)) || current_sstable_size_ < 0)
       {
         TBSYS_LOG(WARN, "close sstable failed, ret=%d", ret);
@@ -393,10 +402,12 @@ namespace oceanbase
 
       if (OB_SUCCESS != (ret = writer_.append_row(row_, current_sstable_size_)))
       {
+        ObRowkey tmp_rowkey;
+        row_.get_rowkey(tmp_rowkey);
         TBSYS_LOG(WARN, "append row failed ret=%d, this row_, obj count=%ld, "
                         "table_id=%lu, group_id=%lu, rowkey=%s",
             ret, row_.get_obj_count(), row_.get_table_id(), row_.get_column_group_id(), 
-            print_string(row_.get_row_key()));
+            to_cstring(tmp_rowkey));
         for(int32_t i=0; i<row_.get_obj_count(); ++i)
         {
           row_.get_obj(i)->dump(TBSYS_LOG_LEVEL_ERROR);

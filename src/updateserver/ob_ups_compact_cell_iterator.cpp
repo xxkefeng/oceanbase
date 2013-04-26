@@ -5,13 +5,13 @@ using namespace oceanbase::updateserver;
 int ObUpsCompactCellIterator::parse_varchar(ObBufferReader &buf_reader, ObObj &value) const
 {
   int ret = OB_SUCCESS;
-  const uint16_t *varchar_len = NULL;
+  const int32_t *varchar_len = NULL;
   ObString str_value;
 
-  ret = buf_reader.get<uint16_t>(varchar_len);
+  ret = buf_reader.get<int32_t>(varchar_len);
   if(OB_SUCCESS == ret)
   {
-    if(*varchar_len <= sizeof(const char*))
+    if(*varchar_len <= (int32_t)sizeof(const char*))
     {
       str_value.assign_ptr(const_cast<char*>(buf_reader.cur_ptr()), *varchar_len);
       buf_reader.skip(*varchar_len);

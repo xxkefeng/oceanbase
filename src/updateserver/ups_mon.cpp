@@ -19,6 +19,9 @@
 #include <new>
 
 #include "common/ob_malloc.h"
+#include "common/utility.h"
+#include "easy_io.h"
+#include "common/ob_tbnet_callback.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::updateserver;
@@ -201,10 +204,10 @@ int UpsMon::set_sync_limit()
   const int buff_size = sizeof(ObPacket) + 32;
   char buff[buff_size];
   ObDataBuffer data_buff(buff, buff_size);
-  BaseClient client;
+  ObBaseClient client;
   int64_t start_time = tbsys::CTimeUtil::getTime();
 
-  ret = client.initialize();
+  ret = client.initialize(ups_server_);
 
   if (OB_SUCCESS != ret)
   {
@@ -219,8 +222,8 @@ int UpsMon::set_sync_limit()
     }
     else
     {
-      ObClientManager* client_mgr = client.get_client_mgr();
-      ret = client_mgr->send_request(ups_server_, OB_SET_SYNC_LIMIT_REQUEST, MY_VERSION, ping_timeout_us_, data_buff);
+      ObClientManager& client_mgr = client.get_client_mgr();
+      ret = client_mgr.send_request(ups_server_, OB_SET_SYNC_LIMIT_REQUEST, MY_VERSION, ping_timeout_us_, data_buff);
       if (OB_SUCCESS != ret)
       {
         TBSYS_LOG(ERROR, "failed to send request, ret=%d", ret);
@@ -243,16 +246,14 @@ int UpsMon::set_sync_limit()
     }
   }
 
-  char addr[BUFSIZ];
-  ups_server_.to_string(addr, BUFSIZ);
   int64_t timeu = tbsys::CTimeUtil::getTime() - start_time;
   if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(INFO, "set_new_limit ups(%s) succ, timeu=%ldus", addr, timeu);
+    TBSYS_LOG(INFO, "set_new_limit ups(%s) succ, timeu=%ldus", to_cstring(ups_server_), timeu);
   }
   else
   {
-    TBSYS_LOG(ERROR, "set_new_limit ups(%s) failed, timeu=%ldus", addr, timeu);
+    TBSYS_LOG(ERROR, "set_new_limit ups(%s) failed, timeu=%ldus", to_cstring(ups_server_), timeu);
   }
 
   client.destroy();
@@ -267,10 +268,10 @@ int UpsMon::set_new_vip()
   const int buff_size = sizeof(ObPacket) + 32;
   char buff[buff_size];
   ObDataBuffer data_buff(buff, buff_size);
-  BaseClient client;
+  ObBaseClient client;
   int64_t start_time = tbsys::CTimeUtil::getTime();
 
-  ret = client.initialize();
+  ret = client.initialize(ups_server_);
 
   if (OB_SUCCESS != ret)
   {
@@ -285,8 +286,8 @@ int UpsMon::set_new_vip()
     }
     else
     {
-      ObClientManager* client_mgr = client.get_client_mgr();
-      ret = client_mgr->send_request(ups_server_, OB_UPS_CHANGE_VIP_REQUEST, MY_VERSION, ping_timeout_us_, data_buff);
+      ObClientManager& client_mgr = client.get_client_mgr();
+      ret = client_mgr.send_request(ups_server_, OB_UPS_CHANGE_VIP_REQUEST, MY_VERSION, ping_timeout_us_, data_buff);
       if (OB_SUCCESS != ret)
       {
         TBSYS_LOG(ERROR, "failed to send request, ret=%d", ret);
@@ -309,16 +310,14 @@ int UpsMon::set_new_vip()
     }
   }
 
-  char addr[BUFSIZ];
-  ups_server_.to_string(addr, BUFSIZ);
   int64_t timeu = tbsys::CTimeUtil::getTime() - start_time;
   if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(INFO, "set_new_vip ups(%s) succ, timeu=%ldus", addr, timeu);
+    TBSYS_LOG(INFO, "set_new_vip ups(%s) succ, timeu=%ldus", to_cstring(ups_server_), timeu);
   }
   else
   {
-    TBSYS_LOG(ERROR, "set_new_vip ups(%s) failed, timeu=%ldus", addr, timeu);
+    TBSYS_LOG(ERROR, "set_new_vip ups(%s) failed, timeu=%ldus", to_cstring(ups_server_), timeu);
   }
 
   client.destroy();
@@ -333,10 +332,10 @@ int UpsMon::ping_ups()
   const int buff_size = sizeof(ObPacket);
   char buff[buff_size];
   ObDataBuffer data_buff(buff, buff_size);
-  BaseClient client;
+  ObBaseClient client;
   int64_t start_time = tbsys::CTimeUtil::getTime();
 
-  ret = client.initialize();
+  ret = client.initialize(ups_server_);
 
   if (OB_SUCCESS != ret)
   {
@@ -344,8 +343,8 @@ int UpsMon::ping_ups()
   }
   else
   {
-    ObClientManager* client_mgr = client.get_client_mgr();
-    ret = client_mgr->send_request(ups_server_, OB_PING_REQUEST, MY_VERSION, ping_timeout_us_, data_buff);
+    ObClientManager& client_mgr = client.get_client_mgr();
+    ret = client_mgr.send_request(ups_server_, OB_PING_REQUEST, MY_VERSION, ping_timeout_us_, data_buff);
     if (OB_SUCCESS != ret)
     {
       TBSYS_LOG(ERROR, "failed to send request, ret=%d", ret);
@@ -367,16 +366,14 @@ int UpsMon::ping_ups()
     }
   }
 
-  char addr[BUFSIZ];
-  ups_server_.to_string(addr, BUFSIZ);
   int64_t timeu = tbsys::CTimeUtil::getTime() - start_time;
   if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(INFO, "ping ups(%s) succ, timeu=%ldus", addr, timeu);
+    TBSYS_LOG(INFO, "ping ups(%s) succ, timeu=%ldus", to_cstring(ups_server_), timeu);
   }
   else
   {
-    TBSYS_LOG(ERROR, "ping ups(%s) failed, timeu=%ldus", addr, timeu);
+    TBSYS_LOG(ERROR, "ping ups(%s) failed, timeu=%ldus", to_cstring(ups_server_), timeu);
   }
 
   client.destroy();
@@ -387,36 +384,6 @@ int UpsMon::ping_ups()
 void UpsMon::sign_handler(const int sig)
 {
   UNUSED(sig);
-}
-
-BaseClient::BaseClient()
-{
-}
-
-BaseClient::~BaseClient()
-{
-}
-
-int BaseClient::initialize()
-{
-  int ret = OB_SUCCESS;
-
-  streamer_.setPacketFactory(&factory_);
-  client_.initialize(&transport_, &streamer_);
-
-  ret = transport_.start() ? OB_SUCCESS : OB_ERROR;
-  return ret;
-}
-
-int BaseClient::destroy()
-{
-  transport_.stop();
-  return transport_.wait();
-}
-
-int BaseClient::wait()
-{
-  return transport_.wait();
 }
 
 int main(int argc, char** argv)

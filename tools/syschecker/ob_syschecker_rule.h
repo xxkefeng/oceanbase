@@ -15,6 +15,7 @@
 #define OCEANBASE_SYSCHECKER_RULE_H_
 
 #include "ob_syschecker_schema.h"
+#include "common/ob_object.h"
 #include "ob_syschecker_param.h"
 
 namespace oceanbase 
@@ -22,6 +23,7 @@ namespace oceanbase
   namespace syschecker
   {
     static const int64_t MAX_SYSCHECKER_ROWKEY_LEN = sizeof(int64_t) * 2;
+    static const int64_t MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT =   2;
     static const int64_t MAX_SYSCHECKER_RULE_NAME_LEN = 32;
     static const int64_t MAX_SYSCHECKER_OP_ROW = 1024;
     static const int64_t ROWKEY_PREFIX_SIZE = sizeof(int64_t);
@@ -38,7 +40,8 @@ namespace oceanbase
     static const int64_t SCAN_PARAM_ROW_COUNT = 2;
     static const int64_t MAX_SCAN_ROW_COUNT = 100; //1000;
     static const int64_t MAX_INVALID_ROW_COUNT = 10;
-    static const int64_t MAX_WRITE_ROW_COUNT = 100; //100;
+   // static const int64_t MAX_WRITE_ROW_COUNT = 100; //100;
+    static const int64_t MAX_WRITE_ROW_COUNT = 3; //5;
 
     extern const char* READ_PARAM_FILE;
     extern const char* WRITE_PARAM_FILE;
@@ -56,6 +59,8 @@ namespace oceanbase
       OP_MIX,   //mixed operation with add, update, insert and delete
       OP_GET,
       OP_SCAN,
+      OP_SQL_GET,
+      OP_SQL_SCAN,
       OP_MAX,
     };
 
@@ -109,6 +114,7 @@ namespace oceanbase
       int32_t varchar_len_;
       int64_t key_prefix_;
       common::ObString column_name_;
+      uint64_t column_id_;
       union
       {
         int64_t int_val_;
@@ -132,7 +138,7 @@ namespace oceanbase
       ObOpType op_type_;
       int32_t cell_count_;
       int32_t rowkey_len_;
-      char rowkey_[MAX_SYSCHECKER_ROWKEY_LEN];
+      common::ObObj rowkey_[MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT];
       ObOpCellParam cell_[common::OB_MAX_COLUMN_NUMBER];
     };
 
@@ -153,6 +159,7 @@ namespace oceanbase
       ObOpType op_type_;
       int64_t row_count_;
       common::ObString table_name_;
+      uint64_t table_id_;
       ObOpParamGen param_gen_;
       ObOpRowParam row_[MAX_SYSCHECKER_OP_ROW];
 
@@ -185,6 +192,8 @@ namespace oceanbase
 
       const int64_t get_cur_max_suffix() const;
       int64_t add_cur_max_suffix(const int64_t suffix);
+
+      const ObSyscheckerSchema& get_schema() const { return syschecker_schema_; }
 
     private:
       int init_random_block();
@@ -279,6 +288,7 @@ namespace oceanbase
       bool is_specified_read_param_;
       bool operate_full_row_;
       bool perf_test_;
+      bool is_sql_read_;
       int read_table_type_;
       int write_table_type_;
       int64_t get_row_cnt_;

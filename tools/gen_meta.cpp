@@ -55,7 +55,7 @@ int sstable_file_filter(const struct dirent *d)
   return ret;
 }
 
-int add_tablet(ObTabletImage& image, const ObRange &range, 
+int add_tablet(ObTabletImage& image, const ObNewRange &range, 
     const int64_t version, const int32_t disk_no)
 {
   ObTablet* tablet;
@@ -78,7 +78,7 @@ int scan_file(const CmdLineParam& cmd_line_param)
 
   ObTabletImage image;
   char range_str[256];
-  ObRange range;
+  ObNewRange range;
 
   int64_t table_id = 0;
   int32_t disk_no = 0;

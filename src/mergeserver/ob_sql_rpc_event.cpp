@@ -2,6 +2,7 @@
 #include "common/ob_atomic.h"
 #include "common/ob_new_scanner.h"
 #include "ob_sql_rpc_event.h"
+#include "ob_merge_callback.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
@@ -12,6 +13,8 @@ ObCommonSqlRpcEvent::ObCommonSqlRpcEvent()
 {
   reset();
   event_id_ = atomic_inc(reinterpret_cast<volatile uint64_t*>(&id_allocator_));
+  //set sql rpc event handler
+  handler_ = ObMergeCallback::sql_process;
 }
 
 ObCommonSqlRpcEvent::~ObCommonSqlRpcEvent()
@@ -21,7 +24,7 @@ ObCommonSqlRpcEvent::~ObCommonSqlRpcEvent()
 
 void ObCommonSqlRpcEvent::reset(void)
 {
-  result_.reset();
+  result_.clear();
   event_id_ = OB_INVALID_ID;
   result_code_ = OB_INVALID_ERROR;
   session_id_ = INVALID_SESSION_ID;
@@ -52,6 +55,11 @@ void ObCommonSqlRpcEvent::set_result_code(const int32_t code)
   result_code_ = code;
 }
 
+easy_io_process_pt* ObCommonSqlRpcEvent::get_handler() const
+{
+  return handler_;
+}
+
 ObNewScanner & ObCommonSqlRpcEvent::get_result(void)
 {
   return result_;
@@ -63,13 +71,13 @@ ObNewScanner & ObCommonSqlRpcEvent::get_result(int32_t & result_code)
   return result_;
 }
 
-tbnet::IPacketHandler::HPRetCode ObCommonSqlRpcEvent::handlePacket(tbnet::Packet * packet, void *args)
-{
-  UNUSED(packet);
-  UNUSED(args);
-  TBSYS_LOG(ERROR, "unexpected path not implenmented in common rpc event");
-  return tbnet::IPacketHandler::FREE_CHANNEL;
-}
+//tbnet::IPacketHandler::HPRetCode ObCommonSqlRpcEvent::handlePacket(tbnet::Packet * packet, void *args)
+//{
+//  UNUSED(packet);
+//  UNUSED(args);
+//  TBSYS_LOG(ERROR, "unexpected path not implenmented in common rpc event");
+//  return tbnet::IPacketHandler::FREE_CHANNEL;
+//}
 
 void ObCommonSqlRpcEvent::print_info(FILE * file) const
 {

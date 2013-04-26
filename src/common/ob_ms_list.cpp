@@ -1,10 +1,9 @@
-
+#include "utility.h"
 #include "ob_ms_list.h"
 
 using namespace oceanbase;
 using namespace common;
 
-const char* ob_server_to_string(const oceanbase::common::ObServer& server);
 
 MsList::MsList()
     : rs_(), ms_list_(), ms_iter_(0), client_(NULL), buff_(),
@@ -17,13 +16,13 @@ MsList::~MsList()
   clear();
 }
 
-int MsList::init(const ObServer &rs, ObClientManager *client)
+int MsList::init(const ObServer &rs, const ObClientManager *client, bool do_update)
 {
   int ret = OB_SUCCESS;
-  if (0 == rs.get_ipv4() || 0 == rs.get_port() || NULL == client) 
+  if (0 == rs.get_ipv4() || 0 == rs.get_port() || NULL == client)
   {
     TBSYS_LOG(ERROR, "init error, arguments are invalid, rs=%s client=NULL",
-            ob_server_to_string(rs));
+            to_cstring(rs));
     ret = OB_INVALID_ARGUMENT;
   }
   else
@@ -32,10 +31,10 @@ int MsList::init(const ObServer &rs, ObClientManager *client)
     client_ = client;
     initialized_ = true;
     TBSYS_LOG(INFO, "MsList initialized succ, rs=%s client=%p",
-            ob_server_to_string(rs_), client_);
+            to_cstring(rs_), client_);
   }
 
-  if (OB_SUCCESS == ret)
+  if (OB_SUCCESS == ret && do_update)
   {
     ret = update();
     if (OB_SUCCESS != ret)
@@ -109,19 +108,30 @@ int MsList::update()
   }
 
   ObServer ms;
+  int64_t reserved = 0;
   for(int32_t i = 0;i<ms_num && OB_SUCCESS == ret;i++)
   {
-    ret = ms.deserialize(data_buff.get_data(), data_buff.get_capacity(), data_buff.get_position());
-    if (OB_SUCCESS != ret)
+    if (OB_SUCCESS != (ret = ms.deserialize(data_buff.get_data(),
+                                            data_buff.get_capacity(),
+                                            data_buff.get_position())))
     {
-      TBSYS_LOG(WARN, "deserialize ms server fail:ret[%d]", ret);
+      TBSYS_LOG(WARN, "deserialize merge server fail, ret: [%d]", ret);
+    }
+    else if (OB_SUCCESS !=
+             (ret = serialization::decode_vi64(data_buff.get_data(),
+                                               data_buff.get_capacity(),
+                                               data_buff.get_position(),
+                                               &reserved)))
+    {
+      TBSYS_LOG(WARN, "deserializ merge server"
+                " reserver int64 fail, ret: [%d]", ret);
     }
     else
     {
       new_ms.push_back(ms);
     }
   }
-  
+
   update_mutex_.unlock();
 
   if (OB_SUCCESS == ret)
@@ -129,7 +139,7 @@ int MsList::update()
     rwlock_.wrlock();
     if (!list_equal_(new_ms))
     {
-      TBSYS_LOG(INFO, "Mergeserver List is modified, get the most updated, "
+      TBSYS_LOG(TRACE, "Mergeserver List is modified, get the most updated, "
           "MS num=%zu", new_ms.size());
       list_copy_(new_ms);
     }
@@ -190,19 +200,9 @@ void MsList::list_copy_(const std::vector<ObServer> &list)
   for (iter = list.begin(); iter != list.end(); iter++)
   {
     ms_list_.push_back(*iter);
-    TBSYS_LOG(INFO, "Add Mergeserver %s", ob_server_to_string(*iter));
+    TBSYS_LOG(TRACE, "Add Mergeserver %s", to_cstring(*iter));
   }
 }
 
-const char* ob_server_to_string(const ObServer& server)
-{
-  const int SIZE = 32;
-  static char buf[SIZE];
-  if (!server.to_string(buf, SIZE))
-  {
-    snprintf(buf, SIZE, "InvalidServerAddr");
-  }
-  return buf;
-}
 
 

@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_root_balancer_runnable.cpp
@@ -18,8 +18,10 @@
 using namespace oceanbase::rootserver;
 using namespace oceanbase::common;
 
-ObRootBalancerRunnable::ObRootBalancerRunnable(ObRootConfig &config, ObRootBalancer &balancer, common::ObRoleMgr &role_mgr)
-  :config_(config), balancer_(balancer), role_mgr_(role_mgr)
+ObRootBalancerRunnable::ObRootBalancerRunnable(ObRootServerConfig &config,
+                                               ObRootBalancer &balancer,
+                                               common::ObRoleMgr &role_mgr)
+  : config_(config), balancer_(balancer), role_mgr_(role_mgr)
 {
 }
 
@@ -41,9 +43,10 @@ void ObRootBalancerRunnable::run(tbsys::CThread *thread, void *arg)
 {
   UNUSED(thread);
   UNUSED(arg);
-  TBSYS_LOG(INFO, "[NOTICE] balance worker thread start, waiting_seconds=%d", 
-            config_.flag_migrate_wait_seconds_.get());
-  for (int i = 0; i < config_.flag_migrate_wait_seconds_.get() && !_stop; i++)
+  TBSYS_LOG(INFO, "[NOTICE] balance worker thread start, waiting [%s]",
+            config_.migrate_wait_time.str());
+  const int wait_second = (int)config_.migrate_wait_time / 1000L / 1000L;
+  for (int64_t i = 0; i < wait_second && !_stop; i++)
   {
     sleep(1);
   }
@@ -54,8 +57,8 @@ void ObRootBalancerRunnable::run(tbsys::CThread *thread, void *arg)
   {
     if (is_master() || role_mgr_.get_role() == ObRoleMgr::STANDALONE)
     {
-      if (config_.flag_enable_balance_.get() 
-          || config_.flag_enable_rereplication_.get())
+      if (config_.enable_balance
+          || config_.enable_rereplication)
       {
         balancer_.do_balance(did_migrating);
       }
@@ -72,8 +75,9 @@ void ObRootBalancerRunnable::run(tbsys::CThread *thread, void *arg)
     else
     {
       // idle
-      sleep_us = config_.flag_balance_worker_idle_sleep_seconds_.get() * 1000000LL;
-      TBSYS_LOG(INFO, "balance worker idle, sleep_us=%ld", sleep_us);
+      sleep_us = config_.balance_worker_idle_time;
+      TBSYS_LOG(TRACE, "balance worker idle, sleep [%s]",
+                config_.balance_worker_idle_time.str());
     }
     int sleep_ms = static_cast<int32_t>(sleep_us/1000);
     balance_worker_sleep_cond_.wait(sleep_ms);

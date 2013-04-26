@@ -56,11 +56,12 @@ def fault_test_obi_attrs(obi):
         if not succ: raise Fail('test fail!', result)
         return result
 
-    def random_change(change_history, op='check', cli='ct', **ob):
+    def random_change(change_history, op='check', cli='ct', alive_check_timeout=30, **ob):
+        timeout = 30
         def _check_basic(**ob):
             return call_(ob, "check_basic", cli=cli, _quiet_=True) and IterEnd() or 'TryAgain.'
-        if not ob.get('_dryrun_') and not check_until_timeout(lambda :_check_basic(**ob), 10, interval=1):
-                raise Fail('not pass basic check before timeout!')
+        if not ob.get('_dryrun_') and not check_until_timeout(lambda :_check_basic(**ob), int(alive_check_timeout), interval=1):
+                raise Fail('not pass basic check before timeout[%ds]!'%(int(alive_check_timeout)))
         if op == 'any': op = 'check,set_master,restart_server,disk_timeout,net_timeout,switch_schema'
         op =  random.choice(op.split(','))
         print 'select op: %s'%(op)
@@ -86,22 +87,22 @@ def fault_test_obi_attrs(obi):
 
     def random_check(**ob):
         return 'check', 'ob', 'OK'
-    def random_set_master(change_history=None, **ob):
+    def random_set_master(change_history=None, wait_sync_timeout=60, **ob):
         if not change_history: raise Fail('need change_history')
         _, last_op, last_server, ret = change_history[-1]
-        if not check_until_timeout(lambda :_check_sync(**ob), 10, interval=1):
-            raise Fail('not sync before timeout!')
+        if not check_until_timeout(lambda :_check_sync(**ob), int(wait_sync_timeout), interval=1):
+            raise Fail('not sync before timeout[%ds]!'%(int(wait_sync_timeout)))
         for i in range(100):
             sync_ups_list = [ups for ups in _get_sync_ups(**ob) if ups != last_server]
             if sync_ups_list: break
         else:
             raise Fail('no sync ups selectable!')
         return set_master(random.choice(sync_ups_list), **ob)
-    def random_restart_server(sig='-SIGTERM', pat='updateserver', **ob):
+    def random_restart_server(sig='-SIGTERM', pat='updateserver', wait_sync_timeout=60, **ob):
         if pat == 'updateserver':
             if len(get_match_child(ob, pat).keys()) > 1:
-                if not check_until_timeout(lambda :_check_sync(**ob), 10, interval=1):
-                    raise Fail('not sync before timeout!')
+                if not check_until_timeout(lambda :_check_sync(**ob), int(wait_sync_timeout), interval=1):
+                    raise Fail('not sync before timeout[%ds]!'%(int(wait_sync_timeout)))
         servers = get_match_child(ob, pat).keys()
         if not servers: raise Fail('no server matched:', pat)
         return restart_server(random.choice(servers), sig, **ob)
@@ -138,7 +139,7 @@ def fault_test_obi_attrs(obi):
         return 'set_master', ups, ret
     def restart_server(server='', sig='-SIGTERM', wait_before_start='0.0', **ob):
         if not server: raise Exception('need to specify server')
-        if not check_until_timeout(lambda : call_(ob, '%s.kill_by_name'%(server), sig) == 256 and IterEnd() or 'kill_and_wait', 60, interval=1):
+        if not check_until_timeout(lambda : call_(ob, '%s.kill_by_name'%(server), sig) == 1 and IterEnd() or 'kill_and_wait', 60, interval=1):
             raise Fail('server not exit before timeout!', server)
         time.sleep(float(wait_before_start))
         if not check_until_timeout(lambda : call_(ob, '%s.start'%(server)) == 0 and IterEnd() or 'try start', 30, interval=1):
@@ -204,7 +205,7 @@ def fault_test_obi_attrs(obi):
             return id_list1, id_list2
         return 'OK'
         
-    def change_master_obi_loop(loop=10, **ob):
+    def switch_obi(loop=10, **ob):
         inst1, inst2 = ob.get('inst1'), ob.get('inst2')
         wait_time = 60
         if not inst1 or not inst2: raise Fail("change_master_obi: no inst1/inst2 specified!")
@@ -220,9 +221,9 @@ def fault_test_obi_attrs(obi):
                 if not check_until_timeout(lambda :_check_obi_sync(**ob), wait_time, interval=1):
                     raise Fail('obi not sync before timeout!')
             print 'change master obi: iter=%d'%(i)
-            print [('%s.ups0.minor_freeze'%(obi), call_(ob, '%s.ups0.minor_freeze'%(obi))) for obi in (inst1, inst2)]
-            print 'wait %fs for minor freeze'%(wait_time)
-            time.sleep(wait_time)
+            #print [('%s.ups0.minor_freeze'%(obi), call_(ob, '%s.ups0.minor_freeze'%(obi))) for obi in (inst1, inst2)]
+            #print 'wait %fs for minor freeze'%(wait_time)
+            #time.sleep(wait_time)
             print change_master_obi(**ob)
         return 'Done'
     return locals()

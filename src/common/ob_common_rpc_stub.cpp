@@ -16,7 +16,7 @@
  */
 
 #include "ob_common_rpc_stub.h"
-
+#include "common/utility.h"
 using namespace oceanbase::common;
 
 const int32_t ObCommonRpcStub :: DEFAULT_VERSION = 1;
@@ -269,19 +269,7 @@ int ObCommonRpcStub::slave_quit(const common::ObServer& master, const common::Ob
       err = result_code.result_code_;
     }
   }
-
-  char addr_buf_master[BUFSIZ];
-  char addr_buf_slave[BUFSIZ];
-  if (!master.to_string(addr_buf_master, BUFSIZ))
-  {
-    strcpy(addr_buf_master, "Get Server IP failed");
-  }
-  if (!slave_addr.to_string(addr_buf_slave, BUFSIZ))
-  {
-    strcpy(addr_buf_slave, "Get Server IP failed");
-  }
-  TBSYS_LOG(INFO, "send slave(%s) quit info to Master(%s), err[%d].", addr_buf_slave, addr_buf_master, err);
-
+  TBSYS_LOG(INFO, "send slave(%s) quit info to Master(%s), err[%d].", to_cstring(slave_addr), to_cstring(master), err);
   return err;
 }
 int ObCommonRpcStub :: get_master_ups_info(const ObServer& rs, ObServer &master_ups, const int64_t timeout_us)
@@ -465,8 +453,114 @@ int ObCommonRpcStub :: send_keep_alive(const common::ObServer &slave)
   return OB_SUCCESS;
 }
 
+// copy from ob_client_helper
+int ObCommonRpcStub::scan(const ObServer& ms, const ObScanParam& scan_param, ObScanner& scanner, const int64_t timeout)
+{
+  int ret = OB_SUCCESS;
+  static const int MY_VERSION = 1;
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr is NULL");
+    ret = OB_NOT_INIT;
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    ObDataBuffer data_buff;
+    get_thread_buffer_(data_buff);
+    ret = scan_param.serialize(data_buff.get_data(), data_buff.get_capacity(), data_buff.get_position());
+
+    if (OB_SUCCESS == ret)
+    {
+      ret = client_mgr_->send_request(ms, OB_SCAN_REQUEST, MY_VERSION, timeout, data_buff);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", to_cstring(ms), ret);
+      }
+    }
+
+    if (OB_SUCCESS == ret)
+    {
+      // deserialize the response code
+      int64_t pos = 0;
+      if (OB_SUCCESS == ret)
+      {
+        ObResultCode result_code;
+        ret = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "deserialize result_code failed:pos[%ld], ret[%d]", pos, ret);
+        }
+        else
+        {
+          ret = result_code.result_code_;
+          if (OB_SUCCESS == ret
+              && OB_SUCCESS != (ret = scanner.deserialize(data_buff.get_data(), data_buff.get_position(), pos)))
+          {
+            TBSYS_LOG(ERROR, "deserialize result data failed:pos[%ld], ret[%d]", pos, ret);
+          }
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+int ObCommonRpcStub::mutate(const ObServer& update_server, const ObMutator& mutator, const int64_t timeout)
+{
+  int ret = OB_SUCCESS;
+  static const int MY_VERSION = 1;
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr is NULL");
+    ret = OB_NOT_INIT;
+  }
+  if (OB_SUCCESS == ret)
+  {
+    ObDataBuffer data_buff;
+    get_thread_buffer_(data_buff);
+    ret = mutator.serialize(data_buff.get_data(), data_buff.get_capacity(), data_buff.get_position());
+
+    if (OB_SUCCESS == ret)
+    {
+      ret = client_mgr_->send_request(update_server, OB_WRITE, MY_VERSION, timeout, data_buff);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "failed to send mutate request to updateserver=%s, ret=%d", to_cstring(update_server),ret);
+      }
+    }
+
+    if (OB_SUCCESS == ret)
+    {
+      // deserialize the response code
+      int64_t pos = 0;
+      if (OB_SUCCESS == ret)
+      {
+        ObResultCode result_code;
+        ret = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "deserialize result_code failed:pos[%ld], ret[%d]", pos, ret);
+        }
+        else if (result_code.result_code_ != OB_SUCCESS)
+        {
+          TBSYS_LOG(ERROR,"apply failed, err=%d ups=%s",result_code.result_code_, to_cstring(update_server));
+          ret = result_code.result_code_;
+        }
+      }
+    }
+  }
+  return ret;
+}
+
 int ObCommonRpcStub :: renew_lease(const common::ObServer &rootserver)
 {
   UNUSED(rootserver);
   return OB_SUCCESS;
+}
+
+const ObClientManager* ObCommonRpcStub::get_client_mgr() const
+{
+  return client_mgr_;
 }

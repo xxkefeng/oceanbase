@@ -1,18 +1,18 @@
 #include "common/ob_schema.h"
 #include "common/ob_scanner.h"
-#include "ob_ms_tablet_location.h"
-#include "ob_ms_schema_manager.h"
-#include "ob_ms_rpc_stub.h"
+#include "common/ob_schema_manager.h"
+#include "common/location/ob_tablet_location_cache.h"
+#include "common/ob_general_rpc_stub.h"
 #include "ob_rs_rpc_proxy.h"
-#include "ob_ms_counter_infos.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 
 
 ObMergerRootRpcProxy::ObMergerRootRpcProxy(const int64_t retry_times,
-    const int64_t timeout, const ObServer & root)
+    const int64_t timeout, const ObServer & root) : ObGeneralRootRpcProxy(retry_times, timeout, root)
 {
+  // Should have been inited in parent class. change this later
   rpc_retry_times_ = retry_times;
   rpc_timeout_ = timeout;
   root_server_ = root;
@@ -25,7 +25,7 @@ ObMergerRootRpcProxy::~ObMergerRootRpcProxy()
 }
 
 
-int ObMergerRootRpcProxy::init(ObMergerRpcStub * rpc_stub)
+int ObMergerRootRpcProxy::init(common::ObGeneralRpcStub *rpc_stub)
 {
   int ret = OB_SUCCESS;
   if (NULL == rpc_stub)
@@ -35,37 +35,10 @@ int ObMergerRootRpcProxy::init(ObMergerRpcStub * rpc_stub)
   }
   else
   {
+    // Should have been inited in parent class. change this later
     rpc_stub_ = rpc_stub;
+    ret = ObGeneralRootRpcProxy::init(rpc_stub);
   }
-  return ret;
-}
-
-int ObMergerRootRpcProxy::register_merger(const common::ObServer & merge_server)
-{
-  int ret = OB_SUCCESS;
-  if (!check_inner_stat())
-  {
-    TBSYS_LOG(ERROR, "%s", "check inner stat failed");
-    ret = OB_INNER_STAT_ERROR;
-  }
-  else
-  {
-    for (int64_t i = 0; i <= rpc_retry_times_; ++i)
-    {
-      ret = rpc_stub_->register_server(rpc_timeout_, root_server_, merge_server, true);
-      if (ret != OB_SUCCESS)
-      {
-        TBSYS_LOG(WARN, "register merge server failed:ret[%d]", ret);
-        usleep(RETRY_INTERVAL_TIME);
-      }
-      else
-      {
-        TBSYS_LOG(INFO, "%s", "register merge server succ");
-        break;
-      }
-    }
-  }
-  ms_get_counter_set().inc(ObMergerCounterIds::C_REGISTER_MS);
   return ret;
 }
 
@@ -86,11 +59,10 @@ int ObMergerRootRpcProxy::async_heartbeat(const ObServer & merge_server)
       TBSYS_LOG(WARN, "heartbeat with root server failed:ret[%d]", ret);
     }
   }
-  ms_get_counter_set().inc(ObMergerCounterIds::C_HEART_BEAT);
   return ret;
 }
 
-int ObMergerRootRpcProxy::fetch_newest_schema(ObMergerSchemaManager * schema_manager,
+int ObMergerRootRpcProxy::fetch_newest_schema(common::ObMergerSchemaManager * schema_manager,
     const ObSchemaManagerV2 ** manager)
 {
   /// fetch new schema
@@ -120,7 +92,7 @@ int ObMergerRootRpcProxy::fetch_newest_schema(ObMergerSchemaManager * schema_man
       }
       else
       {
-        ret = rpc_stub_->fetch_schema(rpc_timeout_, root_server_, 0, *schema);
+        ret = rpc_stub_->fetch_schema(rpc_timeout_, root_server_, 0, false, *schema);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(WARN, "rpc fetch schema failed:ret[%d]", ret);
@@ -128,7 +100,7 @@ int ObMergerRootRpcProxy::fetch_newest_schema(ObMergerSchemaManager * schema_man
       }
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = schema_manager->add_schema(*schema, manager);
@@ -136,13 +108,16 @@ int ObMergerRootRpcProxy::fetch_newest_schema(ObMergerSchemaManager * schema_man
     if (OB_SUCCESS != ret)
     {
       TBSYS_LOG(WARN, "add new schema failed:version[%ld], ret[%d]", schema->get_version(), ret);
-      ret = OB_SUCCESS;
-      *manager = schema_manager->get_schema(0);
-      if (NULL == *manager)
+      if (OB_SUCCESS != OB_NO_EMPTY_ENTRY)
       {
-        TBSYS_LOG(WARN, "get latest schema failed:schema[%p], latest[%ld]", 
-            *manager, schema_manager->get_latest_version());
-        ret = OB_INNER_STAT_ERROR;
+        ret = OB_SUCCESS;
+        *manager = schema_manager->get_user_schema(0);
+        if (NULL == *manager)
+        {
+          TBSYS_LOG(WARN, "get latest schema failed:schema[%p], latest[%ld]",
+              *manager, schema_manager->get_latest_version());
+          ret = OB_INNER_STAT_ERROR;
+        }
       }
     }
     else
@@ -150,7 +125,7 @@ int ObMergerRootRpcProxy::fetch_newest_schema(ObMergerSchemaManager * schema_man
       TBSYS_LOG(DEBUG, "fetch and add new schema succ:version[%ld]", schema->get_version());
     }
   }
-  
+
   if (schema != NULL)
   {
     schema->~ObSchemaManagerV2();
@@ -160,7 +135,6 @@ int ObMergerRootRpcProxy::fetch_newest_schema(ObMergerSchemaManager * schema_man
     ob_free(temp);
     temp = NULL;
   }
-  ms_get_counter_set().inc(ObMergerCounterIds::C_FETCH_SCHEMA);
   return ret;
 }
 
@@ -184,44 +158,46 @@ int ObMergerRootRpcProxy::fetch_schema_version(int64_t & timestamp)
       TBSYS_LOG(DEBUG, "fetch schema version succ:version[%ld]", timestamp);
     }
   }
-  ms_get_counter_set().inc(ObMergerCounterIds::C_FETCH_SCHEMA_VERSION);
   return ret;
 }
 
 // waring:all return cell in a row must be same as root table's columns,
 //        and the second row is this row allocated chunkserver list
-int ObMergerRootRpcProxy::scan_root_table(ObMergerTabletLocationCache * cache, 
-    const uint64_t table_id, const ObString & row_key, const ObServer & addr,
-    ObMergerTabletLocationList & location)
+int ObMergerRootRpcProxy::scan_root_table(ObTabletLocationCache * cache,
+    const uint64_t table_id, const ObRowkey & row_key, const ObServer & addr,
+    ObTabletLocationList & location)
 {
   assert(location.get_buffer() != NULL);
   int ret = OB_SUCCESS;
-  bool find_right_tablet = false;
+  bool find = false;
   ObScanner scanner;
+  CharArena allocator;
   // root table id = 0
   ret = rpc_stub_->fetch_tablet_location(rpc_timeout_, root_server_, 0,
       table_id, row_key, scanner);
   if (ret != OB_SUCCESS)
   {
-    TBSYS_LOG(WARN, "fetch tablet location failed:table_id[%lu], length[%d], ret[%d]",
-        table_id, row_key.length(), ret);
-    hex_dump(row_key.ptr(), row_key.length(), true);
+    TBSYS_LOG(WARN, "fetch tablet location failed:table_id[%lu], rowkey[%s], ret[%d]",
+        table_id, to_cstring(row_key), ret);
   }
   else
   {
-    ObRange range;
-    range.border_flag_.unset_inclusive_start();
-    range.border_flag_.set_inclusive_end();
-    ObString start_key;
-    ObString end_key; 
+    // no need deep copy the range buffer
+    ObTabletLocationList list;
+    ObNewRange range;
+    ObRowkey start_key;
+    start_key = ObRowkey::MIN_ROWKEY;
+    ObRowkey end_key;
     ObServer server;
     ObCellInfo * cell = NULL;
     bool row_change = false;
+    TBSYS_LOG(DEBUG, "root server get rpc return succeed, cell num=%ld",
+              scanner.get_cell_num());
+    oceanbase::common::dump_scanner(scanner, TBSYS_LOG_LEVEL_DEBUG, 0);
     ObScannerIterator iter = scanner.begin();
-    TBSYS_LOG(DEBUG, "%s", "parse scanner result for get some tablet locations");
     // all return cell in a row must be same as root table's columns
     ++iter;
-    while ((iter != scanner.end()) 
+    while ((iter != scanner.end())
         && (OB_SUCCESS == (ret = iter.get_cell(&cell, &row_change))) && !row_change)
     {
       if (NULL == cell)
@@ -229,7 +205,7 @@ int ObMergerRootRpcProxy::scan_root_table(ObMergerTabletLocationCache * cache,
         ret = OB_INNER_STAT_ERROR;
         break;
       }
-      start_key.assign(cell->row_key_.ptr(), cell->row_key_.length());
+      cell->row_key_.deep_copy(start_key, allocator);
       ++iter;
     }
 
@@ -237,9 +213,7 @@ int ObMergerRootRpcProxy::scan_root_table(ObMergerTabletLocationCache * cache,
     {
       int64_t ip = 0;
       int64_t port = 0;
-      bool second_row = true;
       // next cell
-      ObMergerTabletLocationList list;
       for (++iter; iter != scanner.end(); ++iter)
       {
         ret = iter.get_cell(&cell, &row_change);
@@ -250,56 +224,19 @@ int ObMergerRootRpcProxy::scan_root_table(ObMergerTabletLocationCache * cache,
         }
         else if (row_change) // && (iter != last_iter))
         {
-          range.table_id_ = table_id;
-          if (NULL == start_key.ptr())
-          {
-            range.border_flag_.set_min_value();
-          }
-          else
-          {
-            range.border_flag_.unset_min_value();
-            range.start_key_ = start_key;
-          }
-          range.border_flag_.unset_max_value();
-          range.end_key_ = end_key;
-          start_key = end_key;
-          end_key.assign(cell->row_key_.ptr(), cell->row_key_.length());
-          list.set_timestamp(tbsys::CTimeUtil::getTime()); 
-          list.sort(addr);
-          // not deep copy the range
-          list.set_tablet_range(range);
-          // the second row is this row allocated chunkserver list
-          if (second_row)
-          {
-            second_row = false;
-            if ((row_key <= range.end_key_) && (row_key > range.start_key_))
-            {
-              find_right_tablet = true;
-              location = list;
-              assert(location.get_buffer() != NULL);
-              location.set_tablet_range(range);
-            }
-            else
-            {
-              ret = OB_DATA_NOT_SERVE;
-              TBSYS_LOG(ERROR, "check range not include this key:ret[%d]", ret);
-              hex_dump(row_key.ptr(), row_key.length());
-              range.hex_dump();
-              break;
-            }
-          }
-          // add to cache
+          find_tablet_item(table_id, row_key, start_key, end_key, addr, range, find, list, location);
           if (OB_SUCCESS != cache->set(range, list))
           {
-            TBSYS_LOG(WARN, "%s", "add the range to cache failed");
+            TBSYS_LOG(ERROR, "add the range[%s] to cache failed", to_cstring(range));
           }
           list.clear();
+          start_key = end_key;
         }
         else
         {
-          end_key.assign(cell->row_key_.ptr(), cell->row_key_.length());
-          if ((cell->column_name_.compare("1_port") == 0) 
-              || (cell->column_name_.compare("2_port") == 0) 
+          cell->row_key_.deep_copy(end_key, allocator);
+          if ((cell->column_name_.compare("1_port") == 0)
+              || (cell->column_name_.compare("2_port") == 0)
               || (cell->column_name_.compare("3_port") == 0))
           {
             ret = cell->value_.get_int(port);
@@ -319,13 +256,13 @@ int ObMergerRootRpcProxy::scan_root_table(ObMergerTabletLocationCache * cache,
               ObTabletLocation addr(0, server);
               if (OB_SUCCESS != (ret = list.add(addr)))
               {
-                TBSYS_LOG(ERROR, "add addr failed:ip[%ld], port[%ld], ret[%d]", 
+                TBSYS_LOG(ERROR, "add addr failed:ip[%ld], port[%ld], ret[%d]",
                     ip, port, ret);
                 break;
               }
               else
               {
-                TBSYS_LOG(DEBUG, "add addr succ:ip[%ld], port[%ld]", ip, port);
+                TBSYS_LOG(DEBUG, "add addr succ:ip[%ld], port[%ld], server:%s", ip, port, to_cstring(server));
               }
               ip = port = 0;
             }
@@ -338,46 +275,15 @@ int ObMergerRootRpcProxy::scan_root_table(ObMergerTabletLocationCache * cache,
           }
         }
       }
-
-      // for the last row 
+      // for the last row
+      TBSYS_LOG(DEBUG, "get a new tablet start_key[%s], end_key[%s]",
+          to_cstring(start_key), to_cstring(end_key));
       if ((OB_SUCCESS == ret) && (start_key != end_key))
       {
-        range.table_id_ = table_id;
-        if (NULL == start_key.ptr())
-        {
-          range.border_flag_.set_min_value();
-        }
-        else
-        {
-          range.border_flag_.unset_min_value();
-          range.start_key_ = start_key;
-        }
-        range.border_flag_.unset_max_value();
-        range.end_key_ = end_key;
-        list.set_timestamp(tbsys::CTimeUtil::getTime());
-        // not deep copy the range
-        list.set_tablet_range(range);
-        list.sort(addr);
-        // double check add all range->locationlist to cache
-        if ((row_key <= range.end_key_) && (row_key > range.start_key_))
-        {
-          find_right_tablet = true;
-          location = list;
-          // deep copy range
-          assert(location.get_buffer() != NULL);
-          location.set_tablet_range(range);
-        }
-        else if (second_row)
-        {
-          range.hex_dump();
-          ret = OB_DATA_NOT_SERVE;
-          TBSYS_LOG(ERROR, "check range not include this key:ret[%d]", ret);
-        }
-        // add to list to cache
+        find_tablet_item(table_id, row_key, start_key, end_key, addr, range, find, list, location);
         if (OB_SUCCESS != cache->set(range, list))
         {
-          range.hex_dump();
-          TBSYS_LOG(WARN, "%s", "add the range to cache failed");
+          TBSYS_LOG(ERROR, "add the range[%s] to cache failed", to_cstring(range));
         }
       }
     }
@@ -386,15 +292,112 @@ int ObMergerRootRpcProxy::scan_root_table(ObMergerTabletLocationCache * cache,
       TBSYS_LOG(ERROR, "check get first row cell failed:ret[%d]", ret);
     }
   }
-
   if ((OB_SUCCESS == ret) && (0 == location.size()))
   {
-    TBSYS_LOG(ERROR, "check get location size failed:table_id[%ld], find[%d], count[%ld]",
-        table_id, find_right_tablet, location.size());
-    hex_dump(row_key.ptr(), row_key.length());
+    TBSYS_LOG(ERROR, "check get location size failed:table_id[%ld], rowkey[%s], count[%ld], find[%d]",
+        table_id, to_cstring(row_key), location.size(), find);
     ret = OB_INNER_STAT_ERROR;
   }
-  ms_get_counter_set().inc(ObMergerCounterIds::C_SCAN_ROOT_TABLE);
+  return ret;
+}
+
+void ObMergerRootRpcProxy::find_tablet_item(const uint64_t table_id, const ObRowkey & row_key,
+    const ObRowkey & start_key, const ObRowkey & end_key, const ObServer & addr, ObNewRange & range,
+    bool & find, ObTabletLocationList & list, ObTabletLocationList & location)
+{
+  range.table_id_ = table_id;
+  range.border_flag_.unset_inclusive_start();
+  range.border_flag_.set_inclusive_end();
+  range.start_key_ = start_key;
+  range.end_key_ = end_key;
+  list.set_timestamp(tbsys::CTimeUtil::getTime());
+  list.set_tablet_range(range);
+  list.sort(addr);
+  // double check add all range->locationlist to cache
+  if (!find && (row_key <= range.end_key_) && ((row_key > range.start_key_) || range.start_key_.is_min_row()))
+  {
+    location = list;
+    assert(location.get_buffer() != NULL);
+    location.set_tablet_range(range);
+    find = true;
+  }
+  if (range.start_key_ >= range.end_key_)
+  {
+    TBSYS_LOG(WARN, "check range invalid:start[%s], end[%s]",
+        to_cstring(range.start_key_), to_cstring(range.end_key_));
+  }
+  else
+  {
+    TBSYS_LOG(DEBUG, "got a tablet:%s, with location list:%ld", to_cstring(range), list.size());
+  }
+}
+
+int ObMergerRootRpcProxy::create_table(bool if_not_exists, const common::TableSchema & table_schema)
+{
+  int ret = OB_SUCCESS;
+  if (!check_inner_stat())
+  {
+    TBSYS_LOG(ERROR, "check inner stat failed");
+    ret = OB_INNER_STAT_ERROR;
+  }
+  else
+  {
+    ret = rpc_stub_->create_table(CREATE_DROP_TABLE_TIME_OUT, root_server_, if_not_exists, table_schema);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "failed to create table, err=%d", ret);
+    }
+    else
+    {
+      TBSYS_LOG(DEBUG, "create table succ, tid=%lu", table_schema.table_id_);
+    }
+  }
+  return ret;
+}
+
+int ObMergerRootRpcProxy::drop_table(bool if_exists, const common::ObStrings & tables)
+{
+  int ret = OB_SUCCESS;
+  if (!check_inner_stat())
+  {
+    TBSYS_LOG(ERROR, "check inner stat failed");
+    ret = OB_INNER_STAT_ERROR;
+  }
+  else
+  {
+    ret = rpc_stub_->drop_table(CREATE_DROP_TABLE_TIME_OUT, root_server_, if_exists, tables);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "failed to drop table, err=%d", ret);
+    }
+    else
+    {
+      TBSYS_LOG(DEBUG, "drop table succ, tables=%s", to_cstring(tables));
+    }
+  }
+  return ret;
+}
+
+int ObMergerRootRpcProxy::alter_table(const common::AlterTableSchema& alter_schema)
+{
+  int ret = OB_SUCCESS;
+  if (!check_inner_stat())
+  {
+    TBSYS_LOG(ERROR, "check inner stat failed");
+    ret = OB_INNER_STAT_ERROR;
+  }
+  else
+  {
+    ret = rpc_stub_->alter_table(CREATE_DROP_TABLE_TIME_OUT, root_server_, alter_schema);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "failed to alter table, err=%d", ret);
+    }
+    else
+    {
+      TBSYS_LOG(DEBUG, "alter table succ, table=%s", alter_schema.table_name_);
+    }
+  }
   return ret;
 }
 

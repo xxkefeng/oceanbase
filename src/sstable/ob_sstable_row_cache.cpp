@@ -13,6 +13,7 @@
  */
 #include <tblog.h>
 #include "ob_sstable_row_cache.h"
+#include "common/utility.h"
 
 namespace oceanbase
 {
@@ -54,6 +55,26 @@ namespace oceanbase
       return ret;
     }
 
+    int ObSSTableRowCache::enlarg_cache_size(const int64_t cache_mem_size)
+    {
+      int ret = OB_SUCCESS;
+
+      if (!inited_)
+      {
+        TBSYS_LOG(INFO, "not inited");
+        ret = OB_NOT_INIT;
+      }
+      else if (OB_SUCCESS != (ret = kv_cache_.enlarge_total_size(cache_mem_size)))
+      {
+        TBSYS_LOG(WARN, "enlarge total sstable row cache size of kv cache fail");
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "success enlarge sstable row cache size to %ld", cache_mem_size);
+      }
+
+      return ret;
+    }
 
     int ObSSTableRowCache::clear()
     {
@@ -78,11 +99,9 @@ namespace oceanbase
         TBSYS_LOG(WARN, "have not inited");
         ret = OB_NOT_INIT;
       }
-      else if (NULL == key.row_key_ || key.row_key_size_ <= 0)
+      else if (NULL == key.row_key_.get_obj_ptr() || key.row_key_size_ <= 0)
       {
-        TBSYS_LOG(WARN, "invalid sstable row cache get_row param, "
-                        "key_ptr=%p, key_len=%d", 
-                  key.row_key_, key.row_key_size_);
+        TBSYS_LOG(WARN, "invalid sstable row cache get_row param,key=%s", to_cstring(key.row_key_));
         ret = OB_INVALID_ARGUMENT;
       }
       else
@@ -92,7 +111,7 @@ namespace oceanbase
         {
           if (row_cache_val.size_ > 0)
           {
-            ret = row_buf.ensure_space(row_cache_val.size_, ObModIds::OB_SSTABLE_EGT_SCAN);
+            ret = row_buf.ensure_space(row_cache_val.size_, ObModIds::OB_SSTABLE_GET_SCAN);
             if (OB_SUCCESS != ret)
             {
               TBSYS_LOG(WARN, "can't allocate enough space to store the row data, "
@@ -129,10 +148,9 @@ namespace oceanbase
         TBSYS_LOG(WARN, "have not inited");
         ret = OB_NOT_INIT;
       }
-      else if (NULL == key.row_key_ || key.row_key_size_ <= 0)
+      else if (NULL == key.row_key_.get_obj_ptr() || key.row_key_size_ <= 0)
       {
-        TBSYS_LOG(WARN, "invalid sstable row cache key, ptr=%p, key_len=%d", 
-                  key.row_key_, key.row_key_size_);
+        TBSYS_LOG(WARN, "invalid sstable row cache key, key=%s", to_cstring(key.row_key_));
         ret = OB_INVALID_ARGUMENT;
       }
       else

@@ -2,6 +2,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <signal.h>
 #include "tbsys.h"
 #include "test_utils.h"
 #include "utils.h"
@@ -269,45 +270,34 @@ void run_total_scan(const int64_t sign, const int64_t num, const CmdLine &clp)
                   "-o", str_port,
                   "-s", str_prefix_start,
                   clp.check ? "-k" : "",
+                  "-m", "MAX",
                   NULL))
   {
     fprintf(stderr, "execl fail errno=%u\n", errno);
   }
 }
 
+void signal_handler_SIGTERM(int sn)
+{
+  UNUSED(sn);
+  if (0 != kill(0, SIGKILL))
+  {
+    fprintf(stderr, "send kill sig to process group failed!\n");
+  }
+}
 
 typedef void (*run_test_tp)(const int64_t, const int64_t, const CmdLine&);
 
-void run_mixed(const int64_t sign, const int64_t num, const CmdLine &clp)
-{
-  run_test_tp test_handlers[] = {run_write, run_random_mget, run_random_scan};
-  for(int64_t i = 0; i < (int64_t)ARRAYSIZEOF(test_handlers); i++)
-  {
-    pid_t ret = fork();
-    if (0 < ret)
-    {
-      fprintf(stderr, "launch child_process[%ld] success pid=%d\n", i, ret);
-      continue;
-    }
-    else if (0 == ret)
-    {
-      test_handlers[i](sign, num, clp);
-    }
-    else
-    {
-      fprintf(stderr, "launch child_process[%ld] errno=%u\n", i, errno);
-    }
-  }
-  exit(0);
-}
-
 int main(int argc, char **argv)
 {
+  signal(SIGABRT, signal_handler_SIGTERM);
+  signal(SIGTERM, signal_handler_SIGTERM);
+  signal(SIGINT, signal_handler_SIGTERM);
   CmdLine clp;
   parse_cmd_line(argc, argv, clp);
 
   int64_t n_test_handlers = 0;
-  run_test_tp test_list[] = {run_write, run_random_mget, run_random_scan};
+  run_test_tp test_list[] = {run_write, run_random_mget, run_random_scan, run_total_scan};
   if (0 == strcmp("mixed", clp.test_type))
   {
     n_test_handlers = 3;
@@ -342,8 +332,7 @@ int main(int argc, char **argv)
   int64_t sign = get_cur_sign(clp.sign);
   for (int64_t i = 0; i < clp.thread_num * n_test_handlers; i++)
   {
-    if (i == clp.thread_num)
-      usleep(1000*1000);
+    usleep(1000*1000);
     pid_t ret = fork();
     if (0 < ret)
     {

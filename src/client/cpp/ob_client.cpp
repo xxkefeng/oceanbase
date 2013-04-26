@@ -46,9 +46,6 @@ OB_ERR_CODE err_code_map(int err)
     case OB_NOT_MASTER:
       err_code = OB_ERR_NOT_MASTER;
       break;
-    case OB_MEM_OVERFLOW:
-      err_code = OB_ERR_MEM_NOT_ENOUGH;
-      break;
 //    case OB_USER_NOT_EXIST:
 //      err_code = OB_ERR_USER_NOT_EXIST;
 //      break;
@@ -966,15 +963,11 @@ void ObClient::release_req(OB_REQ* req, bool free_mem)
 
 OB_GET* ObClient::acquire_get_st()
 {
-  OB_GET* get_st = new (std::nothrow) OB_GET();
+  OB_GET* get_st = new (std::nothrow) OB_GET;
   if (NULL == get_st)
   {
     ob_set_errno(OB_ERR_MEM_NOT_ENOUGH);
     TBSYS_LOG(ERROR, "new OB_GET error, NOT ENOUGH MEMORY");
-  }
-  else
-  {
-    get_st->get_param.set_is_read_consistency(false);
   }
   return get_st;
 }
@@ -1090,7 +1083,6 @@ void ObClient::reset_get_st(OB_GET* ob_get)
   if (NULL != ob_get)
   {
     ob_get->get_param.reset();
-    ob_get->get_param.set_is_read_consistency(false);
   }
 }
 
@@ -1111,7 +1103,6 @@ void ObClient::reset_scan_st(OB_SCAN* ob_scan)
     }
     ObScanParam::ScanFlag scan_flag(ObScanParam::FORWARD, read_mode);
     ob_scan->scan_param.set_scan_flag(scan_flag);
-    ob_scan->scan_param.set_is_read_consistency(false);
   }
 }
 

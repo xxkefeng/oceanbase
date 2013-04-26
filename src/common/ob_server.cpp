@@ -1,18 +1,18 @@
 /*
  *   (C) 2007-2010 Taobao Inc.
- *   
+ *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License version 2 as
  *   published by the Free Software Foundation.
- *       
- *         
- *         
+ *
+ *
+ *
  *   Version: 0.1
- *           
+ *
  *   Authors:
  *      qushan <qushan@taobao.com>
  *        - some work details if you want
- *               
+ *
  */
 
 #include "ob_server.h"
@@ -20,10 +20,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include "utility.h"
 
-namespace oceanbase 
-{ 
-  namespace common 
+namespace oceanbase
+{
+  namespace common
   {
 
     // --------------------------------------------------------
@@ -33,10 +34,10 @@ namespace oceanbase
     {
       if (NULL == ip) return 0;
       uint32_t x = inet_addr(ip);
-      if (x == INADDR_NONE) 
+      if (x == INADDR_NONE)
       {
         struct hostent *hp = NULL;
-        if ((hp = gethostbyname(ip)) == NULL) 
+        if ((hp = gethostbyname(ip)) == NULL)
         {
           return 0;
         }
@@ -45,32 +46,32 @@ namespace oceanbase
       return x;
     }
 
-    bool ObServer::to_string(char* buffer, const int32_t size) const
+    int64_t ObServer::to_string(char* buffer, const int64_t size) const
     {
-      bool res = false;
+      int64_t pos = 0;
       if (NULL != buffer && size > 0)
       {
-        if (version_ == IPV4) 
+        // databuff_printf(buffer, size, pos, "version=%d ", version_);
+        if (version_ == IPV4)
         {
-          // ip.v4_ is network byte order 
+          // ip.v4_ is network byte order
           if (port_ > 0) {
-            snprintf(buffer, size, "%d.%d.%d.%d:%d", 
+            databuff_printf(buffer, size, pos, "%d.%d.%d.%d:%d",
                 (this->ip.v4_ & 0xFF),
                 (this->ip.v4_ >> 8) & 0xFF,
                 (this->ip.v4_ >> 16) & 0xFF,
                 (this->ip.v4_ >> 24) & 0xFF,
                 port_);
           } else {
-            snprintf(buffer, size, "%d.%d.%d.%d", 
+            databuff_printf(buffer, size, pos, "%d.%d.%d.%d",
                 (this->ip.v4_ & 0xFF),
                 (this->ip.v4_ >> 8) & 0xFF,
                 (this->ip.v4_ >> 16) & 0xFF,
                 (this->ip.v4_ >> 24) & 0xFF);
           }
         }
-        res = true;
       }
-      return res;
+      return pos;
     }
 
     bool ObServer::ip_to_string(char* buffer, const int32_t size) const
@@ -78,10 +79,10 @@ namespace oceanbase
       bool res = false;
       if (NULL != buffer && size > 0)
       {
-        if (version_ == IPV4) 
+        if (version_ == IPV4)
         {
-          // ip.v4_ is network byte order 
-          snprintf(buffer, size, "%d.%d.%d.%d", 
+          // ip.v4_ is network byte order
+          snprintf(buffer, size, "%d.%d.%d.%d",
               (this->ip.v4_ & 0xFF),
               (this->ip.v4_ >> 8) & 0xFF,
               (this->ip.v4_ >> 16) & 0xFF,
@@ -91,15 +92,18 @@ namespace oceanbase
       }
       return res;
     }
- 
+
     const char* ObServer::to_cstring() const
     {
-      static __thread char buff[OB_IP_STR_BUFF];
-      memset(buff, 0, OB_IP_STR_BUFF);
-      to_string(buff, OB_IP_STR_BUFF);
-      return buff;
+      static const int64_t BUFFER_NUM = 16;
+      static __thread char buff[BUFFER_NUM][OB_IP_STR_BUFF];
+      static __thread int64_t i = 0;
+      i++;
+      memset(buff[i % BUFFER_NUM], 0, OB_IP_STR_BUFF);
+      to_string(buff[i % BUFFER_NUM], OB_IP_STR_BUFF);
+      return buff[ i % BUFFER_NUM];
     }
-    
+
     bool ObServer::set_ipv4_addr(const char* ip, const int32_t port)
     {
       bool res = true;
@@ -122,8 +126,8 @@ namespace oceanbase
       this->port_ = port;
       return true;
     }
-    //this is only for test 
-    void ObServer::reset_ipv4_10(int ip) 
+    //this is only for test
+    void ObServer::reset_ipv4_10(int ip)
     {
       this->ip.v4_ = this->ip.v4_ & 0xFFFFFF00L;
       this->ip.v4_ += ip;
@@ -167,11 +171,11 @@ namespace oceanbase
             res = false;
           }
         }
-        else 
+        else
         {
           assert(false); //never reach this
         }
-        
+
       }
       */
       return (!(*this < rv)) && (!(rv < *this));
@@ -214,10 +218,31 @@ namespace oceanbase
     {
       return port_;
     }
-    int32_t ObServer::get_ipv4() const
+    uint32_t ObServer::get_ipv4() const
     {
       return ip.v4_;
     }
+    uint64_t ObServer::get_ipv6_high() const
+    {
+      const uint64_t *p = reinterpret_cast<const uint64_t*>(&ip.v6_[0]);
+      return *p;
+    }
+    uint64_t ObServer::get_ipv6_low() const
+    {
+      const uint64_t *p = reinterpret_cast<const uint64_t*>(&ip.v6_[2]);
+      return *p;
+    }
+
+    void ObServer::set_max()
+    {
+      ip.v4_ = UINT32_MAX;
+      port_ = UINT32_MAX;
+      for (int i=0; i<4; i++)
+      {
+        ip.v6_[i] = UINT32_MAX;
+      }
+    }
+
     void ObServer::set_port(int32_t port)
     {
       port_ = port;

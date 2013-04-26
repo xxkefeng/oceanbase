@@ -71,9 +71,12 @@ int ObDoubleChildrenPhyOperator::open()
     ret = OB_NOT_INIT;
     TBSYS_LOG(ERROR, "child(ren) operator(s) is/are NULL");
   }
-  else if (OB_SUCCESS != (ret = left_op_->open()) || OB_SUCCESS != (ret = right_op_->open()))
+  else
   {
-    TBSYS_LOG(WARN, "failed to open child(ren) operator(s), err=%d", ret);
+    if (OB_SUCCESS != (ret = left_op_->open()) || OB_SUCCESS != (ret = right_op_->open()))
+    {
+      TBSYS_LOG(WARN, "failed to open child(ren) operator(s), err=%d", ret);
+    }
   }
   return ret;
 }
@@ -91,4 +94,21 @@ int ObDoubleChildrenPhyOperator::close()
   return ret;
 }
 
+int32_t ObDoubleChildrenPhyOperator::get_child_num() const
+{
+  return 2;
+}
 
+ObPhyOperator *ObDoubleChildrenPhyOperator::get_child(int32_t child_idx) const
+{
+  ObPhyOperator *ret = NULL;
+  if (0 == child_idx)
+  {
+    ret = left_op_;
+  }
+  else if (1 == child_idx)
+  {
+    ret = right_op_;
+  }
+  return ret;
+}

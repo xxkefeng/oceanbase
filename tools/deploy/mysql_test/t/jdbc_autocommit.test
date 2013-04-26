@@ -1,0 +1,135 @@
+--disable_abort_on_error
+--echo case 1: commit
+connect (conn1,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
+connection conn1;
+show variables like 'autocommit';
+drop table if exists t1;
+create table t1 (c1 int primary key, c2 int);
+set autocommit=0;
+insert into t1 values (1, 2);
+select * from t1 where c1 = 1 for update;
+commit;
+set autocommit=1;
+select * from t1;
+disconnect conn1;
+
+--echo case 2: commit is ignored if ac=1
+connect (conn1,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
+connection conn1;
+show variables like 'autocommit';
+drop table if exists t1;
+create table t1 (c1 int primary key, c2 int);
+set autocommit=1;
+insert into t1 values (1, 2);
+select * from t1 where c1 = 1  for update;
+rollback;
+select * from t1;
+disconnect conn1;
+
+
+--echo case 3: automatic commit before set from 0 to 1
+connect (conn1,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
+connection conn1;
+show variables like 'autocommit';
+drop table if exists t1;
+create table t1 (c1 int primary key, c2 int);
+set autocommit=0;
+insert into t1 values (1, 2);
+select * from t1 where c1 = 1 for update;
+set autocommit=1;
+select * from t1;
+disconnect conn1;
+
+
+--echo case 4: rollback is ignored if ac=1
+connect (conn1,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
+connection conn1;
+show variables like 'autocommit';
+drop table if exists t1;
+create table t1 (c1 int primary key, c2 int);
+set autocommit=1;
+insert into t1 values (1, 2);
+select * from t1 where c1 = 1  for update;
+commit;
+select * from t1;
+disconnect conn1;
+
+--echo case 5: rollback
+connect (conn1,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
+connection conn1;
+show variables like 'autocommit';
+drop table if exists t1;
+create table t1 (c1 int primary key, c2 int);
+set autocommit=0;
+insert into t1 values (1, 2);
+select * from t1 where c1 = 1  for update;
+rollback;
+set autocommit=1;
+select * from t1;
+disconnect conn1;
+
+--echo case 5: continue commit/rollback
+connect (conn1,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
+connection conn1;
+show variables like 'autocommit';
+drop table if exists t1;
+create table t1 (c1 int primary key, c2 int);
+set autocommit=0;
+insert into t1 values (1, 1);
+select * from t1 where c1 = 1 for update;
+commit;
+insert into t1 values (2, 2);
+select * from t1 where c1 = 2  for update;
+commit;
+insert into t1 values (3, 3);
+select * from t1 where c1 = 3  for update;
+rollback;
+insert into t1 values (4, 4);
+select * from t1 where c1 = 4  for update;
+commit;
+insert into t1 values (5, 5);
+--error 5024
+insert into t1 values (4, 4);
+rollback;
+set autocommit=1;
+select * from t1;
+disconnect conn1;
+
+--echo case 6: fail first, and then success
+connect (conn1,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
+connection conn1;
+show variables like 'autocommit';
+drop table if exists t1;
+create table t1 (c1 int primary key, c2 int);
+set autocommit=0;
+insert into t1 values (1, 1);
+select * from t1 where c1 = 1 for update;
+rollback;
+insert into t1 values (1, 1);
+select * from t1 where c1 = 1 for update;
+commit;
+set autocommit=1;
+select * from t1;
+disconnect conn1;
+
+--echo case 7: no stmt success in trx
+connect (conn1,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
+connection conn1;
+show variables like 'autocommit';
+drop table if exists t1;
+create table t1 (c1 int primary key, c2 int);
+set autocommit=0;
+insert into t1 values (1, 1);
+commit;
+--error 5024
+insert into t1 values (1, 1);
+rollback;
+set autocommit=1;
+select * from t1;
+disconnect conn1;
+
+
+
+
+
+

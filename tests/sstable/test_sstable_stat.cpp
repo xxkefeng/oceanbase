@@ -12,8 +12,8 @@
  *
  */
 #include "common/ob_define.h"
-#include "sstable/ob_sstable_stat.h"
-
+#include "common/ob_common_stat.h"
+using namespace oceanbase::common;
 #ifndef NO_STAT
 namespace oceanbase
 {

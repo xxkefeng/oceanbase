@@ -17,12 +17,11 @@
 #ifndef __OCEANBASE_UTIL_H__
 #define __OCEANBASE_UTIL_H__
 #include "common/ob_define.h"
-#include "tbnet.h"
+#include "easy/easy_io.h"
 #include "tbsys.h"
 
 using namespace oceanbase::common;
 using namespace tbsys;
-using namespace tbnet;
 
 enum BigqueryTestError
 {
@@ -31,6 +30,12 @@ enum BigqueryTestError
   BIGQUERY_UPDATE_TIMEOUT,
   BIGQUERY_NOT_EXIST,
   READ_WRITE_CONFLICT, // read write conflict error
+};
+
+struct ServerAddr
+{
+  char host[128];
+  int port;
 };
 
 class Array

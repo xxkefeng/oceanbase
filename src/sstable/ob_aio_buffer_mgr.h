@@ -388,6 +388,11 @@ namespace oceanbase
         return aio_stat_;
       }
 
+      inline bool is_copy2cache() const
+      {
+        return copy2cache_;
+      }
+
     private:
       inline bool can_fit_aio_buffer(const int64_t size)
       {

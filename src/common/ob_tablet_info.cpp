@@ -9,7 +9,9 @@
  *        - some work details if you want
  *               
  */
+#include <algorithm>
 #include "tbsys.h"
+#include "utility.h"
 #include "ob_tablet_info.h"
 
 namespace oceanbase 
@@ -23,11 +25,8 @@ namespace oceanbase
 
     void ObTabletLocation::dump(const ObTabletLocation & location)
     {
-      const int32_t MAX_SERVER_ADDR_SIZE = 128;
-      char server_addr[MAX_SERVER_ADDR_SIZE];
-      location.chunkserver_.to_string(server_addr, MAX_SERVER_ADDR_SIZE);
       TBSYS_LOG(INFO,"tablet_version :%ld, tablet_seq: %ld, location:%s\n", 
-          location.tablet_version_, location.tablet_seq_, server_addr);
+          location.tablet_version_, location.tablet_seq_, to_cstring(location.chunkserver_));
     }
 
     DEFINE_SERIALIZE(ObTabletLocation)
@@ -94,14 +93,21 @@ namespace oceanbase
       int ret = OB_ERROR;
       ret = serialization::decode_vi64(buf, data_len, pos, &row_count_);
 
-      if (ret == OB_SUCCESS)
+      if (OB_SUCCESS == ret)
         ret = serialization::decode_vi64(buf, data_len, pos, &occupy_size_);
 
-      if (ret == OB_SUCCESS)
+      if (OB_SUCCESS == ret)
         ret = serialization::decode_vi64(buf, data_len, pos, reinterpret_cast<int64_t *>(&crc_sum_));
 
-      if (ret == OB_SUCCESS)
+      if (OB_SUCCESS == ret)
+      {
         ret = range_.deserialize(buf, data_len, pos);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to deserialize range, ret=%d, buf=%p, data_len=%ld, pos=%ld",
+              ret, buf, data_len, pos);
+        }
+      }
 
       return ret;
     }
@@ -118,6 +124,7 @@ namespace oceanbase
       return total_size;
     }
 
+    /*
     int ObTabletInfo::deep_copy(CharArena &allocator, const ObTabletInfo &other, bool new_start_key, bool new_end_key)
     {
       int ret = OB_SUCCESS;
@@ -170,6 +177,7 @@ namespace oceanbase
       }
       return ret;
     }
+    */
     
     // ObTabletReportInfo
     DEFINE_SERIALIZE(ObTabletReportInfo)
@@ -231,6 +239,7 @@ namespace oceanbase
     DEFINE_DESERIALIZE(ObTabletReportInfoList)
     {
       int ret = OB_ERROR;
+      ObObj* ptr = NULL;
 
       int64_t size = 0;
       ret = serialization::decode_vi64(buf, data_len, pos, &size);
@@ -240,7 +249,17 @@ namespace oceanbase
         for (int64_t i=0; i<size; ++i)
         {
           ObTabletReportInfo tablet;
-          ret = tablet.deserialize(buf, data_len, pos);
+          ptr = reinterpret_cast<ObObj*>(allocator_.alloc(sizeof(ObObj) * OB_MAX_ROWKEY_COLUMN_NUMBER * 2));
+          if (NULL == ptr) 
+          {
+            ret = OB_ALLOCATE_MEMORY_FAILED;
+          }
+          else
+          {
+            tablet.tablet_info_.range_.start_key_.assign(ptr, OB_MAX_ROWKEY_COLUMN_NUMBER);
+            tablet.tablet_info_.range_.end_key_.assign(ptr + OB_MAX_ROWKEY_COLUMN_NUMBER, OB_MAX_ROWKEY_COLUMN_NUMBER);
+            ret = tablet.deserialize(buf, data_len, pos);
+          }
           if (ret != OB_SUCCESS)
             break;
 
@@ -347,6 +366,109 @@ namespace oceanbase
       }
 
       return total_size;
+    }
+
+    // ObTableImportInfoList
+    DEFINE_SERIALIZE(ObTableImportInfoList)
+    {
+      int ret = OB_ERROR;
+      
+      int64_t size = table_list_.get_array_index();
+      ret = serialization::encode_vi64(buf, buf_len, pos, size);
+
+      if (ret == OB_SUCCESS)
+      {
+        for (int64_t i=0; i<size; ++i)
+        {
+          ret = serialization::encode_vi64(buf, buf_len, pos, 
+            static_cast<int64_t>(tables_[i]));
+          if (ret != OB_SUCCESS)
+            break;
+        }
+      }
+
+      if (OB_SUCCESS == ret
+          && OB_SUCCESS == (ret = serialization::encode_vi64(buf, buf_len, pos, tablet_version_))
+          && OB_SUCCESS == (ret = serialization::encode_bool(buf, buf_len, pos, import_all_))
+          && OB_SUCCESS == (ret = serialization::encode_bool(buf, buf_len, pos, response_rootserver_)))
+      {
+        //do nothing
+      }
+
+      return ret;
+    }
+
+    DEFINE_DESERIALIZE(ObTableImportInfoList)
+    {
+      int ret = OB_ERROR;
+      uint64_t table_id = OB_INVALID_ID; 
+      int64_t size = 0;
+      reset();
+      ret = serialization::decode_vi64(buf, data_len, pos, &size);
+
+      if (ret == OB_SUCCESS && size > 0)
+      {
+        for (int64_t i=0; i<size; ++i)
+        {
+          ret = serialization::decode_vi64(buf, data_len, pos, 
+            reinterpret_cast<int64_t*>(&table_id));
+          if (ret != OB_SUCCESS)
+            break;
+
+          table_list_.push_back(table_id);
+        }
+      }
+
+      if (OB_SUCCESS == ret
+          && OB_SUCCESS == (ret = serialization::decode_vi64(buf, data_len, pos, &tablet_version_))
+          && OB_SUCCESS == (ret = serialization::decode_bool(buf, data_len, pos, &import_all_))
+          && OB_SUCCESS == (ret = serialization::decode_bool(buf, data_len, pos, &response_rootserver_)))
+      {
+        sort();        
+      }
+
+      return ret;
+    }
+
+    DEFINE_GET_SERIALIZE_SIZE(ObTableImportInfoList)
+    {
+      int64_t total_size = 0;
+      
+      int64_t size = table_list_.get_array_index();
+      total_size += serialization::encoded_length_vi64(size);
+
+      if (size > 0)
+      {
+        for (int64_t i=0; i<size; ++i)
+        {
+          total_size += serialization::encoded_length_vi64(tables_[i]);
+        }
+      }
+      total_size += serialization::encoded_length_vi64(tablet_version_);
+      total_size += serialization::encoded_length_bool(import_all_);
+      total_size += serialization::encoded_length_bool(response_rootserver_);
+
+      return total_size;
+    }
+
+    int64_t ObTableImportInfoList::to_string(char* buffer, const int64_t length) const
+    {
+      int64_t pos = 0;
+      int64_t size = table_list_.get_array_index();
+
+      databuff_printf(buffer, length, pos, "table_count=%ld, table_ids=", size);
+      if (size > 0)
+      {
+        for (int64_t i=0; i<size; ++i)
+        {
+          databuff_printf(buffer, length, pos, "%lu,", tables_[i]);
+        }
+      }
+
+      databuff_printf(buffer, length, pos, "import_all=%d, ", import_all_);
+      databuff_printf(buffer, length, pos, "response_rootserver=%d", response_rootserver_);
+
+      return pos;
     }
 
   } // end namespace common

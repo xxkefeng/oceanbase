@@ -13,8 +13,10 @@ start()
     type=$1
     conf=$2
     if [ "$type" == all ]; then
-        pgrep -f ^$base_dir/bigquery >/dev/null || $base_dir/bigquery -f $conf
-    else
+      if ! pgrep -f ^$base_dir/bigquery >/dev/null; then
+        nohup $base_dir/bigquery -f $conf >/dev/null 2>&1 &
+      fi
+      else
         echo "operation[$type] not support!"
         return -1
     fi
@@ -34,9 +36,9 @@ check()
 
 check_correct()
 {
-    if grep ERROR log/*.log>/dev/null; then
+    if grep ERROR *.log>/dev/null; then
         echo "ERROR on $(hostname)"
-        grep ERROR log/*.log|tail -3
+        grep ERROR *.log|tail -3
         return 0
     else
         return 0

@@ -1,11 +1,11 @@
 /**
  * (C) 2010-2011 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or 
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * ob_ms_sub_get_request.cpp for 
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * ob_ms_sub_get_request.cpp for
  *
  * Authors:
  *   wushi <wushi.ly@taobao.com>
@@ -13,6 +13,7 @@
  */
 
 #include "ob_ms_sub_get_request.h"
+#include "common/utility.h"
 #include <algorithm>
 using namespace std;
 using namespace oceanbase;
@@ -20,6 +21,7 @@ using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 
 ObMergerSubGetRequest::ObMergerSubGetRequest()
+  : rowkey_buf_(ObModIds::OB_MS_GET_EVENT)
 {
   reset();
 }
@@ -28,8 +30,9 @@ void ObMergerSubGetRequest::init(PageArena<int64_t, oceanbase::common::ModulePag
 {
   cell_idx_in_org_param_.set_allocator(mem_allocator);
   res_vec_.set_allocator(mem_allocator);
+  rowkey_buf_.clear();
+  last_rowkey_.assign(NULL, 0);
 }
-
 
 void ObMergerSubGetRequest::reset()
 {
@@ -43,6 +46,8 @@ void ObMergerSubGetRequest::reset()
   retry_times_ = 0;
   fail_svr_ip_ = 0;
   cur_get_param_.reset();
+  rowkey_buf_.reset();
+  last_rowkey_.assign(NULL, 0);
 }
 
 void ObMergerSubGetRequest::set_param(ObGetParam & get_param)
@@ -62,7 +67,8 @@ int ObMergerSubGetRequest::add_cell(const int64_t cell_idx)
   }
   if ((OB_SUCCESS == err) && ((cell_idx < 0) || (cell_idx >= pget_param_->get_cell_size())))
   {
-    TBSYS_LOG(WARN,"cell_idx out of range [cell_idx:%ld,pget_param_->get_cell_size():%ld]", cell_idx, pget_param_->get_cell_size());
+    TBSYS_LOG(WARN,"cell_idx out of range [cell_idx:%ld,pget_param_->get_cell_size():%ld]",
+      cell_idx, pget_param_->get_cell_size());
     err = OB_INVALID_ARGUMENT;
   }
 
@@ -113,7 +119,7 @@ int ObMergerSubGetRequest::get_next_param_(ObGetParam & get_param)const
   }
   for (int64_t cell_idx = received_cell_count_; (OB_SUCCESS == err) && (cell_idx < cell_idx_in_org_param_.size()); cell_idx ++)
   {
-    if ((OB_SUCCESS != (err = get_param.add_cell(*pget_param_->operator [](cell_idx_in_org_param_[static_cast<int32_t>(cell_idx)])))) 
+    if ((OB_SUCCESS != (err = get_param.add_cell(*pget_param_->operator [](cell_idx_in_org_param_[static_cast<int32_t>(cell_idx)]))))
       && (OB_SIZE_OVERFLOW != err))
     {
       TBSYS_LOG(WARN,"fail to add cell to ObGetParam [err:%d]", err);
@@ -171,7 +177,7 @@ int ObMergerSubGetRequest::has_next()
     {
       TBSYS_LOG(WARN,"fail to call next_cell [err:%d]", err);
     }
-  } 
+  }
   if ((OB_SUCCESS == err) && (res_iterator_idx_ >= res_vec_.size()))
   {
     err = OB_ITER_END;
@@ -186,6 +192,7 @@ int ObMergerSubGetRequest::has_next()
 int  ObMergerSubGetRequest::next(oceanbase::common::ObInnerCellInfo *&cell, int64_t & org_cell_idx)
 {
   int err = OB_SUCCESS;
+  bool is_row_changed = false;
   if (NULL == pget_param_)
   {
     TBSYS_LOG(WARN,"set ObGetParam first [pget_param_:%p]", pget_param_);
@@ -193,13 +200,33 @@ int  ObMergerSubGetRequest::next(oceanbase::common::ObInnerCellInfo *&cell, int6
   }
   if ((OB_SUCCESS == err) && (res_iterator_idx_ < res_vec_.size()))
   {
-    if (OB_SUCCESS != (err = reinterpret_cast<ObScanner*>(res_vec_[static_cast<int32_t>(res_iterator_idx_)])->get_cell(&cell, NULL)))
+    if (OB_SUCCESS != (err = reinterpret_cast<ObScanner*>(res_vec_[static_cast<int32_t>(res_iterator_idx_)])->get_cell(&cell, &is_row_changed)))
     {
       TBSYS_LOG(WARN,"fail to get cell from ObScanner [err:%d,res_iterator_idx_:%ld]", err, res_iterator_idx_);
     }
+
+    if (OB_SUCCESS == err && NULL != cell)
+    {
+      if (is_row_changed)
+      {
+        // deep copy current rowkey;
+        err = rowkey_buf_.write_string(cell->row_key_, &last_rowkey_);
+      }
+
+      if (OB_SUCCESS == err)
+      {
+        cell->row_key_ = last_rowkey_;
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "cannot copy rowkey(%s) to string buffer.", to_cstring(cell->row_key_));
+      }
+
+    }
+
     if ((OB_SUCCESS == err) && (poped_cell_count_ > cell_idx_in_org_param_.size()))
     {
-      TBSYS_LOG(ERROR, "not all cells poped, but all indexes are poped [poped_cell_count_:%ld,res_iterator_idx_:%ld]", 
+      TBSYS_LOG(ERROR, "not all cells poped, but all indexes are poped [poped_cell_count_:%ld,res_iterator_idx_:%ld]",
         poped_cell_count_, res_iterator_idx_);
       err = OB_ERR_UNEXPECTED;
     }
@@ -215,22 +242,19 @@ int  ObMergerSubGetRequest::next(oceanbase::common::ObInnerCellInfo *&cell, int6
       || ((*pget_param_)[org_cell_idx]->row_key_ != cell->row_key_)
       )
     {
-      TBSYS_LOG(ERROR, "result not correct [param->table_id_:%lu, param->column_id_:%lu, param->row_key_:%.*s,"
-        "result->table_id_:%lu, result->column_id_:%lu, result->row_key_:%.*s]", 
+      TBSYS_LOG(ERROR, "result not correct [param->table_id_:%lu, param->column_id_:%lu, param->row_key_:%s,"
+        "result->table_id_:%lu, result->column_id_:%lu, result->row_key_:%s]",
         (*pget_param_)[org_cell_idx]->table_id_,
         (*pget_param_)[org_cell_idx]->column_id_,
-        (*pget_param_)[org_cell_idx]->row_key_.length(), (*pget_param_)[org_cell_idx]->row_key_.ptr(),
-        cell->table_id_,
-        cell->column_id_,
-        cell->row_key_.length(), cell->row_key_.ptr()
-        );
+        to_cstring((*pget_param_)[org_cell_idx]->row_key_),
+        cell->table_id_, cell->column_id_, to_cstring(cell->row_key_));
       err = OB_ERR_UNEXPECTED;
     }
   }
   return err;
 }
 
-int ObGetMerger::init(ObMergerSubGetRequest * results, const int64_t res_count, 
+int ObGetMerger::init(ObMergerSubGetRequest * results, const int64_t res_count,
   const ObGetParam & get_param)
 {
   int err = OB_SUCCESS;
@@ -299,7 +323,7 @@ int ObGetMerger::next_cell()
     cur_cell_ = *info_heap_[0].cur_cell_;
     if (cur_cell_idx_ != info_heap_[0].org_cell_idx_)
     {
-      TBSYS_LOG(ERROR, "unexpected error [cur_cell_idx_:%ld,got_cell_idx:%ld,res_idx:%ld]", 
+      TBSYS_LOG(ERROR, "unexpected error [cur_cell_idx_:%ld,got_cell_idx:%ld,res_idx:%ld]",
         cur_cell_idx_, info_heap_[0].org_cell_idx_, info_heap_[0].res_idx_);
       err = OB_ERR_UNEXPECTED;
     }
@@ -354,8 +378,8 @@ int ObGetMerger::get_cell(ObInnerCellInfo** cell, bool* is_row_changed)
     *cell = &cur_cell_;
     if (NULL != is_row_changed)
     {
-      *is_row_changed = ((cur_cell_idx_ == 1) 
-        || ((*get_param_)[cur_cell_idx_ - 1]->table_id_ != (*get_param_)[cur_cell_idx_ - 2]->table_id_) 
+      *is_row_changed = ((cur_cell_idx_ == 1)
+        || ((*get_param_)[cur_cell_idx_ - 1]->table_id_ != (*get_param_)[cur_cell_idx_ - 2]->table_id_)
         || ((*get_param_)[cur_cell_idx_ - 1]->row_key_ != (*get_param_)[cur_cell_idx_ - 2]->row_key_));
     }
   }

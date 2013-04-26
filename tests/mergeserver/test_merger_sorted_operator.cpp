@@ -35,35 +35,37 @@
 #include "mergeserver/ob_read_param_decoder.h"
 #include "mergeserver/ob_ms_scan_param.h"
 #include "mergeserver/ob_merger_sorted_operator.h"
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace testing;
-using namespace std;   
+using namespace std;
+static CharArena allocator_;
 
 TEST(ObSortedOperator, forward)
 {
   const int32_t sharding_count = 5;
   const int32_t cell_count_each_sharding = 2;
   ObScanner *sharding_res_arr = new ObScanner[sharding_count];
-  ObRange   *q_range_arr = new ObRange[sharding_count];
+  ObNewRange   *q_range_arr = new ObNewRange[sharding_count];
   ObStringBuf buf;
   char row_key_buf[32];
   int32_t row_key_len = 0;
-  ObString str;
-  ObString row_key;
+  ObRowkey str;
+  ObRowkey row_key;
   ObCellInfo cell;
   cell.table_id_ = 1;
   cell.column_id_ = 1;
   ObScanParam scan_param;
   EXPECT_EQ(scan_param.add_column(1),OB_SUCCESS);
   row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",0);
-  str.assign(row_key_buf,row_key_len);
+  str = make_rowkey(row_key_buf,row_key_len, &allocator_);
   EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
-  ObRange q_range;
+  ObNewRange q_range;
   q_range.start_key_ = row_key;
   q_range.border_flag_.set_inclusive_start();
-  q_range.border_flag_.set_max_value();
+  q_range.end_key_.set_max_row();
   ObScanParam param;
   ObString table_name;
   EXPECT_EQ(param.set(1,table_name, q_range), OB_SUCCESS);
@@ -82,7 +84,7 @@ TEST(ObSortedOperator, forward)
     {
       row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",0);
     }
-    str.assign(row_key_buf,row_key_len);
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
     EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
     q_range_arr[sharding_idx].start_key_ = row_key;
     if (i > 1)
@@ -97,23 +99,23 @@ TEST(ObSortedOperator, forward)
 
     /// first cell
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",i - 1);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS); 
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
     cell.row_key_ = row_key;
-    cell.value_.set_int(i - 1); 
+    cell.value_.set_int(i - 1);
     EXPECT_EQ(sharding_res_arr[sharding_idx].add_cell(cell), OB_SUCCESS);
 
     /// second cell
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",i);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS); 
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
     cell.row_key_ = row_key;
-    cell.value_.set_int(i - 1); 
+    cell.value_.set_int(i - 1);
     EXPECT_EQ(sharding_res_arr[sharding_idx].add_cell(cell), OB_SUCCESS);
 
     bool is_finish = true;
     EXPECT_EQ(s_operator.add_sharding_result(sharding_res_arr[sharding_idx], q_range_arr[sharding_idx],is_finish),false);
-    if (i == 1)
+    if (sharding_idx == 0)
     {
       EXPECT_TRUE(is_finish);
     }
@@ -130,7 +132,7 @@ TEST(ObSortedOperator, forward)
   {
     EXPECT_EQ(s_operator.get_cell(&cur_cell),OB_SUCCESS);
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",beg);
-    str.assign(row_key_buf,row_key_len);
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
     EXPECT_TRUE(cur_cell->row_key_ == str);
     beg ++;
   }
@@ -145,24 +147,24 @@ TEST(ObSortedOperator, backword)
   const int32_t sharding_count = 5;
   const int32_t cell_count_each_sharding = 2;
   ObScanner *sharding_res_arr = new ObScanner[sharding_count];
-  ObRange   *q_range_arr = new ObRange[sharding_count];
+  ObNewRange   *q_range_arr = new ObNewRange[sharding_count];
   ObStringBuf buf;
   char row_key_buf[32];
   int32_t row_key_len = 0;
-  ObString str;
-  ObString row_key;
+  ObRowkey str;
+  ObRowkey row_key;
   ObCellInfo cell;
   cell.table_id_ = 1;
   cell.column_id_ = 1;
   ObScanParam scan_param;
   EXPECT_EQ(scan_param.add_column(1),OB_SUCCESS);
   row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",9);
-  str.assign(row_key_buf,row_key_len);
+  str = make_rowkey(row_key_buf,row_key_len, &allocator_);
   EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
-  ObRange q_range;
+  ObNewRange q_range;
   q_range.end_key_ = row_key;
   q_range.border_flag_.set_inclusive_end();
-  q_range.border_flag_.set_min_value();
+  q_range.start_key_.set_min_row();
   ObScanParam param;
   ObString table_name;
   EXPECT_EQ(param.set(1,table_name, q_range), OB_SUCCESS);
@@ -183,7 +185,7 @@ TEST(ObSortedOperator, backword)
     {
       row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",sharding_count * cell_count_each_sharding - 1);
     }
-    str.assign(row_key_buf,row_key_len);
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
     EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
     q_range_arr[sharding_idx].end_key_ = row_key;
     if (i < sharding_count * cell_count_each_sharding - 2)
@@ -199,18 +201,18 @@ TEST(ObSortedOperator, backword)
 
     /// first cell
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",i + 1);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS); 
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
     cell.row_key_ = row_key;
-    cell.value_.set_int(i - 1); 
+    cell.value_.set_int(i - 1);
     EXPECT_EQ(sharding_res_arr[sharding_idx].add_cell(cell), OB_SUCCESS);
 
     /// second cell
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",i);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS); 
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
     cell.row_key_ = row_key;
-    cell.value_.set_int(i - 1); 
+    cell.value_.set_int(i - 1);
     EXPECT_EQ(sharding_res_arr[sharding_idx].add_cell(cell), OB_SUCCESS);
 
     bool is_finish = true;
@@ -226,7 +228,7 @@ TEST(ObSortedOperator, backword)
   {
     EXPECT_EQ(s_operator.get_cell(&cur_cell),OB_SUCCESS);
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",beg);
-    str.assign(row_key_buf,row_key_len);
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
     EXPECT_TRUE(cur_cell->row_key_ == str);
     beg --;
   }
@@ -241,24 +243,24 @@ TEST(ObSortedOperator, forward_limit)
   const int32_t sharding_count = 5;
   const int32_t cell_count_each_sharding = 2;
   ObScanner *sharding_res_arr = new ObScanner[sharding_count];
-  ObRange   *q_range_arr = new ObRange[sharding_count];
+  ObNewRange   *q_range_arr = new ObNewRange[sharding_count];
   ObStringBuf buf;
   char row_key_buf[32];
   int32_t row_key_len = 0;
-  ObString str;
-  ObString row_key;
+  ObRowkey str;
+  ObRowkey row_key;
   ObCellInfo cell;
   cell.table_id_ = 1;
   cell.column_id_ = 1;
   ObScanParam scan_param;
   EXPECT_EQ(scan_param.add_column(1),OB_SUCCESS);
   row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",0);
-  str.assign(row_key_buf,row_key_len);
+  str = make_rowkey(row_key_buf,row_key_len, &allocator_);
   EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
-  ObRange q_range;
+  ObNewRange q_range;
   q_range.start_key_ = row_key;
   q_range.border_flag_.set_inclusive_start();
-  q_range.border_flag_.set_max_value();
+  q_range.end_key_.set_max_row();
   ObScanParam param;
   ObString table_name;
   EXPECT_EQ(param.set(1,table_name, q_range), OB_SUCCESS);
@@ -278,7 +280,7 @@ TEST(ObSortedOperator, forward_limit)
     {
       row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",0);
     }
-    str.assign(row_key_buf,row_key_len);
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
     EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
     q_range_arr[sharding_idx].start_key_ = row_key;
     if (i > 0)
@@ -293,18 +295,18 @@ TEST(ObSortedOperator, forward_limit)
 
     /// first cell
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",i);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS); 
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
     cell.row_key_ = row_key;
-    cell.value_.set_int(i - 1); 
+    cell.value_.set_int(i - 1);
     EXPECT_EQ(sharding_res_arr[sharding_idx].add_cell(cell), OB_SUCCESS);
 
     /// second cell
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",i + 1);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS); 
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
     cell.row_key_ = row_key;
-    cell.value_.set_int(i - 1); 
+    cell.value_.set_int(i - 1);
     EXPECT_EQ(sharding_res_arr[sharding_idx].add_cell(cell), OB_SUCCESS);
 
     EXPECT_EQ(sharding_res_arr[sharding_idx].set_is_req_fullfilled(false,2), OB_SUCCESS);
@@ -327,7 +329,7 @@ TEST(ObSortedOperator, forward_limit)
   {
     EXPECT_EQ(s_operator.get_cell(&cur_cell),OB_SUCCESS);
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",beg);
-    str.assign(row_key_buf,row_key_len);
+    str = make_rowkey(row_key_buf,row_key_len, &allocator_);
     EXPECT_TRUE(cur_cell->row_key_ == str);
     beg ++;
   }
@@ -336,6 +338,7 @@ TEST(ObSortedOperator, forward_limit)
   delete [] sharding_res_arr;
   delete [] q_range_arr;
 }
+
 int main(int argc, char **argv)
 {
   srandom(static_cast<uint32_t>(time(NULL)));

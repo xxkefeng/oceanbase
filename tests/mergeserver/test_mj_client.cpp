@@ -24,7 +24,8 @@
 #include "common/ob_scanner.h"
 #include "common/ob_read_common_data.h"
 #include "common/ob_string.h"
-#include "common/ob_malloc.h" 
+#include "common/ob_malloc.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase;
@@ -33,6 +34,7 @@ const int64_t TIMEOUT =  50000000L;
 static const int64_t MAX_ROW_KEY = 1024ll*1024ll*16ll-1ll;
 static const uint64_t MAX_COLUMN_ID = 255;
 static const int64_t delete_row_interval = 10;
+static CharArena allocator_;
 
 int64_t get_cur_time_us()
 {
@@ -168,8 +170,10 @@ int check_schema(CParam &param)
     const ObColumnSchemaV2 *column_begin = param.schema_mgr_->get_table_schema(param.left_table_id_, column_count);
     const ObColumnSchemaV2 *column_end  = column_begin + column_count;
     const ObColumnSchemaV2::ObJoinInfo           *join_info = NULL;
+    /*
     int32_t start_pos = -1;
     int32_t end_pos = -1;
+    */
     for (;column_begin < column_end && OB_SUCCESS == err; column_begin++)
     {
       join_info = column_begin->get_join_info();
@@ -177,13 +181,14 @@ int check_schema(CParam &param)
       {
         if (join_info->join_table_ != right_schema->get_table_id())
         {
-          TBSYS_LOG(WARN,"join info not correct [left.column_id:%s,right.table_id:%lu,real_right.table_id:%lu]", 
-            column_begin->get_name(),join_info->join_table_, 
+          TBSYS_LOG(WARN,"join info not correct [left.column_id:%s,right.table_id:%lu,real_right.table_id:%lu]",
+            column_begin->get_name(),join_info->join_table_,
             right_schema->get_table_id());
           err = OB_INVALID_ARGUMENT;
         }
         if (OB_SUCCESS == err)
         {
+          /*
           start_pos = join_info->start_pos_;
           end_pos = join_info->end_pos_;
           if (start_pos != static_cast<int32_t>(sizeof(rowkey_t))
@@ -193,6 +198,7 @@ int check_schema(CParam &param)
               start_pos,end_pos, sizeof(rowkey_t), sizeof(left_rowkey_t) - 1);
             err = OB_INVALID_ARGUMENT;
           }
+          */
         }
         if (OB_SUCCESS == err)
         {
@@ -340,7 +346,7 @@ int parse_cmd_args(int argc, char **argv, CParam & param)
     }
   }
   return err;
-}   
+}
 
 void init_mock_client(const char *addr, int32_t port, MockClient &client)
 {
@@ -358,16 +364,17 @@ int delete_rows(CParam &param, MockClient &client)
   ObString column_name;
   ObString left_row_key_str;
   ObString right_row_key_str;
-  ObString *rowkey = NULL;
+  ObRowkey *rowkey = NULL;
+  ObRowkey rowkey_object ;
   ObObj    val_obj;
   union
   {
     left_rowkey_t key_;
     uint32_t int_val_[2];
   }left_rowkey;
-  left_table_name.assign(const_cast<char*>(param.left_schema_->get_table_name()), 
+  left_table_name.assign(const_cast<char*>(param.left_schema_->get_table_name()),
     static_cast<int32_t>(strlen(param.left_schema_->get_table_name())));
-  right_table_name.assign(const_cast<char*>(param.right_schema_->get_table_name()), 
+  right_table_name.assign(const_cast<char*>(param.right_schema_->get_table_name()),
     static_cast<int32_t>(strlen(param.right_schema_->get_table_name())));
   ObString *table_name = NULL;
   int64_t each_update_row_num = 3000;
@@ -391,7 +398,8 @@ int delete_rows(CParam &param, MockClient &client)
     left_row_key_str.assign((char*)&left_rowkey, sizeof(left_rowkey_t));
     right_row_key_str.assign((char*)&(left_rowkey.key_.right_key_), sizeof(rowkey_t));
     table_name = &left_table_name;
-    rowkey = &left_row_key_str;
+    rowkey_object = TestRowkeyHelper(left_row_key_str, &allocator_);
+    rowkey = &rowkey_object;
     err = mutator.del_row(*table_name,*rowkey);
     if (OB_SUCCESS == err)
     {
@@ -422,7 +430,7 @@ int delete_rows(CParam &param, MockClient &client)
     }
     else
     {
-      TBSYS_LOG(WARN,"update [param.start_key_:%ld,param.end_key_:%ld]", 
+      TBSYS_LOG(WARN,"update [param.start_key_:%ld,param.end_key_:%ld]",
         param.start_key_, param.end_key_);
       req_sended = true;
       mutator.reset();
@@ -444,7 +452,8 @@ int update(CParam &param, MockClient &client)
   ObString column_name;
   ObString left_row_key_str;
   ObString right_row_key_str;
-  ObString *rowkey = NULL;
+  ObRowkey *rowkey = NULL;
+  ObRowkey rowkey_object;
   ObObj    val_obj;
   union
   {
@@ -456,9 +465,9 @@ int update(CParam &param, MockClient &client)
     int64_t int_val;
     column_obj_t obj_val;
   }val_union;
-  left_table_name.assign(const_cast<char*>(param.left_schema_->get_table_name()), 
+  left_table_name.assign(const_cast<char*>(param.left_schema_->get_table_name()),
     static_cast<int32_t>(strlen(param.left_schema_->get_table_name())));
-  right_table_name.assign(const_cast<char*>(param.right_schema_->get_table_name()), 
+  right_table_name.assign(const_cast<char*>(param.right_schema_->get_table_name()),
     static_cast<int32_t>(strlen(param.right_schema_->get_table_name())));
   ObString *table_name = NULL;
   const ObColumnSchemaV2::ObJoinInfo *join_info = NULL;
@@ -492,7 +501,8 @@ int update(CParam &param, MockClient &client)
             continue;
           }
           table_name = &right_table_name;
-          rowkey = &right_row_key_str;
+          rowkey_object = TestRowkeyHelper(right_row_key_str, &allocator_);
+          rowkey = &rowkey_object;
           val_union.obj_val.key_ = left_rowkey.key_.right_key_;
           right_column_info = param.schema_mgr_->get_column_schema(join_info->join_table_, join_info->correlated_column_);
           if (NULL == right_column_info)
@@ -502,15 +512,16 @@ int update(CParam &param, MockClient &client)
           }
           else
           {
-            column_name.assign(const_cast<char*>(right_column_info->get_name()), static_cast<int32_t>(strlen(right_column_info->get_name()))); 
+            column_name.assign(const_cast<char*>(right_column_info->get_name()), static_cast<int32_t>(strlen(right_column_info->get_name())));
           }
         }
         else
         {
           table_name = &left_table_name;
-          rowkey = &left_row_key_str;
+          rowkey_object = TestRowkeyHelper(left_row_key_str);
+          rowkey = &rowkey_object;
           val_union.obj_val.key_ = left_rowkey.key_.left_key_;
-          column_name.assign(const_cast<char*>(column_beg->get_name()), static_cast<int32_t>(strlen(column_beg->get_name()))); 
+          column_name.assign(const_cast<char*>(column_beg->get_name()), static_cast<int32_t>(strlen(column_beg->get_name())));
         }
         val_union.obj_val.column_id_ = static_cast<uint8_t>(column_beg->get_id());
         val_union.obj_val.version_ = static_cast<uint8_t>(param.cur_version_);
@@ -564,7 +575,7 @@ int check_result(CParam &param, ObScanner &result, uint32_t start_key, ObScanPar
     left_rowkey_t key_;
     uint32_t int_val_[2];
   }left_rowkey, first_rowkey;
-  ObString left_rowkey_str;
+  ObRowkey left_rowkey_str;
   ObString column_name;
   ObCellInfo *cur_cell = NULL;
   bool is_row_changed = false;
@@ -615,7 +626,7 @@ int check_result(CParam &param, ObScanner &result, uint32_t start_key, ObScanPar
     {
       left_rowkey.int_val_[i] = htonl(left_rowkey.int_val_[i]);
     }
-    left_rowkey_str.assign((char*)&left_rowkey, sizeof(left_rowkey_t));
+    left_rowkey_str = make_rowkey((char*)&left_rowkey, sizeof(left_rowkey_t), &allocator_);
     for (column_beg = param.schema_mgr_->get_table_schema(param.left_table_id_, column_count);
       column_beg < column_end && OB_SUCCESS == err; column_beg ++)
     {
@@ -698,13 +709,13 @@ int scan(CParam &param, MockClient &client)
     left_rowkey_t key_;
     uint32_t int_val_[2];
   }start_key, end_key;
-  ObRange       range;
+  ObNewRange       range;
   ObVersionRange version_range;
   version_range.border_flag_.set_min_value();
   version_range.border_flag_.set_max_value();
   version_range.border_flag_.set_inclusive_start();
   version_range.border_flag_.set_inclusive_end();
-  table_name.assign(const_cast<char*>(param.left_schema_->get_table_name()), 
+  table_name.assign(const_cast<char*>(param.left_schema_->get_table_name()),
     static_cast<int32_t>(strlen(param.left_schema_->get_table_name())));
   start_key.key_.left_key_.key_val_ = 0;
   start_key.key_.left_key_.key_val_ = static_cast<int32_t>(param.start_key_ << 8);
@@ -728,13 +739,11 @@ int scan(CParam &param, MockClient &client)
     end_key.int_val_[j] = htonl(end_key.int_val_[j]);
   }
   end_key_str.assign((char*)&end_key, sizeof(end_key));
-  range.start_key_ = start_key_str;
-  range.end_key_ = end_key_str;
+  range.start_key_ = TestRowkeyHelper(start_key_str, &allocator_);
+  range.end_key_ = TestRowkeyHelper(end_key_str, &allocator_);
   range.table_id_ = OB_INVALID_ID;
   range.border_flag_.set_inclusive_start();
   range.border_flag_.unset_inclusive_end();
-  range.border_flag_.unset_min_value();
-  range.border_flag_.unset_max_value();
   uint32_t cur_key  = static_cast<uint32_t>(param.start_key_);
   scan_param.set(OB_INVALID_ID,table_name,range);
   scan_param.set_version_range(version_range);
@@ -750,7 +759,7 @@ int scan(CParam &param, MockClient &client)
       }
     }
   }
-  ObString last_row_key;
+  ObRowkey last_row_key;
   ObScanner result;
   /// scan forward
   TBSYS_LOG(WARN,"scan forward");
@@ -786,7 +795,7 @@ int scan(CParam &param, MockClient &client)
         err = result.get_last_row_key(last_row_key);
         if (OB_SUCCESS != err || last_row_key.length() != sizeof(left_rowkey_t))
         {
-          TBSYS_LOG(WARN,"fail to get last key from scanner [err:%d,last_row_key.length():%d]", err, 
+          TBSYS_LOG(WARN,"fail to get last key from scanner [err:%d,last_row_key.length():%ld]", err,
             last_row_key.length());
         }
         else
@@ -804,7 +813,7 @@ int scan(CParam &param, MockClient &client)
   }
   /// scan backward
   TBSYS_LOG(WARN,"scan backward");
-  ObString first_row_key;
+  ObRowkey first_row_key;
   scan_param.set_scan_direction(ObScanParam::BACKWARD);
   start_key.key_.left_key_.key_val_ = 0;
   start_key.key_.left_key_.key_val_ = static_cast<int32_t>(param.start_key_ << 8);
@@ -852,7 +861,7 @@ int scan(CParam &param, MockClient &client)
         err = result.get_last_row_key(last_row_key);
         if (OB_SUCCESS != err || last_row_key.length() != sizeof(left_rowkey_t))
         {
-          TBSYS_LOG(WARN,"fail to get last key from scanner [err:%d,last_row_key.length():%d]", err, 
+          TBSYS_LOG(WARN,"fail to get last key from scanner [err:%d,last_row_key.length():%ld]", err,
             last_row_key.length());
         }
         else
@@ -952,7 +961,7 @@ int scan(CParam &param, MockClient &client)
 
     scan_param.reset();
     scan_param.set_scan_direction(ObScanParam::FORWARD);
-    scan_param.set(OB_INVALID_ID,table_name,range); 
+    scan_param.set(OB_INVALID_ID,table_name,range);
     scan_param.add_column(ObGroupByParam::COUNT_ROWS_COLUMN_NAME);
     ObString as_column_name;
     as_column_name.assign(const_cast<char*>("count"),static_cast<int32_t>(strlen("count")));
@@ -1012,7 +1021,7 @@ int scan(CParam &param, MockClient &client)
             {
               if (count != expect_count)
               {
-                TBSYS_LOG(WARN,"count result error, [count:%ld,expect_count:%ld,param.end_key_:%ld,param.start_key_:%ld]", count, 
+                TBSYS_LOG(WARN,"count result error, [count:%ld,expect_count:%ld,param.end_key_:%ld,param.start_key_:%ld]", count,
                   expect_count, param.end_key_, param.start_key_);
                 err = OB_ERR_UNEXPECTED;
               }
@@ -1046,7 +1055,7 @@ int main(int argc, char **argv)
   MockClient client;
   if (OB_SUCCESS == err)
   {
-    init_mock_client(param.server_addr_, param.server_port_, client);  
+    init_mock_client(param.server_addr_, param.server_port_, client);
     if (strcmp(param.operation_,"scan") == 0)
     {
       err = scan(param,client);

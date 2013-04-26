@@ -1,7 +1,6 @@
 #ifndef OCEANBASE_SQL_SELECTSTMT_H_
 #define OCEANBASE_SQL_SELECTSTMT_H_
 
-#include "parse_tools.h"
 #include "ob_stmt.h"
 #include "ob_raw_expr.h"
 #include "common/ob_string.h"
@@ -112,17 +111,17 @@ namespace oceanbase
         EXCEPT,
         NONE,
       };
-      
+
       ObSelectStmt(common::ObStringBuf* name_pool);
       virtual ~ObSelectStmt();
 
-      int32_t get_select_item_size() { return select_items_.size(); }
-      int32_t get_from_item_size() { return from_items_.size(); }
-      int32_t get_joined_table_size() { return joined_tables_.size(); }
-      int32_t get_group_expr_size() { return group_expr_ids_.size(); }
-      int32_t get_agg_fun_size() { return agg_func_ids_.size(); }
-      int32_t get_having_expr_size() { return having_expr_ids_.size(); }
-      int32_t get_order_item_size() { return order_items_.size(); }
+      int32_t get_select_item_size() const { return select_items_.size(); }
+      int32_t get_from_item_size() const { return from_items_.size(); }
+      int32_t get_joined_table_size() const { return joined_tables_.size(); }
+      int32_t get_group_expr_size() const { return group_expr_ids_.size(); }
+      int32_t get_agg_fun_size() const { return agg_func_ids_.size(); }
+      int32_t get_having_expr_size() const { return having_expr_ids_.size(); }
+      int32_t get_order_item_size() const { return order_items_.size(); }
       void assign_distinct() { is_distinct_ = true; }
       void assign_all() { is_distinct_ = false; }
       void assign_set_op(SetOperator op) { set_op_ = op; }
@@ -135,46 +134,51 @@ namespace oceanbase
       uint64_t generate_joined_tid() { return gen_joined_tid_--; }
       uint64_t get_left_query_id() { return left_query_id_; }
       uint64_t get_right_query_id() { return right_query_id_; }
-      int64_t get_limit() { return limit_; }
-      int64_t get_offset() { return offset_; }
+      uint64_t get_limit_expr_id() const { return limit_count_id_; }
+      uint64_t get_offset_expr_id() const { return limit_offset_id_; }
       bool is_distinct() { return is_distinct_; }
       bool is_set_distinct() { return is_set_distinct_; }
+      bool is_for_update() { return for_update_; }
+      bool has_limit()
+      {
+        return (limit_count_id_ != common::OB_INVALID_ID || limit_offset_id_ != common::OB_INVALID_ID);
+      }
       SetOperator get_set_op() { return set_op_; }
       JoinedTable* get_joined_table(uint64_t table_id);
 
       const SelectItem& get_select_item(int32_t index) const
-      { 
-        OB_ASSERT(0 <= index && index < select_items_.size()); 
-        return select_items_[index]; 
+      {
+        OB_ASSERT(0 <= index && index < select_items_.size());
+        return select_items_[index];
       }
-      
+
       const FromItem& get_from_item(int32_t index) const
       {
-        OB_ASSERT(0 <= index && index < from_items_.size()); 
+        OB_ASSERT(0 <= index && index < from_items_.size());
         return from_items_[index];
       }
 
       const OrderItem& get_order_item(int32_t index) const
-      { 
-        OB_ASSERT(0 <= index && index < order_items_.size()); 
-        return order_items_[index]; 
+      {
+        OB_ASSERT(0 <= index && index < order_items_.size());
+        return order_items_[index];
       }
 
-      uint64_t get_group_expr_id(int32_t index)
+      uint64_t get_group_expr_id(int32_t index) const
       {
-        OB_ASSERT(0 <= index && index < group_expr_ids_.size()); 
+        OB_ASSERT(0 <= index && index < group_expr_ids_.size());
         return group_expr_ids_[index];
       }
 
-      uint64_t get_agg_expr_id(int32_t index)
+      uint64_t get_agg_expr_id(int32_t index) const
       {
-        OB_ASSERT(0 <= index && index < agg_func_ids_.size()); 
+        OB_ASSERT(0 <= index && index < agg_func_ids_.size());
         return agg_func_ids_[index];
       }
 
-      uint64_t get_having_expr_id(int32_t index)
+      uint64_t get_having_expr_id(int32_t index) const
       {
-        OB_ASSERT(0 <= index && index < having_expr_ids_.size()); 
+        OB_ASSERT(0 <= index && index < having_expr_ids_.size());
         return having_expr_ids_[index];
       }
 
@@ -183,13 +187,13 @@ namespace oceanbase
         return having_expr_ids_;
       }
 
-      int add_group_expr(uint64_t expr_id) 
-      { 
+      int add_group_expr(uint64_t expr_id)
+      {
         return group_expr_ids_.push_back(expr_id);
       }
 
-      int add_agg_func(uint64_t expr_id) 
-      { 
+      int add_agg_func(uint64_t expr_id)
+      {
         return agg_func_ids_.push_back(expr_id);
       }
 
@@ -220,30 +224,31 @@ namespace oceanbase
         return joined_tables_.push_back(pJoinedTable);
       }
 
-      int add_having_expr(uint64_t expr_id) 
-      { 
+      int add_having_expr(uint64_t expr_id)
+      {
         return having_expr_ids_.push_back(expr_id);
       }
 
-      void set_limit(int64_t limit) 
-      { 
-        limit_ = limit;
+      void set_limit_offset(const uint64_t& limit, const uint64_t& offset)
+      {
+        limit_count_id_ = limit;
+        limit_offset_id_ = offset;
       }
-      
-      void set_offset(int64_t offset) 
-      { 
-        offset_ = offset;
+
+      void set_for_update(bool for_update)
+      {
+        for_update_ = for_update;
       }
 
       int check_having_ident(
           ResultPlan& result_plan,
-          ObString& column_name, 
-          TableItem* table_item, 
+          ObString& column_name,
+          TableItem* table_item,
           ObRawExpr*& ret_expr) const;
 
       int add_select_item(
-          uint64_t eid, 
-          bool is_real_alias, 
+          uint64_t eid,
+          bool is_real_alias,
           const common::ObString& alias_name,
           const common::ObString& expr_name,
           const common::ObObjType& type);
@@ -260,7 +265,7 @@ namespace oceanbase
       common::ObVector<uint64_t>     group_expr_ids_;
       common::ObVector<uint64_t>     having_expr_ids_;
       common::ObVector<uint64_t>     agg_func_ids_;
-      
+
       /* These fields are only used by set select */
       SetOperator set_op_;
       bool        is_set_distinct_;
@@ -271,8 +276,11 @@ namespace oceanbase
       common::ObVector<OrderItem>  order_items_;
 
       /* -1 means no limit */
-      int64_t    limit_;
-      int64_t    offset_;
+      uint64_t    limit_count_id_;
+      uint64_t    limit_offset_id_;
+
+      /* FOR UPDATE clause */
+      bool      for_update_;
 
       uint64_t    gen_joined_tid_;
     };
@@ -280,4 +288,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_SQL_SELECTSTMT_H_
-

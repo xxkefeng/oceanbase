@@ -16,6 +16,7 @@
 #ifndef _OB_LIMIT_H
 #define _OB_LIMIT_H 1
 #include "ob_single_child_phy_operator.h"
+#include "ob_sql_expression.h"
 
 namespace oceanbase
 {
@@ -28,8 +29,9 @@ namespace oceanbase
         virtual ~ObLimit();
 
         void reset();
+        void clear();
         /// @param limit -1 means no limit
-        int set_limit(const int64_t limit, const int64_t offset);
+        int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset);
         int get_limit(int64_t &limit, int64_t &offset) const;
         virtual int open();
         virtual int close();
@@ -37,14 +39,19 @@ namespace oceanbase
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         void assign(const ObLimit &other);
+        virtual ObPhyOperatorType get_type() const;
 
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy
         ObLimit(const ObLimit &other);
         ObLimit& operator=(const ObLimit &other);
+        int get_int_value(const ObSqlExpression& in_val, int64_t& out_val) const;
       private:
         // data members
+        ObSqlExpression org_limit_;
+        ObSqlExpression org_offset_;
+        bool is_instantiated_;
         int64_t limit_;         // -1 means no limit
         int64_t offset_;
         int64_t input_count_;

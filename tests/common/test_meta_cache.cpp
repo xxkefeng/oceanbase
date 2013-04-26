@@ -1,6 +1,8 @@
 #include "common/ob_meta_cache.h"
 #include "common/ob_malloc.h"
 #include "common/ob_schema.h"
+#include "common/utility.h"
+#include "test_rowkey_helper.h"
 #include <gtest/gtest.h>
 #include <unistd.h>
 
@@ -18,6 +20,7 @@ namespace oceanbase
         {}
       int rpc_get(ObGetParam &get_param, ObScanner &scanner, const int64_t timeout);
       ThreadSpecificBuffer buffer_;
+      CharArena allocator_;
     };
 
     class PermRpc:public IRpcStub
@@ -49,10 +52,12 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       ObCellInfo *get_cell;
       get_cell = get_param[0];
+      ObRowkey row_key = make_rowkey("fangji", &allocator_);
+      fprintf(stdout, "get cell rowkey:%s\n", to_cstring(get_cell->row_key_));
       EXPECT_EQ(1, (int)get_param.get_cell_size());
       EXPECT_EQ(USER_TABLE_ID, (int)get_cell->table_id_);
       EXPECT_EQ(4, (int)get_cell->column_id_);
-      EXPECT_EQ(0, memcmp("fangji", get_cell->row_key_.ptr(), get_cell->row_key_.length()));
+      EXPECT_EQ(row_key, get_cell->row_key_);
                 
 
       ObCellInfo cell_info;

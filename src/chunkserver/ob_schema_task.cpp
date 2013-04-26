@@ -1,12 +1,12 @@
 /**
  * (C) 2010-2011 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or 
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
  * ob_schema_task.cpp for update multi-version schemas form
- * rootserver. 
+ * rootserver.
  *
  * Authors:
  *   xielun <xielun.szd@taobao.com>
@@ -15,7 +15,7 @@
  */
 #include "ob_schema_task.h"
 #include "ob_rpc_proxy.h"
-#include "ob_schema_manager.h"
+#include "common/ob_schema_manager.h"
 #include "common/ob_malloc.h"
 
 namespace oceanbase
@@ -32,11 +32,11 @@ namespace oceanbase
       local_version_ = 0;
       remote_version_ = 0;
     }
-    
+
     ObMergerSchemaTask::~ObMergerSchemaTask()
     {
     }
-    
+
     void ObMergerSchemaTask::runTimerTask(void)
     {
       int ret = OB_SUCCESS;

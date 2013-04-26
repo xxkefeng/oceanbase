@@ -5,7 +5,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
- * test_helper.h 
+ * test_helper.h
  *
  * Authors:
  *   chuanhui <rizhao.ych@taobao.com>
@@ -38,8 +38,6 @@ void check_string(const ObString& expected, const ObString& real);
 
 void check_obj(const ObObj& expected, const ObObj& real);
 
-void check_range(const ObRange& expected, const ObRange& real);
-
 void check_cell(const ObCellInfo& expected, const ObCellInfo& real);
 
 void check_cell_with_name(const ObCellInfo& expected, const ObCellInfo& real);
@@ -56,7 +54,7 @@ class GFactory
   public:
     GFactory() :
       block_cache_(fic_), block_index_cache_(fic_),
-      compressed_buffer_(THREAD_BUFFER_SIZE), 
+      compressed_buffer_(THREAD_BUFFER_SIZE),
       uncompressed_buffer_(THREAD_BUFFER_SIZE) { init(); }
     ~GFactory() { destroy(); }
     static GFactory& get_instance() { return instance_; }
@@ -79,6 +77,8 @@ int write_cg_sstable(const ObCellInfo** cell_infos,
     const int64_t row_num, const int64_t col_num, const char* sstable_file_path );
 int write_sstable(const ObCellInfo** cell_infos,
     const int64_t row_num, const int64_t col_num, const char* sstable_file_path );
+int write_empty_sstable(const ObCellInfo** cell_infos,
+    const int64_t row_num, const int64_t col_num, const char* sstable_file_path );
 
 class SSTableBuilder
 {
@@ -87,7 +87,7 @@ class SSTableBuilder
     ~SSTableBuilder();
     typedef int (WRITE_SSTABLE_FUNC)(const ObCellInfo** cell_infos,
         const int64_t row_num, const int64_t col_num, const char* sstable_file_path );
-    int generate_sstable_file(WRITE_SSTABLE_FUNC write_func, const ObSSTableId& sstable_id, 
+    int generate_sstable_file(WRITE_SSTABLE_FUNC write_func, const ObSSTableId& sstable_id,
                               const int64_t start_index = 0);
     ObCellInfo** const get_cell_infos() const { return cell_infos; }
   public:
@@ -113,7 +113,7 @@ class MultSSTableBuilder
 
     }
 
-    int generate_sstable_files();
+    int generate_sstable_files(bool empty_sstable = false);
 
     int get_sstable_id(ObSSTableId & sstable_id, const int64_t index) const
     {
@@ -125,7 +125,7 @@ class MultSSTableBuilder
       }
       else
       {
-        sstable_id.sstable_file_id_ = index % DISK_NUM 
+        sstable_id.sstable_file_id_ = index % DISK_NUM
                                       + 256 * (index / DISK_NUM + 1) + 1;
         sstable_id.sstable_file_offset_ = 0;
       }
@@ -133,9 +133,9 @@ class MultSSTableBuilder
       return ret;
     }
 
-    ObCellInfo** const get_cell_infos(const int64_t index) const 
-    { 
-      return builder_[index].get_cell_infos(); 
+    ObCellInfo** const get_cell_infos(const int64_t index) const
+    {
+      return builder_[index].get_cell_infos();
     }
 
   public:
@@ -160,7 +160,7 @@ class TabletManagerIniter
 
     }
 
-    int init(bool create = false);
+    int init(bool create = false, bool empty_tablet = false);
 
     const MultSSTableBuilder& get_mult_sstable_builder() const
     {
@@ -168,8 +168,8 @@ class TabletManagerIniter
     }
 
   private:
-    int create_tablet(const ObRange& range, const ObSSTableId& sst_id, bool serving, const int64_t version = 1);
-    int create_tablets();
+    int create_tablet(const ObNewRange& range, const ObSSTableId& sst_id, bool serving, bool add_sst_id = true, const int64_t version = 1);
+    int create_tablets(bool empty_tablet = false);
 
   private:
     bool inited_;

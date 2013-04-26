@@ -33,8 +33,7 @@ namespace oceanbase
     {
       public:
         DumpSSTable() 
-          : opened_(false),compressor_(NULL),
-          reader_(arena_, file_info_cache_),block_index_entry_(NULL) { file_info_cache_.init(10); }
+          : opened_(false), reader_(arena_, file_info_cache_),block_index_(NULL),schema_() { file_info_cache_.init(10); }
         ~DumpSSTable();
         int open(const int64_t sstable_file_id);
         void display_trailer_info();
@@ -52,14 +51,15 @@ private:
                                        char *& data_buf,int64_t& dsize);
         int load_schema();
         bool opened_;
-        ObCompressor* compressor_;
         common::ModuleArena arena_;
         chunkserver::FileInfoCache file_info_cache_;
         ObSSTableReader reader_;
-		ObSSTableWriter writer_;
+        ObSSTableWriter writer_;
         common::FileUtils util_;
-        ObSSTableBlockIndexV2::ObSSTableBlockIndexHeader block_index_header_;
-        ObSSTableBlockIndexV2::IndexEntryType *block_index_entry_;
+        sstable::ObSSTableBlockIndexV2 *block_index_;
+        //ObCompressor* compressor_;
+        //ObSSTableBlockIndexV2::ObSSTableBlockIndexHeader block_index_header_;
+        //ObSSTableBlockIndexV2::IndexEntryType *block_index_entry_;
         ObSSTableSchema schema_;
 
 public:

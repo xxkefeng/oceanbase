@@ -50,7 +50,7 @@ namespace oceanbase {
       return get(column, cell);
     }
 
-    int DbRecord::get(std::string &column, common::ObCellInfo **cell)
+    int DbRecord::get(const std::string &column, common::ObCellInfo **cell)
     {
       int ret = OB_SUCCESS;
 
@@ -65,8 +65,28 @@ namespace oceanbase {
 
     void DbRecord::append_column(ObCellInfo &cell)
     {
+      ObRowkey &rowkey = cell.row_key_;
+      const ObObj *ptr = rowkey.ptr();
+      rowkey_objs_nr_ = rowkey.length();
+      for (int64_t i = 0;i < rowkey.length();i++) {
+        rowkey_objs_[i] = ptr[i];
+      }
+
       std::string column(cell.column_name_.ptr(), cell.column_name_.length());
       row_.insert(std::make_pair(column, cell));
+
+#if 0
+      {
+        char buf[256];
+        int64_t len = cell.value_.to_string(buf, 256);
+        buf[len] = 0;
+
+        char key_buf[256];
+        len = cell.row_key_.to_string(key_buf, 256);
+        key_buf[len] = 0;
+        TBSYS_LOG(INFO, "append_column: [%s]:[%s], rowkey=[%s]",column.c_str(), buf, key_buf);
+      }
+#endif
     }
 
     int DbRecord::get_table_id(int64_t &table_id)
@@ -82,13 +102,13 @@ namespace oceanbase {
       return ret;
     }
 
-    int DbRecord::get_rowkey(common::ObString &rowkey)
+    int DbRecord::get_rowkey(common::ObRowkey &rowkey)
     {
       int ret = OB_SUCCESS;
       if (row_.empty()) {
         ret = OB_ERROR;
       } else {
-        rowkey = row_.begin()->second.row_key_;
+        rowkey.assign(rowkey_objs_, rowkey_objs_nr_);
       }
 
       return ret;
@@ -97,16 +117,11 @@ namespace oceanbase {
 
     void DbRecord::dump()
     {
-//      std::string result;
       RowData::iterator itr = row_.begin();
       while (itr != row_.end()) {
-//        result += itr->first;
-//        result += ",";
         TBSYS_LOG(INFO, "%s", print_cellinfo(&itr->second, "DUMP-REC"));
         itr++;
       }
-
-//      TBSYS_LOG(INFO, "DbRecord=%s", result.c_str());
     }
   }
 }

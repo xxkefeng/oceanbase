@@ -19,7 +19,6 @@
 #include "common/utility.h"
 #include "sstable/ob_sstable_reader.h"
 #include "ob_tablet_image.h"
-#include "ob_chunk_server_main.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::sstable;
@@ -123,7 +122,10 @@ namespace oceanbase
           && OB_SUCCESS == serialization::encode_i64(buf, buf_len, pos, occupy_size_)
           && OB_SUCCESS == serialization::encode_i64(buf, buf_len, pos, check_sum_)
           && OB_SUCCESS == serialization::encode_i64(buf, buf_len, pos, last_do_expire_version_)
-          && OB_SUCCESS == serialization::encode_i64(buf, buf_len, pos, sequence_num_) )
+          && OB_SUCCESS == serialization::encode_i64(buf, buf_len, pos, sequence_num_) 
+          && OB_SUCCESS == serialization::encode_i16(buf, buf_len, pos, sstable_version_) 
+          && OB_SUCCESS == serialization::encode_i16(buf, buf_len, pos, reserved16_) 
+          && OB_SUCCESS == serialization::encode_i32(buf, buf_len, pos, reserved32_) )
       {
         for (int64_t i = 0; i < RESERVED_LEN && OB_SUCCESS == ret; ++i)
         {
@@ -153,7 +155,11 @@ namespace oceanbase
           && OB_SUCCESS == serialization::decode_i64(buf, data_len, pos, &occupy_size_)
           && OB_SUCCESS == serialization::decode_i64(buf, data_len, pos, reinterpret_cast<int64_t*>(&check_sum_))
           && OB_SUCCESS == serialization::decode_i64(buf, data_len, pos, &last_do_expire_version_)
-          && OB_SUCCESS == serialization::decode_i64(buf, data_len, pos, &sequence_num_))
+          && OB_SUCCESS == serialization::decode_i64(buf, data_len, pos, &sequence_num_)
+          && OB_SUCCESS == serialization::decode_i16(buf, data_len, pos, &sstable_version_)
+          && OB_SUCCESS == serialization::decode_i16(buf, data_len, pos, &reserved16_)
+          && OB_SUCCESS == serialization::decode_i32(buf, data_len, pos, &reserved32_)
+          )
       {
         for (int64_t i = 0; i < RESERVED_LEN && OB_SUCCESS == ret; ++i)
         {
@@ -177,6 +183,9 @@ namespace oceanbase
       total_size += serialization::encoded_length_i64(check_sum_);
       total_size += serialization::encoded_length_i64(last_do_expire_version_);
       total_size += serialization::encoded_length_i64(sequence_num_);
+      total_size += serialization::encoded_length_i16(sstable_version_);
+      total_size += serialization::encoded_length_i16(reserved16_);
+      total_size += serialization::encoded_length_i32(reserved32_);
       for (int64_t i = 0; i < RESERVED_LEN; ++i)
       {
         total_size += serialization::encoded_length_i64(reserved_[i]);
@@ -190,16 +199,12 @@ namespace oceanbase
     //----------------------------------------
     // class ObTablet
     //----------------------------------------
-    ObTablet::ObTablet(ObTabletImage* image) 
+    ObTablet::ObTablet(ObTabletImage* image) : 
+      sstable_id_list_(TABLET_ARRAY_BLOCK_SIZE, image->mod_),
+      sstable_reader_list_(TABLET_ARRAY_BLOCK_SIZE, image->mod_)
     {
       reset();
       image_ = image;
-    }
-
-    ObTablet::ObTablet()
-    {
-      reset();
-      image_ = NULL;
     }
 
     ObTablet::~ObTablet()
@@ -210,20 +215,19 @@ namespace oceanbase
     void ObTablet::destroy()
     {
       // ObTabletImage will free reader's memory on destory.
-      int64_t reader_count = sstable_reader_list_.get_array_index();
+      if (0 != ref_count_)
+      {
+        TBSYS_LOG(ERROR, "try to destroy tablet, but ref count is not 0, "
+                         "ref_count_=%u",
+          ref_count_);
+      }
+      int64_t reader_count = sstable_reader_list_.count();
       for (int64_t i = 0 ; i < reader_count; ++i)
       {
-        ObSSTableReader* reader = *sstable_reader_list_.at(i);
-        reader->~ObSSTableReader();
+        SSTableReader* reader = sstable_reader_list_.at(i);
+        reader->~SSTableReader();
       }
-      release_compactsstable();
-      reset();
-    }
-
-    void ObTablet::release_compactsstable()
-    {
       ObCompactSSTableMemNode* tmp = compact_header_;
-
       while(compact_header_ != NULL)
       {
         tmp = compact_header_->next_;
@@ -232,7 +236,7 @@ namespace oceanbase
       }
       compact_header_ = NULL;
       compact_tail_   = NULL;
-      compactsstable_num_ = 0;                        
+      reset();
     }
 
     void ObTablet::reset()
@@ -247,13 +251,11 @@ namespace oceanbase
       compactsstable_loading_ = 0;
       compact_header_ = NULL;
       compact_tail_ = NULL;
-      is_join_compactsstable_tablet_ = false;
+      ref_count_ = 0;
       image_ = NULL;
       memset(&extend_info_, 0, sizeof(extend_info_));
-      memset(sstable_id_inventory_, 0, sizeof(sstable_id_inventory_));
-      sstable_id_list_.init(MAX_SSTABLE_PER_TABLET, sstable_id_inventory_, 0);
-      memset(sstable_reader_inventory_, 0, sizeof(sstable_reader_inventory_));
-      sstable_reader_list_.init(MAX_SSTABLE_PER_TABLET, sstable_reader_inventory_, 0);
+      sstable_id_list_.clear();
+      sstable_reader_list_.clear();
     }
 
     int ObTablet::add_sstable_by_id(const ObSSTableId& sstable_id)
@@ -264,22 +266,17 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "sstable already loaded, cannot add.");
         ret = OB_INIT_TWICE;
       }
-
       // check disk no?
-      if (OB_SUCCESS == ret)
+      else if (0 != disk_no_ && disk_no_ != static_cast<int32_t>(get_sstable_disk_no(sstable_id.sstable_file_id_)))
       {
-        if (0 != disk_no_ && (uint32_t)disk_no_ != get_sstable_disk_no(sstable_id.sstable_file_id_))
-        {
-          TBSYS_LOG(ERROR, "add file :%ld not in same disk:%d",
-              sstable_id.sstable_file_id_, disk_no_);
-          ret = OB_ERROR;
-        }
+        TBSYS_LOG(ERROR, "add file :%ld not in same disk:%d",
+            sstable_id.sstable_file_id_, disk_no_);
+        ret = OB_ERROR;
       }
-
-      if (OB_SUCCESS == ret)
+      else if (OB_SUCCESS != (ret = sstable_id_list_.push_back(sstable_id)))
       {
-        if (!sstable_id_list_.push_back(sstable_id))
-          ret = OB_SIZE_OVERFLOW;
+        TBSYS_LOG(ERROR, "add sstable id :%ld in list error ret=%d",
+            sstable_id.sstable_file_id_, ret);
       }
 
       return ret;
@@ -295,22 +292,30 @@ namespace oceanbase
       }
       else
       {
-        range_.start_key_.assign_ptr(row_key_stream_ptr, info.start_key_size_);
-        range_.end_key_.assign_ptr(row_key_stream_ptr + info.start_key_size_, 
+        range_.start_key_.deserialize_from_stream(row_key_stream_ptr, info.start_key_size_);
+        range_.end_key_.deserialize_from_stream(row_key_stream_ptr + info.start_key_size_, 
             info.end_key_size_);
         range_.table_id_ = info.table_id_;
         range_.border_flag_.set_data(static_cast<int8_t>(info.border_flag_));
         merged_ = info.is_merged_;
         removed_ = info.is_removed_;
         with_next_brother_ = info.is_with_next_brother_;
+        if (range_.border_flag_.is_min_value())
+        {
+          range_.start_key_.set_min_row();
+        }
+        if (range_.border_flag_.is_max_value())
+        {
+          range_.end_key_.set_max_row();
+        }
       }
       return ret;
     }
 
     void ObTablet::get_range_info(ObTabletRangeInfo& info) const
     {
-      info.start_key_size_ = static_cast<int16_t>(range_.start_key_.length());
-      info.end_key_size_ = static_cast<int16_t>(range_.end_key_.length());
+      info.start_key_size_ = static_cast<int16_t>(range_.start_key_.get_serialize_objs_size());
+      info.end_key_size_ = static_cast<int16_t>(range_.end_key_.get_serialize_objs_size());
       info.table_id_ = range_.table_id_;
       info.border_flag_ = range_.border_flag_.get_data();
       info.is_merged_ = static_cast<int8_t>(merged_);
@@ -323,7 +328,7 @@ namespace oceanbase
       int ret = OB_ERROR;
       ret = serialization::encode_vi64(buf, buf_len, pos, data_version_);
 
-      int64_t size = sstable_id_list_.get_array_index();
+      int64_t size = sstable_id_list_.count();
       if (OB_SUCCESS == ret)
       {
         ret = serialization::encode_vi64(buf, buf_len, pos, size);
@@ -333,8 +338,8 @@ namespace oceanbase
       {
         for (int64_t i = 0; i < size; ++i)
         {
-          ObSSTableId * sstable_id = sstable_id_list_.at(i);
-          ret = sstable_id->serialize(buf, buf_len, pos);
+          const ObSSTableId & sstable_id = sstable_id_list_.at(i);
+          ret = sstable_id.serialize(buf, buf_len, pos);
           if (OB_SUCCESS != ret)
             break;
         }
@@ -376,62 +381,16 @@ namespace oceanbase
       int64_t total_size = 0;
       total_size += serialization::encoded_length_vi64(data_version_);
 
-      int64_t size = sstable_id_list_.get_array_index();
+      int64_t size = sstable_id_list_.count();
       total_size += serialization::encoded_length_vi64(size);
 
       if (size > 0)
       {
         for (int64_t i = 0; i < size; ++i)
-          total_size += sstable_id_list_.at(i)->get_serialize_size();
+          total_size += sstable_id_list_.at(i).get_serialize_size();
       }
 
       return total_size;
-    }
-
-    int ObTablet::find_sstable(const common::ObRange& range, 
-        ObSSTableReader* sstable[], int32_t &size) const
-    {
-      int ret = OB_SUCCESS;
-      if (OB_SUCCESS != sstable_loaded_)
-        ret = (sstable_loaded_ = const_cast<ObTablet*>(this)->load_sstable()); 
-
-      UNUSED(range);
-      int index = 0;
-      if (OB_SUCCESS == ret)
-      {
-        int64_t sstable_size = sstable_reader_list_.get_array_index();
-        for (int64_t i = 0; i < sstable_size; ++i)
-        {
-          ObSSTableReader* reader = *sstable_reader_list_.at(i);
-          if (index >= size) { ret = OB_SIZE_OVERFLOW; break; }
-          sstable[index++] = reader;
-        }
-        if (OB_SUCCESS == ret) size = index;
-      }
-      return ret;
-    }
-
-    int ObTablet::find_sstable(const common::ObString& key, 
-        ObSSTableReader* sstable[], int32_t &size) const
-    {
-      int ret = OB_SUCCESS;
-      if (OB_SUCCESS != sstable_loaded_)
-        ret = (sstable_loaded_ = const_cast<ObTablet*>(this)->load_sstable()); 
-
-      int index = 0;
-      if (OB_SUCCESS == ret)
-      {
-        int64_t sstable_size = sstable_reader_list_.get_array_index();
-        for (int64_t i = 0; i < sstable_size; ++i)
-        {
-          ObSSTableReader* reader = *sstable_reader_list_.at(i);
-          if (!reader->may_contain(key)) continue;
-          if (index >= size) { ret = OB_SIZE_OVERFLOW; break; }
-          sstable[index++] = reader;
-        }
-        if (OB_SUCCESS == ret) size = index;
-      }
-      return ret;
     }
 
     int ObTablet::find_sstable(const ObSSTableId &sstable_id,
@@ -442,12 +401,12 @@ namespace oceanbase
         ret = (sstable_loaded_ = const_cast<ObTablet*>(this)->load_sstable()); 
 
       int64_t i = 0;
-      int64_t size = sstable_reader_list_.get_array_index();
+      int64_t size = sstable_reader_list_.count();
       if (OB_SUCCESS == ret)
       {
         for (; i < size; ++i)
         {
-          reader = *sstable_reader_list_.at(i);
+          reader = dynamic_cast<ObSSTableReader*>(sstable_reader_list_.at(i));
           if (reader->get_sstable_id() == sstable_id)
             break;
         }
@@ -457,6 +416,11 @@ namespace oceanbase
           ret = OB_ENTRY_NOT_EXIST;
           reader = NULL;
         }
+      }
+
+      if (OB_SUCCESS == ret && NULL != reader && reader->empty())
+      {
+        reader = NULL;
       }
 
       return ret;
@@ -471,12 +435,12 @@ namespace oceanbase
       int ret = OB_SUCCESS;
 
       int64_t i = 0;
-      int64_t size = sstable_id_list_.get_array_index();
+      int64_t size = sstable_id_list_.count();
       if (OB_SUCCESS == ret)
       {
         for (; i < size; ++i)
         {
-          if (*sstable_id_list_.at(i) == sstable_id)
+          if (sstable_id_list_.at(i) == sstable_id)
             break;
         }
 
@@ -489,10 +453,10 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTablet::load_sstable() 
+    int ObTablet::load_sstable(const int64_t tablet_version) 
     {
       int ret = OB_SUCCESS;
-      ObSSTableReader* reader = NULL;
+      sstable::SSTableReader* reader = NULL;
 
       load_sstable_mutex_.lock();
 
@@ -506,45 +470,60 @@ namespace oceanbase
       }
       else
       {
-        int64_t size = sstable_id_list_.get_array_index();
-        int64_t reader_size = sstable_reader_list_.get_array_index();
+        int64_t size = sstable_id_list_.count();
+        int64_t reader_size = sstable_reader_list_.count();
         for (int64_t i = 0; i < size && reader_size < size; ++i)
         {
+          /*
           //we can't put sstable reader with same sstable id into sstable_reader_list_ twice
           if (i < reader_size 
-              && *sstable_id_list_.at(i) == (*sstable_reader_list_.at(i))->get_sstable_id()) 
+              && sstable_id_list_.at(i) == (sstable_reader_list_.at(i))->get_sstable_id()) 
           {
             //this sstable is opened, just skip it
             continue;
           }
           else if (reader_size > 0 && i < reader_size 
-              && !(*sstable_id_list_.at(i) == (*sstable_reader_list_.at(i))->get_sstable_id())) 
+              && !(sstable_id_list_.at(i) == (sstable_reader_list_.at(i))->get_sstable_id())) 
           {
             //we must ensure the order in sstable_id_list_ is the same as sstable_reader_list_
             TBSYS_LOG(WARN, "the order in sstable_id_list_ isn't the same as "
                 "sstable_reader_list_, sstable_id=%ld, reader_sstable_id=%ld", 
-                sstable_id_list_.at(i)->sstable_file_id_, 
-                (*sstable_reader_list_.at(i))->get_sstable_id().sstable_file_id_);
+                sstable_id_list_.at(i).sstable_file_id_, 
+                (sstable_reader_list_.at(i))->get_sstable_id().sstable_file_id_);
             ret = OB_ERROR;
             break;
           }
+          */
 
-          reader = image_->alloc_sstable_object();
+          if (get_sstable_version() < SSTableReader::COMPACT_SSTABLE_VERSION)
+          {
+            reader = image_->alloc_sstable_object();
+          }
+          else
+          {
+            reader = image_->alloc_compact_sstable_object();
+          }
+
           if (NULL == reader)
           {
             ret = OB_ALLOCATE_MEMORY_FAILED;
             break;
           }
-          else if ( OB_SUCCESS != (ret = reader->open(*sstable_id_list_.at(i))))
+          else if ( OB_SUCCESS != (ret = reader->open(sstable_id_list_.at(i).sstable_file_id_, tablet_version)))
           {
             TBSYS_LOG(ERROR, "read sstable failed, sstable id=%ld, ret =%d", 
-                sstable_id_list_.at(i)->sstable_file_id_, ret);
+                sstable_id_list_.at(i).sstable_file_id_, ret);
             break;
           }
-          else if (!sstable_reader_list_.push_back(reader))
+          else if ( OB_SUCCESS != (ret = sstable_reader_list_.push_back(reader)))
           {
-            ret = OB_SIZE_OVERFLOW;
+            TBSYS_LOG(ERROR, "add sstable reader in list error ret=%d", ret);
             break;
+          }
+          else if (0 == i && OB_INVALID_ID == range_.table_id_)
+          {
+            //if the range of tablet is not set, use the first sstable's range
+            range_ = reader->get_range();
           }
         }
       }
@@ -557,11 +536,11 @@ namespace oceanbase
 
     int64_t ObTablet::get_max_sstable_file_seq() const
     {
-      int64_t size = sstable_id_list_.get_array_index();
+      int64_t size = sstable_id_list_.count();
       int64_t max_sstable_file_seq = 0;
       for (int64_t i = 0; i < size; ++i)
       {
-        int64_t cur_file_seq = sstable_id_list_.at(i)->sstable_file_id_ >> 8;
+        int64_t cur_file_seq = sstable_id_list_.at(i).sstable_file_id_ >> 8;
         if (cur_file_seq > max_sstable_file_seq)
           max_sstable_file_seq = cur_file_seq;
       }
@@ -575,7 +554,7 @@ namespace oceanbase
     {
       int64_t row_count = 0;
       const_cast<tbsys::CThreadMutex&>(extend_info_mutex_).lock();
-      if (extend_info_.row_count_ == 0 && sstable_id_list_.get_array_index() > 0)
+      if (extend_info_.row_count_ == 0 && sstable_id_list_.count() > 0)
       {
         const_cast<ObTablet*>(this)->calc_extend_info();
       }
@@ -591,7 +570,7 @@ namespace oceanbase
     {
       int64_t occupy_size = 0;
       const_cast<tbsys::CThreadMutex&>(extend_info_mutex_).lock();
-      if (extend_info_.occupy_size_ == 0 && sstable_id_list_.get_array_index() > 0)
+      if (extend_info_.occupy_size_ == 0 && sstable_id_list_.count() > 0)
       {
         const_cast<ObTablet*>(this)->calc_extend_info();
       }
@@ -604,7 +583,7 @@ namespace oceanbase
     {
       int64_t check_sum = 0;
       const_cast<tbsys::CThreadMutex&>(extend_info_mutex_).lock();
-      if (extend_info_.check_sum_ == 0 && sstable_id_list_.get_array_index() > 0)
+      if (extend_info_.check_sum_ == 0 && sstable_id_list_.count() > 0)
       {
         const_cast<ObTablet*>(this)->calc_extend_info();
       }
@@ -616,7 +595,7 @@ namespace oceanbase
     const ObTabletExtendInfo& ObTablet::get_extend_info() const
     {
       const_cast<tbsys::CThreadMutex&>(extend_info_mutex_).lock();
-      if (extend_info_.occupy_size_ == 0 && sstable_id_list_.get_array_index() > 0)
+      if (extend_info_.occupy_size_ == 0 && sstable_id_list_.count() > 0)
       {
         const_cast<ObTablet*>(this)->calc_extend_info();
       }
@@ -641,16 +620,16 @@ namespace oceanbase
         extend_info_.row_count_ = 0;
         extend_info_.occupy_size_ = 0;
         extend_info_.check_sum_ = 0;
-        int64_t size = sstable_reader_list_.get_array_index();
+        int64_t size = sstable_reader_list_.count();
         for (int64_t i = 0; i < size && OB_SUCCESS == ret; ++i)
         {
-          ObSSTableReader* reader = *sstable_reader_list_.at(i);
+          SSTableReader* reader = sstable_reader_list_.at(i);
           if (NULL != reader) 
           {
             extend_info_.row_count_ += reader->get_row_count();
             extend_info_.occupy_size_ += reader->get_sstable_size();
 
-            sstable_checksum = reader->get_trailer().get_sstable_checksum();
+            sstable_checksum = reader->get_sstable_checksum();
             pos = 0;
             ret = serialization::encode_i64(checksum_buf, 
                 checksum_len, pos, sstable_checksum);
@@ -663,7 +642,7 @@ namespace oceanbase
           else
           {
             TBSYS_LOG(ERROR, "calc extend_info error, sstable %ld,%ld reader = NULL",
-                i, sstable_id_list_.at(i)->sstable_file_id_);
+                i, sstable_id_list_.at(i).sstable_file_id_);
             ret = OB_ERROR;
           }
         }
@@ -679,21 +658,17 @@ namespace oceanbase
       {
         data_version = compact_tail_->mem_.get_data_version();
       }
-      else if (!is_join_compactsstable_tablet_)
-      {
-        const ObTablet* tablet = THE_CHUNK_SERVER.get_tablet_manager().
-          get_join_compactsstable().
-          get_join_tablet(range_.table_id_);
-        if (NULL != tablet)
-        {
-          int64_t cache_version = tablet->get_cache_data_version();
-          if (data_version < ObVersion::get_major(cache_version))
-          {
-            data_version = cache_version;
-          }
-        }        
-      }
       return data_version;
+    }
+
+    const ObFrozenVersionRange* ObTablet::get_cache_version_range() const
+    {
+      const ObFrozenVersionRange* ret = NULL;
+      if (compactsstable_num_ > 0 && compact_tail_ != NULL)
+      {
+        ret =  &(compact_tail_->mem_.get_version_range());
+      }
+      return ret;
     }
 
     int ObTablet::add_compactsstable(ObCompactSSTableMemNode* cache)
@@ -722,46 +697,9 @@ namespace oceanbase
 
     ObCompactSSTableMemNode* ObTablet::get_compactsstable_list()
     {
-      ObCompactSSTableMemNode* ret = NULL;
-      if (NULL != compact_header_)
-      {
-        ret = compact_header_;
-      }
-      else if (!is_join_compactsstable_tablet_)
-      {
-        ObTablet* tablet = THE_CHUNK_SERVER.get_tablet_manager().
-          get_join_compactsstable().
-          get_join_tablet(range_.table_id_);                
-        
-        if ((NULL != tablet) && (get_data_version() < ObVersion::get_major(tablet->get_cache_data_version())))
-        {
-          ret = tablet->get_compactsstable_list();
-        }
-      }
-      return ret;
+      return compact_header_;
     }
 
-    int32_t ObTablet::get_compactsstable_num()
-    {
-      int32_t num = 0;
-      if (NULL != compact_header_)
-      {
-        num = compactsstable_num_;
-      }
-      else if (!is_join_compactsstable_tablet_)
-      {
-        //TODO(maoqi) get rid of THE_CHUNK_SERVER
-        ObTablet* tablet = THE_CHUNK_SERVER.get_tablet_manager().
-          get_join_compactsstable().
-          get_join_tablet(range_.table_id_);                
-        
-        if ((NULL != tablet) && (get_data_version() < ObVersion::get_major(tablet->get_cache_data_version())))
-        {
-          num = tablet->get_compactsstable_num();
-        }
-      }
-      return num;      
-    }
     /** 
      * atomic compare and set compactsstable loading flag
      * 
@@ -780,44 +718,40 @@ namespace oceanbase
 
     void ObTablet::clear_compactsstable_flag()
     {
-      //atomic_dec(&compactsstable_loading_);
-      compactsstable_loading_ = 0;
+      atomic_dec(&compactsstable_loading_);
     }
 
     int ObTablet::dump(const bool dump_sstable) const
     {
       char range_buf[OB_RANGE_STR_BUFSIZ];
       range_.to_string(range_buf, OB_RANGE_STR_BUFSIZ);
-      uint64_t tablet_checksum = get_checksum();
-      TBSYS_LOG(INFO, "range=%s, data version=%ld, disk_no=%d, "
-          "row count=%ld, occupy size = %ld crc sum=%lu, merged=%d", 
-          range_buf, data_version_, disk_no_, 
-          get_row_count(), get_occupy_size(), tablet_checksum, merged_);
+      TBSYS_LOG(INFO, "range=%s, data version=%ld, disk_no=%d, merged=%d", 
+          range_buf, data_version_, disk_no_, merged_);
       if (dump_sstable && OB_SUCCESS == sstable_loaded_)
       {
         //do nothing
-        int64_t size = sstable_reader_list_.get_array_index();
+        int64_t size = sstable_reader_list_.count();
         for (int64_t i = 0; i < size; ++i)
         {
-          ObSSTableReader* reader = *sstable_reader_list_.at(i);
+          const SSTableReader* reader = sstable_reader_list_.at(i);
           if (NULL != reader) 
           {
             TBSYS_LOG(INFO, "sstable [%ld]: id=%ld, "
-                "size = %d, row count =%ld,block count=%ld", 
-                i, sstable_id_list_.at(i)->sstable_file_id_, 
-                reader->get_trailer().get_size(),
-                reader->get_trailer().get_row_count(),
-                reader->get_trailer().get_block_count()) ;
+                "size = %ld, row count =%ld, checksum=%ld", 
+                i, sstable_id_list_.at(i).sstable_file_id_, 
+                reader->get_sstable_size(),
+                reader->get_row_count(),
+                reader->get_sstable_checksum()) ;
           }
         }
       }
       else
       {
-        int64_t size = sstable_id_list_.get_array_index();
+        int64_t size = sstable_id_list_.count();
         for (int64_t i = 0; i < size; ++i)
         {
           TBSYS_LOG(INFO, "sstable [%ld]: id=%ld", 
-              i, sstable_id_list_.at(i)->sstable_file_id_) ;
+              i, sstable_id_list_.at(i).sstable_file_id_) ;
         }
       }
       return OB_SUCCESS;

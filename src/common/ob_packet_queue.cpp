@@ -35,7 +35,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObPacketQueue::pop_packets(tbnet::Packet** packet_arr, const int64_t ary_size, int64_t& ret_size)
+    int ObPacketQueue::pop_packets(ObPacket** packet_arr, const int64_t ary_size, int64_t& ret_size)
     {
       int err = OB_SUCCESS;
       ThreadSpecificBuffer::Buffer* tb = NULL;
@@ -268,7 +268,7 @@ namespace oceanbase
 
       while (head_ != NULL)
       {
-        int64_t t = head_->getExpireTime();
+        int64_t t = head_->get_expire_time();
         if (t == 0 || t >= now) break;
         if (tail == NULL)
         {
@@ -276,7 +276,7 @@ namespace oceanbase
         }
         else
         {
-          tail->_next = head_; 
+          tail->_next = head_;
         }
         tail = head_;
 

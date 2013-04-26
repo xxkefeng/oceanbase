@@ -288,35 +288,46 @@ TEST(ObExprObj,Math)
   {
     ObExprObj t1;
     ObExprObj t2;
+    int64_t i2 = 0;
     ObExprObj res;
     ObString str_temp;
     char * temp = (char*)"1234";
     str_temp.assign(temp, static_cast<int32_t>(strlen(temp)));
     t1.set_varchar(str_temp);
     t2.set_datetime(1234);
-    EXPECT_TRUE(OB_SUCCESS != t1.add(t2, res));
+    EXPECT_TRUE(OB_SUCCESS == t1.add(t2, res));
+    ASSERT_EQ(OB_SUCCESS, res.get_int(i2));
+    ASSERT_EQ(2468, i2);
 
     t1.set_int(1);
     t2.set_datetime(1234);
-    EXPECT_TRUE(OB_SUCCESS != t1.add(t2, res));
+    EXPECT_TRUE(OB_SUCCESS == t1.add(t2, res));
+    ASSERT_EQ(OB_SUCCESS, res.get_int(i2));
+    ASSERT_EQ(1235, i2);
 
     t1.set_int(1);
     t2.set_varchar(str_temp);
-    EXPECT_TRUE(OB_SUCCESS != t1.add(t2, res));
-
-
+    EXPECT_TRUE(OB_SUCCESS == t1.add(t2, res));
+    ASSERT_EQ(OB_SUCCESS, res.get_int(i2));
+    ASSERT_EQ(1235, i2);
 
     t1.set_varchar(str_temp);
     t2.set_datetime(1234);
-    EXPECT_TRUE(OB_SUCCESS != t2.add(t1, res));
+    EXPECT_TRUE(OB_SUCCESS == t2.add(t1, res));
+    ASSERT_EQ(OB_SUCCESS, res.get_int(i2));
+    ASSERT_EQ(2468, i2);
 
     t1.set_int(1);
     t2.set_datetime(1234);
-    EXPECT_TRUE(OB_SUCCESS != t2.add(t1, res));
+    EXPECT_TRUE(OB_SUCCESS == t2.add(t1, res));
+    ASSERT_EQ(OB_SUCCESS, res.get_int(i2));
+    ASSERT_EQ(1235, i2);
 
     t1.set_int(1);
     t2.set_varchar(str_temp);
-    EXPECT_TRUE(OB_SUCCESS != t2.add(t1, res));
+    EXPECT_TRUE(OB_SUCCESS == t2.add(t1, res));
+    ASSERT_EQ(OB_SUCCESS, res.get_int(i2));
+    ASSERT_EQ(1235, i2);
   }
   BLOCK_FUNC()
   {
@@ -390,11 +401,11 @@ TEST(ObExprObj,Math)
     // int div int
     t1.set_int(6);
     t2.set_int(2);
-    EXPECT_EQ(OB_SUCCESS, t1.div(t2, res, false));
-    ASSERT_EQ(OB_SUCCESS, res.get_decimal(res_buf, buf_len));
-    ASSERT_STREQ("3.00000000000000000000000000000000000000", res_buf);
-    EXPECT_EQ(OB_SUCCESS, t1.div(t2, res, true));
     double d = 0.0;
+    EXPECT_EQ(OB_SUCCESS, t1.div(t2, res, false));
+    ASSERT_EQ(OB_SUCCESS, res.get_double(d));
+    ASSERT_EQ(3.0, d);
+    EXPECT_EQ(OB_SUCCESS, t1.div(t2, res, true));
     ASSERT_EQ(OB_SUCCESS, res.get_double(d));
     ASSERT_EQ(3.0, d);
     // int div dec
@@ -527,20 +538,21 @@ TEST_F(ObExprObjTest, compare)
   COMPARE_EXPECT(ne, int, 1233, null, 0, MY_UNKNOWN);
 
   // int vs datetime
-  COMPARE_EXPECT(lt, int, 1233, precise_datetime, 0,  MY_UNKNOWN);
-  COMPARE_EXPECT(gt, int, 1233, precise_datetime, 0,  MY_UNKNOWN);
-  COMPARE_EXPECT(eq, int, 1233, precise_datetime, 0,  MY_UNKNOWN);
-  COMPARE_EXPECT(le, int, 1233, precise_datetime, 0,  MY_UNKNOWN);
-  COMPARE_EXPECT(ge, int, 1233, precise_datetime, 0,  MY_UNKNOWN);
-  COMPARE_EXPECT(ne, int, 1233, precise_datetime, 0,  MY_UNKNOWN);
+  COMPARE_EXPECT(lt, int, 1233, precise_datetime, 0,  MY_FALSE);
+  COMPARE_EXPECT(gt, int, 1233, precise_datetime, 0,  MY_TRUE);
+  COMPARE_EXPECT(eq, int, 1233, precise_datetime, 0,  MY_FALSE);
+  COMPARE_EXPECT(le, int, 1233, precise_datetime, 0,  MY_FALSE);
+  COMPARE_EXPECT(ge, int, 1233, precise_datetime, 0,  MY_TRUE);
+  COMPARE_EXPECT(ne, int, 1233, precise_datetime, 0,  MY_TRUE);
+  COMPARE_EXPECT(eq, int, 1233, precise_datetime, 1233,  MY_TRUE);
 
   // datetime
-  COMPARE_EXPECT(lt, createtime, 1233, precise_datetime, 0,  MY_FALSE);
-  COMPARE_EXPECT(gt, createtime, 1233, precise_datetime, 0,  MY_TRUE);
-  COMPARE_EXPECT(eq, createtime, 1233, precise_datetime, 0,  MY_FALSE);
-  COMPARE_EXPECT(le, createtime, 1233, precise_datetime, 0,  MY_FALSE);
-  COMPARE_EXPECT(ge, createtime, 1233, precise_datetime, 0,  MY_TRUE);
-  COMPARE_EXPECT(ne, createtime, 1233, precise_datetime, 0,  MY_TRUE);
+  COMPARE_EXPECT(lt, ctime, 1233, precise_datetime, 0,  MY_FALSE);
+  COMPARE_EXPECT(gt, ctime, 1233, precise_datetime, 0,  MY_TRUE);
+  COMPARE_EXPECT(eq, ctime, 1233, precise_datetime, 0,  MY_FALSE);
+  COMPARE_EXPECT(le, ctime, 1233, precise_datetime, 0,  MY_FALSE);
+  COMPARE_EXPECT(ge, ctime, 1233, precise_datetime, 0,  MY_TRUE);
+  COMPARE_EXPECT(ne, ctime, 1233, precise_datetime, 0,  MY_TRUE);
 
   // string
   COMPARE_EXPECT(lt, varchar, "abd", varchar, "abce",  MY_FALSE);
@@ -550,7 +562,13 @@ TEST_F(ObExprObjTest, compare)
   COMPARE_EXPECT(ge, varchar, "abd", varchar, "abce",  MY_TRUE);
   COMPARE_EXPECT(ne, varchar, "abd", varchar, "abce",  MY_TRUE);
   COMPARE_EXPECT(ne, varchar, "abd", null, 0,  MY_UNKNOWN);
-  COMPARE_EXPECT(ne, varchar, "1234", int, 1234,  MY_UNKNOWN);
+  COMPARE_EXPECT(ne, varchar, "1234", int, 1234,  MY_FALSE);
+
+  // int vs bool
+  COMPARE_EXPECT(eq, int, 1233, bool, false,  MY_FALSE);
+  COMPARE_EXPECT(eq, int, 1233, bool, true,  MY_TRUE);
+  COMPARE_EXPECT(eq, int, 0, bool, false,  MY_TRUE);
+  COMPARE_EXPECT(eq, int, 0, bool, true,  MY_FALSE);
 
   // int between decimal and float
   COMPARE_BTW_EXPECT(btw, int, -1235, decimal, "-1234", float, 1234, MY_FALSE);
@@ -577,20 +595,21 @@ TEST_F(ObExprObjTest, compare)
 
 TEST_F(ObExprObjTest, like)
 {
+  // @see tests/sql/ob_postfix_expression_test.cpp for more test
   // like
-  COMPARE_EXPECT(like, varchar, "abcd", varchar, "abc",  MY_TRUE);
-  COMPARE_EXPECT(like, varchar, "abcd", varchar, "abd",  MY_FALSE);
+  COMPARE_EXPECT(like, varchar, "abcd", varchar, "abc%",  MY_TRUE);
+  COMPARE_EXPECT(like, varchar, "abcd", varchar, "abd%",  MY_FALSE);
   COMPARE_EXPECT(like, varchar, "abcd", varchar, "",  MY_FALSE);
   COMPARE_EXPECT(like, varchar, "", varchar, "",  MY_TRUE);
-  COMPARE_EXPECT(like, varchar, "abcd", varchar, "abc%",  MY_FALSE);
+  COMPARE_EXPECT(like, varchar, "abcd", varchar, "abc_",  MY_TRUE);
   COMPARE_EXPECT(like, varchar, "abcd", null, 0,  MY_UNKNOWN);
   COMPARE_EXPECT(like, varchar, "abcd", decimal, "1234",  MY_UNKNOWN);
   // not like
-  COMPARE_EXPECT(not_like, varchar, "abcd", varchar, "abc",  MY_FALSE);
-  COMPARE_EXPECT(not_like, varchar, "abcd", varchar, "abd",  MY_TRUE);
+  COMPARE_EXPECT(not_like, varchar, "abcd", varchar, "abc%",  MY_FALSE);
+  COMPARE_EXPECT(not_like, varchar, "abcd", varchar, "abd%",  MY_TRUE);
   COMPARE_EXPECT(not_like, varchar, "abcd", varchar, "",  MY_TRUE);
   COMPARE_EXPECT(not_like, varchar, "", varchar, "",  MY_FALSE);
-  COMPARE_EXPECT(not_like, varchar, "abcd", varchar, "abc%",  MY_TRUE);
+  COMPARE_EXPECT(not_like, varchar, "abcd", varchar, "abd_",  MY_TRUE);
   COMPARE_EXPECT(not_like, varchar, "abcd", null, 0,  MY_UNKNOWN);
   COMPARE_EXPECT(not_like, varchar, "abcd", decimal, "1234",  MY_UNKNOWN);
   // old like
@@ -603,7 +622,7 @@ TEST_F(ObExprObjTest, others)
   ObExprObj t1;
   ObExprObj res;
   int64_t res_val = 0;
-  t1.set_createtime(1234000001L);
+  t1.set_ctime(1234000001L);
   ASSERT_NE(OB_SUCCESS, t1.varchar_length(res));
   ASSERT_TRUE(res.is_null());
 
@@ -626,7 +645,7 @@ TEST(ObExprObj, negate_test)
 {
   ObExprObj t1;
   ObExprObj res;
-  t1.set_createtime(1234000001L);
+  t1.set_ctime(1234000001L);
   ASSERT_NE(OB_SUCCESS, t1.negate(res));
   ASSERT_TRUE(res.is_null());
   t1.set_null();

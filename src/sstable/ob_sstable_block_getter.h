@@ -17,6 +17,7 @@
 
 #include "common/ob_string.h"
 #include "common/ob_common_param.h"
+#include "common/ob_rowkey.h"
 #include "ob_sstable_block_reader.h"
 #include "ob_sstable_row_cache.h"
 
@@ -79,8 +80,8 @@ namespace oceanbase
        *     OB_INVALID_ARGUMENT invalid arguments
        *     OB_DESERIALIZE_ERROR failed to deserialize obj
        */
-      int init(const common::ObString& row_key, const char* buf, 
-               const int64_t data_len, const int64_t store_style,
+      int init(const common::ObRowkey& row_key, const char* buf, 
+               const int64_t data_len, const ObSSTableBlockReader::BlockDataDesc& data_desc,
                ObSSTableRowCache* row_cache, const bool is_row_cache_data,
                bool not_exit_col_ret_nop = false);
 
@@ -89,6 +90,15 @@ namespace oceanbase
       {
         return reader_.get_cache_row_value(row_cursor_, row_value);
       }
+
+      inline int is_row_finished(bool* is_row_finished)
+      {
+        if (NULL != is_row_finished) 
+        {
+          *is_row_finished = is_row_finished_;
+        }
+        return common::OB_SUCCESS;
+      }
     
     private:
       typedef ObSSTableBlockReader::const_iterator const_iterator;
@@ -96,11 +106,11 @@ namespace oceanbase
 
     private:
       int load_current_row(const_iterator row_index);
-      int store_sparse_column(const int64_t column_index);
-      int store_current_cell(const int64_t column_index);
+      int store_sparse_column(const ObScanColumnIndexes::Column &column);
+      int store_dense_column(const ObScanColumnIndexes::Column &column);
+      int store_current_cell(const ObScanColumnIndexes::Column &column);
       int store_and_advance_column();
-      int get_current_column_index(const int64_t cursor, 
-          uint64_t& column_id, int64_t& column_index) const;
+      int get_current_column_index(const int64_t cursor, ObScanColumnIndexes::Column& column) const;
       int read_row_columns(const int64_t format, const char* row_buf, 
         const int64_t data_len);
       void clear();
@@ -109,12 +119,13 @@ namespace oceanbase
       DISALLOW_COPY_AND_ASSIGN(ObSSTableBlockGetter);
   
     private:
-      static const int64_t DEFAULT_INDEX_BUF_SIZE = 32 * 1024; // 32K
+      static const int64_t DEFAULT_INDEX_BUF_SIZE = 256 * 1024; // 256K
   
       bool inited_;                     //whether the block getter is initialized
       bool handled_del_row_;            //whether handled the first delete row op
       bool not_exit_col_ret_nop_;       //whether return nop if columns doesn't exit
       bool is_row_cache_data_;          //whether row value cached in sstable row cache
+      bool is_row_finished_;            //whether the row is end
       int64_t sstable_data_store_style_;//sstable store style
       int64_t column_cursor_;           //current column cursor
       int64_t current_column_count_;    //current column count
@@ -125,6 +136,7 @@ namespace oceanbase
       common::ObMemBuf index_buf_;      //row position index buffer
 
       common::ObCellInfo current_cell_info_;//current cell info to return for get_cell()
+      common::ObRowkey current_rowkey_;  //current row key
       common::ObObj current_ids_[common::OB_MAX_COLUMN_NUMBER];
       common::ObObj current_columns_[common::OB_MAX_COLUMN_NUMBER];
 

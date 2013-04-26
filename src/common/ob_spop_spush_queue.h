@@ -26,6 +26,7 @@ namespace oceanbase
       ObSPopSPushQueue();
       ~ObSPopSPushQueue();
       int init(const int64_t queue_size, const int32_t mod_id);
+      void reset();
       int push(void *msg);
       int pop(const int64_t timeout_us, void *&msg);
       inline uint64_t size()const
@@ -33,6 +34,7 @@ namespace oceanbase
         return push_count_ - pop_count_;
       }
     private:
+      bool inited_;
       bool     waiter_exist_;
       uint64_t push_count_;
       uint64_t pop_count_;

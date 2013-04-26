@@ -34,6 +34,14 @@ namespace oceanbase
       return (x/block_size + 1) * block_size;
     }
 
+    int64_t ObLogBuffer::to_string(char* buf, const int64_t len) const
+    {
+      int64_t pos = 0;
+      databuff_printf(buf, len, pos, "LogBuffer(log_id=[%ld,%ld], pos=[%ld,%ld])",
+                      get_start_id(), get_end_id(), start_pos_, end_pos_);
+      return pos;
+    }
+
     int ObLogBuffer::reset()
     {
       int err = OB_SUCCESS;
@@ -47,6 +55,7 @@ namespace oceanbase
         end_id_ = 0;
         // 总是从缓冲区的第一个block开始，并且每个block也被reset(), 这样重置之后状态更确定
         start_pos_ = ceiling_by_block(end_pos_,  n_blocks_ * (1 << block_size_shift_));
+        __sync_synchronize();
         end_pos_ = start_pos_;
         for(int64_t i = 0; OB_SUCCESS == err && i < n_blocks_; i++)
         {
@@ -141,12 +150,12 @@ namespace oceanbase
           TBSYS_LOG(DEBUG, "read for next_entry(pos=%ld): OB_DATA_NOT_SERVE", pos);
         }
       }
-      else if (copy_count < (int64_t)sizeof(log_entry_buf))
+      else if (copy_count < log_entry.get_serialize_size())
       {
         err = OB_DATA_NOT_SERVE;
         TBSYS_LOG(DEBUG, "read for next_entry(pos=%ld): not read a full header", pos);
       }
-      else if (OB_SUCCESS != (err = log_entry.deserialize(log_entry_buf, sizeof(log_entry_buf), log_entry_buf_pos)))
+      else if (OB_SUCCESS != (err = log_entry.deserialize(log_entry_buf, copy_count, log_entry_buf_pos)))
       {
         TBSYS_LOG(ERROR, "log_entry.deserialize(%p[%ld])=>%d", log_entry_buf, sizeof(log_entry_buf), err);
       }
@@ -254,6 +263,8 @@ namespace oceanbase
       if (NULL == log_buf || NULL == buf || start_id < 0 || len <= 0)
       {
         err = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "get_from_log_buffer(log_buf=%p, buf=%p, start_id=%ld, len=%ld):INVALID_ARGUMENT",
+                  log_buf, buf, start_id, len);
       }
       else if (0 == start_id || start_id > log_buf->get_end_id())
       {

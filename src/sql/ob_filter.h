@@ -28,7 +28,9 @@ namespace oceanbase
       public:
         ObFilter();
         virtual ~ObFilter();
-        void reset(){};
+        void reset();
+        void clear();
+
         /**
          * 添加一个filter
          * 多个filter之间为AND关系
@@ -43,6 +45,7 @@ namespace oceanbase
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         void assign(const ObFilter &other);
+        virtual ObPhyOperatorType get_type() const;
 
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:

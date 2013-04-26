@@ -36,6 +36,8 @@ namespace oceanbase
         :table_id_(common::OB_INVALID_ID), column_id_(common::OB_INVALID_ID), is_ascending_(true)
       {
       }
+
+      NEED_SERIALIZE_AND_DESERIALIZE;
     };
 
     class ObInMemorySort: public ObSortHelper

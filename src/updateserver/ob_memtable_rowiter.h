@@ -91,7 +91,7 @@ namespace oceanbase
         Allocator allocator_;
     };
 
-    class MemTableRowIterator : public IRowIterator
+    class MemTableRowIterator : public IRowIterator, public RowkeyInfoCache
     {
       public:
         MemTableRowIterator();
@@ -108,6 +108,7 @@ namespace oceanbase
         virtual int reset_iter();
         virtual bool get_compressor_name(common::ObString &compressor_str);
         virtual bool get_sstable_schema(sstable::ObSSTableSchema &sstable_schema);
+        virtual const common::ObRowkeyInfo *get_rowkey_info(const uint64_t table_id) const;
         virtual bool get_store_type(int &store_type);
         virtual bool get_block_size(int64_t &block_size);
       private:

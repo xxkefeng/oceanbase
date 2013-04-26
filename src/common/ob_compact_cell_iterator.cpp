@@ -71,6 +71,196 @@ int ObCompactCellIterator::init(const ObString &buf, enum ObCompactStoreType sto
   return ret;
 }
 
+int ObCompactCellIterator::get_next_cell(ObObj& value,
+    bool& is_row_finished)
+{
+  int ret = OB_SUCCESS;
+
+  if (!inited_)
+  {
+    ret = OB_NOT_INIT;
+    TBSYS_LOG(WARN, "not init yet");
+  }
+  else if (is_row_finished_)
+  {
+    is_row_finished_ = false;
+    row_start_ = buf_reader_.pos();
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    switch(store_type_)
+    {
+      case SPARSE:
+        TBSYS_LOG(WARN, "not support");
+        break;
+      case DENSE:
+        TBSYS_LOG(WARN, "not support");
+        break;
+      case DENSE_SPARSE:
+      case DENSE_DENSE:
+        if (0 == step_)
+        {
+          ret = parse(buf_reader_, value);
+          if (OB_SUCCESS != ret && OB_ITER_END != ret)
+          {
+            TBSYS_LOG(WARN, "parse cell fail:ret[%d]", ret);
+          }
+          else if (ObExtendType == value.get_type()
+              && ObActionFlag::OP_END_ROW == value.get_ext())
+          {
+            step_ = 1;
+          }
+        }
+        else if (1 == step_)
+        {
+          if (DENSE_SPARSE == store_type_)
+          {
+            ret = parse(buf_reader_, value, &column_id_);
+            if (OB_SUCCESS != ret && OB_ITER_END != ret)
+            {
+              TBSYS_LOG(WARN, "parse cell fail:ret[%d]", ret);
+            }
+            else if (ObExtendType == value.get_type()
+                && ObActionFlag::OP_END_ROW == value_.get_ext())
+            {
+              step_ = 0;
+            }
+          }
+          else
+          {
+            ret = parse(buf_reader_, value);
+            if(OB_SUCCESS != ret && OB_ITER_END != ret)
+            {
+              TBSYS_LOG(WARN, "parse cell fail:ret[%d]", ret);
+            }
+            else if(ObExtendType == value_.get_type()
+                && ObActionFlag::OP_END_ROW == value_.get_ext())
+            {
+              step_ = 0;
+            }
+          }
+        }
+        break;
+      default:
+        TBSYS_LOG(WARN, "ERROR");
+        ret = OB_ERROR;
+        break;
+    }
+
+    if(OB_SUCCESS == ret)
+    {
+      if(ObExtendType == value.get_type()
+          && ObActionFlag::OP_END_ROW == value.get_ext())
+      {
+        is_row_finished_ = true;
+      }
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    is_row_finished = is_row_finished_;
+  }
+
+  return ret;
+}
+
+int ObCompactCellIterator::get_next_cell(ObObj& value,
+    uint64_t& column_id, bool& is_row_finished)
+{
+  int ret = OB_SUCCESS;
+
+  if (!inited_)
+  {
+    ret = OB_NOT_INIT;
+    TBSYS_LOG(WARN, "not init yet");
+  }
+  else if (is_row_finished_)
+  {
+    is_row_finished_ = false;
+    row_start_ = buf_reader_.pos();
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    switch(store_type_)
+    {
+      case SPARSE:
+        TBSYS_LOG(WARN, "not support");
+        break;
+      case DENSE:
+        TBSYS_LOG(WARN, "not support");
+        break;
+      case DENSE_SPARSE:
+      case DENSE_DENSE:
+        if (0 == step_)
+        {
+          ret = parse(buf_reader_, value);
+          if (OB_SUCCESS != ret && OB_ITER_END != ret)
+          {
+            TBSYS_LOG(WARN, "parse cell fail:ret[%d]", ret);
+          }
+          else if (ObExtendType == value.get_type()
+              && ObActionFlag::OP_END_ROW == value.get_ext())
+          {
+            step_ = 1;
+          }
+        }
+        else if (1 == step_)
+        {
+          if (DENSE_SPARSE == store_type_)
+          {
+            ret = parse(buf_reader_, value, &column_id);
+            if (OB_SUCCESS != ret && OB_ITER_END != ret)
+            {
+              TBSYS_LOG(WARN, "parse cell fail:ret[%d]", ret);
+            }
+            else if (ObExtendType == value.get_type()
+                && ObActionFlag::OP_END_ROW == value_.get_ext())
+            {
+              step_ = 0;
+            }
+          }
+          else
+          {
+            ret = parse(buf_reader_, value);
+            if(OB_SUCCESS != ret && OB_ITER_END != ret)
+            {
+              TBSYS_LOG(WARN, "parse cell fail:ret[%d]", ret);
+            }
+            else if(ObExtendType == value_.get_type()
+                && ObActionFlag::OP_END_ROW == value_.get_ext())
+            {
+              step_ = 0;
+            }
+          }
+        }
+        break;
+      default:
+        TBSYS_LOG(WARN, "ERROR");
+        ret = OB_ERROR;
+        break;
+    }
+
+    if(OB_SUCCESS == ret)
+    {
+      if(ObExtendType == value.get_type()
+          && ObActionFlag::OP_END_ROW == value.get_ext())
+      {
+        is_row_finished_ = true;
+      }
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    is_row_finished = is_row_finished_;
+  }
+
+  return ret;
+}
+
 int ObCompactCellIterator::next_cell()
 {
   int ret = OB_SUCCESS;
@@ -85,7 +275,7 @@ int ObCompactCellIterator::next_cell()
     is_row_finished_ = false;
     row_start_ = buf_reader_.pos();
   }
-    
+
   if(OB_SUCCESS == ret)
   {
     column_id_ = OB_INVALID_ID;
@@ -119,7 +309,7 @@ int ObCompactCellIterator::next_cell()
           step_ = 1;
         }
       }
-      if(OB_SUCCESS == ret && 1 == step_)
+      else if(1 == step_)
       {
         if(DENSE_SPARSE == store_type_)
         {
@@ -146,6 +336,11 @@ int ObCompactCellIterator::next_cell()
           }
         }
       }
+      break;
+    default:
+      TBSYS_LOG(WARN, "ERROR");
+      ret = OB_ERROR;
+      break;
     }
 
     if(OB_SUCCESS == ret)
@@ -239,6 +434,9 @@ int ObCompactCellIterator::parse(ObBufferReader &buf_reader, ObObj &value, uint6
   const int16_t *int16_value = NULL;
   const int32_t *int32_value = NULL;
   const int64_t *int64_value = NULL;
+  const float *float_value = NULL;
+  const double *double_value = NULL;
+  const bool *bool_value = NULL;
   const ObDateTime *datetime_value = NULL;
   const ObPreciseDateTime *precise_datetime_value = NULL;
   const ObCreateTime *createtime_value = NULL;
@@ -297,6 +495,12 @@ int ObCompactCellIterator::parse(ObBufferReader &buf_reader, ObObj &value, uint6
       case_clause(ObCreateTime, createtime);
     case ObCellMeta::TP_MODIFY_TIME:
       case_clause(ObModifyTime, modifytime);
+    case ObCellMeta::TP_FLOAT:
+      case_clause_with_add(float, float, float);
+    case ObCellMeta::TP_DOUBLE:
+      case_clause_with_add(double, double, double);
+    case ObCellMeta::TP_BOOL:
+      case_clause(bool, bool);
 
     case ObCellMeta::TP_VARCHAR:
       ret = parse_varchar(buf_reader, value);
@@ -317,9 +521,33 @@ int ObCompactCellIterator::parse(ObBufferReader &buf_reader, ObObj &value, uint6
       case ObCellMeta::ES_NOT_EXIST_ROW:
         value.set_ext(ObActionFlag::OP_ROW_DOES_NOT_EXIST);
         break;
+      case ObCellMeta::ES_VALID:
+        value.set_ext(ObActionFlag::OP_VALID);
+        break;
+      case ObCellMeta::ES_NEW_ADD:
+        value.set_ext(ObActionFlag::OP_NEW_ADD);
+        break;
       default:
         ret = OB_NOT_SUPPORTED;
         TBSYS_LOG(WARN, "unsupported escape %d", cell_meta->attr_);
+      }
+      break;
+    case ObCellMeta::TP_EXTEND:
+      switch(cell_meta->attr_)
+      {
+      case ObCellMeta::AR_MIN:
+        value.set_min_value();
+        break;
+      case ObCellMeta::AR_MAX:
+        value.set_max_value();
+        break;
+      case ObCellMeta::ES_DEL_ROW:
+        value.set_ext(ObActionFlag::OP_DEL_ROW);
+        break;
+      default:
+        ret = OB_NOT_SUPPORTED;
+        TBSYS_LOG(WARN, "unsupported extend:cell_meta->attr_=%d",
+            cell_meta->attr_);
       }
       break;
     default:
@@ -332,8 +560,8 @@ int ObCompactCellIterator::parse(ObBufferReader &buf_reader, ObObj &value, uint6
   {
     if(OB_SUCCESS == ret && ObCellMeta::TP_ESCAPE != cell_meta->type_)
     {
-      const uint16_t *tmp_column_id = NULL;
-      ret = buf_reader.get<uint16_t>(tmp_column_id);
+      const uint32_t *tmp_column_id = NULL;
+      ret = buf_reader.get<uint32_t>(tmp_column_id);
       if(OB_SUCCESS == ret)
       {
         if(*tmp_column_id == OB_COMPACT_COLUMN_INVALID_ID)
@@ -358,10 +586,10 @@ int ObCompactCellIterator::parse(ObBufferReader &buf_reader, ObObj &value, uint6
 int ObCompactCellIterator::parse_varchar(ObBufferReader &buf_reader, ObObj &value) const
 {
   int ret = OB_SUCCESS;
-  const uint16_t *varchar_len = NULL;
+  const int32_t *varchar_len = NULL;
   ObString str_value;
 
-  ret = buf_reader.get<uint16_t>(varchar_len);
+  ret = buf_reader.get<int32_t>(varchar_len);
   if(OB_SUCCESS == ret)
   {
     str_value.assign_ptr(const_cast<char*>(buf_reader.cur_ptr()), *varchar_len);
@@ -403,7 +631,7 @@ int ObCompactCellIterator::parse_decimal(ObBufferReader &buf_reader, ObObj &valu
   {
     if (nwords <= 3)
     {
-      words = reinterpret_cast<uint32_t*>(&(value.varchar_len_));
+      words = reinterpret_cast<uint32_t*>(&(value.val_len_));
     }
     else
     {

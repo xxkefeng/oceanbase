@@ -1,20 +1,61 @@
 #!/bin/bash
 #for taobao abs
-export temppath=$1
-temppath=$1
-cd $temppath/rpm
-if [ `cat /etc/redhat-release|cut -d " " -f 7|cut -d "." -f 1` = 4 ]
-then
-	RELEASE=$4.el4
-else
-	RELEASE=$4.el5
-fi
-VERSION=$3
+# Usage: oceanbase-build.sh <oceanbasepath> <package> <version> <release>
+# Usage: oceanbase-build.sh
 
-cd $temppath
+REDHAT=`cat /etc/redhat-release|cut -d " " -f 7|cut -d "." -f 1`
+
+if [ $# -ne 4 ]
+then
+
+	TOP_DIR=`pwd`/../
+	PACKAGE=oceanbase
+	VERSION=`cat oceanbase-VER.txt`
+	RELEASE="test.el${REDHAT}"
+	SPEC_FILE=oceanbase_test.spec
+else
+	TOP_DIR=$1
+	PACKAGE=$2
+	VERSION=$3
+	RELEASE="$4.el${REDHAT}"
+	SPEC_FILE=oceanbase.spec
+	TBLIB_ROOT=/opt/csr/common
+	EASY_ROOT=/usr
+fi
+echo "[BUILD] args: TOP_DIR=${TOP_DIR} PACKAGE=${PACKAGE} VERSION=${VERSION} RELEASE=${RELEASE} SPEC=${SPEC_FILE}"
+echo "[BUILD] TBLIB_ROOT=${TBLIB_ROOT}"
+echo "[BUILD] EASY_ROOT=${EASY_ROOT}"
+
+echo "[BUILD] config..."
+cd $TOP_DIR
 chmod +x build.sh
 ./build.sh init
-export TBLIB_ROOT=/opt/csr/common
-./configure  --with-test-case=no --with-release=yes --with-tblib-root=/opt/csr/common
-make PREFIX=/home/admin/oceanbase RELEASE=$RELEASE VERSION=$VERSION rpms
+./configure  --with-test-case=no --with-release=yes --with-tblib-root=$TBLIB_ROOT --with-easy-root=$EASY_ROOT
+echo "[BUILD] make dist..."
+make dist-gzip
+
+PREFIX=/home/admin/oceanbase
+TMP_DIR=/${TOP_DIR}/oceanbase-tmp.$$
+echo "[BUILD] TMP_DIR=${TMP_DIR}"
+echo "[BUILD] PREFIX=${PREFIX}"
+echo "[BUILD] RELEASE=${RELEASE}"
+echo "[BUILD] PACKAGE=${PACKAGE}"
+
+echo "[BUILD] create tmp dirs..."
+mkdir -p ${TMP_DIR}
+mkdir -p ${TMP_DIR}/BUILD
+mkdir -p ${TMP_DIR}/RPMS
+mkdir -p ${TMP_DIR}/SOURCES
+mkdir -p ${TMP_DIR}/SRPMS
+cp oceanbase-${VERSION}.tar.gz ${TMP_DIR}/SOURCES
+cd ${TMP_DIR}/BUILD
+tar xfz ${TMP_DIR}/SOURCES/oceanbase-${VERSION}.tar.gz oceanbase-${VERSION}/rpm/${SPEC_FILE}
+
+echo "[BUILD] make rpms..."
+rpmbuild --define "_topdir ${TMP_DIR}" --define "NAME ${PACKAGE}" --define "VERSION ${VERSION}" --define "_prefix ${PREFIX}" --define "RELEASE ${RELEASE}" -ba ${TMP_DIR}/BUILD/oceanbase-${VERSION}/rpm/${SPEC_FILE}
+echo "[BUILD] make rpms done"
+
+cd ${TOP_DIR}
+find ${TMP_DIR}/RPMS/ -name "*.rpm" -exec mv '{}' . \;
+rm -rf ${TMP_DIR}
 mv *.rpm rpm/

@@ -4,7 +4,7 @@
  //
  // Copyright (C) 2010, 2011 Taobao.com, Inc.
  //
- // Created on 2010-10-13 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2010-10-13 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -32,15 +32,15 @@
 #include "ob_update_server_main.h"
 #include "ob_ups_stat.h"
 #include "ob_sstable_mgr.h"
+#include "ob_ups_table_mgr.h"
 
 namespace oceanbase
 {
   namespace updateserver
   {
     using namespace oceanbase::common;
-
     Dummy __dummy__;
-    GConf g_conf = {true, 0, 0, true};
+    GConf g_conf = {true, 0, true};
 
     template <>
     int ups_serialize<uint64_t>(const uint64_t &data, char *buf, const int64_t data_len, int64_t& pos)
@@ -88,7 +88,28 @@ namespace oceanbase
     int ups_deserialize<int32_t>(int32_t &data, char *buf, const int64_t data_len, int64_t& pos)
     {
       return serialization::decode_vi32(buf, data_len, pos, &data);
-    };    
+    };
+
+    template <>
+    int ups_serialize<ObDataBuffer>(const ObDataBuffer &data, char *buf, const int64_t data_len, int64_t& pos)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == buf
+          || 0 >= (data_len - pos))
+      {
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (data.get_position() > (data_len - pos))
+      {
+        ret = OB_BUF_NOT_ENOUGH;
+      }
+      else
+      {
+        memcpy(buf + pos, data.get_data(), data.get_position());
+        pos += data.get_position();
+      }
+      return ret;
+    }
 
     bool is_range_valid(const ObVersionRange &version_range)
     {
@@ -152,44 +173,6 @@ namespace oceanbase
       return bret;
     }
 
-    bool is_in_range(const ObString &key, const ObRange &range)
-    {
-      bool bret = false;
-      if (range.is_whole_range())
-      {
-        bret = true;
-      }
-      else if (key > range.start_key_
-              && range.border_flag_.is_max_value())
-      {
-        bret = true;
-      }
-      else if (key < range.end_key_
-              && range.border_flag_.is_min_value())
-      {
-        bret = true;
-      }
-      else if (key > range.start_key_
-              && key < range.end_key_)
-      {
-        bret = true;
-      }
-      else if (key == range.start_key_
-              && range.border_flag_.inclusive_start())
-      {
-        bret = true;
-      }
-      else if (key == range.end_key_
-              && range.border_flag_.inclusive_end())
-      {
-        bret = true;
-      }
-      else
-      {
-        // do nothing
-      }
-      return bret;
-    }
 
     int precise_sleep(const int64_t microsecond)
     {
@@ -230,27 +213,14 @@ namespace oceanbase
       return ret;
     }
 
-    const char *inet_ntoa_r(const uint64_t ipport)
+    const char *inet_ntoa_r(easy_addr_t addr)
     {
-      static const int64_t BUFFER_SIZE = 32;
+      static const int64_t BUFFER_SIZE = 64;
       static __thread char buffers[2][BUFFER_SIZE];
-      static __thread int64_t i = 0;
+      static __thread uint64_t i = 0;
       char *buffer = buffers[i++ % 2];
       buffer[0] = '\0';
-
-      uint32_t ip = (uint32_t)(ipport & 0xffffffff);
-      int port = (int)((ipport >> 32 ) & 0xffff);
-      unsigned char *bytes = (unsigned char *) &ip;
-      if (port > 0)
-      {
-        snprintf(buffer, BUFFER_SIZE, "%d.%d.%d.%d:%d", bytes[0], bytes[1], bytes[2], bytes[3], port);
-      }
-      else
-      {
-        snprintf(buffer, BUFFER_SIZE, "%d.%d.%d.%d:-1", bytes[0], bytes[1], bytes[2], bytes[3]);
-      }
-
-      return buffer;
+      return easy_inet_addr_to_str(&addr, buffer, BUFFER_SIZE);
     }
 
     void SwitchSKeyDuty::runTimerTask()
@@ -268,14 +238,9 @@ namespace oceanbase
       }
     }
 
-    void TimeUpdateDuty::runTimerTask()
-    {
-      g_conf.cur_time = tbsys::CTimeUtil::getTime();
-    }
-
     int64_t get_max_row_cell_num()
     {
-      int64_t ret = ObUpdateServerParam::DEFAULT_MAX_ROW_CELL_NUM;
+      int64_t ret = 0;
       ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
       if (NULL == ups_main)
       {
@@ -283,14 +248,14 @@ namespace oceanbase
       }
       else
       {
-        ret = ups_main->get_update_server().get_param().get_max_row_cell_num();
+        ret = ups_main->get_update_server().get_param().max_row_cell_num;
       }
       return ret;
     }
 
     int64_t get_table_available_warn_size()
     {
-      int64_t ret = ObUpdateServerParam::DEFAULT_TABLE_AVAILABLE_WARN_SIZE;
+      int64_t ret = 0;
       ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
       if (NULL == ups_main)
       {
@@ -298,14 +263,14 @@ namespace oceanbase
       }
       else
       {
-        ret = ups_main->get_update_server().get_param().get_table_available_warn_size();
+        ret = ups_main->get_update_server().get_param().table_available_warn_size;
       }
       return ret;
     }
 
     int64_t get_table_available_error_size()
     {
-      int64_t ret = ObUpdateServerParam::DEFAULT_TABLE_AVAILABLE_ERROR_SIZE;
+      int64_t ret = 0;
       ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
       if (NULL == ups_main)
       {
@@ -313,7 +278,7 @@ namespace oceanbase
       }
       else
       {
-        ret = ups_main->get_update_server().get_param().get_table_available_error_size();
+        ret = ups_main->get_update_server().get_param().table_available_error_size;
       }
       return ret;
     }
@@ -328,7 +293,7 @@ namespace oceanbase
       }
       else
       {
-        ret = ups_main->get_update_server().get_param().get_table_memory_limit();
+        ret = ups_main->get_update_server().get_param().table_memory_limit;
       }
       return ret;
     }
@@ -336,10 +301,15 @@ namespace oceanbase
     bool ups_available_memory_warn_callback(const int64_t mem_size_available)
     {
       bool bret = true;
+      static volatile uint64_t lock = 0;
+      OnceGuard lock_guard(lock);
       static int64_t last_proc_time = 0;
       static const int64_t MIN_PROC_INTERVAL = 60L * 1000L * 1000L;
-      int64_t table_available_error_size = ObUpdateServerParam::DEFAULT_TABLE_AVAILABLE_ERROR_SIZE_GB;
-      if ((last_proc_time + MIN_PROC_INTERVAL) < tbsys::CTimeUtil::getTime())
+      int64_t table_available_error_size = 0;
+      
+      if (!lock_guard.try_lock())
+      {}
+      else if ((last_proc_time + MIN_PROC_INTERVAL) < tbsys::CTimeUtil::getTime())
       {
         TBSYS_LOG(INFO, "available memory reach the warn-size=%ld last_proc_time=%ld, will try to free a memtable",
                   mem_size_available, last_proc_time);
@@ -350,7 +320,7 @@ namespace oceanbase
         }
         else
         {
-          table_available_error_size = ups_main->get_update_server().get_param().get_table_available_error_size();
+          table_available_error_size = ups_main->get_update_server().get_param().table_available_error_size;
           if (table_available_error_size >= mem_size_available)
           {
             ups_main->get_update_server().submit_immediately_drop();
@@ -367,10 +337,9 @@ namespace oceanbase
       return bret;
     }
 
-    const CacheWarmUpConf &get_warm_up_conf()
+    int64_t get_conf_warm_up_time()
     {
-      static const CacheWarmUpConf g_default_warm_up_conf;
-      const CacheWarmUpConf *ret = &g_default_warm_up_conf;
+      int64_t warm_up_time = 0;
       ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
       if (NULL == ups_main)
       {
@@ -378,9 +347,9 @@ namespace oceanbase
       }
       else
       {
-        ret = &(ups_main->get_update_server().get_param().get_warm_up_conf());
+        warm_up_time = ups_main->get_update_server().get_param().warm_up_time;
       }
-      return *ret;
+      return warm_up_time;
     }
 
     void set_warm_up_percent(const int64_t warm_up_percent)
@@ -432,7 +401,7 @@ namespace oceanbase
       }
       else
       {
-        if (ups_main->get_update_server().get_param().get_using_memtable_bloomfilter())
+        if (ups_main->get_update_server().get_param().using_memtable_bloomfilter)
         {
           bret = true;
         }
@@ -450,7 +419,7 @@ namespace oceanbase
       }
       else
       {
-        if (!ups_main->get_update_server().get_param().get_sstable_dio_writing())
+        if (!ups_main->get_update_server().get_param().write_sstable_use_dio)
         {
           bret = false;
         }
@@ -485,21 +454,21 @@ namespace oceanbase
     {
       static const int64_t BUFFER_SIZE = 1024;
       static __thread char buffers[2][BUFFER_SIZE];
-      static __thread int64_t i = 0;
+      static __thread uint64_t i = 0;
       char *buffer = buffers[i++ % 2];
       buffer[0] = '\0';
       if (NULL != scanner)
       {
-        ObString last_row_key;
+        ObRowkey last_row_key;
         scanner->get_last_row_key(last_row_key);
-        
+
         bool is_full_filled = true;
         int64_t fullfilled_item_num = 0;
         scanner->get_is_req_fullfilled(is_full_filled, fullfilled_item_num);
-        
+
         snprintf(buffer, BUFFER_SIZE, "is_empty=%s last_row_key=%s is_full_filled=%s fullfilled_item_num=%ld "
                 "data_version=%ld size=%ld id_name_type=%d",
-                STR_BOOL(scanner->is_empty()), print_string(last_row_key), STR_BOOL(is_full_filled), fullfilled_item_num,
+                STR_BOOL(scanner->is_empty()), to_cstring(last_row_key), STR_BOOL(is_full_filled), fullfilled_item_num,
                 scanner->get_data_version(), scanner->get_size(), scanner->get_id_name_type());
       }
       return buffer;
@@ -515,7 +484,7 @@ namespace oceanbase
       }
       else
       {
-        ret = ups_main->get_update_server().get_param().get_active_mem_limit_gb() * 1024L * 1024L * 1024L;
+        ret = ups_main->get_update_server().get_param().active_mem_limit;
       }
       return ret;
     }
@@ -666,6 +635,22 @@ namespace oceanbase
       return ret;
     }
 
+    int get_ups_schema_mgr(CommonSchemaManagerWrapper& schema_mgr)
+    {
+      int err = OB_SUCCESS;
+      ObUpdateServerMain *ups_main = NULL;
+      if (NULL == (ups_main = ObUpdateServerMain::get_instance()))
+      {
+        err = OB_NOT_INIT;
+        TBSYS_LOG(WARN, "get updateserver main fail");
+      }
+      else if (OB_SUCCESS != (err = ups_main->get_update_server().get_table_mgr().get_schema_mgr().get_schema_mgr(schema_mgr)))
+      {
+        TBSYS_LOG(ERROR, "get_schema_mgr()=>%d", err);
+      }
+      return err;
+    }
+
     void set_client_mgr_err(const int err)
     {
       ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
@@ -679,6 +664,63 @@ namespace oceanbase
       }
     }
 
+    const ObRowkeyInfo *RowkeyInfoCache::get_rowkey_info(const uint64_t table_id) const
+    {
+      const ObRowkeyInfo *rki = NULL;
+      ObUpdateServerMain *ups_main = NULL;
+      if (rkinfo_table_id_ == table_id)
+      {
+        rki = &rkinfo_;
+      }
+      else if (NULL == (ups_main = ObUpdateServerMain::get_instance()))
+      {
+        TBSYS_LOG(WARN, "get updateserver main fail");
+      }
+      else
+      {
+        UpsSchemaMgrGuard sm_guard;
+        const CommonSchemaManager *sm = NULL;
+        const CommonTableSchema *tm = NULL;
+        if (NULL != (sm = ups_main->get_update_server().get_table_mgr().get_schema_mgr().get_schema_mgr(sm_guard))
+            && NULL != (tm = sm->get_table_schema(table_id)))
+        {
+          rkinfo_table_id_ = table_id;
+          rkinfo_ = tm->get_rowkey_info();
+          rki = &rkinfo_;
+        }
+      }
+      TBSYS_LOG(DEBUG, "cached_table_id=%lu table_id=%lu cached_rowkey_info=[%s] rowkey_info=%p",
+                rkinfo_table_id_, table_id, to_cstring(rkinfo_), rki);
+      return rki;
+    }
+
+    const ObRowkeyInfo *RowkeyInfoCache::get_rowkey_info(ObIUpsTableMgr &table_mgr, const uint64_t table_id) const
+    {
+      const ObRowkeyInfo *rki = NULL;
+      if (rkinfo_table_id_ == table_id)
+      {
+        rki = &rkinfo_;
+      }
+      else
+      {
+        UpsSchemaMgrGuard sm_guard;
+        const CommonSchemaManager *sm = NULL;
+        const CommonTableSchema *tm = NULL;
+        if (NULL != (sm = table_mgr.get_schema_mgr().get_schema_mgr(sm_guard))
+            && NULL != (tm = sm->get_table_schema(table_id)))
+        {
+          rkinfo_table_id_ = table_id;
+          rkinfo_ = tm->get_rowkey_info();
+          rki = &rkinfo_;
+        }
+      }
+      return rki;
+    }
+
+    int64_t get_memtable_hash_buckets_size()
+    {
+      return ObUpdateServerMain::get_instance()->get_update_server().get_param().memtable_hash_buckets_size;
+    }
   }
 }
 

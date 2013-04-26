@@ -26,7 +26,7 @@
 #include <new>
 #include <algorithm>
 #include "common/ob_define.h"
-#include "common/btree/key_btree.h"
+#include "common/cmbtree/btree_base.h"
 #include "common/hash/ob_hashmap.h"
 #include "common/page_arena.h"
 #include "common/ob_list.h"
@@ -42,37 +42,53 @@ namespace oceanbase
     class HashEngineAllocator
     {
       public:
-        HashEngineAllocator() : mt_(NULL) {};
+        HashEngineAllocator(MemTank &mt) : mt_(mt) {};
         ~HashEngineAllocator() {};
       public:
         void *alloc(const int64_t size)
         {
-          return mt_ ? mt_->hash_engine_alloc(static_cast<int32_t>(size)) : NULL;
+          return mt_.hash_engine_alloc(size);
         };
         void free(void *ptr)
         {
           UNUSED(ptr);
         };
-        void set_mem_tank(MemTank *mt)
+      private:
+        MemTank &mt_;
+    };
+
+    class BtreeEngineAllocator
+    {
+      public:
+        BtreeEngineAllocator(MemTank &mt) : mt_(mt) {};
+        BtreeEngineAllocator(BtreeEngineAllocator &other) : mt_(other.mt_) {};
+        ~BtreeEngineAllocator() {};
+      public:
+        void *alloc(const int64_t size)
         {
-          mt_ = mt;
+          return mt_.btree_engine_alloc(static_cast<int32_t>(size));
+        };
+        void free(void *ptr)
+        {
+          UNUSED(ptr);
         };
       private:
-        MemTank *mt_;
+        MemTank &mt_;
     };
 
     class QueryEngineIterator;
     class QueryEngine
     {
       friend class QueryEngineIterator;
-      typedef common::KeyBtree<TEKey, TEValue*> keybtree_t;
+      typedef common::cmbtree::BtreeBase<TEKey, TEValue*, BtreeEngineAllocator> keybtree_t;
       typedef lightyhash::LightyHashMap<TEHashKey, TEValue*, HashEngineAllocator, HashEngineAllocator> keyhash_t;
-      static const int64_t HASH_SIZE = 50000000;
       public:
-        QueryEngine();
+        static int64_t HASH_SIZE;
+      public:
+        QueryEngine(MemTank &allocer);
         ~QueryEngine();
       public:
-        int init(MemTank *allocer);
+        int init(const int64_t hash_size = 0);
         int destroy();
       public:
         // 插入key-value对
@@ -107,15 +123,16 @@ namespace oceanbase
         void dump2text(const char *fname);
 
         int64_t btree_size();
+        int64_t btree_alloc_memory();
+        int64_t btree_reserved_memory();
+        void    btree_dump_mem_info();
         int64_t hash_size() const;
         int64_t hash_bucket_using() const;
         int64_t hash_uninit_unit_num() const;
       private:
         bool inited_;
-        UpsBtreeEngineAlloc btree_key_alloc_;
-        UpsBtreeEngineAlloc btree_node_alloc_;
-        HashEngineAllocator hash_bucket_alloc_;
-        HashEngineAllocator hash_node_alloc_;
+        BtreeEngineAllocator btree_alloc_;
+        HashEngineAllocator hash_alloc_;
         keybtree_t keybtree_;
         keyhash_t keyhash_;
     };
@@ -137,10 +154,10 @@ namespace oceanbase
         void reset();
       private:
         void set_(QueryEngine::keybtree_t *keybtree);
-        common::BtreeReadHandle &get_read_handle_();
+        QueryEngine::keybtree_t::TScanHandle &get_read_handle_();
       private:
         QueryEngine::keybtree_t *keybtree_;
-        common::BtreeReadHandle read_handle_;
+        QueryEngine::keybtree_t::TScanHandle read_handle_;
         TEKey key_;
         TEValue *pvalue_;
     };

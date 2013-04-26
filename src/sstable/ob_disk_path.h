@@ -120,13 +120,13 @@ namespace oceanbase
     int get_meta_path(const int64_t version, const int32_t disk_no, const bool current, char *path, const int32_t path_len);
 
     /**
-     * get sstable file import directory base on disk no of sstable
+     * get sstable file bypass directory base on disk no of sstable
      * @param disk_no disk no where sstable file in.
      * @param [out] path sstable file path
      * @param path_len length of %path
      */
-    int get_import_sstable_directory(const int32_t disk_no, char *path, const int64_t path_len);
-    int get_import_sstable_path(const int32_t disk_no, 
+    int get_bypass_sstable_directory(const int32_t disk_no, char *path, const int64_t path_len);
+    int get_bypass_sstable_path(const int32_t disk_no, 
       const char* sstable_name, char *path, const int64_t path_len);
 
     int idx_file_name_filter(const struct dirent *d);

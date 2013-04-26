@@ -8,8 +8,8 @@
 #include "common/ob_malloc.h"
 #include "common/ob_scanner.h"
 #include "common/ob_tablet_info.h"
+#include "common/ob_schema_manager.h"
 #include "ob_rs_rpc_proxy.h"
-#include "ob_ms_schema_manager.h"
 #include "ob_ms_schema_proxy.h"
 #include "ob_ms_rpc_stub.h"
 
@@ -23,7 +23,7 @@ using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace oceanbase::mergeserver::test;
 
-const uint64_t timeout = 100000;
+const uint64_t timeout = 500000;
 const char * addr = "localhost";
 
 int main(int argc, char **argv)
@@ -96,7 +96,7 @@ TEST_F(TestSchemaProxy, test_get)
 
   // init schema manger
   ObSchemaManagerV2 sample(1022);
-  EXPECT_TRUE(OB_SUCCESS == manager->init(sample));
+  EXPECT_TRUE(OB_SUCCESS == manager->init(false, sample));
 
   EXPECT_TRUE(OB_SUCCESS == proxy.get_schema(timestamp, &schema));
   EXPECT_TRUE(NULL != schema);
@@ -174,7 +174,7 @@ TEST_F(TestSchemaProxy, test_fetch)
 
   // init schema manger
   ObSchemaManagerV2 sample(1022);
-  EXPECT_TRUE(OB_SUCCESS == manager->init(sample));
+  EXPECT_TRUE(OB_SUCCESS == manager->init(false, sample));
   
   timestamp = 1021;
   EXPECT_TRUE(OB_SUCCESS == proxy.fetch_schema(timestamp, &schema));
@@ -243,7 +243,7 @@ TEST_F(TestSchemaProxy, test_multi_schema)
   ObMergerSchemaManager * manager = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != manager);
   ObSchemaManagerV2 sample(1022);
-  EXPECT_TRUE(OB_SUCCESS == manager->init(sample));
+  EXPECT_TRUE(OB_SUCCESS == manager->init(false, sample));
   
   ObMergerSchemaProxy proxy(&root_proxy, manager);
   // start root server

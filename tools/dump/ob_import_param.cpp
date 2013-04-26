@@ -10,7 +10,10 @@ static const char *kDataFile = "datafile";
 static const char *kInputColumnNr = "input_column_nr";
 static const char *kDelima = "delima";
 static const char *kRecDelima = "rec_delima";
+static const char *kNopFlag = "nop_flag";
+static const char *kNullFlag = "null_flag";
 static const char *kConcurrency = "concurrency";
+static const char *kHasTableTitle = "has_table_title";
 static const char *kBadFile = "bad_file";
 
 ImportParam::ImportParam()
@@ -99,6 +102,32 @@ int ImportParam::load(const char *file)
       const char *str_concurr = TBSYS_CONFIG.getString(param.table_name.c_str(), kConcurrency);
       if (str_concurr != NULL) {
         param.concurrency = atoi(str_concurr);
+      }
+
+      const char *str_has_table_title = TBSYS_CONFIG.getString(param.table_name.c_str(), kHasTableTitle);
+      if (str_has_table_title != NULL) {
+        param.has_table_title = (atoi(str_has_table_title) != 0);
+      }
+      else {
+        param.has_table_title = false;
+      }
+
+      const char *str_nop_flag = TBSYS_CONFIG.getString(param.table_name.c_str(), kNopFlag);
+      if (str_nop_flag != NULL) {
+        param.has_nop_flag = true;
+        param.nop_flag = static_cast<char>(atoi(str_nop_flag));
+      } 
+      else {
+        param.has_nop_flag = false;
+      }
+
+      const char *str_null_flag = TBSYS_CONFIG.getString(param.table_name.c_str(), kNullFlag);
+      if (str_null_flag != NULL) {
+        param.has_null_flag = true;
+        param.null_flag = static_cast<char>(atoi(str_null_flag));
+      }
+      else {
+        param.has_null_flag = false;
       }
 
       std::vector<const char *> columns_desc = 

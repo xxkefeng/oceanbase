@@ -19,7 +19,7 @@
 #include "ob_query_agent.h"
 #include "ob_chunk_server.h"
 #include "ob_get_scan_proxy.h"
-#include "ob_join_get_cell_stream.h"
+#include "ob_get_cell_stream.h"
 
 namespace oceanbase
 {
@@ -96,7 +96,6 @@ namespace oceanbase
       ObMergerRpcProxy& rpc_proxy_;
       ObQueryAgent query_agent_;
       ObGetCellStream ups_get_cell_stream_;
-      ObJoinGetCellStream join_get_cell_stream_;      
       ObScanCellStream ups_scan_cell_stream_;
       const common::ObSchemaManagerV2 *schema_mgr_;
       common::ObInnerCellInfo* row_cells_[MAX_ROW_COLUMN_NUMBER];

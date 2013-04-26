@@ -30,10 +30,14 @@ namespace oceanbase
         virtual ~ObShadowServer();
 
         void set_priority(const int32_t priority);
-    
-        virtual tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Connection *connection, tbnet::Packet *packet);
+        int initialize();
+        //int start(bool need_wait);
 
-        virtual bool handleBatchPacket(tbnet::Connection *connection, tbnet::PacketQueue &packetQueue);
+        int set_io_thread_count(int32_t io_thread_count);
+
+        int handlePacket(ObPacket *packet);
+        
+        int handleBatchPacket(ObPacketQueue &packetQueue);
 
       private:
         int32_t priority_;

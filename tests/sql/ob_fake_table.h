@@ -53,14 +53,16 @@ namespace oceanbase
           int cons_varchar_cell(common::ObObj &cell);
           int cons_random_int_cell(common::ObObj &cell);
           int rand_int(int max);
-        private:
-          // data members
+        protected:
           uint64_t table_id_;
           int64_t row_count_;
-          int64_t get_count_;
-          char buff_[VARCHAR_CELL_BUFF_SIZE];
           common::ObRowDesc row_desc_;
           common::ObRow curr_row_;
+
+        private:
+          // data members
+          int64_t get_count_;
+          char buff_[VARCHAR_CELL_BUFF_SIZE];
       };
 
       inline const common::ObRowDesc &ObFakeTable::get_row_desc() const

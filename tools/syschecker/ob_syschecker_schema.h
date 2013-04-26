@@ -47,6 +47,9 @@ namespace oceanbase
 
       const common::ObSchemaManagerV2& get_schema_manager() const;
       common::ObSchemaManagerV2& get_schema_manager();
+      const common::ObRowkeyInfo& get_rowkey_info(const uint64_t table_id) const;
+      bool is_rowkey_column(const uint64_t table_id, const uint64_t column_id) const;
+      bool is_prefix_column(const uint64_t table_id, const uint64_t column_id) const;
 
       const common::ObTableSchema* get_wt_schema() const;
       const common::ObTableSchema* get_jt_schema() const;

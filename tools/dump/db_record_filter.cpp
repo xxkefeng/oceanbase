@@ -89,7 +89,7 @@ DbRowFilter *create_filter_from_str(std::string str)
 }
 
 
-bool DbDateTimeFilter::operator()(DbRecord *record)
+bool DbDateTimeFilter::operator()(DbRecord *record) const
 {
   ObCellInfo *cell;
   bool skip = false;

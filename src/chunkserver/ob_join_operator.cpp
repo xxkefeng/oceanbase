@@ -200,11 +200,9 @@ namespace oceanbase
       int err = OB_SUCCESS;
       const ObColumnSchemaV2::ObJoinInfo *join_info = NULL;
       ObInnerCellInfo *join_left_cell = NULL;
-      int32_t start_pos = 0;
-      int32_t end_pos = 0;
       ObRowCellVec *join_cache_row = NULL;
       uint64_t prev_cache_row_table_id = OB_INVALID_ID;
-      ObString prev_cache_row_key;
+      ObRowkey prev_cache_row_key;
       bool prev_row_searched_cache = false;
       bool prev_row_hit_cache = false;
       bool is_row_changed = false;
@@ -270,6 +268,12 @@ namespace oceanbase
 
         if (OB_SUCCESS == err && NULL != join_info)
         {
+          ObObj row_key_obj_array[OB_MAX_ROWKEY_COLUMN_NUMBER];
+          ObRowkey temp_rowkey;
+          uint32_t offset_idx = 0;
+          int64_t offset_in_rowkey_objs = 0;
+          const ObObj *objs_ptr = NULL;
+
           apply_join_right_cell.table_id_ = join_info->join_table_;
           apply_join_right_cell.column_id_  = join_info->correlated_column_;
 
@@ -281,42 +285,35 @@ namespace oceanbase
               join_left_cell->table_id_,  join_left_cell->column_id_);
             err = OB_ERR_UNEXPECTED;
           }
-
-          if (OB_SUCCESS == err)
+          else if (apply_join_right_cell.table_id_ != prev_join_right_table_id || need_change_row_key)
           {
-            if (apply_join_right_cell.table_id_ != prev_join_right_table_id)
+            for (offset_idx = 0; offset_idx < join_info->left_column_count_; offset_idx++)
             {
-              start_pos = join_info->start_pos_;
-              end_pos = join_info->end_pos_;
-
-              // both equal -1, means the whole rowkey is join rowkey
-              if (-1 == start_pos && -1 == end_pos)
+              offset_in_rowkey_objs = join_info->left_column_offset_array_[offset_idx];
+              objs_ptr = join_left_cell->row_key_.get_obj_ptr();
+              if (NULL != objs_ptr && offset_in_rowkey_objs < join_left_cell->row_key_.get_obj_cnt())
               {
-                start_pos = 0;
-                end_pos = join_left_cell->row_key_.length();
+                row_key_obj_array[offset_idx] = objs_ptr[offset_in_rowkey_objs];
               }
-              else if (start_pos >= 0 && end_pos >= 0)
+              else
               {
-                end_pos ++;
-              }
-
-              if (end_pos < 0  || start_pos < 0  || end_pos < start_pos  
-                || end_pos > join_left_cell->row_key_.length())
-              {
-                TBSYS_LOG(WARN,"unepxected error, join key error [start_pos:%d,end_pos:%d,"
-                  "left_rowkey_len:%d]", start_pos, end_pos,  join_left_cell->row_key_.length());
-                hex_dump(join_left_cell->row_key_.ptr(),join_left_cell->row_key_.length());
-                err = OB_ERR_UNEXPECTED;
+                TBSYS_LOG(WARN, "schema error, offset_in_rowkey_objs=%ld, left rowkey obj cnt=%ld",
+                    offset_in_rowkey_objs, join_left_cell->row_key_.get_obj_cnt());
+                err = OB_ERROR;
+                break;
               }
             }
 
-            if (OB_SUCCESS == err 
-              && (apply_join_right_cell.table_id_ != prev_join_right_table_id || need_change_row_key))
+            if (OB_SUCCESS == err)
             {
-              apply_join_right_cell.row_key_.assign(join_left_cell->row_key_.ptr() + start_pos, 
-                end_pos - start_pos);
+              temp_rowkey.assign(row_key_obj_array, join_info->left_column_count_);
+              if((OB_SUCCESS != (err = rowkey_buffer_.write_string(temp_rowkey, &apply_join_right_cell.row_key_))))
+              {
+                TBSYS_LOG(WARN, "fail to write string. No sufficient memory may cause this err. [err=%d]", err);
+              }
               need_change_row_key = false;
             }
+
           }
 
           if (OB_SUCCESS == err)
@@ -379,13 +376,11 @@ namespace oceanbase
                     }
                     else
                     {
-                      TBSYS_LOG(WARN,"fail to get join mutation [tableid:%lu,rowkey:%.*s,"
-                        "column_id:%lu,type:%d,ext:%ld]",cur_cell->table_id_,
-                        cur_cell->row_key_.length(), cur_cell->row_key_.ptr(), 
+                      TBSYS_LOG(WARN,"fail to get join mutation [tableid:%lu,rowkey:%s,"
+                        "column_id:%lu,type:%d,value:%s]",cur_cell->table_id_,
+                        to_cstring(cur_cell->row_key_), 
                         cur_cell->column_id_, cur_cell->value_.get_type(),
-                        cur_cell->value_.get_ext());
-                      hex_dump(cur_cell->row_key_.ptr(),cur_cell->row_key_.length(),
-                        true,TBSYS_LOG_LEVEL_WARN);
+                        to_cstring(cur_cell->value_));
                     }
                   }
                 }
@@ -520,20 +515,15 @@ namespace oceanbase
               err = result_array_->apply(join_apply_cell_adjusted_,affected_cell);
               if (OB_SUCCESS != err)
               {
-                TBSYS_LOG(WARN,"apply error [affect_cell->table_id:%lu,affect_cell->rowkey:%.*s,"
+                TBSYS_LOG(WARN,"apply error [affect_cell->table_id:%lu,affect_cell->rowkey:%s,"
                   "affect_cell->column_id:%lu,affect_cell->type:%d,affect_cell->ext:%ld,"
-                  "mutation->table_id:%lu,mutation->rowkey->%.*s,"
+                  "mutation->table_id:%lu,mutation->rowkey->%s,"
                   "mutation->column_id:%lu,mutation->type:%d,mutation->ext:%ld",
-                  affected_cell->table_id_, affected_cell->row_key_.length(), 
-                  affected_cell->row_key_.ptr(), affected_cell->column_id_, 
-                  affected_cell->value_.get_type(), affected_cell->value_.get_ext(), 
-                  join_apply_cell_adjusted_.table_id_, join_apply_cell_adjusted_.row_key_.length(),
-                  join_apply_cell_adjusted_.row_key_.ptr(), join_apply_cell_adjusted_.column_id_,
+                  affected_cell->table_id_, to_cstring(affected_cell->row_key_), 
+                  affected_cell->column_id_, affected_cell->value_.get_type(), affected_cell->value_.get_ext(), 
+                  join_apply_cell_adjusted_.table_id_, to_cstring(join_apply_cell_adjusted_.row_key_),
+                  join_apply_cell_adjusted_.column_id_,
                   join_apply_cell_adjusted_.value_.get_type(), join_apply_cell_adjusted_.value_.get_ext());
-                hex_dump(affected_cell->row_key_.ptr(),affected_cell->row_key_.length(),
-                  true,TBSYS_LOG_LEVEL_WARN);
-                hex_dump(join_apply_cell_adjusted_.row_key_.ptr(),join_apply_cell_adjusted_.row_key_.length(),
-                  true,TBSYS_LOG_LEVEL_WARN);
               }
             }
           }
@@ -575,16 +565,6 @@ namespace oceanbase
       int64_t src_cell_idx = 0;
       bool is_first_row = true;
 
-      ObVersionRange join_version_range = cur_join_read_param_.get_version_range();
-      int64_t join_start_version = join_version_range.start_version_;
-      int64_t join_major_version = ObVersion::get_major(join_start_version);
-      if (join_start_version != join_major_version)
-      {
-        //have minor
-        join_version_range.start_version_ = join_major_version;
-        join_version_range.border_flag_.set_inclusive_start();
-        cur_join_read_param_.set_version_range(join_version_range);
-      }
       err = ups_join_stream_->get(cur_join_read_param_, get_cells);
       while (OB_SUCCESS == err 
         && join_param_array_.get_cell_size() > 0
@@ -612,9 +592,8 @@ namespace oceanbase
           if (!(join_param_array_.end() != src_cell_it_beg))
           {
             TBSYS_LOG(ERROR, "updateserver return more result than wanted [src_cell_idx:%ld,"
-              "get_param_size:%ld]", src_cell_idx,join_param_array_.get_cell_size());
-            hex_dump(cur_cell->row_key_.ptr(),cur_cell->row_key_.length(),true,
-              TBSYS_LOG_LEVEL_ERROR);
+              "get_param_size:%ld], rowkey:%s", src_cell_idx,join_param_array_.get_cell_size(),
+              to_cstring(cur_cell->row_key_));
             err = OB_ERR_UNEXPECTED;
             break;
           }
@@ -623,11 +602,9 @@ namespace oceanbase
             (src_cell_it_beg->row_key_ != cur_cell->row_key_||src_cell_it_beg->table_id_ != cur_cell->table_id_))
           {
             TBSYS_LOG(ERROR, "updateserver return result not wanted [src_cell_idx:%ld,"
-              "get_param_size:%ld]", src_cell_idx,join_param_array_.get_cell_size());
-            hex_dump(src_cell_it_beg->row_key_.ptr(), src_cell_it_beg->row_key_.length(),
-              true,TBSYS_LOG_LEVEL_ERROR);
-            hex_dump(cur_cell->row_key_.ptr(),cur_cell->row_key_.length(),true,
-              TBSYS_LOG_LEVEL_ERROR);
+              "get_param_size:%ld], src rowkey:%s, cur rowkey:%s", 
+              src_cell_idx,join_param_array_.get_cell_size(),
+              to_cstring(src_cell_it_beg->row_key_), to_cstring(cur_cell->row_key_));
             err = OB_ERR_UNEXPECTED;
             break;
           }

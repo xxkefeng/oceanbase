@@ -20,9 +20,6 @@
 #include <algorithm>
 #include "ob_trans_mgr.h"
 
-#define ATOMIC_INC(val) __sync_add_and_fetch((val), 1)
-#define ATOMIC_DEC(val) __sync_sub_and_fetch((val), 1)
-
 namespace oceanbase
 {
   using namespace common;
@@ -83,9 +80,6 @@ namespace oceanbase
       {
         if (rollback)
         {
-          TBSYS_LOG(INFO, "rollback mutation, start_trans_id=%ld cur_trans_id=%ld "
-                    "rollback_list=%ld commit_list=%ld",
-                    start_trans_id_, cur_trans_id_, rollback_list_.size(), commit_list_.size());
           RollbackList::iterator iter;
           while (0 < rollback_counter_--)
           {
@@ -194,11 +188,6 @@ namespace oceanbase
       return trans_mgr_.get_min_flying_trans_id();
     }
 
-    void TransNode::flush_min_flying_trans_id() const
-    {
-      trans_mgr_.flush_min_flying_trans_id();
-    }
-
     void *TransNode::stack_alloc(const int64_t size)
     {
       return allocator_.alloc(size);
@@ -218,9 +207,6 @@ namespace oceanbase
     int TransNode::rollback()
     {
       int ret = OB_SUCCESS;
-      TBSYS_LOG(INFO, "rollback transaction, start_trans_id=%ld cur_trans_id=%ld "
-                "rollback_list=%ld commit_list=%ld",
-                start_trans_id_, cur_trans_id_, rollback_list_.size(), commit_list_.size());
       RollbackList::iterator iter;
       for (iter = rollback_list_.begin(); iter != rollback_list_.end(); iter++)
       {
@@ -280,11 +266,6 @@ namespace oceanbase
     bool TransNode::mutation_started() const
     {
       return mutation_started_;
-    }
-
-    bool TransNode::is_replaying_log() const
-    {
-      return trans_id_const_;
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -527,20 +508,13 @@ namespace oceanbase
       if (calc_timestamp_ + CALC_INTERVAL < tbsys::CTimeUtil::getTime()
           || 1 >= trans_node_map_.size())
       {
+        int64_t commited_trans_id = commited_trans_id_;
         MapTraverseCallback cb(trans_node_map_);
         trans_node_map_.traverse(cb);
-        min_flying_trans_id_ = std::min(cb.get_min_trans_id(), (int64_t)commited_trans_id_);
+        min_flying_trans_id_ = std::min(cb.get_min_trans_id(), (int64_t)commited_trans_id);
         calc_timestamp_ = tbsys::CTimeUtil::getTime();
       }
       return min_flying_trans_id_;
-    }
-
-    void TransMgr::flush_min_flying_trans_id() const
-    {
-      MapTraverseCallback cb(trans_node_map_);
-      trans_node_map_.traverse(cb);
-      min_flying_trans_id_ = std::min(cb.get_min_trans_id(), (int64_t)commited_trans_id_);
-      calc_timestamp_ = tbsys::CTimeUtil::getTime();
     }
 
     int64_t TransMgr::generate_trans_id_(const int64_t commited_trans_id, const int64_t trans_id)

@@ -1,17 +1,18 @@
 /*
  *   (C) 2010-2012 Taobao Inc.
- *   
+ *
  *   Version: 0.1 $date
- *           
+ *
  *   Authors:
  *      xielun.szd <xielun.szd@taobao.com>
- *               
+ *
  */
 
 #ifndef OCEANBASE_CHUNKSERVER_ROOT_RPCSTUB_H_
 #define OCEANBASE_CHUNKSERVER_ROOT_RPCSTUB_H_
 
 #include "common/ob_schema.h"
+#include "common/ob_range2.h"
 #include "common/ob_server.h"
 #include "common/ob_tablet_info.h"
 #include "common/thread_buffer.h"
@@ -23,15 +24,15 @@
       ret = (rpc); \
       if (OB_SUCCESS == ret || OB_RESPONSE_TIME_OUT != ret) break; \
       usleep(static_cast<useconds_t>(THE_CHUNK_SERVER.get_param().get_network_time_out())); \
-    } 
+    }
 
 #define rpc_retry_wait(running, retry_times, ret, rpc) \
     while (running && retry_times-- > 0) \
     { \
       ret = (rpc); \
       if (OB_SUCCESS == ret || OB_RESPONSE_TIME_OUT != ret) break; \
-      usleep(static_cast<useconds_t>(THE_CHUNK_SERVER.get_param().get_network_time_out())); \
-    } 
+      usleep(static_cast<useconds_t>(THE_CHUNK_SERVER.get_config().get_network_timeout())); \
+    }
 
 
 namespace oceanbase
@@ -42,19 +43,19 @@ namespace oceanbase
     class ObScanParam;
     class ObScanner;
   }
-  
+
   namespace chunkserver
   {
-    class ObRootServerRpcStub 
+    class ObRootServerRpcStub
     {
     public:
       ObRootServerRpcStub();
       virtual ~ObRootServerRpcStub();
-    
+
     public:
       // warning: rpc_buff should be only used by rpc stub for reset
       int init(const common::ObServer & root_addr, const common::ObClientManager * rpc_frame);
-      
+
       // get tables schema info through root server rpc call
       //        @timestamp  fetch cmd input param
       //        @schema fetch cmd output schema data
@@ -67,24 +68,10 @@ namespace oceanbase
        *                 false when all Tablets has been reported
        * @return OB_SUCCESS when successful, otherwise failed
        */
-      int report_tablets(const common::ObTabletReportInfoList& tablets, 
+      int report_tablets(const common::ObTabletReportInfoList& tablets,
           const int64_t time_stamp, bool has_more);
 
       int delete_tablets(const common::ObTabletReportInfoList& tablets);
-
-      /*
-       * register self to rootserver, so rootserver can send heartbeat
-       * @param [in] server to be register to root.
-       * @param [in] is_merge_server true when server use as merge server.
-       * @param [out] 
-       * status =0 represents system in very first startup process, 
-       *  chunkserver wait until rootserver send the start_new_schema command.
-       *  no need to report tablets to rootserver,
-       * status =1 means chunkserver restarted, and need report it's tablets.
-       * @return OB_SUCCESS when successful, otherwise failed
-       */
-      int register_server(const common::ObServer & server, 
-          const bool is_merge_server, int32_t& status);
 
      /*
        *  notify dest_server to load tablet
@@ -96,8 +83,8 @@ namespace oceanbase
        * @param [in] dest_disk_no   destination disk no
        */
       int dest_load_tablet(
-          const common::ObServer &dest_server, 
-          const common::ObRange &range,
+          const common::ObServer &dest_server,
+          const common::ObNewRange &range,
           const int32_t dest_disk_no,
           const int64_t tablet_version,
           const uint64_t crc_sum,
@@ -113,9 +100,9 @@ namespace oceanbase
        * @param [in] keep_src =true means copy otherwise move
        * @param [in] tablet_version migrated tablet's data version
        */
-      int migrate_over(const common::ObRange &range, 
+      int migrate_over(const common::ObNewRange &range,
           const common::ObServer &src_server,
-          const common::ObServer &dest_server, 
+          const common::ObServer &dest_server,
           const bool keep_src,
           const int64_t tablet_version);
 
@@ -125,10 +112,10 @@ namespace oceanbase
        * @param [in] capacity total capacity of all disks.
        * @param [in] used total size been used.
        */
-      int report_capacity_info(const common::ObServer &server, 
+      int report_capacity_info(const common::ObServer &server,
           const int64_t capacity, const int64_t used);
 
-      /** 
+      /**
        * @brief get merge delay from rootserver
        * @param interval [out]
        * @return  OB_SUCCESS on success
@@ -148,20 +135,20 @@ namespace oceanbase
        * @param [out] dest_disk_no destination disk no for store migrate sstable files.
        * @param [out] dest_path destination path for store migrate sstable files.
        */
-      int get_migrate_dest_location(const int64_t occupy_size, 
+      int get_migrate_dest_location(const int64_t occupy_size,
           int32_t &dest_disk_no, common::ObString &dest_path);
 
       int get_last_frozen_memtable_version(int64_t &last_version);
-      
-      int get_tablet_info(const common::ObSchemaManagerV2& schema, 
-          const uint64_t table_id, const common::ObRange& range, 
+
+      int get_tablet_info(const common::ObSchemaManagerV2& schema,
+          const uint64_t table_id, const common::ObNewRange& range,
           common::ObTabletLocation location [],int32_t& size);
 
       int merge_tablets_over(const common::ObTabletReportInfoList& tablet_list,
         const bool is_merge_succ);
 
     private:
-      int scan(const common::ObServer& server, const int64_t timeout, 
+      int scan(const common::ObServer& server, const int64_t timeout,
                const common::ObScanParam& param, common::ObScanner & result);
 
       static const int32_t DEFAULT_VERSION = 1;
@@ -173,7 +160,7 @@ namespace oceanbase
 
       // get thread buffer for rpc
       common::ThreadSpecificBuffer::Buffer* get_thread_buffer(void) const;
-    
+
     private:
       bool init_;                                         // init stat for inner check
       common::ObServer root_server_;                      // root server addr

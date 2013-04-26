@@ -58,7 +58,7 @@ namespace oceanbase
       int status                = OB_SUCCESS;
       uint64_t table_id         = OB_INVALID_ID;
       uint64_t column_group_id  = OB_INVALID_ID;
-      ObString start_key;
+      ObRowkey start_key;
 
       if (src_tablet_version < 0 || dst_tablet_version < 0)
       {

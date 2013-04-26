@@ -23,6 +23,8 @@
 #include "common/page_arena.h"
 #include "common/hash/ob_hashmap.h"
 #include "sstable/ob_sstable_row.h"
+#include "sql/ob_sql_expression.h"
+#include "sql/ob_sql_scan_param.h"
 #include "ob_tablet.h"
 
 namespace oceanbase
@@ -48,8 +50,9 @@ namespace oceanbase
          * @return int if success, return OB_SUCCESS, else return 
          *         OB_ERROR
          */
-        int init(const common::ObSchemaManagerV2& schema, ObTablet* tablet, 
-          const int64_t frozen_version, const int64_t frozen_time);
+        int init(const common::ObSchemaManagerV2& schema, 
+            const int64_t column_group_num, ObTablet* tablet, 
+            const int64_t frozen_version, const int64_t frozen_time);
 
         /**
          * for each column group, after add the all the columns into 
@@ -70,6 +73,11 @@ namespace oceanbase
          */
         int adjust_scan_param(const int64_t column_group_idx, 
           const uint64_t column_group_id, common::ObScanParam& scan_param);
+
+        /**
+         * for ObTabletMergerV2
+         */
+        int adjust_scan_param(sql::ObSqlScanParam& scan_param);
 
         /**
          * for each row of every column group, call this fucntion to 
@@ -106,12 +114,10 @@ namespace oceanbase
           const int64_t last_do_expire_version);
         int fill_cname_to_idx_map(const uint64_t column_group_id);
 
-        int get_expire_column_info(const common::ObColumnSchemaV2*& column_schema, 
-          int64_t& duration) const;
-        int build_expire_column_filter(common::ObScanParam& scan_param);
-        
         int replace_system_variable(char* expire_condition, const int64_t buf_size);
-
+        int infix_str_to_sql_expression(const common::ObString& table_name, 
+            const common::ObString& cond_expr, sql::ObSqlExpression& sql_expr);
+        int trans_op_func_obj(const int64_t type, common::ObObj &obj_value1, common::ObObj &obj_value2);
         int infix_to_postfix(const common::ObString& expr, common::ObScanParam& scan_param, 
           common::ObObj* objs, const int64_t obj_count);
         int add_extra_basic_column(common::ObScanParam& scan_param, 
@@ -119,6 +125,9 @@ namespace oceanbase
         int add_extra_composite_column(common::ObScanParam& scan_param,
           const common::ObObj* post_expr);
         int build_expire_condition_filter(common::ObScanParam& scan_param);
+        int build_expire_condition_filter(sql::ObSqlExpression& sql_expr, bool& has_filter);
+        int finish_expire_filter(sql::ObSqlExpression& sql_expr, 
+            const bool has_column_filter, const bool has_condition_filter);
 
       private:
         DISALLOW_COPY_AND_ASSIGN(ObTabletMergerFilter);

@@ -5,9 +5,9 @@ TEST(BaseMainTest, basic)
 {
   BaseMain* pmain = BaseMainTest::get_instance();
   int argc = 3;
-  const char* argv[] = {"ddd", "-f", "base_main_test.conf"};
+  const char* argv[] = {"ddd", "-p", "2001"};
 
-  pmain->start(argc, (char**)argv, "test");
+  pmain->start(argc, (char**)argv);
 }
 
 int main(int argc, char **argv)

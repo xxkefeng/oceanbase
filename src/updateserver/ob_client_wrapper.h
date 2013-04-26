@@ -21,6 +21,7 @@
 #define OCEANBASE_UPDATESERVER_CLIENTWRAPPER_H_
 
 #include "mergeserver/ob_ms_get_cell_stream.h"
+#include "mergeserver/ob_ms_tablet_location_proxy.h"
 #include "mergeserver/ob_merge_join_agent_imp.h"
 #include "ob_ups_rpc_proxy.h"
 #include "ob_ups_cache.h"
@@ -45,8 +46,7 @@ namespace oceanbase
 
         int init(ObMergerRpcStub * rpc_stub,
             ObMergerSchemaManager * schema,
-            ObMergerTabletLocationCache * cache,
-            ObMergerServiceMonitor * monitor = NULL);
+            ObMergerLocationCacheProxy * cache);
 
         // 获取一批cell的值
         //通过ObMergeJoinAgent的get_cell得到所有结果值

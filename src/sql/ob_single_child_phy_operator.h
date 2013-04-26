@@ -27,10 +27,15 @@ namespace oceanbase
         virtual ~ObSingleChildPhyOperator();
         /// set the only one child
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
+        /// get the only one child
+        virtual ObPhyOperator *get_child(int32_t child_idx) const;
+        virtual int32_t get_child_num() const;
         /// open child_op_
         virtual int open();
         /// close child_op_
         virtual int close();
+
+        void clear();
       private:
         // disallow copy
         ObSingleChildPhyOperator(const ObSingleChildPhyOperator &other);

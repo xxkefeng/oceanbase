@@ -63,7 +63,7 @@ int ObFileTable::parse_line(const ObRow *&row)
         }
         else if(ObVarcharType == column_type_[i])
         {
-          str_value.assign_ptr(tokens_[i], strlen(tokens_[i]));
+          str_value.assign_ptr(tokens_[i], (int32_t)strlen(tokens_[i]));
           value.set_varchar(str_value);
         }
         else if(ObExtendType == column_type_[i])
@@ -79,7 +79,13 @@ int ObFileTable::parse_line(const ObRow *&row)
 
       if(OB_SUCCESS == ret)
       {
-        ret = get_curr_row()->set_cell(table_id_, column_ids_[i], value);
+        int64_t index = 0;
+        ObRowkeyColumn rk_col;
+        if(OB_SUCCESS == rowkey_info_.get_index(column_ids_[i], index , rk_col))
+        {
+          rowkey_obj[index] = value;
+        }
+        get_curr_row()->set_cell(table_id_, column_ids_[i], value);
       }
     }
   }
@@ -98,6 +104,12 @@ int ObFileTable::parse_line(const ObRow *&row)
 }
 
 int ObFileTable::get_next_row(const ObRow *&row)
+{
+  const common::ObRowkey *rowkey = NULL;
+  return get_next_row(rowkey, row);
+}
+
+int ObFileTable::get_next_row(const common::ObRowkey *&rowkey, const ObRow *&row)
 {
   int ret = OB_SUCCESS;
 
@@ -119,6 +131,8 @@ int ObFileTable::get_next_row(const ObRow *&row)
 
   if(OB_SUCCESS == ret)
   {
+    cur_rowkey_.assign(rowkey_obj, rowkey_info_.get_size());
+    rowkey = &cur_rowkey_;
     curr_count_ ++;
   }
 
@@ -129,6 +143,7 @@ int ObFileTable::open()
 {
   int ret = OB_SUCCESS;
 
+  memset(&rowkey_info_, 0, sizeof(rowkey_info_));
   row_desc_.reset();
   row_count_ = 0;
   column_count_ = 0;
@@ -162,6 +177,18 @@ int ObFileTable::open()
     GET_LINE;
     ret = convert(line_, table_id_);
   }
+
+  //if(OB_SUCCESS == ret)
+  //{
+  //  GET_LINE;
+  //  ret = convert(line_, rowkey_item_count_);
+  //}
+
+  //if(rowkey_item_count_ >= OB_MAX_ROWKEY_COLUMN_NUMBER)
+  //{
+  //  ret = OB_SIZE_OVERFLOW;
+  //  TBSYS_LOG(WARN, "rowkey item count too large[%d]", rowkey_item_count_);
+  //}
 
   if(OB_SUCCESS == ret)
   {
@@ -257,11 +284,40 @@ int ObFileTable::open()
 
   if(OB_SUCCESS == ret)
   {
-    get_curr_row()->set_row_desc(row_desc_);
-    for(int32_t i=0;i<count_;i++)
+    GET_LINE;
+    split(line_, " ", tokens_, count_);
+  }
+
+  int32_t int_value = 0;
+  ObRowkeyColumn rk_col;
+
+  if(OB_SUCCESS == ret)
+  {
+    for(int i=0;i<count_;i++)
     {
-      row_desc_.add_column_desc(table_id_, column_ids_[i]);
+      convert(tokens_[i], int_value);
+      rk_col.column_id_ = (uint64_t)int_value;
+      rk_col.type_ = get_column_type(rk_col.column_id_); 
+      rowkey_info_.add_column(rk_col);
     }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    GET_LINE;
+    split(line_, " ", tokens_, count_);
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    get_curr_row()->set_row_desc(row_desc_);
+
+    for(int i=0;i<count_;i++)
+    {
+      convert(tokens_[i], int_value);
+      row_desc_.add_column_desc(table_id_, (uint64_t)int_value);
+    }
+    
   }
 
   return ret;
@@ -289,3 +345,11 @@ int64_t ObFileTable::to_string(char* buf, const int64_t buf_len) const
   UNUSED(buf_len);
   return 0;
 }
+
+int ObFileTable::get_row_desc(const common::ObRowDesc *&row_desc) const
+{
+  int ret = OB_SUCCESS;
+  row_desc = &row_desc_;
+  return ret;
+}
+

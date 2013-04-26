@@ -16,21 +16,41 @@
 #ifndef _OB_PHY_OPERATOR_H
 #define _OB_PHY_OPERATOR_H 1
 #include "common/ob_row.h"
+#include "ob_phy_operator_type.h"
+#include "common/ob_define.h"
 namespace oceanbase
 {
   namespace sql
   {
+    class ObPhysicalPlan;
     /// 物理运算符接口
     class ObPhyOperator
     {
       public:
-        ObPhyOperator() {}
+        ObPhyOperator();
         virtual ~ObPhyOperator() {}
 
         /// 添加子运算符，有些运算符（例如join）可能有多个子运算符。叶运算符无子运算符。
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator) = 0;
 
-        /// 打开物理运算符。申请资源，打开子运算符等。构造row description
+        /// 获取子预算符，child_idx对应的子操作符不存在会返回NULL
+        virtual ObPhyOperator *get_child(int32_t child_idx) const
+        {
+          UNUSED(child_idx);
+          return NULL;
+        }
+
+        virtual int32_t get_child_num() const
+        {
+          return 0;
+        }
+
+        virtual enum ObPhyOperatorType get_type() const
+        {
+          return PHY_INVALID;
+        }
+
+        /// 打开物理运算符。申请资源，打开子运算符等。构造row description；给子运算符传递配置等。
         virtual int open() = 0;
 
         /// 关闭物理运算符。释放资源，关闭子运算符等。
@@ -63,9 +83,33 @@ namespace oceanbase
          * @return 打印字符数
          */
         virtual int64_t to_string(char* buf, const int64_t buf_len) const = 0;
+
+        /**
+         * Set the physical plan object who owns this operator.
+         *
+         * @param the_plan
+         */
+        void set_phy_plan(ObPhysicalPlan *the_plan);
+
+        VIRTUAL_NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         DISALLOW_COPY_AND_ASSIGN(ObPhyOperator);
+      protected:
+        int64_t magic_;
+        ObPhysicalPlan *my_phy_plan_; //< the physical plan object who owns this operator. Use this->my_phy_plan_->my_result_set_->my_session_ to get the environment.
     };
+
+    inline ObPhyOperator::ObPhyOperator()
+      :magic_(0xABCD1986ABCD1986),
+       my_phy_plan_(NULL)
+    {
+    }
+
+    inline void ObPhyOperator::set_phy_plan(ObPhysicalPlan *the_plan)
+    {
+      my_phy_plan_ = the_plan;
+    }
+
   } // end namespace sql
 } // end namespace oceanbase
 

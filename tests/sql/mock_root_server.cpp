@@ -3,6 +3,7 @@
 #include "common/ob_read_common_data.h"
 #include "common/ob_ups_info.h"
 #include "common/ob_schema.h"
+#include "common/utility.h"
 #include "mock_root_server.h"
 #include "mock_update_server.h"
 
@@ -45,6 +46,7 @@ int MockRootServer::do_request(ObPacket* base_packet)
     case OB_SCAN_REQUEST:
     case OB_GET_REQUEST:
       {
+        TBSYS_LOG(INFO, "handle_get_root");
         ret = handle_get_root(ob_packet);
         break;
       }
@@ -280,6 +282,116 @@ int MockRootServer::handle_register_server(ObPacket * ob_packet)
   return ret;
 }
 
+int MockRootServer::handle_get_root_ranged(ObPacket * ob_packet)
+{
+  int ret = OB_SUCCESS;
+  ObDataBuffer* data = ob_packet->get_buffer();
+  if (NULL == data)
+  {
+    ret = OB_ERROR;
+  }
+  
+  tbnet::Connection* connection = ob_packet->get_connection();
+  ThreadSpecificBuffer::Buffer* thread_buffer = response_packet_buffer_.get_buffer();
+  if (NULL == thread_buffer)
+  {
+    ret = OB_ERROR;
+  }
+  else
+  {
+    thread_buffer->reset();
+    ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
+    
+    ObResultCode result_msg;
+    result_msg.result_code_ = ret;
+    ret = result_msg.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
+
+    // fake location cell
+    ObScanner scanner;
+    char table[128] = "";
+    char rowkey[128] = "";
+    char temp[128] = "";
+    ObCellInfo cell;
+    
+    // the first row
+    sprintf(table, "root_table");
+    cell.table_name_.assign(table, static_cast<int32_t>(strlen(table)));
+    
+    ObObj start_key;
+    //start_key.set_int(100);
+    start_key.set_min_value();
+    cell.row_key_.assign(&start_key, 1);
+    
+    sprintf(temp, "2_ipv4");
+    cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+    cell.value_.set_int(16777343);
+    scanner.add_cell(cell);
+    
+    sprintf(temp, "2_port");
+    cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+    cell.value_.set_int(10240);
+    scanner.add_cell(cell);
+    
+    // the second row
+    ObObj key2;
+    key2.set_int(200);
+    cell.row_key_.assign(&key2, 1);
+    for (int i = 1; i <= 3; ++i)
+    {
+      sprintf(temp, "%d_ipv4", i);
+      cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+      cell.value_.set_int(16777343);
+      scanner.add_cell(cell);
+      
+      sprintf(temp, "%d_port", i);
+      cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+      cell.value_.set_int(12341);
+      scanner.add_cell(cell);
+    }
+
+    // the third row
+    ObObj key3;
+    key3.set_int(300);
+    cell.row_key_.assign(&key3, 1);
+    for (int i = 1; i <= 3; ++i)
+    {
+      sprintf(temp, "%d_ipv4", i);
+      cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+      cell.value_.set_int(16777343);
+      scanner.add_cell(cell);
+      
+      sprintf(temp, "%d_port", i);
+      cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+      cell.value_.set_int(12341);
+      scanner.add_cell(cell);
+    }
+ 
+    // the second row
+    ObObj key4;
+    key4.set_max_value();
+    cell.row_key_.assign(&key4, 1);
+    for (int i = 1; i <= 3; ++i)
+    {
+      sprintf(temp, "%d_ipv4", i);
+      cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+      cell.value_.set_int(16777343);
+      scanner.add_cell(cell);
+      
+      sprintf(temp, "%d_port", i);
+      cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+      cell.value_.set_int(12341);
+      scanner.add_cell(cell);
+    }
+
+    int32_t channel_id = ob_packet->getChannelId();
+    ret = scanner.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
+    ret = send_response(OB_REPORT_TABLETS_RESPONSE, 1, out_buffer, connection, channel_id);
+    TBSYS_LOG(INFO, "send get root response:ret[%d]", ret);
+  }
+  
+  TBSYS_LOG(INFO, "handle get root table result:ret[%d]", ret);
+  return ret;
+}
 
 int MockRootServer::handle_get_root(ObPacket * ob_packet)
 {
@@ -316,8 +428,9 @@ int MockRootServer::handle_get_root(ObPacket * ob_packet)
     sprintf(table, "root_table");
     cell.table_name_.assign(table, static_cast<int32_t>(strlen(table)));
     
-    sprintf(rowkey, "row_100");
-    cell.row_key_.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+    ObObj start_key;
+    start_key.set_min_value();
+    cell.row_key_.assign(&start_key, 1);
     
     sprintf(temp, "2_ipv4");
     cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
@@ -328,10 +441,11 @@ int MockRootServer::handle_get_root(ObPacket * ob_packet)
     cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
     cell.value_.set_int(10240);
     scanner.add_cell(cell);
-    
+#if 0 
     // the second row
-    sprintf(rowkey, "row_200");
-    cell.row_key_.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+    ObObj key2;
+    key2.set_int(100);
+    cell.row_key_.assign(&key2, 1);
     for (int i = 1; i <= 3; ++i)
     {
       sprintf(temp, "%d_ipv4", i);
@@ -344,10 +458,11 @@ int MockRootServer::handle_get_root(ObPacket * ob_packet)
       cell.value_.set_int(12341);
       scanner.add_cell(cell);
     }
-    
+
     // the third row
-    sprintf(rowkey, "row_999");
-    cell.row_key_.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+    ObObj key3;
+    key3.set_int(200);
+    cell.row_key_.assign(&key3, 1);
     for (int i = 1; i <= 3; ++i)
     {
       sprintf(temp, "%d_ipv4", i);
@@ -360,7 +475,22 @@ int MockRootServer::handle_get_root(ObPacket * ob_packet)
       cell.value_.set_int(12341);
       scanner.add_cell(cell);
     }
-    
+#endif
+    ObObj key4;
+    key4.set_max_value();
+    cell.row_key_.assign(&key4, 1);
+    for (int i = 1; i <= 3; ++i)
+    {
+      sprintf(temp, "%d_ipv4", i);
+      cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+      cell.value_.set_int(16777343);
+      scanner.add_cell(cell);
+      
+      sprintf(temp, "%d_port", i);
+      cell.column_name_.assign(temp, static_cast<int32_t>(strlen(temp)));
+      cell.value_.set_int(12341);
+      scanner.add_cell(cell);
+    }
     int32_t channel_id = ob_packet->getChannelId();
     ret = scanner.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
     ret = send_response(OB_REPORT_TABLETS_RESPONSE, 1, out_buffer, connection, channel_id);

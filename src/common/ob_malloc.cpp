@@ -20,7 +20,12 @@
 #include "ob_mod_define.h"
 #include "ob_thread_mempool.h"
 #include "ob_tsi_factory.h"
-namespace 
+#include "utility.h"
+#ifdef __OB_MTRACE__
+#include <execinfo.h>
+#endif
+
+namespace
 {
   /// @warning 这里使用了gcc的扩展属性，以及一些不常使用的语言特征，目的是解决
   ///          static变量的析构顺序问题，如果把全局的内存池申明为static对象，那么
@@ -66,12 +71,56 @@ namespace
   }
 
 }
-
+namespace oceanbase
+{
+  namespace common
+  {
+    int ob_tp_malloc_init();    // @see ob_tp_malloc.h
+  } // end namespace common
+}
 
 int oceanbase::common::ob_init_memory_pool(int64_t block_size)
 {
-  return get_fixed_memory_pool_instance().init(block_size,1, g_mod_set);
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS == (ret = get_fixed_memory_pool_instance().init(block_size,1, g_mod_set)))
+  {
+    ret = ob_tp_malloc_init();
+  }
+  return ret;
 }
+
+void oceanbase::common::ob_mod_usage_update(const int64_t delta, const int32_t mod_id)
+{
+  get_fixed_memory_pool_instance().mod_usage_update(delta, mod_id);
+}
+
+void * oceanbase::common::ob_malloc(void *ptr, size_t size)
+{
+  if (size)
+  {
+    if (NULL != ptr)
+    {
+      ob_free(ptr, ObModIds::OB_COMMON_NETWORK);
+      ptr = NULL;
+    }
+    ptr = get_fixed_memory_pool_instance().malloc(size, ObModIds::OB_COMMON_NETWORK, NULL);
+    if (OB_UNLIKELY(NULL == ptr && ENOMEM == errno))
+    {
+      ob_print_mod_memory_usage();
+    }
+    else
+    {
+      memset(ptr, 0, size);
+    }
+  }
+  else if (ptr)
+  {
+    ob_free(ptr, ObModIds::OB_COMMON_NETWORK);
+    return 0;
+  }
+  return ptr;
+}
+
 void * oceanbase::common::ob_malloc(const int64_t nbyte, const int32_t mod_id, int64_t *got_size)
 {
   void *result = NULL;
@@ -83,6 +132,17 @@ void * oceanbase::common::ob_malloc(const int64_t nbyte, const int32_t mod_id, i
   else
   {
     result = get_fixed_memory_pool_instance().malloc(nbyte,mod_id, got_size);
+    if (OB_UNLIKELY(NULL == result && ENOMEM == errno))
+    {
+      ob_print_mod_memory_usage();
+    }
+#ifdef __OB_MTRACE__
+    BACKTRACE(
+        WARN, 
+        (nbyte > OB_MALLOC_BLOCK_SIZE && nbyte < OB_MAX_PACKET_LENGTH),
+        "ob_malloc  addr=%p nbyte=%ld", result, nbyte
+        );
+#endif
   }
   return  result;
 }
@@ -239,4 +299,3 @@ int oceanbase::common::ObMemBuf::ensure_space(const int64_t size, const int32_t 
 
   return ret;
 }
-

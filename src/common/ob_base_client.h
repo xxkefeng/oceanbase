@@ -14,11 +14,14 @@
  *     - some work details here
  */
 #ifndef _OB_BASE_CLIENT_H
-#define _OB_BASE_CLIENT_H 1
+#define _OB_BASE_CLIENT_H
 
 #include "common/ob_client_manager.h"
 #include "common/ob_packet_factory.h"
 #include "common/ob_server.h"
+#include "easy_io.h"
+#include "ob_tbnet_callback.h"
+
 namespace oceanbase
 {
 namespace common
@@ -36,9 +39,8 @@ public:
 private:
   bool init_;
   ObServer server_;
-  tbnet::DefaultPacketStreamer streamer_;
-  tbnet::Transport transport_;
-  ObPacketFactory factory_;
+  easy_io_t *eio_;
+  easy_io_handler_pt client_handler_;
   ObClientManager client_mgr_;
 };
 

@@ -27,7 +27,6 @@ namespace oceanbase
       inited_ = false;
       pfinal_result_ = NULL;
       timeout_time_ = 0;
-      is_result_precision_ = true;
     }
     
     ObQueryAgent::~ObQueryAgent()  
@@ -202,7 +201,6 @@ namespace oceanbase
       precision_ = 0.0;
       need_groupby_ = false;
       need_compute_topk_ = false;
-      is_result_precision_ = true;
 
       memset(&query_stage_, 0, sizeof(query_stage_) / sizeof(ObStageOperation));
       query_stage_size_ = 0;
@@ -243,7 +241,7 @@ namespace oceanbase
           groupby_param.get_composite_columns().get_array_index();
         int64_t groupby_filter_count = groupby_param.get_having_condition().get_count();
         int64_t orderby_count = scan_param_->get_orderby_column_size();
-        ObScanParam::Direction scan_direction = scan_param_->get_scan_direction();
+        ScanFlag::Direction scan_direction = scan_param_->get_scan_direction();
 
         //init limit offset, limit count, sharding_min_row_cnt and precision
         scan_param_->get_limit_info(limit_offset_, limit_count_);
@@ -303,7 +301,7 @@ namespace oceanbase
             query_stage_[query_stage_size_++] = FILTER_AND_GROUP_BY;
           }
           else if (orderby_count > 0 || aggregate_row_width > 0 
-                   || ObScanParam::BACKWARD == scan_direction)
+                   || ScanFlag::BACKWARD == scan_direction)
           {
             need_groupby_ = true;
             query_stage_[query_stage_size_++] = GROUP_BY;
@@ -592,10 +590,6 @@ namespace oceanbase
       {
         sharding_row_cnt = std::max(sharding_min_row_cnt_, 
           static_cast<int64_t>(static_cast<double>(total_row_size) * precision_));
-        if (sharding_row_cnt < total_row_size)
-        {
-          is_result_precision_ = false;
-        }
       }
       else if (limit_count_ > 0)
       {
@@ -711,9 +705,10 @@ namespace oceanbase
            * rows, the row key and table is fake, just for returned 
            * obscanner. i.e. all rows belong to one group. 
            */
-          ObString fake_rowkey;
-          uint32_t cell_count = 0;
-          fake_rowkey.assign((char*)&cell_count, sizeof(cell_count));
+          //ObObj fake_obj;
+          //fake_obj.set_int(0);
+          //ObRowkey fake_rowkey(&fake_obj, 1);
+          ObRowkey fake_rowkey;
           ret = cur_groupby_operator_->init_all_in_one_group_row(
             fake_rowkey, scan_param_->get_table_id());
           if (OB_SUCCESS != ret)
@@ -907,12 +902,12 @@ namespace oceanbase
               && ++handled_row_count >= max_scan_rows)
           {
             TBSYS_LOG(WARN, "user limits scan rows from one tablet, only return "
-                            "approximate result, table_id=%lu, max_scan_rows_per_tablet=%ld, "
+                            "approximate result, max_scan_rows_per_tablet=%ld, "
                             "got_row_count=%ld, scan_size=%ld, merge_join_round=%ld, "
                             "merge_join_rows=%ld, merge_cellarray_size=%ld, "
                             "merge_cells_per_row=%ld, groupby_rows=%ld, "
                             "groupby_cellarray_size=%ld, groupby_cells_per_row=%ld",
-              scan_param_->get_table_id(), max_scan_rows, handled_row_count, 
+              max_scan_rows, handled_row_count, 
               GET_SCAN_SIZE(scan_param_->get_scan_size()), merge_join_round + 1, 
               merge_join_result_->get_cell_size() / org_row_width,
               merge_join_result_->get_real_memory_used(), org_row_width,
@@ -1042,11 +1037,6 @@ namespace oceanbase
     bool ObQueryAgent::need_groupby() const
     {
       return need_groupby_;
-    }
-
-    bool ObQueryAgent::is_result_precision() const
-    {
-      return is_result_precision_;
     }
   } // end namespace chunkserver
 } // end namespace oceanbase

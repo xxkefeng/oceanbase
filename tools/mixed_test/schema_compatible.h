@@ -21,10 +21,11 @@ namespace oceanbase
         {
         };
       public:
-        void init(const ObColumnSchemaV2 *column_schema)
+        void init(const ObColumnSchemaV2 *column_schema, const ObRowkeyInfo *rowkey_info)
         {
           assert(NULL == column_schema_);
           column_schema_ = column_schema;
+          rowkey_info_ = rowkey_info;
         };
       public:
         uint64_t get_id() const
@@ -43,8 +44,13 @@ namespace oceanbase
         {
           return column_schema_->get_size();
         };
+        bool is_rowkey_column() const
+        {
+          return rowkey_info_->is_rowkey_column(get_id());
+        };
       private:
         const ObColumnSchemaV2 *column_schema_;
+        const ObRowkeyInfo *rowkey_info_;
     };
     
     class ObSchema
@@ -76,7 +82,7 @@ namespace oceanbase
           column_map_.create(column_num);
           for (int64_t i = 0; i < column_num; i++)
           {
-            column_schemas_[i].init(&(column_schema[i]));
+            column_schemas_[i].init(&(column_schema[i]), &(table_schema->get_rowkey_info()));
             column_map_.set(column_schema[i].get_name(), &(column_schemas_[i]));
           }
         };
@@ -108,6 +114,10 @@ namespace oceanbase
         const ObColumnSchema *column_end() const
         {
           return column_schemas_ + column_num_;
+        };
+        bool is_rowkey_column(const uint64_t column_id) const
+        {
+          return table_schema_->get_rowkey_info().is_rowkey_column(column_id);
         };
       private:
         const ObTableSchema *table_schema_;
@@ -186,23 +196,28 @@ namespace oceanbase
               int64_t meta_num = 0;
               for (int32_t j = 0; j < size; j++)
               {
+#define SET_META_COLUMN_ID(TYPE, name, id) \
+  if (std::string(TYPE##_NAME) == name) \
+  { \
+    TYPE##_ID = id; \
+    meta_num++; \
+  }
+                std::string name = column_schema[j].get_name();
                 uint64_t id = column_schema[j].get_id();
-                if (C_TIME_COLUMN_ID == id
-                    || M_TIME_COLUMN_ID == id
-                    || SEED_COLUMN_ID == id
-                    || ROWKEY_INFO_COLUMN_ID == id
-                    || CELL_NUM_COLUMN_ID == id
-                    || SUFFIX_LENGTH_COLUMN_ID == id
-                    || SUFFIX_NUM_COLUMN_ID == id
-                    || PREFIX_END_COLUMN_ID == id)
-                {
-                  meta_num++;
-                }
+                SET_META_COLUMN_ID(C_TIME_COLUMN,         name, id);
+                SET_META_COLUMN_ID(M_TIME_COLUMN,         name, id);
+                SET_META_COLUMN_ID(SEED_COLUMN,           name, id);
+                SET_META_COLUMN_ID(ROWKEY_INFO_COLUMN,    name, id);
+                SET_META_COLUMN_ID(CELL_NUM_COLUMN,       name, id);
+                SET_META_COLUMN_ID(SUFFIX_LENGTH_COLUMN,  name, id);
+                SET_META_COLUMN_ID(SUFFIX_NUM_COLUMN,     name, id);
+                SET_META_COLUMN_ID(PREFIX_END_COLUMN,     name, id);
               }
               if (META_COLUMN_NUM == meta_num)
               {
                 schemas_[i++].init(table_schema, column_schema, size);
                 TBSYS_LOG(INFO, "filt valid schema table_name=%s", table_schema->get_table_name());
+                break;
               }
             }
             table_num_ = i;

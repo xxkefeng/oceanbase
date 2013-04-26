@@ -15,11 +15,13 @@
 #ifndef OCEANBASE_COMMON_OB_PACKET_QUEUE_THREAD_H_
 #define OCEANBASE_COMMON_OB_PACKET_QUEUE_THREAD_H_
 
-#include "tbnet.h"
+#include "ob_packet_queue_handler.h"
 #include "ob_define.h"
 #include "ob_packet.h"
 #include "ob_packet_queue.h"
 #include "hash/ob_hashmap.h"
+#include "ob_trace_id.h"
+#include "ob_server.h"
 
 namespace oceanbase
 {
@@ -32,14 +34,15 @@ namespace oceanbase
 
         virtual ~ObPacketQueueThread();
 
-        void setThreadParameter(int threadCount, tbnet::IPacketQueueHandler *handler, void *args);
+        void setThreadParameter(int threadCount, ObPacketQueueHandler *handler, void *args);
 
         void stop(bool waitFinish = false);
 
         bool push(ObPacket *packet, int maxQueueLen = 0, bool block = true);
 
         void pushQueue(ObPacketQueue &packetQueue, int maxQueueLen = 0);
-
+        void set_ip_port(const IpPort & ip_port);
+        void set_host(const ObServer &host);
         void run(tbsys::CThread *thread, void *arg);
 
         ObPacket *head()
@@ -85,10 +88,10 @@ namespace oceanbase
         bool wait_finish_; 
         bool waiting_;
         ObPacketQueue queue_;
-        tbnet::IPacketQueueHandler* handler_;
+        ObPacketQueueHandler* handler_;
         tbsys::CThreadCond cond_;
         tbsys::CThreadCond pushcond_;
-        
+
         void* args_;
 
       private:
@@ -117,7 +120,8 @@ namespace oceanbase
         volatile uint64_t session_id_;
         volatile uint64_t waiting_thread_count_;
         uint64_t max_waiting_thread_count_;
-
+        IpPort ip_port_;
+        ObServer host_;
         char* next_packet_buffer_;
     };
 

@@ -6,11 +6,12 @@
 
 #include "common/ob_schema.h"
 #include "common/ob_malloc.h"
-#include "ob_ms_cache_table.h"
+#include "common/location/ob_ms_cache_table.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
-using namespace oceanbase::mergeserver;
+static CharArena allocator_;
 
 int main(int argc, char **argv)
 {
@@ -31,49 +32,83 @@ class TestCacheTable: public ::testing::Test
     }
 };
 
+TEST_F(TestCacheTable, test_new_compare)
+{
+  ObNewRange range;
+  range.set_whole_range();
+  range.table_id_ = 100;
+  range.border_flag_.unset_inclusive_start();
+  range.border_flag_.set_inclusive_end();
+  int ret = -1;
+  ObCBtreeTable<int, int>::MapKey key;
+  ObRowkey rowkey;
+  char * cmp_key = (char*)"100";
+  rowkey = make_rowkey(cmp_key, &allocator_);
+  ret = key.compare_range_with_key(99, rowkey, range);
+  EXPECT_TRUE(ret < 0);
+  ret = key.compare_range_with_key(100, rowkey, range);
+  EXPECT_TRUE(ret == 0);
+  ret = key.compare_range_with_key(101, rowkey, range);
+  EXPECT_TRUE(ret > 0);
+
+  // min value
+  ret = key.compare_range_with_key(99, ObRowkey::MIN_ROWKEY, range);
+  EXPECT_TRUE(ret < 0);
+  ret = key.compare_range_with_key(100, ObRowkey::MIN_ROWKEY, range);
+  EXPECT_TRUE(ret == 0);
+  ret = key.compare_range_with_key(101, ObRowkey::MIN_ROWKEY, range);
+  EXPECT_TRUE(ret > 0);
+
+  // max value
+  ret = key.compare_range_with_key(99, ObRowkey::MAX_ROWKEY, range);
+  EXPECT_TRUE(ret < 0);
+  ret = key.compare_range_with_key(100, ObRowkey::MAX_ROWKEY, range);
+  EXPECT_TRUE(ret == 0);
+  ret = key.compare_range_with_key(101, ObRowkey::MAX_ROWKEY, range);
+  EXPECT_TRUE(ret > 0);
+}
+
 TEST_F(TestCacheTable, test_compare)
 {
   char temp[100];
   char temp_end[100];
-  ObRange range;
+  ObNewRange range;
   sprintf(temp, "%d", 1001);
   sprintf(temp_end, "%d", 100100);
-  ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
-  ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
-  range.start_key_ = start_key;
-  range.end_key_ = end_key;
+  range.start_key_ = make_rowkey(temp, &allocator_);
+  range.end_key_ = make_rowkey(temp_end, &allocator_);
   range.table_id_ = 100;
 
   ObCBtreeTable<int, int>::MapKey key;
-  ObString rowkey;
+  ObRowkey rowkey;
   // bad case bug
   char * cmp_key = (char*)"100";
-  rowkey.assign(cmp_key, static_cast<int32_t>(strlen(cmp_key)));
+  rowkey = make_rowkey(cmp_key, &allocator_);
   ObBorderFlag row_key_flag;
-  int ret = key.compare_range_with_key(100, rowkey, row_key_flag, ObCBtreeTable<int, int>::OB_SEARCH_MODE_EQUAL, range);
+  int ret = key.compare_range_with_key(100, rowkey, range);
   // bug fix EXPECT_TRUE(ret == 0);
   EXPECT_TRUE(ret < 0);
-  
-  // good case 
+
+  // good case
   cmp_key = (char*)"10010";
-  rowkey.assign(cmp_key, static_cast<int32_t>(strlen(cmp_key)));
-  ret = key.compare_range_with_key(100, rowkey, row_key_flag, ObCBtreeTable<int, int>::OB_SEARCH_MODE_EQUAL, range);
+  rowkey = make_rowkey(cmp_key, &allocator_);
+  ret = key.compare_range_with_key(100, rowkey, range);
   EXPECT_TRUE(ret == 0);
 
   cmp_key = (char*)"101";
-  rowkey.assign(cmp_key, static_cast<int32_t>(strlen(cmp_key)));
-  ret = key.compare_range_with_key(100, rowkey, row_key_flag, ObCBtreeTable<int, int>::OB_SEARCH_MODE_EQUAL, range);
+  rowkey = make_rowkey(cmp_key, &allocator_);
+  ret = key.compare_range_with_key(100, rowkey, range);
   EXPECT_TRUE(ret > 0);
-  
+
   cmp_key = (char*)"1001002";
-  rowkey.assign(cmp_key, static_cast<int32_t>(strlen(cmp_key)));
-  ret = key.compare_range_with_key(100, rowkey, row_key_flag, ObCBtreeTable<int, int>::OB_SEARCH_MODE_EQUAL, range);
+  rowkey = make_rowkey(cmp_key, &allocator_);
+  ret = key.compare_range_with_key(100, rowkey, range);
   EXPECT_TRUE(ret > 0);
-  
+
   // bad case bug
   cmp_key = (char*)"10010002";
-  rowkey.assign(cmp_key, static_cast<int32_t>(strlen(cmp_key)));
-  ret = key.compare_range_with_key(100, rowkey, row_key_flag, ObCBtreeTable<int, int>::OB_SEARCH_MODE_EQUAL, range);
+  rowkey = make_rowkey(cmp_key, &allocator_);
+  ret = key.compare_range_with_key(100, rowkey, range);
   // buf fix EXPECT_TRUE(ret == 0);
   EXPECT_TRUE(ret > 0);
 }

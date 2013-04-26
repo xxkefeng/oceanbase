@@ -25,10 +25,10 @@ WriteWorker::~WriteWorker()
 {
 }
 
-int WriteWorker::init(KeyGenerator& key_gen, ObSqlClient& ob_client, PrefixInfo& prefix_info, const char* rs_ip, int32_t rs_port)
+int WriteWorker::init(KeyGenerator& key_gen, MysqlClient& ob_client, PrefixInfo& prefix_info)
 {
   key_gen_ = &key_gen;
-  int err = writer_.init(ob_client, prefix_info, rs_ip, rs_port);
+  int err = writer_.init(ob_client, prefix_info);
   if (0 != err)
   {
     TBSYS_LOG(WARN, "failed to init writer, err=%d", err);

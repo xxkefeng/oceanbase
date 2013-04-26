@@ -14,6 +14,7 @@
  *
  */
 #include "common/ob_define.h"
+#include "common/ob_version.h"
 #include "common/ob_malloc.h"
 #include "common/ob_server.h"
 #include "common/ob_base_client.h"
@@ -23,10 +24,6 @@
 #include <cstdio>
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
-
-const char* svn_version();
-const char* build_date();
-const char* build_time();
 
 struct MyArguments
 {

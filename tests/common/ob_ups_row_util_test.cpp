@@ -63,14 +63,14 @@ TEST_F(ObUpsRowUtilTest, basic_test2)
   ObCompactCellWriter cell_writer;
   OK(cell_writer.init(buf, 1024, DENSE_SPARSE));
 
-  const char *rowkey = "rowkey_00001";
-  ObString rowkey_str;
-  rowkey_str.assign_ptr(const_cast<char *>(rowkey), (int32_t)(strlen(rowkey)));
-  ObObj rowkey_obj;
-  rowkey_obj.set_varchar(rowkey_str);
+  ObRowkey rowkey;
+  ObObj rowkey_obj[OB_MAX_ROWKEY_COLUMN_NUMBER];
+  rowkey_obj[0].set_int(3);
+  rowkey_obj[1].set_int(30);
 
-  OK(cell_writer.append(rowkey_obj));
-  OK(cell_writer.rowkey_finish());
+  rowkey.assign(rowkey_obj, 2);
+  
+  OK(cell_writer.append_rowkey(rowkey));
 
   ObObj value;
   ObRowDesc row_desc;
@@ -86,12 +86,14 @@ TEST_F(ObUpsRowUtilTest, basic_test2)
   compact_row.assign_ptr(cell_writer.get_buf(), (int32_t)cell_writer.size());
 
   ObUpsRow ups_row;
-  ObString rk;
+  ObRowkey rk;
+  ObObj rk_obj[OB_MAX_ROWKEY_COLUMN_NUMBER];
 
   ups_row.set_row_desc(row_desc);
-  OK(ObUpsRowUtil::convert(TABLE_ID, compact_row, ups_row, &rk));
+  OK(ObUpsRowUtil::convert(TABLE_ID, compact_row, ups_row, &rk, rk_obj));
+
+  ASSERT_TRUE( rowkey == rk );
   
-  ASSERT_EQ(0, strncmp(rowkey, rk.ptr(), rk.length()));
 
   const ObObj *cell = NULL;
   uint64_t column_id = OB_INVALID_ID;
@@ -115,7 +117,7 @@ TEST_F(ObUpsRowUtilTest, basic_test)
 
   ObUpsRow ups_row;
   ups_row.set_row_desc(ups_row_desc);
-  ups_row.set_delete_row(true);
+  ups_row.set_is_delete_row(true);
 
   ObObj value;
 
@@ -151,9 +153,9 @@ TEST_F(ObUpsRowUtilTest, basic_test)
     ASSERT_TRUE( *cell == *result_cell );
   }
 
-  ASSERT_TRUE(result_row.is_delete_row());
+  ASSERT_TRUE(result_row.get_is_delete_row());
 
-  ups_row.set_delete_row(false);
+  ups_row.set_is_delete_row(false);
 
   str.assign_buffer(buf, sizeof(buf));
   OK(ObUpsRowUtil::convert(ups_row, str));
@@ -168,7 +170,7 @@ TEST_F(ObUpsRowUtilTest, basic_test)
     ASSERT_TRUE( *cell == *result_cell );
   }
 
-  ASSERT_FALSE(result_row.is_delete_row());
+  ASSERT_FALSE(result_row.get_is_delete_row());
 }
 
 int main(int argc, char **argv)

@@ -50,7 +50,7 @@ void ObSortTest::SetUp()
 {
   char *filename = (char*)"ob_sort_test.run";
   ObString run_filename;
-  run_filename.assign_ptr(filename, strlen(filename));
+  run_filename.assign_ptr(filename, (int32_t)strlen(filename));
   sort_.set_run_filename(run_filename);
 
   ASSERT_EQ(OB_SUCCESS, sort_.add_sort_column(test::ObFakeTable::TABLE_ID, OB_APP_MIN_COLUMN_ID, false));
@@ -73,7 +73,7 @@ void ObSortTest::test(const int64_t row_count, bool did_verify)
   ObString str_cell1;
   ObObj last_cell1;
   ObObj last_cell2;
-  int64_t int_cell2;
+  int64_t int_cell2 = 0;
   const ObObj *cell1 = NULL;
   const ObObj *cell2 = NULL;
   for (int i = 0; i < row_count; ++i)
@@ -135,4 +135,3 @@ int main(int argc, char **argv)
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
-

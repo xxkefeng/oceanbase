@@ -23,6 +23,7 @@
 #include "updateserver/ob_cached_pos_log_reader.h"
 #include "updateserver/ob_remote_log_src.h"
 #include "common/thread_buffer.h"
+#include "common/ob_base_client.h"
 #include "test_utils2.h"
 #include "log_utils.h"
 #include "my_ob_server.h"
@@ -81,7 +82,7 @@ namespace oceanbase
         ObPosLogReader pos_log_reader;
         ObLogBuffer log_cache;
         ObCachedPosLogReader log_reader;
-        ObClientManager client_mgr;
+        ObBaseClient base_client; 
         ObUpsRpcStub rpc_stub;
         ObStoredServer server_getter;
         ObRemoteLogSrc remote_log_src;
@@ -92,13 +93,14 @@ namespace oceanbase
       protected:
         virtual void SetUp(){
           ObServer server;
-          server.set_ipv4_addr(ip, port);
           ObLogCursor start_cursor;
+          server.set_ipv4_addr(ip, port);
+          ASSERT_EQ(OB_SUCCESS, base_client.initialize(server));
           ASSERT_EQ(OB_SUCCESS, mgt.sh("rm -rf %s", log_dir));
           srandom(static_cast<int32_t>(time(NULL)));
           ASSERT_EQ(OB_SUCCESS, log_generator.init(log_buf_size, log_file_max_size));
           ASSERT_EQ(OB_SUCCESS, log_generator.start_log(set_cursor(start_cursor, 1, 1, 0)));
-          ASSERT_EQ(OB_SUCCESS, log_writer.init(log_dir, OB_LOG_SYNC));
+          ASSERT_EQ(OB_SUCCESS, log_writer.init(log_dir, LOG_ALIGN-1, OB_LOG_SYNC));
           ASSERT_EQ(OB_SUCCESS, log_writer.start_log(set_cursor(start_cursor, 1, 1, 0)));
 
           ASSERT_EQ(OB_SUCCESS, pos_log_reader.init(log_dir, dio));
@@ -108,15 +110,17 @@ namespace oceanbase
           ASSERT_EQ(OB_SUCCESS, set_listen_port(port));
 
           ASSERT_EQ(OB_SUCCESS, start(false));
-          ASSERT_EQ(OB_SUCCESS, client_mgr.initialize(get_transport(), get_packet_streamer()));
-          ASSERT_EQ(OB_SUCCESS, rpc_stub.init(&client_mgr));
+          ASSERT_EQ(OB_SUCCESS, rpc_stub.init(&base_client.get_client_mgr()));
           ASSERT_EQ(OB_SUCCESS, server_getter.set_server(server));
           ASSERT_EQ(OB_SUCCESS, remote_log_src.init(&server_getter, &rpc_stub, fetch_timeout));
           err = OB_SUCCESS;
         }
         virtual void TearDown(){
-          stop();
           inspect(true);
+          fprintf(stderr, "Teardown\n");
+          base_client.destroy();
+          stop();
+          wait();
         }
         void inspect(bool verbose=false){
           fprintf(stderr, "ObPosLogReaderTest{log_buf_size=%ld, max_num_items=%ld}\n",
@@ -154,10 +158,12 @@ namespace oceanbase
 
         virtual int do_request(int pcode, ObDataBuffer& inbuf,  int& ret_pcode, ObDataBuffer& outbuf){
           int err = OB_SUCCESS;
+          UNUSED(inbuf);
+          UNUSED(outbuf);
           switch(pcode) {
             case OB_FETCH_LOG:
               ret_pcode = OB_FETCH_LOG_RESPONSE;
-              err = server_fetch_log(inbuf, outbuf);
+              //err = server_fetch_log(inbuf, outbuf);
               break;
             default:
               err = OB_NOT_SUPPORTED;
@@ -186,6 +192,7 @@ namespace oceanbase
           {
             end_id = end_cursor.log_id_;
           }
+          end_id++;
           return err;
         }
     };
@@ -193,6 +200,7 @@ namespace oceanbase
     TEST_F(ObFetchLogTest, Inspect){
       inspect(true);
       stop();
+      
     }
 
     TEST_F(ObFetchLogTest, SessionSerialize){
@@ -257,6 +265,8 @@ namespace oceanbase
         }
       }
       ASSERT_EQ(0, n_err);
+      fprintf(stderr, "ENDOFFETCHLO");
+      sleep(1);
     }
   } // end namespace updateserver
 } // end namespace oceanbase

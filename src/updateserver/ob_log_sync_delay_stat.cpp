@@ -182,6 +182,7 @@ namespace oceanbase
       else if (catchup_seq_ & 1)
       {
         catchup_seq_++;
+        TBSYS_LOG(INFO, "slave catchup %ld", catchup_seq_>>1);
       }
 
       if (last_report_time_us_ + report_interval_us_ < now_us

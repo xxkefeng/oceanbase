@@ -1,38 +1,38 @@
 /**
  * (C) 2010-2011 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or 
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * ob_merger_groupby_operator.cpp for 
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * ob_merger_groupby_operator.cpp for
  *
  * Authors:
  *   wushi <wushi.ly@taobao.com>
  *
  */
-#include "ob_ms_define.h"
-#include "ob_merger_groupby_operator.h"
+
 #include "common/ob_scan_param.h"
 #include "common/ob_compose_operator.h"
 #include "common/hash/ob_hashutils.h"
-using namespace oceanbase;
-using namespace common;
-using namespace mergeserver;
+#include "ob_merger_groupby_operator.h"
 
-mergeserver::ObMergerGroupByOperator::ObMergerGroupByOperator()
+using namespace oceanbase::common;
+using namespace oceanbase::mergeserver;
+
+ObMergerGroupByOperator::ObMergerGroupByOperator()
 {
   scan_param_ = NULL;
   sealed_ = false;
 }
 
-mergeserver::ObMergerGroupByOperator::~ObMergerGroupByOperator()
+ObMergerGroupByOperator::~ObMergerGroupByOperator()
 {
   scan_param_ = NULL;
   sealed_ = false;
 }
 
-void mergeserver::ObMergerGroupByOperator::reset()
+void ObMergerGroupByOperator::reset()
 {
   scan_param_ = NULL;
   sealed_ = false;
@@ -40,21 +40,19 @@ void mergeserver::ObMergerGroupByOperator::reset()
   compose_operator_.clear();
 }
 
-
-int64_t mergeserver::ObMergerGroupByOperator::get_result_row_width()const
+int64_t ObMergerGroupByOperator::get_result_row_width()const
 {
   int64_t res = 0;
   if (NULL != scan_param_)
   {
     res = (scan_param_->get_group_by_param().get_aggregate_row_width() > 0) ?
-      (scan_param_->get_group_by_param().get_aggregate_row_width() ) : 
+      (scan_param_->get_group_by_param().get_aggregate_row_width() ) :
       (scan_param_->get_column_id_size() + scan_param_->get_composite_columns_size());
   }
   return res;
 }
 
-
-int64_t mergeserver::ObMergerGroupByOperator::get_whole_result_row_count()const
+int64_t ObMergerGroupByOperator::get_whole_result_row_count()const
 {
   int64_t res = 0;
   if (NULL != scan_param_)
@@ -65,14 +63,13 @@ int64_t mergeserver::ObMergerGroupByOperator::get_whole_result_row_count()const
   return res;
 }
 
-
-int mergeserver::ObMergerGroupByOperator::set_param(const int64_t max_memory_size, const ObScanParam & param)
+int ObMergerGroupByOperator::set_param(const int64_t max_memory_size, const ObScanParam & param)
 {
   int err = OB_SUCCESS;
   reset();
   if (OB_SUCCESS != (err = operator_.init(param.get_group_by_param(), max_memory_size, max_memory_size)))
   {
-    TBSYS_LOG(WARN,"fail to init ObGroupByOperator [err:%d]", err);
+    TBSYS_LOG(WARN, "fail to init ObGroupByOperator [err:%d]", err);
   }
   if (OB_SUCCESS == err)
   {
@@ -82,8 +79,8 @@ int mergeserver::ObMergerGroupByOperator::set_param(const int64_t max_memory_siz
   return err;
 }
 
-int mergeserver::ObMergerGroupByOperator::add_sharding_result(ObScanner & sharding_res,  
-  const ObRange & query_range, const int64_t limit_offset, bool &is_finish)
+int ObMergerGroupByOperator::add_sharding_result(ObScanner & sharding_res,
+  const ObNewRange & query_range, const int64_t limit_offset, bool &is_finish)
 {
   int err = OB_SUCCESS;
   UNUSED(query_range);
@@ -98,15 +95,15 @@ int mergeserver::ObMergerGroupByOperator::add_sharding_result(ObScanner & shardi
   int64_t res_row_count = 0;
   if (OB_SUCCESS == err)
   {
-    expect_row_width = (scan_param_->get_group_by_param().get_aggregate_row_width() > 0) ? 
-      (scan_param_->get_group_by_param().get_aggregate_row_width()) : 
+    expect_row_width = (scan_param_->get_group_by_param().get_aggregate_row_width() > 0) ?
+      (scan_param_->get_group_by_param().get_aggregate_row_width()) :
       (scan_param_->get_column_id_size() + scan_param_->get_composite_columns_size());
     res_cell_count = sharding_res.get_cell_num();
     res_row_count = sharding_res.get_row_num();
-    if ((res_cell_count > 0) 
+    if ((res_cell_count > 0)
       && ((expect_row_width != res_cell_count/res_row_count) || (res_cell_count % res_row_count != 0)))
     {
-      TBSYS_LOG(ERROR, "unexpected error [expect_row_width:%ld,res_cell_count:%ld,res_row_count:%ld]", 
+      TBSYS_LOG(ERROR, "unexpected error [expect_row_width:%ld,res_cell_count:%ld,res_row_count:%ld]",
         expect_row_width, res_cell_count, res_row_count);
       err = OB_ERR_UNEXPECTED;
     }
@@ -137,8 +134,8 @@ int mergeserver::ObMergerGroupByOperator::add_sharding_result(ObScanner & shardi
   {
     int64_t cur_row_width = 0;
     row_cells_.reset();
-    for (cur_row_width = 0; 
-      (cur_row_width < expect_row_width) && (OB_SUCCESS == err); 
+    for (cur_row_width = 0;
+      (cur_row_width < expect_row_width) && (OB_SUCCESS == err);
       cur_row_width++, got_cell_count ++)
     {
       if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = sharding_res.get_cell(&cur_cell))))
@@ -163,7 +160,7 @@ int mergeserver::ObMergerGroupByOperator::add_sharding_result(ObScanner & shardi
           }
           else
           {
-            TBSYS_LOG(ERROR,"sharding result cell number error [cur_row_width:%ld,expected_row_width:%ld]", 
+            TBSYS_LOG(ERROR,"sharding result cell number error [cur_row_width:%ld,expected_row_width:%ld]",
               cur_row_width, expect_row_width);
             err  = OB_ERR_UNEXPECTED;
           }
@@ -176,7 +173,7 @@ int mergeserver::ObMergerGroupByOperator::add_sharding_result(ObScanner & shardi
     }
     if ((OB_ITER_END == err) && (cur_row_width != expect_row_width))
     {
-      TBSYS_LOG(ERROR,"unexpected error, current row not end while ObScanner is end [cur_row_width:%ld,expect_row_width:%ld]", 
+      TBSYS_LOG(ERROR,"unexpected error, current row not end while ObScanner is end [cur_row_width:%ld,expect_row_width:%ld]",
         cur_row_width, expect_row_width);
       err = OB_ERR_UNEXPECTED;
     }
@@ -203,9 +200,8 @@ int mergeserver::ObMergerGroupByOperator::add_sharding_result(ObScanner & shardi
 }
 
 
-int mergeserver::ObMergerGroupByOperator::compose(ObCellArray& result_array, 
-  const ObArrayHelper<ObCompositeColumn>& composite_columns, 
-  const int64_t row_width)
+int ObMergerGroupByOperator::compose(ObCellArray & result_array,
+    const ObArrayHelper<ObCompositeColumn>& composite_columns, const int64_t row_width)
 {
   int err = OB_SUCCESS;
   compose_operator_.clear();
@@ -217,8 +213,8 @@ int mergeserver::ObMergerGroupByOperator::compose(ObCellArray& result_array,
 }
 
 
-int mergeserver::ObMergerGroupByOperator::having_condition_filter(ObGroupByOperator & result,
-  const int64_t row_width,   const ObGroupByParam &param)
+int ObMergerGroupByOperator::having_condition_filter(ObGroupByOperator & result,
+  const int64_t row_width, const ObGroupByParam &param)
 {
   int err = OB_SUCCESS;
   if ((OB_SUCCESS == err) && (row_width == 0))
@@ -228,7 +224,7 @@ int mergeserver::ObMergerGroupByOperator::having_condition_filter(ObGroupByOpera
   }
   if ((OB_SUCCESS == err) && (result.get_cell_size()%row_width != 0))
   {
-    TBSYS_LOG(WARN,"argument error [result.get_cell_size():%ld,row_width:%ld]", 
+    TBSYS_LOG(WARN,"argument error [result.get_cell_size():%ld,row_width:%ld]",
       result.get_cell_size(), row_width);
   }
   ObGroupKey g_key;
@@ -270,7 +266,7 @@ int mergeserver::ObMergerGroupByOperator::having_condition_filter(ObGroupByOpera
   return err;
 }
 
-int mergeserver::ObMergerGroupByOperator::seal()
+int ObMergerGroupByOperator::seal()
 {
   int err = OB_SUCCESS;
   if (NULL == scan_param_)
@@ -278,70 +274,73 @@ int mergeserver::ObMergerGroupByOperator::seal()
     TBSYS_LOG(WARN,"operator was not initialized yet");
     err = OB_INVALID_ARGUMENT;
   }
-  int64_t agg_row_width = scan_param_->get_group_by_param().get_aggregate_row_width();
-  int64_t select_row_width = scan_param_->get_column_id_size() + scan_param_->get_composite_columns_size();
-  /// compose
-  bool need_compose = ((agg_row_width > 0) && (scan_param_->get_group_by_param().get_composite_columns().get_array_index()> 0));
-  if ((OB_SUCCESS == err) && need_compose)
+  else
   {
-    if (OB_SUCCESS != (err = compose(operator_,scan_param_->get_group_by_param().get_composite_columns(),agg_row_width)))
+    int64_t agg_row_width = scan_param_->get_group_by_param().get_aggregate_row_width();
+    int64_t select_row_width = scan_param_->get_column_id_size() + scan_param_->get_composite_columns_size();
+    /// compose
+    bool need_compose = ((agg_row_width > 0) && (scan_param_->get_group_by_param().get_composite_columns().get_array_index()> 0));
+    if ((OB_SUCCESS == err) && need_compose)
     {
-      TBSYS_LOG(WARN,"fail to compose composite columns [err:%d]", err);
+      if (OB_SUCCESS != (err = compose(operator_,scan_param_->get_group_by_param().get_composite_columns(),agg_row_width)))
+      {
+        TBSYS_LOG(WARN,"fail to compose composite columns [err:%d]", err);
+      }
     }
-  }
-  /// having condition filter
-  bool need_filter_having_condition = ((agg_row_width > 0) 
-    && (scan_param_->get_group_by_param().get_having_condition().get_count()> 0));
-  if ((OB_SUCCESS == err) && (need_filter_having_condition))
-  {
-    if (OB_SUCCESS != (err = having_condition_filter(operator_,agg_row_width,scan_param_->get_group_by_param())))
+    /// having condition filter
+    bool need_filter_having_condition = ((agg_row_width > 0)
+        && (scan_param_->get_group_by_param().get_having_condition().get_count()> 0));
+    if ((OB_SUCCESS == err) && (need_filter_having_condition))
     {
-      TBSYS_LOG(WARN,"fail to filter having conditions [err:%d]", err);
+      if (OB_SUCCESS != (err = having_condition_filter(operator_,agg_row_width,scan_param_->get_group_by_param())))
+      {
+        TBSYS_LOG(WARN,"fail to filter having conditions [err:%d]", err);
+      }
     }
-  }
 
-  /// orderby
-  const int64_t *orderby_idx = NULL;
-  const uint8_t *orders = NULL;
-  int64_t orderby_column_count = 0;
-  scan_param_->get_orderby_column(orderby_idx,orders,orderby_column_count);
-  if (static_cast<uint64_t>(orderby_column_count) > sizeof(orderby_desc_)/sizeof(orderby_desc_[0]))
-  {
-    TBSYS_LOG(WARN,"orderby_column_count too large [orderby_column_count:%ld]", orderby_column_count);
-    err = OB_INVALID_ARGUMENT;
-  }
-  for (int64_t i = 0; (i < orderby_column_count) && (OB_SUCCESS == err); i++)
-  {
-    orderby_desc_[i].cell_idx_ = static_cast<int32_t>(orderby_idx[i]);
-    orderby_desc_[i].order_ = orders[i];
-  }
-  bool need_orderby = (orderby_column_count > 0);
-  if ((OB_SUCCESS == err) && need_orderby)
-  {
-    if (agg_row_width > 0)
+    /// orderby
+    const int64_t *orderby_idx = NULL;
+    const uint8_t *orders = NULL;
+    int64_t orderby_column_count = 0;
+    scan_param_->get_orderby_column(orderby_idx,orders,orderby_column_count);
+    if (static_cast<uint64_t>(orderby_column_count) > sizeof(orderby_desc_)/sizeof(orderby_desc_[0]))
     {
-      if (OB_SUCCESS != (err = operator_.orderby(agg_row_width,orderby_desc_, orderby_column_count)))
+      TBSYS_LOG(WARN,"orderby_column_count too large [orderby_column_count:%ld]", orderby_column_count);
+      err = OB_INVALID_ARGUMENT;
+    }
+    for (int64_t i = 0; (i < orderby_column_count) && (OB_SUCCESS == err); i++)
+    {
+      orderby_desc_[i].cell_idx_ = static_cast<int32_t>(orderby_idx[i]);
+      orderby_desc_[i].order_ = orders[i];
+    }
+    bool need_orderby = (orderby_column_count > 0);
+    if ((OB_SUCCESS == err) && need_orderby)
+    {
+      if (agg_row_width > 0)
       {
-        TBSYS_LOG(WARN,"fail to orderby grouped result [err:%d]", err);
+        if (OB_SUCCESS != (err = operator_.orderby(agg_row_width,orderby_desc_, orderby_column_count)))
+        {
+          TBSYS_LOG(WARN,"fail to orderby grouped result [err:%d]", err);
+        }
+      }
+      else
+      {
+        if (OB_SUCCESS != (err = operator_.orderby(select_row_width,orderby_desc_, orderby_column_count)))
+        {
+          TBSYS_LOG(WARN,"fail to orderby select result [err:%d]", err);
+        }
       }
     }
-    else
+    if (OB_SUCCESS == err)
     {
-      if (OB_SUCCESS != (err = operator_.orderby(select_row_width,orderby_desc_, orderby_column_count)))
-      {
-        TBSYS_LOG(WARN,"fail to orderby select result [err:%d]", err);
-      }
+      sealed_ = true;
     }
-  }
-  if (OB_SUCCESS == err)
-  {
-    sealed_ = true;
   }
   return err;
 }
 
 
-int mergeserver::ObMergerGroupByOperator::get_mem_size_used()const
+int ObMergerGroupByOperator::get_mem_size_used()const
 {
   int64_t res = 0;
   res += row_cells_.get_memory_size_used();
@@ -351,7 +350,7 @@ int mergeserver::ObMergerGroupByOperator::get_mem_size_used()const
 
 
 
-int mergeserver::ObMergerGroupByOperator::next_cell()
+int ObMergerGroupByOperator::next_cell()
 {
   int err = OB_SUCCESS ;
   if (!sealed_)
@@ -377,14 +376,14 @@ int mergeserver::ObMergerGroupByOperator::next_cell()
   int64_t agg_row_width = scan_param_->get_group_by_param().get_aggregate_row_width();
   ObGroupKey g_key;
 
-  if ((OB_SUCCESS == err) 
-    && (agg_row_width > 0 ) 
+  if ((OB_SUCCESS == err)
+    && (agg_row_width > 0 )
     && (scan_param_->get_group_by_param().get_having_condition().get_count() > 0)
     && (cur_cell_offset%agg_row_width == 0))
   {
     if (cur_cell_offset + agg_row_width - 1 >= operator_.get_cell_size())
     {
-      TBSYS_LOG(ERROR, "unexpected error [cur_cell_offset:%ld,agg_row_width:%ld,ObGroupByOperator::get_cell_size():%ld]", 
+      TBSYS_LOG(ERROR, "unexpected error [cur_cell_offset:%ld,agg_row_width:%ld,ObGroupByOperator::get_cell_size():%ld]",
         cur_cell_offset, agg_row_width, operator_.get_cell_size());
       err  = OB_ERR_UNEXPECTED;
     }
@@ -413,12 +412,12 @@ int mergeserver::ObMergerGroupByOperator::next_cell()
           }
           else
           {
-            TBSYS_LOG(WARN,"fail to get next_cell from ObGroupByOperator [err:%d]", err); 
+            TBSYS_LOG(WARN,"fail to get next_cell from ObGroupByOperator [err:%d]", err);
           }
         }
         if ((jumped_cell_count < agg_row_width) && ((OB_SUCCESS == err) ||(OB_ITER_END == err)))
         {
-          TBSYS_LOG(ERROR, "unexpected error, jumped cell count not enough [jumped_cell_count:%ld,agg_row_width:%ld]", 
+          TBSYS_LOG(ERROR, "unexpected error, jumped cell count not enough [jumped_cell_count:%ld,agg_row_width:%ld]",
             jumped_cell_count , agg_row_width);
           err = OB_ERR_UNEXPECTED;
         }
@@ -429,7 +428,7 @@ int mergeserver::ObMergerGroupByOperator::next_cell()
 }
 
 
-int mergeserver::ObMergerGroupByOperator::get_cell(ObInnerCellInfo** cell, bool* is_row_changed)
+int ObMergerGroupByOperator::get_cell(ObInnerCellInfo** cell, bool* is_row_changed)
 {
   int err = OB_SUCCESS;
   if (!sealed_)
@@ -445,14 +444,14 @@ int mergeserver::ObMergerGroupByOperator::get_cell(ObInnerCellInfo** cell, bool*
 
   if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = operator_.get_cell(cell,is_row_changed))))
   {
-    TBSYS_LOG(WARN,"fail to get cell from ObGroupByIterator [err:%d,ObGroupByOperator.get_cell_size():%ld]", 
+    TBSYS_LOG(WARN,"fail to get cell from ObGroupByIterator [err:%d,ObGroupByOperator.get_cell_size():%ld]",
       err,  operator_.get_cell_size());
   }
   return err;
 }
 
 
-int mergeserver::ObMergerGroupByOperator::get_cell(ObInnerCellInfo** cell)
+int ObMergerGroupByOperator::get_cell(ObInnerCellInfo** cell)
 {
   return get_cell(cell,NULL);
 }

@@ -263,7 +263,6 @@ void ComsumerQueue<T>::comsume(long id)
       ret = comsumer_->comsume(obj);
       if (ret != 0) {
         TBSYS_LOG(WARN, "can't comsume object, comsumer id=%ld", id);
-        exit(ret);
       }
     } else if (ret == QUEUE_QUITING) {
       TBSYS_LOG(INFO, "producer quiting, quit comsumer id=%ld", id);

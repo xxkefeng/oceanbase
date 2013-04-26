@@ -1315,9 +1315,11 @@ TEST(Test_ob_postfix_expression, calc_test_datetime_format_v1)
   ObPostfixExpression postfix_expr;
   build_single_cell(cells);
   int64_t time_val = 0;
+
   ObExpressionParser parser;
   hash::ObHashMap<ObString,int64_t, hash::NoPthreadDefendMode> name_to_idx_map;
   INIT_NAME_TO_IDX_HASH_1(name_to_idx_map);
+
   ObString str;
   char *expr = NULL;
 
@@ -1412,6 +1414,7 @@ TEST(Test_ob_postfix_expression, calc_test_datetime_format_v2)
   ASSERT_EQ(OB_SUCCESS, result.get_precise_datetime(time_val));
   ASSERT_EQ(time_val, get_date_time_val("2012-8-7 12:23:42"));
 }
+
 
 int main(int argc, char **argv)
 {

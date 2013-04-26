@@ -9,11 +9,13 @@
 #include "common/ob_cond_info.h"
 #include "common/ob_common_param.h"
 #include "ob_param_decoder.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 
+static CharArena allocator_;
 int main(int argc, char **argv)
 {
   ob_init_memory_pool();
@@ -89,13 +91,13 @@ TEST_F(TestParamDecoder, test_decode_cond_cell)
   char * rowkey = (char*)"rowkey_test";
   ObString table_name;
   ObString column_name;
-  ObString row_key;
+  ObRowkey row_key;
 
   // NORMAL TYPE
   // table name not exist and column not exist
   table_name.assign(no_name, static_cast<int32_t>(strlen(no_name)));
   column_name.assign(no_name, static_cast<int32_t>(strlen(no_name)));
-  row_key.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+  row_key = make_rowkey(rowkey, &allocator_);
   ObObj obj;
   obj.set_int(1234);
   cond.set(NE, table_name, row_key, column_name, obj);
@@ -122,7 +124,7 @@ TEST_F(TestParamDecoder, test_decode_cond_cell)
   // EXIST TYPE
   // table name not exist
   table_name.assign(no_name, static_cast<int32_t>(strlen(no_name)));
-  row_key.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+  row_key = make_rowkey(rowkey, &allocator_);
   cond.set(table_name, row_key, false);
   EXPECT_TRUE(OB_SUCCESS != ObParamDecoder::decode_cond_cell(cond, schema, out_cell));
   cond.set(table_name, row_key, true);

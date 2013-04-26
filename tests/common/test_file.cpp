@@ -12,6 +12,8 @@ using namespace oceanbase;
 using namespace common;
 
 static char *fname = (char*)"./test_file.data";
+static char *async_fname = (char*)"./test_file.async.data";
+static char *sync_fname = (char*)"./test_file.sync.data";
 static char *buf = NULL;
 static const int64_t size = 16 * 1024 * 1024;
 static const int64_t mb_num = 16;
@@ -287,6 +289,50 @@ TEST(TestObFile, append_bounder)
   size = 2 * 1024 * 1024 - 1;
   appender.append(buf, size, false);
   EXPECT_EQ(4 * 1024 * 1024 + 1022, appender.get_file_pos());
+  appender.close();
+  free(buf);
+}
+
+TEST(TestObFile, async_append_bounder)
+{
+  ObFileAsyncAppender appender;
+  ObString str_fname;
+  str_fname.assign(async_fname, static_cast<int32_t>(strlen(async_fname) + 1));
+  appender.open(str_fname, true, true, true);
+  char *buf = (char*)malloc(70 * 1024 * 1024);
+  memset(buf, '$', 70 * 1024 * 1024);
+  int64_t size = 2 * 1024 * 1024 - 8 * 1024;
+  appender.append(buf, size, false);
+  size = 8 * 1024 + 1023;
+  appender.append(buf, size, false);
+  size = 2 * 1024 * 1024 - 1;
+  appender.append(buf, size, false);
+  size = 64 * 1024 * 1024;
+  appender.append(buf, size, false);
+  appender.fsync();
+  EXPECT_EQ(68 * 1024 * 1024 + 1022, appender.get_file_pos());
+  appender.close();
+  free(buf);
+}
+
+TEST(TestObFile, sync_append_bounder)
+{
+  ObFileAppender appender;
+  ObString str_fname;
+  str_fname.assign(sync_fname, static_cast<int32_t>(strlen(sync_fname) + 1));
+  appender.open(str_fname, true, true, true);
+  char *buf = (char*)malloc(70 * 1024 * 1024);
+  memset(buf, '$', 70 * 1024 * 1024);
+  int64_t size = 2 * 1024 * 1024 - 8 * 1024;
+  appender.append(buf, size, false);
+  size = 8 * 1024 + 1023;
+  appender.append(buf, size, false);
+  size = 2 * 1024 * 1024 - 1;
+  appender.append(buf, size, false);
+  size = 64 * 1024 * 1024;
+  appender.append(buf, size, false);
+  appender.fsync();
+  EXPECT_EQ(68 * 1024 * 1024 + 1022, appender.get_file_pos());
   appender.close();
   free(buf);
 }

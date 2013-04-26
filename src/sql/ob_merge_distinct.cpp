@@ -47,6 +47,10 @@ int ObMergeDistinct::open()
     TBSYS_LOG(WARN, "fail to alloc %lu bytes memory", OB_ROW_BUF_SIZE);
     ret = OB_ALLOCATE_MEMORY_FAILED;
   }
+  else
+  {
+    got_first_row_ = false;
+  }
   return ret;
 }
 
@@ -54,7 +58,7 @@ int ObMergeDistinct::open()
 int ObMergeDistinct::close()
 {
   int ret = OB_SUCCESS;
-
+  got_first_row_ = false;
   if (NULL != last_row_buf_)
   {
     ob_free(last_row_buf_);
@@ -184,7 +188,7 @@ int ObMergeDistinct::compare_equal(const common::ObRow *this_row, const common::
     column_count = distinct_columns_.count();
     for (i = 0; i < column_count; i++)
     {
-      if (OB_SUCCESS != (ret = distinct_columns_.at(i, column)))
+      if (OB_SUCCESS != (ret = distinct_columns_.at(static_cast<int32_t>(i), column)))
       {
         TBSYS_LOG(WARN, "fail to get column from distinct_column_ array. ret=%d, i=%ld, column_count=%ld",
             ret, i, column_count);
@@ -249,7 +253,7 @@ int64_t ObMergeDistinct::to_string(char* buf, const int64_t buf_len) const
   databuff_printf(buf, buf_len, pos, "MergeDistinct(columns=[");
   for (int64_t i = 0; i < distinct_columns_.count(); ++i)
   {
-    const ObDistinctColumn &col = distinct_columns_.at(i);
+    const ObDistinctColumn &col = distinct_columns_.at(static_cast<int32_t>(i));
     if (OB_INVALID_ID != col.table_id_)
     {
       databuff_printf(buf, buf_len, pos, "<%lu, %lu>", col.table_id_, col.column_id_);

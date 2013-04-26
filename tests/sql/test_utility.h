@@ -7,6 +7,9 @@
 #include "errno.h"
 #include "common/ob_define.h"
 #include "tbsys.h"
+#include "common/ob_rowkey.h"
+#include "common/page_arena.h"
+#include "common/ob_range2.h"
 
 namespace oceanbase
 {
@@ -38,6 +41,12 @@ namespace oceanbase
         }
         return ret;
       }
+
+      int gen_rowkey(int64_t seq, CharArena &arena, ObRowkey &rowkey);
+      int gen_new_range(int64_t start, int64_t end, CharArena &arena, ObNewRange &range);
+
+      bool compare_rowkey(const char *str, const ObRowkey &rowkey);
+
     }
   }
 }

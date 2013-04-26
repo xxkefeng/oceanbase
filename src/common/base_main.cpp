@@ -1,50 +1,58 @@
 /*===============================================================
 *   (C) 2007-2010 Taobao Inc.
-*   
-*   
+*
+*
 *   Version: 0.1 2010-09-26
-*   
+*
 *   Authors:
 *          daoan(daoan@taobao.com)
-*   
+*
 *
 ================================================================*/
 #include <getopt.h>
 
+#include "libgen.h"
 #include "base_main.h"
 #include "ob_define.h"
 #include "ob_trace_log.h"
-namespace 
+#include "easy_log.h"
+#include "common/ob_easy_log.h"
+#include "ob_profile_log.h"
+
+namespace
 {
-  const char* PID_FILE = "pid_file";
-  const char* LOG_FILE = "log_file";
-  const char* DATA_DIR = "data_dir";
-  const char* LOG_LEVEL = "log_level";
-  const char* TRACE_LOG_LEVEL = "trace_log_level";
-  const char* MAX_LOG_FILE_SIZE = "max_log_file_size";
+  const char* DEFAULT_PID_DIR = "./run";
+  const char* DEFAULT_LOG_DIR = "./log";
 }
-namespace oceanbase 
+namespace oceanbase
 {
-  namespace common 
+  namespace common
   {
     BaseMain* BaseMain::instance_ = NULL;
     bool BaseMain::restart_ = false;
-    BaseMain::BaseMain()
+
+    BaseMain::BaseMain(const bool daemon)
+      : cmd_cluster_id_(0), cmd_rs_port_(0), cmd_master_rs_port_(0), cmd_port_(0),
+        cmd_inner_port_(0), cmd_obmysql_port_(0), pid_dir_(DEFAULT_PID_DIR),
+        log_dir_(DEFAULT_LOG_DIR), server_name_(NULL), use_deamon_(daemon)
     {
-      use_deamon_ = true;
-      instance_ = NULL;
-      config_file_name_[0] = '\0';
-    }
-    BaseMain::BaseMain(const bool deamon):use_deamon_(deamon)
-    {
-      instance_ = NULL;
-      config_file_name_[0] = '\0';
+      memset(config_, 0, sizeof (config_));
+      memset(cmd_rs_ip_, 0, sizeof (cmd_rs_ip_));
+      memset(cmd_data_dir_, 0, sizeof (cmd_data_dir_));
+      memset(cmd_prefix_dir_, 0, sizeof (cmd_prefix_dir_));
+      memset(cmd_master_rs_ip_, 0, sizeof (cmd_master_rs_ip_));
+      memset(cmd_datadir_, 0, sizeof (cmd_datadir_));
+      memset(cmd_appname_, 0, sizeof (cmd_appname_));
+      memset(cmd_devname_, 0, sizeof (cmd_devname_));
+      memset(cmd_extra_config_, 0, sizeof (cmd_extra_config_));
     }
     BaseMain::~BaseMain()
     {
     }
     void BaseMain::destroy()
     {
+      signal(SIGTERM, SIG_IGN);
+      signal(SIGINT, SIG_IGN);
       if (instance_ != NULL)
       {
         delete instance_;
@@ -82,6 +90,32 @@ namespace oceanbase
             DEC_TRACE_LOG_LEVEL();
           }
           break;
+        case 45:
+        case 46:
+          if (46 == sig)
+          {
+            ObProfileLogger::getInstance()->setLogLevel("DEBUG");
+          }
+          else
+          {
+            ObProfileLogger::getInstance()->setLogLevel("INFO");
+          }
+          break;
+        case 47:
+        case 48:
+          if (47 == sig)
+          {
+            easy_log_level = static_cast<easy_log_level_t>(static_cast<int>(easy_log_level) + 1);
+          }
+          else
+          {
+            easy_log_level = static_cast<easy_log_level_t>(static_cast<int>(easy_log_level) - 1);
+          }
+          TBSYS_LOG(INFO, "easy_log_level: %d", easy_log_level);
+          break;
+        case 49:
+          ob_print_mod_memory_usage();
+          break;
       }
       if (instance_ != NULL) instance_->do_signal(sig);
     }
@@ -94,31 +128,73 @@ namespace oceanbase
     {
       signal(sig, BaseMain::sign_handler);
     }
-    const char* BaseMain::parse_cmd_line(const int argc,  char *const argv[])
+    void BaseMain::parse_cmd_line(const int argc,  char *const argv[])
     {
       int opt = 0;
-      const char* opt_string = "hNVf:";
-      static char conf_name[256];
-      struct option longopts[] = 
-      {
-        {"config_file", 1, NULL, 'f'},
-        {"help", 0, NULL, 'h'},
-        {"version", 0, NULL, 'V'},
-        {"no_deamon", 0, NULL, 'N'},
-        {0, 0, 0, 0}
-      };
+      const char* opt_string = "r:R:p:i:C:c:n:m:o:z:D:P:hNV";
+      struct option longopts[] =
+        {
+          {"rootserver", 1, NULL, 'r'},
+          {"port", 1, NULL, 'p'},
+          {"data_dir", 1, NULL, 'D'},
+          {"prefix_dir", 1, NULL, 'P'},
+          {"interface", 1, NULL, 'i'},
+          {"config", 1, NULL, 'c'},
+          {"cluster_id", 1, NULL, 'C'},
+          {"appname", 1, NULL, 'n'},
+          {"inner_port", 1, NULL, 'm'},
+          {"master_rootserver", 1, NULL, 'R'},
+          {"mysql_port", 1, NULL, 'z'},
+          {"help", 0, NULL, 'h'},
+          {"version", 0, NULL, 'V'},
+          {"no_deamon", 0, NULL, 'N'},
+          {"extra_config", 0, NULL, 'o'},
+          {0, 0, 0, 0}
+        };
 
-      const char* config_file = NULL;
       while((opt = getopt_long(argc, argv, opt_string, longopts, NULL)) != -1) {
         switch (opt) {
-          case 'f':
-            config_file = optarg;
+          case 'r':
+            snprintf(cmd_rs_ip_, OB_IP_STR_BUFF, "%s", optarg);
+            break;
+          case 'R':
+            snprintf(cmd_master_rs_ip_, OB_IP_STR_BUFF, "%s", optarg);
+            break;
+          case 'c':
+            snprintf(config_, sizeof (config_), "%s", optarg);
+            break;
+          case 'C':
+            cmd_cluster_id_ = static_cast<int32_t>(strtol(optarg, NULL, 0));
+            break;
+          case 'o':
+            snprintf(cmd_extra_config_, sizeof (cmd_extra_config_), "%s", optarg);
+            break;
+          case 'p':
+            cmd_port_ = static_cast<int32_t>(strtol(optarg, NULL, 0));
+            break;
+          case 'D':
+            snprintf(cmd_data_dir_, sizeof (cmd_data_dir_), "%s", optarg);
+            break;
+          case 'P':
+            snprintf(cmd_prefix_dir_, sizeof (cmd_prefix_dir_), "%s", optarg);
+            break;
+          case 'i':
+            snprintf(cmd_devname_, sizeof (cmd_devname_), "%s", optarg);
+            break;
+          case 'n':
+            snprintf(cmd_appname_, sizeof (cmd_appname_), "%s", optarg);
+            break;
+          case 'm':
+            cmd_inner_port_ = static_cast<int32_t>(strtol(optarg, NULL, 0));
+            break;
+          case 'z':
+            cmd_obmysql_port_ = static_cast<int32_t>(strtol(optarg, NULL, 0));
             break;
           case 'V':
             print_version();
             exit(1);
           case 'h':
-            print_usage(argv[0]);
+            print_usage(basename(argv[0]));
             exit(1);
           case 'N':
             use_deamon_ = false;
@@ -127,132 +203,218 @@ namespace oceanbase
             break;
         }
       }
-      if (config_file == NULL) 
+
+      for (int64_t del = 0; del < OB_IP_STR_BUFF; del++)
       {
-        snprintf(conf_name, 256, "%s.conf", argv[0]);
-        config_file = conf_name;
+        if (':' == cmd_rs_ip_[del])
+        {
+          cmd_rs_ip_[del++] = '\0';
+          char *endptr = NULL;
+          cmd_rs_port_ = static_cast<int32_t>(
+            strtol(cmd_rs_ip_ + del, &endptr, 10));
+          if (endptr != cmd_rs_ip_ + del + strlen(cmd_rs_ip_ + del))
+          {
+            TBSYS_LOG(WARN, "rs address truncated!");
+          }
+          if (cmd_rs_port_ >= 65536 || cmd_rs_port_ <= 0)
+          {
+            TBSYS_LOG(ERROR, "rs port invalid: [%d]", cmd_rs_port_);
+          }
+          break;
+        }
       }
-      return config_file;
+      for (int64_t del = 0; del < OB_IP_STR_BUFF; del++)
+      {
+        if (':' == cmd_master_rs_ip_[del])
+        {
+          cmd_master_rs_ip_[del++] = '\0';
+          char *endptr = NULL;
+          cmd_master_rs_port_ = static_cast<int32_t>(
+            strtol(cmd_master_rs_ip_ + del, &endptr, 10));
+          if (endptr != cmd_master_rs_ip_ + del + strlen(cmd_master_rs_ip_ + del))
+          {
+            TBSYS_LOG(WARN, "Master obi rs address truncated!");
+          }
+          else if (cmd_master_rs_port_ >= 65536 || cmd_master_rs_port_ <= 0)
+          {
+            TBSYS_LOG(ERROR, "Master Obi rs port invalid: [%d]", cmd_master_rs_port_);
+          }
+          break;
+        }
+      }
     }
     void BaseMain::print_usage(const char *prog_name)
     {
-      fprintf(stderr, "%s -f config_file\n"
-          "    -f, --config_file  config file\n"
-          "    -h, --help         this help\n"
-          "    -V, --version      version\n"
-          "    -N, --no_deamon    no deamon\n\n", prog_name);
+      if (0 == strcmp("rootserver", prog_name))
+      {
+        fprintf(stderr, "rootserver\n"
+                "\t-c|--config BIN_CONFIG_FILE\n"
+                "\t-h|--help\n"
+                "\t-i|--interface DEV\n"
+                "\t-o|--extra_config name=value[,...]\n"
+                "\t-r|--rootserver IP:PORT\n"
+                "\t-C|--cluster_id CLUSTER_ID\n"
+                "\t-N|--no_daemon\n"
+                "\t-R|--master_rootserver IP:PORT\n"
+                "\t-V|--version\n");
+      }
+      else if (0 == strcmp("chunkserver", prog_name))
+      {
+        fprintf(stderr, "chunkserver\n"
+                "\t-c|--config BIN_CONFIG_FILE\n"
+                "\t-h|--help\n"
+                "\t-i|--interface DEV\n"
+                "\t-n|--appname APPLICATION_NAME\n"
+                "\t-o|--extra_config name=value[,...]\n"
+                "\t-p|--port PORT\n"
+                "\t-r|--rootserver IP:PORT\n"
+                "\t-D|--data_dir CS_DATA_PATH\n"
+                "\t-N|--no_daemon\n"
+                "\t-V|--version\n");
+      }
+      else if (0 == strcmp("updateserver", prog_name))
+      {
+        fprintf(stderr, "updateserver\n"
+                "\t-c|--config BIN_CONFIG_FILE\n"
+                "\t-h|--help\n"
+                "\t-i|--interface DEV\n"
+                "\t-m|--inner_port PORT\n"
+                "\t-n|--appname APPLICATION_NAME\n"
+                "\t-o|--extra_config name=value[,...]\n"
+                "\t-p|--port PORT\n"
+                "\t-r|--rootserver IP:PORT\n"
+                "\t-N|--no_daemon\n"
+                "\t-V|--version\n");
+      }
+      else if (0 == strcmp("mergeserver", prog_name))
+      {
+        fprintf(stderr, "mergeserver\n"
+                "\t-c|--config BIN_CONFIG_FILE\n"
+                "\t-h|--help\n"
+                "\t-i|--interface DEV\n"
+                "\t-o|--extra_config name=value[,...]\n"
+                "\t-p|--port PORT\n"
+                "\t-r|--rootserver IP:PORT\n"
+                "\t-z|--mysql_port PORT\n"
+                "\t-N|--no_daemon\n"
+                "\t-V|--version\n");
+      }
+      else
+      {
+        fprintf(stderr, "what SERVER are you run?? [%s]\n", prog_name);
+      }
     }
     void BaseMain::print_version()
     {
       fprintf(stderr, "BUILD_TIME: %s %s\n\n", __DATE__, __TIME__);
     }
 
-    int BaseMain::start(const int argc, char *argv[], const char* section_name)
+    int BaseMain::start(const int argc, char *argv[])
     {
-      const char* config_file = parse_cmd_line(argc, argv);
-      if(config_file == NULL) 
-      {
-        print_usage(argv[0]);
-        return EXIT_FAILURE;
-      }
-      if (static_cast<int>(strlen(config_file)) >= OB_MAX_FILE_NAME_LENGTH)
-      {
-        fprintf(stderr, "file name too long %s error\n", config_file);
-        return EXIT_FAILURE;
-      }
-      strncpy(config_file_name_, config_file, OB_MAX_FILE_NAME_LENGTH);
-      config_file_name_[OB_MAX_FILE_NAME_LENGTH - 1] = '\0';
-
-      if(TBSYS_CONFIG.load(config_file)) 
-      {
-        fprintf(stderr, "load file %s error\n", config_file);
-        return EXIT_FAILURE;
-      }
-
-      const char* sz_pid_file =
-        TBSYS_CONFIG.getString(section_name, PID_FILE, "server.pid");
-      const char* sz_log_file =
-        TBSYS_CONFIG.getString(section_name, LOG_FILE, "server.log");
-      {
-        char *p = NULL;
-        char dir_path[256];
-        snprintf(dir_path, 256, "%s",
-            TBSYS_CONFIG.getString(section_name, DATA_DIR, "./"));
-        if(!tbsys::CFileUtil::mkdirs(dir_path)) {
-          fprintf(stderr, "create dir %s error\n", dir_path);
-          return EXIT_FAILURE;
-        }
-        snprintf(dir_path, 256, "%s", sz_pid_file);
-        p = strrchr(dir_path, '/');
-        if(p != NULL)
-        {
-          *p = '\0';
-        }
-        if(p != NULL && !tbsys::CFileUtil::mkdirs(dir_path)) {
-          fprintf(stderr, "create dir %s error\n", dir_path);
-          return EXIT_FAILURE;
-        }
-        snprintf(dir_path, 256, "%s", sz_log_file);
-        p = strrchr(dir_path, '/');
-        if(p != NULL)
-        {
-          *p = '\0';
-        }
-        if(p != NULL && !tbsys::CFileUtil::mkdirs(dir_path)) {
-          fprintf(stderr, "create dir %s error\n", dir_path);
-          return EXIT_FAILURE;
-        }
-      }
-
-      int pid = 0;
-      if((pid = tbsys::CProcess::existPid(sz_pid_file))) {
-        fprintf(stderr, "program has been exist: pid=%d\n", pid);
-        return EXIT_FAILURE;
-      }
-
-      const char * sz_log_level =
-        TBSYS_CONFIG.getString(section_name, LOG_LEVEL, "info");
-      TBSYS_LOGGER.setLogLevel(sz_log_level);
-      const char * trace_log_level =
-        TBSYS_CONFIG.getString(section_name, TRACE_LOG_LEVEL, "debug");
-      SET_TRACE_LOG_LEVEL(trace_log_level); 
-      int max_file_size= TBSYS_CONFIG.getInt(section_name, MAX_LOG_FILE_SIZE, 1024);
-      TBSYS_LOGGER.setMaxFileSize(max_file_size * 1024L * 1024L);
       int ret = EXIT_SUCCESS;
-      bool start_ok = true;
+      easy_log_format = ob_easy_log_format;
+      parse_cmd_line(argc, argv);
+      server_name_ = basename(argv[0]);
+      char pid_file[OB_MAX_FILE_NAME_LENGTH];
+      char log_file[OB_MAX_FILE_NAME_LENGTH];
+      if (EXIT_SUCCESS == ret)
+      {
+        int pid = 0;
 
-      if (use_deamon_) 
-      {
-        start_ok = (tbsys::CProcess::startDaemon(sz_pid_file, sz_log_file) == 0);
+        snprintf(pid_file, sizeof (pid_file), "%s", pid_dir_);
+        if(!tbsys::CFileUtil::mkdirs(pid_file)) {
+          fprintf(stderr, "create dir %s error\n", pid_file);
+          ret = EXIT_FAILURE;
+        }
+
+        snprintf(pid_file, sizeof (pid_file),
+                 "%s/%s.pid", pid_dir_, server_name_);
+        if((pid = tbsys::CProcess::existPid(pid_file))) {
+          fprintf(stderr, "program has been exist: pid=%d\n", pid);
+          ret = EXIT_FAILURE;
+        }
       }
-      if(start_ok) 
+      if (EXIT_SUCCESS == ret)
       {
-        signal(SIGPIPE, SIG_IGN);
-        signal(SIGHUP, SIG_IGN);
-        add_signal_catched(SIGINT);
-        add_signal_catched(SIGTERM);
-        add_signal_catched(40);
-        add_signal_catched(41);
-        add_signal_catched(42);
-        add_signal_catched(43);
-        add_signal_catched(44);
-        //signal(SIGINT, BaseMain::sign_handler);
-        //signal(SIGTERM, BaseMain::sign_handler);
-        //signal(40, BaseMain::sign_handler);
-        //signal(41, BaseMain::sign_handler);
-        //signal(42, BaseMain::sign_handler);
-        ret = do_work();
-        TBSYS_LOG(INFO, "exit program.");
+        snprintf(log_file, sizeof (log_file), "%s", log_dir_);
+        if(!tbsys::CFileUtil::mkdirs(log_file)) {
+          fprintf(stderr, "create dir %s error\n", pid_file);
+          ret = EXIT_FAILURE;
+        }
+        else
+        {
+          snprintf(log_file, sizeof (log_file),
+                   "%s/%s.log", log_dir_, server_name_);
+
+          /* @TODO */
+          /* const char * sz_log_level = */
+          /*   TBSYS_CONFIG.getString(section_name, LOG_LEVEL, "info"); */
+          TBSYS_LOGGER.setLogLevel("info");
+          easy_log_level = EASY_LOG_INFO;
+          /* const char * trace_log_level = */
+          /*   TBSYS_CONFIG.getString(section_name, TRACE_LOG_LEVEL, "debug"); */
+          SET_TRACE_LOG_LEVEL("trace");
+          /* int max_file_size= TBSYS_CONFIG.getInt(section_name, MAX_LOG_FILE_SIZE, 1024); */
+          TBSYS_LOGGER.setMaxFileSize(256 * 1024L * 1024L); /* 256M */
+        }
+      }
+      if (EXIT_SUCCESS == ret)
+      {
+        ObProfileLogger *logger = ObProfileLogger::getInstance();
+          logger->setLogLevel("INFO");
+          char profile_dir_path[512];
+          snprintf(profile_dir_path, 512,
+                   "%s/%s.profile", log_dir_, server_name_);
+          logger->setLogDir(profile_dir_path);
+
+          if (OB_SUCCESS != (ret = logger->init()))
+          {
+            TBSYS_LOG(ERROR, "init ObProfileLogger error, ret: [%d]", ret);
+          }
+      }
+      if (EXIT_SUCCESS == ret)
+      {
+        bool start_ok = true;
+
+        if (use_deamon_)
+        {
+          start_ok = (tbsys::CProcess::startDaemon(pid_file, log_file) == 0);
+        }
+        if(start_ok)
+        {
+          signal(SIGPIPE, SIG_IGN);
+          signal(SIGHUP, SIG_IGN);
+          add_signal_catched(SIGINT);
+          add_signal_catched(SIGTERM);
+          add_signal_catched(40);
+          add_signal_catched(41);
+          add_signal_catched(42);
+          add_signal_catched(43);
+          add_signal_catched(44);
+          add_signal_catched(45);
+          add_signal_catched(46);
+          add_signal_catched(47);
+          add_signal_catched(48);
+          add_signal_catched(49);
+          //signal(SIGINT, BaseMain::sign_handler);
+          //signal(SIGTERM, BaseMain::sign_handler);
+          //signal(40, BaseMain::sign_handler);
+          //signal(41, BaseMain::sign_handler);
+          //signal(42, BaseMain::sign_handler);
+          ret = do_work();
+          TBSYS_LOG(INFO, "exit program.");
+        }
       }
 
       return ret;
     }
 
+
     void BaseMain::set_restart_flag(bool restart)
     {
       restart_ = restart;
     }
-    
+
     bool BaseMain::restart_server(int argc, char* argv[])
     {
       pid_t pid;
@@ -266,7 +428,7 @@ namespace oceanbase
           ret = false;
         }
       }
-      
+
       if (ret &&restart_)
       {
         if (0 == (pid = vfork())) // child
@@ -286,6 +448,6 @@ namespace oceanbase
       }
       return ret;
     }
-    
+
   }
 }

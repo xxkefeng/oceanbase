@@ -4,8 +4,9 @@
 #include "common/ob_log_entry.h"
 #include "common/ob_log_cursor.h"
 #include "updateserver/ob_ups_log_utils.h"
-#include "ob_log_generator.h"
-#include "ob_log_writer2.h"
+#include "common/ob_log_generator.h"
+#include "common/ob_log_writer2.h"
+#define LOG_ALIGN OB_DIRECT_IO_ALIGN
 
 using namespace oceanbase::common;
 using namespace oceanbase::updateserver;
@@ -242,7 +243,7 @@ namespace oceanbase
           {
             TBSYS_LOG(ERROR, "log_generator.init(log_dir=%s)=>%d", log_dir, err);
           }
-          else if (OB_SUCCESS != (err = log_writer_.init(log_dir, log_sync_type)))
+          else if (OB_SUCCESS != (err = log_writer_.init(log_dir, LOG_ALIGN-1, log_sync_type)))
           {
             TBSYS_LOG(ERROR, "log_writer.init(log_dir=%s)=>%d", log_dir, err);
           }

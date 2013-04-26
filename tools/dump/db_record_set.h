@@ -61,8 +61,10 @@ namespace oceanbase {
       common::ObDataBuffer &get_buffer() { return ob_buffer_; }
       common::ObScanner &get_scanner() { return scanner_; }
 
-      bool has_more_data();
-      int get_last_rowkey(common::ObString &last_key);
+      bool has_more_data() const;
+      bool empty() const;
+
+      int get_last_rowkey(common::ObRowkey &last_key);
 
       DbRecordSet(int cap = kDefaultRecordSetSize):cap_(cap), inited_(false) { p_buffer_ = NULL; }
       ~DbRecordSet();

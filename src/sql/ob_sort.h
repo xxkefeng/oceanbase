@@ -29,8 +29,10 @@ namespace oceanbase
       public:
         ObSort();
         virtual ~ObSort();
+        void reset();
 
         int add_sort_column(const uint64_t tid, const uint64_t cid, bool is_ascending_order);
+        int64_t get_sort_column_size() const;
         void set_mem_size_limit(const int64_t limit);
         int set_run_filename(const common::ObString &filename);
 
@@ -39,6 +41,13 @@ namespace oceanbase
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+        virtual ObPhyOperatorType get_type() const;
+
+        void assign(const ObSort &other);
+        int64_t get_mem_size_limit() const;
+        const common::ObArray<ObSortColumn>& get_sort_columns() const;
+
+        NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy
         ObSort(const ObSort &other);
@@ -54,6 +63,19 @@ namespace oceanbase
         ObMergeSort merge_sort_;
         ObSortHelper *sort_reader_;
     };
+
+    inline int64_t ObSort::get_mem_size_limit() const
+    {
+      return mem_size_limit_;
+    }
+    inline int64_t ObSort::get_sort_column_size() const
+    {
+      return sort_columns_.count();
+    }
+    inline const common::ObArray<ObSortColumn>& ObSort::get_sort_columns() const
+    {
+      return sort_columns_;
+    }
   } // end namespace sql
 } // end namespace oceanbase
 

@@ -148,7 +148,6 @@ namespace oceanbase
 
         if (compactsstable_num > 0)
         {
-          FILL_TRACE_LOG("compactsstable num:%ld",compactsstable_num);
           ObCompactSSTableMemNode* mem_node = scan_tablet->get_compactsstable_list();
           ObCompactMemIteratorArray *its    = GET_TSI_MULT(ObCompactMemIteratorArray,TSI_CS_COMPACTSSTABLE_ITERATOR_1);
           ColumnFilter* cf                  = GET_TSI_MULT(ColumnFilter,TSI_CS_COLUMNFILTER_1);          
@@ -180,35 +179,28 @@ namespace oceanbase
               TBSYS_LOG(WARN,"unexpect error,compact mem is null");
               ret = OB_ERROR;
             }
-            else if (mem->get_table_id() != scan_param.get_table_id())
-            {
-              TBSYS_LOG(ERROR,"table id of mem:%lu,scan_param :%lu",mem->get_table_id(),
-                        scan_param.get_table_id());
-              ret = OB_ERROR;
-            }
             else
             {
               //query version just have major version
               major_version = mem->get_version_range().major_version_;
-              if (((0 == query_version) || (query_version > 0 && major_version <= query_version)) &&
-                  (major_version > scanner.get_data_version()))
+              if ((0 == query_version) || (query_version > 0 && major_version <= query_version))
               {
                 if ((ret = its->iters_[i].init(mem)) != OB_SUCCESS)
                 {
                   TBSYS_LOG(WARN,"init iterator of compact mem failed,ret=%d",ret);
                 }
                 else if ((ret = its->iters_[i].set_scan_param(*scan_param.get_range(),cf,
-                                                              scan_param.get_scan_direction() == ObScanParam::BACKWARD))
+                                                              scan_param.get_scan_direction() == ScanFlag::BACKWARD))
                          != OB_SUCCESS)
                 {
                   TBSYS_LOG(WARN,"set scan param failed,ret=%d",ret);
                 }
                 else
                 {
-                  it_out[it_num++] = &(its->iters_[i]);
+                  it_out[it_num++] = &its->iters_[i];
                   //set data version to the last compact sstable version
                   scanner.set_data_version(mem->get_data_version());
-                  FILL_TRACE_LOG("add iterator:%p",&(its->iters_[i]));
+                  FILL_TRACE_LOG("add compact iterator to merger,it_num:%ld,version:%ld",it_num,mem->get_data_version());
                 }
               }
               else
@@ -224,7 +216,6 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         it_size = it_num;
-        FILL_TRACE_LOG("it_num:%ld,version:%ld",it_num,scanner.get_data_version());        
       }
 
       return ret;
@@ -239,7 +230,7 @@ namespace oceanbase
       ColumnFilter* cf                                  = GET_TSI_MULT(ColumnFilter,TSI_CS_COLUMNFILTER_1);      
       ObTablet* tablet                                  = NULL;
       int ret                                           = OB_SUCCESS;      
-      ObString rowkey;
+      ObRowkey rowkey;
 
       if ((NULL == get_context) || (NULL == row_index) || (NULL == cf))
       {
@@ -256,9 +247,9 @@ namespace oceanbase
           {
             tablet = get_context->tablets_[i];
             rowkey = get_param[row_index[i].offset_]->row_key_;
-          
+
             build_get_column_filter(get_param,row_index[i].offset_,row_index[i].size_,*cf);
-          
+
             if ((tablet != NULL) &&
                 (ret = get_compact_row(*tablet,rowkey,compactsstable_version,cf,compact_scanner)) != OB_SUCCESS)
             {
@@ -270,7 +261,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObGetScanProxy::get_compact_row(ObTablet& tablet,ObString& rowkey,const int64_t compactsstable_version,
+    int ObGetScanProxy::get_compact_row(ObTablet& tablet,ObRowkey& rowkey,const int64_t compactsstable_version,
                                         const ColumnFilter *cf,
                                         ObScanner& compact_scanner)
     {
@@ -303,7 +294,7 @@ namespace oceanbase
           if (!mem->is_row_exist(rowkey))
           {
             //row not exists,do nothing            
-            TBSYS_LOG(DEBUG,"row not exist,%s",print_string(rowkey));
+            TBSYS_LOG(DEBUG,"row not exist,%s", to_cstring(rowkey));
             add_row_not_exist = true;
           }
           else if ((ret = its->iters_[m].init(mem)) != OB_SUCCESS)
@@ -417,7 +408,7 @@ namespace oceanbase
       return ret;
     }
     
-    const ObRange& ObGetScanProxy::get_tablet_range() const
+    const ObNewRange& ObGetScanProxy::get_tablet_range() const
     {
       return tablet_range_;
     }

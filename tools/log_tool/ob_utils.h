@@ -5,9 +5,27 @@
 #include "common/ob_object.h"
 #include "common/ob_server.h"
 #include "common/ob_scanner.h"
+#include "common/ob_schema.h"
+#if ROWKEY_IS_OBJ
+#include "common/ob_rowkey.h"
+#else
+typedef oceanbase::common::ObString ObRowkey;
+typedef int64_t ObRowkeyInfo;
+class ObIAllocator
+{
+  public:
+    virtual ~ObIAllocator() {};
+  public:
+    virtual void *alloc(const int64_t sz) = 0;
+    virtual void free(void *ptr) = 0;
+};
+#endif
 
 using namespace oceanbase::common;
 #define array_len(A) (sizeof(A)/sizeof(A[0]))
+#define is_env_set(key, _default) (0 == (strcmp("true", getenv(key)?: _default)))
+#define _cfg(k, v) getenv(k)?:v
+#define _cfgi(k, v) atoll(getenv(k)?:v)
 
 #define MAX_STR_BUF_SIZE 1024
 
@@ -53,15 +71,53 @@ int split(ObDataBuffer& buf, const char* str, const char* delim, const int max_n
 int repr(char* buf, const int64_t len, int64_t& pos, const char* value);
 int repr(char* buf, const int64_t len, int64_t& pos, const ObObj& value);
 int repr(char* buf, const int64_t len, int64_t& pos, const  ObString& _str);
+int repr(char* buf, const int64_t len, int64_t& pos, const ObRowkey& rowkey);
+int repr(char* buf, const int64_t len, int64_t& pos, const ObServer& server);
 int repr(char* buf, const int64_t len, int64_t& pos, ObScanner& scanner, int64_t row_limit=-1);
 int copy_str(char* buf, const int64_t len, int64_t& pos, char*& str, const char* _str);
 int alloc_str(char* buf, const int64_t len, int64_t& pos, ObString& str, const char* _str);
 int alloc_str(char* buf, const int64_t len, int64_t& pos, ObString& str, const ObString _str);
 int to_server(ObServer& server, const char* spec);
+int to_server(ObServer& server, const ObServer server2);
 int parse_range(char* buf, const int64_t len, int64_t& pos, const char* _range, char*& start, char*& end);
 int parse_servers(const char* tablet_servers, const int max_n_servers, int& n_servers, ObServer *servers);
 int parse_range(ObDataBuffer& buf, const char* _range, char*& start, char*& end);
+int parse_rowkey(ObDataBuffer& buf, ObRowkey& rowkey, const char* str, const int64_t len);
 int rand_str(char* str, int64_t len, int64_t seed = 0);
+int rand_obj(ObDataBuffer& buf, ObObjType type, ObObj& value, int64_t seed = 0);
+int rand_obj(ObDataBuffer& buf, ObObjType type, int64_t size, ObObj& value, int64_t seed = 0);
+int rand_rowkey(ObDataBuffer& buf, ObRowkey& rowkey, const ObRowkeyInfo& rowkey_info, const int64_t seed);
+int expand(char* buf, int64_t len, int64_t& pos, const char* spec_);
+const char* choose(const char* spec, int64_t seed);
+
+class SimpleBufAllocator:public ObIAllocator
+{
+  public:
+    SimpleBufAllocator(): buf_(NULL) {}
+    SimpleBufAllocator(ObDataBuffer& buf): buf_(&buf) {}
+    ~SimpleBufAllocator() {}
+    void set_buf(ObDataBuffer* buf) { buf_ = buf; }
+    void free(void* p) { UNUSED(p); }
+    void* alloc(const int64_t size){
+      void* p = NULL;
+      if (NULL == buf_)
+      {
+        TBSYS_LOG(ERROR, "buf_ == NULL");
+      }
+      else if (buf_->get_remain() < size)
+      {
+        TBSYS_LOG(ERROR, "buf.alloc(remain=%ld, size=%ld):MEM_OVERFLOW", buf_->get_remain(), size);
+      }
+      else
+      {
+        p = buf_->get_data() + buf_->get_position();
+        buf_->get_position() += size;
+      }
+      return p;
+    }
+  private:
+    ObDataBuffer* buf_;
+};
 
 template<typename T>
 int repr(ObDataBuffer& buf, T& obj)

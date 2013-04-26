@@ -30,8 +30,10 @@
 #include "common/ob_read_common_data.h"
 #include "common/utility.h"
 #include "common/ob_crc64.h"
+#include "common/qlock.h"
 #include "ob_ups_utils.h"
 #include "ob_ups_compact_cell_iterator.h"
+#include "ob_session_mgr.h"
 
 namespace oceanbase
 {
@@ -50,12 +52,13 @@ namespace oceanbase
 
     class ObCellInfoNodeIterable
     {
-      struct CtrlNode
-      {
-        uint64_t column_id;
-        common::ObObj value;
-        CtrlNode *next;
-      };
+      protected:
+        struct CtrlNode
+        {
+          uint64_t column_id;
+          common::ObObj value;
+          CtrlNode *next;
+        };
       public:
         ObCellInfoNodeIterable();
         virtual ~ObCellInfoNodeIterable();
@@ -78,7 +81,7 @@ namespace oceanbase
         CtrlNode mtime_node_;
     };
 
-    class ObCellInfoNodeIterableWithCTime : public ObCellInfoNodeIterable
+    class ObCellInfoNodeIterableWithCTime : public ObCellInfoNodeIterable, public RowkeyInfoCache
     {
       public:
         ObCellInfoNodeIterableWithCTime();
@@ -89,20 +92,32 @@ namespace oceanbase
         void reset();
       public:
         void set_ctime_column_id(const uint64_t column_id);
-        void set_need_nop();
+        void set_rowkey_column(const uint64_t table_id, const common::ObRowkey &row_key);
+        void set_nop();
       private:
-        uint64_t ctime_column_id_;
+        int inner_err;
+        bool is_iter_end_;
+        CtrlNode *ext_list_;
+        CtrlNode *list_iter_;
         uint64_t column_id_;
         common::ObObj value_;
-        bool is_iter_end_;
-        bool need_nop_;
+        CtrlNode ctime_node_;
+        CtrlNode rowkey_node_[OB_MAX_ROWKEY_COLUMN_NUMBER];
+        CtrlNode nop_node_;
     };
+
+#define __USING_FORMED_ROWKEY__
+#ifdef __USING_FORMED_ROWKEY__
+    typedef common::ObRowkey UpsRowKey;
+#else
+    typedef common::ObString UpsRowKey;
+#endif
 
     struct TEHashKey
     {
       uint32_t table_id;
       int32_t rk_length;
-      const char *row_key;
+      const ObObj *row_key;
 
       TEHashKey() : table_id(UINT32_MAX),
                     rk_length(0),
@@ -111,16 +126,18 @@ namespace oceanbase
       };
       inline int64_t hash() const
       {
-        return (common::murmurhash2(row_key, rk_length, 0) + table_id);
+        common::ObRowkey rk(const_cast<ObObj*>(row_key), rk_length);
+        return (rk.murmurhash2(0) + table_id);
       };
       inline bool operator == (const TEHashKey &other) const
       {
         bool bret = false;
+        common::ObRowkey rk1(const_cast<ObObj*>(row_key), rk_length);
+        common::ObRowkey rk2(const_cast<ObObj*>(other.row_key), other.rk_length);
         if (table_id == other.table_id
-            && (row_key == other.row_key
-                || 0 == memcmp(row_key, other.row_key, std::min(rk_length, other.rk_length))))
+            && rk1 == rk2)
         {
-          bret = (rk_length == other.rk_length);
+          bret = true;
         }
         return bret;
       };
@@ -129,52 +146,43 @@ namespace oceanbase
     struct TEKey
     {
       uint64_t table_id;
-      uint64_t rowkey_prefix;
-      common::ObString row_key;
+      UpsRowKey row_key;
 
-      TEKey() : table_id(common::OB_INVALID_ID), rowkey_prefix(0), row_key()
+      TEKey(const uint64_t table_id, const UpsRowKey& row_key): table_id(table_id), row_key(row_key)
+      {}
+      TEKey() : table_id(common::OB_INVALID_ID), row_key()
       {
       };
       inline int64_t hash() const
       {
-        return (common::murmurhash2(row_key.ptr(), row_key.length(), 0) + table_id);
+        return row_key.murmurhash2(0) + table_id;
       };
       inline void checksum(common::ObBatchChecksum &bc) const
       {
         bc.fill(&table_id, sizeof(table_id));
-        bc.fill(row_key.ptr(), row_key.length());
+        row_key.checksum(bc);
       };
       inline const char *log_str() const
       {
         static const int32_t BUFFER_SIZE = 2048;
         static __thread char BUFFER[2][BUFFER_SIZE];
-        static __thread int64_t i = 0;
-        if (NULL != row_key.ptr()
-            && 0 != row_key.length()
-            && !isprint(row_key.ptr()[0]))
-        {
-          char hex_buffer[BUFFER_SIZE] = {'\0'};
-          common::hex_to_str(row_key.ptr(), row_key.length(), hex_buffer, BUFFER_SIZE);
-          snprintf(BUFFER[i % 2], BUFFER_SIZE, "table_id=%lu rowkey_prefix=%lu row_ptr=%p row_key=[0x %s] key_length=%d",
-                  table_id, rowkey_prefix, row_key.ptr(), hex_buffer, row_key.length());
-        }
-        else
-        {
-          snprintf(BUFFER[i % 2], BUFFER_SIZE, "table_id=%lu rowkey_prefix=%lu row_ptr=%p row_key=[%.*s] key_length=%d",
-                  table_id, rowkey_prefix, row_key.ptr(), row_key.length(), row_key.ptr(), row_key.length());
-        }
+        static __thread uint64_t i = 0;
+        snprintf(BUFFER[i % 2], BUFFER_SIZE, "table_id=%lu rowkey=[%s] rowkey_ptr=%p rowkey_length=%ld",
+                table_id, oceanbase::common::to_cstring(row_key), row_key.ptr(), row_key.length());
         return BUFFER[i++ % 2];
       };
+      inline const char * to_cstring() const
+      {
+        return log_str();
+      }
       inline bool operator == (const TEKey &other) const
       {
         return (table_id == other.table_id
-                && rowkey_prefix == other.rowkey_prefix
                 && row_key == other.row_key);
       };
       inline bool operator != (const TEKey &other) const
       {
         return (table_id != other.table_id
-                || rowkey_prefix != other.rowkey_prefix
                 || row_key != other.row_key);
       };
       inline int operator - (const TEKey &other) const
@@ -190,16 +198,7 @@ namespace oceanbase
         }
         else
         { 
-          int mc_ret = memcmp(&rowkey_prefix, &(other.rowkey_prefix), sizeof(rowkey_prefix));
-          if (0 < mc_ret)
-          {
-            ret = 1;
-          }
-          else if (0 > mc_ret)
-          {
-            ret = -1;
-          }
-          else if (row_key > other.row_key)
+          if (row_key > other.row_key)
           {
             ret = 1;
           }
@@ -216,14 +215,20 @@ namespace oceanbase
       };
     };
 
+    static const uint8_t IST_NO_INDEX = 0x0;
+    static const uint8_t IST_HASH_INDEX = 0x1;
+    static const uint8_t IST_BTREE_INDEX = 0x2;
+
+    struct TEValueUCInfo;
     struct TEValue
     {
+      uint8_t index_stat;
       int16_t cell_info_cnt;
       int16_t cell_info_size; // 单位为1K
-      int16_t reserve1;
-      int16_t reserve2;
       ObCellInfoNode *list_head;
       ObCellInfoNode *list_tail;
+      TEValueUCInfo *cur_uc_info;
+      QLock row_lock;
 
       TEValue()
       {
@@ -231,28 +236,77 @@ namespace oceanbase
       };
       inline void reset()
       {
+        index_stat = IST_NO_INDEX;
         cell_info_cnt = 0;
         cell_info_size = 0;
-        reserve1 = 0;
-        reserve2 = 0;
         list_head = NULL;
         list_tail = NULL;
+        cur_uc_info = NULL;
+        row_lock.reset();
       };
       inline const char *log_str() const
       {
         static const int32_t BUFFER_SIZE = 2048;
         static __thread char BUFFER[2][BUFFER_SIZE];
-        static __thread int64_t i = 0;
-        snprintf(BUFFER[i % 2], BUFFER_SIZE, "cell_info_cnt=%hd cell_info_size=%hdKB "
-                "list_head=%p list_tail=%p",
-                 cell_info_cnt, cell_info_size,
-                 list_head, list_tail);
+        static __thread uint64_t i = 0;
+        snprintf(BUFFER[i % 2], BUFFER_SIZE, "index_stat=%hhu cell_info_cnt=%hd cell_info_size=%hdKB "
+                "list_head=%p list_tail=%p cur_uc_info=%p lock_uid=%x lock_nref=%u",
+                 index_stat, cell_info_cnt, cell_info_size,
+                 list_head, list_tail, cur_uc_info,
+                 row_lock.uid_, row_lock.n_ref_);
         return BUFFER[i++ % 2];
       };
+      inline const char *log_list()
+      {
+        static const int32_t BUFFER_SIZE = 2048;
+        static __thread char BUFFER[2][BUFFER_SIZE];
+        static __thread uint64_t i = 0;
+        char *buffer = BUFFER[i++ % 2];
+        int64_t pos = snprintf(buffer, BUFFER_SIZE, "list_head=%p ", list_head);
+        ObCellInfoNode *iter = list_head;
+        while (NULL != iter
+              && pos < BUFFER_SIZE)
+        {
+          pos += snprintf(buffer + pos, BUFFER_SIZE - pos, "next=%p ", iter);
+          iter = iter->next;
+        }
+        if (pos < BUFFER_SIZE)
+        {
+          snprintf(buffer + pos, BUFFER_SIZE - pos, "list_tail=%p", list_tail);
+        }
+        return buffer;
+      };
+      inline const char * to_cstring() const
+      {
+        return log_str();
+      }
       inline bool is_empty() const
       {
         return (NULL == list_head);
       };
+      int64_t get_cur_version() const
+      {
+        return list_tail? list_tail->modify_time: -1;
+      }
+    };
+
+    class TEValueSessionCallback : public ISessionCallback
+    {
+      public:
+        TEValueSessionCallback() {};
+        ~TEValueSessionCallback() {};
+      public:
+        int cb_func(const bool rollback, void *data, BaseSessionCtx &session);
+    };
+
+    class MemTable;
+    class TransSessionCallback : public ISessionCallback
+    {
+      public:
+        TransSessionCallback() {};
+        ~TransSessionCallback() {};
+      public:
+        int cb_func(const bool rollback, void *data, BaseSessionCtx &session);
     };
 
     enum TETransType

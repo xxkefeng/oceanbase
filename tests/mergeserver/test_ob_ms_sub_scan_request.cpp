@@ -37,7 +37,7 @@ TEST(TestSubScanRequest, test_init)
   int replica_count = 0;
   ObStringBuf string_buffer;
 
-  replica_count = ObMergerTabletLocationList::MAX_REPLICA_COUNT - 1;
+  replica_count = ObTabletLocationList::MAX_REPLICA_COUNT - 1;
   
   ret = request.init(&scan_param, 
       query_range, 
@@ -50,7 +50,7 @@ TEST(TestSubScanRequest, test_init)
 
   request.reset();
 
-  replica_count = ObMergerTabletLocationList::MAX_REPLICA_COUNT + 1;  
+  replica_count = ObTabletLocationList::MAX_REPLICA_COUNT + 1;  
   ret = request.init(&scan_param, 
       query_range, 
       reinterpret_cast<ObChunkServer*>(cs_replicas), 
@@ -90,7 +90,7 @@ TEST(TestSubScanRequest, test_add_event)
   int replica_count = 0;
   ObStringBuf string_buffer;
 
-  replica_count = ObMergerTabletLocationList::MAX_REPLICA_COUNT - 1;
+  replica_count = ObTabletLocationList::MAX_REPLICA_COUNT - 1;
   
   ret = request.init(&scan_param, 
       query_range, 
@@ -132,7 +132,7 @@ TEST(TestSubScanRequest, test_create_rpc_event_duplicated_case)
   ObMergerRpcEvent *agent_event = NULL; 
   bool belong_to_this = false;
 
-  replica_count = ObMergerTabletLocationList::MAX_REPLICA_COUNT - 1;
+  replica_count = ObTabletLocationList::MAX_REPLICA_COUNT - 1;
   ret = scan_request.init(query_range, scan_full_tablet, cs_replicas, replica_count);
   EXPECT_TRUE(ret == OB_SUCCESS);
   
@@ -177,7 +177,7 @@ TEST(TestSubScanRequest, test_create_rpc_event_duplicated_case)
 
 
 #if 0
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   EXPECT_TRUE(cache.size() == 0);
   int ret = cache.clear();
   EXPECT_TRUE(ret != OB_SUCCESS);
@@ -200,7 +200,7 @@ TEST(TestSubScanRequest, test_create_rpc_event_duplicated_case)
     ObServer server;
     server.set_ipv4_addr(i + 256, 1024 + i);
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -228,7 +228,7 @@ TEST(TestSubScanRequest, test_create_rpc_event_duplicated_case)
   {
     snprintf(temp, 100, "row_%ld", i+1);
     ObString start_key(100, strlen(temp), temp);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     ret = cache.get(1, start_key, location);
     EXPECT_TRUE(ret != OB_SUCCESS);
   }
@@ -239,7 +239,7 @@ TEST(TestSubScanRequest, test_create_rpc_event_duplicated_case)
     ObServer server;
     server.set_ipv4_addr(i + 256, 1024 + i);
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -263,7 +263,7 @@ TEST(TestSubScanRequest, test_create_rpc_event_duplicated_case)
   {
     snprintf(temp, 100, "row_%ld", i+1);
     ObString start_key(100, strlen(temp), temp);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     ret = cache.get(1, start_key, location);
     EXPECT_TRUE(ret == OB_SUCCESS);
   }
@@ -277,7 +277,7 @@ TEST(TestSubScanRequest, test_create_rpc_event_duplicated_case)
   {
     snprintf(temp, 100, "row_%ld", i+1);
     ObString start_key(100, strlen(temp), temp);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     ret = cache.get(1, start_key, location);
     EXPECT_TRUE(ret != OB_SUCCESS);
   }
@@ -286,14 +286,14 @@ TEST(TestSubScanRequest, test_create_rpc_event_duplicated_case)
 
 TEST_F(TestTabletLocation, test_set)
 {
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   int ret = cache.init(50000 * 5, 1000, 10000);
   EXPECT_TRUE(ret == OB_SUCCESS);
 
   char temp[100];
   char temp_end[100];
   uint64_t count = 0;
-  ObMergerTabletLocationList temp_location;
+  ObTabletLocationList temp_location;
   // warning
   // not more than 10 bit rows because of the string key
   const uint64_t START_ROW = 10L;
@@ -304,7 +304,7 @@ TEST_F(TestTabletLocation, test_set)
     ObServer server;
     server.set_ipv4_addr(i + 256, 1024 + i);
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -366,7 +366,7 @@ TEST_F(TestTabletLocation, test_set)
     ObServer server;
     server.set_ipv4_addr(i + 255, 1023 + i);
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -429,7 +429,7 @@ TEST_F(TestTabletLocation, test_set)
 
 TEST_F(TestTabletLocation, test_pressure)
 {
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   int ret = cache.init(50000 * 5, 1000, 10000);
   EXPECT_TRUE(ret == OB_SUCCESS);
 
@@ -449,7 +449,7 @@ TEST_F(TestTabletLocation, test_pressure)
   range.table_id_ = 1;
   range.start_key_ = start_key;
   range.end_key_ = end_key;
-  ObMergerTabletLocationList location;
+  ObTabletLocationList location;
 
   // for debug cache memory leak
   int64_t count = 0;//1000000;
@@ -468,13 +468,13 @@ static const uint64_t MAX = 90000L;
 
 void * del_routine(void * argv)
 {
-  ObMergerTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
+  ObTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
   EXPECT_TRUE(cache != NULL);
 
   char temp[100];
   const uint64_t START_ROW = START + (int64_t(pthread_self())%10 * 100);
   const uint64_t MAX_ROW = MAX;
-  ObMergerTabletLocationList temp_location;
+  ObTabletLocationList temp_location;
   // get 
   for (uint64_t i = START_ROW; i < MAX_ROW; i += 10)
   {
@@ -487,13 +487,13 @@ void * del_routine(void * argv)
 
 void * get_routine(void * argv)
 {
-  ObMergerTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
+  ObTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
   EXPECT_TRUE(cache != NULL);
 
   char temp[100];
   const uint64_t START_ROW = START + (int64_t(pthread_self())%10 * 100);
   const uint64_t MAX_ROW = MAX;
-  ObMergerTabletLocationList temp_location;
+  ObTabletLocationList temp_location;
   // get 
   for (uint64_t i = START_ROW; i < MAX_ROW; i += 10)
   {
@@ -507,7 +507,7 @@ void * get_routine(void * argv)
 
 void * set_routine(void * argv)
 {
-  ObMergerTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
+  ObTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
   EXPECT_TRUE(cache != NULL);
 
   char temp[100];
@@ -520,7 +520,7 @@ void * set_routine(void * argv)
     ObServer server;
     server.set_ipv4_addr(i + 256, 1024 + i);
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -543,7 +543,7 @@ void * set_routine(void * argv)
 
 void * update_routine(void * argv)
 {
-  ObMergerTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
+  ObTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
   EXPECT_TRUE(cache != NULL);
   char temp[100];
   const uint64_t START_ROW = START + (int64_t(pthread_self())%10 * 100);
@@ -554,7 +554,7 @@ void * update_routine(void * argv)
     ObServer server;
     server.set_ipv4_addr(i + 255, 1023 + i);
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -571,7 +571,7 @@ void * update_routine(void * argv)
 #if true 
 TEST_F(TestTabletLocation, test_thread)
 {
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   int ret = cache.init(50000 * 5, 1000, 10000);
   EXPECT_TRUE(ret == OB_SUCCESS);
   

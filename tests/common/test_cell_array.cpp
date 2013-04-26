@@ -12,10 +12,13 @@
 #include "common/ob_string.h"
 #include "common/ob_action_flag.h"
 #include "common/ob_scan_param.h"
+#include "test_rowkey_helper.h"
 
 using namespace oceanbase::common;
 using namespace testing;
 using namespace std;
+
+static CharArena allocator_;
 
 namespace
 {
@@ -84,6 +87,7 @@ TEST(ObCellArray, append)
   ObCellArray cell_array;
   ObCellInfo cur_cell;
   ObString obstr;
+  TestRowkeyHelper rh(&allocator_);
   char buf[128]="";
   char str_char = 'a';
   int64_t val;
@@ -102,15 +106,16 @@ TEST(ObCellArray, append)
     memset(buf,str_char,len);
     string str(buf,buf+len);
     obstr.assign(const_cast<char*>(str.c_str()),static_cast<int32_t>(str.size()));
+    rh = obstr;
     rowkeys.push_back(str);
-    cur_cell.row_key_ = obstr;
+    cur_cell.row_key_ = rh;
     cur_cell.value_.set_int(val);
 
     cell_vec.push_back(cur_cell);
     EXPECT_EQ(cell_array.append(cur_cell, cell_out),0);
     EXPECT_TRUE(cell_out->value_ == cur_cell.value_);
-    EXPECT_TRUE(cell_out->row_key_ == obstr);
-    EXPECT_TRUE(cell_out->row_key_.ptr() != obstr.ptr());
+    EXPECT_TRUE(cell_out->row_key_ == rh);
+    EXPECT_TRUE(cell_out->row_key_.ptr() != rh.ptr());
     EXPECT_EQ(cell_array.get_cell_size(), i + 1);
   }
 
@@ -240,7 +245,7 @@ TEST(ObCellArray, apply)
     string str(buf,buf+len);
     obstr.assign(const_cast<char*>(str.c_str()),static_cast<int32_t>(str.size()));
     rowkeys.push_back(str);
-    cur_cell.row_key_ = obstr;
+    cur_cell.row_key_ = TestRowkeyHelper(obstr, &allocator_);
     cur_cell.value_.set_varchar(obstr);
 
     cell_vec.push_back(cur_cell);
@@ -264,7 +269,7 @@ TEST(ObCellArray, apply)
       src.column_id_ = cell_vec[i].column_id_;
       src.row_key_ = cell_vec[appended_num].row_key_;
       EXPECT_EQ(cell_array.append(src, out), 0);
-      EXPECT_EQ(out->row_key_, src.row_key_);
+      EXPECT_TRUE(out->row_key_ == src.row_key_);
       EXPECT_EQ(out->table_id_, src.table_id_);
       EXPECT_EQ(out->column_id_, src.column_id_);
       //assert(cell_array.apply(cell_vec[appended_num],appended_num,out) == 0);
@@ -346,7 +351,7 @@ TEST(ObCellArray, order)
       string str(buf,buf+len);
       obstr.assign(const_cast<char*>(str.c_str()),static_cast<int32_t>(str.size()));
       rowkeys.push_back(str);
-      cur_cell.row_key_ = obstr;
+      cur_cell.row_key_ = TestRowkeyHelper(obstr, &allocator_);
       cur_cell.value_.set_int(val%max_val_num);
       if (0 == cell_idx)
       {

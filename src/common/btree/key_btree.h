@@ -172,6 +172,7 @@ namespace oceanbase
         type_size_ = static_cast<int32_t>(key_size_ - sizeof(int32_t));
         key_size_ = 0;
       }
+      set_write_lock_enable(true);
     }
 
     /**
@@ -248,6 +249,10 @@ namespace oceanbase
     {
       BtreeWriteHandle handle;
       int32_t ret = get_write_handle(handle);
+      if (ERROR_CODE_OK != ret)
+      {
+        TBSYS_LOG(ERROR, "get_write_handle()=>%d", ret);
+      }
       if (ERROR_CODE_OK == ret)
       {
         // 分配内存
@@ -261,6 +266,13 @@ namespace oceanbase
         {
           // 插入一个key
           ret = put_pair(handle, pkey, reinterpret_cast<char*>(value), overwrite);
+          if (ERROR_CODE_OK != ret)
+          {
+            if (ERROR_CODE_KEY_REPEAT != ret)
+            {
+              TBSYS_LOG(ERROR, "put_pair()=>%d", ret);
+            }
+          }
           if (key_allocator_ && ret != ERROR_CODE_OK)
           {
             key_allocator_->release(pkey);

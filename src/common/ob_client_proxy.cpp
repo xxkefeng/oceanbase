@@ -108,9 +108,7 @@ namespace oceanbase
           ret = client_manager_->send_request(server, OB_SCAN_REQUEST, MY_VERSION, timeout_, data_buff);
           if (OB_SUCCESS != ret)
           {
-            char tmp_buf[32];
-            server.to_string(tmp_buf,sizeof(tmp_buf));
-            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", tmp_buf,ret);
+            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", to_cstring(server),ret);
           }
         }
 
@@ -162,9 +160,7 @@ namespace oceanbase
           ret = client_manager_->send_request(server, OB_GET_REQUEST, MY_VERSION, timeout_, data_buff);
           if (OB_SUCCESS != ret)
           {
-            char tmp_buf[32];
-            server.to_string(tmp_buf,sizeof(tmp_buf));
-            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", tmp_buf,ret);
+            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", to_cstring(server), ret);
           }
         }
 
@@ -217,9 +213,7 @@ namespace oceanbase
           ret = client_manager_->send_request(ms, OB_MS_MUTATE, MY_VERSION, timeout_, data_buff);
           if (OB_SUCCESS != ret)
           {
-            char tmp_buf[32];
-            ms.to_string(tmp_buf,sizeof(tmp_buf));
-            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d",tmp_buf,ret);
+            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", to_cstring(ms), ret);
           }
         }
 

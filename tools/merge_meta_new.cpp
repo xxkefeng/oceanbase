@@ -9,14 +9,14 @@
 
 const char *g_sstable_directory = "./";
 
-namespace oceanbase 
+namespace oceanbase
 {
-  namespace chunkserver 
+  namespace chunkserver
   {
     using namespace common;
     using namespace sstable;
 
-    class ObMergeMetaNew 
+    class ObMergeMetaNew
     {
       public:
         ObMergeMetaNew (const char *app_name,
@@ -101,7 +101,7 @@ namespace oceanbase
         {
           char idx_path[common::OB_MAX_FILE_NAME_LENGTH];
           char gsd_str[common::OB_MAX_FILE_NAME_LENGTH];
-          
+
           for(int32_t i=1;i<=10;++i)
           {
             snprintf(gsd_str, sizeof(gsd_str), "%s/%d/%s/sstable/", data_dir_, i, app_name_);
@@ -111,13 +111,13 @@ namespace oceanbase
             {
               TBSYS_LOG(ERROR,"write failed [%d]",ret);
             }
-            image_final_.dump(); 
+            image_final_.dump();
           }
         }
       }
       return ret;
     }
-    
+
     int ObMergeMetaNew::parse(const char *idx_file)
     {
       int ret = OB_SUCCESS;
@@ -132,7 +132,7 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         TBSYS_LOG(INFO,"deal %s\n",idx_file);
-        
+
         if ( (fstat(fd,&st) != 0) || (st.st_size <= 0))
         {
           TBSYS_LOG(ERROR,"fstat failed");
@@ -148,7 +148,7 @@ namespace oceanbase
       dbuf[1] = *(p + 2) == '.' ? '\0' : *(p + 2);
       int32_t disk_no = atoi(dbuf);
       ObSSTableId sstable_id;
-      
+
       TBSYS_LOG(INFO,"disk_no is %d,ret is %d",disk_no,ret);
 
       image_tmp_.set_data_version(version_);
@@ -157,7 +157,7 @@ namespace oceanbase
       {
         TBSYS_LOG(INFO,"deserialize image failed.");
       }
-      
+
       if (OB_SUCCESS == ret)
       {
         ObTablet *tablet = NULL;
@@ -171,10 +171,10 @@ namespace oceanbase
             {
               TBSYS_LOG(ERROR,"alloc tablet object failed : [%d]",ret);
             }
-            
-            TBSYS_LOG(INFO,"id is %ld",tablet->get_sstable_id_list().at(0)->sstable_file_id_);
-            tablet_new->add_sstable_by_id(*(tablet->get_sstable_id_list().at(0)));
-            tablet_new->set_disk_no( tablet->get_sstable_id_list().at(0)->sstable_file_id_ & 0xff);
+
+            TBSYS_LOG(INFO,"id is %ld",tablet->get_sstable_id_list().at(0).sstable_file_id_);
+            tablet_new->add_sstable_by_id((tablet->get_sstable_id_list().at(0)));
+            tablet_new->set_disk_no( tablet->get_sstable_id_list().at(0).sstable_file_id_ & 0xff);
 
             tablet_new->set_data_version(tablet->get_data_version());
 
@@ -225,7 +225,7 @@ namespace oceanbase
           {
             if (last_tablet->get_range().table_id_ != tablet->get_range().table_id_)
             {
-              //set last tablet's max value 
+              //set last tablet's max value
               //set this tablet's min value
               set_last_max = true;
               set_this_min = true;
@@ -239,21 +239,21 @@ namespace oceanbase
 
           if (set_this_min)
           {
-            ObRange range = tablet->get_range();
-            range.border_flag_.set_min_value();
+            ObNewRange range = tablet->get_range();
+            range.start_key_.set_min_row();
             tablet->set_range(range);
           }
 
           if (set_last_max)
           {
-            ObRange range = last_tablet->get_range();
-            range.border_flag_.set_max_value();
+            ObNewRange range = last_tablet->get_range();
+            range.end_key_.set_max_row();
             last_tablet->set_range(range);
           }
 
           if (set_this_start_key)
           {
-            ObRange range = tablet->get_range();
+            ObNewRange range = tablet->get_range();
             range.start_key_ = last_tablet->get_range().end_key_;
             tablet->set_range(range);
           }
@@ -273,8 +273,8 @@ namespace oceanbase
 
         if (last_tablet != NULL)
         {
-          ObRange range = last_tablet->get_range();
-          range.border_flag_.set_max_value();
+          ObNewRange range = last_tablet->get_range();
+          range.end_key_.set_max_row();
 
           last_tablet->set_range(range);
         }
@@ -299,8 +299,8 @@ namespace oceanbase
         ret = image_.get_next_tablet(tablet);
         while(OB_SUCCESS == ret && tablet != NULL)
         {
-          const common::ObArrayHelper<ObSSTableId>&  ids = tablet->get_sstable_id_list();
-          int64_t id = ids.at(0)->sstable_file_id_;
+          const common::ObArray<ObSSTableId>&  ids = tablet->get_sstable_id_list();
+          int64_t id = ids.at(0).sstable_file_id_;
           snprintf(path,sizeof(path),"%s/%d/%s/sstable/%ld",data_dir_,(int)(id & 0xff),app_name_,id);
           if (!is_file_exists(path))
           {
@@ -315,9 +315,9 @@ namespace oceanbase
               TBSYS_LOG(ERROR,"alloc tablet object failed : [%d]",ret);
             }
 
-            //TBSYS_LOG(INFO,"id is %ld",tablet->get_sstable_id_list().at(0)->sstable_file_id_);
-            tablet_tmp->add_sstable_by_id(*(tablet->get_sstable_id_list().at(0)));
-            tablet_tmp->set_disk_no( tablet->get_sstable_id_list().at(0)->sstable_file_id_ & 0xff);
+            //TBSYS_LOG(INFO,"id is %ld",tablet->get_sstable_id_list().at(0).sstable_file_id_);
+            tablet_tmp->add_sstable_by_id((tablet->get_sstable_id_list().at(0)));
+            tablet_tmp->set_disk_no( tablet->get_sstable_id_list().at(0).sstable_file_id_ & 0xff);
 
             tablet_tmp->set_data_version(tablet->get_data_version());
 
@@ -378,9 +378,9 @@ int main(int argc,char **argv)
   bool set_ring = false;
   bool drop_file = false;
   bool just_merge = false;
-  while ((i = getopt(argc, argv, "f:n:d:remv:")) != EOF) 
+  while ((i = getopt(argc, argv, "f:n:d:remv:")) != EOF)
   {
-    switch (i) 
+    switch (i)
     {
       case 'f':
         file_list = optarg;
@@ -417,8 +417,10 @@ int main(int argc,char **argv)
             "-f file_list -n app_name -d data_dir -r(set ring) -e (drop not exists file) \n", argv[0]);
     exit(1);
   }
-  ob_init_crc64_table(OB_DEFAULT_CRC64_POLYNOM); 
+  ob_init_crc64_table(OB_DEFAULT_CRC64_POLYNOM);
   ob_init_memory_pool();
+
+  TBSYS_LOGGER.setLogLevel("INFO");
 
   ObMergeMetaNew merge(app_name,data_dir,set_ring,drop_file,just_merge,version);
   merge.read_file_list(file_list);

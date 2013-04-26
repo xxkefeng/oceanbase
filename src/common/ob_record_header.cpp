@@ -19,6 +19,11 @@ namespace oceanbase
 { 
   namespace common 
   {
+    ObRecordHeader::ObRecordHeader()
+      :magic_(0), header_length_(0), version_(0), header_checksum_(0)
+       , reserved_(0), data_length_(0), data_zlength_(0), data_checksum_(0)
+    {
+    }
     void ObRecordHeader::set_header_checksum()
     {  
       header_checksum_ = 0;

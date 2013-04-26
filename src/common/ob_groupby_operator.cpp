@@ -13,6 +13,7 @@
  *
  */
 #include "ob_groupby_operator.h"
+#include "ob_rowkey.h"
 
 namespace oceanbase
 {
@@ -41,11 +42,11 @@ namespace oceanbase
       int64_t memory_size_water_mark = 
         std::max<int64_t>(groupby_mem_size_, max_groupby_mem_size_);
       if (memory_size_water_mark > 0 
-          && get_memory_size_used() > 2 * memory_size_water_mark)
+          && get_memory_size_used() > memory_size_water_mark)
       {
         TBSYS_LOG(WARN, "clear groupby cellarray, memory_size_water_mark=%ld, "
-            "cellarray_mem_size=%ld, cellarry_mem_used:%ld",
-          memory_size_water_mark, get_memory_size_used(), get_real_memory_used());
+            "cellarray_mem_size=%ld",
+          memory_size_water_mark, get_memory_size_used());
         ObCellArray::clear();
       }
       else
@@ -56,6 +57,8 @@ namespace oceanbase
       {
         group_hash_map_.clear();
       }
+      groupby_mem_size_ = -1;
+      max_groupby_mem_size_ = -1;
       empty_cell_.reset();
     }
     
@@ -82,7 +85,7 @@ namespace oceanbase
     }
 
     int ObGroupByOperator::append_fake_composite_column(
-        const ObString& rowkey, 
+        const ObRowkey& rowkey, 
         const uint64_t table_id)
     {
       int err = OB_SUCCESS;
@@ -120,7 +123,7 @@ namespace oceanbase
     }
     
     int ObGroupByOperator::init_all_in_one_group_row(
-        const ObString& rowkey, const uint64_t table_id)
+        const ObRowkey& rowkey, const uint64_t table_id)
     {
       int err = OB_SUCCESS;
       if ((0 >= param_->get_aggregate_columns().get_array_index())

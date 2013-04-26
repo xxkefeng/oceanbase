@@ -103,6 +103,15 @@ namespace oceanbase
         }
       }
 
+      if (NULL == wt_schema_)
+      {
+        wt_schema_ = schema_manager_.get_table_schema(1001);
+      }
+      if (NULL == jt_schema_)
+      {
+        jt_schema_ = schema_manager_.get_table_schema(1002);
+      }
+
       return ret;
     }
 
@@ -125,8 +134,15 @@ namespace oceanbase
       else
       {
         column = schema_manager_.get_table_schema(wt_schema_->get_table_id(), column_size);
+        const ObRowkeyInfo& rowkey_info = schema_manager_.get_table_schema(wt_schema_->get_table_id())->get_rowkey_info();
         for (int64_t i = 0; i < column_size; ++i)
         {
+          // donot add rowkey columns;
+          if (rowkey_info.is_rowkey_column(column[i].get_id()))
+          {
+            continue;
+          }
+
           column_name = column[i].get_name();
           type = column[i].get_type();
 
@@ -208,8 +224,15 @@ namespace oceanbase
       else
       {
         column = schema_manager_.get_table_schema(jt_schema_->get_table_id(), column_size);
+        const ObRowkeyInfo& rowkey_info = schema_manager_.get_table_schema(jt_schema_->get_table_id())->get_rowkey_info();
         for (int64_t i = 0; i < column_size; ++i)
         {
+          // donot add rowkey columns;
+          if (rowkey_info.is_rowkey_column(column[i].get_id()))
+          {
+            continue;
+          }
+
           column_name = column[i].get_name();
           type = column[i].get_type();
 
@@ -498,5 +521,24 @@ namespace oceanbase
 
       return column_name;
     }
+
+    const common::ObRowkeyInfo& ObSyscheckerSchema::get_rowkey_info(const uint64_t table_id) const
+    {
+      return schema_manager_.get_table_schema(table_id)->get_rowkey_info();
+    }
+
+    bool ObSyscheckerSchema::is_rowkey_column(const uint64_t table_id, const uint64_t column_id) const
+    {
+      return get_rowkey_info(table_id).is_rowkey_column(column_id);
+    }
+
+    bool ObSyscheckerSchema::is_prefix_column(const uint64_t table_id, const uint64_t column_id) const
+    {
+      const common::ObRowkeyInfo& rowkey_info = get_rowkey_info(table_id);
+      ObRowkeyColumn column;
+      int64_t index = -1;
+      return 0 == rowkey_info.get_index(column_id, index, column) && index == 0;
+    }
+
   } // end namespace syschecker
 } // end namespace oceanbase

@@ -59,7 +59,7 @@ void ObSortedDistinctTest::SetUp()
 {
   char *filename = (char*)"ob_sort_test.run";
   ObString run_filename;
-  run_filename.assign_ptr(filename, strlen(filename));
+  run_filename.assign_ptr(filename, (int32_t)strlen(filename));
   sort_.set_run_filename(run_filename);
 
   ASSERT_EQ(OB_SUCCESS, sort_.add_sort_column(test::ObFakeTable::TABLE_ID, OB_APP_MIN_COLUMN_ID + 2, true));

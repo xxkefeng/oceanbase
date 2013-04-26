@@ -51,6 +51,10 @@ namespace oceanbase
       ObLogCursor replayed_cursor_;
       int64_t max_log_id_replayable_;
       int64_t master_log_id_;
+      int64_t next_submit_log_id_;
+      int64_t next_commit_log_id_;
+      int64_t next_flush_log_id_;
+      int64_t last_barrier_log_id_;
     };
   }; // end namespace updateserver
 }; // end namespace oceanbase

@@ -45,14 +45,13 @@ void clear_assis()
   GET_TSI_MULT(ObMSSchemaDecoderAssis, TSI_MS_SCHEMA_DECODER_ASSIS_1)->clear();
 }
 
-void init_decode_param(ObStringBuf buf,  ObScanParam &org_scan_param)
+void init_decode_param(ObStringBuf &buf,  ObScanParam &org_scan_param)
 {
   UNUSED(buf);
   const char *c_ptr;
   ObString str;
-  ObRange q_range;
-  q_range.border_flag_.set_min_value();
-  q_range.border_flag_.set_max_value();
+  ObNewRange q_range;
+  q_range.set_whole_range();
   q_range.border_flag_.set_inclusive_start();
   q_range.border_flag_.set_inclusive_end();
   c_ptr = "collect_info";
@@ -128,7 +127,7 @@ TEST(ObMsScanParam, columns)
 
   ObScanParam scan_param;
   ObScanParam decoded_param;
-  ObStringBuf buf; 
+  ObStringBuf buf;
   init_decode_param(buf,scan_param);
   clear_assis();
   EXPECT_EQ(ob_decode_scan_param(scan_param,*mgr,decoded_param),OB_SUCCESS);
@@ -143,7 +142,7 @@ TEST(ObMsScanParam, columns)
   {
     EXPECT_EQ(ms_scan_param.get_cs_param()->get_column_id()[i], ms_scan_param.get_ms_param()->get_column_id()[i]);
     EXPECT_TRUE(*ms_scan_param.get_cs_param()->get_return_infos().at(return_info_idx));
-    EXPECT_EQ(*scan_param.get_return_infos().at(return_info_idx), 
+    EXPECT_EQ(*scan_param.get_return_infos().at(return_info_idx),
       *ms_scan_param.get_ms_param()->get_return_infos().at(return_info_idx));
   }
 
@@ -153,7 +152,7 @@ TEST(ObMsScanParam, columns)
   for (int32_t i = 0; i < scan_param.get_composite_columns_size();i ++, return_info_idx++)
   {
     EXPECT_TRUE(*ms_scan_param.get_cs_param()->get_return_infos().at(return_info_idx));
-    EXPECT_EQ(*scan_param.get_return_infos().at(return_info_idx), 
+    EXPECT_EQ(*scan_param.get_return_infos().at(return_info_idx),
       *ms_scan_param.get_ms_param()->get_return_infos().at(return_info_idx));
     const ObObj * cs_expr = ms_scan_param.get_cs_param()->get_composite_columns().at(i)->get_postfix_expr();
     const ObObj * ms_expr = ms_scan_param.get_ms_param()->get_composite_columns().at(i)->get_postfix_expr();
@@ -178,9 +177,9 @@ TEST(ObMsScanParam, columns)
 
   return_info_idx = 0;
   /// groupby::groupby columns
-  EXPECT_EQ(scan_param.get_group_by_param().get_groupby_columns().get_array_index(), 
+  EXPECT_EQ(scan_param.get_group_by_param().get_groupby_columns().get_array_index(),
     ms_scan_param.get_cs_param()->get_group_by_param().get_groupby_columns().get_array_index());
-  EXPECT_EQ(scan_param.get_group_by_param().get_groupby_columns().get_array_index(), 
+  EXPECT_EQ(scan_param.get_group_by_param().get_groupby_columns().get_array_index(),
     ms_scan_param.get_ms_param()->get_group_by_param().get_groupby_columns().get_array_index());
 
   for (int32_t i = 0; i < scan_param.get_group_by_param().get_groupby_columns().get_array_index(); i ++, return_info_idx ++)
@@ -189,14 +188,14 @@ TEST(ObMsScanParam, columns)
       *ms_scan_param.get_ms_param()->get_group_by_param().get_groupby_columns().at(i));
 
     EXPECT_TRUE(*ms_scan_param.get_cs_param()->get_group_by_param().get_return_infos().at(return_info_idx));
-    EXPECT_EQ(*scan_param.get_group_by_param().get_return_infos().at(return_info_idx), 
+    EXPECT_EQ(*scan_param.get_group_by_param().get_return_infos().at(return_info_idx),
       *ms_scan_param.get_ms_param()->get_group_by_param().get_return_infos().at(return_info_idx));
   }
 
   /// groupby::aggregate columns
-  EXPECT_EQ(scan_param.get_group_by_param().get_aggregate_columns().get_array_index(), 
+  EXPECT_EQ(scan_param.get_group_by_param().get_aggregate_columns().get_array_index(),
     ms_scan_param.get_cs_param()->get_group_by_param().get_aggregate_columns().get_array_index());
-  EXPECT_EQ(scan_param.get_group_by_param().get_aggregate_columns().get_array_index(), 
+  EXPECT_EQ(scan_param.get_group_by_param().get_aggregate_columns().get_array_index(),
     ms_scan_param.get_ms_param()->get_group_by_param().get_aggregate_columns().get_array_index());
 
   for (int32_t i = 0; i < scan_param.get_group_by_param().get_aggregate_columns().get_array_index(); i ++, return_info_idx ++)
@@ -205,18 +204,18 @@ TEST(ObMsScanParam, columns)
       *ms_scan_param.get_ms_param()->get_group_by_param().get_aggregate_columns().at(i));
 
     EXPECT_TRUE(*ms_scan_param.get_cs_param()->get_group_by_param().get_return_infos().at(return_info_idx));
-    EXPECT_EQ(*scan_param.get_group_by_param().get_return_infos().at(return_info_idx), 
+    EXPECT_EQ(*scan_param.get_group_by_param().get_return_infos().at(return_info_idx),
       *ms_scan_param.get_ms_param()->get_group_by_param().get_return_infos().at(return_info_idx));
   }
   /// groupby::composite columns columns
-  EXPECT_EQ(scan_param.get_group_by_param().get_return_infos().get_array_index(), 
+  EXPECT_EQ(scan_param.get_group_by_param().get_return_infos().get_array_index(),
     ms_scan_param.get_cs_param()->get_group_by_param().get_return_infos().get_array_index());
-  EXPECT_EQ(scan_param.get_group_by_param().get_return_infos().get_array_index(), 
+  EXPECT_EQ(scan_param.get_group_by_param().get_return_infos().get_array_index(),
     ms_scan_param.get_ms_param()->get_group_by_param().get_return_infos().get_array_index());
   for (int32_t i = 0; i < scan_param.get_group_by_param().get_composite_columns().get_array_index();i ++, return_info_idx++)
   {
     EXPECT_TRUE(*ms_scan_param.get_cs_param()->get_group_by_param().get_return_infos().at(return_info_idx));
-    EXPECT_EQ(*scan_param.get_group_by_param().get_return_infos().at(return_info_idx), 
+    EXPECT_EQ(*scan_param.get_group_by_param().get_return_infos().at(return_info_idx),
       *ms_scan_param.get_ms_param()->get_group_by_param().get_return_infos().at(return_info_idx));
     const ObObj * cs_expr = ms_scan_param.get_cs_param()->get_group_by_param().get_composite_columns().at(i)->get_postfix_expr();
     const ObObj * ms_expr = ms_scan_param.get_ms_param()->get_group_by_param().get_composite_columns().at(i)->get_postfix_expr();
@@ -236,14 +235,14 @@ TEST(ObMsScanParam, columns)
   }
   /// having condition
   EXPECT_EQ(ms_scan_param.get_cs_param()->get_group_by_param().get_having_condition().get_count(),  0);
-  EXPECT_EQ(ms_scan_param.get_ms_param()->get_group_by_param().get_having_condition().get_count(), 
+  EXPECT_EQ(ms_scan_param.get_ms_param()->get_group_by_param().get_having_condition().get_count(),
     scan_param.get_group_by_param().get_having_condition().get_count());
 
   /// orderby
-  EXPECT_EQ(ms_scan_param.get_cs_param()->get_orderby_column_size(), 
+  EXPECT_EQ(ms_scan_param.get_cs_param()->get_orderby_column_size(),
     ((scan_param.get_group_by_param().get_aggregate_row_width() > 0) && (scan_param.get_orderby_column_size() == 0))?
     1: scan_param.get_orderby_column_size());
-  EXPECT_EQ(ms_scan_param.get_ms_param()->get_orderby_column_size(), 
+  EXPECT_EQ(ms_scan_param.get_ms_param()->get_orderby_column_size(),
     scan_param.get_orderby_column_size());
 
   /// limit info witout sharding_minimum preicession
@@ -253,10 +252,10 @@ TEST(ObMsScanParam, columns)
   EXPECT_EQ(ms_scan_param.set_param(decoded_param), OB_SUCCESS);
 
   /// orderby
-  EXPECT_EQ(ms_scan_param.get_cs_param()->get_orderby_column_size(), 
+  EXPECT_EQ(ms_scan_param.get_cs_param()->get_orderby_column_size(),
     ((scan_param.get_group_by_param().get_aggregate_row_width() > 0) && (scan_param.get_orderby_column_size() == 0))?
     1: scan_param.get_orderby_column_size());
-  EXPECT_EQ(ms_scan_param.get_ms_param()->get_orderby_column_size(), 
+  EXPECT_EQ(ms_scan_param.get_ms_param()->get_orderby_column_size(),
     scan_param.get_orderby_column_size());
   int64_t limit_offset;
   int64_t limit_count;
@@ -285,7 +284,7 @@ TEST(ObMsScanParam, columns)
 
   /// orderby
   EXPECT_EQ(ms_scan_param.get_cs_param()->get_orderby_column_size(), scan_param.get_orderby_column_size());
-  EXPECT_EQ(ms_scan_param.get_ms_param()->get_orderby_column_size(), 
+  EXPECT_EQ(ms_scan_param.get_ms_param()->get_orderby_column_size(),
     scan_param.get_orderby_column_size());
   ms_scan_param.get_cs_param()->get_limit_info(limit_offset,limit_count);
   ms_scan_param.get_cs_param()->get_topk_precision(sharding_minimum,topk_precision);
@@ -311,4 +310,3 @@ int main(int argc, char **argv)
   InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

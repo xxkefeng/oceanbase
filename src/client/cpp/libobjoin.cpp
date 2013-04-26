@@ -497,7 +497,8 @@ OB_ERR_CODE append_to_res(const char* table, int64_t table_len,
     ObCellInfo cell_info;
     cell_info.table_name_.assign_ptr(const_cast<char*>(table), static_cast<int32_t>(table_len));
     cell_info.table_id_ = OB_INVALID_ID;
-    cell_info.row_key_.assign_ptr(const_cast<char*>(row_key), static_cast<int32_t>(row_key_len));
+    // TODO set new rowkey
+    //cell_info.row_key_.assign_ptr(const_cast<char*>(row_key), static_cast<int32_t>(row_key_len));
     cell_info.column_name_.assign_ptr(const_cast<char*>(column), static_cast<int32_t>(column_len));
     cell_info.column_id_ = OB_INVALID_ID;
     if (NULL == v)
@@ -560,15 +561,10 @@ OB_ERR_CODE append_cell_to_res(OB_CELL* cell, OB_RES* res)
   ENSURE_COND(NULL != cell && NULL != res);
   if (OB_ERR_SUCCESS == err_code)
   {
-    OB_VALUE* v = NULL;
-    if (!cell->is_null)
-    {
-      v = &(cell->v);
-    }
     err_code = append_to_res(cell->table, cell->table_len,
                              cell->row_key, cell->row_key_len,
                              cell->column, cell->column_len,
-                             v, res);
+                             &(cell->v), res);
   }
   return err_code;
 }
@@ -627,7 +623,7 @@ OB_ERR_CODE append_join_cell_to_res(OB_RES* join_res,
           || memcmp(cell->row_key, rowkey.ptr(), cell->row_key_len) != 0
           || cell->row_key_len != rowkey.length()
           || (!cell->is_row_not_exist
-              && memcmp(cell->column, join_it->join_column, cell->column_len) != 0))
+              && memcmp(cell->column, join_it->join_column, cell->column_len)))
       {
         TBSYS_LOG(ERROR, "join cell not match get_st");
         TBSYS_LOG(ERROR, "join cell Table=%.*s Row_key=%s Column=%.*s Row_not_exist=%d",
@@ -732,17 +728,14 @@ OB_ERR_CODE append_join_res(OB_JOIN* join_st,
       int64_t fullfilled_item_num = 0;
       int64_t version = 0;
       int64_t whole_result_row_num = 0;
-      int64_t is_result_precision = 0;
       res->scanner.front().get_is_req_fullfilled(
           is_fullfilled, fullfilled_item_num);
       version = res->scanner.front().get_data_version();
       whole_result_row_num = res->scanner.front().get_whole_result_row_num();
-      is_result_precision = res->scanner.front().get_is_result_precision();
       final_res->scanner.front().set_is_req_fullfilled(
           is_fullfilled, fullfilled_item_num);
       final_res->scanner.front().set_data_version(version);
       final_res->scanner.front().set_whole_result_row_num(whole_result_row_num);
-      final_res->scanner.front().set_is_result_precision(is_result_precision);
     }
   }
   return err_code;

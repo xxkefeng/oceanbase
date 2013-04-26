@@ -111,7 +111,7 @@ int ObFakeTable::get_next_row(const ObRow *&row)
 int ObFakeTable::cons_curr_row(const int64_t row_idx)
 {
   int ret = OB_SUCCESS;
-  int c2_val = 0, c3_val = 0, c4_val = 0, c5_val = 0, c6_val = 0;
+  int64_t c2_val = 0, c3_val = 0, c4_val = 0, c5_val = 0, c6_val = 0;
   ObObj cell;
   // column 0: varchar
   if (OB_SUCCESS != (ret = cons_varchar_cell(cell)))
@@ -244,7 +244,7 @@ int ObFakeTable::cons_varchar_cell(common::ObObj &cell)
   int charnum = rand_int(VARCHAR_CELL_BUFF_SIZE);
   for (int i = 0; i < charnum; ++i)
   {
-    buff_[i] = 'A'+rand_int(26);
+    buff_[i] = (char)('A'+rand_int(26));
   }
   ObString varchar;
   varchar.assign_ptr(buff_, charnum);

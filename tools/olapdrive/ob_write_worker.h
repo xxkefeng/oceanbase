@@ -183,9 +183,9 @@ namespace oceanbase
       int64_t mutator_row_cnt_;
 
       ObDateStatus date_status_;
-      ObRowkey cur_rowkey_;
-      char cur_rowkey_buf_[LZ_ROWKEY_SIZE];
-      common::ObString cur_lz_rowkey_;
+      ObLZRowkey cur_rowkey_;
+      common::ObRowkey cur_lz_rowkey_;
+      common::ObObj rowkey_[MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT];
 
       ObCampaignStatus campaign_status_;
       ObAdgroupStatus adgroup_status_;

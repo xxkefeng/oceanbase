@@ -26,6 +26,7 @@
 #include <new>
 #include <algorithm>
 #include <malloc.h>
+#include <libaio.h>
 #include "ob_define.h"
 #include "ob_malloc.h"
 #include "ob_atomic.h"
@@ -362,6 +363,205 @@ namespace oceanbase
         FileComponent::DirectFileAppender direct_file_;
         FileComponent::BufferFileAppender buffer_file_;
     };
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#define __USE_AIO_FILE
+#ifdef __USE_AIO_FILE
+    class ObIWaiter
+    {
+      public:
+        virtual ~ObIWaiter() {};
+        virtual void wait() = 0;
+    };
+
+    template <class T,
+              int64_t SIZE>
+    class ObWaitablePool
+    {
+      struct Node
+      {
+        T data;
+        Node *next;
+      };
+      public:
+        ObWaitablePool();
+        ~ObWaitablePool();
+      public:
+        int alloc_obj(T *&obj, ObIWaiter &waiter);
+        void free_obj(T *obj);
+        int64_t used() const {return used_;};
+      private:
+        Node *objs_;
+        Node *list_;
+        int64_t used_;
+    };
+
+    template <class T, int64_t SIZE>
+    ObWaitablePool<T, SIZE>::ObWaitablePool() : list_(NULL),
+                                                used_(0)
+    {
+      if (NULL == (objs_ = (Node*)ob_malloc(sizeof(Node) * SIZE, ObModIds::OB_WAITABLE_POOL)))
+      {
+        TBSYS_LOG(ERROR, "alloc obj array fail");
+      }
+      else
+      {
+        for (int64_t i = 0; i < SIZE; i++)
+        {
+          new(&objs_[i].data) T();
+          objs_[i].next = list_;
+          list_ = &objs_[i];
+        }
+      }
+    }
+
+    template <class T, int64_t SIZE>
+    ObWaitablePool<T, SIZE>::~ObWaitablePool()
+    {
+      Node *iter = list_;
+      int64_t counter = 0;
+      while (NULL != iter)
+      {
+        Node *next = iter->next;
+        iter->data.~T();
+        iter = next;
+        counter++;
+      }
+      if (NULL != objs_)
+      {
+        if (SIZE != counter)
+        {
+          TBSYS_LOG(ERROR, "still have %ld node not been free, memory=%p will leek", SIZE - counter, objs_);
+        }
+        else
+        {
+          ob_free(objs_);
+        }
+      }
+    }
+
+    template <class T, int64_t SIZE>
+    int ObWaitablePool<T, SIZE>::alloc_obj(T *&obj, ObIWaiter &waiter)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == objs_)
+      {
+        ret = OB_NOT_INIT;
+      }
+      else
+      {
+        if (NULL == list_)
+        {
+          waiter.wait();
+        }
+        if (NULL == list_)
+        {
+          ret = OB_PROCESS_TIMEOUT;
+        }
+        else
+        {
+          obj = &list_->data;
+          list_ = list_->next;
+          used_ += 1;
+        }
+      }
+      return ret;
+    }
+
+    template <class T, int64_t SIZE>
+    void ObWaitablePool<T, SIZE>::free_obj(T *obj)
+    {
+      if (NULL != objs_
+          && NULL != obj)
+      {
+        Node *node = (Node*)(obj);
+        node->next = list_;
+        list_ = node;
+        used_ -= 1;
+      }
+    }
+
+    class ObFileAsyncAppender : public ObIFileAppender, ObIWaiter
+    {
+      struct AIOCB
+      {
+        AIOCB() : buffer_pos(0),
+                  buffer(NULL)
+        {
+          memset(&cb, 0, sizeof(cb));
+        };
+        ~AIOCB()
+        {
+          if (NULL != buffer)
+          {
+            free(buffer);
+          }
+        };
+        struct iocb cb;
+        int64_t buffer_pos;
+        char *buffer;
+      };
+      struct OpenParam
+      {
+        OpenParam(const bool dio,
+            const bool is_create,
+            const bool is_trunc,
+            const bool is_excl) : flag(O_RDWR),
+                                  mode(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+        {
+          flag |= dio       ? O_DIRECT  : 0;
+          flag |= is_create ? O_CREAT   : 0;
+          flag |= is_trunc  ? O_TRUNC   : 0;
+          flag |= is_excl   ? O_EXCL    : 0;
+        };
+        int get_open_flags() const
+        {
+          return flag;
+        };
+        int get_open_mode() const
+        {
+          return mode;
+        };
+        int flag;
+        int mode;
+      };
+      static const int64_t AIO_BUFFER_SIZE = 16L<<20;
+      static const int AIO_MAXEVENTS = 8;
+      static const int64_t AIO_WAIT_TIME_US = 1000000;
+      typedef ObWaitablePool<AIOCB, AIO_MAXEVENTS> Pool;
+      public:
+        ObFileAsyncAppender();
+        ~ObFileAsyncAppender();
+      public:
+        int open(const ObString &fname,
+                 const bool dio,
+                 const bool is_create,
+                 const bool is_trunc = false,
+                 const int64_t align_size = FileComponent::DirectFileAppender::DEFAULT_ALIGN_SIZE);
+        int create(const ObString &fname,
+                 const bool dio,
+                 const int64_t align_size = FileComponent::DirectFileAppender::DEFAULT_ALIGN_SIZE);
+        void close();
+        int64_t get_file_pos() const;
+        int append(const void *buf,
+                 const int64_t count,
+                 const bool is_fsync);
+        int fsync();
+      public:
+        void wait();
+      private:
+        int submit_iocb_(AIOCB *iocb);
+        AIOCB *get_iocb_();
+      private:
+        Pool pool_;
+        int fd_;
+        int64_t file_pos_;
+        int64_t align_size_;
+        AIOCB *cur_iocb_;
+        io_context_t ctx_;
+    };
+#endif // __USE_AIO_FILE
   }
 }
 

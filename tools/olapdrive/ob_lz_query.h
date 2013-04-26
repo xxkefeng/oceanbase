@@ -31,10 +31,10 @@ namespace oceanbase
     static const int64_t FILTER_BUF_SIZE = 512;
     static const int64_t WARN_RESPONSE_TIME = 1000000; //1s
 
-    struct ObThreadRowkeyBuf
+    struct ObThreadRowkeyObjs
     {
-      char start_rowkey_buf_[LZ_ROWKEY_SIZE];
-      char end_rowkey_buf_[LZ_ROWKEY_SIZE];
+      common::ObObj start_rowkey_objs_[MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT];
+      common::ObObj end_rowkey_objs_[MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT];
     };
 
     struct ObBatchScanInfo
@@ -224,14 +224,14 @@ namespace oceanbase
                                       int64_t& bidword_cnt);
       int64_t get_not_equl_val_colum_idx();
       int64_t get_random_start_date(int64_t& day_count);
-      void get_start_rowkey_struct(ObRowkey& rowkey, int64_t& day_count);
-      void get_end_rowkey_struct(const ObRowkey& start_rowkey, const int64_t day_count, 
-                                 ObRowkey& end_rowkey);
+      void get_start_rowkey_struct(ObLZRowkey& rowkey, int64_t& day_count);
+      void get_end_rowkey_struct(const ObLZRowkey& start_rowkey, const int64_t day_count, 
+                                 ObLZRowkey& end_rowkey);
       int reset_extra_info();
 
       void init_version_range(common::ObVersionRange& ver_range);
-      int build_rowkey(const ObRowkey& rowkey, char* rowkey_buf, 
-                       const int64_t buf_size, common::ObString& ret_rowkey);
+      int build_rowkey(const ObLZRowkey& rowkey, common::ObObj* rowkey_buf, 
+                       common::ObRowkey& ret_rowkey);
       int add_scan_range(common::ObScanParam& scan_param);
       void set_read_param(common::ObScanParam& scan_param);
       int add_basic_scan_column(common::ObScanParam& scan_param);

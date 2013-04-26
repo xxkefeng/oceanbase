@@ -69,6 +69,7 @@ namespace oceanbase
             if (0 > tmp || 0 < wait_write_)
             {
               // 写优先
+              asm("pause");
               continue;
             }
             else
@@ -78,6 +79,7 @@ namespace oceanbase
               {
                 break;
               }
+              asm("pause");
             }
           }
           return ret;
@@ -92,6 +94,7 @@ namespace oceanbase
             tmp = ref_cnt_;
             if (0 != tmp)
             {
+              asm("pause");
               continue;
             }
             else
@@ -101,10 +104,25 @@ namespace oceanbase
               {
                 break;
               }
+              asm("pause");
             }
           }
           atomic_dec((uint64_t*)&wait_write_);
           return ret;
+        };
+        inline bool try_wrlock()
+        {
+          bool bret = false;
+          int64_t tmp = ref_cnt_;
+          if (0 == tmp)
+          {
+            int64_t nv = -1;
+            if (tmp == (int64_t)atomic_compare_exchange((uint64_t*)&ref_cnt_, nv, tmp))
+            {
+              bret = true;
+            }
+          }
+          return bret;
         };
         inline int unlock()
         {

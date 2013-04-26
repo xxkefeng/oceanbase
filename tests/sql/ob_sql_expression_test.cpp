@@ -15,6 +15,7 @@
  *
  */
 #include "common/ob_malloc.h"
+#include "common/utility.h"
 #include <gtest/gtest.h>
 #include "common/ob_string_buf.h"
 #include "sql/ob_sql_expression.h"
@@ -69,8 +70,8 @@ TEST_F(ObSqlExpressionTest, single_element_test)
   const ObObj *result = NULL;
   p.add_expr_item_end();
   p.calc(row, result);
-
-  int64_t re;
+  printf("%s\n", to_cstring(p));
+  int64_t re = 0;
   ASSERT_EQ(OB_SUCCESS, result->get_int(re));
   ASSERT_EQ(re, 21);
 }
@@ -91,12 +92,12 @@ TEST_F(ObSqlExpressionTest, copy_operator_test)
   p.add_expr_item_end();
   p.calc(row, result);
 
-  int64_t re;
+  //int64_t re;
   ObString mystring;
   EXPECT_EQ(OB_SUCCESS, result->get_varchar(mystring));
   EXPECT_EQ(mystring, stdstring);
- 
-  // test deep copy 
+
+  // test deep copy
   ObSqlExpression q;
   q = p;
   p.~ObSqlExpression();
@@ -108,7 +109,16 @@ TEST_F(ObSqlExpressionTest, copy_operator_test)
   //ASSERT_EQ();
 }
 
-
+TEST_F(ObSqlExpressionTest, array_of_expr)
+{
+  ObArray<ObSqlExpression> exprs;
+  ObSqlExpression expr;
+  exprs.push_back(expr);
+  exprs.push_back(expr);
+  exprs.clear();
+  exprs.reserve(10);
+  exprs.push_back(expr);
+}
 
 
 

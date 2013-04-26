@@ -19,7 +19,7 @@
 #include "ob_phy_operator.h"
 #include "ob_logical_plan.h"
 #include "ob_physical_plan.h"
-#include "ob_multi_plan.h"
+#include "ob_multi_logic_plan.h"
 #include "common/ob_list.h"
 
 namespace oceanbase

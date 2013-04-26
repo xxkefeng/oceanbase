@@ -147,9 +147,6 @@ namespace oceanbase
       // check if the scan operation need groupby
       bool need_groupby() const;
 
-      // check if the result is precision
-      bool is_result_precision() const;
-
     private:
       int build_query_stage();
       int query_stage_machine(const common::ObReadParam& read_param, 
@@ -204,7 +201,6 @@ namespace oceanbase
       double              precision_;
       bool                need_groupby_;
       bool                need_compute_topk_;
-      bool                is_result_precision_;
 
       //query stage array
       ObStageOperation    query_stage_[MAX_STAGE_OPERATION_COUNT];

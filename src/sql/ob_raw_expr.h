@@ -1,6 +1,6 @@
 #ifndef OCEANBASE_SQL_RAWEXPR_H_
 #define OCEANBASE_SQL_RAWEXPR_H_
-#include "ob_bit_set.h"
+#include "common/ob_bit_set.h"
 #include "ob_sql_expression.h"
 #include "common/ob_define.h"
 #include "common/ob_vector.h"
@@ -14,7 +14,7 @@ namespace oceanbase
     class ObTransformer;
     class ObLogicalPlan;
     class ObPhysicalPlan;
-    
+
     class ObRawExpr
     {
     public:
@@ -31,6 +31,7 @@ namespace oceanbase
       void set_result_type(const common::ObObjType & type) { result_type_ = type; }
 
       bool is_const() const;
+      bool is_column() const;
       // Format like "C1 = 5"
       bool is_equal_filter() const;
       // Format like "C1 between 5 and 10"
@@ -61,15 +62,16 @@ namespace oceanbase
       {
       }
       virtual ~ObConstRawExpr() {}
-      const oceanbase::common::ObObj& get_value() const { return value_; } 
+      const oceanbase::common::ObObj& get_value() const { return value_; }
       void set_value(const oceanbase::common::ObObj& val) { value_ = val; }
+      int set_value_and_type(const common::ObObj& val);
       virtual int fill_sql_expression(
           ObSqlExpression& inter_expr,
           ObTransformer *transformer = NULL,
           ObLogicalPlan *logical_plan = NULL,
           ObPhysicalPlan *physical_plan = NULL) const;
       void print(FILE* fp, int32_t level) const;
-      
+
     private:
       oceanbase::common::ObObj value_;
     };
@@ -86,7 +88,7 @@ namespace oceanbase
       {
       }
       virtual ~ObUnaryRefRawExpr() {}
-      uint64_t get_ref_id() const { return id_; } 
+      uint64_t get_ref_id() const { return id_; }
       void set_ref_id(uint64_t id) { id_ = id; }
       virtual int fill_sql_expression(
           ObSqlExpression& inter_expr,
@@ -95,10 +97,10 @@ namespace oceanbase
           ObPhysicalPlan *physical_plan = NULL) const;
       void print(FILE* fp, int32_t level) const;
       int get_name(common::ObString& name) const;
-      
+
     private:
       uint64_t id_;
-    };   
+    };
 
     class ObBinaryRefRawExpr : public ObRawExpr
     {
@@ -113,8 +115,8 @@ namespace oceanbase
       {
       }
       virtual ~ObBinaryRefRawExpr() {}
-      uint64_t get_first_ref_id() const { return first_id_; } 
-      uint64_t get_second_ref_id() const { return second_id_; } 
+      uint64_t get_first_ref_id() const { return first_id_; }
+      uint64_t get_second_ref_id() const { return second_id_; }
       void set_first_ref_id(uint64_t id) { first_id_ = id; }
       void set_second_ref_id(uint64_t id) { second_id_ = id; }
       virtual int fill_sql_expression(
@@ -123,11 +125,11 @@ namespace oceanbase
           ObLogicalPlan *logical_plan = NULL,
           ObPhysicalPlan *physical_plan = NULL) const;
       void print(FILE* fp, int32_t level) const;
-      
+
     private:
       uint64_t first_id_;
       uint64_t second_id_;
-    }; 
+    };
 
     class ObUnaryOpRawExpr : public ObRawExpr
     {
@@ -141,7 +143,7 @@ namespace oceanbase
       {
       }
       virtual ~ObUnaryOpRawExpr() {}
-      ObRawExpr* get_op_expr() const { return expr_; } 
+      ObRawExpr* get_op_expr() const { return expr_; }
       void set_op_expr(ObRawExpr *expr) { expr_ = expr; }
       virtual int fill_sql_expression(
           ObSqlExpression& inter_expr,
@@ -149,10 +151,10 @@ namespace oceanbase
           ObLogicalPlan *logical_plan = NULL,
           ObPhysicalPlan *physical_plan = NULL) const;
       void print(FILE* fp, int32_t level) const;
-      
+
     private:
       ObRawExpr *expr_;
-    };   
+    };
 
     class ObBinaryOpRawExpr : public ObRawExpr
     {
@@ -165,23 +167,22 @@ namespace oceanbase
           : ObRawExpr(expr_type), first_expr_(first_expr), second_expr_(second_expr)
       {
       }
-      virtual ~ObBinaryOpRawExpr(){} 
-      ObRawExpr* get_first_op_expr() const { return first_expr_; } 
-      ObRawExpr* get_second_op_expr() const { return second_expr_; } 
-      void set_first_op_expr(ObRawExpr *first_expr) { first_expr_ = first_expr; }
-      void set_second_op_expr(ObRawExpr *second_expr) { second_expr_ = second_expr; }
+      virtual ~ObBinaryOpRawExpr(){}
+      ObRawExpr* get_first_op_expr() const { return first_expr_; }
+      ObRawExpr* get_second_op_expr() const { return second_expr_; }
+      void set_op_exprs(ObRawExpr *first_expr, ObRawExpr *second_expr);
       virtual int fill_sql_expression(
           ObSqlExpression& inter_expr,
           ObTransformer *transformer = NULL,
           ObLogicalPlan *logical_plan = NULL,
           ObPhysicalPlan *physical_plan = NULL) const;
       void print(FILE* fp, int32_t level) const;
-      
+
     private:
       ObRawExpr *first_expr_;
       ObRawExpr *second_expr_;
-    }; 
-    
+    };
+
     class ObTripleOpRawExpr : public ObRawExpr
     {
     public:
@@ -192,32 +193,30 @@ namespace oceanbase
         third_expr_ = NULL;
       }
       ObTripleOpRawExpr(
-          ObRawExpr *first_expr, ObRawExpr *second_expr, 
+          ObRawExpr *first_expr, ObRawExpr *second_expr,
           ObRawExpr *third_expr, ObItemType expr_type = T_INVALID)
-          : ObRawExpr(expr_type), 
+          : ObRawExpr(expr_type),
           first_expr_(first_expr), second_expr_(second_expr),
           third_expr_(third_expr)
       {
       }
       virtual ~ObTripleOpRawExpr(){}
-      ObRawExpr* get_first_op_expr() const { return first_expr_; } 
-      ObRawExpr* get_second_op_expr() const { return second_expr_; } 
-      ObRawExpr* get_third_op_expr() const { return third_expr_; } 
-      void set_first_op_expr(ObRawExpr *first_expr) { first_expr_ = first_expr; }
-      void set_second_op_expr(ObRawExpr *second_expr) { second_expr_ = second_expr; }
-      void set_third_op_expr(ObRawExpr *third_expr) { third_expr_ = third_expr; }
+      ObRawExpr* get_first_op_expr() const { return first_expr_; }
+      ObRawExpr* get_second_op_expr() const { return second_expr_; }
+      ObRawExpr* get_third_op_expr() const { return third_expr_; }
+      void set_op_exprs(ObRawExpr *first_expr, ObRawExpr *second_expr, ObRawExpr *third_expr);
       virtual int fill_sql_expression(
           ObSqlExpression& inter_expr,
           ObTransformer *transformer = NULL,
           ObLogicalPlan *logical_plan = NULL,
           ObPhysicalPlan *physical_plan = NULL) const;
       void print(FILE* fp, int32_t level) const;
-      
+
     private:
       ObRawExpr *first_expr_;
       ObRawExpr *second_expr_;
       ObRawExpr *third_expr_;
-    }; 
+    };
 
     class ObMultiOpRawExpr : public ObRawExpr
     {
@@ -230,9 +229,9 @@ namespace oceanbase
       {
         ObRawExpr* expr = NULL;
         if (index >= 0 && index < exprs_.size())
-          expr = exprs_.at(index); 
+          expr = exprs_.at(index);
         return expr;
-      } 
+      }
       int add_op_expr(ObRawExpr *expr) { return exprs_.push_back(expr); }
       int32_t get_expr_size() const { return exprs_.size(); }
       virtual int fill_sql_expression(
@@ -244,7 +243,7 @@ namespace oceanbase
 
     private:
       oceanbase::common::ObVector<ObRawExpr*> exprs_;
-    }; 
+    };
 
     class ObCaseOpRawExpr : public ObRawExpr
     {
@@ -255,22 +254,22 @@ namespace oceanbase
         default_expr_ = NULL;
       }
       virtual ~ObCaseOpRawExpr(){}
-      ObRawExpr* get_arg_op_expr() const { return arg_expr_; } 
-      ObRawExpr* get_default_op_expr() const { return default_expr_; } 
+      ObRawExpr* get_arg_op_expr() const { return arg_expr_; }
+      ObRawExpr* get_default_op_expr() const { return default_expr_; }
       ObRawExpr* get_when_op_expr(int32_t index) const
       {
         ObRawExpr* expr = NULL;
         if (index >= 0 && index < when_exprs_.size())
           expr = when_exprs_[index];
         return expr;
-      } 
+      }
       ObRawExpr* get_then_op_expr(int32_t index) const
       {
         ObRawExpr* expr = NULL;
         if (index >= 0 || index < then_exprs_.size())
           expr = then_exprs_[index];
         return expr;
-      } 
+      }
       void set_arg_op_expr(ObRawExpr *expr) { arg_expr_ = expr; }
       void set_default_op_expr(ObRawExpr *expr) { default_expr_ = expr; }
       int add_when_op_expr(ObRawExpr *expr) { return when_exprs_.push_back(expr); }
@@ -283,13 +282,13 @@ namespace oceanbase
           ObLogicalPlan *logical_plan = NULL,
           ObPhysicalPlan *physical_plan = NULL) const;
       void print(FILE* fp, int32_t level) const;
-      
+
     private:
       ObRawExpr *arg_expr_;
       oceanbase::common::ObVector<ObRawExpr*> when_exprs_;
       oceanbase::common::ObVector<ObRawExpr*> then_exprs_;
       ObRawExpr *default_expr_;
-    }; 
+    };
 
     class ObAggFunRawExpr : public ObRawExpr
     {
@@ -297,13 +296,17 @@ namespace oceanbase
       ObAggFunRawExpr()
       {
         param_expr_ = NULL;
-        set_distinct_ = false;
+        distinct_ = false;
+      }
+      ObAggFunRawExpr(ObRawExpr *param_expr, bool is_distinct, ObItemType expr_type = T_INVALID)
+          : ObRawExpr(expr_type), param_expr_(param_expr), distinct_(is_distinct)
+      {
       }
       virtual ~ObAggFunRawExpr() {}
       ObRawExpr* get_param_expr() const { return param_expr_; }
       void set_param_expr(ObRawExpr *expr) { param_expr_ = expr; }
-      bool is_set_type() const { return set_distinct_; }
-      void set_param_distinct() { set_distinct_ = true; }
+      bool is_param_distinct() const { return distinct_; }
+      void set_param_distinct() { distinct_ = true; }
       virtual int fill_sql_expression(
           ObSqlExpression& inter_expr,
           ObTransformer *transformer = NULL,
@@ -314,8 +317,8 @@ namespace oceanbase
     private:
       // NULL means '*'
       ObRawExpr* param_expr_;
-      bool     set_distinct_;
-    };  
+      bool     distinct_;
+    };
 
     class ObSysFunRawExpr : public ObRawExpr
     {
@@ -332,6 +335,7 @@ namespace oceanbase
       int add_param_expr(ObRawExpr *expr) { return exprs_.push_back(expr); }
       void set_func_name(const common::ObString& name) { func_name_ = name; }
       const common::ObString& get_func_name() { return func_name_; }
+      int32_t get_param_size() const { return exprs_.size(); }
       virtual int fill_sql_expression(
           ObSqlExpression& inter_expr,
           ObTransformer *transformer = NULL,
@@ -342,16 +346,16 @@ namespace oceanbase
     private:
       common::ObString func_name_;
       common::ObVector<ObRawExpr*> exprs_;
-    };  
+    };
 
     class ObSqlRawExpr
     {
     public:
       ObSqlRawExpr();
       ObSqlRawExpr(
-          uint64_t expr_id, 
+          uint64_t expr_id,
           uint64_t table_id = oceanbase::common::OB_INVALID_ID,
-          uint64_t column_id = oceanbase::common::OB_INVALID_ID, 
+          uint64_t column_id = oceanbase::common::OB_INVALID_ID,
           ObRawExpr* expr = NULL);
       virtual ~ObSqlRawExpr() {}
       uint64_t get_expr_id() const { return expr_id_; }
@@ -361,14 +365,18 @@ namespace oceanbase
       void set_column_id(uint64_t column_id) { column_id_ = column_id; }
       void set_table_id(uint64_t table_id) { table_id_ = table_id; }
       void set_expr(ObRawExpr* expr) { expr_ = expr; }
-      void set_tables_set(const ObBitSet tables_set) { tables_set_ = tables_set; }
+      void set_tables_set(const common::ObBitSet<> tables_set) { tables_set_ = tables_set; }
       void set_applied(bool is_applied) { is_apply_ = is_applied; }
       void set_contain_aggr(bool contain_aggr) { contain_aggr_ = contain_aggr; }
+      void set_contain_alias(bool contain_alias) { contain_alias_ = contain_alias; }
+      void set_columnlized(bool is_columnlized) { is_columnlized_ = is_columnlized; }
       bool is_apply() const { return is_apply_; }
       bool is_contain_aggr() const { return contain_aggr_; }
+      bool is_contain_alias() const { return contain_alias_; }
+      bool is_columnlized() const { return is_columnlized_; }
       ObRawExpr* get_expr() const { return expr_; }
-      const ObBitSet& get_tables_set() const { return tables_set_; }
-      ObBitSet& get_tables_set() { return tables_set_; }
+      const common::ObBitSet<>& get_tables_set() const { return tables_set_; }
+      common::ObBitSet<>& get_tables_set() { return tables_set_; }
       const common::ObObjType get_result_type() const { return expr_->get_result_type(); }
       int fill_sql_expression(
           ObSqlExpression& inter_expr,
@@ -383,15 +391,14 @@ namespace oceanbase
       uint64_t  column_id_;
       bool      is_apply_;
       bool      contain_aggr_;
-      ObBitSet  tables_set_;
+      bool      contain_alias_;
+      bool      is_columnlized_;
+      common::ObBitSet<>  tables_set_;
       ObRawExpr*  expr_;
-    };  
-      
+    };
+
   }
-   
+
 }
 
 #endif //OCEANBASE_SQL_RAWEXPR_H_
-
-
-

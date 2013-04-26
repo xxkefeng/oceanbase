@@ -35,6 +35,8 @@ namespace oceanbase
 {
   namespace updateserver
   {
+    class HashEngine;
+    class HashEngineIterator;
     class HashEngineTransHandle
     {
       friend class HashEngine;

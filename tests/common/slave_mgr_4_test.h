@@ -1,6 +1,7 @@
 
 #include "common/ob_role_mgr.h"
 #include "common/ob_slave_mgr.h"
+#include "common/ob_base_client.h"
 #include "common/ob_packet_factory.h"
 
 using namespace oceanbase::common;
@@ -10,17 +11,15 @@ class SlaveMgr4Test
 public:
   SlaveMgr4Test()
   {
-    streamer.setPacketFactory(&factory);
-    client_mgr.initialize(&transport, &streamer);
-    rpc_stub.init(&client_mgr);
+    ObServer server;
+    base_client_.initialize(server);
+    rpc_stub.init(&base_client_.get_client_mgr());
     slave_mgr_.init(&role_mgr_, 1, &rpc_stub, 1000000, 15000000, 12000000);
-    transport.start();
   }
 
   ~SlaveMgr4Test()
   {
-    transport.stop();
-    transport.wait();
+    base_client_.destroy();
   }
 
   ObSlaveMgr* get_slave_mgr()
@@ -32,9 +31,6 @@ private:
   ObSlaveMgr slave_mgr_;
   ObRoleMgr role_mgr_;
 
-  ObClientManager client_mgr;
+  ObBaseClient base_client_;
   ObCommonRpcStub rpc_stub;
-  ObPacketFactory factory;
-  tbnet::Transport transport;
-  tbnet::DefaultPacketStreamer streamer;
 };

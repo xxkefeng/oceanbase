@@ -30,11 +30,14 @@ namespace oceanbase
         ~ObRootLogReplay();
 
       public:
+        void wait_replay(ObLogCursor& end_cursor);
         void set_log_manager(ObRootLogManager* log_manage);
         int replay(common::LogCommand cmd, uint64_t seq, const char* log_data, const int64_t data_len);
+        void run(tbsys::CThread* thread, void* arg);
     
       private:
         ObRootLogManager* log_manager_;
+        ObLogCursor master_end_cursor_;
     };
   } /* rootserver */
 } /* oceanbase */

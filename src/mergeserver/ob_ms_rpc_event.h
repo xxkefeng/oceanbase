@@ -1,7 +1,25 @@
+/*
+ * (C) 2007-2010 Taobao Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ *
+ *
+ * Version: 0.1: ob_ms_rpc_event.h,v 0.1 2011/09/26 14:01:30 zhidong Exp $
+ *
+ * Authors:
+ *   zhidong <xielun.szd@taobao.com>
+ *     - some work details if you want
+ *
+ */
+
 #ifndef OCEANBASE_MERGER_RPC_EVENT_H_
 #define OCEANBASE_MERGER_RPC_EVENT_H_
 
 #include "ob_rpc_event.h"
+#include "common/ob_packet.h"
 
 namespace oceanbase
 {
@@ -14,7 +32,7 @@ namespace oceanbase
 
   namespace mergeserver
   {
-    class ObMergerRequestEvent;
+    class ObMergerRequest;
     class ObMergerRpcEvent:public ObCommonRpcEvent
     {
     public:
@@ -25,21 +43,20 @@ namespace oceanbase
       };
       ObMergerRpcEvent();
       virtual ~ObMergerRpcEvent();
-    
+
     public:
       // reset stat for reuse
       void reset(void);
-      
+
+      int handle_packet(common::ObPacket* pacekt, void* args);
+
       /// client for request event check
       uint64_t get_client_id(void) const;
-      const ObMergerRequestEvent * get_client_request(void) const;
+      const ObMergerRequest * get_client_request(void) const;
 
       // set eventid and client request in the init step
-      virtual int init(const uint64_t client_id, ObMergerRequestEvent * request);
+      virtual int init(const uint64_t client_id, ObMergerRequest * request);
 
-      /// handle the response of read param
-      virtual tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Packet * packet, void *args);
-    
       /// print info for debug
       void print_info(FILE * file) const;
 
@@ -59,25 +76,25 @@ namespace oceanbase
       {
         return timeout_us_;
       }
-      
+
     private:
       // check inner stat
       inline bool check_inner_stat(void) const;
-      
-      // deserialize the response packet 
+
+      // deserialize the response packet
       int deserialize_packet(common::ObPacket & packet, common::ObScanner & result);
-      
+
       // parse the packet
-      int parse_packet(tbnet::Packet * packet, void * args);
+      int parse_packet(common::ObPacket * packet, void * args);
 
     protected:
       int32_t req_type_;
       // the request id
       uint64_t client_request_id_;
-      ObMergerRequestEvent * client_request_;
+      ObMergerRequest * client_request_;
       int64_t timeout_us_;
     };
-    
+
     bool ObMergerRpcEvent::check_inner_stat(void) const
     {
       return (client_request_ != NULL);

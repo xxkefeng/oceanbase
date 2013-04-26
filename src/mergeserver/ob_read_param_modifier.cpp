@@ -16,7 +16,7 @@
  */
 #include "ob_read_param_modifier.h"
 #include "common/ob_define.h"
-#include "common/ob_range.h"
+#include "common/ob_range2.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
@@ -111,11 +111,11 @@ int oceanbase::mergeserver::get_next_param(const oceanbase::common::ObGetParam &
   return ret;
 }
 
-bool oceanbase::mergeserver::is_finish_scan(const ObScanParam::Direction scan_direction,  const ObRange & org_range,
-  const ObRange & result_range)
+bool oceanbase::mergeserver::is_finish_scan(const ScanFlag::Direction scan_direction,  const ObNewRange & org_range,
+  const ObNewRange & result_range)
 {
   bool ret = false;
-  if (ObScanParam::FORWARD == scan_direction)
+  if (ScanFlag::FORWARD == scan_direction)
   {
     if (result_range.compare_with_endkey2(org_range) >= 0)
     {
@@ -132,10 +132,10 @@ bool oceanbase::mergeserver::is_finish_scan(const ObScanParam::Direction scan_di
   return ret;
 }
 
-bool oceanbase::mergeserver::is_finish_scan(const ObScanParam & param, const ObRange & result_range)
+bool oceanbase::mergeserver::is_finish_scan(const ObScanParam & param, const ObNewRange & result_range)
 {
   bool ret = false;
-  if (ObScanParam::FORWARD == param.get_scan_direction())
+  if (ScanFlag::FORWARD == param.get_scan_direction())
   {
     if (result_range.compare_with_endkey2(*param.get_range()) >= 0)
     {
@@ -152,108 +152,49 @@ bool oceanbase::mergeserver::is_finish_scan(const ObScanParam & param, const ObR
   return ret;
 }
 
-
-int oceanbase::mergeserver::get_next_param(const ObReadParam & org_read_param, 
-  const ObMSGetCellArray &org_get_cells, 
-  const int64_t got_cell_num, ObGetParam *get_param)
+namespace
 {
-  int ret = OB_SUCCESS;
-  int64_t surplus = org_get_cells.get_cell_size() - got_cell_num;
-  int64_t cur_row_beg = got_cell_num;
-  int64_t cur_row_end = got_cell_num;
-  ObReadParam *read_param = get_param;
-  if (NULL != get_param)
-  {
-    get_param->reset();
-    *read_param = org_read_param;
-  }
-  if (surplus <= 0)
-  {
-    ret = OB_ITER_END;
-  }
-  if (OB_SUCCESS == ret)
-  {
-    while (cur_row_end < org_get_cells.get_cell_size() 
-      && OB_SUCCESS == ret)
-    {
-      while (OB_SUCCESS == ret 
-        && cur_row_end < org_get_cells.get_cell_size()
-        && org_get_cells[cur_row_end].row_key_ == org_get_cells[cur_row_beg].row_key_
-        && org_get_cells[cur_row_end].table_id_ == org_get_cells[cur_row_beg].table_id_)
-      {
-        if (NULL != get_param)
-        {
-          ret = get_param->add_cell(org_get_cells[cur_row_end]);
-        }
-        if (OB_SIZE_OVERFLOW == ret)
-        {
-          break; 
-        }
-        if (OB_SUCCESS == ret)
-        {
-          cur_row_end ++;
-        }
-      } 
-      if (OB_SIZE_OVERFLOW == ret)
-      {
-        if (NULL != get_param)
-        {
-          ret = get_param->rollback();
-        }
-        break;
-      }
-      if (OB_SUCCESS == ret)
-      {
-        cur_row_beg = cur_row_end;
-      }
-    }
-  }
-  return ret;
-}
-
-namespace 
-{
-  int allocate_range_buffer(ObRange &range, ObMemBuffer &buffer)
+  int allocate_range_buffer(ObNewRange &range, ObMemBuffer &buffer)
   {
     int err = OB_SUCCESS;
-    int64_t buf_len = range.start_key_.length() + range.end_key_.length();
-    if (0 < buf_len)
+    int64_t start_key_len = range.start_key_.get_deep_copy_size();
+    int64_t end_key_len = range.end_key_.get_deep_copy_size();
+    char* ptr = static_cast<char*>(buffer.malloc(start_key_len + end_key_len));
+    if (NULL != ptr)
     {
-      if (NULL == buffer.malloc(buf_len))
+      ObRawBufAllocatorWrapper start_key_wrapper(ptr, start_key_len);
+      ObRawBufAllocatorWrapper end_key_wrapper(ptr + start_key_len, end_key_len);
+      if((OB_SUCCESS == err) && (OB_SUCCESS != (err = range.start_key_.deep_copy(range.start_key_, start_key_wrapper))))
       {
-        TBSYS_LOG(WARN, "%s", "fail to allocate memory for range key");
-        err = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(WARN, "fail to allocate memory to copy start_key");
       }
-      else
+
+      if((OB_SUCCESS == err) && (OB_SUCCESS != (err = range.end_key_.deep_copy(range.end_key_, end_key_wrapper))))
       {
-        memcpy(buffer.get_buffer(), range.start_key_.ptr(), 
-          range.start_key_.length());
-        range.start_key_.assign(reinterpret_cast<char*>(buffer.get_buffer()),
-          range.start_key_.length());
-        memcpy(reinterpret_cast<char*>(buffer.get_buffer()) + range.start_key_.length(), 
-          range.end_key_.ptr(), range.end_key_.length());
-        range.end_key_.assign(reinterpret_cast<char*>(buffer.get_buffer()) 
-          + range.start_key_.length(),
-          range.end_key_.length());
+        TBSYS_LOG(WARN, "fail to allocate memory to copy end_key");
       }
     }
     return err;
   }
 }
 
-int oceanbase::mergeserver::get_next_param(const ObScanParam &org_scan_param, 
+int oceanbase::mergeserver::get_next_param(const ObScanParam &org_scan_param,
   const oceanbase::common::ObScanner &prev_scan_result,
   ObScanParam *scan_param, ObMemBuffer &range_buffer)
 {
   int err = OB_SUCCESS;
   const ObReadParam &org_read_param = org_scan_param;
   ObReadParam *read_param = scan_param;
-  ObRange tablet_range; 
-  const ObRange *org_scan_range = NULL;
-  ObRange cur_range;
-  if (NULL != scan_param)
+  ObNewRange tablet_range;
+  const ObNewRange *org_scan_range = NULL;
+  ObNewRange cur_range;
+  if(NULL != scan_param)
   {
     scan_param->reset();
+    if ( NULL != org_scan_param.get_location_info())
+    {
+      scan_param->set_location_info(*(org_scan_param.get_location_info()));
+    }
     *read_param = org_read_param;
   }
   bool request_fullfilled = false;
@@ -269,7 +210,7 @@ int oceanbase::mergeserver::get_next_param(const ObScanParam &org_scan_param,
     }
   }
 
-  ObString last_row_key;
+  ObRowkey last_row_key;
   if (OB_SUCCESS == err)
   {
     if (request_fullfilled)
@@ -277,11 +218,11 @@ int oceanbase::mergeserver::get_next_param(const ObScanParam &org_scan_param,
       err = prev_scan_result.get_range(tablet_range);
       if (OB_SUCCESS == err)
       {
-        if (true == is_finish_scan(org_scan_param.get_scan_direction(), *org_scan_param.get_range(), tablet_range))
+        if (true == is_finish_scan(org_scan_param, tablet_range))
         {
           err = OB_ITER_END;
         }
-        else if (ObScanParam::FORWARD == org_scan_param.get_scan_direction())
+        else if (ScanFlag::FORWARD == org_scan_param.get_scan_direction())
         {
           last_row_key = tablet_range.end_key_;
         }
@@ -309,16 +250,14 @@ int oceanbase::mergeserver::get_next_param(const ObScanParam &org_scan_param,
   {
     cur_range =*org_scan_range;
     // forward
-    if (ObScanParam::FORWARD == org_scan_param.get_scan_direction())
+    if (ScanFlag::FORWARD == org_scan_param.get_scan_direction())
     {
       cur_range.start_key_ = last_row_key;
-      cur_range.border_flag_.unset_min_value();
       cur_range.border_flag_.unset_inclusive_start();
     }
     else
     {
       cur_range.end_key_ = last_row_key;
-      cur_range.border_flag_.unset_max_value();
       if (request_fullfilled)
       {
         // tablet range start key
@@ -347,7 +286,7 @@ int oceanbase::mergeserver::get_next_param(const ObScanParam &org_scan_param,
   if (OB_SUCCESS == err && NULL != scan_param)
   {
     scan_param->set(org_scan_param.get_table_id(), org_scan_param.get_table_name(), cur_range);
-    for (int32_t cell_idx = 0; 
+    for (int32_t cell_idx = 0;
       cell_idx < org_scan_param.get_column_id_size() && OB_SUCCESS == err;
       cell_idx ++)
     {
@@ -361,163 +300,18 @@ int oceanbase::mergeserver::get_next_param(const ObScanParam &org_scan_param,
   return err;
 }
 
-namespace
-{
-  int get_ups_read_param(ObReadParam & param,  const ObScanner & cs_result)
-  {
-    int err = OB_SUCCESS;
-    ObVersionRange org_version_range;
-    ObVersionRange cur_version_range;
-    int64_t cs_version = 0;
-    org_version_range = param.get_version_range();
-    cur_version_range = org_version_range;
-
-    cs_version = cs_result.get_data_version();
-    if (OB_SUCCESS == err)
-    {
-      if (cur_version_range.border_flag_.is_max_value() 
-        || org_version_range.end_version_ > cs_version)
-      {
-        cur_version_range.border_flag_.unset_min_value();
-        cur_version_range.border_flag_.set_inclusive_start();
-        cur_version_range.start_version_ = cs_version + 1;
-      }
-      else if (org_version_range.end_version_ <= cs_version)
-      {
-        TBSYS_LOG(DEBUG, "%s", "chunk server return all data needed");
-        err = OB_ITER_END;
-      }
-    }
-    if (OB_SUCCESS == err)
-    {
-      param.set_version_range(cur_version_range);
-    }
-    return err;
-  }
-}
-
-int oceanbase::mergeserver::get_ups_param(oceanbase::common::ObScanParam & param, 
-  const oceanbase::common::ObScanner & cs_result,
-  ObMemBuffer &range_buffer)
-{
-  int err = OB_SUCCESS;
-  bool is_fullfill = false;
-  int64_t fullfilled_row_num = 0;
-  ObReadParam &read_param = param;
-  ObRange cs_range;
-  ObString cs_max_rowkey;
-  bool use_max_rowkey = false;
-  err =  get_ups_read_param(read_param,cs_result);
-  if (OB_SUCCESS == err)
-  {
-    err = cs_result.get_is_req_fullfilled(is_fullfill,fullfilled_row_num);
-  }
-
-  if (OB_SUCCESS == err )
-  {
-    if (is_fullfill)
-    {
-      err = cs_result.get_range(cs_range);
-      if (OB_SUCCESS == err)
-      {
-        /// need change the new scan param range rowkey
-        if (false == is_finish_scan(param.get_scan_direction(), *param.get_range(), cs_range))
-        {
-          use_max_rowkey = true;
-          if (ObScanParam::FORWARD == param.get_scan_direction())
-          {
-            cs_max_rowkey = cs_range.end_key_;
-          }
-          else
-          {
-            // the smallest rowkey
-            cs_max_rowkey = cs_range.start_key_;
-          }
-        }
-      }
-    }
-    else
-    {
-      err = cs_result.get_last_row_key(cs_max_rowkey);
-      if (OB_SUCCESS != err)
-      {
-        TBSYS_LOG(WARN, "%s", "unexpected error, there should be at least one cell in the scanner");
-      }
-      use_max_rowkey = true;
-    }
-  }
-
-  if (OB_SUCCESS == err && use_max_rowkey)
-  {
-    ObRange new_range = *param.get_range();
-    if (ObScanParam::FORWARD == param.get_scan_direction())
-    {
-      new_range.end_key_ = cs_max_rowkey;
-      new_range.border_flag_.unset_max_value();
-      new_range.border_flag_.set_inclusive_end();
-    }
-    else
-    {
-      // the smallest row key
-      new_range.start_key_ = cs_max_rowkey;
-      new_range.border_flag_.unset_min_value();
-      if (is_fullfill)
-      {
-        // not inclusive the tablet range start key
-        new_range.border_flag_.unset_inclusive_start();
-      }
-      else
-      {
-        new_range.border_flag_.set_inclusive_start();
-      }
-    }
-
-    err = allocate_range_buffer(new_range,range_buffer);
-    if (OB_SUCCESS == err)
-    {
-      param.set(param.get_table_id(),param.get_table_name(),new_range);
-    }
-  }
-  return err;
-}
-
-int oceanbase::mergeserver::get_ups_param(ObGetParam & param, const ObScanner & cs_result)
-{
-  int err = OB_SUCCESS;
-  ObReadParam &read_param = param;
-  err =  get_ups_read_param(read_param,cs_result); 
-  if (OB_SUCCESS == err)
-  {
-    bool is_fullfilled = false;
-    int64_t fullfilled_cell_num  = 0;
-    err = cs_result.get_is_req_fullfilled(is_fullfilled, fullfilled_cell_num);
-    if (OB_SUCCESS == err && fullfilled_cell_num < param.get_cell_size())
-    {
-      err = param.rollback(param.get_cell_size() - fullfilled_cell_num);
-      if ((err != OB_SUCCESS) || (param.get_cell_size() != fullfilled_cell_num))
-      {
-        TBSYS_LOG(WARN, "check param rollback failed:full_fill[%ld], param_size[%ld]",
-          fullfilled_cell_num, param.get_cell_size());
-      }
-    }
-  }
-  return err;
-}
-
-
-
-int get_next_range_for_trivail_scan(const ObRange &org_scan_range,
+int get_next_range_for_trivail_scan(const ObNewRange &org_scan_range,
   const ObScanner &prev_scan_result,
-  const ObScanParam::Direction scan_direction,
-  ObRange &cur_range)
+  const ScanFlag::Direction scan_direction,
+  ObNewRange &cur_range)
 {
   int err = OB_SUCCESS;
-  ObRange tablet_range;
+  ObNewRange tablet_range;
   bool request_fullfilled = false;
   int64_t fullfilled_row_num = 0;
   err = prev_scan_result.get_is_req_fullfilled(request_fullfilled,fullfilled_row_num);
 
-  ObString last_row_key;
+  ObRowkey last_row_key;
   if (OB_SUCCESS == err)
   {
     if (request_fullfilled)
@@ -527,9 +321,9 @@ int get_next_range_for_trivail_scan(const ObRange &org_scan_range,
       {
         if (true == is_finish_scan(scan_direction, org_scan_range, tablet_range))
         {
-          err = OB_ITER_END; 
+          err = OB_ITER_END;
         }
-        else if (ObScanParam::FORWARD == scan_direction)
+        else if (ScanFlag::FORWARD == scan_direction)
         {
           last_row_key = tablet_range.end_key_;
         }
@@ -552,16 +346,14 @@ int get_next_range_for_trivail_scan(const ObRange &org_scan_range,
   {
     cur_range = org_scan_range;
     // forward
-    if (ObScanParam::FORWARD == scan_direction)
+    if (ScanFlag::FORWARD == scan_direction)
     {
       cur_range.start_key_ = last_row_key;
-      cur_range.border_flag_.unset_min_value();
       cur_range.border_flag_.unset_inclusive_start();
     }
     else
     {
       cur_range.end_key_ = last_row_key;
-      cur_range.border_flag_.unset_max_value();
       if (request_fullfilled)
       {
         // tablet range start key
@@ -580,33 +372,33 @@ int get_next_range_for_trivail_scan(const ObRange &org_scan_range,
 int oceanbase::mergeserver::get_next_range(const oceanbase::common::ObScanParam &org_scan_param,
   const ObScanner &prev_scan_result,
   const int64_t prev_limit_offset,
-  ObRange &cur_range,
-  int64_t & cur_limit_offset, 
+  ObNewRange &cur_range,
+  int64_t & cur_limit_offset,
   ObStringBuf &buf)
 {
   int err = OB_SUCCESS;
   cur_limit_offset = 0;
   cur_range.reset();
-  if ((OB_SUCCESS == err) 
-    && (org_scan_param.get_group_by_param().get_aggregate_row_width() > 0 ) 
+  if ((OB_SUCCESS == err)
+    && (org_scan_param.get_group_by_param().get_aggregate_row_width() > 0 )
     && (org_scan_param.get_orderby_column_size() <= 0))
   {
     TBSYS_LOG(WARN,"argument error [org_scan_param.get_group_by_param().get_aggregate_row_width():%ld,"
-      "org_scan_param.get_orderby_column_size():%ld]", org_scan_param.get_group_by_param().get_aggregate_row_width(), 
+      "org_scan_param.get_orderby_column_size():%ld]", org_scan_param.get_group_by_param().get_aggregate_row_width(),
       org_scan_param.get_orderby_column_size());
     err = OB_INVALID_ARGUMENT;
   }
   if ((OB_SUCCESS == err)
-    && (org_scan_param.get_scan_direction() == ObScanParam::BACKWARD)
+    && (org_scan_param.get_scan_direction() == ScanFlag::BACKWARD)
     && ((org_scan_param.get_orderby_column_size() > 0) || (org_scan_param.get_group_by_param().get_aggregate_row_width() > 0)))
   {
     TBSYS_LOG(WARN,"argument error, backward scan are limited only for backward page browsing, "
       "it doesn't support groupby or orderby [org_scan_param.get_group_by_param().get_aggregate_row_width():%ld,"
-      "org_scan_param.get_orderby_column_size():%ld]", org_scan_param.get_group_by_param().get_aggregate_row_width(), 
+      "org_scan_param.get_orderby_column_size():%ld]", org_scan_param.get_group_by_param().get_aggregate_row_width(),
       org_scan_param.get_orderby_column_size());
     err = OB_INVALID_ARGUMENT;
   }
-  ObRange tablet_range;
+  ObNewRange tablet_range;
   if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = prev_scan_result.get_range(tablet_range))))
   {
     TBSYS_LOG(WARN,"fail to get tablet range from prev result [err:%d]", err);
@@ -656,7 +448,6 @@ int oceanbase::mergeserver::get_next_range(const oceanbase::common::ObScanParam 
       {
         cur_range = *org_scan_param.get_range();
         cur_range.start_key_ = tablet_range.end_key_;
-        cur_range.border_flag_.unset_min_value();
         cur_range.border_flag_.unset_inclusive_start();
       }
     }
@@ -668,7 +459,7 @@ int oceanbase::mergeserver::get_next_range(const oceanbase::common::ObScanParam 
   }
   if (OB_SUCCESS == err)
   {
-    ObString str;
+    ObRowkey str;
     str = cur_range.start_key_;
     if ((OB_SUCCESS == err) && (str.length() > 0))
     {
@@ -690,18 +481,20 @@ int oceanbase::mergeserver::get_next_range(const oceanbase::common::ObScanParam 
 }
 
 
-int get_next_range_for_trivail_scan(const ObRange &org_scan_range,
+
+////// for sql scan //////////////
+int get_next_range_for_trivail_scan(const ObNewRange &org_scan_range,
   const ObNewScanner &prev_scan_result,
-  const ObScanParam::Direction scan_direction,
-  ObRange &cur_range)
+  const ScanFlag::Direction scan_direction,
+  ObNewRange &cur_range)
 {
   int err = OB_SUCCESS;
-  ObRange tablet_range;
+  ObNewRange tablet_range;
   bool request_fullfilled = false;
   int64_t fullfilled_row_num = 0;
   err = prev_scan_result.get_is_req_fullfilled(request_fullfilled,fullfilled_row_num);
 
-  ObString last_row_key;
+  ObRowkey last_row_key;
   if (OB_SUCCESS == err)
   {
     if (request_fullfilled)
@@ -711,15 +504,11 @@ int get_next_range_for_trivail_scan(const ObRange &org_scan_range,
       {
         if (true == is_finish_scan(scan_direction, org_scan_range, tablet_range))
         {
-          err = OB_ITER_END; 
-        }
-        else if (ObScanParam::FORWARD == scan_direction)
-        {
-          last_row_key = tablet_range.end_key_;
+          err = OB_ITER_END;
         }
         else
         {
-          last_row_key = tablet_range.start_key_;
+          last_row_key = tablet_range.end_key_;
         }
       }
     }
@@ -736,62 +525,23 @@ int get_next_range_for_trivail_scan(const ObRange &org_scan_range,
   {
     cur_range = org_scan_range;
     // forward
-    if (ObScanParam::FORWARD == scan_direction)
-    {
-      cur_range.start_key_ = last_row_key;
-      cur_range.border_flag_.unset_min_value();
-      cur_range.border_flag_.unset_inclusive_start();
-    }
-    else
-    {
-      cur_range.end_key_ = last_row_key;
-      cur_range.border_flag_.unset_max_value();
-      if (request_fullfilled)
-      {
-        // tablet range start key
-        cur_range.border_flag_.set_inclusive_end();
-      }
-      else
-      {
-        // the smallest rowkey
-        cur_range.border_flag_.unset_inclusive_end();
-      }
-    }
+    cur_range.start_key_ = last_row_key;
+    cur_range.border_flag_.unset_inclusive_start();
   }
   return err;
 }
 
-
-int oceanbase::mergeserver::get_next_range(const oceanbase::common::ObScanParam &org_scan_param,
+int oceanbase::mergeserver::get_next_range(const oceanbase::sql::ObSqlScanParam &org_scan_param,
   const ObNewScanner &prev_scan_result,
   const int64_t prev_limit_offset,
-  ObRange &cur_range,
-  int64_t & cur_limit_offset, 
+  ObNewRange &cur_range,
+  int64_t & cur_limit_offset,
   ObStringBuf &buf)
 {
   int err = OB_SUCCESS;
   cur_limit_offset = 0;
   cur_range.reset();
-  if ((OB_SUCCESS == err) 
-    && (org_scan_param.get_group_by_param().get_aggregate_row_width() > 0 ) 
-    && (org_scan_param.get_orderby_column_size() <= 0))
-  {
-    TBSYS_LOG(WARN,"argument error [org_scan_param.get_group_by_param().get_aggregate_row_width():%ld,"
-      "org_scan_param.get_orderby_column_size():%ld]", org_scan_param.get_group_by_param().get_aggregate_row_width(), 
-      org_scan_param.get_orderby_column_size());
-    err = OB_INVALID_ARGUMENT;
-  }
-  if ((OB_SUCCESS == err)
-    && (org_scan_param.get_scan_direction() == ObScanParam::BACKWARD)
-    && ((org_scan_param.get_orderby_column_size() > 0) || (org_scan_param.get_group_by_param().get_aggregate_row_width() > 0)))
-  {
-    TBSYS_LOG(WARN,"argument error, backward scan are limited only for backward page browsing, "
-      "it doesn't support groupby or orderby [org_scan_param.get_group_by_param().get_aggregate_row_width():%ld,"
-      "org_scan_param.get_orderby_column_size():%ld]", org_scan_param.get_group_by_param().get_aggregate_row_width(), 
-      org_scan_param.get_orderby_column_size());
-    err = OB_INVALID_ARGUMENT;
-  }
-  ObRange tablet_range;
+  ObNewRange tablet_range;
   if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = prev_scan_result.get_range(tablet_range))))
   {
     TBSYS_LOG(WARN,"fail to get tablet range from prev result [err:%d]", err);
@@ -807,7 +557,7 @@ int oceanbase::mergeserver::get_next_range(const oceanbase::common::ObScanParam 
     }
   }
 
-  if ((OB_SUCCESS == err) && (org_scan_param.get_orderby_column_size() <= 0))
+  if (OB_SUCCESS == err)
   {
     err = get_next_range_for_trivail_scan(*org_scan_param.get_range(),prev_scan_result,
       org_scan_param.get_scan_direction(),cur_range);
@@ -816,44 +566,9 @@ int oceanbase::mergeserver::get_next_range(const oceanbase::common::ObScanParam 
       TBSYS_LOG(WARN,"fail to get next range [err:%d]", err);
     }
   }
-  else if ((OB_SUCCESS == err) && (org_scan_param.get_orderby_column_size() > 0))
-  {
-    int64_t fullfilled_item_num = 0;
-    bool is_fullfill = false;
-    if (OB_SUCCESS != (err = prev_scan_result.get_is_req_fullfilled(is_fullfill,fullfilled_item_num)))
-    {
-      TBSYS_LOG(WARN,"fail to get fullfill info from prev result [err:%d]", err);
-    }
-    if ((OB_SUCCESS == err) && (fullfilled_item_num != prev_scan_result.get_row_num()))
-    {
-      /// TBSYS_LOG(ERROR,"unexpected error [prev_result::fullfilled_item_num:%ld, prev_result::get_row_num():%ld]",
-      ///   fullfilled_item_num, prev_scan_result.get_row_num());
-      /// err = OB_ERR_UNEXPECTED;
-      fullfilled_item_num = prev_scan_result.get_row_num();
-    }
-    if ((OB_SUCCESS == err) && is_fullfill)
-    {
-      if (is_finish_scan(org_scan_param.get_scan_direction(),*org_scan_param.get_range(),tablet_range))
-      {
-        err = OB_ITER_END;
-      }
-      else
-      {
-        cur_range = *org_scan_param.get_range();
-        cur_range.start_key_ = tablet_range.end_key_;
-        cur_range.border_flag_.unset_min_value();
-        cur_range.border_flag_.unset_inclusive_start();
-      }
-    }
-    if ((OB_SUCCESS == err) && !is_fullfill)
-    {
-      cur_range = *org_scan_param.get_range();
-      cur_limit_offset = prev_limit_offset + fullfilled_item_num;
-    }
-  }
   if (OB_SUCCESS == err)
   {
-    ObString str;
+    ObRowkey str;
     str = cur_range.start_key_;
     if ((OB_SUCCESS == err) && (str.length() > 0))
     {

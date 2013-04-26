@@ -16,15 +16,15 @@
 #include "ob_tablet_join.h"
 #include "common/ob_compact_cell_iterator.h"
 #include "common/ob_compact_cell_writer.h"
-#include "common/ob_ups_row_util.h"
+#include "common/ob_row_util.h"
 #include "common/ob_row_fuse.h"
+#include "common/utility.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::sql;
 
 ObTabletJoin::JoinInfo::JoinInfo()
-  :right_table_id_(OB_INVALID_ID),
-  left_column_id_(OB_INVALID_ID),
+  :left_column_id_(OB_INVALID_ID),
   right_column_id_(OB_INVALID_ID)
 {
 }
@@ -34,10 +34,28 @@ ObTabletJoin::TableJoinInfo::TableJoinInfo()
 {
 }
 
+void ObTabletJoin::reset()
+{
+  ups_row_desc_.reset();
+  ups_row_desc_for_join_.reset();
+
+  fused_row_store_.clear();
+  fused_row_iter_end_ = false;
+  fused_row_ = NULL;
+  fused_row_array_.clear();
+  fused_row_idx_ = 0;
+  valid_fused_row_count_ = 0;
+}
+
 ObTabletJoin::ObTabletJoin()
   :batch_count_(0),
+  fused_row_iter_end_(false),
   fused_scan_(NULL),
-  ups_multi_get_(NULL)
+  fused_row_store_(),
+  fused_row_(NULL),
+  fused_row_idx_(0),
+  is_read_consistency_(true),
+  valid_fused_row_count_(0)
 {
 }
 
@@ -45,32 +63,13 @@ ObTabletJoin::~ObTabletJoin()
 {
 }
 
-int ObTabletJoin::add_column_id(uint64_t column_id)
-{
-  int ret = OB_SUCCESS;
-  if(OB_INVALID_ID == table_join_info_.left_table_id_)
-  {
-    ret = OB_ERROR;
-    TBSYS_LOG(WARN, "please set tablet_join_info first");
-  }
-  else
-  {
-    if(OB_SUCCESS != (ret = curr_row_desc_.add_column_desc(table_join_info_.left_table_id_, column_id)))
-    {
-      TBSYS_LOG(WARN, "add column desc fail:ret[%d]", ret);
-    }
-  }
-  return ret;
-}
-
-
 bool ObTabletJoin::check_inner_stat()
 {
   bool ret = true;
-  if(NULL == fused_scan_ || 0 == batch_count_ || NULL == ups_multi_get_)
+  if(NULL == fused_scan_ || 0 == batch_count_)
   {
     ret = false;
-    TBSYS_LOG(WARN, "check inner stat fail:fused_scan_[%p], batch_count_[%ld], ups_multi_get_[%p]", fused_scan_, batch_count_, ups_multi_get_);
+    TBSYS_LOG(WARN, "check inner stat fail:fused_scan_[%p], batch_count_[%ld]", fused_scan_, batch_count_);
   }
   return ret;
 }
@@ -81,7 +80,12 @@ int ObTabletJoin::set_child(int32_t child_idx, ObPhyOperator &child_operator)
   switch(child_idx)
   {
     case 0:
-      fused_scan_ = &child_operator;
+      fused_scan_ = dynamic_cast<ObTabletFuse *>(&child_operator);
+      if(NULL == fused_scan_)
+      {
+        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(WARN, "child operator is not ObTabletFuse");
+      }
       break;
     default:
       ret = OB_ERR_UNEXPECTED;
@@ -102,19 +106,21 @@ int ObTabletJoin::open()
   {
     TBSYS_LOG(WARN, "open fused scan fail:ret[%d]", ret);
   }
-  else if(OB_SUCCESS != (ret = ups_row_cache_.init(KVCACHE_SIZE)))
-  {
-    TBSYS_LOG(WARN, "init join cache fail:ret[%d]", ret);
-  }
   else if(OB_SUCCESS != (ret = gen_ups_row_desc()))
   {
     TBSYS_LOG(WARN, "gen ups row desc:ret[%d]", ret);
   }
-  else
+
+  if(OB_SUCCESS == ret)
   {
-    ups_row_cache_.clear();
     fused_row_store_.clear();
+    fused_row_iter_end_ = false;
+    fused_row_ = NULL;
+    fused_row_array_.clear();
+    fused_row_idx_ = 0;
+    valid_fused_row_count_ = 0;
   }
+
   return ret;
 }
 
@@ -131,7 +137,7 @@ int ObTabletJoin::close()
   return ret;
 }
 
-int ObTabletJoin::compose_get_param(uint64_t table_id, const ObString &rowkey, ObGetParam &get_param)
+int ObTabletJoin::compose_get_param(uint64_t table_id, const ObRowkey &rowkey, ObGetParam &get_param)
 {
   int ret = OB_SUCCESS;
 
@@ -140,61 +146,106 @@ int ObTabletJoin::compose_get_param(uint64_t table_id, const ObString &rowkey, O
   cell_info.row_key_ = rowkey;
   JoinInfo join_info;
 
-  for(int64_t i=0; (OB_SUCCESS == ret) && i<table_join_info_.join_column_.count();i++)
+  if(get_param.get_cell_size() > 0 && (rowkey == get_param[get_param.get_cell_size() - 1]->row_key_))
   {
-    if(OB_SUCCESS != (ret = table_join_info_.join_column_.at(i, join_info)))
+    //相同的内容，省略，不只是优化，必须省略
+  }
+  else
+  {
+    for(int64_t i=0; (OB_SUCCESS == ret) && i<table_join_info_.join_column_.count();i++)
     {
-      TBSYS_LOG(WARN, "get join info fail:ret[%d], i[%ld]", ret, i);
-    }
-    else
-    {
-      cell_info.column_id_ = join_info.right_column_id_;
-      if(OB_SUCCESS != (ret = get_param.add_cell(cell_info)))
+      if(OB_SUCCESS != (ret = table_join_info_.join_column_.at(i, join_info)))
       {
-        TBSYS_LOG(WARN, "add cell info to get_param fail:ret[%d]", ret);
+        TBSYS_LOG(WARN, "get join info fail:ret[%d], i[%ld]", ret, i);
+      }
+      else
+      {
+        cell_info.column_id_ = join_info.right_column_id_;
+        ret = get_param.add_cell(cell_info);
+        if (OB_SIZE_OVERFLOW == ret)
+        {
+          if (0 != i)
+          {
+            if (OB_SUCCESS != (ret = get_param.rollback(i)))
+            {
+              TBSYS_LOG(WARN, "fail to rollback get param:ret[%d], i[%ld]", ret, i);
+            }
+            else
+            {
+              ret = OB_SIZE_OVERFLOW;
+            }
+          }
+          TBSYS_LOG(INFO, "batch count is too large[%ld], get param capability[%ld]", batch_count_, get_param.get_row_size());
+        }
+        else if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "add cell info to get_param fail:ret[%d]", ret);
+        }
       }
     }
   }
   return ret;
 }
 
-int ObTabletJoin::get_right_table_rowkey(const ObRow &row, uint64_t &right_table_id, ObString &rowkey) const
+int ObTabletJoin::get_right_table_rowkey(const ObRow &row, ObRowkey &rowkey, ObObj *rowkey_obj) const
 {
   int ret = OB_SUCCESS;
   const ObObj *cell = NULL;
-  JoinInfo join_info;
+  int64_t count = table_join_info_.join_condition_.count();
+  uint64_t left_column_id = OB_INVALID_ID;
 
-  if(OB_SUCCESS != (ret = table_join_info_.join_condition_.at(0, join_info)))
+  if(NULL == rowkey_obj)
   {
-    TBSYS_LOG(WARN, "get join condition fail:ret[%d]", ret);
+    ret = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(WARN, "rowkey_obj is null");
   }
 
   if(OB_SUCCESS == ret)
   {
-    right_table_id = join_info.right_table_id_;
+    for(int32_t i=0;OB_SUCCESS == ret && i<count;i++)
+    {
+      if(OB_SUCCESS != (ret = table_join_info_.join_condition_.at(i, left_column_id)))
+      {
+        TBSYS_LOG(WARN, "get join condition fail:ret[%d], i[%d]", ret, i);
+      }
+      else if(OB_SUCCESS != (ret = row.get_cell(table_join_info_.left_table_id_, left_column_id, cell)))
+      {
+        TBSYS_LOG(WARN, "row get cell fail:ret[%d]", ret);
+      }
+      else if( i >= OB_MAX_ROWKEY_COLUMN_NUMBER )
+      {
+        ret = OB_SIZE_OVERFLOW;
+        TBSYS_LOG(WARN, "join condition array length is great than right table rowkey obj length:i[%d]", i);
+      }
+      else
+      {
+        rowkey_obj[i] = *cell;
+      }
+    }
+  }
 
-    if(OB_SUCCESS != (ret = row.get_cell(table_join_info_.left_table_id_, join_info.left_column_id_, cell)))
-    {
-      TBSYS_LOG(WARN, "row get cell fail:ret[%d]", ret);
-    }
-    else if(OB_SUCCESS != (ret = cell->get_varchar(rowkey)))
-    {
-      TBSYS_LOG(WARN, "get_varchar fail:ret[%d]", ret);
-    }
+  if(OB_SUCCESS == ret)
+  {
+    rowkey.assign(rowkey_obj, count);
   }
 
   return ret;
 }
 
+int ObTabletJoin::fetch_fused_row_prepare()
+{
+  return OB_SUCCESS;
+}
+
 int ObTabletJoin::fetch_fused_row(ObGetParam *get_param)
 {
   int ret = OB_SUCCESS;
-  const ObRow *scan_row = NULL;
-  bool is_end = true;
   const ObRowStore::StoredRow *stored_row = NULL;
-  ObString rowkey;
-  ObString value;
-  uint64_t right_table_id = OB_INVALID_ID;
+
+  fused_row_store_.clear();
+  fused_row_array_.clear();
+  fused_row_idx_ = 0;
+  valid_fused_row_count_ = 0;
 
   if(NULL == get_param)
   {
@@ -202,50 +253,73 @@ int ObTabletJoin::fetch_fused_row(ObGetParam *get_param)
     TBSYS_LOG(WARN, "get param is null");
   }
 
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = fetch_fused_row_prepare()))
+    {
+      TBSYS_LOG(WARN, "fetch fused row prepare fail:ret[%d]", ret);
+    }
+  }
+
   for(int64_t i=0;(OB_SUCCESS == ret) && i < batch_count_;i++)
   {
-    ret = fused_scan_->get_next_row(scan_row);
+    if(NULL == fused_row_)
+    {
+      ret = fused_scan_->get_next_row(fused_row_);
+      if(OB_ITER_END == ret)
+      {
+        break;
+      }
+      else if(OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "get next row from fused scan fail:ret[%d]", ret);
+      }
+    }
+
     if(OB_SUCCESS == ret)
     {
-      is_end = false;
-      if(OB_SUCCESS != (ret = fused_row_store_.add_row(*scan_row, stored_row)))
+      ret = fused_row_store_.add_row(*fused_row_, stored_row);
+      if(OB_SIZE_OVERFLOW == ret)
+      {
+        TBSYS_LOG(DEBUG, "fused row store size overflow");
+        ret = OB_SUCCESS;
+        break;
+      }
+      else if(OB_SUCCESS != ret)
       {
         TBSYS_LOG(WARN, "add row to row store fail:ret[%d]", ret);
       }
-      else if(OB_SUCCESS != (ret = get_right_table_rowkey(*scan_row, right_table_id, rowkey)))
+      else if (OB_SUCCESS != (ret = fused_row_array_.push_back(stored_row)))
       {
-        TBSYS_LOG(WARN, "get rowkey from tmp_row fail:ret[%d]", ret);
+        TBSYS_LOG(WARN, "add item to fused row array fail:ret[%d]", ret);
       }
+      else
+      {
+        valid_fused_row_count_ ++;
+      }
+    }
 
-      if(OB_SUCCESS == ret)
-      {
-        ret = ups_row_cache_.get(rowkey, value);
-        if(OB_ENTRY_NOT_EXIST == ret)
-        {
-          if(OB_SUCCESS != (ret = compose_get_param(right_table_id, rowkey, *get_param)))
-          {
-            TBSYS_LOG(WARN, "compose get param fail:ret[%d]", ret);
-          }
-        }
-        else if(OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "join cache get fail:ret[%d]", ret);
-        }
-      }
-    }
-    else if(OB_ITER_END == ret)
+    if (OB_SUCCESS == ret)
     {
-      if(!is_end)
+      ret = gen_get_param(*get_param, *fused_row_);
+      if (OB_SIZE_OVERFLOW == ret)
       {
+        valid_fused_row_count_ = fused_row_array_.count() - 1;
         ret = OB_SUCCESS;
+        break;
       }
-      break;
-    }
-    else
-    {
-      TBSYS_LOG(WARN, "get next row from fused scan fail:ret[%d]", ret);
+      else if(OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "gen get param fail:ret[%d]", ret);
+      }
+      else
+      {
+        fused_row_ = NULL;
+      }
     }
   }
+
+  TBSYS_LOG(DEBUG, "fetch fused row count[%ld]", fused_row_array_.count());
 
   return ret;
 }
@@ -260,7 +334,7 @@ int ObTabletJoin::gen_ups_row_desc()
     {
       TBSYS_LOG(WARN, "get join column fail:ret[%d], i[%ld]", ret, i);
     }
-    else if(OB_SUCCESS != (ret = ups_row_desc_.add_column_desc(join_info.right_table_id_, join_info.right_column_id_)))
+    else if(OB_SUCCESS != (ret = ups_row_desc_.add_column_desc(table_join_info_.right_table_id_, join_info.right_column_id_)))
     {
       TBSYS_LOG(WARN, "ups_row_desc_ add column desc fail:ret[%d]", ret);
     }
@@ -272,13 +346,10 @@ int ObTabletJoin::gen_ups_row_desc()
   return ret;
 }
 
-int ObTabletJoin::fetch_ups_row(ObGetParam *get_param)
+int ObTabletJoin::fetch_next_batch_row(ObGetParam *get_param)
 {
   int ret = OB_SUCCESS;
-  const ObUpsRow *ups_row = NULL;
-  ObString compact_row; //用于存储ObRow的紧缩格式，内存已经分配好
-  const ObString *rowkey = NULL;
-  ThreadSpecificBuffer::Buffer *buffer = NULL;
+
   if(NULL == get_param)
   {
     ret = OB_INVALID_ARGUMENT;
@@ -287,71 +358,20 @@ int ObTabletJoin::fetch_ups_row(ObGetParam *get_param)
 
   if(OB_SUCCESS == ret)
   {
-    buffer = thread_buffer_.get_buffer();
-    if(NULL == buffer)
+    get_param->reset(true);
+    get_param->set_version_range(version_range_);
+    get_param->set_is_read_consistency(is_read_consistency_);
+    if(OB_SUCCESS != (ret = fetch_fused_row(get_param)))
     {
-      ret = OB_ALLOCATE_MEMORY_FAILED;
-      TBSYS_LOG(WARN, "get thread specific buffer fail:ret[%d]", ret);
-    }
-    else
-    {
-      buffer->reset();
-    }
-  }
-
-  if(OB_SUCCESS == ret && get_param->get_cell_size() > 0)
-  {
-    ups_multi_get_->reset();
-    ups_multi_get_->set_get_param(*get_param);
-    ups_multi_get_->set_row_desc(ups_row_desc_);
-    
-    if(OB_SUCCESS != (ret = ups_multi_get_->open()))
-    {
-      TBSYS_LOG(WARN, "open ups multi get fail:ret[%d]", ret);
-    }
-
-    while(OB_SUCCESS == ret)
-    {
-      const ObRow *tmp_row_ptr = NULL;
-      ret = ups_multi_get_->get_next_row(rowkey, tmp_row_ptr);
-      if(OB_ITER_END == ret)
+      if(OB_ITER_END != ret)
       {
-        ret = OB_SUCCESS;
-        break;
-      }
-      else if(OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(WARN, "ups multi get next row fail:ret[%d]", ret);
+        TBSYS_LOG(ERROR, "fetch_fused_row fail :ret[%d]", ret);
       }
       else
       {
-        ups_row = dynamic_cast<const ObUpsRow *>(tmp_row_ptr);
-        if(NULL == ups_row)
-        {
-          ret = OB_ERR_UNEXPECTED;
-          TBSYS_LOG(WARN, "shoud be ObUpsRow");
-        }
-      }
-
-      if(OB_SUCCESS == ret)
-      {
-        compact_row.assign_buffer(buffer->current(), buffer->remain());
-        if(OB_SUCCESS != (ret = ObUpsRowUtil::convert(*ups_row, compact_row)))
-        {
-          TBSYS_LOG(WARN, "convert ups row to compact row fail:ret[%d]", ret);
-        }
-        else if(OB_SUCCESS != (ret = ups_row_cache_.put(*rowkey, compact_row)))
-        {
-          TBSYS_LOG(WARN, "join cache put fail:ret[%d]", ret);
-        }
-      }
-    }
-
-    if(OB_SUCCESS == ret && NULL != ups_multi_get_)
-    {
-      if(OB_SUCCESS != (ret = ups_multi_get_->close()))
-      {
-        TBSYS_LOG(WARN, "close ups multi get fail:ret[%d]", ret);
+        TBSYS_LOG(DEBUG, "fused row iterate end.");
+        fused_row_iter_end_ = true;
+        ret = OB_SUCCESS;
       }
     }
   }
@@ -359,114 +379,113 @@ int ObTabletJoin::fetch_ups_row(ObGetParam *get_param)
   return ret;
 }
 
-
 int ObTabletJoin::get_next_row(const ObRow *&row)
 {
   int ret = OB_SUCCESS;
-  ObString rowkey;
-  ObString value;
+  ObRowkey rowkey;
+  ObObj rowkey_obj[OB_MAX_ROWKEY_COLUMN_NUMBER];
   ObRow tmp_row;
   ObUpsRow tmp_ups_row;
-
-  tmp_row.set_row_desc(curr_row_desc_);
-  tmp_ups_row.set_row_desc(ups_row_desc_);
-
+  const ObRowStore::StoredRow *stored_row = NULL;
   ObGetParam *get_param = NULL;
-  uint64_t right_table_id = OB_INVALID_ID;
+  const ObRowDesc *row_desc = NULL;
 
-  if(NULL == (get_param = GET_TSI_MULT(ObGetParam, common::TSI_SQL_GET_PARAM_1)))
+  tmp_ups_row.set_row_desc(ups_row_desc_);
+      
+  if(NULL == fused_scan_)
   {
-    ret = OB_ALLOCATE_MEMORY_FAILED;
-    TBSYS_LOG(WARN, "get tsi get_param fail:ret[%d]", ret);
+    ret = OB_ERROR;
+    TBSYS_LOG(WARN, "fuse_scan_ is null");
+  }
+  else if (OB_SUCCESS != (ret = fused_scan_->get_row_desc(row_desc) ))
+  {
+    TBSYS_LOG(WARN, "fail to get row desc:ret[%d]", ret);
   }
   else
   {
-    get_param->reset(true);
+    tmp_row.set_row_desc(*row_desc);
   }
-
-  bool row_valid = false;
-
+  
   if(OB_SUCCESS == ret)
   {
-    ret = fused_row_store_.get_next_row(tmp_row);
-    /* 如果fused cache里面的行已经使用完 */
-    if(OB_ITER_END == ret)
+    if (fused_row_idx_ >= valid_fused_row_count_)
     {
-      fused_row_store_.clear();
-      if(OB_SUCCESS != (ret = fetch_fused_row(get_param)))
+      if (fused_row_iter_end_)
       {
-        if(OB_ITER_END != ret)
-        {
-          TBSYS_LOG(WARN, "fetch_fused_row fail :ret[%d]", ret);
-        }
-      }
-      else if(OB_SUCCESS != (ret = fetch_ups_row(get_param)))
-      {
-        TBSYS_LOG(WARN, "fetch_ups_row fail:ret[%d]", ret);
-      }
-    }
-    else if(OB_SUCCESS == ret)
-    {
-      row_valid = true;
-    }
-    else
-    {
-      TBSYS_LOG(WARN, "fused row store next row fail:ret[%d]", ret);
-    }
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    if(!row_valid)
-    {
-      ret = fused_row_store_.get_next_row(tmp_row);
-      if(OB_SUCCESS != ret || OB_ITER_END == ret)
-      {
-        TBSYS_LOG(WARN, "fused row store next row fail:ret[%d]", ret);
-      }
-    }
-
-    if(OB_SUCCESS == ret)
-    {
-      if(OB_SUCCESS != (ret = get_right_table_rowkey(tmp_row, right_table_id, rowkey)))
-      {
-        TBSYS_LOG(WARN, "get rowkey from tmp_row fail:ret[%d]", ret);
-      }
-    }
-
-    if(OB_SUCCESS == ret)
-    {
-      ret = ups_row_cache_.get(rowkey, value);
-      if(OB_SUCCESS == ret)
-      {
-        if(OB_SUCCESS != (ret = ObUpsRowUtil::convert(right_table_id, value, tmp_ups_row)))
-        {
-          TBSYS_LOG(WARN, "convert to ups row fail:ret[%d]", ret);
-        }
-        else
-        {
-          tmp_ups_row.set_row_desc(ups_row_desc_for_join_);
-          if(OB_SUCCESS != (ret = ObRowFuse::fuse_row(&tmp_ups_row, &tmp_row, &curr_row_)))
-          {
-            TBSYS_LOG(WARN, "fused ups row to row fail:ret[%d]", ret);
-          }
-          else
-          {
-            row = &curr_row_;
-          }
-        }
-      }
-      else if(OB_ENTRY_NOT_EXIST == ret)
-      {
-        curr_row_.assign(tmp_row);
-        row = &curr_row_;
-        ret = OB_SUCCESS;
+        TBSYS_LOG(DEBUG, "no more data in fused_row_.");
+        ret = OB_ITER_END;
       }
       else
       {
-        TBSYS_LOG(WARN, "ups_row_cache_ get fail:ret[%d] rowkey[%.*s]", ret, rowkey.length(), rowkey.ptr());
+        if(NULL == (get_param = GET_TSI_MULT(ObGetParam, common::TSI_SQL_GET_PARAM_1)))
+        {
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+          TBSYS_LOG(WARN, "get tsi get_param fail:ret[%d]", ret);
+        }
+        else
+        {
+          get_param->reset(true);
+          get_param->set_is_read_consistency(is_read_consistency_);
+        }
+        if (OB_SUCCESS == ret)
+        {
+          if (OB_SUCCESS != (ret = fetch_next_batch_row(get_param)))
+          {
+            TBSYS_LOG(WARN, "fetch next batch row fail:ret[%d]", ret);
+          }
+          else if(0 == valid_fused_row_count_)
+          {
+            TBSYS_LOG(DEBUG, "no more data in fused_row_.");
+            ret = OB_ITER_END;
+          }
+        }
       }
     }
+    else if(OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "get next row from fused row store fail:ret[%d]", ret);
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    if(OB_SUCCESS != (ret = fused_row_array_.at(fused_row_idx_, stored_row)))
+    {
+      TBSYS_LOG(WARN, "get item from fused row array fail:ret[%d], fused_row_idx_[%ld], array_count[%ld]", ret, fused_row_idx_, fused_row_array_.count());
+    }
+    else if(OB_SUCCESS != (ret = ObRowUtil::convert(stored_row->get_compact_row(), tmp_row)))
+    {
+      TBSYS_LOG(WARN, "convert ob row fail:ret[%d]", ret);
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    if(OB_SUCCESS != (ret = get_right_table_rowkey(tmp_row, rowkey, rowkey_obj)))
+    {
+      TBSYS_LOG(WARN, "get rowkey from tmp_row fail:ret[%d]", ret);
+    }
+    else if (OB_SUCCESS != (ret = get_ups_row(rowkey, tmp_ups_row, *get_param)))
+    {
+      TBSYS_LOG(WARN, "get ups row fail:rowkey[%s], ret[%d]", to_cstring(rowkey), ret);
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    fused_row_idx_ ++;
+    tmp_ups_row.set_row_desc(ups_row_desc_for_join_);
+    TBSYS_LOG(DEBUG, "fuse_row: incrow:%s, sstable row:%s", 
+        to_cstring(tmp_ups_row), to_cstring(tmp_row));
+    if(OB_SUCCESS != (ret = ObRowFuse::join_row(&tmp_ups_row, &tmp_row, &curr_row_)))
+    {
+      TBSYS_LOG(WARN, "fused ups row to row fail:ret[%d]", ret);
+    }
+    else
+    {
+      row = &curr_row_;
+    }
+    TBSYS_LOG(DEBUG, "fuse_row dest row:%s", to_cstring(curr_row_));
   }
 
   return ret;
@@ -474,9 +493,33 @@ int ObTabletJoin::get_next_row(const ObRow *&row)
 
 int64_t ObTabletJoin::to_string(char* buf, const int64_t buf_len) const
 {
-  UNUSED(buf);
-  UNUSED(buf_len);
-  return 0;
+  int64_t pos = 0;
+  databuff_printf(buf, buf_len, pos, "TabletJoin()\n");
+  if (NULL != fused_scan_)
+  {
+    pos += fused_scan_->to_string(buf+pos, buf_len-pos);
+  }
+  return pos;
+}
+
+int ObTabletJoin::get_row_desc(const common::ObRowDesc *&row_desc) const
+{
+  int ret = OB_SUCCESS;
+  if (NULL == fused_scan_)
+  {
+    ret = OB_NOT_INIT;
+    TBSYS_LOG(WARN, "fused_scan_ is null");
+  }
+  else if (OB_SUCCESS != (ret = fused_scan_->get_row_desc(row_desc)))
+  {
+    TBSYS_LOG(WARN, "fail to get row desc:ret[%d]", ret);
+  }
+  return ret;
+}
+
+void ObTabletJoin::set_network_timeout(int64_t network_timeout)
+{
+  ups_multi_get_.set_network_timeout(network_timeout);
 }
 
 

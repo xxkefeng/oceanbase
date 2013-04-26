@@ -28,8 +28,8 @@ namespace
   static const char* OBUPS_PORT = "port";
 
   static const char* OBMS_SECTION  = "merge_server";
-  static const char* OBMS_MERGE_SERVER_COUNT = "merge_server_count";
   static const char* OBMS_MERGE_SERVER_STR = "merge_server_str";
+  static const char* OBMS_CHUNK_SERVER_STR = "chunk_server_str";
 
   static const char* OBSC_SECTION = "syschecker";
   static const char* OBSC_WRITE_THREAD_COUNT = "write_thread_count";
@@ -41,6 +41,7 @@ namespace
   static const char* OBSC_OPERATE_FULL_ROW = "operate_full_row";
   static const char* OBSC_STAT_DUMP_INTERVAL = "stat_dump_interval";
   static const char* OBSC_PERF_TEST = "perf_test";
+  static const char* OBSC_SQL_READ = "sql_read";
   static const char* OBSC_CHECK_RESULT = "check_result";
   static const char* OBSC_READ_TABLE_TYPE = "read_table_type";
   static const char* OBSC_WRITE_TABLE_TYPE = "write_table_type";
@@ -57,16 +58,25 @@ namespace oceanbase
 
     ObSyscheckerParam::ObSyscheckerParam()
     {
-      memset(this, 0, sizeof(ObSyscheckerParam));
+      network_time_out_ = 0;
+      write_thread_count_ = 0;
+      read_thread_count_ = 0;
+      syschecker_count_ = 0;
+      syschecker_no_ = 0;
+      specified_read_param_ = 0;
+      operate_full_row_ = 0;
+      stat_dump_interval_ = 0;
+      perf_test_ = 0;
+      check_result_ = 0;
+      read_table_type_ = 0;
+      write_table_type_ = 0;
+      get_row_cnt_ = 0;
+      scan_row_cnt_ = 0;
+      update_row_cnt_ = 0;
     }
 
     ObSyscheckerParam::~ObSyscheckerParam()
     {
-      if (NULL != merge_server_)
-      {
-        ob_free(merge_server_);
-        merge_server_ = NULL;
-      }
     }
 
     int ObSyscheckerParam::load_string(char* dest, const int64_t size, 
@@ -109,7 +119,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerParam::parse_merge_server(char* str)
+    int ObSyscheckerParam::parse_server(char* str, common::ObArray<common::ObServer>& servers)
     {
       int ret           = OB_SUCCESS;
       char *str_ptr     = NULL;
@@ -118,7 +128,7 @@ namespace oceanbase
       char *end_ptr     = str + strlen(str);
       char *ptr         = NULL;
       int64_t length    = 0;
-      int64_t cur_index = 0;
+      ObServer server;
       char buffer[OB_MAX_IP_SIZE];
 
       if (NULL == str)
@@ -157,23 +167,11 @@ namespace oceanbase
           port = static_cast<int32_t>(strtol(ptr, (char**)NULL, 10));
         }
 
-        if (NULL != merge_server_ && cur_index < merge_server_count_)
+        server.set_ipv4_addr(buffer, port);
+        ret = servers.push_back(server);
+        if (OB_SUCCESS != ret)
         {
-          bool res = merge_server_[cur_index++].set_ipv4_addr(buffer, port);
-          if (!res)
-          {
-            TBSYS_LOG(WARN, "invalid merge server index=%ld, ip=%s, port=%d.", 
-                      cur_index, buffer, port);
-            ret = OB_ERROR;
-            break;
-          }
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "no space to store merge server, merge_server_=%p, "
-                          "merge_server_count_=%ld, cur_index=%ld", 
-                    merge_server_, merge_server_count_, cur_index);
-          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "invalid merge server ip=%s, port=%d.", buffer, port);
           break;
         }
 
@@ -186,51 +184,27 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyscheckerParam::load_merge_server()
+    int ObSyscheckerParam::load_server()
     {
       int ret = OB_SUCCESS;
-      char merge_server_str[OB_MAX_MERGE_SERVER_STR_SIZE];
+      char server_str[OB_MAX_MERGE_SERVER_STR_SIZE];
 
-      if (OB_SUCCESS == ret)
+      if (OB_SUCCESS != (ret = load_string(server_str, OB_MAX_MERGE_SERVER_STR_SIZE, 
+              OBMS_SECTION, OBMS_MERGE_SERVER_STR, false)))
       {
-        merge_server_count_ = TBSYS_CONFIG.getInt(OBMS_SECTION, 
-                                                  OBMS_MERGE_SERVER_COUNT, 0);
-        if (merge_server_count_ <= 0)
-        {
-          TBSYS_LOG(WARN, "syschecker merge server count=%ld can't <= 0." ,
-              merge_server_count_);
-          ret = OB_INVALID_ARGUMENT;
-        }
+      }
+      else if (server_str[0] != 0 && OB_SUCCESS != (ret = parse_server(server_str, merge_servers_)))
+      {
+        TBSYS_LOG(WARN, "failed to parse merge server string");
       }
 
-      if (OB_SUCCESS == ret)
+      if (OB_SUCCESS != (ret = load_string(server_str, OB_MAX_MERGE_SERVER_STR_SIZE, 
+              OBMS_SECTION, OBMS_CHUNK_SERVER_STR, false)))
       {
-        merge_server_ = reinterpret_cast<ObServer*>
-          (ob_malloc(merge_server_count_ * sizeof(ObServer)));
-        if (NULL == merge_server_)
-        {
-          TBSYS_LOG(ERROR, "failed allocate for merge servers array.");
-          ret = OB_ERROR;
-        }
-        else
-        {
-          memset(merge_server_, 0, merge_server_count_ * sizeof(ObServer));
-        }
       }
-
-      if (OB_SUCCESS == ret)
+      else if (server_str[0] != 0 && OB_SUCCESS != (ret = parse_server(server_str, chunk_servers_)))
       {
-        ret = load_string(merge_server_str, OB_MAX_MERGE_SERVER_STR_SIZE, 
-                          OBMS_SECTION, OBMS_MERGE_SERVER_STR, true);
-      }
-
-      if (OB_SUCCESS == ret)
-      {
-        ret = parse_merge_server(merge_server_str);
-        if (OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "failed to parse merge server string");
-        }
+        TBSYS_LOG(WARN, "failed to parse merge server string");
       }
 
       return ret;
@@ -305,7 +279,7 @@ namespace oceanbase
       // load merge server
       if (OB_SUCCESS == ret)
       {
-        ret = load_merge_server();
+        ret = load_server();
       }
 
       if (OB_SUCCESS == ret)
@@ -430,6 +404,18 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
+        is_sql_read_ = TBSYS_CONFIG.getInt(OBSC_SECTION, OBSC_SQL_READ, 
+                                         DEFAULT_SQL_READ);
+        if (is_sql_read_ < 0)
+        {
+          TBSYS_LOG(WARN, "syschecker is_sql_read_=%ld can't < 0." ,
+              is_sql_read_);
+          ret = OB_INVALID_ARGUMENT;
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
         check_result_ = TBSYS_CONFIG.getInt(OBSC_SECTION, OBSC_CHECK_RESULT, 
                                             DEFAULT_CHECK_RESULT);
         if (check_result_ < 0)
@@ -516,27 +502,17 @@ namespace oceanbase
 
     void ObSyscheckerParam::dump_param()
     {
-      char server_str[OB_MAX_IP_SIZE];
 
-      root_server_.to_string(server_str, OB_MAX_IP_SIZE);
-      fprintf(stderr, "root_server: \n"
-                      "    vip: %s \n"
-                      "    port: %d \n",
-              server_str, root_server_.get_port());
+      fprintf(stderr, "root_server: %s\n", to_cstring(root_server_));
+      fprintf(stderr, "update_server:%s\n", to_cstring(update_server_));
 
-      update_server_.to_string(server_str, OB_MAX_IP_SIZE);
-      fprintf(stderr, "update_server: \n"
-                      "    vip: %s \n"
-                      "    port: %d \n",
-              server_str, update_server_.get_port());
-
-      for (int64_t i = 0; i < merge_server_count_; ++i)
+      for (int64_t i = 0; i < merge_servers_.count(); ++i)
       {
-        merge_server_[i].to_string(server_str, OB_MAX_IP_SIZE);
-        fprintf(stderr, "merge_server[%ld]: \n"
-                        "    vip: %s \n"
-                        "    port: %d \n",
-                i, server_str, merge_server_[i].get_port());
+        fprintf(stderr, "merge_server[%ld]: addr:%s\n", i, to_cstring(merge_servers_.at(i)));
+      }
+      for (int64_t i = 0; i < chunk_servers_.count(); ++i)
+      {
+        fprintf(stderr, "chunk_server[%ld]: addr:%s\n", i, to_cstring(chunk_servers_.at(i)));
       }
 
       fprintf(stderr, "    network_time_out: %ld \n"

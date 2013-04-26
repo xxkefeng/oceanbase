@@ -116,6 +116,8 @@ namespace oceanbase
       bool operator ==(const ObGroupKey &other)const;
       bool equal_to(const ObGroupKey &other) const;
 
+      int64_t to_string(char* buffer, const int64_t length) const;
+
       inline int get_key_type()const
       {
         return key_type_;

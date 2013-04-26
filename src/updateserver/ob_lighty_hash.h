@@ -23,19 +23,18 @@
 #include <algorithm>
 #include "common/ob_define.h"
 #include "common/ob_atomic.h"
+#include "ob_bit_lock.h"
 
 namespace oceanbase
 {
   namespace updateserver
   {
-#define ATOMIC_CAS(val, cmpv, newv) __sync_val_compare_and_swap((val), (cmpv), (newv))
-#define ATOMIC_SUB(val, subv) __sync_fetch_and_sub((val), (subv))
     namespace lightyhash
     {
       template <typename T>
       struct Hash
       {
-        int64_t operator ()(const T &v)
+        uint64_t operator ()(const T &v)
         {
           return v.hash();
         };
@@ -44,7 +43,7 @@ namespace oceanbase
       template <typename T>
       struct Hash<T*>
       {
-        int64_t operator ()(T *v)
+        uint64_t operator ()(T *v)
         {
           return v ? v->hash() : 0;
         };
@@ -53,7 +52,7 @@ namespace oceanbase
       template <typename T>
       struct Hash<const T*>
       {
-        int64_t operator ()(const T *v)
+        uint64_t operator ()(const T *v)
         {
           return v ? v->hash() : 0;
         };
@@ -118,18 +117,20 @@ namespace oceanbase
         public:
           inline int insert(const Key &key, const Value &value);
           inline int get(const Key &key, Value &value);
+          inline int erase(const Key &key, Value *value = NULL);
           inline int64_t uninit_unit_num() const;
           inline int64_t bucket_using() const;
           inline int64_t size() const;
         private:
-          void init_bucket_unit_(const int64_t bucket_pos);
+          void init_bucket_unit_(const uint64_t bucket_pos);
         private:
           BucketAllocator &bucket_allocator_;
           NodeAllocator &node_allocator_;
           int64_t bucket_num_;
           Node *buckets_;
           volatile int64_t uninit_unit_num_;
-          uint8_t *init_units_;
+          uint8_t *volatile init_units_;
+          BitLock bit_lock_;
           int64_t bucket_using_;
           int64_t size_;
           HashFunc hash_func_;
@@ -180,6 +181,10 @@ namespace oceanbase
         {
           ret = common::OB_MEM_OVERFLOW;
         }
+        else if (OB_SUCCESS != (ret = bit_lock_.init(bucket_num)))
+        {
+          // init bit lock fail
+        }
         else
         {
           bucket_num_ = bucket_num;
@@ -229,6 +234,7 @@ namespace oceanbase
           bucket_allocator_.free(init_units_);
           init_units_ = NULL;
         }
+        bit_lock_.destroy();
         bucket_num_ = 0;
         uninit_unit_num_ = 0;
         bucket_using_ = 0;
@@ -254,6 +260,7 @@ namespace oceanbase
             {
               continue;
             }
+            BitLockGuard guard(bit_lock_, i);
             Node *iter = buckets_[i].next;
             while (EMPTY_FLAG != buckets_[i].flag
                   && NULL != iter)
@@ -284,9 +291,10 @@ namespace oceanbase
         }
         else
         {
-          int64_t hash_value = hash_func_(key);
-          int64_t bucket_pos = hash_value % bucket_num_;
+          uint64_t hash_value = hash_func_(key);
+          uint64_t bucket_pos = hash_value % bucket_num_;
           init_bucket_unit_(bucket_pos);
+          BitLockGuard guard(bit_lock_, bucket_pos);
           if (EMPTY_FLAG == buckets_[bucket_pos].flag)
           {
             buckets_[bucket_pos].key = key;
@@ -346,9 +354,10 @@ namespace oceanbase
         }
         else
         {
-          int64_t hash_value = hash_func_(key);
-          int64_t bucket_pos = hash_value % bucket_num_;
+          uint64_t hash_value = hash_func_(key);
+          uint64_t bucket_pos = hash_value % bucket_num_;
           init_bucket_unit_(bucket_pos);
+          BitLockGuard guard(bit_lock_, bucket_pos);
           ret = common::OB_ENTRY_NOT_EXIST;
           if (EMPTY_FLAG != buckets_[bucket_pos].flag)
           {
@@ -361,6 +370,54 @@ namespace oceanbase
                 ret = common::OB_SUCCESS;
                 break;
               }
+              iter = iter->next;
+            }
+          }
+        }
+        return ret;
+      }
+
+      template <typename Key, typename Value, typename BucketAllocator, typename NodeAllocator>
+      int LightyHashMap<Key, Value, BucketAllocator, NodeAllocator>::erase(const Key &key, Value *value)
+      {
+        int ret = common::OB_SUCCESS;
+        if (NULL == buckets_
+            || NULL == init_units_)
+        {
+          ret = common::OB_NOT_INIT;
+        }
+        else
+        {
+          uint64_t hash_value = hash_func_(key);
+          uint64_t bucket_pos = hash_value % bucket_num_;
+          init_bucket_unit_(bucket_pos);
+          BitLockGuard guard(bit_lock_, bucket_pos);
+          ret = common::OB_ENTRY_NOT_EXIST;
+          if (EMPTY_FLAG != buckets_[bucket_pos].flag)
+          {
+            Node *iter = &(buckets_[bucket_pos]);
+            Node *prev = NULL;
+            while (NULL != iter)
+            {
+              if (equal_func_(iter->key, key))
+              {
+                if (NULL != value)
+                {
+                  *value = iter->value;
+                }
+                if (NULL == prev)
+                {
+                  buckets_[bucket_pos].flag = EMPTY_FLAG;
+                }
+                else
+                {
+                  // do not free deleted node
+                  prev->next = iter->next;
+                }
+                ret = common::OB_SUCCESS;
+                break;
+              }
+              prev = iter;
               iter = iter->next;
             }
           }
@@ -387,11 +444,11 @@ namespace oceanbase
       }
 
       template <typename Key, typename Value, typename BucketAllocator, typename NodeAllocator>
-      void LightyHashMap<Key, Value, BucketAllocator, NodeAllocator>::init_bucket_unit_(const int64_t bucket_pos)
+      void LightyHashMap<Key, Value, BucketAllocator, NodeAllocator>::init_bucket_unit_(const uint64_t bucket_pos)
       {
         while (0 < uninit_unit_num_)
         {
-          int64_t unit_pos = bucket_pos * sizeof(Node) / INIT_UNIT_SIZE;
+          uint64_t unit_pos = bucket_pos * sizeof(Node) / INIT_UNIT_SIZE;
           uint8_t ov = init_units_[unit_pos];
           if (ov & 0x80)
           {

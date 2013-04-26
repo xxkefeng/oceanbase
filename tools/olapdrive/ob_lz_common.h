@@ -15,6 +15,8 @@
 #define OCEANBASE_LZ_COMMON_H
 
 #include "common/ob_string.h"
+#include "common/ob_rowkey.h"
+#include "common/ob_range2.h"
 
 namespace oceanbase 
 { 
@@ -255,9 +257,9 @@ namespace oceanbase
           }                                                           \
         }
 
-    struct ObRowkey
+    struct ObLZRowkey
     {
-      ObRowkey()
+      ObLZRowkey()
       {
         cur_unit_id_ = -1;
         cur_date_ = -1;

@@ -16,6 +16,15 @@ using namespace oceanbase;
 using namespace common;
 using namespace updateserver;
 
+uint64_t C_TIME_COLUMN_ID         = OB_INVALID_ID;
+uint64_t M_TIME_COLUMN_ID         = OB_INVALID_ID;
+uint64_t SEED_COLUMN_ID           = OB_INVALID_ID;
+uint64_t ROWKEY_INFO_COLUMN_ID    = OB_INVALID_ID;
+uint64_t CELL_NUM_COLUMN_ID       = OB_INVALID_ID;
+uint64_t SUFFIX_LENGTH_COLUMN_ID  = OB_INVALID_ID;
+uint64_t SUFFIX_NUM_COLUMN_ID     = OB_INVALID_ID;
+uint64_t PREFIX_END_COLUMN_ID     = OB_INVALID_ID;
+
 int64_t range_rand(int64_t start, int64_t end, int64_t rand)
 {
   return (rand % (end - start + 1) + start);
@@ -85,7 +94,7 @@ int fetch_schema(const char *schema_addr, const int64_t schema_port,
 }
 
 bool get_check_row(const ObSchema &schema,
-                  const ObString &row_key,
+                  const ObRowkey &row_key,
                   CellinfoBuilder &cb,
                   ClientWrapper &client,
                   const int64_t table_start_version,
@@ -98,6 +107,7 @@ bool get_check_row(const ObSchema &schema,
   for (iter = schema.column_begin(); iter != schema.column_end(); iter++)
   {
     ObCellInfo ci;
+    CharArena allocer;
     ci.row_key_ = row_key;
     if (using_id) 
     {
@@ -144,7 +154,7 @@ bool get_check_row(const ObSchema &schema,
         if (ObActionFlag::OP_ROW_DOES_NOT_EXIST == ci->value_.get_ext())
         {
           bret = false;
-          TBSYS_LOG(ERROR, "[%s] row not exist!", print_string(row_key));
+          TBSYS_LOG(ERROR, "[%s] row not exist!", to_cstring(row_key));
           break;
         }
         rc.add_cell(ci);

@@ -24,12 +24,24 @@ ObMergerOperator::ObMergerOperator()
   sealed_ = false;
   last_sharding_res_ = NULL;
   sharding_res_count_ = 0;
+  max_sharding_res_size_ = -1;
+  total_sharding_res_size_ = 0;
 }
 
 ObMergerOperator::~ObMergerOperator()
 {
   reset();
   status_ = NOT_INIT;
+}
+
+void ObMergerOperator::set_max_res_size(const int64_t size)
+{
+  max_sharding_res_size_ = size;
+}
+
+int64_t ObMergerOperator::get_max_res_size(void) const
+{
+  return max_sharding_res_size_;
 }
 
 void ObMergerOperator::reset()
@@ -44,6 +56,7 @@ void ObMergerOperator::reset()
   sealed_ = false;
   last_sharding_res_ = NULL;
   sharding_res_count_ = 0;
+  total_sharding_res_size_ = 0;
 }
 
 int ObMergerOperator::set_param(const int64_t max_memory_size, const ObScanParam & scan_param)
@@ -54,7 +67,7 @@ int ObMergerOperator::set_param(const int64_t max_memory_size, const ObScanParam
   if ((scan_param_->get_group_by_param().get_aggregate_row_width() == 0)
     && (scan_param_->get_orderby_column_size() == 0))
   {
-    if (scan_param_->get_scan_direction() == ObScanParam::FORWARD)
+    if (scan_param_->get_scan_direction() == ScanFlag::FORWARD)
     {
       status_ = USE_SORTED_OPERATOR;
       if (OB_SUCCESS != (err = sorted_operator_.set_param(*scan_param_)))
@@ -86,9 +99,8 @@ int ObMergerOperator::set_param(const int64_t max_memory_size, const ObScanParam
   return err;
 }
 
-
 int ObMergerOperator::add_sharding_result(ObScanner & sharding_res, 
-  const ObRange & query_range, const int64_t limit_offset, bool &is_finish, bool &can_free_res)
+  const ObNewRange & query_range, const int64_t limit_offset, bool &is_finish, bool &can_free_res)
 {
   int err = OB_SUCCESS;
   can_free_res = false;
@@ -124,11 +136,23 @@ int ObMergerOperator::add_sharding_result(ObScanner & sharding_res,
     {
       TBSYS_LOG(WARN,"fail to add sharding result [err:%d,status_:%d]", err, status_);
     }
+    else
+    {
+      total_sharding_res_size_ += sharding_res.get_size();
+    }
   }
   if (OB_SUCCESS == err)
   {
     last_sharding_res_ = &sharding_res;
     sharding_res_count_ ++;
+  }
+  /// for anti some max query attack
+  if ((OB_SUCCESS == err) && (max_sharding_res_size_ > 0)
+      && (total_sharding_res_size_ > max_sharding_res_size_))
+  {
+    TBSYS_LOG(WARN, "find sharding res size exceed the max size:total[%ld], max[%ld]",
+        total_sharding_res_size_, max_sharding_res_size_);
+    err = OB_MEM_OVERFLOW;
   }
   return err;
 }
@@ -205,7 +229,6 @@ int ObMergerOperator::seal()
   }
   return err;
 } 
-
 
 int ObMergerOperator::get_mem_size_used()const
 {
@@ -321,3 +344,4 @@ int64_t ObMergerOperator::get_whole_result_row_count()const
   }
   return static_cast<int32_t>(res);
 }
+

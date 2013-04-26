@@ -69,8 +69,20 @@ TEST_F(ObLimitTest, limiter_1k_10_2_basic_test)
 
   phy_op.set_row_count(1000);
   single_op.set_child(0, phy_op);
-  limiter.set_limit(10, 2);
-  limiter.open();
+  ObSqlExpression limit;
+  ObSqlExpression offset;
+  ExprItem item;
+  item.type_ = T_INT;
+  item.data_type_ = ObIntType;
+  item.value_.int_ = 10;
+  ASSERT_EQ(OB_SUCCESS, limit.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, limit.add_expr_item_end());
+  item.value_.int_ = 2;
+  ASSERT_EQ(OB_SUCCESS, offset.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, offset.add_expr_item_end());
+  ASSERT_EQ(OB_SUCCESS, limiter.set_limit(limit, offset));
+  int ret = limiter.open();
+  ASSERT_EQ(OB_SUCCESS, ret);
   while(OB_ITER_END != limiter.get_next_row(next_row_p))
   {
     ASSERT_EQ(true, NULL != next_row_p);
@@ -92,7 +104,18 @@ TEST_F(ObLimitTest, limiter_10_10_2_basic_test)
 
   phy_op.set_row_count(10);
   single_op.set_child(0, phy_op);
-  limiter.set_limit(10, 2);
+  ObSqlExpression limit;
+  ObSqlExpression offset;
+  ExprItem item;
+  item.type_ = T_INT;
+  item.data_type_ = ObIntType;
+  item.value_.int_ = 10;
+  ASSERT_EQ(OB_SUCCESS, limit.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, limit.add_expr_item_end());
+  item.value_.int_ = 2;
+  ASSERT_EQ(OB_SUCCESS, offset.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, offset.add_expr_item_end());
+  limiter.set_limit(limit, offset);
   limiter.open();
   while(OB_ITER_END != limiter.get_next_row(next_row_p))
   {
@@ -115,7 +138,18 @@ TEST_F(ObLimitTest, limiter_manylines_test)
 
   phy_op.set_row_count(10000);
   single_op.set_child(0, phy_op);
-  limiter.set_limit(8000, 1111);
+  ObSqlExpression limit;
+  ObSqlExpression offset;
+  ExprItem item;
+  item.type_ = T_INT;
+  item.data_type_ = ObIntType;
+  item.value_.int_ = 8000;
+  ASSERT_EQ(OB_SUCCESS, limit.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, limit.add_expr_item_end());
+  item.value_.int_ = 1111;
+  ASSERT_EQ(OB_SUCCESS, offset.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, offset.add_expr_item_end());
+  limiter.set_limit(limit, offset);
   limiter.open();
   while(OB_ITER_END != limiter.get_next_row(next_row_p))
   {
@@ -133,7 +167,18 @@ TEST_F(ObLimitTest, serialize_test)
   int64_t limit1 = 9000, offset1= 10;
   int64_t limit2 = 0, offset2= 0;
 
-  limiter.set_limit(limit1, offset1);
+  ObSqlExpression limit;
+  ObSqlExpression offset;
+  ExprItem item;
+  item.type_ = T_INT;
+  item.data_type_ = ObIntType;
+  item.value_.int_ = 9000;
+  ASSERT_EQ(OB_SUCCESS, limit.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, limit.add_expr_item_end());
+  item.value_.int_ = 10;
+  ASSERT_EQ(OB_SUCCESS, offset.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, offset.add_expr_item_end());
+  limiter.set_limit(limit, offset);
   const int64_t buf_len = 1024;
   char buf[buf_len];
   int64_t pos = 0;
@@ -152,7 +197,8 @@ TEST_F(ObLimitTest, serialize_test)
 
 int main(int argc, char **argv)
 {
-  ob_init_memory_pool();
+  TBSYS_LOGGER.setLogLevel("DEBUG");
+  //ob_init_memory_pool();
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }

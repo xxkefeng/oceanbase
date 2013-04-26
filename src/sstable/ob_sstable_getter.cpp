@@ -16,10 +16,10 @@
 #include "common/ob_define.h"
 #include "common/ob_record_header.h"
 #include "common/ob_action_flag.h"
+#include "common/ob_common_stat.h"
 #include "ob_sstable_reader.h"
 #include "ob_sstable_getter.h"
 #include "ob_blockcache.h"
-#include "ob_sstable_stat.h"
 
 namespace oceanbase
 {
@@ -29,7 +29,7 @@ namespace oceanbase
 
     ObSSTableGetter::ObSSTableGetter() 
     : inited_(false), cur_state_(ITERATE_NORMAL), 
-      not_exit_col_ret_nop_(false), readers_(NULL), 
+      not_exit_col_ret_nop_(false), is_row_finished_(false), readers_(NULL), 
       readers_size_(0), cur_reader_idx_(0), prev_reader_idx_(-1),  
       handled_cells_(0), column_group_num_(0), cur_column_group_idx_(0), 
       get_param_(NULL), cur_column_mask_(MAX_GET_COLUMN_COUNT_PRE_ROW),
@@ -203,10 +203,8 @@ namespace oceanbase
         if (0 != cur_column_group_idx_)
         {
           TBSYS_LOG(WARN, "row key doesn't exist in current column group, but it "
-                          "exists in the other column group, cur_column_group_idx_=%ld",
-                    cur_column_group_idx_);
-          hex_dump(cell->row_key_.ptr(), cell->row_key_.length(), true, 
-                   TBSYS_LOG_LEVEL_WARN);
+                          "exists in the other column group, cur_column_group_idx_=%ld, rowkey:%s",
+                    cur_column_group_idx_, to_cstring(cell->row_key_));
           ret = OB_ERROR;
         }
         else
@@ -222,6 +220,7 @@ namespace oceanbase
     int ObSSTableGetter::switch_column()
     {
       int ret = OB_SUCCESS;
+      bool is_row_finished = false;
 
       //get the next column for current row
       switch (cur_state_)
@@ -231,9 +230,20 @@ namespace oceanbase
         {
           ret = OB_GET_NEXT_ROW;
         }
+        else if (OB_SUCCESS == ret 
+                 && OB_SUCCESS == (ret = getter_.is_row_finished(&is_row_finished))
+                 && is_row_finished 
+                 && cur_column_group_idx_ == column_group_num_ - 1)
+        {
+          is_row_finished_ = true;
+        }
         break;
       case ROW_NOT_FOUND:
         ret = handle_row_not_found();
+        if (OB_SUCCESS == ret)
+        {
+          is_row_finished_ = true;
+        }
         break;
       case GET_NEXT_ROW:
         ret = OB_GET_NEXT_ROW;
@@ -256,6 +266,7 @@ namespace oceanbase
       ret = check_internal_member();
       if (OB_SUCCESS == ret)
       {
+        is_row_finished_ = false;
         do
         {
           ret = switch_column();
@@ -270,6 +281,10 @@ namespace oceanbase
           }
         }
         while (OB_GET_NEXT_ROW == ret);
+      }
+      if (OB_ITER_END == ret)
+      {
+        is_row_finished_ = true;
       }
 
       return ret;
@@ -361,6 +376,7 @@ namespace oceanbase
     {
       cur_state_ = ITERATE_NORMAL;
       not_exit_col_ret_nop_ = false;
+      is_row_finished_ = false;
 
       readers_ = NULL;
       readers_size_ = 0;
@@ -438,7 +454,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSSTableGetter::fetch_cache_row(const ObString row_key, 
+    int ObSSTableGetter::fetch_cache_row(const ObRowkey& row_key, 
         const int64_t store_style, ObSSTableRowCacheValue& row_cache_val)
     {
       int ret = OB_SUCCESS;
@@ -456,8 +472,9 @@ namespace oceanbase
       }
       else
       {
+        ObSSTableBlockReader::BlockDataDesc data_desc(&rowkey_info_, row_key.get_obj_cnt(), store_style);
         ret = getter_.init(row_key, row_cache_val.buf_, row_cache_val.size_, 
-          store_style, sstable_row_cache_, true, not_exit_col_ret_nop_);
+          data_desc, sstable_row_cache_, true, not_exit_col_ret_nop_);
         if (OB_SUCCESS != ret && OB_SEARCH_NOT_FOUND != ret)
         {
           TBSYS_LOG(WARN, "block getter initialize error, ret=%d", ret);  
@@ -476,7 +493,7 @@ namespace oceanbase
       bool is_row_cache_hit   = false;
       int64_t store_style     = OB_SSTABLE_STORE_DENSE;
       const ObSSTableTrailer& trailer = readers_[cur_reader_idx_]->get_trailer();
-      ObString look_key;
+      ObRowkey look_key;
       ObBlockIndexPositionInfo info;
       ObSSTableRowCacheValue row_cache_val;
 
@@ -518,12 +535,16 @@ namespace oceanbase
           ret = sstable_row_cache_->get_row(row_cache_key, row_cache_val, row_buf_);
           if (OB_SUCCESS == ret)
           {
-            INC_STAT(table_id, INDEX_SSTABLE_ROW_CACHE_HIT, 1);
+#ifndef _SSTABLE_NO_STAT_
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_SSTABLE_ROW_CACHE_HIT, 1);
+#endif
             is_row_cache_hit = true;
           }
           else 
           {
-            INC_STAT(table_id, INDEX_SSTABLE_ROW_CACHE_MISS, 1);
+#ifndef _SSTABLE_NO_STAT_
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_SSTABLE_ROW_CACHE_MISS, 1);
+#endif
           }
         }
 
@@ -563,8 +584,7 @@ namespace oceanbase
         }
         else if (ret == OB_BEYOND_THE_RANGE)
         {
-          TBSYS_LOG(DEBUG, "Not find block for rowkey:");
-          hex_dump(look_key.ptr(), look_key.length(), true);
+          TBSYS_LOG(DEBUG, "Not find block for rowkey: %s", to_cstring(look_key));
           ret = OB_SEARCH_NOT_FOUND;
         }
         else
@@ -586,11 +606,13 @@ namespace oceanbase
       int64_t cell_size     = 0;
       int64_t start         = 0;
       int64_t end           = 0;
+      int64_t rowkey_seq    = 0;
       uint64_t column_group_id = OB_INVALID_ID;
       const ObSSTableReader* reader               = NULL;
       const ObSSTableSchema* schema               = NULL;
       const ObSSTableSchemaColumnDef* column_def  = NULL;
       const ObGetParam::ObRowIndex* row_index     = NULL;
+      ObRowkeyColumn column;
       
       /**
        * there is problem that the get param only includes unique cell 
@@ -625,6 +647,10 @@ namespace oceanbase
                       cur_reader_idx_, reader);
             ret = OB_ERROR;
           }
+          else if ( schema->is_binary_rowkey_format(table_id) )
+          {
+            ret = get_global_schema_rowkey_info(table_id, rowkey_info_);
+          }
         }
         else
         {
@@ -643,6 +669,21 @@ namespace oceanbase
           column_id = (*get_param_)[i]->column_id_;
           if (OB_FULL_ROW_COLUMN_ID == column_id)
           {
+            // add rowkey columns in first column group;
+            if (cur_column_group_idx_ == 0)
+            {
+              column_def = schema->get_group_schema(table_id, 
+                  ObSSTableSchemaColumnDef::ROWKEY_COLUMN_GROUP_ID, column_count);
+              if (NULL != column_def && column_count > 0)
+              {
+                for (int j = 0; j < column_count && OB_SUCCESS == ret; j++)
+                {
+                  ret = cur_column_mask_.add_column_id(ObScanColumnIndexes::Rowkey, 
+                      column_def[j].rowkey_seq_ - 1, column_def[j].column_name_id_);
+                }
+              }
+            }
+
             //column id equal to 0, it means to get all the columns in row
             column_def = schema->get_group_schema(table_id, 
                                                   column_group_[cur_column_group_idx_], 
@@ -667,7 +708,7 @@ namespace oceanbase
                 }
                 if (column_group_id == column_group_[cur_column_group_idx_])
                 {
-                  ret = cur_column_mask_.add_column_id(j, column_def[j].column_name_id_);
+                  ret = cur_column_mask_.add_column_id(ObScanColumnIndexes::Normal, j, column_def[j].column_name_id_);
                 }
               }
             }
@@ -680,6 +721,16 @@ namespace oceanbase
             }
             break;
           }
+          else if ( schema->is_binary_rowkey_format(table_id) 
+              && OB_SUCCESS == rowkey_info_.get_index(column_id, rowkey_seq, column))
+          {
+            // is binary rowkey column?
+            if (0 == cur_column_group_idx_)
+            {
+              ret = cur_column_mask_.add_column_id( 
+                  ObScanColumnIndexes::Rowkey, static_cast<int32_t>(rowkey_seq), column_id);
+            }
+          }
           else if (!schema->is_column_exist(table_id, column_id))
           {
             // column id not exist in schema, set to NOT_EXIST_COLUMN
@@ -687,7 +738,7 @@ namespace oceanbase
             if (0 == cur_column_group_idx_)
             {
               ret = cur_column_mask_.add_column_id(
-                  ObScanColumnIndexes::NOT_EXIST_COLUMN, column_id);
+                  ObScanColumnIndexes::NotExist, 0, column_id);
             }
           }
           else
@@ -697,17 +748,24 @@ namespace oceanbase
              * column group will handle it. except there is only one column 
              * group.
              */
-            if (column_group_num_ > 1)
+            index = static_cast<int32_t>(schema->find_offset_first_column_group_schema(
+                  table_id, column_id, column_group_id));
+            if (column_group_id == ObSSTableSchemaColumnDef::ROWKEY_COLUMN_GROUP_ID)
             {
-              index = static_cast<int32_t>(schema->find_offset_first_column_group_schema(
-                table_id, column_id, column_group_id));
+              // rowkey column special case 
+              // if current column is a rowkey column, handle it in first column group.
+              if (index >= 0 && cur_column_group_idx_ == 0)
+              {
+                ret = cur_column_mask_.add_column_id(ObScanColumnIndexes::Rowkey, index, column_id);   
+              }
             }
-            else 
+            else if (column_group_num_ == 1)
             {
               index = static_cast<int32_t>(schema->find_offset_column_group_schema(
                 table_id, column_group_[cur_column_group_idx_], column_id));
               column_group_id = column_group_[cur_column_group_idx_];
             }
+
             if (column_group_id == column_group_[cur_column_group_idx_])
             {
               if (index < 0)
@@ -719,7 +777,7 @@ namespace oceanbase
               }
               else
               {
-                ret = cur_column_mask_.add_column_id(index, column_id);   
+                ret = cur_column_mask_.add_column_id(ObScanColumnIndexes::Normal, index, column_id);   
               }
             }
           }
@@ -771,7 +829,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        ret = uncomp_buf_.ensure_space(header.data_length_, ObModIds::OB_SSTABLE_EGT_SCAN);
+        ret = uncomp_buf_.ensure_space(header.data_length_, ObModIds::OB_SSTABLE_GET_SCAN);
       }
 
       if (OB_SUCCESS == ret)
@@ -856,7 +914,11 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         store_style = reader->get_trailer().get_row_value_store_style();
-        ret = getter_.init(cell->row_key_, data_buf, data_size, store_style,
+        int64_t rowkey_column_count = 0;
+        reader->get_schema()->get_rowkey_column_count(cell->table_id_, rowkey_column_count);
+        ObSSTableBlockReader::BlockDataDesc data_desc(&rowkey_info_, rowkey_column_count, store_style);
+        // translate cell->row_key_ to rowkey
+        ret = getter_.init(cell->row_key_, data_buf, data_size, data_desc,
           sstable_row_cache_, false, not_exit_col_ret_nop_);
         if (OB_SUCCESS != ret && OB_SEARCH_NOT_FOUND != ret)
         {
@@ -864,13 +926,12 @@ namespace oceanbase
         }
       }
 
-      if (NULL != sstable_row_cache_
-          && NULL != get_param_ && get_param_->get_is_result_cached())
+      if (NULL != sstable_row_cache_)
       {
         ObSSTableRowCacheKey row_cache_key(
           reader->get_sstable_id().sstable_file_id_,
           column_group_[cur_column_group_idx_], 
-          const_cast<ObString&>(cell->row_key_));
+          const_cast<ObRowkey&>(cell->row_key_));
         ObSSTableRowCacheValue row_cache_val;
 
         if (store_style == OB_SSTABLE_STORE_SPARSE)
@@ -951,6 +1012,8 @@ namespace oceanbase
        * FIXME:currently we don't handle one column belongs to 
        * multiple column group, we only use the first column group the 
        * column belongs to. 
+       * DONOT add ROWKEY_COLUMN_GROUP_ID in column_group_
+       * it will be handled as special ROWKEY column in first column group.
        */
       column_index = schema.find_offset_first_column_group_schema(
         table_id, column_id, column_group_id);
@@ -961,7 +1024,8 @@ namespace oceanbase
                           "table_id=%lu, column_id=%lu", 
                   table_id, column_id);
       }
-      else if (!is_column_group_id_existent(column_group_id))
+      else if (column_group_id != ObSSTableSchemaColumnDef::ROWKEY_COLUMN_GROUP_ID 
+          && (!is_column_group_id_existent(column_group_id)))
       {
         column_group_[column_group_num_++] = column_group_id;
       }
@@ -1068,7 +1132,7 @@ namespace oceanbase
          * column default. 
          */
         column_group_num_ = 1;
-        column_group_[0] = schema->get_column_def(0)->column_group_id_;
+        column_group_[0] = schema->get_table_first_column_group_id(table_id);
       }
 
       return ret;

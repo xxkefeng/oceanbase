@@ -18,7 +18,7 @@
 #include "ob_cell_stream.h"
 #include "common/ob_read_common_data.h"
 #include "common/ob_scanner.h"
-#include "common/ob_string.h"
+#include "common/ob_range2.h"
 #include "common/ob_malloc.h"
 
 namespace oceanbase
@@ -27,7 +27,7 @@ namespace oceanbase
   {
     // check finish
     bool is_finish_scan(const common::ObScanParam & param, 
-                        const common::ObRange & result_range);
+                        const common::ObNewRange & result_range);
 
     // get next get param
     // if all cell has gotten, return OB_ITER_END

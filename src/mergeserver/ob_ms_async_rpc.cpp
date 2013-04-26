@@ -6,6 +6,9 @@
 #include "common/thread_buffer.h"
 #include "common/ob_read_common_data.h"
 #include "common/ob_client_manager.h"
+#include "sql/ob_sql_get_param.h"
+#include "sql/ob_sql_scan_param.h"
+#include "ob_ms_sql_get_request.h"
 #include "ob_ms_async_rpc.h"
 
 using namespace oceanbase::common;
@@ -83,27 +86,18 @@ int ObMergerAsyncRpcStub::get(const int64_t timeout, const ObServer & server,
 
   if (OB_SUCCESS == ret)
   {
-    char server_addr[MAX_SERVER_LEN] = "";
     result.set_server(server);
     result.set_req_type(ObMergerRpcEvent::GET_RPC);
     ret = rpc_frame_->post_request(server, OB_GET_REQUEST, DEFAULT_VERSION, timeout, data_buff,
-        &const_cast<ObMergerRpcEvent &>(result), NULL);
+                                   result.get_handler(), &result);
     if (ret != OB_SUCCESS)
     {
-      server.to_string(server_addr, sizeof(server_addr));
       TBSYS_LOG(WARN, "send get request to server failed:client[%lu], event[%lu], "
-          "server[%s], ret[%d]", result.get_client_id(), result.get_event_id(), server_addr, ret);
-    }
-    else
-    {
-      server.to_string(server_addr, sizeof(server_addr));
-      TBSYS_LOG(DEBUG, "send get request to server succ:client[%lu], event[%lu], "
-          "server[%s]", result.get_client_id(), result.get_event_id(), server_addr);
+          "server[%s], ret[%d]", result.get_client_id(), result.get_event_id(), to_cstring(server), ret);
     }
   }
   return ret;
 }
-
 
 int ObMergerAsyncRpcStub::get_session_next(const int64_t timeout, const ObServer & server, 
   const int64_t session_id, const int32_t req_type, ObMergerRpcEvent & result)const
@@ -123,8 +117,9 @@ int ObMergerAsyncRpcStub::get_session_next(const int64_t timeout, const ObServer
     result.set_req_type(req_type);
     result.set_timeout_us(timeout);
   }
-  if ((OB_SUCCESS == err) && (OB_SUCCESS  != (err = rpc_frame_->post_next(server, session_id,
-    timeout, data_buff, &result, NULL))))
+  if ((OB_SUCCESS == err) && 
+      (OB_SUCCESS  != (err = rpc_frame_->post_next(server, session_id,
+                                                   timeout, data_buff, result.get_handler(), &result))))
   {
     TBSYS_LOG(WARN,"fail to post next request of session [err:%d,session_id:%ld]", err, 
       session_id);
@@ -152,22 +147,14 @@ int ObMergerAsyncRpcStub::scan(const int64_t timeout, const ObServer & server,
 
   if (OB_SUCCESS == ret)
   {
-    char server_addr[MAX_SERVER_LEN] = "";
     result.set_server(server);
     result.set_req_type(ObMergerRpcEvent::SCAN_RPC);
     ret = rpc_frame_->post_request(server, OB_SCAN_REQUEST, DEFAULT_VERSION, timeout, data_buff,
-      &const_cast<ObMergerRpcEvent &>(result), NULL);
+                                   result.get_handler(), &result);
     if (ret != OB_SUCCESS)
     {
-      server.to_string(server_addr, sizeof(server_addr));
       TBSYS_LOG(WARN, "send scan request to server failed:client[%lu], event[%lu], "
-        "server[%s], ret[%d]", result.get_client_id(), result.get_event_id(), server_addr, ret);
-    }
-    else
-    {
-      server.to_string(server_addr, sizeof(server_addr));
-      TBSYS_LOG(DEBUG, "send scan request to server succ:client[%lu], event[%lu], "
-        "server[%s]", result.get_client_id(), result.get_event_id(), server_addr);
+        "server[%s], ret[%d]", result.get_client_id(), result.get_event_id(), to_cstring(server), ret);
     }
   }
   return ret;
@@ -197,16 +184,16 @@ int ObMergerAsyncRpcStub::get_session_next(const int64_t timeout, const ObServer
     result.set_timeout_us(timeout);
   }
   if ((OB_SUCCESS == err) && (OB_SUCCESS  != (err = rpc_frame_->post_next(server, session_id,
-    timeout, data_buff, &result, NULL))))
+            timeout, data_buff, result.get_handler(), &result))))
   {
     TBSYS_LOG(WARN,"fail to post next request of session [err:%d,session_id:%ld]", err, 
-      session_id);
+        session_id);
   }
   return err;
 }
 
 int ObMergerAsyncRpcStub::scan(const int64_t timeout, const ObServer & server, 
-  const ObScanParam & scan_param, ObMsSqlRpcEvent & result) const
+  const sql::ObSqlScanParam & scan_param, ObMsSqlRpcEvent & result) const
 {
   int ret = OB_SUCCESS;
   ObDataBuffer data_buff;
@@ -225,22 +212,47 @@ int ObMergerAsyncRpcStub::scan(const int64_t timeout, const ObServer & server,
 
   if (OB_SUCCESS == ret)
   {
-    char server_addr[MAX_SERVER_LEN] = "";
     result.set_server(server);
     result.set_req_type(ObMsSqlRpcEvent::SCAN_RPC);
-    ret = rpc_frame_->post_request(server, OB_SCAN_REQUEST, DEFAULT_VERSION, timeout, data_buff,
-      &const_cast<ObMsSqlRpcEvent &>(result), NULL);
+    ret = rpc_frame_->post_request(server, OB_SQL_SCAN_REQUEST, DEFAULT_VERSION, timeout, data_buff,
+                                   result.get_handler(), &result);
     if (ret != OB_SUCCESS)
     {
-      server.to_string(server_addr, sizeof(server_addr));
       TBSYS_LOG(WARN, "send scan request to server failed:client[%lu], event[%lu], "
-        "server[%s], ret[%d]", result.get_client_id(), result.get_event_id(), server_addr, ret);
+        "server[%s], ret[%d]", result.get_client_id(), result.get_event_id(), to_cstring(server), ret);
     }
-    else
+  }
+  return ret;
+}
+
+int ObMergerAsyncRpcStub::get(const int64_t timeout, const ObServer & server,
+  const ObSqlGetParam & get_param, ObMsSqlRpcEvent & result) const
+{
+  int ret = OB_SUCCESS;
+  ObDataBuffer data_buff;
+  ret = get_rpc_buffer(data_buff);
+  if (OB_SUCCESS == ret)
+  {
+    result.start();
+    result.set_timeout_us(timeout);
+    ret = get_param.serialize(data_buff.get_data(), data_buff.get_capacity(), 
+      data_buff.get_position());
+    if (OB_SUCCESS != ret)
     {
-      server.to_string(server_addr, sizeof(server_addr));
-      TBSYS_LOG(DEBUG, "send scan request to server succ:client[%lu], event[%lu], "
-        "server[%s]", result.get_client_id(), result.get_event_id(), server_addr);
+      TBSYS_LOG(WARN, "serialize get_param failed:ret[%d]", ret);
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    result.set_server(server);
+    result.set_req_type(ObMsSqlRpcEvent::GET_RPC);
+    ret = rpc_frame_->post_request(server, OB_SQL_GET_REQUEST, DEFAULT_VERSION, timeout, data_buff,
+                                   result.get_handler(), &result);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "send get request to server failed:client[%lu], event[%lu], "
+          "server[%s], ret[%d]", result.get_client_id(), result.get_event_id(), to_cstring(server), ret);
     }
   }
   return ret;

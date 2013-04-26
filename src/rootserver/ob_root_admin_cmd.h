@@ -29,12 +29,14 @@ namespace oceanbase
     static const int OB_RS_ADMIN_DEC_LOG_LEVEL = 7;
     static const int OB_RS_ADMIN_DUMP_UNUSUAL_TABLETS = 8;
     static const int OB_RS_ADMIN_DUMP_MIGRATE_INFO = 9;
-    static const int OB_RS_ADMIN_REFRESH_SCHEMA = 10;
     static const int OB_RS_ADMIN_ENABLE_BALANCE = 11;
     static const int OB_RS_ADMIN_DISABLE_BALANCE = 12;
     static const int OB_RS_ADMIN_ENABLE_REREPLICATION = 13;
     static const int OB_RS_ADMIN_DISABLE_REREPLICATION = 14;
     static const int OB_RS_ADMIN_CLEAN_ERROR_MSG = 15;
+    static const int OB_RS_ADMIN_BOOT_STRAP = 16;
+    static const int OB_RS_ADMIN_BOOT_RECOVER = 17;
+    static const int OB_RS_ADMIN_REFRESH_SCHEMA = 18;
   } // end namespace rootserver
 } // end namespace oceanbase
 

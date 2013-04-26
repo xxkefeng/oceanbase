@@ -1,30 +1,29 @@
 /*===============================================================
 *   (C) 2007-2010 Taobao Inc.
-*   
-*   
+*
+*
 *   Version: 0.1 2010-10-20
-*   
+*
 *   Authors:
 *          daoan(daoan@taobao.com)
-*   
+*
 *
 ================================================================*/
 #ifndef OCEANBASE_ROOTSERVER_OB_TABLET_INFO_MANAGER_H_
 #define OCEANBASE_ROOTSERVER_OB_TABLET_INFO_MANAGER_H_
 #include "common/ob_define.h"
-#include "common/ob_tablet_info.h"
 #include "common/page_arena.h"
 #include "common/ob_array.h"
-
-namespace oceanbase 
-{ 
-  namespace rootserver 
+#include "common/ob_tablet_info.h"
+namespace oceanbase
+{
+  namespace rootserver
   {
     class ObTabletInfoManager;
     class ObTabletCrcHistoryHelper
     {
       public:
-        enum 
+        enum
         {
           MAX_KEEP_HIS_COUNT = 3,
         };
@@ -45,21 +44,25 @@ namespace oceanbase
     class ObTabletInfoManager
     {
       public:
+        typedef common::ObTabletInfo* iterator;
+        typedef const common::ObTabletInfo* const_iterator;
+
         ObTabletInfoManager();
         void set_allocator(common::CharArena *allocator);
 
-        int add_tablet_info(const common::ObTabletInfo& tablet_info, int32_t& out_index, 
-            bool clone_start_key = true, bool clone_end_key = true);
+        int add_tablet_info(const common::ObTabletInfo& tablet_info, int32_t& out_index);
 
-        int32_t get_index(common::ObTabletInfo* data_pointer) const;
+        const_iterator begin() const;
+        const_iterator end() const;
 
-        const common::ObTabletInfo* get_tablet_info(const int32_t index) const;
-        common::ObTabletInfo* get_tablet_info(const int32_t index);
-        const common::ObTabletInfo* begin() const;
-        common::ObTabletInfo* begin();
-        const common::ObTabletInfo* end() const;
-        common::ObTabletInfo* end();
+        iterator begin();
+        iterator end();
+
         int32_t get_array_size() const;
+
+        int32_t get_index(const_iterator it) const;
+        const_iterator get_tablet_info(const int32_t index) const;
+        iterator get_tablet_info(const int32_t index);
 
         ObTabletCrcHistoryHelper* get_crc_helper(const int32_t index);
         const ObTabletCrcHistoryHelper* get_crc_helper(const int32_t index) const;
@@ -70,9 +73,9 @@ namespace oceanbase
 
         NEED_SERIALIZE_AND_DESERIALIZE;
       public:
-        static const int64_t MAX_TABLET_COUNT = 1024 * 1024 * 10;
+        static const int64_t MAX_TABLET_COUNT = 1024 * 1024;
       private:
-        DISALLOW_COPY_AND_ASSIGN(ObTabletInfoManager);        
+        DISALLOW_COPY_AND_ASSIGN(ObTabletInfoManager);
       private:
         common::ObTabletInfo data_holder_[MAX_TABLET_COUNT];
         ObTabletCrcHistoryHelper crc_helper_[MAX_TABLET_COUNT];

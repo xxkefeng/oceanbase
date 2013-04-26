@@ -15,7 +15,7 @@
  */
 #ifndef _OB_MIGRATE_INFO_H
 #define _OB_MIGRATE_INFO_H 1
-#include "common/ob_range.h"
+#include "common/ob_range2.h"
 #include "common/page_arena.h"
 namespace oceanbase
 {
@@ -29,7 +29,7 @@ namespace oceanbase
       static const int8_t STAT_SENT = 1;
       static const int8_t STAT_DONE = 2;
       // members
-      common::ObRange range_;
+      common::ObNewRange range_;
       int32_t cs_idx_;
       Status stat_;
       int8_t keep_src_;
@@ -75,12 +75,12 @@ namespace oceanbase
         const ObMigrateInfo *head() const;
         const ObMigrateInfo *tail() const;
         int32_t count() const;
-        int add_migrate_info(const common::ObRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos);
-        int add_copy_info(const common::ObRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos);
-        int set_migrate_done(const common::ObRange &range, int32_t dest_cs_idx);
+        int add_migrate_info(const common::ObNewRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos);
+        int add_copy_info(const common::ObNewRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos);
+        int set_migrate_done(const common::ObNewRange &range, int32_t dest_cs_idx);
         void reset();
       private:
-        int add_migrate_info(const common::ObRange &range, int32_t dest_cs_idx, int8_t keep_src, ObMigrateInfos &infos);
+        int add_migrate_info(const common::ObNewRange &range, int32_t dest_cs_idx, int8_t keep_src, ObMigrateInfos &infos);
         int clone_string(common::CharArena &allocator, const common::ObString &in, common::ObString &out);
       private:
         ObMigrateInfo *info_head_;

@@ -2,6 +2,12 @@
 #include "ob_import_producer.h"
 #include "ob_import_comsumer.h"
 #include "ob_import_param.h"
+#include <getopt.h>
+
+
+//global param
+bool g_gbk_encoding = false;
+bool g_print_lineno_taggle = false;
 
 void usage(const char *prog)
 {
@@ -11,14 +17,16 @@ void usage(const char *prog)
           "\t-l [log file]\n"
           "\t-q [queue size, default 1000]\n"
           "\t[-f datafile]\n"
-          "\t-g [log level]\n", prog);
+          "\t-g [log level]\n"
+          "\t[--gbk]\n"
+          "\t[--buffersize] KB default is %dKB\n", prog, kReadBufferSize / 1024);
 }
 
-int run_comsumer_queue(TableParam &param, ObRowBuilder *builder, 
+int run_comsumer_queue(FileReader &reader, TableParam &param, ObRowBuilder *builder, 
                        OceanbaseDb *db, size_t queue_size)
 {
   int ret = OB_SUCCESS;
-  ImportProducer producer(param.data_file.c_str(), param.delima, param.rec_delima);
+  ImportProducer producer(reader, param.delima, param.rec_delima);
   ImportComsumer comsumer(db, builder, param);
 
   TBSYS_LOG(INFO, "[delima]: type = %d, part1 = %d, part2 = %d", param.delima.delima_type(), 
@@ -36,13 +44,108 @@ int run_comsumer_queue(TableParam &param, ObRowBuilder *builder,
   return ret;
 }
 
+int convert_column_type(ColumnType column_type) 
+{
+  int ret = 0;
+  switch (column_type) {
+    case ObIntType:
+      ret = 1;
+      break;
+    case ObVarcharType:
+      ret = 3;
+      break;
+    case ObDateTimeType:
+      ret = 4;
+      break;
+    default:
+      TBSYS_LOG(ERROR, "not support column type[%d]", column_type);
+      ret = -1;
+  }
+  return ret;
+}
+
+int parse_table_title(Slice &slice, const ObSchemaManagerV2 &schema, TableParam &table_param)
+{
+  int ret = OB_SUCCESS;
+  int token_nr = ObRowBuilder::kMaxRowkeyDesc + OB_MAX_COLUMN_NUMBER;
+  TokenInfo tokens[token_nr];
+
+  Tokenizer::tokenize(slice, table_param.delima, token_nr, tokens);
+  int rowkey_count = 0;
+  table_param.rowkey_descs.clear();
+  table_param.col_descs.clear();
+
+  if (0 != table_param.input_column_nr) {
+    ret = OB_ERROR;
+    TBSYS_LOG(ERROR, "input_column_nr should not be set[%d]", table_param.input_column_nr);
+    return ret;
+  }
+  table_param.input_column_nr = token_nr;
+
+  const ObTableSchema *table_schema = schema.get_table_schema(table_param.table_name.c_str());
+
+  if (NULL == table_schema) {
+    ret = OB_ERROR;
+    TBSYS_LOG(ERROR, "cannot find table named [%s]", table_param.table_name.c_str());
+  }
+
+  if (OB_SUCCESS == ret) {
+    const ObRowkeyInfo &rowkey_info = table_schema->get_rowkey_info();
+
+    for (int i = 0; i < token_nr; i ++) {
+      std::string column_name(tokens[i].token, 0, tokens[i].len);
+      const ObColumnSchemaV2* column_schema = schema.get_column_schema(table_param.table_name.c_str(), column_name.c_str());
+      if (NULL == column_schema) {
+        ret = OB_ERROR;
+        TBSYS_LOG(ERROR, "can't find column[%s] in table[%s]", column_name.c_str(), table_param.table_name.c_str());
+        break;
+      }
+      else {
+        uint64_t column_id = column_schema->get_id();
+        if (rowkey_info.is_rowkey_column(column_id)) {
+          ObRowkeyColumn rowkey_column;
+          int64_t index = 0;
+          RowkeyDesc rowkey_desc;
+          rowkey_desc.offset = i;
+          rowkey_info.get_index(column_id, index, rowkey_column);
+          rowkey_desc.pos = static_cast<int>(index);
+          rowkey_desc.type = convert_column_type(column_schema->get_type()); 
+          if (-1 == rowkey_desc.type) {
+            ret = OB_ERROR;
+            TBSYS_LOG(ERROR, "not support column type");
+            break;
+          }
+          rowkey_count ++;
+          table_param.rowkey_descs.push_back(rowkey_desc);
+        }
+        ColumnDesc col_desc;
+        col_desc.name = column_name;
+        col_desc.offset = i;
+        col_desc.len = static_cast<int>(tokens[i].len);
+        table_param.col_descs.push_back(col_desc);
+      }
+    }
+
+    if (OB_SUCCESS == ret) {
+      if (rowkey_count != rowkey_info.get_size()) {
+        ret = OB_ERROR;
+        TBSYS_LOG(ERROR, "don't contain all rowkey column, please check data file. list rowkey count[%d]. actual rowkeycount[%ld]", 
+          rowkey_count, rowkey_info.get_size());
+      }
+    }
+  }
+  return ret;
+}
+
 int do_work(const char *config_file, const char *table_name, 
             const char *host, unsigned short port, size_t queue_size,
             const char *table_datafile)
 {
   ImportParam param;
   TableParam table_param;
-
+  RecordBlock rec_block;
+  Slice slice;
+  
   int ret = param.load(config_file);
   if (ret != OB_SUCCESS) {
     TBSYS_LOG(ERROR, "can't load config file, please check file path");
@@ -63,6 +166,7 @@ int do_work(const char *config_file, const char *table_name,
     return OB_ERROR;
   }
 
+  FileReader reader(table_param.data_file.c_str());
   OceanbaseDb db(host, port, 8 * kDefaultTimeout);
   ret = db.init();
   if (ret != OB_SUCCESS) {
@@ -79,28 +183,51 @@ int do_work(const char *config_file, const char *table_name,
   }
 
   if (ret == OB_SUCCESS) {
-    ret = db.fetch_schema(*schema);
+    RPC_WITH_RETIRES(db.fetch_schema(*schema), 5, ret);
     if (ret != OB_SUCCESS) {
       TBSYS_LOG(ERROR, "can't fetch schema from root server [%s:%d]", host, port);
     }
   }
 
   if (ret == OB_SUCCESS) {
+    ret = reader.open();
+    if (OB_SUCCESS != ret) {
+      TBSYS_LOG(ERROR, "can't open reader: ret[%d]", ret);
+    }
+  }
+
+  if (ret == OB_SUCCESS) {
+    if (table_param.has_table_title) {
+      TBSYS_LOG(INFO, "parse table title from data file");
+      ret = reader.get_records(rec_block, table_param.rec_delima, table_param.delima, 1);
+      if (ret != OB_SUCCESS) {
+        TBSYS_LOG(ERROR, "can't get record ret[%d]", ret);
+      }
+
+      if (ret == OB_SUCCESS) {
+        if (!rec_block.next_record(slice)) {
+          ret = OB_ERROR;
+          TBSYS_LOG(ERROR, "can't get title row");
+        }
+        else if (OB_SUCCESS != (ret = parse_table_title(slice, *schema, table_param))) {
+          ret = OB_ERROR;
+          TBSYS_LOG(ERROR, "can't parse table title ret[%d]", ret);
+        }
+      }
+    }
+  }
+
+  if (ret == OB_SUCCESS) {
     /* setup ObRowbuilder */
-    ObRowBuilder builder(schema, table_name, table_param.input_column_nr, table_param.delima);
+    ObRowBuilder builder(schema, table_name, table_param.input_column_nr, table_param.delima, table_param.has_nop_flag, table_param.nop_flag, table_param.has_null_flag, table_param.null_flag);
 
     ret = builder.set_column_desc(table_param.col_descs);
     if (ret != OB_SUCCESS) {
       TBSYS_LOG(ERROR, "can't setup column descripes");
-    } else {
-      ret = builder.set_rowkey_desc(table_param.rowkey_descs);
-      if (ret != OB_SUCCESS) {
-        TBSYS_LOG(ERROR, "can't setup rowkey descripes");
-      }
     }
 
     if (ret == OB_SUCCESS) {
-      ret = run_comsumer_queue(table_param, &builder, &db, queue_size);
+      ret = run_comsumer_queue(reader, table_param, &builder, &db, queue_size);
     }
   }
 
@@ -110,6 +237,19 @@ int do_work(const char *config_file, const char *table_name,
 
   return ret;
 }
+
+
+void handle_signal(int signo)
+{
+  switch (signo) {
+    case 40:
+      g_print_lineno_taggle = true;
+      break;
+    default:
+      break;
+  }
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -123,7 +263,16 @@ int main(int argc, char *argv[])
   size_t queue_size = 1000;
   int ret = 0;
 
-  while ((ret = getopt(argc, argv, "h:p:t:c:l:g:q:f:")) != -1) {
+  signal(40, handle_signal);
+
+  static struct option long_options[] = {
+    {"gbk", 0, 0, 1000},
+    {"buffersize", 1, 0, 1001},
+    {0, 0, 0, 0}
+  };
+  int option_index = 0;
+
+  while ((ret = getopt_long(argc, argv, "h:p:t:c:l:g:q:f:", long_options, &option_index)) != -1) {
     switch (ret) {
      case 'c':
        config_file = optarg;
@@ -148,6 +297,12 @@ int main(int argc, char *argv[])
        break;
      case 'f':
        data_file = optarg;
+       break;
+     case 1000:
+       g_gbk_encoding = true;
+       break;
+     case 1001:
+       kReadBufferSize = static_cast<int>(atol(optarg)) * 1024;
        break;
      default:
        usage(argv[0]);

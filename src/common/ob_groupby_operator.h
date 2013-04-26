@@ -23,6 +23,7 @@ namespace oceanbase
 {
   namespace common
   {
+    class ObRowkey;
     class ObGroupByOperator : public ObCellArray
     {
     public:
@@ -39,7 +40,7 @@ namespace oceanbase
                   const int64_t row_end);
       int copy_topk_row(const ObCellArray& org_cells, const int64_t row_width);
 
-      int init_all_in_one_group_row(const ObString& rowkey, 
+      int init_all_in_one_group_row(const ObRowkey& rowkey, 
                                     const uint64_t table_id);
 
       int remove_group(const ObGroupKey& key); 
@@ -51,13 +52,13 @@ namespace oceanbase
       }
 
     private:
-      int append_fake_composite_column(const ObString& rowkey, 
+      int append_fake_composite_column(const ObRowkey& rowkey, 
                                        const uint64_t table_id);
       int copy_row(const ObCellArray & agg_cells, const int64_t row_beg, 
                    const int64_t row_end);
 
     private:
-      static const int64_t HASH_SLOT_NUM = 256L << 10;
+      static const int64_t HASH_SLOT_NUM = 1024*16;
       const ObGroupByParam *param_;
       hash::ObHashMap<ObGroupKey, int64_t,
         hash::NoPthreadDefendMode> group_hash_map_;

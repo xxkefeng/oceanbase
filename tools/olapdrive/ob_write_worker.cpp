@@ -261,19 +261,16 @@ namespace oceanbase
     int ObWriteWorker::build_lz_rowkey()
     {
       int ret         = OB_SUCCESS;
-      int64_t pos     = 0;
       int64_t cur_id  = cur_rowkey_.cur_key_type_ == 0 
         ? cur_rowkey_.cur_key_id_ : cur_rowkey_.cur_creative_id_;
 
-      if ((OB_SUCCESS == (ret = encode_i64(cur_rowkey_buf_, LZ_ROWKEY_SIZE, pos, cur_rowkey_.cur_unit_id_)))
-          && (OB_SUCCESS == (ret = encode_i64(cur_rowkey_buf_, LZ_ROWKEY_SIZE, pos, cur_rowkey_.cur_date_)))
-          && (OB_SUCCESS == (ret = encode_i64(cur_rowkey_buf_, LZ_ROWKEY_SIZE, pos, cur_rowkey_.cur_campaign_id_)))
-          && (OB_SUCCESS == (ret = encode_i64(cur_rowkey_buf_, LZ_ROWKEY_SIZE, pos, cur_rowkey_.cur_adgroup_id_)))
-          && (OB_SUCCESS == (ret = encode_i8(cur_rowkey_buf_, LZ_ROWKEY_SIZE, pos, static_cast<int8_t>(cur_rowkey_.cur_key_type_))))
-          && (OB_SUCCESS == (ret = encode_i64(cur_rowkey_buf_, LZ_ROWKEY_SIZE, pos, cur_id))))
-      {
-        cur_lz_rowkey_.assign(cur_rowkey_buf_, LZ_ROWKEY_SIZE);
-      }    
+      rowkey_[0].set_int(cur_rowkey_.cur_unit_id_);
+      rowkey_[1].set_int(cur_rowkey_.cur_date_);
+      rowkey_[2].set_int(cur_rowkey_.cur_campaign_id_);
+      rowkey_[3].set_int(cur_rowkey_.cur_adgroup_id_);
+      rowkey_[4].set_int(cur_rowkey_.cur_key_type_);
+      rowkey_[5].set_int(cur_id);
+      cur_lz_rowkey_.assign(rowkey_, MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT);
       
       return ret;  
     }

@@ -77,10 +77,10 @@ namespace oceanbase
        * get the current scan tablet range,this function must be 
        * called after cs_scan() 
        * 
-       * @return const common::ObRange& return current scan tablet 
+       * @return const common::ObNewRange& return current scan tablet 
        *         range
        */
-      const common::ObRange& get_tablet_range() const;
+      const common::ObNewRange& get_tablet_range() const;
 
     private:
       int get_compact_scanner(const common::ObGetParam& get_param,
@@ -88,7 +88,7 @@ namespace oceanbase
                               common::ObScanner& compact_scanner);
 
       int get_compact_row(chunkserver::ObTablet& tablet,
-                          common::ObString& rowkey,
+                          common::ObRowkey& rowkey,
                           const int64_t commpactsstable_version,
                           const common::ColumnFilter* cf,
                           common::ObScanner& compact_scanner);
@@ -104,7 +104,7 @@ namespace oceanbase
       DISALLOW_COPY_AND_ASSIGN(ObGetScanProxy);
 
       ObTabletManager& tablet_manager_; //tablet manager
-      common::ObRange tablet_range_;    //tablet range, only reutrun by cs_scan
+      common::ObNewRange tablet_range_;    //tablet range, only reutrun by cs_scan
     };
   } /* chunkserver */
 } /* oceanbase */

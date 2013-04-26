@@ -18,6 +18,7 @@
 #include "common/utility.h"
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
+using namespace oceanbase::common::serialization;
 
 ObRename::ObRename():
   table_id_(0), base_table_id_(0),
@@ -27,6 +28,12 @@ ObRename::ObRename():
 
 ObRename::~ObRename()
 {
+}
+
+void ObRename::clear()
+{
+  ObSingleChildPhyOperator::clear();
+  row_desc_.reset();
 }
 
 int ObRename::set_table(const uint64_t table_id, const uint64_t base_table_id)
@@ -41,6 +48,16 @@ int ObRename::set_table(const uint64_t table_id, const uint64_t base_table_id)
   {
     table_id_ = table_id;
     base_table_id_ = base_table_id;
+  }
+  return ret;
+}
+
+int ObRename::add_column_id(const uint64_t& column_id)
+{
+  int ret = OB_SUCCESS;
+  if ((ret = column_ids_.push_back(column_id)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "Add column id failed, column_id=%lu, ret=%d", column_id, ret);
   }
   return ret;
 }
@@ -86,12 +103,20 @@ int ObRename::cons_row_desc()
   {
     TBSYS_LOG(WARN, "failed to get original row desc, err=%d", ret);
   }
+  else if (column_ids_.count() != 0 && column_ids_.count() != org_row_desc_->get_column_num())
+  {
+    TBSYS_LOG(ERROR, "Column ids are not initiated well");
+    ret = OB_NOT_INIT;
+  }
   else
   {
     OB_ASSERT(org_row_desc_);
+    OB_ASSERT(0 ==row_desc_.get_column_num());
+    uint64_t column_id = OB_INVALID_ID;
     for (int64_t idx = 0; idx < org_row_desc_->get_column_num(); idx++)
     {
-      if (OB_SUCCESS != (ret = row_desc_.add_column_desc(table_id_, OB_APP_MIN_COLUMN_ID+idx)))
+      column_id = (column_ids_.count() == 0)? OB_APP_MIN_COLUMN_ID + idx : column_ids_.at(idx);
+      if (OB_SUCCESS != (ret = row_desc_.add_column_desc(table_id_, column_id)))
       {
         TBSYS_LOG(WARN, "fail to add tid and cid to row desc. idx=%ld, tid=%lu, ret=%d",
                   idx, table_id_, ret);
@@ -153,3 +178,92 @@ int64_t ObRename::to_string(char* buf, const int64_t buf_len) const
   }
   return pos;
 }
+
+DEFINE_SERIALIZE(ObRename)
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = encode_vi64(buf, buf_len, pos, static_cast<int64_t>(table_id_))))
+  {
+    TBSYS_LOG(WARN, "fail to encode table_id_:ret[%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = encode_vi64(buf, buf_len, pos, static_cast<int64_t>(base_table_id_))))
+  {
+    TBSYS_LOG(WARN, "fail to encode base_table_id_:ret[%d]", ret);
+  }
+  if (OB_SUCCESS != (ret = encode_vi64(buf, buf_len, pos, column_ids_.count())))
+  {
+    TBSYS_LOG(WARN, "fail to encode renamed columns count:ret[%d]", ret);
+  }
+  else 
+  {
+    for (int64_t i  =0; OB_SUCCESS == ret && i < column_ids_.count(); i++)
+    {
+      if (OB_SUCCESS != (ret = encode_vi64(buf, buf_len, pos, static_cast<int64_t>(column_ids_.at(i)))))
+      {
+        TBSYS_LOG(WARN, "fail to serialize sort column:ret[%d]", ret);
+      }
+    }
+  }
+  return ret; 
+}
+
+DEFINE_DESERIALIZE(ObRename)
+{
+  int ret = OB_SUCCESS;
+  int64_t table_id = 0;
+  int64_t base_table_id = 0;
+  int64_t columns_count = 0;
+  int64_t column_id = 0;
+  clear();
+  if (OB_SUCCESS != (ret = decode_vi64(buf, data_len, pos, &table_id)))
+  {
+    TBSYS_LOG(WARN, "fail to decode table_id:ret[%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = decode_vi64(buf, data_len, pos, &base_table_id)))
+  {
+    TBSYS_LOG(WARN, "fail to decode base_table_id:ret[%d]", ret);
+  }
+  else
+  {
+    table_id_ = static_cast<uint64_t>(table_id);
+    base_table_id_ = static_cast<uint64_t>(base_table_id);
+    if (OB_SUCCESS != (ret = decode_vi64(buf, data_len, pos, &columns_count)))
+    {
+      TBSYS_LOG(WARN, "decode columns_count fail:ret[%d]", ret);
+    }
+    else
+    {
+      for (int64_t i = 0; OB_SUCCESS == ret && i < columns_count; i++)
+      {
+        if (OB_SUCCESS != (ret = decode_vi64(buf, data_len, pos, &column_id)))
+        {
+          TBSYS_LOG(WARN, "decode column id failed : ret[%d]", ret);
+        }
+        else if (OB_SUCCESS != (ret = column_ids_.push_back(static_cast<uint64_t>(column_id))))
+        {
+          TBSYS_LOG(WARN, "fail to add column id to array:ret[%d]", ret);
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+DEFINE_GET_SERIALIZE_SIZE(ObRename)
+{
+  int64_t size = 0;
+  size += encoded_length_vi64(table_id_);
+  size += encoded_length_vi64(base_table_id_);
+  size += serialization::encoded_length_vi64(column_ids_.count());
+  for (int64_t i = 0; i < column_ids_.count(); i++)
+  {
+    size += encoded_length_vi64(column_ids_.at(i));
+  }
+  return size;
+}
+
+ObPhyOperatorType ObRename::get_type() const
+{
+  return PHY_RENAME;
+}
+

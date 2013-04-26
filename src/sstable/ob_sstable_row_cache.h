@@ -16,6 +16,7 @@
 
 #include "common/ob_define.h"
 #include "common/ob_string.h"
+#include "common/ob_rowkey.h"
 #include "common/ob_kv_storecache.h"
 
 namespace oceanbase
@@ -46,23 +47,23 @@ namespace oceanbase
         uint32_t table_id_;
       };
       int32_t  row_key_size_;
-      char     *row_key_;
+      common::ObRowkey row_key_;
 
       ObSSTableRowCacheKey()
       {
         sstable_id_  = common::OB_INVALID_ID;
         column_group_id_ = static_cast<uint32_t>(common::OB_INVALID_ID);
         row_key_size_ = 0;
-        row_key_ = NULL;
+        row_key_.assign(NULL, 0);
       }
 
       ObSSTableRowCacheKey(const uint64_t sstable_id, 
-        const uint64_t table_or_group_id, common::ObString& row_key_in)
+        const uint64_t table_or_group_id, common::ObRowkey& row_key_in)
       {
         sstable_id_ = sstable_id;
         column_group_id_ = static_cast<uint32_t>(table_or_group_id);
-        row_key_size_ = row_key_in.length();
-        row_key_ = row_key_in.ptr();
+        row_key_size_ = static_cast<int32_t>(row_key_in.get_deep_copy_size());
+        row_key_ = row_key_in;
       }
 
       int64_t hash()const
@@ -70,9 +71,9 @@ namespace oceanbase
         uint32_t hash_val = 0;
         hash_val = common::murmurhash2(&sstable_id_, sizeof(sstable_id_), hash_val);
         hash_val = common::murmurhash2(&column_group_id_, sizeof(column_group_id_), hash_val);
-        if (NULL != row_key_ && 0 < row_key_size_)
+        if (NULL != row_key_.get_obj_ptr() && 0 < row_key_.get_obj_cnt())
         {
-          hash_val = common::murmurhash2(row_key_, row_key_size_, hash_val);
+          hash_val = row_key_.murmurhash2(hash_val);
         }
         return hash_val;
       }
@@ -85,9 +86,9 @@ namespace oceanbase
                && (row_key_size_ == other.row_key_size_));
         if (ret && row_key_size_ > 0)
         {
-          if (NULL != row_key_ && NULL != other.row_key_)
+          if (NULL != row_key_.get_obj_ptr() && NULL != other.row_key_.get_obj_ptr())
           {
-            ret = (memcmp(row_key_, other.row_key_, row_key_size_) == 0);
+            ret = (row_key_.compare(other.row_key_) == 0);
           }
           else
           {
@@ -153,12 +154,12 @@ namespace oceanbase
         {
           ret->sstable_id_ = other.sstable_id_;
           ret->column_group_id_ = other.column_group_id_;
-          ret->row_key_ = NULL;
+          ret->row_key_.assign(NULL, 0);
           ret->row_key_size_ = 0;
-          if (NULL != other.row_key_ && 0 < other.row_key_size_)
+          if (NULL != other.row_key_.get_obj_ptr() && 0 < other.row_key_size_)
           {
-            ret->row_key_ = buffer + sizeof(sstable::ObSSTableRowCacheKey);
-            memcpy(ret->row_key_, other.row_key_, other.row_key_size_);
+            ObRawBufAllocatorWrapper temp_buf(buffer + sizeof(sstable::ObSSTableRowCacheKey), other.row_key_size_);
+            other.row_key_.deep_copy(ret->row_key_, temp_buf);
             ret->row_key_size_ = other.row_key_size_;
           }
         }
@@ -208,6 +209,7 @@ namespace oceanbase
       ~ObSSTableRowCache();
 
       int init(const int64_t max_mem_size);
+      int enlarg_cache_size(const int64_t cache_mem_size);
 
       inline bool is_inited() const
       {

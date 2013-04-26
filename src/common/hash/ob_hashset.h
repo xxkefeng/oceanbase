@@ -105,7 +105,7 @@ namespace oceanbase
         };
         // 返回  -1表示有错误发生
         // 返回  HASH_EXIST表示结点存在
-        // 返回  HASH_NOEXIST表示结点不存在
+        // 返回  HASH_NOT_EXIST表示结点不存在
         int exist(const _key_type &key) const
         {
           int ret = 0;
@@ -126,7 +126,7 @@ namespace oceanbase
         };
         // 返回  -1表示有错误发生
         // 返回  HASH_EXIST表示结点存在并删除成功
-        // 返回  HASH_NOEXIST表示结点不存在不用删除
+        // 返回  HASH_NOT_EXIST表示结点不存在不用删除
         // 如果value指针不为空并且删除成功则将值存入value指向的空间
         int erase(const _key_type &key)
         {

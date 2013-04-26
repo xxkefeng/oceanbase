@@ -16,13 +16,11 @@
 
 #include "common/murmur_hash.h"
 #include "common/ob_string.h"
+#include "common/ob_rowkey.h"
+#include "common/ob_range2.h"
 
 namespace oceanbase
 {
-  namespace common
-  {
-    class ObRange;
-  }
   namespace sstable
   {
     enum SearchMode
@@ -77,33 +75,15 @@ namespace oceanbase
       int64_t block_count_;
       ObBlockPositionInfo position_info_[NUMBER_OF_BATCH_BLOCK_INFO];
     };
-
+      
     class ObBlockIndexCache;
+    class ObSSTableSchema;
 
     class ObSSTableBlockIndexV2
     {
       private:
         friend class DumpSSTable;
         friend class ObBlockIndexCache;
-        struct ObSSTableBlockIndexHeader
-        {
-          int64_t block_count_;
-          int32_t end_key_offset_;
-          int32_t reserved32_;
-          int64_t reserved64_[2];
-          int deserialize(const char* buf, const int64_t data_len, int64_t& pos);
-        };
-
-        struct ObSSTableBlockIndexElement
-        {
-          int16_t reserved1_;
-          uint16_t column_group_id_;
-          uint32_t table_id_;
-          int32_t block_record_size_;
-          int16_t block_end_key_size_;
-          int16_t reserved2_;
-          int deserialize(const char* buf, const int64_t data_len, int64_t& pos);
-        };
 
         struct IndexEntryType
         {
@@ -111,8 +91,7 @@ namespace oceanbase
           uint64_t column_group_id_;
           int64_t block_offset_;
           int64_t block_record_size_;
-          int32_t end_key_offset_;
-          int32_t end_key_size_;
+          common::ObRowkey rowkey_;
           inline bool operator<(const IndexEntryType& entry) const
           {
             bool ret = false;
@@ -151,9 +130,9 @@ namespace oceanbase
         {
           uint64_t table_id_;
           uint64_t column_group_id_;
-          common::ObString rowkey_;
+          common::ObRowkey rowkey_;
           IndexLookupKey(const uint64_t id, 
-              const uint64_t column_group_id, const common::ObString& key)
+              const uint64_t column_group_id, const common::ObRowkey& key)
             : table_id_(id), column_group_id_(column_group_id), rowkey_(key) {}
         };
 
@@ -168,9 +147,7 @@ namespace oceanbase
               {
                 if (index.column_group_id_ == key.column_group_id_)
                 {
-                  common::ObString compare_key(0, index.end_key_size_, 
-                      const_cast<char*>(block_index_.get_base()) + index.end_key_offset_);
-                  ret = compare_key.compare(key.rowkey_) < 0;
+                  ret = index.rowkey_.compare(key.rowkey_) < 0;
                 }
                 else
                 {
@@ -220,7 +197,7 @@ namespace oceanbase
          */
         int search_batch_blocks_by_key(const uint64_t table_id, 
             const uint64_t column_group_id, 
-            const oceanbase::common::ObString& key, 
+            const oceanbase::common::ObRowkey& key, 
             const SearchMode mode, 
             ObBlockPositionInfos& pos_info) const;
 
@@ -230,7 +207,7 @@ namespace oceanbase
          */
         int search_batch_blocks_by_range(const uint64_t table_id, 
             const uint64_t column_group_id, 
-            const oceanbase::common::ObRange& range, 
+            const common::ObNewRange& range, 
             const bool is_reverse_scan, 
             ObBlockPositionInfos& pos_info) const;
 
@@ -239,7 +216,7 @@ namespace oceanbase
          */
         int search_one_block_by_key(const uint64_t table_id, 
             const uint64_t column_group_id, 
-            const oceanbase::common::ObString& key, 
+            const oceanbase::common::ObRowkey& key, 
             const SearchMode mode, 
             ObBlockPositionInfo& pos_info) const;
 
@@ -266,11 +243,11 @@ namespace oceanbase
          * the first block is a empty block, fill nothing but
          * only represents start key.
          */
-        common::ObString get_start_key(const uint64_t table_id) const;
+        common::ObRowkey get_start_key(const uint64_t table_id) const;
         /**
          * end key of sstable is end_key of the last block.
          */
-        common::ObString get_end_key(const uint64_t table_id) const;
+        common::ObRowkey get_end_key(const uint64_t table_id) const;
 
         ObSSTableBlockIndexV2* deserialize_copy(char* buffer) const;
 
@@ -285,12 +262,11 @@ namespace oceanbase
         };
 
         int get_bound(Bound& bound) const;
-        const char* get_base() const;
-        char* get_base();
+        inline const char* get_base() const { return base_; }
+        inline char* get_base() { return base_; }
 
         const_iterator begin() const; 
         const_iterator end() const; 
-        common::ObString get_end_key(const_iterator index_entry) const;
 
 
         inline bool match_table_group(const IndexEntryType &entry, 
@@ -305,7 +281,7 @@ namespace oceanbase
             const_iterator find,
             const Bound& bound,
             const SearchMode mode,
-            const common::ObString& end_key,
+            const common::ObRowkey& end_key,
             const uint64_t table_id,
             const uint64_t column_group_id,
             ObBlockPositionInfos &pos_info) const;
@@ -319,7 +295,7 @@ namespace oceanbase
 
         int find_by_key(const uint64_t table_id, 
             const uint64_t column_group_id, 
-            const oceanbase::common::ObString& key, 
+            const oceanbase::common::ObRowkey& key, 
             const SearchMode mode, 
             const Bound& bond,
             const_iterator& find) const;
@@ -334,9 +310,9 @@ namespace oceanbase
             const_iterator& find_it) const;
 
         int trans_range_to_search_key(
-            const common::ObRange& range,
+            const common::ObNewRange& range,
             const bool is_reverse_scan, 
-            common::ObString& search_key, 
+            common::ObRowkey& search_key, 
             SearchMode& mode) const;
 
         /**

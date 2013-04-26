@@ -24,7 +24,7 @@ namespace oceanbase
       void check_reset(void);
     public:
       static const int64_t INIT_SERVER_COUNT = 128;
-      static const int64_t DEFAULT_INTERVAL = 15 * 60 * 1000 * 1000L;
+      static const int64_t DEFAULT_INTERVAL = 10 * 60 * 1000 * 1000L;
     private:
       static const int64_t MAX_ADDR_LEN = 128;
       int64_t reset_interval_;

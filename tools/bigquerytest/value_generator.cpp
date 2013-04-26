@@ -109,6 +109,14 @@ void ValueRule::get_col_values(uint64_t suffix, int64_t* col_ary, int64_t col_si
   }
 }
 
+const char* ValueRule::to_string()
+{
+  static char buf[1024];
+  serialize(buf, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  return buf;
+}
+
 int ValueRule::serialize(char* buf, int64_t buf_size)
 {
   int err = 0;
@@ -222,7 +230,8 @@ int ValueGenerator::generate_value_rule(uint64_t prefix, ValueRule& rule)
   int err = 0;
 
   UNUSED(prefix);
-  int ref_row_num = 100 * 1000;
+  int ref_row_num = 1000 * 1000;
+  //int ref_row_num = 50;
 
   // TODO(rizhao) add more rule
   int rand_val = rand() % 3;

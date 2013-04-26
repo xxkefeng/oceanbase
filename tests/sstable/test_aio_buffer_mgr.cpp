@@ -55,12 +55,11 @@ namespace oceanbase
                   file_name, file_name, file_name, file_size / (1024 * 1024));
           system(cmd);
           
-          ObBlockCacheConf conf;
-          conf.block_cache_memsize_mb = 1024;
-          conf.ficache_max_num = 1024;
+          int64_t block_cache_size = 1024;
+          int64_t ficache_max_num = 1024;
         
-          fic.init(conf.ficache_max_num);
-          bc.init(conf);
+          fic.init(ficache_max_num);
+          bc.init(block_cache_size);
         }
       
         static void TearDownTestCase()

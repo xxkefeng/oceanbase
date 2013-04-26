@@ -20,6 +20,7 @@
 #include "ob_client_wrapper.h"
 #include "common/ob_define.h"
 #include "mergeserver/ob_ms_get_cell_stream.h"
+#include "mergeserver/ob_ms_tablet_location_proxy.h"
 #include "ob_update_server_main.h"
 
 namespace oceanbase
@@ -54,8 +55,7 @@ namespace oceanbase
 
    int ObClientWrapper::init(ObMergerRpcStub * rpc_stub,
        ObMergerSchemaManager * schema,
-       ObMergerTabletLocationCache * cache,
-       ObMergerServiceMonitor * monitor)
+       ObMergerLocationCacheProxy* cache)
     {
       int ret = OB_SUCCESS;
       if(init_)
@@ -67,13 +67,13 @@ namespace oceanbase
       {
         if(NULL == rpc_stub || NULL == schema || NULL == cache)
         {
-          TBSYS_LOG(WARN, "input param error, rpc=%p, schema=%p, cache=%p, monitor=%p",
-              rpc_stub, schema, cache, monitor);
+          TBSYS_LOG(WARN, "input param error, rpc=%p, schema=%p, cache=%p",
+              rpc_stub, schema, cache);
           ret = OB_ERROR;
         }
         else
         {
-          if((OB_SUCCESS == rpc_proxy_.init(rpc_stub, schema, cache, monitor)))
+          if((OB_SUCCESS == rpc_proxy_.init(rpc_stub, schema, cache)))
           {
             ups_stream_ = new(std::nothrow) ObMSGetCellStream(&rpc_proxy_);
             if(NULL == ups_stream_)

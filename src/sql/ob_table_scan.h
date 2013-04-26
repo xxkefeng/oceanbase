@@ -79,7 +79,7 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        virtual int set_limit(const int64_t limit, const int64_t offset) = 0;
+        virtual int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset) = 0;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const = 0;
       private:
         // disallow copy

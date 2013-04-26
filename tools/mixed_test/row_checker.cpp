@@ -29,7 +29,7 @@ void RowChecker::add_cell(const ObCellInfo *ci)
     ci_mem_tank_.write_obj(ci->value_, &(new_ci->value_));
     if (NULL == cur_row_key_.ptr())
     {
-      cur_row_key_.assign_ptr(NULL, 0);
+      cur_row_key_.assign(NULL, 0);
       ci_mem_tank_.write_string(ci->row_key_, &cur_row_key_);
     }
     CellinfoBuilder::merge_obj(new_ci, read_result_);
@@ -65,7 +65,7 @@ bool RowChecker::check_row(CellinfoBuilder &cb, const ObSchema &schema)
     cell_num_ci->value_.get_int(cell_num);
     CellinfoBuilder::result_set_t check_result;
     PageArena<char> allocer;
-    cb.get_result(cur_row_key_, schema, SEED_START, seed_end, cell_num, check_result, allocer);
+    cb.get_result(TestRowkeyHelper(cur_row_key_), schema, SEED_START, seed_end, cell_num, check_result, allocer);
 
     CellinfoBuilder::result_iter_t iter;
     for (iter = read_result_.begin(); iter != read_result_.end(); ++iter)
@@ -75,7 +75,8 @@ bool RowChecker::check_row(CellinfoBuilder &cb, const ObSchema &schema)
           || ROWKEY_INFO_COLUMN_ID == iter->second->column_id_
           || SUFFIX_LENGTH_COLUMN_ID == iter->second->column_id_
           || C_TIME_COLUMN_ID == iter->second->column_id_
-          || M_TIME_COLUMN_ID == iter->second->column_id_)
+          || M_TIME_COLUMN_ID == iter->second->column_id_
+          || schema.is_rowkey_column(iter->second->column_id_))
       {
         continue;
       }
@@ -113,17 +114,17 @@ bool RowChecker::check_row(CellinfoBuilder &cb, const ObSchema &schema)
   }
   read_result_.clear();
   ci_mem_tank_.clear();
-  cur_row_key_.assign_ptr(NULL, 0);
+  cur_row_key_.assign(NULL, 0);
   last_is_del_row_ = false;
   return bret;
 }
 
-const ObString &RowChecker::get_cur_rowkey() const
+const ObRowkey &RowChecker::get_cur_rowkey() const
 {
   return cur_row_key_;
 }
 
-bool RowChecker::is_prefix_changed(const ObString &row_key)
+bool RowChecker::is_prefix_changed(const ObRowkey &row_key)
 {
   bool bret = false;
   if (NULL == last_row_key_.ptr() && NULL != row_key.ptr())
@@ -134,18 +135,18 @@ bool RowChecker::is_prefix_changed(const ObString &row_key)
   {
     bret = true;
   }
-  else if (0 != memcmp(last_row_key_.ptr(), row_key.ptr(), RowkeyBuilder::I64_STR_LENGTH))
+  else if (0 != memcmp(to_obstr(TestRowkeyHelper(last_row_key_)).ptr(), to_obstr(TestRowkeyHelper(row_key)).ptr(), RowkeyBuilder::I64_STR_LENGTH))
   {
     bret = true;
   }
   return bret;
 }
 
-void RowChecker::add_rowkey(const ObString &row_key)
+void RowChecker::add_rowkey(const ObRowkey &row_key)
 {
   if (0 != memcmp(ROWKEY_INFO_ROWKEY, row_key.ptr(), strlen(ROWKEY_INFO_ROWKEY)))
   {
-    ObString new_rk;
+    ObRowkey new_rk;
     rk_mem_tank_.write_string(row_key, &new_rk);
     rowkey_read_set_.set(new_rk, 1, 1);
     last_row_key_ = new_rk;
@@ -157,25 +158,24 @@ bool RowChecker::check_rowkey(RowkeyBuilder &rb, const int64_t *prefix_ptr)
 {
   bool bret = true;
   PageArena<char> allocer;
-  ObHashMap<ObString, uint64_t> rowkey_check_set;
+  ObHashMap<ObRowkey, uint64_t> rowkey_check_set;
   rowkey_check_set.create(RK_SET_SIZE);
   bool prefix_changed = true;
   while (add_rowkey_times_ > rowkey_check_set.size())
   {
-    ObString rowkey_check = rb.get_rowkey4checkall(allocer, prefix_changed, prefix_ptr);
+    ObRowkey rowkey_check = TestRowkeyHelper(rb.get_rowkey4checkall(allocer, prefix_changed, prefix_ptr), &allocer);
     prefix_changed = false;
     rowkey_check_set.set(rowkey_check, 1, 1);
   }
 
-  ObHashMap<ObString, uint64_t>::iterator iter;
+  ObHashMap<ObRowkey, uint64_t>::iterator iter;
   for (iter = rowkey_read_set_.begin(); iter != rowkey_read_set_.end(); iter++)
   {
     uint64_t tmp = 0;
     if (HASH_EXIST != rowkey_check_set.get(iter->first, tmp))
     {
-      bret = false; 
-      TBSYS_LOG(WARN, "read_rowkey=[%.*s] not found in check_set",
-                iter->first.length(), iter->first.ptr());
+      bret = false;
+      TBSYS_LOG(WARN, "read_rowkey=[%s] not found in check_set", to_cstring(iter->first));
     }
     else
     {
@@ -187,7 +187,7 @@ bool RowChecker::check_rowkey(RowkeyBuilder &rb, const int64_t *prefix_ptr)
     bret = false;
     for (iter = rowkey_check_set.begin(); iter != rowkey_check_set.end(); iter++)
     {
-      TBSYS_LOG(WARN, "rowkey=[%.*s] not in result_set", iter->first.length(), iter->first.ptr());
+      TBSYS_LOG(WARN, "rowkey=[%s] not in result_set", to_cstring(iter->first));
     }
   }
   assert(bret);
@@ -196,7 +196,7 @@ bool RowChecker::check_rowkey(RowkeyBuilder &rb, const int64_t *prefix_ptr)
   return bret;
 }
 
-const ObString &RowChecker::get_last_rowkey() const
+const ObRowkey &RowChecker::get_last_rowkey() const
 {
   return last_row_key_;
 }
@@ -224,13 +224,13 @@ bool RowExistChecker::check_row_not_exist(ClientWrapper &client, const ObCellInf
   bool bret = true;
   int tmp_ret = OB_SUCCESS;
 
-  int64_t prefix = RowkeyBuilder::get_prefix(ci->row_key_);
+  int64_t prefix = RowkeyBuilder::get_prefix(TestRowkeyHelper(ci->row_key_));
   if (HASH_EXIST != hash_set_.exist(prefix))
   {
     PageArena<char> allocator;
     ObScanParam scan_param;
 
-    if (using_id) 
+    if (using_id)
     {
       scan_param.add_column(C_TIME_COLUMN_ID);
     }
@@ -239,18 +239,18 @@ bool RowExistChecker::check_row_not_exist(ClientWrapper &client, const ObCellInf
       scan_param.add_column(ObString(0, static_cast<int32_t>(strlen(C_TIME_COLUMN_NAME)), (char*)C_TIME_COLUMN_NAME));
     }
 
-    std::pair<ObString,ObString> key_range = RowkeyBuilder::get_rowkey4scan(prefix, RowkeyBuilder::get_suffix_length(ci->row_key_), allocator);
-    ObRange range;
-    range.start_key_ = key_range.first;
-    range.end_key_ = key_range.second;
+    std::pair<ObString,ObString> key_range = RowkeyBuilder::get_rowkey4scan(prefix, RowkeyBuilder::get_suffix_length(TestRowkeyHelper(ci->row_key_)), allocator);
+    ObNewRange new_range;
+    new_range.start_key_ = TestRowkeyHelper(key_range.first, &allocator);
+    new_range.end_key_ = TestRowkeyHelper(key_range.second, &allocator);
 
     if (using_id)
     {
-      scan_param.set(ci->table_id_, ObString(), range);
+      scan_param.set(ci->table_id_, ObString(), new_range);
     }
     else
     {
-      scan_param.set(OB_INVALID_ID, ci->table_name_, range);
+      scan_param.set(OB_INVALID_ID, ci->table_name_, new_range);
     }
 
     ObVersionRange version_range;
@@ -265,9 +265,7 @@ bool RowExistChecker::check_row_not_exist(ClientWrapper &client, const ObCellInf
     {
       if (0 == scanner.get_row_num())
       {
-        TBSYS_LOG(ERROR, "scan get nothing (%.*s,%.*s)",
-            range.start_key_.length(), range.start_key_.ptr(),
-            range.end_key_.length(), range.end_key_.ptr());
+        TBSYS_LOG(ERROR, "scan get nothing (%s)", to_cstring(new_range));
         tmp_ret = OB_ERROR;
       }
       else
@@ -278,7 +276,7 @@ bool RowExistChecker::check_row_not_exist(ClientWrapper &client, const ObCellInf
           if (OB_SUCCESS == (tmp_ret = scanner.get_cell(&tmp_ci)))
           {
             ObCreateTime tmp_c_time = 0;
-            ObString tmp_row_key;
+            ObRowkey tmp_row_key;
             mem_tank_.write_string(tmp_ci->row_key_, &tmp_row_key);
             tmp_ci->value_.get_createtime(tmp_c_time);
             hash_map_.set(tmp_row_key, tmp_c_time);

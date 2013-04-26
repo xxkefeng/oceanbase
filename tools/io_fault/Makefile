@@ -4,6 +4,8 @@ cc = gcc
 cflags =
 ldflags = -ldl
 
+EXTRA_DIST = Makefile iof.c func-list.c gen-iof-preload-func.py
+
 all: $(target)
 %.test: %
 	./$< set . 1.0 EDELAY 1000000

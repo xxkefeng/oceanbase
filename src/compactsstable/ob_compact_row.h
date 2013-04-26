@@ -28,7 +28,7 @@ namespace oceanbase
     class ObCompactRow
     {
     public:
-      static const uint64_t MAX_COL_ID           =  65535UL;
+      static const uint64_t MAX_COL_ID           =  common::OB_ALL_MAX_COLUMN_ID;
       static const int64_t  COL_ID_SIZE          =  2; //column id use uint16_t
       static const int64_t  MAX_COL_NUM          =  1024L;
       static const int64_t  MAX_BUF_SIZE         =  2 * 1024 * 1024; //2M
@@ -46,7 +46,7 @@ namespace oceanbase
     public:
       int set_row(const char* row,int64_t row_len);
       //before rowkey split
-      int get_row_key(common::ObString& rowkey);
+      int get_row_key(common::ObRowkey& rowkey);
         
     public:
       void reset_iter();

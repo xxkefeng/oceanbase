@@ -16,6 +16,8 @@
 #include "ob_ups_manager.h"
 #include "common/ob_define.h"
 #include <tbsys.h>
+#include "ob_root_worker.h"
+#include "ob_root_async_task_queue.h"
 
 using namespace oceanbase::rootserver;
 using namespace oceanbase::common;
@@ -32,15 +34,29 @@ void ObUps::reset()
   did_renew_received_ = false;
 }
 
-ObUpsManager::ObUpsManager(ObRootRpcStub &rpc_stub, ObRootConfig &config, const ObiRole &obi_role)
-  :config_(&config), rpc_stub_(rpc_stub), obi_role_(obi_role), ups_master_idx_(-1), waiting_ups_finish_time_(0),
-  master_master_ups_read_percentage_(-1), slave_master_ups_read_percentage_(-1),
-  is_flow_control_by_ip_(false)
+ObUpsManager::ObUpsManager(ObRootRpcStub &rpc_stub, ObRootWorker *worker,
+                           const int64_t &revoke_rpc_timeout_us,
+                           int64_t lease_duration, int64_t lease_reserved_us,
+                           int64_t waiting_ups_register_duration,
+                           const ObiRole &obi_role,
+                           const volatile int64_t& schema_version,
+                           const volatile int64_t &config_version)
+  :queue_(NULL), rpc_stub_(rpc_stub), worker_(worker), obi_role_(obi_role), revoke_rpc_timeout_us_(revoke_rpc_timeout_us),
+   lease_duration_us_(lease_duration), lease_reserved_us_(lease_reserved_us),
+   ups_master_idx_(-1), waiting_ups_register_duration_(waiting_ups_register_duration),
+   waiting_ups_finish_time_(0), schema_version_(schema_version), config_version_(config_version),
+   master_master_ups_read_percentage_(-1), slave_master_ups_read_percentage_(-1),
+   is_flow_control_by_ip_(false)
 {
 }
 
 ObUpsManager::~ObUpsManager()
 {
+}
+
+void ObUpsManager::set_async_queue(ObRootAsyncTaskQueue * queue)
+{
+  queue_ = queue;
 }
 
 int ObUpsManager::find_ups_index(const ObServer &addr) const
@@ -73,7 +89,7 @@ bool ObUpsManager::is_ups_master(const ObServer &addr) const
   return ret;
 }
 
-int ObUpsManager::register_ups(const ObServer &addr, int32_t inner_port, int64_t log_seq_num, int64_t lease)
+int ObUpsManager::register_ups(const ObServer &addr, int32_t inner_port, int64_t log_seq_num, int64_t lease, const char *server_version)
 {
   int ret = OB_SUCCESS;
   tbsys::CThreadGuard guard(&ups_array_mutex_);
@@ -93,14 +109,14 @@ int ObUpsManager::register_ups(const ObServer &addr, int32_t inner_port, int64_t
         if (0 == waiting_ups_finish_time_)
         {
           // first ups register, we will waiting for some time before select the master
-          waiting_ups_finish_time_ = now + config_->flag_ups_waiting_register_duration_us_.get();
+          waiting_ups_finish_time_ = now + waiting_ups_register_duration_;
           TBSYS_LOG(INFO, "first ups register, waiting_finish=%ld duration=%ld",
-              waiting_ups_finish_time_, config_->flag_ups_waiting_register_duration_us_.get());
+              waiting_ups_finish_time_, waiting_ups_register_duration_);
         }
         ups_array_[i].addr_ = addr;
         ups_array_[i].inner_port_ = inner_port;
         ups_array_[i].log_seq_num_ = log_seq_num;
-        ups_array_[i].lease_ = now + config_->flag_ups_lease_us_.get();
+        ups_array_[i].lease_ = now + lease_duration_us_;
         ups_array_[i].did_renew_received_ = true;
         ups_array_[i].cs_read_percentage_ = 0;
         ups_array_[i].ms_read_percentage_ = 0;
@@ -108,16 +124,13 @@ int ObUpsManager::register_ups(const ObServer &addr, int32_t inner_port, int64_t
         {
           if (has_master())
           {
-            char buff[OB_IP_STR_BUFF];
-            buff[0] = '\0';
-            ups_array_[ups_master_idx_].addr_.to_string(buff, OB_IP_STR_BUFF);
             TBSYS_LOG(WARN, "ups claimed to have the master lease but we ignore, addr=%s lease=%ld master=%s",
-                addr.to_cstring(), lease, buff);
+                addr.to_cstring(), lease, to_cstring(ups_array_[ups_master_idx_].addr_));
             ret = OB_CONFLICT_VALUE;
           }
           else
           {
-            ups_array_[i].stat_ = UPS_STAT_MASTER;
+            change_ups_stat(i, UPS_STAT_MASTER);
             ups_master_idx_ = i;
             TBSYS_LOG(WARN, "ups claimed to have the master lease, addr=%s lease=%ld",
                 addr.to_cstring(), lease);
@@ -128,7 +141,7 @@ int ObUpsManager::register_ups(const ObServer &addr, int32_t inner_port, int64_t
         }
         else
         {
-          ups_array_[i].stat_ = UPS_STAT_NOTSYNC;
+          change_ups_stat(i, UPS_STAT_NOTSYNC);
           ret = OB_SUCCESS;
         }
         TBSYS_LOG(INFO, "ups register, addr=%s inner_port=%d lsn=%ld lease=%ld",
@@ -136,6 +149,14 @@ int ObUpsManager::register_ups(const ObServer &addr, int32_t inner_port, int64_t
         reset_ups_read_percent();
         break;
       }
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    int err = server_online(true, addr, inner_port, server_version);
+    if (err != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "ups online failed:server[%s], err[%d]", addr.to_cstring(), err);
     }
   }
   return ret;
@@ -159,9 +180,7 @@ int ObUpsManager::renew_lease(const common::ObServer &addr, ObUpsStatus stat, co
     {
       if (ups_array_[i].stat_ != stat)
       {
-        ups_array_[i].stat_ = stat;
-        TBSYS_LOG(INFO, "ups change status, ups=%s stat=%d",
-            addr.to_cstring(), ups_array_[i].stat_);
+        change_ups_stat(i, stat);
         if (!is_flow_control_by_ip_)
         {
           reset_ups_read_percent();
@@ -175,6 +194,42 @@ int ObUpsManager::renew_lease(const common::ObServer &addr, ObUpsStatus stat, co
     else
     {
       TBSYS_LOG(WARN, "ups's obi role is INIT, ups=%s", addr.to_cstring());
+    }
+  }
+  return ret;
+}
+
+int ObUpsManager::server_online(const bool online, const ObServer & server, const int32_t inner_port,
+    const char *server_version)
+{
+  int ret = OB_SUCCESS;
+  if (queue_ != NULL)
+  {
+    ObRootAsyncTaskQueue::ObSeqTask task;
+    task.type_ = online ? SERVER_ONLINE : SERVER_OFFLINE;
+    task.role_ = OB_UPDATESERVER;
+    task.server_ = server;
+    task.inner_port_ = inner_port;
+
+    int64_t server_version_length = strlen(server_version);
+    if (server_version_length < OB_SERVER_VERSION_LENGTH)
+    {
+      strncpy(task.server_version_, server_version, server_version_length + 1);
+    }
+    else
+    {
+      strncpy(task.server_version_, server_version, OB_SERVER_VERSION_LENGTH - 1);
+      task.server_version_[OB_SERVER_VERSION_LENGTH - 1] = '\0';
+    }
+    ret = queue_->push(task);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "push update server task failed:server[%s], type[%d], ret[%d]",
+          task.server_.to_cstring(), task.type_, ret);
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "push update server task succ:server[%s]", task.server_.to_cstring());
     }
   }
   return ret;
@@ -198,22 +253,26 @@ int ObUpsManager::slave_failure(const common::ObServer &addr, const common::ObSe
   else
   {
     TBSYS_LOG(INFO, "ups master reporting slave ups failure, slave=%s", slave_addr.to_cstring());
-    ups_array_[i].stat_ = UPS_STAT_OFFLINE;
+    change_ups_stat(i, UPS_STAT_OFFLINE);
     reset_ups_read_percent();
+    int err = server_online(false, slave_addr, ups_array_[i].inner_port_, "null");
+    if (err != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "slave ups off failed:server[%s], err[%d]", slave_addr.to_cstring(), err);
+    }
   }
   return ret;
 }
 
 int ObUpsManager::send_granting_msg(const common::ObServer &addr,
-                                       const common::ObServer& master, int64_t lease)
+                                    common::ObMsgUpsHeartbeat &msg)
 {
   int ret = OB_SUCCESS;
-  char buff[OB_IP_STR_BUFF];
-  buff[0] = '\0';
-  ret = rpc_stub_.grant_lease_to_ups(addr, master, lease, obi_role_);
-  master.to_string(buff, OB_IP_STR_BUFF);
-  TBSYS_LOG(DEBUG, "send lease to ups, ups=%s master=%s self_lease=%ld",
-            addr.to_cstring(), buff, lease);
+  ret = rpc_stub_.grant_lease_to_ups(addr, msg);
+  TBSYS_LOG(DEBUG, "send lease to ups, ups=%s master=%s "
+            "self_lease=%ld, schema_version=%ld config_version=%ld",
+            to_cstring(addr), to_cstring(msg.ups_master_),
+            msg.self_lease_, msg.schema_version_, msg.config_version_);
   return ret;
 }
 
@@ -228,7 +287,7 @@ bool ObUpsManager::need_grant(int64_t now, const ObUps &ups) const
   bool ret = false;
   if (ups.did_renew_received_)
   {
-    if (now > ups.lease_ - config_->flag_ups_lease_reserved_us_.get()
+    if (now > ups.lease_ - lease_reserved_us_
         && now < ups.lease_)
     {
       // the lease of this ups' is going to expire
@@ -259,12 +318,17 @@ int ObUpsManager::grant_lease(bool did_force /*=false*/)
     {
       if (need_grant(now, ups_array_[i]) || did_force)
       {
-        if (!did_force)
-        {
-          ups_array_[i].did_renew_received_ = false;
-          ups_array_[i].lease_ = now + config_->flag_ups_lease_us_.get();
-        }
-        int ret2 = send_granting_msg(ups_array_[i].addr_, master, ups_array_[i].lease_);
+        ups_array_[i].did_renew_received_ = false;
+        ups_array_[i].lease_ = now + lease_duration_us_;
+
+        ObMsgUpsHeartbeat msg;
+        msg.ups_master_ = master;
+        msg.self_lease_ = ups_array_[i].lease_;
+        msg.obi_role_ = obi_role_;
+        msg.schema_version_ = schema_version_;
+        msg.config_version_ = config_version_;
+
+        int ret2 = send_granting_msg(ups_array_[i].addr_, msg);
         if (OB_SUCCESS != ret2)
         {
           TBSYS_LOG(WARN, "grant lease to ups error, err=%d ups=%s",
@@ -295,7 +359,14 @@ int ObUpsManager::grant_eternal_lease()
   {
     if (UPS_STAT_OFFLINE != ups_array_[i].stat_)
     {
-      int ret2 = send_granting_msg(ups_array_[i].addr_, master, OB_MAX_UPS_LEASE_DURATION_US);
+      ObMsgUpsHeartbeat msg;
+      msg.ups_master_ = master;
+      msg.self_lease_ = OB_MAX_UPS_LEASE_DURATION_US;
+      msg.obi_role_ = obi_role_;
+      msg.schema_version_ = schema_version_;
+      msg.config_version_ = config_version_;
+
+      int ret2 = send_granting_msg(ups_array_[i].addr_, msg);
       if (OB_SUCCESS != ret2)
       {
         TBSYS_LOG(WARN, "grant lease to ups error, err=%d ups=%s",
@@ -335,17 +406,18 @@ int ObUpsManager::select_ups_master_with_highest_lsn()
     }
     else
     {
+      change_ups_stat(master_idx, UPS_STAT_MASTER);
       ups_master_idx_ = master_idx;
-      ups_array_[ups_master_idx_].stat_ = UPS_STAT_MASTER;
       TBSYS_LOG(INFO, "new ups master selected, master=%s lsn=%ld",
-                ups_array_[ups_master_idx_].addr_.to_cstring(),
-                ups_array_[ups_master_idx_].log_seq_num_);
+          ups_array_[ups_master_idx_].addr_.to_cstring(),
+          ups_array_[ups_master_idx_].log_seq_num_);
       reset_ups_read_percent();
       ret = OB_SUCCESS;
     }
   }
   return ret;
 }
+
 void ObUpsManager::reset_ups_read_percent()
 {
   for (int i = 0; i < MAX_UPS_COUNT; i++)
@@ -413,7 +485,9 @@ void ObUpsManager::reset_ups_read_percent()
       ups_array_[i].cs_read_percentage_ = 0;
     }
   }
+
 }
+
 void ObUpsManager::update_ups_lsn()
 {
   for (int32_t i = 0; i < MAX_UPS_COUNT; ++i)
@@ -421,7 +495,7 @@ void ObUpsManager::update_ups_lsn()
     if (UPS_STAT_OFFLINE != ups_array_[i].stat_)
     {
       uint64_t lsn = 0;
-      if (OB_SUCCESS != rpc_stub_.get_ups_max_log_seq(ups_array_[i].addr_, lsn, config_->flag_network_timeout_us_.get()))
+      if (OB_SUCCESS != rpc_stub_.get_ups_max_log_seq(ups_array_[i].addr_, lsn, revoke_rpc_timeout_us_))
       {
         TBSYS_LOG(WARN, "failed to get ups log seq, ups=%s", ups_array_[i].addr_.to_cstring());
       }
@@ -477,6 +551,8 @@ int ObUpsManager::check_lease()
 {
   int ret = OB_SUCCESS;
   bool did_select_new_master = false;
+  ObServer offline_server;
+  int32_t inner_port = -1;
   for (int32_t i = 0; i < MAX_UPS_COUNT; ++i)
   {
     tbsys::CThreadGuard guard(&ups_array_mutex_);
@@ -488,18 +564,27 @@ int ObUpsManager::check_lease()
         TBSYS_LOG(INFO, "ups is offline, ups=%s lease=%ld lease_duration=%ld now=%ld",
             ups_array_[i].addr_.to_cstring(),
             ups_array_[i].lease_,
-            config_->flag_ups_lease_us_.get(), now);
+            lease_duration_us_, now);
+
         // ups offline
         if (ups_array_[i].stat_ == UPS_STAT_MASTER)
         {
           ups_master_idx_ = -1;
           did_select_new_master = true;
         }
-        TBSYS_LOG(INFO, "some ups is offline. reset read percentage");
+        TBSYS_LOG(INFO, "There's ups offline. ups: [%s], stat[%d], master_idx[%d]",
+            to_cstring(ups_array_[i].addr_), ups_array_[i].stat_, ups_master_idx_);
         reset_ups_read_percent();
+        offline_server = ups_array_[i].addr_;
+        inner_port = ups_array_[i].inner_port_;
+        change_ups_stat(i, UPS_STAT_OFFLINE);
         ups_array_[i].reset();
-        ups_array_[i].stat_ = UPS_STAT_OFFLINE;
         check_all_ups_offline();
+        int err = server_online(false, offline_server, inner_port, "null");
+        if (err != OB_SUCCESS)
+        {
+          TBSYS_LOG(ERROR, "ups offline failed:server[%s], err[%d]", offline_server.to_cstring(), err);
+        }
       }
     }
   } // end for
@@ -521,6 +606,14 @@ int ObUpsManager::check_lease()
     this->grant_lease(true);
   }
   return ret;
+}
+
+void ObUpsManager::change_ups_stat(const int32_t index, const ObUpsStatus new_stat)
+{
+  TBSYS_LOG(INFO, "begin change ups status:master[%d], addr[%d:%s], stat[%s->%s]",
+      ups_master_idx_, index, ups_array_[index].addr_.to_cstring(),
+      ups_stat_to_cstr(ups_array_[index].stat_), ups_stat_to_cstr(new_stat));
+  ups_array_[index].stat_ = new_stat;
 }
 
 int ObUpsManager::check_ups_master_exist()
@@ -557,7 +650,7 @@ int ObUpsManager::check_ups_master_exist()
 int ObUpsManager::send_revoking_msg(const common::ObServer &addr, int64_t lease, const common::ObServer& master)
 {
   int ret = OB_SUCCESS;
-  ret = rpc_stub_.revoke_ups_lease(addr, lease, master, config_->flag_network_timeout_us_.get());
+  ret = rpc_stub_.revoke_ups_lease(addr, lease, master, revoke_rpc_timeout_us_);
   return ret;
 }
 
@@ -572,11 +665,11 @@ int ObUpsManager::revoke_master_lease(int64_t &waiting_lease_us)
       // the lease is valid now
       int64_t master_lease = ups_array_[ups_master_idx_].lease_;
       int ret2 = send_revoking_msg(ups_array_[ups_master_idx_].addr_,
-                                   master_lease, ups_array_[ups_master_idx_].addr_);
+          master_lease, ups_array_[ups_master_idx_].addr_);
       if (OB_SUCCESS != ret2)
       {
         TBSYS_LOG(WARN, "send lease revoking message to ups master error, err=%d ups=%s",
-                  ret2, ups_array_[ups_master_idx_].addr_.to_cstring());
+            ret2, ups_array_[ups_master_idx_].addr_.to_cstring());
         // we should wait for the lease timeout
         int64_t now2 = tbsys::CTimeUtil::getTime();
         if (master_lease > now2)
@@ -596,7 +689,7 @@ int ObUpsManager::revoke_master_lease(int64_t &waiting_lease_us)
     }
     TBSYS_LOG(INFO, "revoke lease of old master, old_master=%s",
               ups_array_[ups_master_idx_].addr_.to_cstring());
-    ups_array_[ups_master_idx_].stat_ = UPS_STAT_SYNC;
+    change_ups_stat(ups_master_idx_, UPS_STAT_SYNC);
     ups_master_idx_ = -1;
   }
   return ret;
@@ -645,14 +738,14 @@ int ObUpsManager::set_ups_master(const common::ObServer &master, bool did_force)
     else if (UPS_STAT_MASTER == ups_array_[i].stat_)
     {
       TBSYS_LOG(WARN, "ups is already the master, ups=%s",
-          master.to_cstring());
+                master.to_cstring());
       ret = OB_INVALID_ARGUMENT;
     }
     else if ((UPS_STAT_SYNC != ups_array_[i].stat_ || !is_ups_with_highest_lsn(i))
-        && !did_force)
+             && !did_force)
     {
       TBSYS_LOG(WARN, "ups is not sync, ups=%s stat=%d lsn=%ld",
-          master.to_cstring(), ups_array_[i].stat_, ups_array_[i].log_seq_num_);
+                master.to_cstring(), ups_array_[i].stat_, ups_array_[i].log_seq_num_);
       ret = OB_INVALID_ARGUMENT;
     }
     else
@@ -675,10 +768,10 @@ int ObUpsManager::set_ups_master(const common::ObServer &master, bool did_force)
         && master == ups_array_[i].addr_
         && !is_master_lease_valid())
     {
-      ups_array_[i].stat_ = UPS_STAT_MASTER;
+      change_ups_stat(i, UPS_STAT_MASTER);
       ups_master_idx_ = i;
       TBSYS_LOG(INFO, "set new ups master, master=%s force=%c",
-          master.to_cstring(), did_force?'Y':'N');
+                master.to_cstring(), did_force?'Y':'N');
       new_master_selected = true;
       waiting_ups_finish_time_ = -1;
       reset_ups_read_percent();
@@ -725,7 +818,7 @@ int32_t ObUpsManager::get_ups_count() const
   return ret;
 }
 
-int ObUpsManager::get_ups_master(ObUps &ups_master)
+int ObUpsManager::get_ups_master(ObUps &ups_master) const
 {
   int ret = OB_ENTRY_NOT_EXIST;
   tbsys::CThreadGuard guard(&ups_array_mutex_);
@@ -760,7 +853,7 @@ const char* ObUpsManager::ups_stat_to_cstr(ObUpsStatus stat) const
   return ret;
 }
 
-void ObUpsManager::print(char* buf, const int64_t buf_len, int64_t &pos)
+void ObUpsManager::print(char* buf, const int64_t buf_len, int64_t &pos) const
 {
   tbsys::CThreadGuard guard(&ups_array_mutex_);
   if (is_master_lease_valid())
@@ -783,6 +876,7 @@ void ObUpsManager::print(char* buf, const int64_t buf_len, int64_t &pos)
     }
   }
 }
+
 int ObUpsManager::set_ups_config(int32_t master_master_ups_read_percentage, int32_t slave_master_ups_read_percentage)
 {
   int ret = OB_SUCCESS;
@@ -811,12 +905,12 @@ int ObUpsManager::set_ups_config(int32_t master_master_ups_read_percentage, int3
   }
   return ret;
 }
-
 void ObUpsManager::get_master_ups_config(int32_t &master_master_ups_read_percent, int32_t &slave_master_ups_read_percent) const
 {
   master_master_ups_read_percent = master_master_ups_read_percentage_;
   slave_master_ups_read_percent = slave_master_ups_read_percentage_;
 }
+
 int ObUpsManager::set_ups_config(const common::ObServer &addr, int32_t ms_read_percentage, int32_t cs_read_percentage)
 {
   int ret = OB_SUCCESS;
@@ -867,7 +961,7 @@ void ObUps::convert_to(ObUpsInfo &ups_info) const
   ups_info.cs_read_percentage_ = static_cast<int8_t>(cs_read_percentage_);
 }
 
-int ObUpsManager::get_ups_list(common::ObUpsList &ups_list)
+int ObUpsManager::get_ups_list(common::ObUpsList &ups_list) const
 {
   int ret = OB_SUCCESS;
   int count = 0;
@@ -939,7 +1033,7 @@ int ObUpsManager::send_obi_role()
       usleep(sleep_us);
       total_sleep_us += sleep_us;
       TBSYS_LOG(INFO, "waiting ups for changing the obi role, wait_us=%ld", total_sleep_us);
-    } while (total_sleep_us < config_->flag_ups_lease_us_.get());
+    } while (total_sleep_us < lease_duration_us_);
   }
   reset_ups_read_percent();
   return ret;

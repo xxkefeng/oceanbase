@@ -24,17 +24,16 @@ namespace oceanbase
         virtual ~MyObServer() {}
       public:
         virtual int initialize() {
-          return set_packet_factory(&default_packet_factory_);
+          ObBaseServer::initialize();
+          return 0;
         }
 
         virtual int do_request(int pcode, ObDataBuffer& inbuf,  int& ret_pcode, ObDataBuffer& outbuf) = 0;
-        virtual tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Connection *connection, tbnet::Packet *packet){
+        virtual int handlePacket(ObPacket *packet){
           int err = OB_SUCCESS;
           int handle_err = OB_SUCCESS;
           int32_t ret_pcode = 0;
-          tbnet::IPacketHandler::HPRetCode rc = tbnet::IPacketHandler::FREE_CHANNEL;
           ObPacket* req = (ObPacket*) packet;
-          req->set_connection(connection);
 
           ObDataBuffer handle_buf;
           ObDataBuffer outbuf;
@@ -42,10 +41,9 @@ namespace oceanbase
           __get_thread_buffer(response_buffer_, outbuf);
 
           TBSYS_LOG(DEBUG,"get packet code is %d, priority=%d", req->get_packet_code(), req->get_packet_priority());
-          if (!packet->isRegularPacket())
+          if (!packet)
           {
             err = OB_ERR_UNEXPECTED;
-            TBSYS_LOG(WARN, "control packet, packet code: %d", ((tbnet::ControlPacket*)packet)->getCommand());
           }
           else if (OB_SUCCESS != (err = req->deserialize()))
           {
@@ -62,7 +60,7 @@ namespace oceanbase
           {
             TBSYS_LOG(ERROR, "serialize_result()=>%d", err);
           }
-          else if (OB_SUCCESS != (err = send_response(ret_pcode, req->get_api_version(), outbuf, req->get_connection(), req->getChannelId())))
+          else if (OB_SUCCESS != (err = send_response(ret_pcode, req->get_api_version(), outbuf, req->get_request(), req->get_channel_id())))
           {
             TBSYS_LOG(ERROR, "send_response(pcode=%d)=>%d", ret_pcode, err);
           }
@@ -70,9 +68,9 @@ namespace oceanbase
           if (OB_SUCCESS != err)
           {
             TBSYS_LOG(WARN, "packet %d can not be distribute to queue", req->get_packet_code());
-            rc = tbnet::IPacketHandler::KEEP_CHANNEL;
+            send_response(ret_pcode, req->get_api_version(), outbuf, req->get_request(), req->get_channel_id());
           }
-          return rc;
+          return ret_pcode;
         }
 
         int serialize_result(int err_code, ObDataBuffer& buf, ObDataBuffer& outbuf) {
@@ -98,16 +96,14 @@ namespace oceanbase
           }
           return err;
         }
-        virtual bool handleBatchPacket(tbnet::Connection *connection, tbnet::PacketQueue &packetQueue) {
-          UNUSED(connection);
+        virtual int handleBatchPacket(ObPacketQueue &packetQueue) {
           UNUSED(packetQueue);
           TBSYS_LOG(WARN, "You should not reach here!");
-          return true;
+          return 0;
         }
       private:
         ThreadSpecificBuffer handle_buffer_;
         ThreadSpecificBuffer response_buffer_;
-        ObPacketFactory default_packet_factory_;
     };
   }; // end namespace test
 }; // end namespace oceanbase

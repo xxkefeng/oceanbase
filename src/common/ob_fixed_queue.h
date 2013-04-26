@@ -19,21 +19,20 @@
 ////====================================================================
 #ifndef  OCEANBASE_COMMON_FIXED_QUEUE_H_
 #define  OCEANBASE_COMMON_FIXED_QUEUE_H_
-#include "common/hash/ob_hashutils.h"
-#include "common/ob_atomic.h"
+#include "common/ob_define.h"
+#include "common/ob_malloc.h"
 
 namespace oceanbase
 {
   namespace common
   {
-#define ATOMIC_CAS(val, cmpv, newv) __sync_val_compare_and_swap((val), (cmpv), (newv))
     template <typename T>
     class ObFixedQueue
     {
       struct ArrayItem
       {
-        T *data;
-        int64_t cur_pos;
+        volatile uint64_t cur_pos;
+        T *volatile data;
       };
       static const int64_t ARRAY_BLOCK_SIZE = 128L * 1024L;
       public:
@@ -48,20 +47,20 @@ namespace oceanbase
         inline int64_t get_total() const;
         inline int64_t get_free() const;
       private:
-        inline int64_t get_total_(const int64_t consumer, const int64_t producer) const;
-        inline int64_t get_free_(const int64_t consumer, const int64_t producer) const;
+        inline int64_t get_total_(const uint64_t consumer, const uint64_t producer) const;
+        inline int64_t get_free_(const uint64_t consumer, const uint64_t producer) const;
       private:
         bool inited_;
         int64_t max_num_;
-        hash::BigArray<ArrayItem> array_;
-        volatile int64_t consumer_;
-        volatile int64_t producer_;
-    };
+        ArrayItem *array_;
+        volatile uint64_t consumer_ CACHE_ALIGNED;
+        volatile uint64_t producer_ CACHE_ALIGNED;
+    } __attribute__ ((aligned (64)));
 
     template <typename T>
     ObFixedQueue<T>::ObFixedQueue() : inited_(false),
                                       max_num_(0),
-                                      array_(),
+                                      array_(NULL),
                                       consumer_(0),
                                       producer_(0)
     {
@@ -85,12 +84,15 @@ namespace oceanbase
       {
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (0 != array_.create(max_num, ARRAY_BLOCK_SIZE))
+      else if (NULL == (array_ = (ArrayItem*)ob_malloc(sizeof(ArrayItem) * max_num)))
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
       }
       else
       {
+        memset(array_, 0, sizeof(ArrayItem) * max_num);
+        // prevent initial position of consumer equal to array_[0].cur_pos
+        array_[0].cur_pos = UINT64_MAX;
         max_num_ = max_num;
         consumer_ = 0;
         producer_ = 0;
@@ -104,7 +106,11 @@ namespace oceanbase
     {
       if (inited_)
       {
-        array_.destroy();
+        ob_free(array_);
+        array_ = NULL;
+        max_num_ = 0;
+        consumer_ = 0;
+        producer_ = 0;
         inited_ = false;
       }
     }
@@ -122,13 +128,13 @@ namespace oceanbase
     }
 
     template <typename T>
-    inline int64_t ObFixedQueue<T>::get_total_(const int64_t consumer, const int64_t producer) const
+    inline int64_t ObFixedQueue<T>::get_total_(const uint64_t consumer, const uint64_t producer) const
     {
       return (producer - consumer);
     }
 
     template <typename T>
-    inline int64_t ObFixedQueue<T>::get_free_(const int64_t consumer, const int64_t producer) const
+    inline int64_t ObFixedQueue<T>::get_free_(const uint64_t consumer, const uint64_t producer) const
     {
       return max_num_ - get_total_(consumer, producer);
     }
@@ -147,8 +153,8 @@ namespace oceanbase
       }
       else
       {
-        volatile int64_t old_pos = 0;
-        volatile int64_t new_pos = 0;
+        register uint64_t old_pos = 0;
+        register uint64_t new_pos = 0;
         while (true)
         {
           old_pos = producer_;
@@ -168,8 +174,9 @@ namespace oceanbase
         }
         if (OB_SUCCESS == ret)
         {
-          array_[old_pos % max_num_].data = ptr;
-          array_[old_pos % max_num_].cur_pos = old_pos;
+          register uint64_t index = old_pos % max_num_;
+          array_[index].data = ptr;
+          array_[index].cur_pos = old_pos;
         }
       }
       return ret;
@@ -186,8 +193,8 @@ namespace oceanbase
       else
       {
         T *tmp_ptr = NULL;
-        volatile int64_t old_pos = 0;
-        volatile int64_t new_pos = 0;
+        register uint64_t old_pos = 0;
+        register uint64_t new_pos = 0;
         while (true)
         {
           old_pos = consumer_;
@@ -199,11 +206,12 @@ namespace oceanbase
             break;
           }
           
-          if (old_pos != array_[old_pos % max_num_].cur_pos)
+          register uint64_t index = old_pos % max_num_;
+          if (old_pos != array_[index].cur_pos)
           {
             continue;
           }
-          tmp_ptr = array_[old_pos % max_num_].data;
+          tmp_ptr = array_[index].data;
 
           new_pos++;
           if (old_pos == ATOMIC_CAS(&consumer_, old_pos, new_pos))

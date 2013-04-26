@@ -129,6 +129,11 @@ namespace oceanbase
       return cache_.init(max_cache_num * KVCACHE_BLOCK_SIZE);
     };
 
+    int FileInfoCache::enlarg_cache_num(const int64_t max_cache_num)
+    {
+      return cache_.enlarge_total_size(max_cache_num * KVCACHE_BLOCK_SIZE);
+    }
+
     int FileInfoCache::destroy()
     {
       return cache_.destroy();
@@ -172,15 +177,17 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "init file info fail sstable_id=%lu", sstable_id);
           /**
-           * add a invalid file_info into cache, and kvcache can wash it 
-           * out correctly 
+           * erase fake node in hash map added by kvcache get(), otherwise 
+           * the fake node can't be reused. 
+           * FIXME: if there are some threads are getting the same file 
+           * info concurrency, erasing the fake node will cause that the 
+           * other threads can't get this file info and wait timeout 
            */
-          tmp_ret = cache_.put(sstable_id, &file_info, false);
+          tmp_ret = cache_.erase(sstable_id);
           if (OB_SUCCESS != tmp_ret)
           {
-            TBSYS_LOG(WARN, "failed to put fake file info, sstable_id=%lu, fd_=%d"
-                            "err=%d",
-                      sstable_id, file_info.get_fd(), tmp_ret);
+            TBSYS_LOG(WARN, "failed to delete fake file info, sstable_id=%lu, err=%d",
+                      sstable_id, tmp_ret);
           }
           ret = NULL;
         }

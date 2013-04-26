@@ -196,7 +196,7 @@ int get_port_by_sock(int fd)
   int err = 0;
   int port = 0;
   struct sockaddr_in sa;
-  int sa_len = sizeof(sa);
+  socklen_t sa_len = sizeof(sa);
   if (0 != getsockname(fd, (struct sockaddr*)&sa, &sa_len))
   {
     perror("getsockname:");
@@ -215,10 +215,10 @@ int test()
   int err = 0;
   int fd = -1;
   char* path = "/tmp/abc";
-  char real_path[PATH_MAX];
+  //char real_path[PATH_MAX];
   printf("start test:\n");
   assert((fd =open(path, O_RDWR|O_CREAT, S_IRWXU)) > 0);
-  printf("dev_no(path=%s)=%d\n", path, get_dev_no_by_path(path));
+  printf("dev_no(path=%s)=%d\n", path, (int)get_dev_no_by_path(path));
   /* assert(0 == get_path_by_fd(real_path, sizeof(real_path), fd)); */
   /* assert(0 == strcmp(real_path, path)); */
   return err;
@@ -292,7 +292,7 @@ int list_iof_rule()
     while(!get_iof(iof, &val))
       ;
     printf("Rule[%ld]: seq=%ld, count=%ld, type=%s, dev=%d, port=%d, err=%s, arg=%ld\n",
-           idx, val.seq, val.count, iof_type_repr(val.type), val.dev_no, val.port, repr_err(val.err), val.arg);
+           idx, val.seq, val.count, iof_type_repr(val.type), (int)val.dev_no, val.port, repr_err(val.err), val.arg);
   }
   return err;
 }
@@ -367,7 +367,7 @@ int iof_hook(int fd)
      }
      if (val.type == pat.type && val.dev_no == pat.dev_no && val.port == pat.port && (random()%1000)/1000.0 < pat.prob)
      {
-       __sync_fetch_and_add(&iof->count, 1);
+       (void)__sync_fetch_and_add(&iof->count, 1);
        switch(pat.err)
        {
          case 0:
@@ -391,6 +391,7 @@ int iof_hook(int fd)
 const char my_interp[] __attribute__((section(".interp")))
     = "/lib64/ld-linux-x86-64.so.2";
 
+int mymain(int argc, char** argv);
 extern char** environ;
 void mystart()
 {

@@ -20,6 +20,7 @@ using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
 ObSetOperator::ObSetOperator()
+  :row_desc_(NULL),distinct_(false)
 {
 }
 
@@ -29,7 +30,7 @@ ObSetOperator::ObSetOperator()
 
 int ObSetOperator::get_next_row(const ObRow *&row)
 {
-  row = NULL;
+  UNUSED(row);
   return OB_ERROR;
 }
 

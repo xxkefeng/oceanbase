@@ -138,11 +138,6 @@ namespace oceanbase
       return total_data_size_;
     }
 
-    int64_t ObBlockMembuf::get_usage_size() const
-    {
-      return block_num_ * block_size_;
-    }
-
     const char* ObBlockMembuf::get_current_pos() const
     {
       const char* buf = NULL;

@@ -94,7 +94,12 @@ namespace oceanbase {
       return ret;
     }
 
-    bool DbRecordSet::has_more_data()
+    bool DbRecordSet::empty() const
+    {
+      return scanner_.is_empty();
+    }
+
+    bool DbRecordSet::has_more_data() const
     {
       bool fullfilled = false;
       int64_t item_num;
@@ -103,7 +108,7 @@ namespace oceanbase {
       return fullfilled;
     }
 
-    int DbRecordSet::get_last_rowkey(common::ObString &last_key)
+    int DbRecordSet::get_last_rowkey(common::ObRowkey& last_key)
     {
       return scanner_.get_last_row_key(last_key);
     }

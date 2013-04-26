@@ -87,7 +87,12 @@ int ObMergeJoin::open()
   const ObRowDesc *left_row_desc = NULL;
   const ObRowDesc *right_row_desc = NULL;
   char *store_buf = NULL;
-  if (OB_SUCCESS != (ret = ObJoin::open()))
+  if (equal_join_conds_.count() <= 0)
+  {
+    TBSYS_LOG(WARN, "merge join can not work without equijoin conditions");
+    ret = OB_NOT_SUPPORTED;
+  }
+  else if (OB_SUCCESS != (ret = ObJoin::open()))
   {
     TBSYS_LOG(WARN, "failed to open child ops, err=%d", ret);
   }
@@ -189,7 +194,16 @@ int ObMergeJoin::compare_equijoin_cond(const ObRow& r1, const ObRow& r2, int &cm
         obj2.assign(*res2);
         if (OB_SUCCESS != obj1.compare(obj2, cmp))
         {
-          cmp = -10;            // @todo NULL
+          if (obj1.is_null())
+          {
+            // NULL vs obj2
+            cmp = -10;
+          }
+          else
+          {
+            // obj1 cmp NULL
+            cmp = 10;
+          }
         }
         else if (0 != cmp)
         {

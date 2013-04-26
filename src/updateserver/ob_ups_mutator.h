@@ -31,6 +31,7 @@ namespace oceanbase
     {
       public:
         ObUpsMutator();
+        ObUpsMutator(common::ModuleArena &arena);
         virtual ~ObUpsMutator();
 
       public:
@@ -71,6 +72,10 @@ namespace oceanbase
         int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
         int deserialize(const char* buf, const int64_t buf_len, int64_t& pos);
         int64_t get_serialize_size(void) const;
+        int serialize_header(char* buf, const int64_t buf_len, int64_t& pos) const;
+        int deserialize_header(const char* buf, const int64_t buf_len, int64_t& pos);
+        void clear();
+        void reset();
 
       private:
         static const int32_t NORMAL_FLAG = 0;

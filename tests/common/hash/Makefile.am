@@ -1,4 +1,5 @@
 AM_CPPFLAGS= -I${TBLIB_ROOT}/include/tbsys \
+			  -I${EASY_ROOT}/include/easy \
 			 -I${top_srcdir}/include \
 			 -I${top_srcdir}/src \
 			 -I${top_srcdir}/src/common \

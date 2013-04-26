@@ -43,6 +43,10 @@
 #include "common/ob_spin_rwlock.h"
 #include "common/ob_timer.h"
 #include "common/ob_row_compaction.h"
+#include "common/ob_iterator_adaptor.h"
+#include "common/ob_resource_pool.h"
+#include "common/ob_log_writer.h"
+#include "common/btree/key_btree.h"
 #include "sstable/ob_sstable_row.h"
 #include "sstable/ob_sstable_block_builder.h"
 #include "sstable/ob_sstable_trailer.h"
@@ -54,7 +58,6 @@
 #include "common/ob_column_filter.h"
 #include "ob_memtable.h"
 #include "ob_memtable_rowiter.h"
-#include "ob_resource_pool.h"
 
 namespace oceanbase
 {
@@ -78,6 +81,7 @@ namespace oceanbase
         virtual int next_cell();
         virtual int get_cell(common::ObCellInfo **cell_info);
         virtual int get_cell(common::ObCellInfo **cell_info, bool *is_row_changed);
+        virtual int is_row_finished(bool *is_row_finished);
         virtual void reset();
         MemTableIterator &get_memtable_iter();
       private:
@@ -94,6 +98,7 @@ namespace oceanbase
         virtual int next_cell();
         virtual int get_cell(common::ObCellInfo **cell_info);
         virtual int get_cell(common::ObCellInfo **cell_info, bool *is_row_changed);
+        virtual int is_row_finished(bool *is_row_finished);
         virtual void reset();
         inline common::ObGetParam &get_get_param();
         void set_sstable_iter(common::ObIterator *sstable_iter);
@@ -109,6 +114,7 @@ namespace oceanbase
         //common::ObCellInfo cell_info_;
         common::ObStringBuf string_buf_;
         common::ObCellInfo *cur_ci_ptr_;
+        common::ObCellInfo nop_cell_;
         //bool is_iter_end_;
         bool is_row_changed_;
         bool row_has_changed_;
@@ -158,30 +164,43 @@ namespace oceanbase
       public:
         typedef ObResourcePool<SSTableEntityIterator> SSTableResourcePool;
         typedef ObResourcePool<MemTableEntityIterator> MemTableResourcePool;
+        typedef ObResourcePool<ObRowIterAdaptor> RowIterAdaptorResourcePool;
         typedef SSTableResourcePool::Guard SSTableGuard;
         typedef MemTableResourcePool::Guard MemTableGuard;
+        typedef RowIterAdaptorResourcePool::Guard RowIterAdaptorGuard;
         class ResourcePool
         {
           public:
             SSTableResourcePool &get_sstable_rp() {return sstable_rp_;};
             MemTableResourcePool &get_memtable_rp() {return memtable_rp_;};
+            RowIterAdaptorResourcePool &get_row_iter_adaptor_rp() { return row_iter_adaptor_rp_; }
           private:
             SSTableResourcePool sstable_rp_;
             MemTableResourcePool memtable_rp_;
+            RowIterAdaptorResourcePool row_iter_adaptor_rp_;
         };
         class Guard
         {
           public:
             Guard(ResourcePool &rp) : sstable_guard_(rp.get_sstable_rp()),
-                                      memtable_guard_(rp.get_memtable_rp())
+                                      memtable_guard_(rp.get_memtable_rp()),
+                                      row_iter_adaptor_guard_(rp.get_row_iter_adaptor_rp())
             {
+            };
+            void reset()
+            {
+              sstable_guard_.reset();
+              memtable_guard_.reset();
+              row_iter_adaptor_guard_.reset();
             };
           public:
             SSTableGuard &get_sstable_guard() {return sstable_guard_;};
             MemTableGuard &get_memtable_guard() {return memtable_guard_;};
+            RowIterAdaptorGuard &get_row_iter_adaptor_guard() {return row_iter_adaptor_guard_;};
           private:
             SSTableGuard sstable_guard_;
             MemTableGuard memtable_guard_;
+            RowIterAdaptorGuard row_iter_adaptor_guard_;
         };
         enum TableType
         {
@@ -202,12 +221,27 @@ namespace oceanbase
       public:
         virtual ITableUtils *get_tsi_tableutils(const int64_t index) = 0;
         virtual ITableIterator *alloc_iterator(ResourcePool &rp, Guard &guard) = 0;
+        virtual ObRowIterAdaptor *alloc_row_iter_adaptor(ResourcePool &rp, Guard &guard);
         virtual int get(TableTransDescriptor &trans_handle,
                         const uint64_t table_id,
-                        const common::ObString &row_key,
+                        const common::ObRowkey &row_key,
                         common::ColumnFilter *column_filter,
                         ITableIterator *iter) = 0;
+        virtual int get(const BaseSessionCtx &session_ctx,
+                        const uint64_t table_id,
+                        const common::ObRowkey &row_key,
+                        common::ColumnFilter *column_filter,
+                        ITableIterator *iter) = 0;
+        virtual int get(const BaseSessionCtx &session_ctx,
+                        const uint64_t table_id,
+                        const common::ObRowkey &row_key,
+                        common::ColumnFilter *column_filter,
+                        const sql::ObLockFlag lock_flag,
+                        ITableIterator *iter) = 0;
         virtual int scan(TableTransDescriptor &trans_handle,
+                        const common::ObScanParam &scan_param,
+                        ITableIterator *iter) = 0;
+        virtual int scan(const BaseSessionCtx &session_ctx,
                         const common::ObScanParam &scan_param,
                         ITableIterator *iter) = 0;
         virtual int start_transaction(TableTransDescriptor &trans_descriptor) = 0;
@@ -244,10 +278,24 @@ namespace oceanbase
         virtual ITableIterator *alloc_iterator(ResourcePool &rp, Guard &guard);
         virtual int get(TableTransDescriptor &trans_handle,
                         const uint64_t table_id,
-                        const common::ObString &row_key,
+                        const common::ObRowkey &row_key,
                         common::ColumnFilter *column_filter,
                         ITableIterator *iter);
+        virtual int get(const BaseSessionCtx &session_ctx,
+                        const uint64_t table_id,
+                        const common::ObRowkey &row_key,
+                        common::ColumnFilter *column_filter,
+                        ITableIterator *iter);
+        virtual int get(const BaseSessionCtx &session_ctx,
+                        const uint64_t table_id,
+                        const common::ObRowkey &row_key,
+                        common::ColumnFilter *column_filter,
+                        const sql::ObLockFlag lock_flag,
+                        ITableIterator *iter);
         virtual int scan(TableTransDescriptor &trans_handle,
+                        const common::ObScanParam &scan_param,
+                        ITableIterator *iter);
+        virtual int scan(const BaseSessionCtx &session_ctx,
                         const common::ObScanParam &scan_param,
                         ITableIterator *iter);
         virtual int start_transaction(TableTransDescriptor &trans_descriptor);
@@ -274,10 +322,24 @@ namespace oceanbase
         virtual ITableIterator *alloc_iterator(ResourcePool &rp, Guard &guard);
         virtual int get(TableTransDescriptor &trans_handle,
                         const uint64_t table_id,
-                        const common::ObString &row_key,
+                        const common::ObRowkey &row_key,
                         common::ColumnFilter *column_filter,
                         ITableIterator *iter);
+        virtual int get(const BaseSessionCtx &session_ctx,
+                        const uint64_t table_id,
+                        const common::ObRowkey &row_key,
+                        common::ColumnFilter *column_filter,
+                        ITableIterator *iter);
+        virtual int get(const BaseSessionCtx &session_ctx,
+                        const uint64_t table_id,
+                        const common::ObRowkey &row_key,
+                        common::ColumnFilter *column_filter,
+                        const sql::ObLockFlag lock_flag,
+                        ITableIterator *iter);
         virtual int scan(TableTransDescriptor &trans_handle,
+                        const common::ObScanParam &scan_param,
+                        ITableIterator *iter);
+        virtual int scan(const BaseSessionCtx &session_ctx,
                         const common::ObScanParam &scan_param,
                         ITableIterator *iter);
         virtual int start_transaction(TableTransDescriptor &trans_descriptor);
@@ -326,7 +388,7 @@ namespace oceanbase
         int64_t get_time_stamp() const;
         int64_t get_sstable_loaded_time() const;
         int do_freeze(const uint64_t clog_id, const int64_t time_stamp);
-        int do_dump();
+        int do_dump(common::ObILogWriter &log_writer);
         int do_drop();
         int freeze_memtable();
         bool dump_memtable();
@@ -382,7 +444,7 @@ namespace oceanbase
           MAJOR_LOAD_BYPASS = 4,
         };
       public:
-        TableMgr();
+        TableMgr(common::ObILogWriter &log_writer);
         ~TableMgr();
       public:
         virtual int add_sstable(const uint64_t sstable_id);
@@ -426,6 +488,7 @@ namespace oceanbase
                                 uint64_t &new_version, uint64_t &frozen_version,
                                 uint64_t &clog_id, int64_t &time_stamp,
                                 bool &major_version_changed);
+        bool need_auto_freeze() const;
         // 工作线程调用 将冻结表转储为sstable
         // 返回false表示没有冻结表需要转储了
         bool try_dump_memtable();
@@ -453,7 +516,7 @@ namespace oceanbase
         int get_schema(const uint64_t major_version, CommonSchemaManagerWrapper &sm);
         int get_sstable_range_list(const uint64_t major_version, const uint64_t table_id,
                                   TabletInfoList &ti_list);
-
+        TransMgr& get_trans_mgr();
         void dump_memtable2text(const common::ObString &dump_dir);
         int clear_active_memtable();
 
@@ -483,6 +546,7 @@ namespace oceanbase
                                   const int64_t minor_version);
         bool less_than(const TableItemKey *v, const TableItemKey *t, int exclusive_equal);
       private:
+        common::ObILogWriter &log_writer_;
         bool inited_;
         bool sstable_scan_finished_;
         TableItemAllocator table_allocator_;
@@ -510,6 +574,7 @@ namespace oceanbase
         int64_t merged_timestamp_;
 
         ITableEntity::ResourcePool resource_pool_;
+        TransMgr trans_mgr_;
     };
 
     extern void thread_read_prepare();
@@ -530,7 +595,7 @@ namespace oceanbase
     class HandleFrozenDuty : public common::ObTimerTask
     {
       public:
-        static const int64_t SCHEDULE_PERIOD = 5L * 60L * 1000000L;
+        static const int64_t SCHEDULE_PERIOD = 1L * 60L * 1000000L;
       public:
         HandleFrozenDuty() {};
         virtual ~HandleFrozenDuty() {};

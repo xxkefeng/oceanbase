@@ -11,10 +11,11 @@
 ================================================================*/
 #include <tblog.h>
 
-#include "rootserver/ob_chunk_server_manager.h"
 #include "common/file_utils.h"
 #include "common/ob_malloc.h"
 #include "common/ob_record_header.h"
+#include "common/utility.h"
+#include "ob_chunk_server_manager.h"
 
 namespace oceanbase
 {
@@ -50,8 +51,9 @@ namespace oceanbase
 
     ////////////////////////////////////////////////////////////////
     ObServerStatus::ObServerStatus()
-      :last_hb_time_(0),last_hb_time_ms_(0),ms_status_(STATUS_DEAD), status_(STATUS_DEAD), port_cs_(0), port_ms_(0),
-       hb_retry_times_(0), register_time_(0), wait_restart_(false), can_restart_(false)
+      :last_hb_time_(0),last_hb_time_ms_(0),ms_status_(STATUS_DEAD),
+       status_(STATUS_DEAD), port_cs_(0), port_ms_(0), hb_retry_times_(0),
+       register_time_(0), wait_restart_(false), can_restart_(false)
     {
     }
     void ObServerStatus::set_hb_time(int64_t hb_t)
@@ -108,10 +110,8 @@ namespace oceanbase
 
     void ObServerStatus::dump(const int32_t index) const
     {
-      char ip_str[OB_IP_STR_BUFF];
-      server_.to_string(ip_str,OB_IP_STR_BUFF);
       TBSYS_LOG(INFO, "index = %d server %s  status %d ms_status %d last_hb %ld port_cs %d port_ms %d hb_ms=%ld register=%ld",
-                index, ip_str, status_, ms_status_,last_hb_time_, port_cs_, port_ms_, last_hb_time_ms_, register_time_);
+                index, to_cstring(server_), status_, ms_status_,last_hb_time_, port_cs_, port_ms_, last_hb_time_ms_, register_time_);
       disk_info_.dump();
     }
 
@@ -167,8 +167,8 @@ namespace oceanbase
         ret = serialization::decode_vi64(buf, data_len, tmp_pos, &tmp_status);
         if (OB_SUCCESS == ret)
         {
-          status_ = static_cast<int32_t>(tmp_status & 0xffffffff);
-          ms_status_ = static_cast<int32_t>(tmp_status >> 32);
+          status_ = static_cast<EStatus>(tmp_status & 0xffffffff);
+          ms_status_ = static_cast<EStatus>(tmp_status >> 32);
         }
       }
       if (OB_SUCCESS == ret)
@@ -208,6 +208,7 @@ namespace oceanbase
       len += disk_info_.get_serialize_size();
       return len;
     }
+
     ObChunkServerManager::ObChunkServerManager()
     {
       servers_.init(MAX_SERVER_COUNT, data_holder_);
@@ -215,6 +216,7 @@ namespace oceanbase
     ObChunkServerManager::~ObChunkServerManager()
     {
     }
+
     ObChunkServerManager::iterator ObChunkServerManager::begin()
     {
       return servers_.get_base_address();
@@ -232,6 +234,10 @@ namespace oceanbase
     {
       return servers_.get_base_address() +
         servers_.get_array_index();
+    }
+    int64_t ObChunkServerManager::size() const
+    {
+      return servers_.get_array_index();
     }
     ObChunkServerManager::iterator ObChunkServerManager::find_by_ip(const ObServer& server)
     {
@@ -276,6 +282,21 @@ namespace oceanbase
       }
       return res;
     }
+    ObChunkServerManager::const_iterator ObChunkServerManager::get_serving_ms() const
+    {
+      const_iterator it = end();
+      for (it = begin(); end() != it; ++it)
+      {
+        if (it->ms_status_ == ObServerStatus::STATUS_SERVING
+            && it->port_ms_ != 0)
+        {
+          TBSYS_LOG(DEBUG, "select serving ms port: [%d], server: [%s]",
+                    it->port_ms_, to_cstring(it->server_));
+          break;
+        }
+      }
+      return it;
+    }
     /*
      * root server will call this when a server regist to root or echo heart beat
      * @return 1 new serve 2 relive server 0 heartbt
@@ -284,7 +305,7 @@ namespace oceanbase
     {
       int res = 0;
       iterator it = find_by_ip(server);
-      if (it != end() )
+      if (it != end())
       {
         if (!is_merge_server)
         {
@@ -330,6 +351,8 @@ namespace oceanbase
           tmp_server_status.port_ms_ = server.get_port();
           tmp_server_status.ms_status_ = ObServerStatus::STATUS_SERVING;
           tmp_server_status.set_hb_time_ms(time_stamp);
+          TBSYS_LOG(WARN, "Receive hb from unregister merge server,"
+                    "Plz Restart try merge server: [%s]!", to_cstring(server));
         }
         else
         {
@@ -344,6 +367,32 @@ namespace oceanbase
       }
       return res;
     }
+
+    int ObChunkServerManager::register_ms(const common::ObServer& server,
+        int32_t sql_port, int64_t time_stamp)
+    {
+      int ret = 0;
+      iterator it = find_by_ip(server);
+      if (it != end())
+      {
+        it->port_ms_ = server.get_port();
+        it->port_ms_sql_ = sql_port;
+        it->ms_status_ = ObServerStatus::STATUS_SERVING;
+        it->set_hb_time_ms(time_stamp);
+      }
+      else
+      {
+        ObServerStatus server_status;
+        server_status.server_ = server;
+        server_status.port_ms_ = server.get_port();
+        server_status.port_ms_sql_ = sql_port;
+        server_status.ms_status_ = ObServerStatus::STATUS_SERVING;
+        server_status.set_hb_time_ms(time_stamp);
+        ret = servers_.push_back(server_status);
+      }
+      return ret;
+    }
+
     int ObChunkServerManager::update_disk_info(const common::ObServer& server, const ObServerDiskInfo& disk_info)
     {
       int ret = OB_SUCCESS;
@@ -354,9 +403,7 @@ namespace oceanbase
       }
       else
       {
-        char msg[30];
-        server.to_string(msg,30);
-        TBSYS_LOG(ERROR, " not find info about server %s", msg);
+        TBSYS_LOG(ERROR, " not find info about server %s", to_cstring(server));
         ret = OB_ERROR;
       }
       return ret;
@@ -402,6 +449,30 @@ namespace oceanbase
         index = static_cast<int32_t>(it - begin());
       }
       return ret;
+    }
+
+    int32_t ObChunkServerManager::get_alive_server_count(const bool chunkserver) const
+    {
+      int32_t count = 0;
+      ObChunkServerManager::const_iterator it;
+      for (it = begin(); end() != it; ++it)
+      {
+        if (true == chunkserver)
+        {
+          if (ObServerStatus::STATUS_DEAD != it->status_)
+          {
+            ++count;
+          }
+        }
+        else
+        {
+          if (ObServerStatus::STATUS_DEAD != it->ms_status_)
+          {
+            ++count;
+          }
+        }
+      }
+      return count;
     }
 
     common::ObServer ObChunkServerManager::get_cs(const int32_t index) const
@@ -455,12 +526,12 @@ namespace oceanbase
       return migrate_infos_.is_full();
     }
 
-    int ObChunkServerManager::add_migrate_info(ObServerStatus& cs, const common::ObRange &range, int32_t dest_cs_idx)
+    int ObChunkServerManager::add_migrate_info(ObServerStatus& cs, const common::ObNewRange &range, int32_t dest_cs_idx)
     {
       return cs.balance_info_.migrate_to_.add_migrate_info(range, dest_cs_idx, migrate_infos_);
     }
 
-    int ObChunkServerManager::add_copy_info(ObServerStatus& cs, const common::ObRange &range, int32_t dest_cs_idx)
+    int ObChunkServerManager::add_copy_info(ObServerStatus& cs, const common::ObNewRange &range, int32_t dest_cs_idx)
     {
       return cs.balance_info_.migrate_to_.add_copy_info(range, dest_cs_idx, migrate_infos_);
     }
@@ -476,11 +547,9 @@ namespace oceanbase
       {
         if (TBSYS_LOGGER._level >= TBSYS_LOG_LEVEL_INFO)
         {
-          char server_str[OB_IP_STR_BUFF];
           ObServer tmp_server = it->server_;
           tmp_server.set_port(it->port_cs_);
-          tmp_server.to_string(server_str, OB_IP_STR_BUFF);
-          TBSYS_LOG(INFO, "chunkserver %s is down", server_str);
+          TBSYS_LOG(INFO, "chunkserver %s is down", to_cstring(tmp_server));
         }
         it->status_ = ObServerStatus::STATUS_DEAD;
         it->balance_info_.reset();
@@ -494,11 +563,9 @@ namespace oceanbase
       {
         if (TBSYS_LOGGER._level >= TBSYS_LOG_LEVEL_INFO)
         {
-          char server_str[OB_IP_STR_BUFF];
           ObServer tmp_server = it->server_;
           tmp_server.set_port(it->port_ms_);
-          tmp_server.to_string(server_str, OB_IP_STR_BUFF);
-          TBSYS_LOG(INFO, "mergeserver %s is down", server_str);
+          TBSYS_LOG(INFO, "mergeserver %s is down", to_cstring(tmp_server));
         }
         it->ms_status_ = ObServerStatus::STATUS_DEAD;
       }
@@ -1027,11 +1094,11 @@ namespace oceanbase
       }
       else
       {
-	// @bug
         int i = 0;
         for (it = begin(); it != end() && i < ms_num; ++it)
         {
-          if (ObServerStatus::STATUS_DEAD != it->ms_status_)
+          if (ObServerStatus::STATUS_DEAD != it->ms_status_
+              && it->port_ms_sql_ != OB_FAKE_MS_PORT)
           {
             if (OB_SUCCESS != (ret = serialize_ms(it, buf, buf_len, pos)))
             {

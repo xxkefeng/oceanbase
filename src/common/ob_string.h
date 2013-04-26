@@ -26,12 +26,7 @@ namespace oceanbase
           : buffer_size_(0), data_length_(0), ptr_(NULL)
         {
         }
-        void reset()
-        {
-          buffer_size_ = 0;
-          data_length_ = 0;
-          ptr_ = NULL;
-        }
+
         INLINE_NEED_SERIALIZE_AND_DESERIALIZE;
 
         /*
@@ -56,6 +51,17 @@ namespace oceanbase
             data_length_ = 0;
           }
         }
+
+        ObString(const obstr_size_t size, const obstr_size_t length, const char* ptr)
+          : buffer_size_(size), data_length_(length), ptr_(const_cast<char*>(ptr))
+        {
+          if (ptr_ == NULL)
+          {
+            buffer_size_ = 0;
+            data_length_ = 0;
+          }
+        }
+
         /*
          * attache myself to buf, and then copy rv's data to myself.
          * 把rv中的obstring拷贝到buf中, 并且把自己和该buf建立联系
@@ -79,7 +85,13 @@ namespace oceanbase
         ~ObString()
         {
         }
-
+        // reset
+        void reset()
+        {
+          buffer_size_ = 0;
+          data_length_ = 0;
+          ptr_ = NULL;
+        }
         // ObString 's copy constructor && assignment, use default, copy every member.
         // ObString(const ObString & obstr);
         // ObString & operator=(const ObString& obstr);
@@ -171,6 +183,7 @@ namespace oceanbase
 
         inline obstr_size_t remain() const
         {
+
           return buffer_size_ > 0 ? (buffer_size_ - data_length_): buffer_size_;
         }
 
@@ -219,6 +232,7 @@ namespace oceanbase
 
         inline obstr_size_t shrink()
         {
+
           obstr_size_t rem  = remain();
           if (buffer_size_ > 0) {
             buffer_size_ = data_length_;
@@ -250,10 +264,59 @@ namespace oceanbase
         {
           return compare(obstr) == 0;
         }
+
         inline bool operator!=(const ObString& obstr) const
         {
           return compare(obstr) != 0;
         }
+
+        inline bool operator<(const char *str) const
+        {
+          return compare(str) < 0;
+        }
+
+        inline bool operator<=(const char *str) const
+        {
+          return compare(str) <= 0;
+        }
+
+        inline bool operator>(const char *str) const
+        {
+          return compare(str) > 0;
+        }
+
+        inline bool operator>=(const char *str) const
+        {
+          return compare(str) >= 0;
+        }
+
+        inline bool operator==(const char *str) const
+        {
+          return compare(str) == 0;
+        }
+
+        inline bool operator!=(const char *str) const
+        {
+          return compare(str) != 0;
+        }
+
+        static ObString make_string(const char* cstr)
+        {
+          ObString ret(0, static_cast<obstr_size_t>(strlen(cstr)), const_cast<char*>(cstr));
+          return ret;
+        }
+
+        int64_t to_string(char *buff, const int64_t len) const
+        {
+          int64_t pos = 0;
+          pos = snprintf(buff, len, "%.*s", length(), ptr());
+          if (pos < 0)
+          {
+            pos = 0;
+          }
+          return pos;
+        }
+
         friend std::ostream & operator<<(std::ostream &os, const ObString& str); // for google test
       private:
         obstr_size_t buffer_size_;
@@ -284,17 +347,15 @@ namespace oceanbase
       int64_t len = 0;
       if ( NULL == buf || (data_len - pos) < 2)  //at least need two bytes
       {
-        TBSYS_LOG(WARN, "check buf failed:ptr[%p], len[%ld], pos[%ld]", buf, data_len, pos);
         res = OB_ERROR;
       }
       if (OB_SUCCESS == res)
       {
-        if (0 == buffer_size_)
+        if ( 0 == buffer_size_)
         {
           ptr_ = const_cast<char*>(serialization::decode_vstr(buf,data_len,pos,&len));
           if (NULL == ptr_)
           {
-            TBSYS_LOG(WARN, "check decode ptr failed");
             res = OB_ERROR;
           }
         }
@@ -304,13 +365,10 @@ namespace oceanbase
           int64_t str_len = serialization::decoded_length_vstr(buf,data_len,pos);
           if (str_len < 0 || buffer_size_ < str_len || (data_len - pos) < str_len)
           {
-            TBSYS_LOG(WARN, "check string len failed:str_len[%ld], buf_size[%d], data_len[%ld], pos[%ld]",
-                str_len, buffer_size_, data_len, pos);
             res = OB_ERROR;
           }
           else if (NULL == serialization::decode_vstr(buf,data_len,pos,ptr_,buffer_size_,&len))
           {
-            TBSYS_LOG(WARN, "decode to inner buffer failed");
             res = OB_ERROR;
           }
         }
@@ -328,6 +386,28 @@ namespace oceanbase
     {
       os << "size=" << str.buffer_size_ << " len=" << str.data_length_;
       return os;
+    }
+
+    template <typename AllocatorT>
+    int ob_write_string(AllocatorT &allocator, const ObString &src, ObString& dst)
+    {
+      int ret = OB_SUCCESS;
+      int32_t src_len = src.length();
+      void * ptr = NULL;
+      if (OB_UNLIKELY(NULL == src.ptr() || 0 >= src_len))
+      {
+        dst.assign(NULL, 0);
+      }
+      else if (NULL == (ptr = allocator.alloc(src_len)))
+      {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else
+      {
+        memcpy(ptr, src.ptr(), src_len);
+        dst.assign_ptr(reinterpret_cast<char*>(ptr), src_len);
+      }
+      return ret;
     }
   }
 }

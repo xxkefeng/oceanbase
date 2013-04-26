@@ -38,8 +38,13 @@ namespace oceanbase
           virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
           virtual int open();
           virtual int close();
-          virtual int get_next_row(const ObString *&rowkey, const ObRow *&row);
+          virtual int get_next_row(const ObRowkey *&rowkey, const ObRow *&row);
           virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+
+          uint64_t get_table_id() const
+          {
+            return file_table_.table_id_;
+          }
           
         private:
           // disallow copy
@@ -49,7 +54,8 @@ namespace oceanbase
         private:
           // data members
           ObUpsFileTable file_table_;
-          ObString cur_rowkey_;
+          ObRowkey cur_rowkey_;
+          ObObj cur_rowkey_obj_[OB_MAX_ROWKEY_COLUMN_NUMBER];
       };
     }
   }

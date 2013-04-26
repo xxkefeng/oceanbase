@@ -55,11 +55,9 @@ namespace oceanbase {
       timestamp_ = src.timestamp_;
     }
 
-    DbRowKey TabletInfo::get_end_key()
+    const ObRowkey &TabletInfo::get_end_key() const
     {
-      DbRowKey end_key;
-      end_key.assign_ptr(const_cast<char*>(rowkey_buffer_.data()), static_cast<int32_t>(rowkey_buffer_.length()));
-      return end_key;
+     return rowkey_;
     }
 
     bool TabletInfo::expired(uint64_t timeout) const
@@ -82,10 +80,14 @@ namespace oceanbase {
       return *this;
     }
 
-    int TabletInfo::assign_end_key(const DbRowKey &key) 
+    int TabletInfo::assign_end_key(const ObRowkey &key) 
     {
-      rowkey_buffer_.assign(key.ptr(), key.length());
-      return common::OB_SUCCESS;
+      //ObMemBufAllocatorWrapper allocator(rowkey_buffer_);
+      int ret = key.deep_copy(rowkey_, rowkey_buffer_);
+      if (ret != OB_SUCCESS) {
+        TBSYS_LOG(WARN, "deep copy rowkey failed, ret = %d", ret);
+      }
+      return ret;
     }
 
     int TabletInfo::parse_one_cell(const common::ObCellInfo *cell) 
@@ -130,7 +132,7 @@ namespace oceanbase {
     void TabletInfo::dump_slice(void) 
     {
       char buf[1024];
-      int len = hex_to_str(get_end_key().ptr(), get_end_key().length(), buf, 1024);
+      int len = hex_to_str(get_end_key().ptr(), static_cast<int32_t>(get_end_key().length()), buf, 1024);
       buf[len * 2] = '\0';
 
       for(int i = 0; i < 3; i++) {
@@ -149,10 +151,10 @@ namespace oceanbase {
       return common::OB_SUCCESS;
     }
 
-    int TabletInfo::get_one_avail_slice(TabletSliceLocation &loc, const DbRowKey &rowkey)
+    int TabletInfo::get_one_avail_slice(TabletSliceLocation &loc, const ObRowkey &rowkey)
     {
       //TODO:dispatch requset to different server
-      int idx = common::murmurhash2((void *)rowkey.ptr(), rowkey.length(), 0) % 3;
+      int idx = common::murmurhash2((void *)rowkey.ptr(), static_cast<int32_t>(rowkey.length()), 0) % 3;
       int ret = OB_SUCCESS;
 
       int i = 0;

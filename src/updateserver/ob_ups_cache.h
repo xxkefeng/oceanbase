@@ -35,24 +35,20 @@ namespace oceanbase
     {
       uint64_t table_id:16;
       uint64_t column_id:16;
-      int32_t nbyte;
-      char *buffer;
-      ObUpsCacheKey():table_id(0),column_id(0),nbyte(0),buffer(NULL)
+      uint32_t reserve;
+      common::ObRowkey row_key;
+      ObUpsCacheKey():table_id(0),column_id(0),row_key()
       {
       };
       int64_t hash() const
       {
-        int64_t hash_for_int = common::murmurhash2(this,sizeof(ObUpsCacheKey)-sizeof(char*),0);
-        int64_t hash_for_rowkey = common::murmurhash2(this->buffer,nbyte,0);
-
-        return (hash_for_int + hash_for_rowkey);
+        return row_key.murmurhash2(table_id + column_id);
       };
       bool operator == (const ObUpsCacheKey &other) const
       {
         return (table_id == other.table_id
             && column_id == other.column_id
-            && nbyte == other.nbyte
-            && 0 == strncmp(buffer, other.buffer, nbyte) );
+            && row_key == other.row_key);
       };
     };
     struct ObUpsCacheValue
@@ -89,16 +85,20 @@ namespace oceanbase
         {
           ret->table_id = other.table_id;
           ret->column_id = other.column_id;
-          ret->nbyte = other.nbyte;
-          ret->buffer = buffer + sizeof(updateserver::ObUpsCacheKey);
-          memcpy(ret->buffer,other.buffer,other.nbyte);
+          BufferAllocator allocator(buffer + sizeof(updateserver::ObUpsCacheKey));
+          int tmp_ret = other.row_key.deep_copy(ret->row_key, allocator);
+          if (OB_SUCCESS != tmp_ret)
+          {
+            TBSYS_LOG(WARN, "deep_copy rowkey fail ret=%d", tmp_ret);
+            ret = NULL;
+          }
         }
         return ret;
       }
 
       inline int32_t do_size(const updateserver::ObUpsCacheKey &key, UPSCacheKeyDeepCopyTag)
       {
-        return static_cast<int32_t>(sizeof(updateserver::ObUpsCacheKey) + key.nbyte);
+        return (static_cast<int32_t>(sizeof(updateserver::ObUpsCacheKey) + key.row_key.get_deep_copy_size()));
       }
 
       inline void do_destroy(updateserver::ObUpsCacheKey *key,UPSCacheKeyDeepCopyTag)
@@ -179,12 +179,12 @@ namespace oceanbase
         // 获取某个缓存项
         // 如果缓存项存在，返回OB_SUCCESS; 如果缓存项不存在，返回OB_NOT_EXIST；否则，返回OB_ERROR
         int get(const uint64_t table_id,
-            const common::ObString& row_key, ObBufferHandle &buffer_handle,
+            const common::ObRowkey& row_key, ObBufferHandle &buffer_handle,
             const uint64_t column_id, updateserver::ObUpsCacheValue& value);
 
         // 加入缓存项
         int put(const uint64_t table_id,
-            const common::ObString& row_key,
+            const common::ObRowkey& row_key,
             const uint64_t column_id,
             const updateserver::ObUpsCacheValue& value);
 
@@ -194,12 +194,12 @@ namespace oceanbase
         //在查询缓存是需要转换为0的。
         // 如果缓存项存在，返回OB_SUCCESS; 如果缓存项不存在，返回OB_NOT_EXIST；否则，返回OB_ERROR；
         int is_row_exist(const uint64_t table_id,
-            const common::ObString& row_key,
+            const common::ObRowkey& row_key,
             bool& is_exist,
             ObBufferHandle& buffer_handle);
 
         // 设置行是否存在标志，行不存在也需要记录到缓存中
-        int set_row_exist(const uint64_t table_id, const common::ObString& row_key, const bool is_exist);
+        int set_row_exist(const uint64_t table_id, const common::ObRowkey& row_key, const bool is_exist);
 
       private:
         //设置缓存占用内存，单位为字节

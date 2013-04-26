@@ -17,10 +17,15 @@
 #include "common/ob_malloc.h"
 #include <gtest/gtest.h>
 #include "sql/ob_tablet_join.h"
+#include "sql/ob_tablet_cache_join.h"
+#include "sql/ob_tablet_direct_join.h"
 #include "ob_file_table.h"
 #include "common/utility.h"
 #include "ob_fake_ups_multi_get.h"
 #include "common/ob_ups_row_util.h"
+#include "ob_fake_sstable_scan.h"
+#include "ob_fake_ups_scan.h"
+#include "sql/ob_tablet_scan_fuse.h"
 
 using namespace oceanbase;
 using namespace common;
@@ -44,6 +49,8 @@ namespace oceanbase
           virtual void TearDown();
           int read_join_info(ObTabletJoin::TableJoinInfo &tablet_join_info, const char *file_name);
           int get_rowkey(const ObRow &row, ObString &rowkey);
+          void test_big_data(ObTabletJoin &tablet_join);
+          void test_get_next_row(ObTabletJoin &tablet_join);
 
         private:
           // disallow copy
@@ -62,6 +69,152 @@ namespace oceanbase
 
       ObTabletJoinTest::~ObTabletJoinTest()
       {
+      }
+
+      void ObTabletJoinTest::test_get_next_row(ObTabletJoin &tablet_join)
+      {
+        tablet_join.set_table_join_info(tablet_join_info_);
+
+        ObFakeUpsMultiGet fake_ups_multi_get("tablet_join_test_data/fetch_ups_row_ups_row.ini");
+        ObFakeSSTableScan sstable("tablet_join_test_data/fetch_ups_row_fused_row.ini");
+        ObFakeUpsScan ups_scan("tablet_join_test_data/none_ups.ini");
+
+        ObTabletScanFuse tablet_fuse;
+        OK(tablet_fuse.set_sstable_scan(&sstable));
+        OK(tablet_fuse.set_incremental_scan(&ups_scan));
+
+        tablet_join.set_child(0, tablet_fuse);
+        tablet_join.set_batch_count(30000);
+        tablet_join.set_ups_multi_get(&fake_ups_multi_get);
+
+        tablet_join.add_column_id(1);
+        tablet_join.add_column_id(4);
+        tablet_join.add_column_id(5);
+        tablet_join.add_column_id(6);
+
+        const ObRow *row = NULL;
+        const ObRow *result_row = NULL;
+        const ObObj *cell = NULL;
+        const ObObj *result_cell = NULL;
+        uint64_t table_id = OB_INVALID_ID;
+        uint64_t column_id = OB_INVALID_ID;
+
+        ObFileTable result("tablet_join_test_data/fetch_ups_row_result.ini");
+        OK(result.open());
+        OK(tablet_join.open());
+
+        for(int i=0;i<7;i++)
+        {
+          OK(tablet_join.get_next_row(row)) << "row:" << i << std::endl;
+          OK(result.get_next_row(result_row));
+
+          for(int j=1;j<4;j++)
+          {
+            OK(row->raw_get_cell(j, cell, table_id, column_id));
+            OK(result_row->raw_get_cell(j, result_cell, table_id, column_id));
+            bool eq = (*cell) == (*result_cell);
+            if(!eq)
+            {
+              TBSYS_LOG(WARN, "================row idx[%d] column idx[%d]", i, j);
+              TBSYS_LOG(WARN, "cell:%s", print_obj(*cell));
+              TBSYS_LOG(WARN, "result_cell:%s", print_obj(*result_cell));
+            }
+            ASSERT_TRUE(eq);
+          }
+        }
+        OK(result.close());
+        OK(tablet_join.close());
+
+      }
+
+      void ObTabletJoinTest::test_big_data(ObTabletJoin &tablet_join)
+      {
+        system("python gen_test_data.py join");
+
+        ObTabletJoin::TableJoinInfo tablet_join_info;
+        tablet_join_info.left_table_id_ = LEFT_TABLE_ID;
+        tablet_join_info.right_table_id_ = RIGHT_TABLE_ID;
+
+        ObTabletJoin::JoinInfo join_info;
+
+        OK(tablet_join_info.join_condition_.push_back(1));
+
+        OK(read_join_info(tablet_join_info, "tablet_join_test_data/join_info.ini"));
+
+        tablet_join.set_table_join_info(tablet_join_info);
+
+        ObFakeUpsMultiGet fake_ups_multi_get("tablet_join_test_data/big_ups_scan2.ini");
+        ObFileTable result("tablet_join_test_data/big_result2.ini");
+
+        ObFakeSSTableScan sstable("tablet_join_test_data/big_sstable2.ini");
+        ObFakeUpsScan ups_scan("tablet_join_test_data/none_ups.ini");
+
+        ObTabletScanFuse tablet_fuse;
+        OK(tablet_fuse.set_sstable_scan(&sstable));
+        OK(tablet_fuse.set_incremental_scan(&ups_scan));
+
+        tablet_join.set_child(0, tablet_fuse);
+        tablet_join.set_batch_count(30000);
+        tablet_join.set_ups_multi_get(&fake_ups_multi_get);
+        
+        OK(sstable.open());
+        OK(sstable.close());
+
+        uint64_t table_id = OB_INVALID_ID;
+        uint64_t column_id = OB_INVALID_ID;
+
+        const ObRowDesc *row_desc = NULL;
+        sstable.get_row_desc(row_desc);
+        for(int64_t i=0;i<row_desc->get_column_num();i++)
+        {
+          row_desc->get_tid_cid(i, table_id, column_id);
+          tablet_join.add_column_id(column_id);
+        }
+
+        ObGetParam get_param(true);
+
+        const ObRow *row = NULL;
+        const ObRow *result_row = NULL;
+        const ObObj *value = NULL;
+        const ObObj *result_value = NULL;
+        
+        OK(result.open());
+        OK(tablet_join.open());
+
+        int err = OB_SUCCESS;
+        int64_t count = 0;
+        
+        while(OB_SUCCESS == (err = tablet_join.get_next_row(row)))
+        {
+          OK(result.get_next_row(result_row));
+          count ++;
+
+          for(int64_t i=0;i<row->get_column_num();i++)
+          {
+            OK(row->raw_get_cell(i, value, table_id, column_id));
+            OK(result_row->get_cell(table_id, column_id, result_value));
+
+            if( *value != *result_value )
+            {
+              printf("row:[%ld], column[%ld]===========\n", count, i);
+
+              ObString rowkey;
+              get_rowkey(*row, rowkey);
+              printf("row rowkey: %.*s\n", rowkey.length(), rowkey.ptr());
+              printf("row: %s\n", print_obj(*value));
+              get_rowkey(*result_row, rowkey);
+              printf("result rowkey: %.*s\n", rowkey.length(), rowkey.ptr());
+              printf("result: %s\n", print_obj(*result_value));
+            }
+
+            ASSERT_TRUE((*value) == (*result_value));
+          }
+        }
+        ASSERT_TRUE(OB_SUCCESS == err || OB_ITER_END == err);
+
+        OK(result.close());
+        OK(tablet_join.close());
+
       }
 
       int ObTabletJoinTest::get_rowkey(const ObRow &row, ObString &rowkey)
@@ -86,13 +239,11 @@ namespace oceanbase
       void ObTabletJoinTest::SetUp()
       {
         tablet_join_info_.left_table_id_ = LEFT_TABLE_ID;
+        tablet_join_info_.right_table_id_ = RIGHT_TABLE_ID;
 
         ObTabletJoin::JoinInfo join_info;
-        join_info.right_table_id_ = RIGHT_TABLE_ID;
 
-        join_info.left_column_id_ = 1;
-        join_info.right_column_id_ = 1;
-        OK(tablet_join_info_.join_condition_.push_back(join_info));
+        OK(tablet_join_info_.join_condition_.push_back(1));
 
         join_info.left_column_id_ = 4;
         join_info.right_column_id_ = 2;
@@ -120,7 +271,6 @@ namespace oceanbase
         int32_t count = 0;
         ObTabletJoin::JoinInfo join_info;
 
-        join_info.right_table_id_ = RIGHT_TABLE_ID;
         if(NULL == file_name)
         {
           ret = OB_ERROR;
@@ -174,144 +324,45 @@ namespace oceanbase
         return ret;
       }
 
-
-      TEST_F(ObTabletJoinTest, big_data_test)
+      TEST_F(ObTabletJoinTest, direct_big_data_test)
       {
-        system("python gen_test_data.py join");
-        ObTabletJoin tablet_join;
-
-        ObTabletJoin::TableJoinInfo tablet_join_info;
-        tablet_join_info.left_table_id_ = LEFT_TABLE_ID;
-        ObTabletJoin::JoinInfo join_info;
-        join_info.right_table_id_ = RIGHT_TABLE_ID;
-
-        join_info.left_column_id_ = 1;
-        join_info.right_column_id_ = 1;
-        OK(tablet_join_info.join_condition_.push_back(join_info));
-
-        OK(read_join_info(tablet_join_info, "tablet_join_test_data/join_info.ini"));
-
-        tablet_join.set_table_join_info(tablet_join_info);
-
-        ObFakeUpsMultiGet fake_ups_multi_get("tablet_join_test_data/big_ups_scan2.ini");
-        ObFileTable file_table("tablet_join_test_data/big_sstable2.ini");
-        ObFileTable result("tablet_join_test_data/big_result2.ini");
-
-        tablet_join.set_child(0, file_table);
-        tablet_join.set_batch_count(3);
-        tablet_join.set_ups_multi_get(&fake_ups_multi_get);
-
-        
-        OK(file_table.open());
-        OK(file_table.close());
-
-        for(int i=0;i<file_table.column_count_;i++)
-        {
-          tablet_join.add_column_id(file_table.column_ids_[i]);
-        }
-
-        ObGetParam get_param(true);
-
-        const ObRow *row = NULL;
-        const ObRow *result_row = NULL;
-        const ObObj *value = NULL;
-        const ObObj *result_value = NULL;
-        uint64_t table_id = OB_INVALID_ID;
-        uint64_t column_id = OB_INVALID_ID;
-
-        OK(result.open());
-        OK(tablet_join.open());
-
-        int err = OB_SUCCESS;
-        int64_t count = 0;
-        
-        while(OB_SUCCESS == (err = tablet_join.get_next_row(row)))
-        {
-          OK(result.get_next_row(result_row));
-          count ++;
-
-          for(int64_t i=0;i<row->get_column_num();i++)
-          {
-            OK(row->raw_get_cell(i, value, table_id, column_id));
-            OK(result_row->get_cell(table_id, column_id, result_value));
-
-            if( *value != *result_value )
-            {
-              printf("row:[%ld], column[%ld]===========\n", count, i);
-
-              ObString rowkey;
-              get_rowkey(*row, rowkey);
-              printf("row rowkey: %.*s\n", rowkey.length(), rowkey.ptr());
-              printf("row: %s\n", print_obj(*value));
-              get_rowkey(*result_row, rowkey);
-              printf("result rowkey: %.*s\n", rowkey.length(), rowkey.ptr());
-              printf("result: %s\n", print_obj(*result_value));
-            }
-
-            ASSERT_TRUE((*value) == (*result_value));
-          }
-        }
-        ASSERT_TRUE(OB_SUCCESS == err || OB_ITER_END == err);
-
-        OK(result.close());
-        OK(tablet_join.close());
+        ObTabletDirectJoin tablet_join;
+        test_big_data(tablet_join);
       }
 
-      TEST_F(ObTabletJoinTest, get_next_row)
+      TEST_F(ObTabletJoinTest, cache_big_data_test)
       {
-        ObTabletJoin tablet_join;
-        tablet_join.set_table_join_info(tablet_join_info_);
+        ObTabletCacheJoin tablet_join;
+        test_big_data(tablet_join);
+      }
 
-        ObFakeUpsMultiGet fake_ups_multi_get("tablet_join_test_data/fetch_ups_row_ups_row.ini");
+      TEST_F(ObTabletJoinTest, direct_get_next_row)
+      {
+        ObTabletDirectJoin tablet_join;
+        test_get_next_row(tablet_join);
+      }
 
-        ObFileTable file_table("tablet_join_test_data/fetch_ups_row_fused_row.ini");
-        tablet_join.set_child(0, file_table);
-        tablet_join.set_batch_count(3);
-        tablet_join.set_ups_multi_get(&fake_ups_multi_get);
-
-        tablet_join.add_column_id(1);
-        tablet_join.add_column_id(4);
-        tablet_join.add_column_id(5);
-        tablet_join.add_column_id(6);
-
-        ObGetParam get_param(true);
-
-        const ObRow *row = NULL;
-        const ObRow *result_row = NULL;
-        const ObObj *cell = NULL;
-        const ObObj *result_cell = NULL;
-        uint64_t table_id = OB_INVALID_ID;
-        uint64_t column_id = OB_INVALID_ID;
-
-        ObFileTable result("tablet_join_test_data/fetch_ups_row_result.ini");
-        OK(result.open());
-        OK(tablet_join.open());
-
-        for(int i=0;i<7;i++)
-        {
-          OK(tablet_join.get_next_row(row));
-          OK(result.get_next_row(result_row));
-
-          for(int j=1;j<4;j++)
-          {
-            OK(row->raw_get_cell(j, cell, table_id, column_id));
-            OK(result_row->raw_get_cell(j, result_cell, table_id, column_id));
-            ASSERT_TRUE((*cell) == (*result_cell));
-          }
-        }
-        OK(result.close());
-        OK(tablet_join.close());
+      TEST_F(ObTabletJoinTest, cache_get_next_row)
+      {
+        ObTabletCacheJoin tablet_join;
+        test_get_next_row(tablet_join);
       }
 
       TEST_F(ObTabletJoinTest, fetch_ups_row)
       {
-        ObTabletJoin tablet_join;
+        ObTabletCacheJoin tablet_join;
         tablet_join.set_table_join_info(tablet_join_info_);
 
         ObFakeUpsMultiGet fake_ups_multi_get("tablet_join_test_data/fetch_ups_row_ups_row.ini");
 
-        ObFileTable file_table("tablet_join_test_data/fetch_ups_row_fused_row.ini");
-        tablet_join.set_child(0, file_table);
+        ObFakeSSTableScan sstable("tablet_join_test_data/fetch_ups_row_fused_row.ini");
+        ObFakeUpsScan ups_scan("tablet_join_test_data/none_ups.ini");
+
+        ObTabletScanFuse tablet_fuse;
+        OK(tablet_fuse.set_sstable_scan(&sstable));
+        OK(tablet_fuse.set_incremental_scan(&ups_scan));
+
+        tablet_join.set_child(0, tablet_fuse);
         tablet_join.set_batch_count(3);
         tablet_join.set_ups_multi_get(&fake_ups_multi_get);
 
@@ -320,12 +371,14 @@ namespace oceanbase
         OK(tablet_join.open());
 
         OK(tablet_join.fetch_fused_row(&get_param));
-        OK(tablet_join.fetch_ups_row(&get_param));
+        OK(tablet_join.fetch_ups_row(get_param));
 
         uint64_t right_table_id = get_param[0]->table_id_;
 
         char rowkey_buf[100];
-        ObString rowkey;
+        ObString rowkey_str;
+        ObObj rowkey_obj;
+        ObRowkey rowkey;
         ObString value;
         ObUpsRow ups_row;
         const ObObj *cell = NULL;
@@ -339,7 +392,11 @@ namespace oceanbase
         {
           sprintf(rowkey_buf, "chen%d", i+1);
           printf("rowkey:%s\n", rowkey_buf);
-          rowkey.assign_ptr(rowkey_buf, strlen(rowkey_buf));
+
+          rowkey_str.assign_ptr(rowkey_buf, (int32_t)strlen(rowkey_buf));
+          rowkey_obj.set_varchar(rowkey_str);
+          rowkey.assign(&rowkey_obj, 1);
+
           OK(tablet_join.ups_row_cache_.get(rowkey, value));
           OK(ObUpsRowUtil::convert(right_table_id, value, ups_row));
           ASSERT_EQ(3, ups_row.get_column_num());
@@ -354,108 +411,42 @@ namespace oceanbase
 
         OK(tablet_join.close());
       }
-
-      /*
-      TEST_F(ObTabletJoinTest, fetch_fused_row)
-      {
-        ObTabletJoin tablet_join;
-        tablet_join.set_table_join_info(tablet_join_info_);
-
-        ObGetParam get_param(true);
-
-        ObRowDesc row_desc;
-        row_desc.add_column_desc(LEFT_TABLE_ID, 1);
-        row_desc.add_column_desc(LEFT_TABLE_ID, 2);
-        row_desc.add_column_desc(LEFT_TABLE_ID, 3);
-        row_desc.add_column_desc(LEFT_TABLE_ID, 4);
-
-        ObFileTable file_table("tablet_join_test_data/fetch_fused_row.ini");
-        tablet_join.set_child(0, file_table);
-        tablet_join.set_batch_count(3);
-
-        OK(tablet_join.open());
-        OK(tablet_join.fetch_fused_row(&get_param));
-
-        ObRow row;
-        row.set_row_desc(row_desc);
-
-        int err = OB_SUCCESS;
-        char str_buf[100];
-        const ObObj *cell = NULL;
-        uint64_t table_id = OB_INVALID_ID;
-        uint64_t column_id = OB_INVALID_ID;
-        ObString rowkey;
-
-        for(int64_t k=0;k<3;k++)
-        {
-          err = tablet_join.fused_row_store_.next_row();
-          OK(err);
-          OK(tablet_join.fused_row_store_.get_row(row));
-
-          ASSERT_EQ(4, row.get_column_num());
-          for(int64_t i=0;i<row.get_column_num();i++)
-          {
-            OK(row.raw_get_cell(i, cell, table_id, column_id));
-            if(0 == i)
-            {
-              sprintf(str_buf, "chen%ld", k+1);
-              cell->get_varchar(rowkey);
-              ASSERT_EQ(0, strncmp(rowkey.ptr(), str_buf, rowkey.length()));
-            }
-          }
-        }
-
-        ASSERT_EQ(9, get_param.get_cell_size());
-
-        for(int i=0;i<9;i++)
-        {
-          sprintf(str_buf, "chen%d", 1);
-          printf("rowkey:%.*s\n", get_param[i]->row_key_.length(), get_param[i]->row_key_.ptr());
-        }
-
-
-        ASSERT_EQ(0, strncmp(get_param[0]->row_key_.ptr(), str_buf, get_param[0]->row_key_.length()));
-
-        err = tablet_join.fused_row_store_.next_row();
-        ASSERT_EQ(OB_ITER_END, err);
-
-        OK(tablet_join.close());
-      }
-      */
-
+      
       TEST_F(ObTabletJoinTest, get_right_table_rowkey)
       {
         ObRowDesc row_desc;
         row_desc.add_column_desc(LEFT_TABLE_ID, 1);
 
         const char *rowkey_str = "oceanbase";
-        ObString row_key;
-        row_key.assign_ptr(const_cast<char *>(rowkey_str), strlen(rowkey_str));
+        ObString row_key_str;
+        row_key_str.assign_ptr(const_cast<char *>(rowkey_str), (int32_t)strlen(rowkey_str));
+
+        ObObj row_key_obj;
+        row_key_obj.set_varchar(row_key_str);
+
+        ObRowkey row_key;
+        row_key.assign(&row_key_obj, 1);
 
         ObObj value;
-        value.set_varchar(row_key);
+        value.set_varchar(row_key_str);
 
         ObRow row;
         row.set_row_desc(row_desc);
         row.raw_set_cell(0, value);
 
-        ObString rowkey2;
+        ObObj rowkey_obj[OB_MAX_ROWKEY_COLUMN_NUMBER];
+        ObRowkey rowkey2;
 
-        ObTabletJoin tablet_join;
+        ObTabletCacheJoin tablet_join;
         tablet_join.set_table_join_info(tablet_join_info_);
 
-        uint64_t right_table_id = OB_INVALID_ID;
-
-        OK(tablet_join.get_right_table_rowkey(row, right_table_id, rowkey2));
-
-        uint64_t right_table_id2 = RIGHT_TABLE_ID;
-        ASSERT_EQ(right_table_id2, right_table_id);
+        OK(tablet_join.get_right_table_rowkey(row, rowkey2, rowkey_obj));
         ASSERT_TRUE(row_key == rowkey2);
       }
 
       TEST_F(ObTabletJoinTest, gen_ups_row_desc)
       {
-        ObTabletJoin tablet_join;
+        ObTabletCacheJoin tablet_join;
         tablet_join.set_table_join_info(tablet_join_info_);
 
         tablet_join.gen_ups_row_desc();
@@ -468,17 +459,29 @@ namespace oceanbase
 
       TEST_F(ObTabletJoinTest, compose_get_param)
       {
-        ObTabletJoin tablet_join;
+        ObTabletCacheJoin tablet_join;
         tablet_join.set_table_join_info(tablet_join_info_);
 
-        const char *rowkey_str = "oceanbase";
-
-        ObString row_key;
-        row_key.assign_ptr(const_cast<char *>(rowkey_str), strlen(rowkey_str));
-
         ObGetParam get_param;
+        ObObj row_key_obj;
+        ObString row_key_str;        
+        ObRowkey row_key;
+
+        get_param.reset(true);
+
+        row_key_str = ObString::make_string("oceanbase");
+        row_key_obj.set_varchar(row_key_str);
+        row_key.assign(&row_key_obj, 1);
+
         tablet_join.compose_get_param(RIGHT_TABLE_ID, row_key, get_param);
         ASSERT_EQ(3, get_param.get_cell_size());
+
+        tablet_join.compose_get_param(RIGHT_TABLE_ID, row_key, get_param);
+        ASSERT_EQ(3, get_param.get_cell_size());
+
+        row_key_str = ObString::make_string("ob");
+        row_key_obj.set_varchar(row_key_str);
+        row_key.assign(&row_key_obj, 1);
 
         tablet_join.compose_get_param(RIGHT_TABLE_ID, row_key, get_param);
         ASSERT_EQ(6, get_param.get_cell_size());

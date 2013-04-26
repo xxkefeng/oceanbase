@@ -240,7 +240,8 @@ void DbLogMonitor::append_logs(std::vector<int64_t> &logs)
     TBSYS_LOG(INFO, "appending log=[%ld]", log_info.log_id);
     itr++;
   }
-  logs_cond_.broadcast();
+  //logs_cond_.broadcast();
+  logs_cond_.signal();
   logs_cond_.unlock();
 }
 

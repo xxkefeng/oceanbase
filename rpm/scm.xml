@@ -16,7 +16,8 @@
       </line>
       <name>oceanbase</name>
       <codetype>C/C++</codetype>
-      <connection>http://svn.app.taobao.net/repos/oceanbase/branches/0_3_1_release/oceanbase</connection>
+      <connection>http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase</connection>
+      <owner>yanran.hfs</owner>
     </app>
   </scm>
 </bases>

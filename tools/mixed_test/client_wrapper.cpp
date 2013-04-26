@@ -1,14 +1,7 @@
-#include "client/cpp/libobapi.h"
 #include "client_wrapper.h"
 
 using namespace oceanbase;
 using namespace common;
-using namespace client;
-
-MKClient::~MKClient()
-{
-  cli_.destroy();
-}
 
 int MKClient::init(const char *addr, const int port)
 {
@@ -34,31 +27,46 @@ int MKClient::scan(common::ObScanParam &scan_param, common::ObScanner &scanner)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void OBClient::api_cntl_(int32_t cmd, ...)
+int OBClient::update_ups_addr_()
 {
-  va_list ap;
-  va_start(ap, cmd);
-  cli_.api_cntl(cmd, ap);
-  va_end(ap);
+  ObUpsList ups_list;
+  cli_.set_server(rs_addr_);
+  int ret = cli_.get_ups_list(ups_list, TIMEOUT_US);
+  if (OB_SUCCESS == ret)
+  {
+    ret = OB_ENTRY_NOT_EXIST;
+    for (int64_t i = 0; i < ups_list.ups_count_; i++)
+    {
+      if (UPS_MASTER == ups_list.ups_array_[i].stat_)
+      {
+        ups_addr_ = ups_list.ups_array_[i].addr_;
+        ret = OB_SUCCESS;
+        break;
+      }
+    }
+  }
+  return ret;
 }
 
 int OBClient::init(const char *addr, const int port)
 {
-  int ret = OB_SUCCESS;
-  int tmp_ret = OB_ERR_SUCCESS;
-  if (OB_ERR_SUCCESS != (tmp_ret = cli_.connect(addr, port, NULL, NULL)))
+  rs_addr_.set_ipv4_addr(addr, port);
+  int ret = cli_.init(rs_addr_);
+  if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(WARN, "connect to ob fail ret=%d", tmp_ret);
-    ret = OB_ERROR;
+    ret = update_ups_addr_();
   }
-  else
+  if (OB_SUCCESS == ret)
   {
-    int64_t ms_refresh_interval = MS_REFRESH_INTERVAL_US;
-    int64_t timeout_s = TIMEOUT_US;
-    api_cntl_(OB_S_REFRESH_INTERVAL, ms_refresh_interval);
-    api_cntl_(OB_S_TIMEOUT_SET, timeout_s);
-    api_cntl_(OB_S_TIMEOUT_GET, timeout_s);
-    api_cntl_(OB_S_TIMEOUT_SCAN, timeout_s);
+    ms_addr_.init(rs_addr_, cli_.get_rpc());
+  }
+  if (OB_SUCCESS == ret)
+  {
+    ret = timer_.init();
+  }
+  if (OB_SUCCESS == ret)
+  {
+    ret = timer_.schedule(ms_addr_, MS_REFRESH_INTERVAL_US, true);
   }
   return ret;
 }
@@ -66,52 +74,38 @@ int OBClient::init(const char *addr, const int port)
 int OBClient::apply(common::ObMutator &mutator)
 {
   int ret = OB_SUCCESS;
-  int tmp_ret = OB_ERR_SUCCESS;
-  if (OB_ERR_SUCCESS != (tmp_ret = cli_.set(mutator)))
+  while (true)
   {
-    TBSYS_LOG(WARN, "set to ob fail ret=%d", tmp_ret);
-    ret = OB_ERROR;
+    cli_.set_server(ups_addr_);
+    ret = cli_.ups_apply(mutator, TIMEOUT_US);
+    if (OB_NOT_MASTER != ret)
+    {
+      break;
+    }
+    usleep(10 * 1000);
+    update_ups_addr_();
   }
   return ret;
 }
 
 int OBClient::get(common::ObGetParam &get_param, common::ObScanner &scanner)
 {
-  int ret = OB_SUCCESS;
-  OB_RES *ob_res = NULL;
-  if (NULL == (ob_res = cli_.get(get_param)))
-  {
-    TBSYS_LOG(WARN, "get from ob fail ret=%d", ob_errno());
-    ret = OB_ERROR;
-  }
-  else
-  {
-    ret = copy(*(ob_res->cur_scanner), scanner);
-    cli_.release_res_st(ob_res);
-  }
-  return ret;
+  cli_.set_server(ms_addr_.get_one());
+  return cli_.ups_get(get_param, scanner, TIMEOUT_US);
 }
 
 int OBClient::scan(common::ObScanParam &scan_param, common::ObScanner &scanner)
 {
-  int ret = OB_SUCCESS;
-  OB_RES *ob_res = NULL;
-  if (NULL == (ob_res = cli_.scan(scan_param)))
-  {
-    TBSYS_LOG(WARN, "scan from ob fail ret=%d", ob_errno());
-    ret = OB_ERROR;
-  }
-  else
-  {
-    ret = copy(*(ob_res->cur_scanner), scanner);
-    cli_.release_res_st(ob_res);
-  }
-  return ret;
+  cli_.set_server(ms_addr_.get_one());
+  return cli_.ups_scan(scan_param, scanner, TIMEOUT_US);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-ClientWrapper::ClientWrapper() : cli_(NULL)
+ClientWrapper::ClientWrapper() : base_cli_(),
+                                 mk_cli_(base_cli_),
+                                 ob_cli_(base_cli_),
+                                 cli_(NULL)
 {
 }
 
@@ -135,6 +129,11 @@ int ClientWrapper::init(const char *addr, const int port)
     TBSYS_LOG(INFO, "using ob_cli addr=%s", addr);
   }
   return cli_->init(addr_buf, port);
+}
+
+void ClientWrapper::destroy()
+{
+  base_cli_.destroy();
 }
 
 int ClientWrapper::apply(ObMutator &mutator)

@@ -80,7 +80,7 @@ TEST_F(TestGetRequestEvent, test_get)
   ObMergerRootRpcProxy rpc(0, timeout, root_server);
   EXPECT_TRUE(OB_SUCCESS == rpc.init(&stub));
   
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
   EXPECT_TRUE(OB_SUCCESS == location->init(50000 * 5, 1000, 10000));
   
@@ -97,7 +97,7 @@ TEST_F(TestGetRequestEvent, test_get)
     server.set_ipv4_addr(addr, MockChunkServer::CHUNK_SERVER_PORT);
     ObTabletLocation addr(i, server);
 
-    ObMergerTabletLocationList list;
+    ObTabletLocationList list;
     EXPECT_TRUE(OB_SUCCESS == list.add(addr));
     EXPECT_TRUE(OB_SUCCESS == list.add(addr));
     EXPECT_TRUE(OB_SUCCESS == list.add(addr));
@@ -116,7 +116,7 @@ TEST_F(TestGetRequestEvent, test_get)
   }
 
   ObMergerTabletLocation succ_addr;
-  ObMergerTabletLocationList list;
+  ObTabletLocationList list;
   EXPECT_TRUE(OB_SUCCESS == proxy.init(&stub, &cache, NULL));
 
   // start root server

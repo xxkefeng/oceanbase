@@ -14,7 +14,6 @@
  *     - some work details if you want
  *
  */
-
 #include "common/ob_trace_log.h"
 #include "common/serialization.h"
 #include "common/utility.h"
@@ -22,6 +21,7 @@
 #include "common/ob_tsi_factory.h"
 #include "common/ob_rs_ups_message.h"
 #include "common/ob_token.h"
+#include "common/ob_version.h"
 #include "common/ob_log_cursor.h"
 #include "sstable/ob_aio_buffer_mgr.h"
 #include "ob_update_server.h"
@@ -29,9 +29,15 @@
 #include "ob_update_server_main.h"
 #include "ob_ups_clog_status.h"
 #include <pthread.h>
-#include "ob_client_wrapper.h"
+//#include "ob_client_wrapper.h"
+#include "common/ob_tbnet_callback.h"
+#include "ob_update_callback.h"
 #define __ups_debug__
 #include "common/debug.h"
+#include "common/ob_trace_id.h"
+#include "common/ob_profile_log.h"
+#include "common/ob_profile_type.h"
+#include "common/gperf.h"
 
 using namespace oceanbase::common;
 
@@ -66,35 +72,31 @@ namespace oceanbase
   {
     static const int32_t ADDR_BUF_LEN = 64;
 
-    ObUpdateServer::ObUpdateServer(ObUpdateServerParam& param)
-      :param_(param),
-      rpc_buffer_(RPC_BUFFER_SIZE),
-      read_task_queue_size_(DEFAULT_TASK_READ_QUEUE_SIZE),
-      write_task_queue_size_(DEFAULT_TASK_WRITE_QUEUE_SIZE),
-      lease_task_queue_size_(DEFAULT_TASK_LEASE_QUEUE_SIZE),
-      log_task_queue_size_(DEFAULT_TASK_LOG_QUEUE_SIZE),
-      store_thread_queue_size_(DEFAULT_STORE_THREAD_QUEUE_SIZE),
-      preprocess_task_queue_size_(DEFAULT_TASK_PREPROCESS_QUEUE_SIZE),
-      table_mgr_(ups_cache_),
-      sstable_query_(sstable_mgr_),
-      client_wrapper_(NULL),
-      merger_schema_(NULL)
+    ObUpdateServer::ObUpdateServer(ObConfigManager &config_mgr,
+                                   ObUpdateServerConfig& config)
+      : config_(config),
+        config_mgr_(config_mgr),
+        rpc_buffer_(RPC_BUFFER_SIZE),
+        read_task_queue_size_(DEFAULT_TASK_READ_QUEUE_SIZE),
+        write_task_queue_size_(DEFAULT_TASK_WRITE_QUEUE_SIZE),
+        lease_task_queue_size_(DEFAULT_TASK_LEASE_QUEUE_SIZE),
+        log_task_queue_size_(DEFAULT_TASK_LOG_QUEUE_SIZE),
+        store_thread_queue_size_(DEFAULT_STORE_THREAD_QUEUE_SIZE),
+        preprocess_task_queue_size_(DEFAULT_TASK_PREPROCESS_QUEUE_SIZE),
+        log_mgr_(),
+        table_mgr_(log_mgr_),
+        sstable_query_(sstable_mgr_),
+        grant_keep_alive_guard_(0),
+        check_keep_alive_guard_(0),
+        check_lease_guard_(0),
+        schema_version_(0),
+        schema_lock_(0),
+        trans_executor_(*this)
     {
     }
 
     ObUpdateServer::~ObUpdateServer()
     {
-      if (NULL != merger_schema_)
-      {
-        delete merger_schema_;
-        merger_schema_ = NULL;
-      }
-
-      if (NULL != client_wrapper_)
-      {
-        delete client_wrapper_;
-        client_wrapper_ = NULL;
-      }
     }
 
     int ObUpdateServer::initialize()
@@ -111,26 +113,37 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
-        read_task_queue_size_ = static_cast<int32_t>(param_.get_read_task_queue_size());
-        write_task_queue_size_ = static_cast<int32_t>(param_.get_write_task_queue_size());
+        read_task_queue_size_ = static_cast<int32_t>(config_.read_queue_size);
+        write_task_queue_size_ = static_cast<int32_t>(config_.write_queue_size);
         // TODO (rizhao)
-        lease_task_queue_size_ = static_cast<int32_t>(param_.get_lease_task_queue_size());
-        log_task_queue_size_ = static_cast<int32_t>(param_.get_log_task_queue_size());
-        store_thread_queue_size_ = static_cast<int32_t>(param_.get_store_thread_queue_size());
+        lease_task_queue_size_ = static_cast<int32_t>(config_.lease_queue_size);
+        log_task_queue_size_ = static_cast<int32_t>(config_.log_queue_size);
+        store_thread_queue_size_ = static_cast<int32_t>(config_.store_thread_count);
       }
 
       if (OB_SUCCESS == err)
       {
-        lease_timeout_in_advance_ = param_.get_lease_timeout_in_advance();
-        keep_alive_valid_interval_ = param_.get_keep_alive_timeout();
-        TBSYS_LOG(INFO, "load param: keep_alive_valid_interval=%ld", param_.get_keep_alive_timeout());
-        slave_type_.set_sync_type(param_.get_slave_type());
-        TBSYS_LOG(INFO, "load param: slave type =%s", slave_type_.get_type_str());
+        lease_timeout_in_advance_ = config_.lease_timeout_in_advance;
+        keep_alive_valid_interval_ = config_.keep_alive_timeout;
+        TBSYS_LOG(INFO, "load param: keep_alive_valid_interval=%s",
+                  config_.keep_alive_timeout.str());
       }
 
       if (OB_SUCCESS == err)
       {
-        err = client_manager_.initialize(get_transport(), get_packet_streamer());
+        memset(&server_handler_, 0, sizeof(easy_io_handler_pt));
+        server_handler_.encode = ObTbnetCallback::encode;
+        server_handler_.decode = ObTbnetCallback::decode;
+        server_handler_.process = ObUpdateCallback::process;
+        //server_handler_.process
+        server_handler_.get_packet_id = ObTbnetCallback::get_packet_id;
+        server_handler_.on_disconnect = ObTbnetCallback::on_disconnect;
+        server_handler_.user_data = this;
+      }
+
+      if (OB_SUCCESS == err)
+      {
+        err = client_manager_.initialize(eio_, &server_handler_);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "failed to init client manager, err=%d", err);
@@ -139,7 +152,8 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
-        root_server_.set_ipv4_addr(param_.get_root_server_ip(), param_.get_root_server_port());
+        root_server_.set_ipv4_addr(config_.root_server_ip,
+                                   (int32_t)config_.root_server_port);
         TBSYS_LOG(INFO, "load param: root_server addr=%s", root_server_.to_cstring());
       }
 
@@ -154,44 +168,31 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
-        err = set_listen_port(param_.get_ups_port());
+        err = set_listen_port((int)config_.port);
       }
 
       if (OB_SUCCESS == err)
       {
-        err = set_self_(param_.get_dev_name(), param_.get_ups_port());
+        err = set_self_(config_.devname, (int32_t)config_.port);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "fail to set self.");
         }
       }
-
       if (OB_SUCCESS == err)
       {
-        if (strlen(param_.get_lsync_ip()) > 0)
+        if (strlen(config_.lsync_ip) > 0
+            && 0 != strcmp("0.0.0.0", config_.lsync_ip))
         {
-          lsync_server_.set_ipv4_addr(param_.get_lsync_ip(), param_.get_lsync_port());
+          lsync_server_.set_ipv4_addr(config_.lsync_ip, (int32_t)config_.lsync_port);
           obi_slave_stat_ = STANDALONE_SLAVE;
 
-          char addr_buf[ADDR_BUF_LEN];
-          lsync_server_.to_string(addr_buf, sizeof(addr_buf));
-          addr_buf[ADDR_BUF_LEN - 1] = '\0';
-          TBSYS_LOG(INFO, "Slave stat set to STANDALONE_SLAVE, lsync_server=%s", addr_buf);
+          TBSYS_LOG(INFO, "Slave stat set to STANDALONE_SLAVE, lsync_server=%s", to_cstring(lsync_server_));
         }
         else
         {
           //obi_slave_stat_ = UNKNOWN_SLAVE;
           obi_slave_stat_ = FOLLOWED_SLAVE; // 去HA之后ups不用配置主instance ups的地址
-        }
-      }
-
-      // set packet factory object
-      if (OB_SUCCESS == err)
-      {
-        err = set_packet_factory(&packet_factory_);
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "fail to set packet factory.");
         }
       }
 
@@ -213,30 +214,14 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "failed to init table mgr, err=%d", err);
         }
-        else if (OB_SUCCESS != (err = user_table_cache_.init(&table_mgr_)))
-        {
-          TBSYS_LOG(WARN, "init user table cache fail err=%d", err);
-        }
-        else if (OB_SUCCESS != (err = skey_table_cache_.init(&table_mgr_)))
-        {
-          TBSYS_LOG(WARN, "init skey table cache fail err=%d", err);
-        }
-        else if (OB_SUCCESS != (err = perm_table_cache_.init(&table_mgr_)))
-        {
-          TBSYS_LOG(WARN, "init perm table cache fail err=%d", err);
-        }
-        else if (OB_SUCCESS != (err = login_mgr_.init(&skey_table_cache_, &user_table_cache_)))
-        {
-          TBSYS_LOG(WARN, "init login mgr fail err=%d", err);
-        }
         else
         {
-          table_mgr_.set_replay_checksum_flag(param_.get_replay_checksum_flag());
-          ob_set_memory_size_limit(param_.get_total_memory_limit());
+          table_mgr_.set_replay_checksum_flag(config_.replay_checksum_flag);
+          ob_set_memory_size_limit(config_.total_memory_limit);
           MemTableAttr memtable_attr;
           if (OB_SUCCESS == table_mgr_.get_memtable_attr(memtable_attr))
           {
-            memtable_attr.total_memlimit = param_.get_table_memory_limit();
+            memtable_attr.total_memlimit = config_.table_memory_limit;
             table_mgr_.set_memtable_attr(memtable_attr);
           }
           else
@@ -248,11 +233,8 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
-        sstable::ObBlockCacheConf bc_conf;
-        sstable::ObBlockIndexCacheConf bic_conf;
-        bc_conf.block_cache_memsize_mb = param_.get_blockcache_size_mb();
-        bic_conf.cache_mem_size = param_.get_blockindex_cache_size_mb() * 1024L * 1024L;
-        err = sstable_query_.init(bc_conf, bic_conf);
+        err = sstable_query_.init(config_.blockcache_size,
+                                  config_.blockindex_cache_size);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "failed to init sstable query, err=%d", err);
@@ -265,9 +247,9 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
-        const char *store_root = param_.get_store_root();
-        const char *raid_regex = param_.get_raid_regex();
-        const char *dir_regex = param_.get_dir_regex();
+        const char *store_root = config_.store_root;
+        const char *raid_regex = config_.raid_regex;
+        const char *dir_regex = config_.dir_regex;
         err = sstable_mgr_.init(store_root, raid_regex, dir_regex);
         if (OB_SUCCESS != err)
         {
@@ -294,7 +276,7 @@ namespace oceanbase
       if (OB_SUCCESS == err)
       {
         err = slave_mgr_.init(&role_mgr_, &ups_rpc_stub_,
-            param_.get_log_sync_timeout_us());
+                              config_.log_sync_timeout);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "failed to init slave mgr, err=%d", err);
@@ -307,30 +289,54 @@ namespace oceanbase
       if (OB_SUCCESS == err)
       {
         int64_t timeout_delta = 50 * 1000;
-        int64_t n_blocks = 4;
-        int64_t block_size_shift = 24;
-        int64_t log_file_max_size = param_.get_log_size_mb() * 1000L * 1000L;
+        int64_t n_blocks = config_.log_cache_n_block;
+        int64_t block_size_shift =  __builtin_ffsl(config_.log_cache_block_size) - 1;
+        int64_t log_file_max_size = config_.commit_log_size;
+        int64_t n_replay_worker = config_.replay_worker_num;
+        int64_t replay_log_buf_len = config_.replay_log_buf_size;
+        int64_t replay_queue_len = config_.replay_queue_len;
+
         if (OB_SUCCESS != (err = ups_log_server_getter_.init(this)))
         {
           TBSYS_LOG(ERROR, "master_getter.init()=>%d", err);
         }
-        else if (OB_SUCCESS != (err = prefetch_log_task_submitter_.init(param_.get_lsync_fetch_timeout_us() + timeout_delta, this)))
+        else if (OB_SUCCESS != (err = prefetch_log_task_submitter_.init(config_.lsync_fetch_timeout + timeout_delta, this)))
         {
           TBSYS_LOG(ERROR, "prefetch_log_task_submitter_.init(this)=>%d", err);
         }
+        else if (OB_SUCCESS != (err = trigger_handler_.init(root_server_, &ups_rpc_stub_, &role_mgr_)))
+        {
+          TBSYS_LOG(WARN, "failed to init trigger handler, err=%d", err);
+        }
+        else if (OB_SUCCESS != (err = log_applier_.init(&trans_executor_, &trans_executor_.get_session_mgr(),
+                                                        &trans_executor_.get_lock_mgr(), &table_mgr_, &log_mgr_)))
+        {
+          TBSYS_LOG(ERROR, "log_applier.init(n_replay_worker=%ld)=>%d", n_replay_worker, err);
+        }
+        else if (OB_SUCCESS != (err = replay_worker_.init(&log_applier_, (int32_t)n_replay_worker,
+                                                          replay_log_buf_len, replay_queue_len)))
+        {
+          TBSYS_LOG(ERROR, "replay_worker.init(n_replay_worker=%ld)=>%d", n_replay_worker, err);
+        }
         else if (OB_SUCCESS != (err = replay_log_src_.init(&log_mgr_.get_log_buffer(), &prefetch_log_task_submitter_,
                 &ups_log_server_getter_, &ups_rpc_stub_,
-                param_.get_lsync_fetch_timeout_us(),
+                config_.lsync_fetch_timeout,
                 n_blocks, block_size_shift)))
         {
           TBSYS_LOG(ERROR, "replay_log_src.init()=>%d", err);
         }
-        else if (OB_SUCCESS != (err = log_mgr_.init(param_.get_log_dir_path(), log_file_max_size, &replay_log_src_,
-                &table_mgr_, &slave_mgr_, &obi_role_, &role_mgr_,
-                param_.get_log_sync_type())))
+        else if (OB_SUCCESS != (err = log_mgr_.init(config_.commit_log_dir,
+                                                    log_file_max_size,
+                                                    &replay_worker_,
+                                                    &replay_log_src_,
+                                                    &table_mgr_,
+                                                    &slave_mgr_,
+                                                    &obi_role_,
+                                                    &role_mgr_,
+                                                    config_.log_sync_type)))
         {
           TBSYS_LOG(WARN, "failed to init log mgr, path=%s, log_file_size=%ld, err=%d",
-              param_.get_log_dir_path(), log_file_max_size, err);
+                    config_.commit_log_dir.str(), log_file_max_size, err);
         }
       }
       if (OB_SUCCESS == err)
@@ -338,28 +344,32 @@ namespace oceanbase
         set_log_sync_delay_stat_param();
       }
 
-      //add:
-
       if (OB_SUCCESS == err)
       {
-        err = init_client_wrapper();
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "failed to init client wrapper, err=%d", err);
-        }
+        int64_t read_thread_count = config_.read_thread_count;
+        int64_t store_thread_count = config_.store_thread_count;
+        log_thread_queue_.setThreadParameter(1, this, NULL);
+        IpPort ip_port;
+        ip_port.ip_ = static_cast<uint16_t>(local_ip_ & 0x0000FFFF);
+        ip_port.port_ = static_cast<uint16_t>(port_);
+        read_thread_queue_.set_ip_port(ip_port);
+        read_thread_queue_.setThreadParameter(static_cast<int32_t>(read_thread_count), this, NULL);
+        write_thread_queue_.setThreadParameter(1, this, NULL);
+        lease_thread_queue_.setThreadParameter(1, this, NULL);
+        store_thread_.setThreadParameter(static_cast<int32_t>(store_thread_count), this, NULL);
       }
 
       if (OB_SUCCESS == err)
       {
-        int64_t read_thread_count = param_.get_read_thread_count();
-        int64_t store_thread_count = param_.get_store_thread_count();
-        log_thread_queue_.setThreadParameter(1, this, NULL);
-        read_thread_queue_.setThreadParameter(static_cast<int32_t>(read_thread_count), this, NULL);
-        write_thread_queue_.setThreadParameter(1, this, NULL);
-        int64_t preprocess_thread_count = param_.get_pre_process() ? 20 : 1;
-        preprocess_thread_queue_.setThreadParameter(static_cast<int32_t>(preprocess_thread_count), this, NULL);
-        lease_thread_queue_.setThreadParameter(1, this, NULL);
-        store_thread_.setThreadParameter(static_cast<int32_t>(store_thread_count), this, NULL);
+        err = set_io_thread_count((int32_t)config_.io_thread_count);
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(ERROR, "set io thread count faild");
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "set io thread count %s", config_.io_thread_count.str());
+        }
       }
 
       if (OB_SUCCESS == err)
@@ -374,63 +384,48 @@ namespace oceanbase
           set_log_replay_thread_param();
         }
       }
+
+      if (OB_SUCCESS == err)
+      {
+        err = trans_executor_.init(config_.trans_thread_num);
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(WARN, "trans executor init fail, err=%d", err);
+        }
+      }
+
+      if (OB_SUCCESS == err)
+      {
+        if (OB_SUCCESS != (err = ms_list_task_.init(
+                             config_.get_root_server(),
+                             &client_manager_,
+                             false)))
+        {
+          TBSYS_LOG(ERROR, "init ms list failt, ret: [%d]", err);
+        }
+      }
+
+      if (OB_SUCCESS == err)
+      {
+        stat_mgr_.init(get_self());
+        ObStatSingleton::init(&stat_mgr_);
+      }
       return err;
     }
 
-    int ObUpdateServer::init_client_wrapper()
+    int ObUpdateServer::set_io_thread_count(int io_thread_count)
     {
-      int err = OB_SUCCESS;
-
-      // init client mgr
-      client_wrapper_ = new(std::nothrow) ObClientWrapper(RPC_RETRY_TIMES, RPC_TIMEOUT,
-          get_root_server(),
-          get_self(),
-          get_table_mgr(), get_ups_cache());
-      if (NULL == client_wrapper_)
+      int ret = OB_SUCCESS;
+      if (io_thread_count < 1)
       {
-        TBSYS_LOG(ERROR, "not enough memory");
-        err = OB_MEM_OVERFLOW;
+        TBSYS_LOG(WARN, "invalid argument io thread count is %d", io_thread_count);
+        ret = OB_ERROR;
       }
       else
       {
-        merger_schema_ = new(std::nothrow) ObMergerSchemaManager;
-        if (NULL == merger_schema_)
-        {
-          TBSYS_LOG(ERROR, "not enough memory");
-          err = OB_MEM_OVERFLOW;
-        }
+        io_thread_count_ = io_thread_count;
       }
-
-      if (OB_SUCCESS == err)
-      {
-        err = merger_stub_.init(&merger_rpc_buffer_, &client_manager_);
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "failed to init merger stub, err=%d", err);
-        }
-      }
-
-      if (OB_SUCCESS == err)
-      {
-        // init tablet location cache
-        // TODO (rizhao): move to conf
-        err = tablet_cache_.init(5000 * 5, 1000, 1000);
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "failed to init tablet cache, err=%d", err);
-        }
-      }
-
-      if (OB_SUCCESS == err)
-      {
-        err = client_wrapper_->init(&merger_stub_, merger_schema_, &tablet_cache_);
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "failed to init client wrapper, err=%d", err);
-        }
-      }
-
-      return err;
+      return ret;
     }
 
     void ObUpdateServer::wait_for_queue()
@@ -446,6 +441,8 @@ namespace oceanbase
     {
       role_mgr_.set_state(ObUpsRoleMgr::STOP);
       log_mgr_.signal_stop();
+      replay_worker_.stop();
+      ObBaseServer::destroy();
     }
 
     void ObUpdateServer::cleanup()
@@ -455,9 +452,6 @@ namespace oceanbase
 
       /// 读线程
       read_thread_queue_.stop();
-
-      // preprocess thread
-      preprocess_thread_queue_.stop();
 
       /// Lease线程
       lease_thread_queue_.stop();
@@ -471,14 +465,14 @@ namespace oceanbase
       ///日志回放线程
       log_replay_thread_.stop();
 
+      replay_worker_.wait();
+      trans_executor_.destroy();
+
       /// 写线程
       write_thread_queue_.wait();
 
       /// 读线程
       read_thread_queue_.wait();
-
-      /// preprocess thread
-      preprocess_thread_queue_.wait();
 
       /// Lease线程
       lease_thread_queue_.wait();
@@ -489,8 +483,9 @@ namespace oceanbase
       ///日志回放线程
 
       timer_.destroy();
-      transport_.stop();
-      transport_.wait();
+      config_timer_.destroy();
+      //TODO stop network
+      log_mgr_.wait();
     }
 
     int ObUpdateServer::start_timer_schedule()
@@ -524,13 +519,6 @@ namespace oceanbase
       }
       if (OB_SUCCESS == err)
       {
-        if (OB_SUCCESS != (err = set_timer_refresh_lsync_addr()))
-        {
-          TBSYS_LOG(WARN, "fail to set timer to refresh_lsync, err=%d", err);
-        }
-      }
-      if (OB_SUCCESS == err)
-      {
         if (OB_SUCCESS != (err = set_timer_switch_skey()))
         {
           TBSYS_LOG(WARN, "fail to set timer to switch skey. err=%d", err);
@@ -545,9 +533,30 @@ namespace oceanbase
       }
       if (OB_SUCCESS == err)
       {
+        if (OB_SUCCESS != (err = set_timer_kill_zombie()))
+        {
+          TBSYS_LOG(WARN, "fail to set timer to kill zombie. err=%d", err);
+        }
+      }
+      if (OB_SUCCESS == err)
+      {
         if (OB_SUCCESS != (err = set_timer_time_update()))
         {
-          TBSYS_LOG(WARN, "fail to set timer to time udpate. err=%d", err);
+          TBSYS_LOG(WARN, "fail to set timer to time update. err=%d", err);
+        }
+      }
+
+      if (OB_SUCCESS == err)
+      {
+        err = timer_.schedule(ms_list_task_, 10000000, true);
+      }
+
+      if (OB_SUCCESS == err)
+      {
+        if (OB_SUCCESS !=
+            (err = config_mgr_.init(ms_list_task_, client_manager_, config_timer_)))
+        {
+          TBSYS_LOG(ERROR, "init config manager error, ret: [%d]", err);
         }
       }
 
@@ -557,12 +566,27 @@ namespace oceanbase
     int ObUpdateServer::start_service()
     {
       int err = OB_SUCCESS;
+      settled_obi_role_.set_role(ObiRole::SLAVE);
       obi_role_.set_role(ObiRole::SLAVE);
-
+      PerfGuard perf_guard("GPERF_FILE");
       err = start_threads();
+      perf_guard.register_threads();
       if (OB_SUCCESS == err)
       {
         err = timer_.init();
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(ERROR, "ObTimer init error, err=%d", err);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "init timer success");
+        }
+      }
+
+      if (OB_SUCCESS == err)
+      {
+        err = config_timer_.init();
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(ERROR, "ObTimer init error, err=%d", err);
@@ -592,11 +616,13 @@ namespace oceanbase
       if (OB_SUCCESS == err)
       {
         register_to_rootserver(log_id);
+        /*
         err = set_schema();
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "fail to set schema. err=%d", err);
         }
+        */
       }
 
       if (OB_SUCCESS == err)
@@ -610,7 +636,6 @@ namespace oceanbase
         {
           submit_replay_commit_log();
         }
-        if (OB_SUCCESS == err)
         {
           tbsys::CThreadGuard guard(&mutex_);
           if (ObiRole::MASTER == obi_role_.get_role()
@@ -618,6 +643,7 @@ namespace oceanbase
               && ObUpsRoleMgr::REPLAYING_LOG == role_mgr_.get_state()
               && log_mgr_.is_log_replay_finished())
           {
+            TBSYS_LOG(INFO, "log_replay finished, log_mgr_start=%s", is_log_mgr_start_ ? "true" : "false");
             if (!is_log_mgr_start_)
             {
               is_log_mgr_start_ = true;
@@ -631,7 +657,7 @@ namespace oceanbase
               }
               if (OB_SUCCESS == err)
               {
-                if (OB_SUCCESS != (err = table_mgr_.sstable_scan_finished(param_.get_minor_num_limit())))
+                if (OB_SUCCESS != (err = table_mgr_.sstable_scan_finished(config_.minor_num_limit)))
                 {
                   TBSYS_LOG(ERROR, "sstable_scan_finished error, err=%d", err);
                 }
@@ -640,22 +666,40 @@ namespace oceanbase
                   table_mgr_.log_table_info();
                 }
               }
-            }
-            if (OB_SUCCESS == err)
-            {
-              bool write_log = true;
-              if (OB_SUCCESS != (err = update_schema(true, write_log)))
+              if (OB_SUCCESS == err)
               {
-                TBSYS_LOG(WARN, "updata_schema fail ,err=%d", err);
+                bool write_log = false;
+                bool only_core = true;
+                // fetch sys schema
+                if (OB_SUCCESS != (err = sync_update_schema(true, write_log, only_core)))
+                {
+                  TBSYS_LOG(WARN, "update sys schema fail ,err=%d", err);
+                }
+                else
+                {
+                  TBSYS_LOG(INFO, "successfully update sys schema");
+                }
               }
             }
             if (OB_SUCCESS != err)
             {
-              role_mgr_.set_state(ObUpsRoleMgr::FATAL);
+              TBSYS_LOG(ERROR, "error=%d, stop master_master, %s", err, to_cstring(log_mgr_));
+              role_mgr_.set_state(ObUpsRoleMgr::STOP);
             }
             else
             {
+              int tmp_err = OB_SUCCESS;
+              TBSYS_LOG(INFO, "set master_master to ACTIVE, %s", to_cstring(log_mgr_));
               role_mgr_.set_state(ObUpsRoleMgr::ACTIVE);
+              // fetch user schema
+              if (OB_SUCCESS != (tmp_err = do_async_update_whole_schema()))
+              {
+                TBSYS_LOG(WARN, "do_async_update_whole_schema to fetch user schema fail, err=%d", tmp_err);
+              }
+              else
+              {
+                TBSYS_LOG(INFO, "successfully do_async_update_whole_schema to fetch user schema");
+              }
             }
           }
         }
@@ -688,8 +732,6 @@ namespace oceanbase
       TBSYS_LOG(INFO, "ups stop.");
       stoped_ = true;
       destroy();
-      transport_.stop();
-      transport_.wait();
     }
 
     int ObUpdateServer::start_threads()
@@ -701,9 +743,6 @@ namespace oceanbase
 
       /// 读线程
       read_thread_queue_.start();
-
-      /// preprocess thread
-      preprocess_thread_queue_.start();
 
       /// Lease线程
       lease_thread_queue_.start();
@@ -725,11 +764,11 @@ namespace oceanbase
       err = RPC_CALL_WITH_RETRY(get_rs_last_frozen_version, INT64_MAX, RPC_TIMEOUT, root_server_, rs_last_frozen_version);
       if (err != OB_SUCCESS)
       {
-        TBSYS_LOG(ERROR, "get_last_frozen_version from root_server failed, err=%d", err);
+        TBSYS_LOG(ERROR, "get_last_frozen_version from root_server[%s] failed, err=%d", to_cstring(root_server_), err);
       }
       else if (rs_last_frozen_version < 0)
       {
-        TBSYS_LOG(WARN, "get_last_frozen_version()=>%ld", rs_last_frozen_version);
+        TBSYS_LOG(WARN, "get_last_frozen_version(rootserver=%s)=>%ld", to_cstring(root_server_), rs_last_frozen_version);
       }
       else if (OB_SUCCESS != (err = table_mgr_.get_last_frozen_memtable_version((uint64_t&)ups_last_frozen_version)))
       {
@@ -748,7 +787,8 @@ namespace oceanbase
       else
       {
         err = OB_ERROR;
-        TBSYS_LOG(ERROR, "last_frozen_version[%ld] > ups_frozen_version[%ld].", rs_last_frozen_version, ups_last_frozen_version);
+        TBSYS_LOG(ERROR, "rootserver[%s]'s last_frozen_version[%ld] > ups_frozen_version[%ld].",
+                  to_cstring(root_server_), rs_last_frozen_version, ups_last_frozen_version);
       }
       return err;
     }
@@ -756,55 +796,53 @@ namespace oceanbase
     int ObUpdateServer::switch_to_master_master()
     {
       int err = OB_SUCCESS;
-      int64_t wait_us = 10000;
+      const int64_t report_interval_us = 1000000;
+      const int64_t wait_us = 10000;
 
       TBSYS_LOG(INFO, "SWITCHING state happen");
       tbsys::CThreadGuard guard(&mutex_);
       //等待log_replay_thread的完成
-      while(!stoped_ && !log_replay_thread_.wait_stop())
+      TBSYS_LOG(INFO, "wait replay thread to stop.");
+      for(int64_t last_report_ts = 0, cur_ts = report_interval_us; !stoped_ && !log_replay_thread_.wait_stop(); cur_ts += wait_us)
       {
+        if (cur_ts - last_report_ts >= report_interval_us)
+        {
+          last_report_ts = cur_ts;
+          TBSYS_LOG(INFO, "wait replay_thread: %s", to_cstring(log_mgr_));
+        }
         usleep(static_cast<useconds_t>(wait_us));
       }
       if (stoped_)
       {
         err = OB_CANCELED;
       }
-      if (OB_SUCCESS == err)
+      if (OB_SUCCESS != err)
       {
-        if (log_mgr_.is_log_replay_finished())
-        {
-          ObLogCursor replayed_cursor;
-          int64_t log_id = 0;
-          if (OB_SUCCESS != (err = log_mgr_.get_replayed_cursor(replayed_cursor)))
-          {
-            TBSYS_LOG(ERROR, "get_replayed_cursor()=>%d", err);
-          }
-          else if (OB_SUCCESS != (err = log_mgr_.get_max_log_seq_replayable(log_id)))
-          {
-            TBSYS_LOG(ERROR, "get_max_log_seq_replayable()=>%d", err);
-          }
-          else if (replayed_cursor.log_id_ != log_id)
-          {
-            //role_mgr_.set_state(ObUpsRoleMgr::FATAL);
-            TBSYS_LOG(ERROR, "replayed_cursor.log_id[%ld] != log_id[%ld]", replayed_cursor.log_id_, log_id);
-          }
-          if (OB_SUCCESS == err)
-          {
-            TBSYS_LOG(INFO, "switch to master_master succ[replayed_cursor=%s].", replayed_cursor.to_str());
-            obi_role_.set_role(ObiRole::MASTER);
-            role_mgr_.set_role(ObUpsRoleMgr::MASTER);
-          }
-        }
-        else
-        {
-          TBSYS_LOG(INFO, "switch to master_master succ");
-          obi_role_.set_role(ObiRole::MASTER);
-          role_mgr_.set_role(ObUpsRoleMgr::MASTER);
-        }
+        TBSYS_LOG(ERROR, "wait replay thread, err=%d, %s", err, to_cstring(log_mgr_));
       }
       else
       {
-        TBSYS_LOG(ERROR, "switch to master_master fail.");
+        ObLogCursor replayed_cursor;
+        int64_t replayable_log_id = 0;
+        if (OB_SUCCESS != (err = log_mgr_.get_replayed_cursor(replayed_cursor)))
+        {
+          TBSYS_LOG(ERROR, "get_replayed_cursor()=>%d", err);
+        }
+        else if (OB_SUCCESS != (err = log_mgr_.get_max_log_seq_replayable(replayable_log_id)))
+        {
+          TBSYS_LOG(ERROR, "get_max_log_seq_replayable()=>%d", err);
+        }
+        else if (log_mgr_.is_log_replay_finished() && replayed_cursor.log_id_ != replayable_log_id)
+        {
+          TBSYS_LOG(ERROR, "after switch to master_master: replayed_cursor[%s] != replayable_log_id[%ld]",
+                    to_cstring(replayed_cursor), replayable_log_id);
+        }
+        if (OB_SUCCESS == err)
+        {
+          TBSYS_LOG(INFO, "switch to master_master succ, %s", to_cstring(log_mgr_));
+          obi_role_.set_role(ObiRole::MASTER);
+          role_mgr_.set_role(ObUpsRoleMgr::MASTER);
+        }
       }
       return err;
     }
@@ -813,7 +851,6 @@ namespace oceanbase
       int err = OB_SUCCESS;
       int64_t wait_us = 10000;
       tbsys::CThreadGuard guard(&mutex_);
-      ObLogCursor replayed_cursor;
       if (is_obi_change)
       {
         obi_role_.set_role(ObiRole::SLAVE);
@@ -827,20 +864,23 @@ namespace oceanbase
       {
         usleep(static_cast<useconds_t>(wait_us));
       }
-      log_mgr_.get_replayed_cursor(replayed_cursor);
-      TBSYS_LOG(INFO, "wait write_thread ack succ[replayed_cursor=%s].", replayed_cursor.to_str());
+      while(!stoped_ && OB_SUCCESS != (err = trans_executor_.get_session_mgr().wait_write_session_end_and_lock(wait_us)))
+      {
+        TBSYS_LOG(INFO, "master_switch_to_slave wait session end.");
+      }
+      trans_executor_.get_session_mgr().unlock_write_session();
+      slave_mgr_.reset_slave_list();
+      TBSYS_LOG(INFO, "wait write_thread ack succ, %s.", to_cstring(log_mgr_));
       while(!stoped_ && !log_replay_thread_.wait_start())
       {
+        TBSYS_LOG(INFO, "wait replay_thread start");
         usleep(static_cast<useconds_t>(wait_us));
       }
       TBSYS_LOG(INFO, "wait log_replay_thread start to work succ.");
       if (stoped_)
       {
         err = OB_CANCELED;
-      }
-      if (OB_SUCCESS == err)
-      {
-        slave_mgr_.reset_slave_list();
+        TBSYS_LOG(WARN, "UPS stoped while trying to switch to slave");
       }
       return err;
     }
@@ -898,11 +938,12 @@ namespace oceanbase
       }
       else
       {
-        TBSYS_LOG(WARN, "invalid switch case. cur_obi_role=%s, cur_role=%s, is_obi_change=%s, is_role_change=%s", 
-            obi_role_.get_role_str(), role_mgr_.get_role_str(), 
+        TBSYS_LOG(WARN, "invalid switch case. cur_obi_role=%s, cur_role=%s, is_obi_change=%s, is_role_change=%s",
+            obi_role_.get_role_str(), role_mgr_.get_role_str(),
             is_obi_change ? "TRUE" : "FALSE", is_role_change ? "TRUE" : "FALSE");
       }
 
+      TBSYS_LOG(INFO, "slave change role, %s", to_cstring(log_mgr_));
       return err;
     }
 
@@ -936,19 +977,6 @@ namespace oceanbase
     //  return err;
     //}
 
-    int ObUpdateServer::set_schema()
-    {
-      int err = OB_SUCCESS;
-
-      if (!table_mgr_.get_schema_mgr().has_schema())
-      {
-        bool write_log = false;
-        err = update_schema(true, write_log);
-      }
-
-      return err;
-    }
-
     int ObUpdateServer::set_timer_switch_skey()
     {
       int err = OB_SUCCESS;
@@ -970,7 +998,7 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       bool repeat = true;
-      err = timer_.schedule(check_keep_alive_duty_, param_.get_state_check_period_us(), repeat);
+      err = timer_.schedule(check_keep_alive_duty_, config_.state_check_period, repeat);
       if (OB_SUCCESS != err)
       {
         TBSYS_LOG(WARN, "schedule check_keep_alive_duty_ fail .err=%d", err);
@@ -978,6 +1006,18 @@ namespace oceanbase
       else
       {
         submit_check_keep_alive();
+      }
+      return err;
+    }
+
+    int ObUpdateServer::set_timer_time_update()
+    {
+      int err = OB_SUCCESS;
+      bool repeat = true;
+      err = timer_.schedule(time_update_duty_, TimeUpdateDuty::SCHEDULE_PERIOD, repeat);
+      if (OB_SUCCESS != err)
+      {
+        TBSYS_LOG(WARN, "schedule time_update_duty_ fail .err=%d", err);
       }
       return err;
     }
@@ -1014,20 +1054,6 @@ namespace oceanbase
       return err;
     }
 
-    int ObUpdateServer::set_timer_refresh_lsync_addr()
-    {
-      int err = OB_SUCCESS;
-
-      bool repeat = true;
-      err = timer_.schedule(refresh_lsync_addr_duty_, param_.get_refresh_lsync_addr_interval_us(), repeat);
-      if (OB_SUCCESS != err)
-      {
-        TBSYS_LOG(WARN, "schedule refresh_lsync_addr_duty fail err=%d", err);
-      }
-
-      return err;
-    }
-
     int ObUpdateServer::set_timer_major_freeze()
     {
       int err = OB_SUCCESS;
@@ -1042,6 +1068,20 @@ namespace oceanbase
       return err;
     }
 
+    int ObUpdateServer::set_timer_kill_zombie()
+    {
+      int err = OB_SUCCESS;
+
+      bool repeat = true;
+      err = timer_.schedule(kill_zombie_duty_, KillZombieDuty::SCHEDULE_PERIOD, repeat);
+      if (OB_SUCCESS != err)
+      {
+        TBSYS_LOG(WARN, "schedule kill_zombie_duty fail err=%d", err);
+      }
+
+      return err;
+    }
+
     int ObUpdateServer::set_timer_handle_fronzen()
     {
       int err = OB_SUCCESS;
@@ -1051,20 +1091,6 @@ namespace oceanbase
       if (OB_SUCCESS != err)
       {
         TBSYS_LOG(WARN, "schedule handle_frozen_duty fail err=%d", err);
-      }
-
-      return err;
-    }
-
-    int ObUpdateServer::set_timer_time_update()
-    {
-      int err = OB_SUCCESS;
-
-      bool repeat = true;
-      err = timer_.schedule(time_update_duty_, TimeUpdateDuty::SCHEDULE_PERIOD, repeat);
-      if (OB_SUCCESS != err)
-      {
-        TBSYS_LOG(WARN, "schedule time_update_duty fail err=%d", err);
       }
 
       return err;
@@ -1171,120 +1197,6 @@ namespace oceanbase
       return err;
     }
 
-    int ObUpdateServer::slave_standalone_prepare(uint64_t &log_id_start, uint64_t &log_seq_start)
-    {
-      int err = OB_SUCCESS;
-
-      if (OB_SUCCESS == err)
-      {
-        if (OB_SUCCESS != (err = slave_register_standalone(log_id_start, log_seq_start)))
-        {
-          TBSYS_LOG(ERROR, "failed to register to lsync");
-        }
-        else if (0 == log_id_start)
-        {
-          TBSYS_LOG(ERROR, "failed to register to lsync, lsync returned log_id_start=0");
-          err = OB_ERROR;
-        }
-       // else
-       // {
-       //   TBSYS_LOG(INFO, "set log_id_start=%lu log_seq_start=%lu", log_id_start, log_seq_start);
-       //   log_mgr_.set_replay_point(log_id_start);
-       //   err = log_mgr_.start_log(log_id_start, log_seq_start);
-       //   if (OB_SUCCESS != err)
-       //   {
-       //     TBSYS_LOG(ERROR, "start log error, err=%d", err);
-       //   }
-       // }
-      }
-
-     // if (OB_SUCCESS == err)
-     // {
-     //   err = fetch_lsync_.init(get_lsync_server(), log_id_start, log_seq_start,
-     //       &ups_rpc_stub_, &clog_receiver_, param_.get_lsync_fetch_timeout_us(), &role_mgr_);
-     //   if (OB_SUCCESS != err)
-     //   {
-     //     TBSYS_LOG(ERROR, "ObUpsFetchLsync init error, err=%d", err);
-     //   }
-     //   else
-     //   {
-     //     fetch_lsync_.start();
-     //     TBSYS_LOG(INFO, "Lsync fetch thread start");
-     //   }
-     // }
-
-      return err;
-    }
-
-   // int ObUpdateServer::set_replay_thread(const uint64_t log_id_start, const uint64_t log_seq_start)
-   // {
-   //   int err = OB_SUCCESS;
-   //   UNUSED(log_id_start);
-   //   UNUSED(log_seq_start);
-   //   //fetch_thread_.wait();
-   //   log_replay_thread_.clear();
-   //   //log_replay_thread_.set_max_log_file_id(log_id_start);
-   //   TBSYS_LOG(INFO, "log replay thread reset file id=%ld, log seq=%ld", log_id_start, log_seq_start);
-   //   //err = log_replay_thread_.reset_file_id(log_id_start, log_seq_start);
-   //   //if (OB_SUCCESS == err)
-   //   //{
-   //   //  TBSYS_LOG(INFO, "start log replay thread");
-   //   //  log_replay_thread_.start();
-   //   //}
-   //   //else
-   //   //{
-   //   //  TBSYS_LOG(WARN, "fail to reset file id. err=%d", err);
-   //   //}
-   //   return err;
-   // }
-
-
-    int ObUpdateServer::start_standalone_()
-    {
-      int err = OB_SUCCESS;
-      CommonSchemaManagerWrapper schema_mgr;
-      tbsys::CConfig config;
-
-      // load schema from schema ini file
-      bool parse_ret = schema_mgr.parse_from_file(param_.get_standalone_schema(), config);
-      if (!parse_ret)
-      {
-        TBSYS_LOG(WARN, "failed to load schema");
-        err = OB_ERROR;
-      }
-      else
-      {
-        err = table_mgr_.set_schemas(schema_mgr);
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "failed to set schema, err=%d", err);
-        }
-      }
-
-      // start read and write thread
-      if (OB_SUCCESS == err)
-      {
-        read_thread_queue_.start();
-        write_thread_queue_.start();
-      }
-
-      // modify standalone status
-      if (OB_SUCCESS == err)
-      {
-        role_mgr_.set_state(ObUpsRoleMgr::ACTIVE);
-      }
-
-      TBSYS_LOG(INFO, "start service, role=standalone, err=%d", err);
-      // wait finish
-      if (OB_SUCCESS == err)
-      {
-        read_thread_queue_.wait();
-        write_thread_queue_.wait();
-      }
-
-      return err;
-    }
-
     int ObUpdateServer::set_self_(const char* dev_name, const int32_t port)
     {
       int ret = OB_SUCCESS;
@@ -1315,8 +1227,8 @@ namespace oceanbase
     int ObUpdateServer::report_frozen_version_()
     {
       int ret = OB_SUCCESS;
-      int64_t num_times = param_.get_resp_root_times();
-      int64_t timeout = param_.get_resp_root_timeout_us();
+      int64_t num_times = config_.resp_root_times;
+      int64_t timeout = config_.resp_root_timeout;
       uint64_t last_frozen_version = 0;
       ret = table_mgr_.get_last_frozen_memtable_version(last_frozen_version);
       if (OB_SUCCESS == ret)
@@ -1381,14 +1293,14 @@ namespace oceanbase
       return err;
     }
 
-    int ObUpdateServer::update_schema(const bool always_try, const bool write_log)
+    int ObUpdateServer::sync_update_schema(const bool always_try, const bool write_log, bool only_core_tables)
     {
       int err = OB_SUCCESS;
-      int64_t num_times = always_try ? INT64_MAX : param_.get_fetch_schema_times();
-      int64_t timeout = param_.get_fetch_schema_timeout_us();
+      int64_t num_times = always_try ? INT64_MAX : config_.fetch_schema_times;
+      int64_t timeout = config_.fetch_schema_timeout;
 
       CommonSchemaManagerWrapper schema_mgr;
-      err = RPC_CALL_WITH_RETRY(fetch_schema, num_times, timeout, root_server_, 0, schema_mgr);
+      err = RPC_CALL_WITH_RETRY(fetch_schema, num_times, timeout, root_server_, 0, schema_mgr, only_core_tables);
 
       if (OB_RESPONSE_TIME_OUT == err)
       {
@@ -1428,12 +1340,16 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       const ObServer& self_addr = get_self();
+      ObSlaveSyncType slave_type;
       ObSlaveInfo slave_info;
+      slave_type.set_sync_type(config_.real_time_slave
+                               ? ObSlaveSyncType::REAL_TIME_SLAVE
+                               : ObSlaveSyncType::NON_REAL_TIME_SLAVE);
       slave_info.self = self_addr;
       slave_info.min_sstable_id = sstable_mgr_.get_min_sstable_id();
       slave_info.max_sstable_id = sstable_mgr_.get_max_sstable_id();
-      int64_t timeout = param_.get_register_timeout_us();
-      err = ups_rpc_stub_.slave_register_followed(master, slave_info, slave_type_, fetch_param, max_log_seq, timeout);
+      int64_t timeout = config_.register_timeout;
+      err = ups_rpc_stub_.slave_register_followed(master, slave_info, slave_type, fetch_param, max_log_seq, timeout);
       if (OB_SUCCESS != err && OB_ALREADY_REGISTERED != err)
       {
         TBSYS_LOG(WARN, "fail to register to master ups[%s]. err=%d", master.to_cstring(), err);
@@ -1441,399 +1357,310 @@ namespace oceanbase
       return err;
     }
 
-    //int ObUpdateServer::slave_register_followed(const ObServer &master, ObUpsFetchParam& fetch_param)
-    //{
-    //  int err = OB_SUCCESS;
-    //  int64_t num_times = INT64_MAX;
-    //  int64_t timeout = param_.get_register_timeout_us();
-    //  const ObServer& self_addr = get_self();
-
-    //  ObSlaveInfo slave_info;
-    //  slave_info.self = self_addr;
-    //  slave_info.min_sstable_id = sstable_mgr_.get_min_sstable_id();
-    //  slave_info.max_sstable_id = sstable_mgr_.get_max_sstable_id();
-
-    //  err = RPC_CALL_WITH_RETRY(slave_register_followed, num_times, timeout, master, slave_info, fetch_param);
-
-    //  if (ObUpsRoleMgr::STOP == role_mgr_.get_state())
-    //  {
-    //    TBSYS_LOG(INFO, "The Update Server Slave is stopped manually.");
-    //    err = OB_ERROR;
-    //  }
-    //  else if (OB_RESPONSE_TIME_OUT == err)
-    //  {
-    //    TBSYS_LOG(WARN, "slave register timeout, num_times=%d, timeout=%ldus",
-    //        num_times, timeout);
-    //    err = OB_RESPONSE_TIME_OUT;
-    //  }
-    //  else if (OB_SUCCESS != err)
-    //  {
-    //    TBSYS_LOG(WARN, "Error occurs when slave register, err=%d", err);
-    //  }
-
-    //  char addr_buf[ADDR_BUF_LEN];
-    //  self_addr.to_string(addr_buf, sizeof(addr_buf));
-    //  addr_buf[ADDR_BUF_LEN - 1] = '\0';
-
-    //  if (OB_SUCCESS == err)
-    //  {
-    //    TBSYS_LOG(INFO, "slave register succ, self=[%s], min_log_id=%ld, max_log_id=%ld, err=%d",
-    //        addr_buf, fetch_param.min_log_id_, fetch_param.max_log_id_, err);
-    //    is_registered_to_ups_ = true;
-    //  }
-
-    //  return err;
-    //}
-
-    int ObUpdateServer::slave_register_standalone(uint64_t &log_id_start, uint64_t &log_seq_start)
+    int ObUpdateServer::handlePacket(ObPacket* packet)
     {
-      int err = OB_SUCCESS;
-      int64_t num_times = INT64_MAX;
-      int64_t timeout = param_.get_register_timeout_us();
-
-      log_seq_start = log_mgr_.get_cur_log_seq() == 0 ? 0 : log_mgr_.get_cur_log_seq();
-      log_id_start = log_seq_start == 0 ? 0 : log_mgr_.get_max_log_id();
-      if (OB_SUCCESS != (err = refresh_lsync_server_addr()))
+      // 忽略前两个字段 trace_id和chid
+      PROFILE_LOG(DEBUG, TRACE_ID SOURCE_CHANNEL_ID UPS_REQ_START_TIME, packet->get_trace_id(), packet->get_channel_id(), packet->get_receive_ts());
+      int rc = OB_SUCCESS;
+      ObPacket* req = (ObPacket*) packet;
+      int64_t id = req->get_trace_id();
+      if (0 == id)
       {
-        TBSYS_LOG(ERROR, "refresh_lsync_server_addr()=>%d", err);
+        TraceId *trace_id = reinterpret_cast<TraceId*>(&id);
+        trace_id->id.seq_ = atomic_inc(&(SeqGenerator::seq_generator_));
+        trace_id->id.ip_ = static_cast<uint16_t>(local_ip_ & 0x0000FFFF);
+        trace_id->id.port_ = static_cast<uint16_t>(port_);
+        req->set_trace_id(trace_id->uval_);
       }
-      if (OB_RESPONSE_TIME_OUT == err)
+      bool ps = true;
+      int packet_code = req->get_packet_code();
+      int32_t priority = req->get_packet_priority();
+      TBSYS_LOG(DEBUG,"get packet code is %d, priority=%d", packet_code, priority);
+      switch (packet_code)
       {
-        err = OB_SUCCESS;
-      }
-
-      if (OB_SUCCESS == err)
-      {
-        err = RPC_CALL_WITH_RETRY(slave_register_standalone, num_times, timeout, get_lsync_server(),
-            log_id_start, log_seq_start, log_id_start, log_seq_start);
-      }
-      if (OB_SUCCESS == err)
-      {
-        TBSYS_LOG(INFO, "slave_register_standalone(%s): SUCCESS", get_lsync_server().to_cstring());
-      }
-
-      if (ObUpsRoleMgr::STOP == role_mgr_.get_state())
-      {
-        TBSYS_LOG(INFO, "The Update Server Slave is stopped manually.");
-        err = OB_ERROR;
-      }
-      else if (OB_RESPONSE_TIME_OUT == err)
-      {
-        TBSYS_LOG(WARN, "slave register timeout, num_times=%ld, timeout=%ldus",
-            num_times, timeout);
-        err = OB_RESPONSE_TIME_OUT;
-      }
-      else if (OB_SUCCESS != err)
-      {
-        TBSYS_LOG(WARN, "Error occurs when slave register, err=%d", err);
-      }
-
-      char addr_buf[ADDR_BUF_LEN];
-      get_lsync_server().to_string(addr_buf, sizeof(addr_buf));
-      addr_buf[ADDR_BUF_LEN - 1] = '\0';
-      TBSYS_LOG(INFO, "slave register, lsync_server=[%s], log_id_start=%ld, log_seq_start=%ld, err=%d",
-          addr_buf, log_id_start, log_seq_start, err);
-
-      return err;
-    }
-
-    tbnet::IPacketHandler::HPRetCode ObUpdateServer::handlePacket(tbnet::Connection *connection, tbnet::Packet *packet)
-    {
-      tbnet::IPacketHandler::HPRetCode rc = tbnet::IPacketHandler::FREE_CHANNEL;
-      if (!packet->isRegularPacket())
-      {
-        TBSYS_LOG(WARN, "control packet, packet code: %d", ((tbnet::ControlPacket*)packet)->getCommand());
-      }
-      else
-      {
-        ObPacket* req = (ObPacket*) packet;
-        req->set_connection(connection);
-        bool ps = true;
-        int packet_code = req->get_packet_code();
-        int32_t priority = req->get_packet_priority();
-        TBSYS_LOG(DEBUG,"get packet code is %d, priority=%d", packet_code, priority);
-        switch (packet_code)
+      case OB_SET_OBI_ROLE:
+        ps = read_thread_queue_.push(req, read_task_queue_size_, false,
+                                     (NORMAL_PRI == priority)
+                                     ? PriorityPacketQueueThread::NORMAL_PRIV
+                                     : PriorityPacketQueueThread::LOW_PRIV);
+        break;
+      case OB_UPS_CLEAR_FATAL_STATUS:
+        ps = lease_thread_queue_.push(req, lease_task_queue_size_, false);
+        break;
+      case OB_SEND_LOG:
+        if ((ObUpsRoleMgr::SLAVE == role_mgr_.get_role()
+             || ObiRole::SLAVE == obi_role_.get_role())
+            && ObUpsRoleMgr::FATAL != role_mgr_.get_state())
         {
-          case OB_SET_OBI_ROLE:
-            ps = read_thread_queue_.push(req, read_task_queue_size_, false,
-                (NORMAL_PRI == priority)
-                ? PriorityPacketQueueThread::NORMAL_PRIV
-                : PriorityPacketQueueThread::LOW_PRIV);
-            break;
-          case OB_UPS_CLEAR_FATAL_STATUS:
-            ps = lease_thread_queue_.push(req, lease_task_queue_size_, false);
-            break;
-          case OB_SEND_LOG:
-            if ((ObUpsRoleMgr::SLAVE == role_mgr_.get_role()
-                  || ObiRole::SLAVE == obi_role_.get_role())
-                && ObUpsRoleMgr::FATAL != role_mgr_.get_state())
-            {
-              ps = write_thread_queue_.push(req, log_task_queue_size_, false);
-            }
-            else
-            {
-              ps = false;
-            }
-            break;
-          case OB_FETCH_LOG:
-            ps = read_thread_queue_.push(req, read_task_queue_size_, false,
-                (NORMAL_PRI == priority)
-                ? PriorityPacketQueueThread::NORMAL_PRIV
-                : PriorityPacketQueueThread::LOW_PRIV);
-            break;
-          case OB_FILL_LOG_CURSOR:
-            ps = read_thread_queue_.push(req, read_task_queue_size_, false,
-                (NORMAL_PRI == priority)
-                ? PriorityPacketQueueThread::NORMAL_PRIV
-                : PriorityPacketQueueThread::LOW_PRIV);
-            break;
-          case OB_GET_CLOG_STATUS:
-            ps = read_thread_queue_.push(req, read_task_queue_size_, false,
-                (NORMAL_PRI == priority)
-                ? PriorityPacketQueueThread::NORMAL_PRIV
-                : PriorityPacketQueueThread::LOW_PRIV);
-            break;
-          case OB_WRITE:
-          case OB_INTERNAL_WRITE:
-          case OB_MS_MUTATE:
-          case OB_FAKE_WRITE_FOR_KEEP_ALIVE:
-            if (ObUpsRoleMgr::FATAL != role_mgr_.get_state())
-            {
-              if (ObiRole::MASTER != obi_role_.get_role()
-                  || ObUpsRoleMgr::MASTER != role_mgr_.get_role())
-              {
-                TBSYS_LOG(WARN, "ups not master.obi_role=%s, role=%s", obi_role_.get_role_str(), role_mgr_.get_role_str());
-                response_result_(OB_NOT_MASTER, OB_WRITE_RES, 1, connection, packet->getChannelId());
-                ps = false;
-              }
-              else if (ObUpsRoleMgr::ACTIVE != role_mgr_.get_state())
-              {
-                TBSYS_LOG(WARN, "master ups state not ACTIVE. refuse write. role_state=%s", role_mgr_.get_state_str());
-                response_result_(OB_NOT_MASTER, OB_WRITE_RES, 1, connection, packet->getChannelId());
-                ps = false;
-              }
-              else if (!is_lease_valid())
-              {
-                TBSYS_LOG(WARN, "master ups lease is nearly to timeout. refuse write.");
-                response_result_(OB_NOT_MASTER, OB_WRITE_RES, 1, connection, packet->getChannelId());
-                ps = false;
-              }
-              else if (OB_INTERNAL_WRITE == packet_code || OB_FAKE_WRITE_FOR_KEEP_ALIVE == packet_code)
-              {
-                ps = write_thread_queue_.push(req, write_task_queue_size_, false);
-              }
-              else
-              {
-                if (0 == param_.get_pre_process())
-                {
-                  ps = write_thread_queue_.push(req, write_task_queue_size_, false);
-                }
-                else
-                {
-                  ps = preprocess_thread_queue_.push(req, preprocess_task_queue_size_, false);
-                }
-              }
-            }
-            else
-            {
-              TBSYS_LOG(DEBUG, "ups state is FATAL, refuse write. state=%s", role_mgr_.get_state_str());
-              response_result_(OB_NOT_MASTER, OB_WRITE_RES, 1, connection, packet->getChannelId());
-              ps = false;
-            }
-            break;
-          case OB_SLAVE_REG:
-            if (ObUpsRoleMgr::MASTER == role_mgr_.get_role())
-            {
-              ps = write_thread_queue_.push(req, write_task_queue_size_, false);
-            }
-            else
-            {
-              response_result_(OB_NOT_MASTER, OB_SLAVE_REG_RES, 1, connection, packet->getChannelId());
-              ps = false;
-            }
-            break;
-          case OB_FREEZE_MEM_TABLE:
-          case OB_UPS_MINOR_FREEZE_MEMTABLE:
-          case OB_UPS_MINOR_LOAD_BYPASS:
-          case OB_UPS_MAJOR_LOAD_BYPASS:
-          case OB_UPS_CLEAR_ACTIVE_MEMTABLE:
-          case OB_SWITCH_SCHEMA:
-          case OB_UPS_FORCE_FETCH_SCHEMA:
-          case OB_UPS_SWITCH_COMMIT_LOG:
-          case OB_UPS_ASYNC_MAJOR_FREEZE_MEMTABLE:
-          case OB_UPS_ASYNC_CHECK_CUR_VERSION:
-            if (ObUpsRoleMgr::MASTER == role_mgr_.get_role()
-                && ObiRole::MASTER == obi_role_.get_role()
-                && ObUpsRoleMgr::FATAL != role_mgr_.get_state())
-            {
-              ps = write_thread_queue_.push(req, write_task_queue_size_, false);
-            }
-            else
-            {
-              ps = false;
-            }
-            break;
-          case OB_GET_REQUEST:
-          case OB_SCAN_REQUEST:
-            if (!get_service_state())
-            {
-              ps = false;
-            }
-            else
-            {
-              ps = read_thread_queue_.push(req, read_task_queue_size_, false,
-                  (NORMAL_PRI == priority)
-                  ? PriorityPacketQueueThread::NORMAL_PRIV
-                  : PriorityPacketQueueThread::LOW_PRIV);
-            }
-            break;
-          case OB_UPS_GET_BLOOM_FILTER:
-          case OB_UPS_DUMP_TEXT_MEMTABLE:
-          case OB_UPS_DUMP_TEXT_SCHEMAS:
-          case OB_UPS_MEMORY_WATCH:
-          case OB_UPS_MEMORY_LIMIT_SET:
-          case OB_UPS_PRIV_QUEUE_CONF_SET:
-          case OB_UPS_RELOAD_CONF:
-          case OB_UPS_GET_LAST_FROZEN_VERSION:
-          case OB_UPS_GET_TABLE_TIME_STAMP:
-          case OB_UPS_ENABLE_MEMTABLE_CHECKSUM:
-          case OB_UPS_DISABLE_MEMTABLE_CHECKSUM:
-          case OB_FETCH_STATS:
-          case OB_FETCH_SCHEMA:
-          case OB_RS_FETCH_SPLIT_RANGE:
-          case OB_UPS_STORE_MEM_TABLE:
-          case OB_UPS_DROP_MEM_TABLE:
-          case OB_UPS_ASYNC_FORCE_DROP_MEMTABLE:
-          case OB_UPS_DELAY_DROP_MEMTABLE:
-          case OB_UPS_IMMEDIATELY_DROP_MEMTABLE:
-          case OB_UPS_ASYNC_LOAD_BYPASS:
-          case OB_UPS_ERASE_SSTABLE:
-          case OB_UPS_LOAD_NEW_STORE:
-          case OB_UPS_RELOAD_ALL_STORE:
-          case OB_UPS_RELOAD_STORE:
-          case OB_UPS_UMOUNT_STORE:
-          case OB_UPS_FORCE_REPORT_FROZEN_VERSION:
-          case OB_GET_CLOG_CURSOR:
-          case OB_GET_CLOG_MASTER:
-          case OB_GET_LOG_SYNC_DELAY_STAT:
-          case OB_RS_GET_MAX_LOG_SEQ:
-            ps = read_thread_queue_.push(req, read_task_queue_size_, false,
-                (NORMAL_PRI == priority)
-                ? PriorityPacketQueueThread::NORMAL_PRIV
-                : PriorityPacketQueueThread::LOW_PRIV);
-            break;
-          case OB_SLAVE_QUIT:
-          case OB_UPS_GET_SLAVE_INFO:
-            if (ObUpsRoleMgr::MASTER != role_mgr_.get_role())
-            {
-              TBSYS_LOG(WARN, "server is not master, refuse to get slave info");
-              response_result_(OB_NOT_MASTER, OB_UPS_GET_SLAVE_INFO_RESPONSE, 1, connection, packet->getChannelId());
-              ps = false;
-            }
-            else
-            {
-              ps = read_thread_queue_.push(req, read_task_queue_size_, false,
-                  (NORMAL_PRI == priority)
-                  ? PriorityPacketQueueThread::NORMAL_PRIV
-                  : PriorityPacketQueueThread::LOW_PRIV);
-            }
-            break;
-            //master send to slave, to keep alive
-          case OB_UPS_KEEP_ALIVE:
-            TBSYS_LOG(WARN, "not need receive keep_alive anymore");
-            ps = false;
-            break;
-          case OB_RS_UPS_REVOKE_LEASE:
-            if (ObUpsRoleMgr::MASTER == role_mgr_.get_role())
-            {
-              ps = lease_thread_queue_.push(req, lease_task_queue_size_, false);
-            }
-            else
-            {
-              TBSYS_LOG(WARN, "server not master, refuse to revoke lease.");
-              response_result_(OB_NOT_MASTER, OB_RENEW_LEASE_RESPONSE, 1, connection, packet->getChannelId());
-
-              ps = false;
-            }
-            break;
-          case OB_SET_SYNC_LIMIT_REQUEST:
-          case OB_PING_REQUEST:
-            //case OB_UPS_CHANGE_VIP_REQUEST:
-            if (ObUpsRoleMgr::MASTER == role_mgr_.get_role())
-            {
-              ps = lease_thread_queue_.push(req, lease_task_queue_size_, false);
-            }
-            else if (ObUpsRoleMgr::SLAVE == role_mgr_.get_role())
-            {
-              ps = lease_thread_queue_.push(req, log_task_queue_size_, false);
-            }
-            else
-            {
-              ps = false;
-            }
-            break;
-          case OB_RS_UPS_HEARTBEAT:
-            if (ObUpsRoleMgr::FATAL != role_mgr_.get_state())
-            {
-            ps = lease_thread_queue_.push(req, lease_task_queue_size_, false);
-            }
-            else
-            {
-              TBSYS_LOG(DEBUG, "UPS become FATAL, refuse to receive heartbeat from rs");
-            }
-            break;
-          case OB_CHANGE_LOG_LEVEL:
-              ps = read_thread_queue_.push(req, read_task_queue_size_, false);
-              break;
-          case OB_STOP_SERVER:
-              ps = read_thread_queue_.push(req, read_task_queue_size_, false);
-              break;
-          default:
-              TBSYS_LOG(ERROR, "UNKNOWN packet %d, ignore this", packet_code);
-              ps = false;
-              break;
+          ps = write_thread_queue_.push(req, log_task_queue_size_, false);
         }
-        if (!ps)
+        break;
+      case OB_FETCH_LOG:
+        ps = read_thread_queue_.push(req, read_task_queue_size_, false,
+                                     (NORMAL_PRI == priority)
+                                     ? PriorityPacketQueueThread::NORMAL_PRIV
+                                     : PriorityPacketQueueThread::LOW_PRIV);
+        break;
+      case OB_FILL_LOG_CURSOR:
+        ps = read_thread_queue_.push(req, read_task_queue_size_, false,
+                                     (NORMAL_PRI == priority)
+                                     ? PriorityPacketQueueThread::NORMAL_PRIV
+                                     : PriorityPacketQueueThread::LOW_PRIV);
+        break;
+      case OB_GET_CLOG_STATUS:
+        ps = read_thread_queue_.push(req, read_task_queue_size_, false,
+                                     (NORMAL_PRI == priority)
+                                     ? PriorityPacketQueueThread::NORMAL_PRIV
+                                     : PriorityPacketQueueThread::LOW_PRIV);
+        break;
+      case OB_WRITE:
+      case OB_INTERNAL_WRITE:
+      case OB_MS_MUTATE:
+      case OB_FAKE_WRITE_FOR_KEEP_ALIVE:
+      case OB_PHY_PLAN_EXECUTE:
+      case OB_START_TRANSACTION:
+      case OB_END_TRANSACTION:
+        if (ObUpsRoleMgr::FATAL != role_mgr_.get_state())
         {
-          TBSYS_LOG(WARN, "packet %d can not be distribute to queue", packet_code);
-          rc = tbnet::IPacketHandler::KEEP_CHANNEL;
-          INC_STAT_INFO(UPS_STAT_TBSYS_DROP_COUNT, 1);
+          if (ObiRole::MASTER != obi_role_.get_role()
+              || ObUpsRoleMgr::MASTER != role_mgr_.get_role())
+          {
+            TBSYS_LOG(WARN, "ups not master.obi_role=%s, role=%s", obi_role_.get_role_str(), role_mgr_.get_role_str());
+            response_result_(OB_NOT_MASTER, OB_WRITE_RES, 1, packet->get_request(), packet->get_channel_id());
+            rc = OB_ERROR;
+          }
+          else if (ObUpsRoleMgr::ACTIVE != role_mgr_.get_state())
+          {
+            TBSYS_LOG(WARN, "master ups state not ACTIVE. refuse write. role_state=%s", role_mgr_.get_state_str());
+            response_result_(OB_NOT_MASTER, OB_WRITE_RES, 1, packet->get_request(), packet->get_channel_id());
+            rc = OB_ERROR;
+          }
+          else if (!is_lease_valid())
+          {
+            TBSYS_LOG(WARN, "master ups lease is nearly to timeout. refuse write.");
+            response_result_(OB_NOT_MASTER, OB_WRITE_RES, 1, packet->get_request(), packet->get_channel_id());
+            rc = OB_ERROR;
+          }
+          else if (OB_INTERNAL_WRITE == packet_code || OB_FAKE_WRITE_FOR_KEEP_ALIVE == packet_code)
+          {
+            //ps = write_thread_queue_.push(req, write_task_queue_size_, false);
+            trans_executor_.handle_packet(*req);
+            ps = true;
+          }
+          else
+          {
+            //ps = write_thread_queue_.push(req, write_task_queue_size_, false);
+            trans_executor_.handle_packet(*req);
+            ps = true;
+          }
         }
+        else
+        {
+          TBSYS_LOG(DEBUG, "ups state is FATAL, refuse write. state=%s", role_mgr_.get_state_str());
+          response_result_(OB_NOT_MASTER, OB_WRITE_RES, 1, packet->get_request(), packet->get_channel_id());
+          rc = OB_ERROR;
+        }
+        break;
+      case OB_SLAVE_REG:
+        if (ObUpsRoleMgr::MASTER == role_mgr_.get_role())
+        {
+          ps = write_thread_queue_.push(req, write_task_queue_size_, false);
+        }
+        else
+        {
+          response_result_(OB_NOT_MASTER, OB_SLAVE_REG_RES, 1, packet->get_request(), packet->get_channel_id());
+          rc = OB_ERROR;
+        }
+        break;
+      case OB_FREEZE_MEM_TABLE:
+      case OB_UPS_MINOR_FREEZE_MEMTABLE:
+      case OB_UPS_MINOR_LOAD_BYPASS:
+      case OB_UPS_MAJOR_LOAD_BYPASS:
+      case OB_UPS_CLEAR_ACTIVE_MEMTABLE:
+      case OB_SWITCH_SCHEMA:
+      case OB_UPS_FORCE_FETCH_SCHEMA:
+      case OB_UPS_SWITCH_COMMIT_LOG:
+      case OB_UPS_ASYNC_MAJOR_FREEZE_MEMTABLE:
+      case OB_UPS_ASYNC_AUTO_FREEZE_MEMTABLE:
+      case OB_UPS_ASYNC_CHECK_CUR_VERSION:
+        if (ObUpsRoleMgr::MASTER == role_mgr_.get_role()
+            && ObiRole::MASTER == obi_role_.get_role()
+            && ObUpsRoleMgr::FATAL != role_mgr_.get_state())
+        {
+          ps = write_thread_queue_.push(req, write_task_queue_size_, false);
+        }
+        break;
+      case OB_GET_REQUEST:
+      case OB_SCAN_REQUEST:
+      case OB_NEW_GET_REQUEST:
+      case OB_NEW_SCAN_REQUEST:
+      case OB_UPS_SHOW_SESSIONS:
+      case OB_UPS_KILL_SESSION:
+        trans_executor_.handle_packet(*req);
+        break;
+        //if (!get_service_state())
+        //{
+        //  ps = false;
+        //}
+        //else
+        //{
+        //  ps = read_thread_queue_.push(req, read_task_queue_size_, false,
+        //                               (NORMAL_PRI == priority)
+        //                               ? PriorityPacketQueueThread::NORMAL_PRIV
+        //                               : PriorityPacketQueueThread::LOW_PRIV);
+        //}
+        //break;
+      case OB_UPS_GET_BLOOM_FILTER:
+      case OB_UPS_DUMP_TEXT_MEMTABLE:
+      case OB_UPS_DUMP_TEXT_SCHEMAS:
+      case OB_UPS_MEMORY_WATCH:
+      case OB_UPS_MEMORY_LIMIT_SET:
+      case OB_UPS_PRIV_QUEUE_CONF_SET:
+      case OB_UPS_RELOAD_CONF:
+      case OB_UPS_GET_LAST_FROZEN_VERSION:
+      case OB_UPS_GET_TABLE_TIME_STAMP:
+      case OB_UPS_ENABLE_MEMTABLE_CHECKSUM:
+      case OB_UPS_DISABLE_MEMTABLE_CHECKSUM:
+      case OB_FETCH_STATS:
+      case OB_FETCH_SCHEMA:
+      case OB_RS_FETCH_SPLIT_RANGE:
+      case OB_UPS_STORE_MEM_TABLE:
+      case OB_UPS_DROP_MEM_TABLE:
+      case OB_UPS_ASYNC_FORCE_DROP_MEMTABLE:
+      case OB_UPS_ASYNC_LOAD_BYPASS:
+      case OB_UPS_ERASE_SSTABLE:
+      case OB_UPS_LOAD_NEW_STORE:
+      case OB_UPS_RELOAD_ALL_STORE:
+      case OB_UPS_RELOAD_STORE:
+      case OB_UPS_UMOUNT_STORE:
+      case OB_UPS_FORCE_REPORT_FROZEN_VERSION:
+      case OB_GET_CLOG_CURSOR:
+      case OB_GET_CLOG_MASTER:
+      case OB_GET_LOG_SYNC_DELAY_STAT:
+      case OB_RS_GET_MAX_LOG_SEQ:
+      case OB_GET_CLOG_STAT:
+      case OB_SQL_SCAN_REQUEST:
+      case OB_SET_CONFIG:
+      case OB_GET_CONFIG:
+        ps = read_thread_queue_.push(req, read_task_queue_size_, false,
+                                     (NORMAL_PRI == priority)
+                                     ? PriorityPacketQueueThread::NORMAL_PRIV
+                                     : PriorityPacketQueueThread::LOW_PRIV);
+        break;
+      case OB_SLAVE_QUIT:
+      case OB_UPS_GET_SLAVE_INFO:
+        if (ObUpsRoleMgr::MASTER != role_mgr_.get_role())
+        {
+          TBSYS_LOG(WARN, "server is not master, refuse to get slave info");
+          response_result_(OB_NOT_MASTER, OB_UPS_GET_SLAVE_INFO_RESPONSE, 1, packet->get_request(), packet->get_channel_id());
+          rc = OB_ERROR;
+        }
+        else
+        {
+          ps = read_thread_queue_.push(req, read_task_queue_size_, false,
+                                       (NORMAL_PRI == priority)
+                                       ? PriorityPacketQueueThread::NORMAL_PRIV
+                                       : PriorityPacketQueueThread::LOW_PRIV);
+        }
+        break;
+        //master send to slave, to keep alive
+      case OB_UPS_KEEP_ALIVE:
+        TBSYS_LOG(WARN, "not need receive keep_alive anymore");
+        ps = false;
+        break;
+      case OB_RS_UPS_REVOKE_LEASE:
+        if (ObUpsRoleMgr::MASTER == role_mgr_.get_role())
+        {
+          ps = lease_thread_queue_.push(req, lease_task_queue_size_, false);
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "server not master, refuse to revoke lease.");
+          response_result_(OB_NOT_MASTER, OB_RENEW_LEASE_RESPONSE, 1, packet->get_request(), packet->get_channel_id());
+          rc = OB_ERROR;
+        }
+        break;
+      case OB_SET_SYNC_LIMIT_REQUEST:
+      case OB_PING_REQUEST:
+        //case OB_UPS_CHANGE_VIP_REQUEST:
+        if (ObUpsRoleMgr::MASTER == role_mgr_.get_role())
+        {
+          ps = lease_thread_queue_.push(req, lease_task_queue_size_, false);
+        }
+        else if (ObUpsRoleMgr::SLAVE == role_mgr_.get_role())
+        {
+          ps = lease_thread_queue_.push(req, log_task_queue_size_, false);
+        }
+        break;
+      case OB_RS_UPS_HEARTBEAT:
+        if (ObUpsRoleMgr::FATAL != role_mgr_.get_state())
+        {
+          ps = lease_thread_queue_.push(req, lease_task_queue_size_, false);
+        }
+        else
+        {
+          TBSYS_LOG(DEBUG, "UPS become FATAL, refuse to receive heartbeat from rs");
+        }
+        break;
+      case OB_CHANGE_LOG_LEVEL:
+        ps = read_thread_queue_.push(req, read_task_queue_size_, false);
+        break;
+      case OB_STOP_SERVER:
+        ps = read_thread_queue_.push(req, read_task_queue_size_, false);
+        break;
+      default:
+        if (NULL != req->get_request()
+            && NULL != req->get_request()->ms
+            && NULL != req->get_request()->ms->c)
+        {
+          TBSYS_LOG(ERROR, "UNKNOWN packet %d src=%s, ignore this", packet_code,
+                    get_peer_ip(req->get_request()));
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "UNKNOWN packet %d from UNKNOWN src, ignore this", packet_code);
+        }
+        break;
+      }
+      if (!ps)
+      {
+        TBSYS_LOG(WARN, "can not push packet(pcode is %u) to packet queue", req->get_packet_code());
+        rc = OB_ENQUEUE_FAILED;
       }
       return rc;
     }
-    bool ObUpdateServer::handleBatchPacket(tbnet::Connection *connection, tbnet::PacketQueue &packetQueue)
+
+    int ObUpdateServer::handleBatchPacket(ObPacketQueue &packetQueue)
     {
-      UNUSED(connection);
       UNUSED(packetQueue);
       TBSYS_LOG(ERROR, "you should not reach this, not supported");
-      return true;
+      return OB_SUCCESS;
     }
-    bool ObUpdateServer::handlePacketQueue(tbnet::Packet *packet, void *args)
+
+    bool ObUpdateServer::handlePacketQueue(ObPacket *packet, void *args)
     {
       UNUSED(args);
       bool ret = true;
       int return_code = OB_SUCCESS;
 
-      ObPacket* ob_packet = reinterpret_cast<ObPacket*>(packet);
+      ObPacket* ob_packet = packet;
       int packet_code = ob_packet->get_packet_code();
       int version = ob_packet->get_api_version();
       int32_t priority = ob_packet->get_packet_priority();
       return_code = ob_packet->deserialize();
-      uint32_t channel_id = ob_packet->getChannelId();//tbnet need this
+      uint32_t channel_id = ob_packet->get_channel_id();//tbnet need this
       if (OB_SUCCESS != return_code)
       {
         TBSYS_LOG(ERROR, "packet deserialize error packet code is %d", packet_code);
       }
       else
       {
-        int64_t packet_timewait = (0 == ob_packet->get_source_timeout()) ?
-          param_.get_packet_max_timewait() : ob_packet->get_source_timeout();
+        int64_t packet_timewait = ob_packet->get_source_timeout() ?: config_.packet_max_wait_time;
         ObDataBuffer* in_buf = ob_packet->get_buffer();
         in_buf->get_limit() = in_buf->get_position() + ob_packet->get_data_length();
         if ((ob_packet->get_receive_ts() + packet_timewait) < tbsys::CTimeUtil::getTime())
         {
-          INC_STAT_INFO(UPS_STAT_PACKET_LONG_WAIT_COUNT, 1);
+          OB_STAT_INC(UPDATESERVER, UPS_STAT_PACKET_LONG_WAIT_COUNT, 1);
           TBSYS_LOG(WARN, "packet wait too long time, receive_time=%ld cur_time=%ld packet_max_timewait=%ld packet_code=%d "
               "priority=%d last_log_network_elapse=%ld last_log_disk_elapse=%ld "
               "read_task_queue_size=%zu write_task_queue_size=%zu lease_task_queue_size=%zu log_task_queue_size=%zu",
@@ -1848,161 +1675,185 @@ namespace oceanbase
         else
         {
           packet_timewait -= DEFAULT_REQUEST_TIMEOUT_RESERVE;
-          tbnet::Connection* conn = ob_packet->get_connection();
-          ThreadSpecificBuffer::Buffer* my_buffer = my_thread_buffer_.get_buffer();
-          if (my_buffer != NULL)
+          easy_request_t* req = ob_packet->get_request();
+          if (OB_SELF_FLAG != ob_packet->get_target_id() &&
+            (NULL == req || NULL == req->ms || NULL == req->ms->c))
           {
-            my_buffer->reset();
-            ObDataBuffer thread_buff(my_buffer->current(), my_buffer->remain());
-            TBSYS_LOG(DEBUG, "handle packet, packe code is %d", packet_code);
-            switch(packet_code)
+            TBSYS_LOG(ERROR, "req or req->ms or req->ms->c is NULL, shoule not reach here");
+          }
+          else
+          {
+            ThreadSpecificBuffer::Buffer* my_buffer = my_thread_buffer_.get_buffer();
+            if (my_buffer != NULL)
             {
+              my_buffer->reset();
+              ObDataBuffer thread_buff(my_buffer->current(), my_buffer->remain());
+              TBSYS_LOG(DEBUG, "handle packet, packe code is %d", packet_code);
+              switch(packet_code)
+              {
               case OB_SET_OBI_ROLE:
-                return_code = set_obi_role(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = set_obi_role(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_FETCH_LOG:
-                return_code = ups_fetch_log_for_slave(version, *in_buf, conn, channel_id, thread_buff, ob_packet);
+                return_code = ups_fetch_log_for_slave(version, *in_buf, req, channel_id, thread_buff, packet);
                 break;
               case OB_FILL_LOG_CURSOR:
-                return_code = ups_fill_log_cursor_for_slave(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_fill_log_cursor_for_slave(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_GET_CLOG_STATUS:
-                return_code = ups_get_clog_status(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_get_clog_status(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_SEND_LOG:
-                return_code = ups_slave_write_log(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_slave_write_log(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_SET_SYNC_LIMIT_REQUEST:
-                return_code = ups_set_sync_limit(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_set_sync_limit(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_PING_REQUEST:
-                return_code = ups_ping(version, conn, channel_id);
+                return_code = ups_ping(version, req, channel_id);
                 break;
               case OB_LOGIN:
-                return_code = ob_login(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ob_login(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_UPS_ASYNC_SWITCH_SKEY:
                 return_code = ups_switch_skey();
                 break;
               case OB_GET_CLOG_CURSOR:
-                return_code = ups_get_clog_cursor(version, conn, channel_id, thread_buff);
+                return_code = ups_get_clog_cursor(version, req, channel_id, thread_buff);
                 break;
               case OB_GET_CLOG_MASTER:
-                return_code = ups_get_clog_master(version, conn, channel_id, thread_buff);
+                return_code = ups_get_clog_master(version, req, channel_id, thread_buff);
+                break;
+              case OB_GET_CLOG_STAT:
+                return_code = ups_get_clog_stat(version, req, channel_id, thread_buff);
+                break;
+              case OB_SQL_SCAN_REQUEST:
+                return_code = ups_sql_scan(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_GET_LOG_SYNC_DELAY_STAT:
-                return_code = ups_get_log_sync_delay_stat(version, conn, channel_id, thread_buff);
+                return_code = ups_get_log_sync_delay_stat(version, req, channel_id, thread_buff);
+                break;
+              case OB_NEW_GET_REQUEST:
+                return_code = ups_new_get(version, *in_buf, req, channel_id, thread_buff, ob_packet->get_receive_ts(), packet_timewait, priority);
                 break;
               case OB_GET_REQUEST:
                 CLEAR_TRACE_LOG();
                 FILL_TRACE_LOG("start handle get, packet wait=%ld start_time=%ld timeout=%ld src=%s priority=%d",
-                              tbsys::CTimeUtil::getTime() - ob_packet->get_receive_ts(),
-                              ob_packet->get_receive_ts(), packet_timewait, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()), priority);
-                return_code = ups_get(version, *in_buf, conn, channel_id, thread_buff, ob_packet->get_receive_ts(), packet_timewait, priority);
+                               tbsys::CTimeUtil::getTime() - ob_packet->get_receive_ts(),
+                               ob_packet->get_receive_ts(), packet_timewait, NULL == req ? NULL :
+                               get_peer_ip(ob_packet->get_request()), priority);
+                return_code = ups_get(version, *in_buf, req, channel_id, thread_buff, ob_packet->get_receive_ts(), packet_timewait, priority);
+                break;
+              case OB_NEW_SCAN_REQUEST:
+                CLEAR_TRACE_LOG();
+                return_code = ups_new_scan(version, *in_buf, req, channel_id, thread_buff, ob_packet->get_receive_ts(), packet_timewait, priority);
                 break;
               case OB_SCAN_REQUEST:
                 CLEAR_TRACE_LOG();
                 FILL_TRACE_LOG("start handle scan, packet wait=%ld start_time=%ld timeout=%ld src=%s priority=%d",
-                              tbsys::CTimeUtil::getTime() - ob_packet->get_receive_ts(),
-                              ob_packet->get_receive_ts(), packet_timewait, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()), priority);
-                return_code = ups_scan(version, *in_buf, conn, channel_id, thread_buff, ob_packet->get_receive_ts(), packet_timewait, priority);
+                               tbsys::CTimeUtil::getTime() - ob_packet->get_receive_ts(),
+                               ob_packet->get_receive_ts(), packet_timewait, NULL == req ? NULL :
+                               get_peer_ip(ob_packet->get_request()), priority);
+                return_code = ups_scan(version, *in_buf, req, channel_id, thread_buff, ob_packet->get_receive_ts(), packet_timewait, priority);
                 break;
               case OB_WRITE:
               case OB_MS_MUTATE:
+              case OB_PHY_PLAN_EXECUTE:
                 CLEAR_TRACE_LOG();
                 FILL_TRACE_LOG("start preprocess write, packet wait=%ld, start_time=%ld, timeout=%ld, src=%s, packet_code=%d",
-                    tbsys::CTimeUtil::getTime() - ob_packet->get_receive_ts(),
-                    ob_packet->get_receive_ts(), packet_timewait, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()), packet_code);
-                return_code = ups_preprocess(version, packet_code, *in_buf, conn, channel_id, thread_buff, ob_packet->get_receive_ts(), packet_timewait);
+                               tbsys::CTimeUtil::getTime() - ob_packet->get_receive_ts(),
+                               ob_packet->get_receive_ts(), packet_timewait, NULL == req ? NULL :
+                               get_peer_ip(ob_packet->get_request()), packet_code);
+                return_code = ups_preprocess(version, packet_code, *in_buf, req, channel_id, thread_buff, ob_packet->get_receive_ts(), packet_timewait);
 
                 break;
               case OB_UPS_GET_BLOOM_FILTER:
-                return_code = ups_get_bloomfilter(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_get_bloomfilter(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_CREATE_MEMTABLE_INDEX:
                 return_code = ups_create_memtable_index();
                 break;
               case OB_UPS_DUMP_TEXT_MEMTABLE:
-                return_code = ups_dump_text_memtable(version, *in_buf, conn, channel_id);
+                return_code = ups_dump_text_memtable(version, *in_buf, req, channel_id);
                 break;
               case OB_UPS_DUMP_TEXT_SCHEMAS:
-                return_code = ups_dump_text_schemas(version, conn, channel_id);
+                return_code = ups_dump_text_schemas(version, req, channel_id);
                 break;
               case OB_UPS_MEMORY_WATCH:
-                return_code = ups_memory_watch(version, conn, channel_id, thread_buff);
+                return_code = ups_memory_watch(version, req, channel_id, thread_buff);
                 break;
               case OB_UPS_MEMORY_LIMIT_SET:
-                return_code = ups_memory_limit_set(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_memory_limit_set(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_UPS_PRIV_QUEUE_CONF_SET:
-                return_code = ups_priv_queue_conf_set(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_priv_queue_conf_set(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_UPS_RELOAD_CONF:
-                return_code = ups_reload_conf(version, *in_buf, conn, channel_id);
+                return_code = ups_reload_conf(version, req, channel_id);
                 break;
               case OB_SLAVE_QUIT:
-                return_code = ups_slave_quit(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_slave_quit(version, *in_buf, req, channel_id, thread_buff);
                 break;
-              //case OB_RENEW_LEASE_REQUEST:
-              //  return_code = ups_renew_lease(version, *in_buf, conn, channel_id, thread_buff);
-              //  break;
-              //case OB_GRANT_LEASE_REQUEST:
-              //  return_code = ups_grant_lease(version, *in_buf, conn, channel_id, thread_buff);
-              //  break;
+                //case OB_RENEW_LEASE_REQUEST:
+                //  return_code = ups_renew_lease(version, *in_buf, req, channel_id, thread_buff);
+                //  break;
+                //case OB_GRANT_LEASE_REQUEST:
+                //  return_code = ups_grant_lease(version, *in_buf, req, channel_id, thread_buff);
+                //  break;
                 //add ：心跳处理函数
               case OB_RS_UPS_HEARTBEAT:
-                return_code = ups_rs_lease(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_rs_lease(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_RS_UPS_REVOKE_LEASE:
-                return_code = ups_rs_revoke_lease(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_rs_revoke_lease(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_UPS_GET_LAST_FROZEN_VERSION:
-                return_code = ups_get_last_frozen_version(version, conn, channel_id, thread_buff);
+                return_code = ups_get_last_frozen_version(version, req, channel_id, thread_buff);
                 break;
               case OB_UPS_GET_TABLE_TIME_STAMP:
-                return_code = ups_get_table_time_stamp(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_get_table_time_stamp(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_UPS_GET_SLAVE_INFO:
-                return_code = ups_get_slave_info(version, conn, channel_id, thread_buff);
+                return_code = ups_get_slave_info(version, req, channel_id, thread_buff);
                 break;
               case OB_UPS_ENABLE_MEMTABLE_CHECKSUM:
-                return_code = ups_enable_memtable_checksum(version, conn, channel_id);
+                return_code = ups_enable_memtable_checksum(version, req, channel_id);
                 break;
               case OB_UPS_DISABLE_MEMTABLE_CHECKSUM:
-                return_code = ups_disable_memtable_checksum(version, conn, channel_id);
+                return_code = ups_disable_memtable_checksum(version, req, channel_id);
                 break;
               case OB_FETCH_STATS:
-                return_code = ups_fetch_stat_info(version, conn, channel_id, thread_buff);
+                return_code = ups_fetch_stat_info(version, req, channel_id, thread_buff);
                 break;
               case OB_FETCH_SCHEMA:
-                return_code = ups_get_schema(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_get_schema(version, *in_buf, req, channel_id, thread_buff);
                 break;
               case OB_RS_FETCH_SPLIT_RANGE:
-                return_code = ups_get_sstable_range_list(version, *in_buf, conn, channel_id, thread_buff);
+                return_code = ups_get_sstable_range_list(version, *in_buf, req, channel_id, thread_buff);
                 break;
                 /* case OB_UPS_CHANGE_VIP_REQUEST:
-                   return_code = ups_change_vip(version, *in_buf, conn, channel_id);
+                   return_code = ups_change_vip(version, *in_buf, req, channel_id);
                    break; */
               case OB_UPS_STORE_MEM_TABLE:
-                return_code = ups_store_memtable(version, *in_buf, conn, channel_id);
+                return_code = ups_store_memtable(version, *in_buf, req, channel_id);
                 break;
               case OB_UPS_DROP_MEM_TABLE:
-                return_code = ups_drop_memtable(version, conn, channel_id);
+                return_code = ups_drop_memtable(version, req, channel_id);
                 break;
               case OB_UPS_DELAY_DROP_MEMTABLE:
-                return_code = ups_delay_drop_memtable(version, conn, channel_id);
+                return_code = ups_delay_drop_memtable(version, req, channel_id);
                 break;
               case OB_UPS_IMMEDIATELY_DROP_MEMTABLE:
-                return_code = ups_immediately_drop_memtable(version, conn, channel_id);
+                return_code = ups_immediately_drop_memtable(version, req, channel_id);
                 break;
               case OB_UPS_ASYNC_FORCE_DROP_MEMTABLE:
                 return_code = ups_drop_memtable();
                 break;
               case OB_UPS_ASYNC_LOAD_BYPASS:
-                return_code = ups_load_bypass(version, conn, channel_id, thread_buff, packet_code);
+                return_code = ups_load_bypass(version, req, channel_id, thread_buff, packet_code);
                 break;
               case OB_UPS_ERASE_SSTABLE:
-                return_code = ups_erase_sstable(version, conn, channel_id);
+                return_code = ups_erase_sstable(version, req, channel_id);
                 break;
               case OB_UPS_ASYNC_HANDLE_FROZEN:
                 return_code = ups_handle_frozen();
@@ -2026,48 +1877,58 @@ namespace oceanbase
                 return_code = check_lease_();
                 break;
               case OB_UPS_LOAD_NEW_STORE:
-                return_code = ups_load_new_store(version, conn, channel_id);
+                return_code = ups_load_new_store(version, req, channel_id);
                 break;
               case OB_UPS_RELOAD_ALL_STORE:
-                return_code = ups_reload_all_store(version, conn, channel_id);
+                return_code = ups_reload_all_store(version, req, channel_id);
                 break;
               case OB_UPS_RELOAD_STORE:
-                return_code = ups_reload_store(version, *in_buf, conn, channel_id);
+                return_code = ups_reload_store(version, *in_buf, req, channel_id);
                 break;
               case OB_UPS_UMOUNT_STORE:
-                return_code = ups_umount_store(version, *in_buf, conn, channel_id);
+                return_code = ups_umount_store(version, *in_buf, req, channel_id);
                 break;
               case OB_UPS_FORCE_REPORT_FROZEN_VERSION:
-                return_code = ups_froce_report_frozen_version(version, conn, channel_id);
+                return_code = ups_froce_report_frozen_version(version, req, channel_id);
                 break;
               case OB_UPS_KEEP_ALIVE:
-                return_code = slave_ups_receive_keep_alive(version, conn, channel_id);
+                return_code = slave_ups_receive_keep_alive(version, req, channel_id);
                 break;
               case OB_UPS_CLEAR_FATAL_STATUS:
-                return_code = ups_clear_fatal_status(version, conn, channel_id);
+                return_code = ups_clear_fatal_status(version, req, channel_id);
                 break;
               case OB_RS_GET_MAX_LOG_SEQ:
-                return_code = ups_rs_get_max_log_seq(version, conn, channel_id, thread_buff);
+                return_code = ups_rs_get_max_log_seq(version, req, channel_id, thread_buff);
                 break;
               case OB_CHANGE_LOG_LEVEL:
-                return_code = ups_change_log_level(version, *in_buf, conn, channel_id);
+                return_code = ups_change_log_level(version, *in_buf, req, channel_id);
                 break;
               case OB_STOP_SERVER:
-                return_code = ups_stop_server(version, *in_buf, conn, channel_id);
+                return_code = ups_stop_server(version, *in_buf, req, channel_id);
+                break;
+              case OB_SET_CONFIG:
+                return_code = ups_set_config(version, *in_buf, req, channel_id);
+                break;
+              case OB_GET_CONFIG:
+                return_code = ups_get_config(version, req, channel_id, thread_buff);
+                break;
+              case OB_UPS_ASYNC_UPDATE_SCHEMA:
+                return_code = do_async_update_whole_schema();
                 break;
               default:
                 return_code = OB_ERROR;
                 break;
-            }
+              }
 
-            if (OB_SUCCESS != return_code)
-            {
-              TBSYS_LOG(WARN, "call func error packet_code is %d return code is %d", packet_code, return_code);
+              if (OB_SUCCESS != return_code)
+              {
+                TBSYS_LOG(WARN, "call func error packet_code is %d return code is %d", packet_code, return_code);
+              }
             }
-          }
-          else
-          {
-            TBSYS_LOG(ERROR, "get thread buffer error, ignore this packet");
+            else
+            {
+              TBSYS_LOG(ERROR, "get thread buffer error, ignore this packet");
+            }
           }
         }
       }
@@ -2075,7 +1936,7 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ups_preprocess(const int32_t version, const int32_t packet_code, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
         const int64_t start_time, const int64_t timeout)
     {
       UNUSED(out_buff);
@@ -2089,29 +1950,27 @@ namespace oceanbase
       ObMutator *mutator_ptr = GET_TSI_MULT(ObMutator, TSI_UPS_MUTATOR_1);
       ObToken token;
       ObToken *token_ptr = NULL;
-
+      easy_addr_t addr = get_easy_addr(req);
       if (NULL == mutator_ptr)
       {
         TBSYS_LOG(WARN, "GET_TSI ObMutator or ObScanner fail");
         ret = OB_ERROR;
       }
 
-      if (OB_SUCCESS == ret)
-      {
-        ret = login_mgr_.check_token(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), token);
-        if (OB_SUCCESS == ret)
-        {
-          token_ptr = &token;
-        }
-        if (OB_NOT_A_TOKEN == ret)
-        {
-          ret = param_.get_allow_write_without_token() ? OB_SUCCESS : OB_NO_PERMISSION;
-        }
-      }
-
       ObDataBuffer ori_in_buff = in_buff;
       if (OB_SUCCESS == ret)
       {
+        UpsSchemaMgrGuard guard;
+        const ObSchemaManagerV2* schema_mgr = table_mgr_.get_schema_mgr().get_schema_mgr(guard);
+        if (NULL == schema_mgr)
+        {
+          TBSYS_LOG(WARN, "failed to get schema");
+          ret = OB_SCHEMA_ERROR;
+        }
+        else
+        {
+          mutator_ptr->set_compatible_schema(schema_mgr);
+        }
         ret = mutator_ptr->deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
         FILL_TRACE_LOG("mutator deserialize ret=%d buff_size=%d buff_pos=%d", ret, in_buff.get_capacity(), in_buff.get_position());
       }
@@ -2147,7 +2006,7 @@ namespace oceanbase
               TBSYS_LOG(WARN, "failed to serialize mutator, ret=%d", ret);
             }
             else if (OB_SUCCESS != (ret = submit_async_task_((PacketCode)OB_MS_MUTATE, write_thread_queue_, write_task_queue_size_,
-                                                            version, mutator_buff, conn, channel_id, apply_timeout)))
+                                                            version, mutator_buff, req, channel_id, apply_timeout)))
             {
               TBSYS_LOG(WARN, "failed to add apply task, ret=%d", ret);
             }
@@ -2157,9 +2016,10 @@ namespace oceanbase
 
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(WARN, "failed to pre process, ret=%d src=%s", ret, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()));
+        TBSYS_LOG(WARN, "failed to pre process, ret=%d src=%s", ret,
+                  inet_ntoa_r(addr));
         int res_code = (OB_MS_MUTATE == packet_code) ? OB_MS_MUTATE_RESPONSE : OB_WRITE_RES;
-        int tmp_ret = response_result_(ret, res_code, MY_VERSION, conn, channel_id);
+        int tmp_ret = response_result_(ret, res_code, MY_VERSION, req, channel_id);
         if (OB_SUCCESS != tmp_ret)
         {
           TBSYS_LOG(WARN, "failed to send response, tmp_ret=%d", tmp_ret);
@@ -2167,13 +2027,14 @@ namespace oceanbase
         }
         // TODO (rizhao.ych) modify stat info
       }
-      FILL_TRACE_LOG("preprocess ret=%d src=%s", ret, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()));
+      FILL_TRACE_LOG("preprocess ret=%d src=%s", ret,
+                     inet_ntoa_r(addr));
       PRINT_TRACE_LOG();
 
       return ret;
     }
 
-    bool ObUpdateServer::handleBatchPacketQueue(const int64_t batch_num, tbnet::Packet** packets, void *args)
+    bool ObUpdateServer::handleBatchPacketQueue(const int64_t batch_num, ObPacket** packets, void *args)
     {
       UNUSED(args);
       enum __trans_status__
@@ -2183,8 +2044,10 @@ namespace oceanbase
       };
       bool ret = true;
       int return_code = OB_SUCCESS;
+      /*
       int64_t trans_status = TRANS_NOT_START;
       int64_t first_trans_idx = 0;
+      */
       UpsTableMgrTransHandle handle;
       ObPacket packet_repl;
       ObPacket* ob_packet = &packet_repl;
@@ -2203,12 +2066,16 @@ namespace oceanbase
       }
       for (int64_t i = 0; OB_SUCCESS == return_code && i < batch_num; ++i)
       {
-        ObPacket* packet_orig = reinterpret_cast<ObPacket*>(packets[i]);
+        ObPacket* packet_orig = packets[i];
         packet_repl = *packet_orig;
         int packet_code = ob_packet->get_packet_code();
+        /*
         int version = ob_packet->get_api_version();
+        */
         return_code = ob_packet->deserialize();
-        uint32_t channel_id = ob_packet->getChannelId();//tbnet need this
+        /*
+        uint32_t channel_id = ob_packet->get_channel_id();//tbnet need this
+        */
         //TBSYS_LOG(DEBUG, "packet i=%ld batch_num=%ld %s", i, batch_num, ob_packet->print_self());
         if (OB_SUCCESS != return_code)
         {
@@ -2216,13 +2083,15 @@ namespace oceanbase
         }
         else
         {
+          trans_executor_.handle_packet(*ob_packet);
+          /*
           int64_t packet_timewait = (0 == ob_packet->get_source_timeout()) ?
-            param_.get_packet_max_timewait() : ob_packet->get_source_timeout();
+            config_.get_packet_max_timewait() : ob_packet->get_source_timeout();
           ObDataBuffer* in_buf = ob_packet->get_buffer();
           in_buf->get_limit() = in_buf->get_position() + ob_packet->get_data_length();
           if ((ob_packet->get_receive_ts() + packet_timewait)< tbsys::CTimeUtil::getTime())
           {
-            INC_STAT_INFO(UPS_STAT_PACKET_LONG_WAIT_COUNT, 1);
+            OB_STAT_INC(UPDATESERVER, UPS_STAT_PACKET_LONG_WAIT_COUNT, 1);
             TBSYS_LOG(WARN, "packet wait too long time, receive_time=%ld cur_time=%ld packet_max_timewait=%ld packet_code=%d "
                 "read_task_queue_size=%zu write_task_queue_size=%zu lease_task_queue_size=%zu log_task_queue_size=%zu",
                 ob_packet->get_receive_ts(), tbsys::CTimeUtil::getTime(), packet_timewait, packet_code,
@@ -2236,48 +2105,58 @@ namespace oceanbase
           }
           else
           {
-            tbnet::Connection* conn = ob_packet->get_connection();
-            ThreadSpecificBuffer::Buffer* my_buffer = my_thread_buffer_.get_buffer();
-            if (my_buffer == NULL)
+            easy_request_t* req = ob_packet->get_request();
+            if (OB_SELF_FLAG != ob_packet->get_target_id() &&
+                (NULL == req || NULL == req->ms || NULL == req->ms->c))
             {
-              TBSYS_LOG(ERROR, "get thread buffer error, ignore this packet");
+              TBSYS_LOG(ERROR, "req or req->ms or req->ms->c is NUll should not reach this");
               return_code = OB_ERROR;
             }
             else
             {
-              my_buffer->reset();
-              ObDataBuffer thread_buff(my_buffer->current(), my_buffer->remain());
-              TBSYS_LOG(DEBUG, "handle packet, packe code is %d", packet_code);
-              if (!is_master_master)
+              ThreadSpecificBuffer::Buffer* my_buffer = my_thread_buffer_.get_buffer();
+              if (my_buffer == NULL)
               {
-                if (OB_SEND_LOG == packet_code)
-                {
-                  return_code = ups_slave_write_log(version, *in_buf, conn, channel_id, thread_buff);
-                }
-                else if (OB_SLAVE_REG == packet_code)
-                {
-                  return_code = ups_slave_register(version, *in_buf, conn, channel_id, thread_buff);
-                }
-                else
-                {
-                  return_code = return_not_master(version, conn, channel_id, packet_code);
-                }
+                TBSYS_LOG(ERROR, "get thread buffer error, ignore this packet");
+                return_code = OB_ERROR;
               }
               else
               {
-                switch (packet_code)
+                my_buffer->reset();
+                ObDataBuffer thread_buff(my_buffer->current(), my_buffer->remain());
+                TBSYS_LOG(DEBUG, "handle packet, packe code is %d", packet_code);
+                if (!is_master_master)
                 {
+                  if (OB_SEND_LOG == packet_code)
+                  {
+                    return_code = ups_slave_write_log(version, *in_buf, req, channel_id, thread_buff);
+                  }
+                  else if (OB_SLAVE_REG == packet_code)
+                  {
+                    return_code = ups_slave_register(version, *in_buf, req, channel_id, thread_buff);
+                  }
+                  else
+                  {
+                    return_code = return_not_master(version, req, channel_id, packet_code);
+                  }
+                }
+                else
+                {
+                  switch (packet_code)
+                  {
                   case OB_FREEZE_MEM_TABLE:
                   case OB_UPS_MINOR_FREEZE_MEMTABLE:
                   case OB_UPS_MINOR_LOAD_BYPASS:
                   case OB_UPS_MAJOR_LOAD_BYPASS:
                   case OB_UPS_ASYNC_MAJOR_FREEZE_MEMTABLE:
+                  case OB_UPS_ASYNC_AUTO_FREEZE_MEMTABLE:
                   case OB_SLAVE_REG:
                   case OB_UPS_CLEAR_ACTIVE_MEMTABLE:
                   case OB_SWITCH_SCHEMA:
                   case OB_UPS_FORCE_FETCH_SCHEMA:
                   case OB_UPS_SWITCH_COMMIT_LOG:
                   case OB_UPS_ASYNC_CHECK_CUR_VERSION:
+                  case OB_UPS_ASYNC_WRITE_SCHEMA:
                   case OB_FAKE_WRITE_FOR_KEEP_ALIVE:
                     if (TRANS_STARTED == trans_status)
                     {
@@ -2299,32 +2178,33 @@ namespace oceanbase
                     TBSYS_LOG(WARN, "unexpected packet_code %d", packet_code);
                     return_code = OB_ERR_UNEXPECTED;
                     break;
-                }
-                if (OB_SUCCESS == return_code)
-                {
-                  switch (packet_code)
+                  }
+                  if (OB_SUCCESS == return_code)
                   {
+                    switch (packet_code)
+                    {
                     case OB_FREEZE_MEM_TABLE:
                     case OB_UPS_MINOR_FREEZE_MEMTABLE:
                     case OB_UPS_MINOR_LOAD_BYPASS:
                     case OB_UPS_MAJOR_LOAD_BYPASS:
                     case OB_UPS_ASYNC_MAJOR_FREEZE_MEMTABLE:
+                    case OB_UPS_ASYNC_AUTO_FREEZE_MEMTABLE:
                       return_code = ups_freeze_memtable(version, packet_orig, thread_buff, packet_code);
                       break;
                     case OB_SWITCH_SCHEMA:
                       return_code = ups_switch_schema(version, packet_orig, *in_buf);
                       break;
                     case OB_UPS_FORCE_FETCH_SCHEMA:
-                      return_code = ups_force_fetch_schema(version, conn, channel_id);
+                      return_code = ups_force_fetch_schema(version, req, channel_id);
                       break;
                     case OB_UPS_SWITCH_COMMIT_LOG:
-                      return_code = ups_switch_commit_log(version, conn, channel_id, thread_buff);
+                      return_code = ups_switch_commit_log(version, req, channel_id, thread_buff);
                       break;
                     case OB_SLAVE_REG:
-                      return_code = ups_slave_register(version, *in_buf, conn, channel_id, thread_buff);
+                      return_code = ups_slave_register(version, *in_buf, req, channel_id, thread_buff);
                       break;
                     case OB_UPS_CLEAR_ACTIVE_MEMTABLE:
-                      return_code = ups_clear_active_memtable(version, conn, channel_id);
+                      return_code = ups_clear_active_memtable(version, req, channel_id);
                       break;
                     case OB_UPS_ASYNC_CHECK_CUR_VERSION:
                       return_code = ups_check_cur_version();
@@ -2372,7 +2252,8 @@ namespace oceanbase
                           }
                         }
                         FILL_TRACE_LOG("ups_apply src=%s ret=%d batch_num=%ld cur_trans_idx=%ld last_trans_idx=%ld",
-                            inet_ntoa_r(conn->getPeerId()), return_code, batch_num, first_trans_idx, i);
+                                       inet_ntoa_r(convert_addr_to_server(req->ms->c->addr)),
+                                       return_code, batch_num, first_trans_idx, i);
                       }
 
                       if (OB_EAGAIN == return_code)
@@ -2409,23 +2290,26 @@ namespace oceanbase
                       break;
 
                     case OB_SEND_LOG:
-                      return_code = ups_slave_write_log(version, *in_buf, conn, channel_id, thread_buff);
+                      return_code = ups_slave_write_log(version, *in_buf, req, channel_id, thread_buff);
                       break;
                     default:
                       TBSYS_LOG(WARN, "unexpected packet_code %d", packet_code);
                       return_code = OB_ERR_UNEXPECTED;
                       break;
+                    }
                   }
                 }
-              }
 
-              if (OB_SUCCESS != return_code)
-              {
-                TBSYS_LOG(WARN, "call func error packet_code is %d return code is %d", packet_code, return_code);
+                if (OB_SUCCESS != return_code)
+                {
+                  TBSYS_LOG(WARN, "call func error packet_code is %d return code is %d", packet_code, return_code);
+                }
               }
             }
           }
+          */
         }
+        /*
         // do something after every loop
         if (OB_SUCCESS != return_code)
         {
@@ -2444,7 +2328,9 @@ namespace oceanbase
             return_code = OB_SUCCESS;
           }
         }
+        */
       }
+      /*
       packet_repl.get_buffer()->reset();
 
       if (ObiRole::MASTER == obi_role_.get_role()
@@ -2464,6 +2350,7 @@ namespace oceanbase
           submit_handle_frozen();
         }
       }
+      */
 
       return ret;//if return true packet will be deleted.
     }
@@ -2483,20 +2370,62 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "log_mgr.write_keep_alive_log()=>%d", err);
       }
-      else if (OB_SUCCESS != (err = log_mgr_.flush_log()))
+      else if (OB_SUCCESS != (err = log_mgr_.flush_log(TraceLog::get_logbuffer())))
       {
         TBSYS_LOG(ERROR, "log_mgr.flush_log()=>%d", err);
       }
       if (OB_SUCCESS != err)
       {
-        role_mgr_.set_state(ObUpsRoleMgr::FATAL);
-        TBSYS_LOG(ERROR, "write_keep_alive_log fail");
+        if(OB_NOT_MASTER != err)
+        {
+          role_mgr_.set_state(ObUpsRoleMgr::STOP);
+          TBSYS_LOG(ERROR, "write keep_alive log fill, err=%d, will kill self", err);
+          kill(getpid(), SIGTERM);
+        }
+        TBSYS_LOG(ERROR, "write_keep_alive_log: err=%d", err);
       }
       return err;
     }
 
-    int ObUpdateServer::return_not_master(const int32_t version, tbnet::Connection * conn,
-        const uint32_t channel_id, const int32_t packet_code)
+    int ObUpdateServer::do_async_update_whole_schema()
+    {
+      int err = OB_SUCCESS;
+      int64_t num_times = config_.fetch_schema_times;
+      int64_t timeout = config_.fetch_schema_timeout;
+      bool only_core_tables = false;
+      CommonSchemaManagerWrapper schema_mgr;
+      OnceGuard once_guard(schema_lock_);
+      if (!once_guard.try_lock())
+      {}
+      else
+      {
+        TBSYS_LOG(INFO, "handle_update_schema(%ld->%ld)", table_mgr_.get_schema_mgr().get_version(), schema_version_);
+        err = RPC_CALL_WITH_RETRY(fetch_schema, num_times, timeout, root_server_, 0, schema_mgr, only_core_tables);
+
+        if (OB_RESPONSE_TIME_OUT == err)
+        {
+          TBSYS_LOG(ERROR, "fetch schema timeout, num_times=%ld, timeout=%ldus",
+                    num_times, timeout);
+          err = OB_RESPONSE_TIME_OUT;
+        }
+        else if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(WARN, "Error occurs when fetching schema, err=%d", err);
+        }
+        else if (OB_SUCCESS != (err = submit_switch_schema(schema_mgr)))
+        {
+          TBSYS_LOG(ERROR, "submit_switch_schema(version=%ld)=>%d", schema_mgr.get_version(), err);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "submit swtich_schema(version=%ld)", schema_mgr.get_version());
+        }
+      }
+      return err;
+    }
+
+    int ObUpdateServer::return_not_master(const int32_t version, easy_request_t* req,
+                                          const uint32_t channel_id, const int32_t packet_code)
     {
       int return_code = OB_SUCCESS;
       UNUSED(version);
@@ -2505,20 +2434,21 @@ namespace oceanbase
         case OB_FREEZE_MEM_TABLE:
         case OB_UPS_MINOR_FREEZE_MEMTABLE:
         case OB_UPS_ASYNC_MAJOR_FREEZE_MEMTABLE:
+        case OB_UPS_ASYNC_AUTO_FREEZE_MEMTABLE:
         case OB_SWITCH_SCHEMA:
           TBSYS_LOG(INFO, "no longer master. refuse the order");
           break;
         case OB_UPS_FORCE_FETCH_SCHEMA:
-          return_code = response_result_(OB_NOT_MASTER, OB_UPS_FORCE_FETCH_SCHEMA_RESPONSE, MY_VERSION, conn, channel_id);
+          return_code = response_result_(OB_NOT_MASTER, OB_UPS_FORCE_FETCH_SCHEMA_RESPONSE, MY_VERSION, req, channel_id);
           break;
         case OB_UPS_SWITCH_COMMIT_LOG:
-          return_code = response_result_(OB_NOT_MASTER, OB_UPS_SWITCH_COMMIT_LOG_RESPONSE, MY_VERSION, conn, channel_id);
+          return_code = response_result_(OB_NOT_MASTER, OB_UPS_SWITCH_COMMIT_LOG_RESPONSE, MY_VERSION, req, channel_id);
           break;
         case OB_SLAVE_REG:
-          return_code = response_result_(OB_NOT_MASTER, OB_SLAVE_REG_RES, MY_VERSION, conn, channel_id);
+          return_code = response_result_(OB_NOT_MASTER, OB_SLAVE_REG_RES, MY_VERSION, req, channel_id);
           break;
         case OB_UPS_CLEAR_ACTIVE_MEMTABLE:
-          return_code = response_result_(OB_NOT_MASTER, OB_UPS_CLEAR_ACTIVE_MEMTABLE_RESPONSE, MY_VERSION, conn, channel_id);
+          return_code = response_result_(OB_NOT_MASTER, OB_UPS_CLEAR_ACTIVE_MEMTABLE_RESPONSE, MY_VERSION, req, channel_id);
           break;
         case OB_UPS_ASYNC_CHECK_CUR_VERSION:
           TBSYS_LOG(INFO, "not master now, need not check cur version");
@@ -2526,7 +2456,10 @@ namespace oceanbase
         case OB_WRITE:
         case OB_INTERNAL_WRITE:
         case OB_MS_MUTATE:
-          return_code = response_result_(OB_NOT_MASTER, OB_WRITE_RES, MY_VERSION, conn, channel_id);
+        case OB_PHY_PLAN_EXECUTE:
+        case OB_START_TRANSACTION:
+        case OB_END_TRANSACTION:
+          return_code = response_result_(OB_NOT_MASTER, OB_WRITE_RES, MY_VERSION, req, channel_id);
           break;
         default:
           TBSYS_LOG(ERROR, "UNEXPECT packet %d, ignore this", packet_code);
@@ -2548,7 +2481,7 @@ namespace oceanbase
     }
 
     int ObUpdateServer::set_obi_role(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       UNUSED(out_buff);
 
@@ -2560,7 +2493,7 @@ namespace oceanbase
       }
 
       ObiRole obi_role;
-      err = obi_role.deserialize(in_buff.get_data(), in_buff.get_limit(), in_buff.get_position());
+      err = obi_role.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
       if (OB_SUCCESS != err)
       {
         TBSYS_LOG(ERROR, "ObiRole deserialize error, err=%d", err);
@@ -2609,12 +2542,12 @@ namespace oceanbase
       }
 
       // send response to MASTER before writing to disk
-      err = response_result_(err, OB_SET_OBI_ROLE_RESPONSE, MY_VERSION, conn, channel_id);
+      err = response_result_(err, OB_SET_OBI_ROLE_RESPONSE, MY_VERSION, req, channel_id);
 
       return err;
     }
 
-    bool ObUpdateServer::is_lease_valid()
+    bool ObUpdateServer::is_lease_valid() const
     {
       bool ret = true;
       int64_t lease = lease_expire_time_us_;
@@ -2628,8 +2561,16 @@ namespace oceanbase
       return ret;
     }
 
+    bool ObUpdateServer::is_master_lease_valid() const
+    {
+      return ObiRole::MASTER == obi_role_.get_role()
+        && ObUpsRoleMgr::MASTER == role_mgr_.get_role()
+        && ObUpsRoleMgr::ACTIVE == role_mgr_.get_state()
+        && is_lease_valid();
+    }
+
     /*int ObUpdateServer::slave_set_fetch_param(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
       ObResultCode result_msg;
@@ -2666,7 +2607,7 @@ namespace oceanbase
       }
       if (OB_SUCCESS == err)
       {
-        err = send_response(OB_SEND_FETCH_PARAM_RES, MY_VERSION, out_buff, conn, channel_id);
+        err = send_response(OB_SEND_FETCH_CONFIG_RES, MY_VERSION, out_buff, req, channel_id);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "fail to send response. err=%d", err);
@@ -2676,38 +2617,43 @@ namespace oceanbase
     }
 */
     int ObUpdateServer::ups_fetch_log_for_slave(const int32_t version, common::ObDataBuffer& in_buff,
-          tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff, ObPacket* packet)
+                                                easy_request_t* request, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+                                                ObPacket* packet)
     {
       int err = OB_SUCCESS;
+      int ret_err = OB_SUCCESS;
       ObFetchLogReq req;
       ObFetchedLog result;
+      const char* src_addr = inet_ntoa_r(get_easy_addr(request));
       if (version != MY_VERSION)
       {
         err = OB_ERROR_FUNC_VERSION;
       }
-      else if (OB_SUCCESS != (err = req.deserialize(in_buff.get_data(), in_buff.get_limit(), in_buff.get_position())))
+      else if (OB_SUCCESS != (err = req.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(ERROR, "req.deserialize(buf=%p[%ld], pos=%ld)=>%d",
-                  in_buff.get_data(), in_buff.get_limit(), in_buff.get_position(), err);
+                  in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), err);
       }
       else if (OB_SUCCESS != (err = log_mgr_.get_log_for_slave_fetch(req, result))
                && OB_DATA_NOT_SERVE != err)
       {
-        TBSYS_LOG(ERROR, "log_mgr_.fetch_log_for_slave(req, result)=>%d", err);
+        TBSYS_LOG(ERROR, "log_mgr_.fetch_log_for_slave(srv=%s, req=%s, result=%s)=>%d", src_addr, to_cstring(req), to_cstring(result), err);
       }
       else if (OB_DATA_NOT_SERVE == err)
       {
+        ret_err = OB_NEED_RETRY;
         err = OB_SUCCESS;
+        TBSYS_LOG(WARN, "log_mgr_.fetch_log_for_slave(srv=%s, req=%s, result=%s): DATA_NOT_SERVE", src_addr, to_cstring(req), to_cstring(result));
       }
-      if (packet->get_receive_ts() + (packet->get_source_timeout()?: param_.get_packet_max_timewait())
+      if (packet->get_receive_ts() + (packet->get_source_timeout()?: config_.packet_max_wait_time)
           < tbsys::CTimeUtil::getTime())
       {
         err = OB_RESPONSE_TIME_OUT;
         TBSYS_LOG(ERROR, "get_log_for_slave_fetch() too slow[receive_ts[%ld] + timeout[%ld] < curTime[%ld]]",
-                  packet->get_receive_ts(), packet->get_source_timeout()?: param_.get_packet_max_timewait(),
+                  packet->get_receive_ts(), packet->get_source_timeout()?: config_.packet_max_wait_time,
                   tbsys::CTimeUtil::getTime());
       }
-      else if (OB_SUCCESS != (err = response_data_(err, result, OB_FETCH_LOG_RESPONSE, MY_VERSION, conn, channel_id, out_buff)))
+      else if (OB_SUCCESS != (err = response_data_(OB_SUCCESS == err? ret_err: err, result, OB_FETCH_LOG_RESPONSE, MY_VERSION, request, channel_id, out_buff)))
       {
         TBSYS_LOG(ERROR, "response_data()=>%d", err);
       }
@@ -2715,7 +2661,7 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ups_fill_log_cursor_for_slave(const int32_t version, common::ObDataBuffer& in_buff,
-                                                      tbnet::Connection* conn, const uint32_t channel_id,
+                                                      easy_request_t* req, const uint32_t channel_id,
                                                       common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
@@ -2724,17 +2670,17 @@ namespace oceanbase
       {
         err = OB_ERROR_FUNC_VERSION;
       }
-      else if (OB_SUCCESS != (err = cursor.deserialize(in_buff.get_data(), in_buff.get_limit(), in_buff.get_position())))
+      else if (OB_SUCCESS != (err = cursor.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(ERROR, "cursor.deserialize(buf=%p[%ld], pos=%ld)=>%d",
-                  in_buff.get_data(), in_buff.get_limit(), in_buff.get_position(), err);
+                  in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), err);
       }
       else if (OB_SUCCESS != (err = log_mgr_.fill_log_cursor(cursor)))
       {
         TBSYS_LOG(ERROR, "log_mgr_.fill_log_cursor(cursor)=>%d", err);
       }
       else if (OB_SUCCESS !=
-          (err = response_data_(err, cursor, OB_FILL_LOG_CURSOR_RESPONSE, MY_VERSION, conn, channel_id, out_buff)))
+          (err = response_data_(err, cursor, OB_FILL_LOG_CURSOR_RESPONSE, MY_VERSION, req, channel_id, out_buff)))
       {
         TBSYS_LOG(ERROR, "response_data()=>%d", err);
       }
@@ -2742,10 +2688,11 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ups_get_clog_status(const int32_t version, common::ObDataBuffer& in_buff,
-                                                      tbnet::Connection* conn, const uint32_t channel_id,
+                                                      easy_request_t* req, const uint32_t channel_id,
                                                       common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
+      int tmp_ret = OB_SUCCESS;
       ObLogCursor replayed_cursor;
       uint64_t frozen_version = 0;
       int64_t max_log_id_replayable = 0;
@@ -2756,22 +2703,22 @@ namespace oceanbase
       {
         err = OB_ERROR_FUNC_VERSION;
       }
-      else if (OB_SUCCESS != (err = log_mgr_.get_replayed_cursor(replayed_cursor)))
-      {
-        TBSYS_LOG(ERROR, "log_mgr.get_replayed_cursor()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = table_mgr_.get_last_frozen_memtable_version(frozen_version)))
-      {
-        TBSYS_LOG(ERROR, "table_mgr.get_last_frozen_memtable_version()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = log_mgr_.get_max_log_seq_replayable(max_log_id_replayable)))
-      {
-        TBSYS_LOG(ERROR, "log_mgr.get_max_log_id_replayable()=>%d", err);
-      }
       else
       {
+        if (OB_SUCCESS != (tmp_ret = log_mgr_.get_replayed_cursor(replayed_cursor)))
+        {
+          TBSYS_LOG(WARN, "log_mgr.get_replayed_cursor()=>%d", tmp_ret);
+        }
+        if (OB_SUCCESS != (tmp_ret = log_mgr_.get_max_log_seq_replayable(max_log_id_replayable)))
+        {
+          TBSYS_LOG(WARN, "log_mgr.get_max_log_id_replayable()=>%d", tmp_ret);
+        }
+        if (OB_SUCCESS != (tmp_ret = table_mgr_.get_last_frozen_memtable_version(frozen_version)))
+        {
+          TBSYS_LOG(WARN, "table_mgr.get_last_frozen_memtable_version()=>%d", tmp_ret);
+        }
         stat.obi_slave_stat_ = obi_slave_stat_;
-        stat.slave_sync_type_ = slave_type_;
+        stat.slave_sync_type_.set_sync_type(config_.real_time_slave ? ObSlaveSyncType::REAL_TIME_SLAVE : ObSlaveSyncType::NON_REAL_TIME_SLAVE);
         stat.obi_role_ = obi_role_;
         stat.role_mgr_ = role_mgr_;
         stat.rs_ = root_server_;
@@ -2784,9 +2731,13 @@ namespace oceanbase
         stat.replayed_cursor_ = replayed_cursor;
         stat.max_log_id_replayable_ = max_log_id_replayable;
         stat.master_log_id_ = log_mgr_.get_master_log_seq();
+        stat.next_submit_log_id_ = replay_worker_.get_next_submit_log_id();
+        stat.next_commit_log_id_ = replay_worker_.get_next_commit_log_id();
+        stat.next_flush_log_id_ = replay_worker_.get_next_flush_log_id();
+        stat.last_barrier_log_id_ = replay_worker_.get_last_barrier_log_id();
       }
       if (OB_SUCCESS !=
-          (err = response_data_(err, stat, OB_GET_CLOG_STATUS_RESPONSE, MY_VERSION, conn, channel_id, out_buff)))
+          (err = response_data_(err, stat, OB_GET_CLOG_STATUS_RESPONSE, MY_VERSION, req, channel_id, out_buff)))
       {
         TBSYS_LOG(ERROR, "response_data()=>%d", err);
       }
@@ -2794,7 +2745,7 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ups_slave_write_log(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       UNUSED(out_buff);
 
@@ -2806,18 +2757,17 @@ namespace oceanbase
         err = OB_ERROR_FUNC_VERSION;
       }
 
-      // int64_t in_buff_begin = in_buff.get_position();
-      // bool switch_log_flag = false;
-      // uint64_t log_id;
-
       if (OB_SUCCESS != err)
       {}
       else if (OB_SUCCESS != (err = (log_mgr_.slave_receive_log(in_buff.get_data() + in_buff.get_position(),
-                                                                in_buff.get_limit() - in_buff.get_position()))))
+                                                                in_buff.get_capacity() - in_buff.get_position(),
+                                                                config_.wait_slave_sync_time,
+                                                                (ObUpsLogMgr::WAIT_SYNC_TYPE)static_cast<int>(config_.wait_slave_sync_type)))))
       {
-        TBSYS_LOG(ERROR, "slave_receive_log()=>%d", err);
+        TBSYS_LOG(ERROR, "slave_receive_log(buf=%p[%ld:%ld])=>%d",
+                  in_buff.get_data(), in_buff.get_position(), in_buff.get_capacity(), err);
       }
-      if (OB_SUCCESS != (response_err = response_result_(err, OB_SEND_LOG_RES, MY_VERSION, conn, channel_id)))
+      if (OB_SUCCESS != (response_err = response_result_(err, OB_SEND_LOG_RES, MY_VERSION, req, channel_id)))
       {
         err = response_err;
         TBSYS_LOG(ERROR, "response_result_()=>%d", err);
@@ -2827,7 +2777,7 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ups_change_log_level(const int32_t version, common::ObDataBuffer& in_buff,
-                                         tbnet::Connection* conn, const uint32_t channel_id)
+                                         easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       UNUSED(version);
@@ -2853,19 +2803,19 @@ namespace oceanbase
           ret = OB_INVALID_ARGUMENT;
         }
         if (OB_SUCCESS == ret)
-          ret = response_result_(ret, OB_CHANGE_LOG_LEVEL_RESPONSE, MY_VERSION, conn, channel_id);
+          ret = response_result_(ret, OB_CHANGE_LOG_LEVEL_RESPONSE, MY_VERSION, req, channel_id);
       }
       return ret;
     }
 
     int ObUpdateServer::ups_stop_server(const int32_t version, common::ObDataBuffer& in_buff,
-                                         tbnet::Connection* conn, const uint32_t channel_id)
+                                         easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       UNUSED(version);
 
       int64_t server_id = root_server_.get_ipv4_server_id();
-      int64_t peer_id = conn->getPeerId();
+      int64_t peer_id = convert_addr_to_server(req->ms->c->addr);
       if (server_id != peer_id)
       {
         TBSYS_LOG(WARN, "*stop server* WARNNING coz packet from unrecongnized address "
@@ -2884,7 +2834,7 @@ namespace oceanbase
       }
       else
       {
-        ret = response_result_(ret, OB_SET_OBI_ROLE_RESPONSE, MY_VERSION, conn, channel_id);
+        ret = response_result_(ret, OB_SET_OBI_ROLE_RESPONSE, MY_VERSION, req, channel_id);
         if (restart != 0) {
           TBSYS_LOG(WARN, "set restart server flag, ready to restart server!");
           BaseMain::set_restart_flag();
@@ -2895,42 +2845,44 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ob_login(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       int proc_ret = OB_SUCCESS;
-
+      ret = OB_NOT_SUPPORTED;
       if (version != MY_VERSION)
       {
         ret = OB_ERROR_FUNC_VERSION;
       }
 
       ObLoginInfo login_info;
-      ret = login_info.deserialize(in_buff.get_data(), in_buff.get_limit(), in_buff.get_position());
+      easy_addr_t addr = get_easy_addr(req);
+      ret = login_info.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(WARN, "deserialize login info fail ret=%d src=%s", ret, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()));
+        TBSYS_LOG(WARN, "deserialize login info fail ret=%d src=%s", ret, NULL == req ? NULL :
+                  inet_ntoa_r(addr));
       }
       else
       {
         ObToken token;
-        ret = login_mgr_.handle_login(login_info, token);
         if (OB_SUCCESS == ret)
         {
-          proc_ret = response_data_(ret, token, OB_LOGIN_RES, MY_VERSION, conn, channel_id, out_buff);
+          proc_ret = response_data_(ret, token, OB_LOGIN_RES, MY_VERSION, req, channel_id, out_buff);
         }
         else
         {
-          proc_ret = response_result_(ret, OB_LOGIN_RES, MY_VERSION, conn, channel_id);
+          proc_ret = response_result_(ret, OB_LOGIN_RES, MY_VERSION, req, channel_id);
         }
       }
-      TBSYS_LOG(INFO, "ob_login ret=%d src=%s", ret, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()));
+      TBSYS_LOG(INFO, "ob_login ret=%d src=%s", ret, NULL == req ? NULL :
+                inet_ntoa_r(addr));
 
       return proc_ret;
     }
 
     int ObUpdateServer::ups_set_sync_limit(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       UNUSED(out_buff);
       int ret = OB_SUCCESS;
@@ -2941,19 +2893,19 @@ namespace oceanbase
       }
 
       int64_t new_limit = 0;
-      ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_limit(), in_buff.get_position(), &new_limit);
+      ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), &new_limit);
       if (OB_SUCCESS == ret)
       {
         //fetch_thread_.set_limit_rate(new_limit);
         //TBSYS_LOG(INFO, "update sync limit=%ld", fetch_thread_.get_limit_rate());
       }
 
-      ret = response_result_(ret, OB_SET_SYNC_LIMIT_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_SET_SYNC_LIMIT_RESPONSE, MY_VERSION, req, channel_id);
 
       return ret;
     }
 
-    int ObUpdateServer::ups_ping(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_ping(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
 
@@ -2962,12 +2914,12 @@ namespace oceanbase
         ret = OB_ERROR_FUNC_VERSION;
       }
 
-      ret = response_result_(ret, OB_PING_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_PING_RESPONSE, MY_VERSION, req, channel_id);
 
       return ret;
     }
 
-    int ObUpdateServer::ups_get_clog_master(const int32_t version, tbnet::Connection* conn,
+    int ObUpdateServer::ups_get_clog_master(const int32_t version, easy_request_t* req,
                                             const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
@@ -3038,7 +2990,7 @@ namespace oceanbase
         err = OB_ERR_UNEXPECTED;
         TBSYS_LOG(ERROR, "NULL == master");
       }
-      else if(OB_SUCCESS != (err = response_data_(err, *master, OB_GET_CLOG_MASTER_RESPONSE, MY_VERSION, conn, channel_id, out_buff)))
+      else if(OB_SUCCESS != (err = response_data_(err, *master, OB_GET_CLOG_MASTER_RESPONSE, MY_VERSION, req, channel_id, out_buff)))
       {
         TBSYS_LOG(ERROR, "response_data()=>%d", err);
       }
@@ -3046,7 +2998,7 @@ namespace oceanbase
       return err;
     }
 
-    int ObUpdateServer::ups_get_clog_cursor(const int32_t version, tbnet::Connection* conn,
+    int ObUpdateServer::ups_get_clog_cursor(const int32_t version, easy_request_t* req,
                                             const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
@@ -3061,7 +3013,7 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "log_mgr.get_replayed_cursor()=>%d", err);
       }
 
-      if(OB_SUCCESS != (err = response_data_(err, log_cursor, OB_GET_CLOG_CURSOR_RESPONSE, MY_VERSION, conn, channel_id, out_buff)))
+      if(OB_SUCCESS != (err = response_data_(err, log_cursor, OB_GET_CLOG_CURSOR_RESPONSE, MY_VERSION, req, channel_id, out_buff)))
       {
         TBSYS_LOG(ERROR, "response_data()=>%d", err);
       }
@@ -3069,7 +3021,7 @@ namespace oceanbase
       return err;
     }
 
-    int ObUpdateServer::ups_get_log_sync_delay_stat(const int32_t version, tbnet::Connection* conn,
+    int ObUpdateServer::ups_get_log_sync_delay_stat(const int32_t version, easy_request_t* req,
                                             const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
@@ -3078,7 +3030,7 @@ namespace oceanbase
         err = OB_ERROR_FUNC_VERSION;
         TBSYS_LOG(ERROR, "MY_VERSION[%d] != version[%d]", MY_VERSION, version);
       }
-      else if(OB_SUCCESS != (err = response_data_(err, log_mgr_.get_delay_stat(), OB_GET_LOG_SYNC_DELAY_STAT_RESPONSE, MY_VERSION, conn, channel_id, out_buff)))
+      else if(OB_SUCCESS != (err = response_data_(err, log_mgr_.get_delay_stat(), OB_GET_LOG_SYNC_DELAY_STAT_RESPONSE, MY_VERSION, req, channel_id, out_buff)))
       {
        TBSYS_LOG(ERROR, "response_data()=>%d", err);
       }
@@ -3089,8 +3041,178 @@ namespace oceanbase
       return err;
     }
 
+    int ObUpdateServer::ups_get_clog_stat(const int32_t version, easy_request_t* req,
+                                            const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int err = OB_SUCCESS;
+      ObLogCursor log_cursor;
+      if (MY_VERSION != version)
+      {
+        err = OB_ERROR_FUNC_VERSION;
+        TBSYS_LOG(ERROR, "MY_VERSION[%d] != version[%d]", MY_VERSION, version);
+      }
+
+      if(OB_SUCCESS != (err = response_data_(err, log_mgr_.get_clog_stat(), OB_GET_CLOG_STAT_RESPONSE, MY_VERSION, req, channel_id, out_buff)))
+      {
+        TBSYS_LOG(ERROR, "response_data()=>%d", err);
+      }
+      else
+      {
+        log_mgr_.get_clog_stat().clear();
+      }
+
+      return err;
+    }
+
+    int ObUpdateServer::ups_sql_scan(const int32_t version, common::ObDataBuffer& in_buff,
+                                     easy_request_t* req, const uint32_t channel_id,
+                                     common::ObDataBuffer& out_buff)
+    {
+      static const int32_t UPS_SCAN_VERSION = 1;
+      int ret = OB_SUCCESS;
+      ObNewScanner *new_scanner = GET_TSI_MULT(ObNewScanner, TSI_UPS_NEW_SCANNER_1);
+      sql::ObSqlScanParam *sql_scan_param_ptr = GET_TSI_MULT(sql::ObSqlScanParam,
+                                                             TSI_UPS_SQL_SCAN_PARAM_1);
+      if (version != UPS_SCAN_VERSION)
+      {
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+      else if (NULL == new_scanner || NULL == sql_scan_param_ptr)
+      {
+        TBSYS_LOG(ERROR, "failed to get thread local scan_param or new scanner, "
+                  "new_scanner=%p, sql_scan_param_ptr=%p", new_scanner, sql_scan_param_ptr);
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else
+      {
+        new_scanner->reuse();
+        sql_scan_param_ptr->reset();
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        ret = sql_scan_param_ptr->deserialize(
+          in_buff.get_data(), in_buff.get_capacity(),
+          in_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "parse cs_sql_scan input scan param error.");
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        new_scanner->set_range(*sql_scan_param_ptr->get_range());
+
+        OB_STAT_SET(UPDATESERVER, UPS_STAT_MEMORY_TOTAL, ob_get_memory_size_handled());
+        OB_STAT_SET(UPDATESERVER, UPS_STAT_MEMORY_LIMIT, ob_get_memory_size_limit());
+        table_mgr_.update_memtable_stat_info();
+
+        ret = stat_mgr_.get_scanner(*new_scanner);
+        if(OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "open query service fail:err[%d]", ret);
+        }
+        else if (OB_SUCCESS != (ret = response_data_(ret, *new_scanner,
+                                                     OB_SQL_SCAN_RESPONSE, UPS_SCAN_VERSION,
+                                                     req, channel_id, out_buff)))
+        {
+          TBSYS_LOG(WARN, "send new sql scan result fail, ret: [%d]", ret);
+        }
+      }
+
+      return ret;
+    }
+
+    int ObUpdateServer::ups_new_get(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+        const int64_t start_time, const int64_t timeout, const int32_t priority)
+    {
+      int ret = OB_SUCCESS;
+      ObGetParam get_param_stack;
+      ObGetParam *get_param_ptr = GET_TSI_MULT(ObGetParam, TSI_UPS_GET_PARAM_1);
+      ObGetParam &get_param = (NULL == get_param_ptr) ? get_param_stack : *get_param_ptr;
+      common::ObRowDesc row_desc;
+      common::ObCellNewScanner *new_scanner = GET_TSI_MULT(ObCellNewScanner, TSI_UPS_NEW_SCANNER_1);
+
+      if (version != MY_VERSION)
+      {
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        if (NULL == new_scanner)
+        {
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+          TBSYS_LOG(WARN, "fail to allocate mem for new scanner");
+        }
+        else
+        {
+          new_scanner->reuse();
+        }
+      }
+
+      //CLEAR_TRACE_LOG();
+      if (OB_SUCCESS == ret)
+      {
+        ret = get_param.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "deserialize get param retor, ret=%d", ret);
+        }
+        FILL_TRACE_LOG("get param deserialize ret=%d", ret);
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        if (get_param.get_is_read_consistency())
+        {
+          if ( !(ObiRole::MASTER == obi_role_.get_role() && ObUpsRoleMgr::MASTER == role_mgr_.get_role()) )
+          {
+            TBSYS_LOG(DEBUG, "The Get Request require consistency, ObiRole:%s RoleMgr:%s",
+                obi_role_.get_role_str(), role_mgr_.get_role_str());
+            ret = OB_NOT_MASTER;
+          }
+        }
+      }
+
+      if(OB_SUCCESS == ret)
+      {
+        if(OB_SUCCESS != (ret = ObNewScannerHelper::get_row_desc(get_param, true, row_desc)))
+        {
+          TBSYS_LOG(WARN, "get row desc fail:ret[%d]", ret);
+        }
+        else
+        {
+          new_scanner->set_row_desc(row_desc);
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        thread_read_prepare();
+        ret = table_mgr_.new_get(get_param, *new_scanner, start_time, timeout);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "failed to get, ret=%d", ret);
+        }
+        FILL_TRACE_LOG("get from table mgr ret=%d", ret);
+      }
+
+      ret = response_data_(ret, *new_scanner, OB_NEW_GET_RESPONSE, MY_VERSION, req, channel_id, out_buff, &priority);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_GET_COUNT, 1);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_GET_TIMEU, GET_TRACE_TIMEU());
+      FILL_TRACE_LOG("response scanner ret=%d", ret);
+      PRINT_TRACE_LOG();
+
+      thread_read_complete();
+
+      return ret;
+    }
+
     int ObUpdateServer::ups_get(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
         const int64_t start_time, const int64_t timeout, const int32_t priority)
     {
       int ret = OB_SUCCESS;
@@ -3142,9 +3264,9 @@ namespace oceanbase
         FILL_TRACE_LOG("get from table mgr ret=%d", ret);
       }
 
-      ret = response_data_(ret, scanner, OB_GET_RESPONSE, MY_VERSION, conn, channel_id, out_buff, &priority);
-      INC_STAT_INFO(UPS_STAT_GET_COUNT, 1);
-      INC_STAT_INFO(UPS_STAT_GET_TIMEU, GET_TRACE_TIMEU());
+      ret = response_data_(ret, scanner, OB_GET_RESPONSE, MY_VERSION, req, channel_id, out_buff, &priority);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_GET_COUNT, 1);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_GET_TIMEU, GET_TRACE_TIMEU());
       FILL_TRACE_LOG("response scanner ret=%d", ret);
       PRINT_TRACE_LOG();
 
@@ -3156,7 +3278,7 @@ namespace oceanbase
     template <class T>
     int ObUpdateServer::response_data_(int32_t ret_code, const T &data,
                                           int32_t cmd_type, int32_t func_version,
-                                          tbnet::Connection* conn, const uint32_t channel_id,
+                                          easy_request_t* req, const uint32_t channel_id,
                                           common::ObDataBuffer& out_buff, const int32_t* priority)
     {
       int ret = OB_SUCCESS;
@@ -3179,7 +3301,7 @@ namespace oceanbase
         }
         else
         {
-          ret = send_response(cmd_type, func_version, out_buff, conn, channel_id);
+          ret = send_response(cmd_type, func_version, out_buff, req, channel_id);
           if (OB_SUCCESS != ret)
           {
             TBSYS_LOG(WARN, "failed to send scan response, ret=%d", ret);
@@ -3196,7 +3318,7 @@ namespace oceanbase
 
     int ObUpdateServer::response_fetch_param_(int32_t ret_code, const ObUpsFetchParam& fetch_param,
         const int64_t log_id, int32_t cmd_type, int32_t func_version,
-        tbnet::Connection* conn, const uint32_t channel_id,
+        easy_request_t* req, const uint32_t channel_id,
         common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
@@ -3220,7 +3342,7 @@ namespace oceanbase
         {
           if (OB_SUCCESS == (ret = serialization::encode_i64(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position(), log_id)))
           {
-            ret = send_response(cmd_type, func_version, out_buff, conn, channel_id);
+            ret = send_response(cmd_type, func_version, out_buff, req, channel_id);
             if (OB_SUCCESS != ret)
             {
               TBSYS_LOG(WARN, "failed to send scan response, ret=%d", ret);
@@ -3239,7 +3361,7 @@ namespace oceanbase
 
     int ObUpdateServer::response_lease_(int32_t ret_code, const ObLease& lease,
         int32_t cmd_type, int32_t func_version,
-        tbnet::Connection* conn, const uint32_t channel_id,
+        easy_request_t* req, const uint32_t channel_id,
         common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
@@ -3261,7 +3383,7 @@ namespace oceanbase
         }
         else
         {
-          ret = send_response(cmd_type, func_version, out_buff, conn, channel_id);
+          ret = send_response(cmd_type, func_version, out_buff, req, channel_id);
           if (OB_SUCCESS != ret)
           {
             TBSYS_LOG(WARN, "failed to send scan response, ret=%d", ret);
@@ -3272,8 +3394,98 @@ namespace oceanbase
       return ret;
     }
 
+    int ObUpdateServer::ups_new_scan(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+        const int64_t start_time, const int64_t timeout, const int32_t priority)
+    {
+      int ret = OB_SUCCESS;
+      ObScanParam scan_param_stack;
+      ObScanParam *scan_param_ptr = GET_TSI_MULT(ObScanParam, TSI_UPS_SCAN_PARAM_1);
+      ObScanParam &scan_param = (NULL == scan_param_ptr) ? scan_param_stack : *scan_param_ptr;
+      common::ObResultCode result_msg;
+      common::ObRowDesc row_desc;
+      common::ObCellNewScanner *new_scanner = GET_TSI_MULT(ObCellNewScanner, TSI_UPS_NEW_SCANNER_1);
+
+
+      if (version != MY_VERSION)
+      {
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        if (NULL == new_scanner)
+        {
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+          TBSYS_LOG(WARN, "fail to allocate mem for new scanner");
+        }
+        else
+        {
+          new_scanner->reuse();
+        }
+      }
+
+      //CLEAR_TRACE_LOG();
+      if (OB_SUCCESS == ret)
+      {
+        ret = scan_param.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "deserialize scan param retor, ret=%d", ret);
+        }
+        FILL_TRACE_LOG("scan param deserialize ret=%d", ret);
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        if (scan_param.get_is_read_consistency())
+        {
+          if ( !(ObiRole::MASTER == obi_role_.get_role() && ObUpsRoleMgr::MASTER == role_mgr_.get_role()) )
+          {
+            TBSYS_LOG(INFO, "The Scan Request require consistency, ObiRole:%s RoleMgr:%s",
+                obi_role_.get_role_str(), role_mgr_.get_role_str());
+            ret = OB_NOT_MASTER;
+          }
+        }
+      }
+
+      if(OB_SUCCESS == ret)
+      {
+        if(OB_SUCCESS != (ret = ObNewScannerHelper::get_row_desc(scan_param, row_desc)))
+        {
+          TBSYS_LOG(WARN, "get row desc fail:ret[%d]", ret);
+        }
+        else
+        {
+          new_scanner->set_row_desc(row_desc);
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        thread_read_prepare();
+        //如果new_scanne是tsi，需要reset
+        ret = table_mgr_.new_scan(scan_param, *new_scanner, start_time, timeout);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "failed to scan, ret=%d", ret);
+        }
+        FILL_TRACE_LOG("scan from table mgr ret=%d", ret);
+      }
+
+      ret = response_data_(ret, *new_scanner, OB_NEW_SCAN_RESPONSE, MY_VERSION, req, channel_id, out_buff, &priority);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_SCAN_COUNT, 1);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_SCAN_TIMEU, GET_TRACE_TIMEU());
+      FILL_TRACE_LOG("response scanner ret=%d", ret);
+      PRINT_TRACE_LOG();
+
+      thread_read_complete();
+
+      return ret;
+    }
+
     int ObUpdateServer::ups_scan(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
         const int64_t start_time, const int64_t timeout, const int32_t priority)
     {
       int err = OB_SUCCESS;
@@ -3325,10 +3537,9 @@ namespace oceanbase
         }
         FILL_TRACE_LOG("scan from table mgr ret=%d", err);
       }
-
-      err = response_data_(err, scanner, OB_SCAN_RESPONSE, MY_VERSION, conn, channel_id, out_buff, &priority);
-      INC_STAT_INFO(UPS_STAT_SCAN_COUNT, 1);
-      INC_STAT_INFO(UPS_STAT_SCAN_TIMEU, GET_TRACE_TIMEU());
+      err = response_data_(err, scanner, OB_SCAN_RESPONSE, MY_VERSION, req, channel_id, out_buff, &priority);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_SCAN_COUNT, 1);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_SCAN_TIMEU, GET_TRACE_TIMEU());
       FILL_TRACE_LOG("response scanner ret=%d", err);
       PRINT_TRACE_LOG();
 
@@ -3338,7 +3549,7 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ups_get_bloomfilter(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       int64_t frozen_version = 0;
@@ -3355,7 +3566,7 @@ namespace oceanbase
       {
         ret = table_mgr_.get_frozen_bloomfilter(frozen_version, table_bf);
       }
-      ret = response_data_(ret, table_bf, OB_UPS_GET_BLOOM_FILTER_RESPONSE, MY_VERSION, conn, channel_id, out_buff);
+      ret = response_data_(ret, table_bf, OB_UPS_GET_BLOOM_FILTER_RESPONSE, MY_VERSION, req, channel_id, out_buff);
       return ret;
     }
 
@@ -3396,6 +3607,10 @@ namespace oceanbase
       {
         freeze_type = TableMgr::FORCE_MAJOR;
       }
+      else if (OB_UPS_ASYNC_AUTO_FREEZE_MEMTABLE == pcode)
+      {
+        freeze_type = TableMgr::AUTO_TRIG;
+      }
       else if (OB_UPS_MINOR_LOAD_BYPASS == pcode)
       {
         freeze_type = TableMgr::MINOR_LOAD_BYPASS;
@@ -3428,8 +3643,8 @@ namespace oceanbase
         }
         submit_handle_frozen();
       }
-      TBSYS_LOG(INFO, "handle freeze_memtable pcode=%d freeze_type=%d ret=%d", pcode, freeze_type, ret);
       if ((OB_UPS_ASYNC_MAJOR_FREEZE_MEMTABLE != pcode
+            && OB_UPS_ASYNC_AUTO_FREEZE_MEMTABLE != pcode
             && OB_UPS_MINOR_LOAD_BYPASS != pcode
             && OB_UPS_MAJOR_LOAD_BYPASS != pcode)
           || (OB_UPS_MINOR_LOAD_BYPASS == pcode && OB_SUCCESS != ret)
@@ -3437,13 +3652,13 @@ namespace oceanbase
       {
         // 本地异步任务不需要应答
         ret = response_data_(ret, frozen_version, pcode + 1, MY_VERSION,
-            packet_orig->get_connection(), packet_orig->getChannelId(), out_buff);
+                             packet_orig->get_request(), packet_orig->get_channel_id(), out_buff);
       }
       return ret;
     }
 
     int ObUpdateServer::ups_store_memtable(const int32_t version, common::ObDataBuffer &in_buf,
-        tbnet::Connection* conn, const uint32_t channel_id)
+        easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -3459,7 +3674,7 @@ namespace oceanbase
       {
         TBSYS_LOG(INFO, "store memtable store_all=%ld", store_all);
       }
-      response_result_(ret, OB_UPS_STORE_MEM_TABLE_RESPONSE, MY_VERSION, conn, channel_id);
+      response_result_(ret, OB_UPS_STORE_MEM_TABLE_RESPONSE, MY_VERSION, req, channel_id);
       if (OB_SUCCESS == ret)
       {
         table_mgr_.store_memtable(0 != store_all);
@@ -3470,7 +3685,7 @@ namespace oceanbase
     int ObUpdateServer::ups_handle_frozen()
     {
       int ret = OB_SUCCESS;
-      table_mgr_.update_merged_version(ups_rpc_stub_, root_server_, param_.get_resp_root_timeout_us());
+      table_mgr_.update_merged_version(ups_rpc_stub_, root_server_, config_.resp_root_timeout);
       bool force = false;
       table_mgr_.erase_sstable(force);
       bool store_all = false;
@@ -3482,7 +3697,10 @@ namespace oceanbase
     int ObUpdateServer::check_keep_alive_()
     {
       int err = OB_SUCCESS;
-      if (ObUpsRoleMgr::FATAL == role_mgr_.get_state())
+      OnceGuard guard(check_keep_alive_guard_);
+      if (!guard.try_lock())
+      {}
+      else if (ObUpsRoleMgr::FATAL == role_mgr_.get_state())
       {
         TBSYS_LOG(DEBUG, "enter fatal state");
       }
@@ -3499,7 +3717,7 @@ namespace oceanbase
           ObServer null_server;
           int64_t cur_time_us = tbsys::CTimeUtil::getTime();
           int64_t last_keep_alive_time = log_mgr_.get_last_receive_log_time();
-          TBSYS_LOG(DEBUG, "slave check keep_alive, cur_time=%ld, last_keep_alive_time=%ld", 
+          TBSYS_LOG(DEBUG, "slave check keep_alive, cur_time=%ld, last_keep_alive_time=%ld",
                     cur_time_us, last_keep_alive_time);
           if (last_keep_alive_time + keep_alive_valid_interval_ < cur_time_us)
           {
@@ -3576,7 +3794,10 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       int64_t log_seq_id = 0;
-      if (ObUpsRoleMgr::FATAL == role_mgr_.get_state())
+      OnceGuard guard(grant_keep_alive_guard_);
+      if (!guard.try_lock())
+      {}
+      else if (ObUpsRoleMgr::FATAL == role_mgr_.get_state())
       {
         TBSYS_LOG(DEBUG, "enter FATAL state.");
       }
@@ -3641,8 +3862,10 @@ namespace oceanbase
     void ObUpdateServer::set_register_msg(const uint64_t log_seq_id, ObMsgUpsRegister &msg_register)
     {
       msg_register.log_seq_num_ = log_seq_id;
-      msg_register.inner_port_ = static_cast<int32_t>(param_.get_ups_inner_port());
+      msg_register.inner_port_ = static_cast<int32_t>(config_.inner_port);
       msg_register.addr_.set_ipv4_addr(self_addr_.get_ipv4(), self_addr_.get_port());
+
+      get_package_and_svn(msg_register.server_version_, sizeof(msg_register.server_version_));
       if (ObUpsRoleMgr::MASTER == role_mgr_.get_role())
       {
         msg_register.lease_ = lease_expire_time_us_;
@@ -3657,7 +3880,10 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       int64_t cur_time_us = tbsys::CTimeUtil::getTime();
-      if (ObUpsRoleMgr::FATAL == role_mgr_.get_state())
+      OnceGuard guard(check_lease_guard_);
+      if (!guard.try_lock())
+      {}
+      else if (ObUpsRoleMgr::FATAL == role_mgr_.get_state())
       {
         TBSYS_LOG(DEBUG, "enter fatal state");
       }
@@ -3678,7 +3904,7 @@ namespace oceanbase
             }
             else
             {
-              TBSYS_LOG(ERROR, "master_master_ups lease timeout, change to master_slave failed!");
+              TBSYS_LOG(ERROR, "master_master_ups lease timeout, change to master_slave failed!, err=%d", err);
             }
           }
           else if (ObUpsRoleMgr::MASTER == role_mgr_.get_role())
@@ -3690,7 +3916,8 @@ namespace oceanbase
             }
           }
         }
-        int64_t log_id;
+
+        int64_t log_id = 0;
         log_mgr_.get_max_log_seq_replayable(log_id);
         err = register_to_rootserver(log_id);
         if (OB_SUCCESS != err)
@@ -3711,6 +3938,17 @@ namespace oceanbase
           TBSYS_LOG(WARN, "fail to send renew_lease to rootserver. err=%d", err);
         }
       }
+      else if (ObiRole::MASTER != obi_role_.get_role()
+          || ObUpsRoleMgr::MASTER != role_mgr_.get_role()
+          || ObUpsRoleMgr::ACTIVE != role_mgr_.get_state())
+      {
+        //TBSYS_LOG(DEBUG, "ups not master.obi_role=%s, role=%s, state=%s", obi_role_.get_role_str(), role_mgr_.get_role_str(), role_mgr_.get_state_str());
+      }
+      else if (schema_version_ > table_mgr_.get_schema_mgr().get_version()
+               && OB_SUCCESS != (err = submit_update_schema()))
+      {
+        TBSYS_LOG(ERROR, "submit_udpate_schema()=>%d", err);
+      }
       return err;
     }
     void ObUpdateServer::set_heartbeat_res(ObMsgUpsHeartbeatResp &hb_res)
@@ -3722,7 +3960,7 @@ namespace oceanbase
         sync = true;
       }
       hb_res.status_ = (true == sync) ? ObMsgUpsHeartbeatResp::SYNC : ObMsgUpsHeartbeatResp::NOTSYNC;
-      hb_res.obi_role_.set_role(obi_role_.get_role());
+      hb_res.obi_role_.set_role(settled_obi_role_.get_role());
     }
 
     int ObUpdateServer::submit_check_keep_alive()
@@ -3769,6 +4007,34 @@ namespace oceanbase
       return submit_async_task_(OB_PREFETCH_LOG, read_thread_queue_, read_task_queue_size_, &in_buf);
     }
 
+    int ObUpdateServer::submit_switch_schema(CommonSchemaManagerWrapper& schema_mgr)
+    {
+      int err = OB_SUCCESS;
+      ThreadSpecificBuffer::Buffer *my_buffer = my_thread_buffer_.get_buffer();
+      ObDataBuffer in_buf;
+      if (NULL == my_buffer)
+      {
+        err = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(ERROR, "async_task_serialize_buffer == NULL");
+      }
+      else
+      {
+        in_buf.set_data(my_buffer->current(), my_buffer->remain());
+      }
+      if (OB_SUCCESS != err)
+      {}
+      else if (OB_SUCCESS != (err = schema_mgr.serialize(in_buf.get_data(), in_buf.get_capacity(), in_buf.get_position())))
+      {
+        TBSYS_LOG(ERROR, "schema_mgr.serialize(buf=%p[%ld-%ld])=>%d",
+                  in_buf.get_data(), in_buf.get_position(), in_buf.get_capacity(), err);
+      }
+      else if (OB_SUCCESS != (err = submit_async_task_(OB_SWITCH_SCHEMA, write_thread_queue_, write_task_queue_size_, &in_buf)))
+      {
+        TBSYS_LOG(WARN, "submit_async_task(SWITCH_SCHEMA)=>%d", err);
+      }
+      return err;
+    }
+
     int ObUpdateServer::submit_major_freeze()
     {
       int err = OB_SUCCESS;
@@ -3776,6 +4042,20 @@ namespace oceanbase
           && ObiRole::MASTER == obi_role_.get_role())
       {
         err = submit_async_task_(OB_UPS_ASYNC_MAJOR_FREEZE_MEMTABLE, write_thread_queue_, write_task_queue_size_);
+      }
+      else
+      {
+      }
+      return err;
+    }
+
+    int ObUpdateServer::submit_auto_freeze()
+    {
+      int err = OB_SUCCESS;
+      if (ObUpsRoleMgr::MASTER == role_mgr_.get_role()
+          && ObiRole::MASTER == obi_role_.get_role())
+      {
+        err = submit_async_task_(OB_UPS_ASYNC_AUTO_FREEZE_MEMTABLE, write_thread_queue_, write_task_queue_size_);
       }
       else
       {
@@ -3834,6 +4114,16 @@ namespace oceanbase
       return ret;
     }
 
+    int ObUpdateServer::submit_update_schema()
+    {
+      return submit_async_task_(OB_UPS_ASYNC_UPDATE_SCHEMA, read_thread_queue_, read_task_queue_size_);
+    }
+
+    int ObUpdateServer::submit_kill_zombie()
+    {
+      return submit_async_task_(OB_UPS_ASYNC_KILL_ZOMBIE, write_thread_queue_, write_task_queue_size_);
+    }
+
     void ObUpdateServer::schedule_warm_up_duty()
     {
       int ret = OB_SUCCESS;
@@ -3852,7 +4142,7 @@ namespace oceanbase
 
     template <class Queue>
     int ObUpdateServer::submit_async_task_(const PacketCode pcode, Queue& qthread, int32_t task_queue_size,
-        const int32_t version, common::ObDataBuffer& in_buff, tbnet::Connection* conn,
+        const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req,
         const uint32_t channel_id, const int64_t timeout)
     {
       int ret = OB_SUCCESS;
@@ -3866,8 +4156,8 @@ namespace oceanbase
       {
         ob_packet->set_packet_code(pcode);
         ob_packet->set_api_version(version);
-        ob_packet->set_connection(conn);
-        ob_packet->setChannelId(channel_id);
+        ob_packet->set_request(req);
+        ob_packet->set_channel_id(channel_id);
         ob_packet->set_target_id(OB_SELF_FLAG);
         ob_packet->set_receive_ts(tbsys::CTimeUtil::getTime());
         ob_packet->set_source_timeout(timeout);
@@ -3910,11 +4200,15 @@ namespace oceanbase
         if (NULL != packet)
         {
           ob_packet->set_api_version(packet->get_api_version());
-          ob_packet->set_connection(packet->get_connection());
-          ob_packet->setChannelId(packet->getChannelId());
+          ob_packet->set_request(packet->get_request());
+          ob_packet->set_channel_id(packet->get_channel_id());
           ob_packet->set_source_timeout(packet->get_source_timeout());
         }
-
+        
+        uint32_t new_chid = atomic_inc(&ObPacket::global_chid);
+        ob_packet->set_channel_id(new_chid);
+        uint32_t *chid = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_CHID_1);
+        *chid = new_chid;
         ob_packet->set_api_version(MY_VERSION);
         ob_packet->set_packet_code(pcode);
         ob_packet->set_target_id(OB_SELF_FLAG);
@@ -3930,7 +4224,7 @@ namespace oceanbase
         }
         else if (!qthread.push(ob_packet, task_queue_size, false))
         {
-          TBSYS_LOG(WARN, "submit async task to thread queue fail task_queue_size=%d, pcode=%d", 
+          TBSYS_LOG(WARN, "submit async task to thread queue fail task_queue_size=%d, pcode=%d",
               task_queue_size, pcode);
           ret = OB_ERROR;
         }
@@ -3997,12 +4291,10 @@ namespace oceanbase
         hex_dump(in_buf.get_data(), static_cast<int32_t>(in_buf.get_capacity()), false, TBSYS_LOG_LEVEL_ERROR);
       }
 
-      ret = response_result_(ret, OB_SWITCH_SCHEMA_RESPONSE, MY_VERSION,
-          packet_orig->get_connection(), packet_orig->getChannelId());
-      if (OB_SUCCESS != ret)
+      if (NULL != packet_orig->get_request())
       {
-        TBSYS_LOG(ERROR, "response_result_ err, ret=%d version=%d conn=%p channel_id=%u",
-            ret, MY_VERSION, packet_orig->get_connection(), packet_orig->getChannelId());
+        ret = response_result_(ret, OB_SWITCH_SCHEMA_RESPONSE, MY_VERSION,
+            packet_orig->get_request(), packet_orig->get_channel_id());
       }
       return ret;
     }
@@ -4030,8 +4322,8 @@ namespace oceanbase
       }
 
       // 发送返回消息给rootserver
-      int64_t retry_times = param_.get_resp_root_times();
-      int64_t timeout = param_.get_resp_root_timeout_us();
+      int64_t retry_times = config_.resp_root_times;
+      int64_t timeout = config_.resp_root_timeout;
       ret = RPC_CALL_WITH_RETRY(send_freeze_memtable_resp, retry_times, timeout, root_server_, ups_master_, new_version);
       if (OB_SUCCESS != ret)
       {
@@ -4040,7 +4332,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObUpdateServer::ups_drop_memtable(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_drop_memtable(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4049,11 +4341,11 @@ namespace oceanbase
       }
       bool force = true;
       table_mgr_.drop_memtable(force);
-      ret = response_result_(ret, OB_DROP_OLD_TABLETS_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_DROP_OLD_TABLETS_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
-    int ObUpdateServer::ups_delay_drop_memtable(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_delay_drop_memtable(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4061,11 +4353,11 @@ namespace oceanbase
         ret = OB_ERROR_FUNC_VERSION;
       }
       submit_delay_drop();
-      ret = response_result_(ret, OB_UPS_DELAY_DROP_MEMTABLE_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_DELAY_DROP_MEMTABLE_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
-    int ObUpdateServer::ups_immediately_drop_memtable(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_immediately_drop_memtable(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4073,7 +4365,7 @@ namespace oceanbase
         ret = OB_ERROR_FUNC_VERSION;
       }
       submit_immediately_drop();
-      ret = response_result_(ret, OB_UPS_IMMEDIATELY_DROP_MEMTABLE_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_IMMEDIATELY_DROP_MEMTABLE_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
@@ -4087,8 +4379,8 @@ namespace oceanbase
       return OB_SUCCESS;
     }
 
-    int ObUpdateServer::ups_load_bypass(const int32_t version,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff, const int pcode)
+    int ObUpdateServer::ups_load_bypass(const int32_t version, easy_request_t* req, const uint32_t channel_id,
+                                        common::ObDataBuffer& out_buff, const int packet_code)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4103,10 +4395,8 @@ namespace oceanbase
         submit_check_cur_version();
         table_mgr_.log_table_info();
       }
-      if (NULL != conn)
-      {
-        ret = response_data_(ret, loaded_num, pcode + 1, MY_VERSION, conn, channel_id, out_buff);
-      }
+
+      ret = response_data_(ret, loaded_num, packet_code + 1, MY_VERSION, req, channel_id, out_buff);
       return ret;
     }
 
@@ -4115,7 +4405,7 @@ namespace oceanbase
       return table_mgr_.check_cur_version();
     }
 
-    int ObUpdateServer::ups_erase_sstable(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_erase_sstable(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4124,11 +4414,11 @@ namespace oceanbase
       }
       bool force = true;
       table_mgr_.erase_sstable(force);
-      ret = response_result_(ret, OB_DROP_OLD_TABLETS_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_DROP_OLD_TABLETS_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
-    int ObUpdateServer::ups_load_new_store(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_load_new_store(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4136,11 +4426,11 @@ namespace oceanbase
         ret = OB_ERROR_FUNC_VERSION;
       }
       ret = sstable_mgr_.load_new() ? OB_SUCCESS : OB_ERROR;
-      ret = response_result_(ret, OB_UPS_LOAD_NEW_STORE_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_LOAD_NEW_STORE_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
-    int ObUpdateServer::ups_reload_all_store(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_reload_all_store(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4148,11 +4438,11 @@ namespace oceanbase
         ret = OB_ERROR_FUNC_VERSION;
       }
       sstable_mgr_.reload_all();
-      ret = response_result_(ret, OB_UPS_RELOAD_ALL_STORE_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_RELOAD_ALL_STORE_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
-    int ObUpdateServer::ups_rs_get_max_log_seq(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer &out_buff)
+    int ObUpdateServer::ups_rs_get_max_log_seq(const int32_t version, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer &out_buff)
     {
       int err = OB_SUCCESS;
       if (MY_VERSION != version)
@@ -4165,16 +4455,16 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "log_mgr.get_max_log_seq_replayable(log_seq)=>%d", err);
       }
 
-      if (OB_SUCCESS != (err = response_data_(err, log_seq, OB_RS_GET_MAX_LOG_SEQ_RESPONSE, MY_VERSION, conn, channel_id, out_buff)))
+      if (OB_SUCCESS != (err = response_data_(err, log_seq, OB_RS_GET_MAX_LOG_SEQ_RESPONSE, MY_VERSION, req, channel_id, out_buff)))
       {
         TBSYS_LOG(WARN, "fail to send response, err = %d", err);
       }
       return err;
     }
-    int ObUpdateServer::slave_ups_receive_keep_alive(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::slave_ups_receive_keep_alive(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
-      UNUSED(conn);
+      UNUSED(req);
       UNUSED(channel_id);
       if (MY_VERSION != version)
       {
@@ -4185,10 +4475,12 @@ namespace oceanbase
         ret = OB_NOT_SUPPORTED;
         TBSYS_LOG(WARN, "ups_receive_keep_alive(): NOT NEED anymore");
       }
+
+      easy_request_wakeup(req);
       return ret;
     }
 
-    int ObUpdateServer::ups_clear_fatal_status(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_clear_fatal_status(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (MY_VERSION != version)
@@ -4203,11 +4495,11 @@ namespace oceanbase
           role_mgr_.set_state(ObUpsRoleMgr::ACTIVE);
           TBSYS_LOG(INFO, "clear ups FATAL status succ.");
         }
-        ret = response_result_(ret, OB_UPS_CLEAR_FATAL_STATUS_RESPONSE, MY_VERSION, conn, channel_id);
+        ret = response_result_(ret, OB_UPS_CLEAR_FATAL_STATUS_RESPONSE, MY_VERSION, req, channel_id);
       }
       return ret;
     }
-    int ObUpdateServer::ups_froce_report_frozen_version(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_froce_report_frozen_version(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4215,12 +4507,12 @@ namespace oceanbase
         ret = OB_ERROR_FUNC_VERSION;
       }
       submit_report_freeze();
-      ret = response_result_(ret, OB_UPS_FORCE_REPORT_FROZEN_VERSION_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_FORCE_REPORT_FROZEN_VERSION_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
     int ObUpdateServer::ups_reload_store(const int32_t version, common::ObDataBuffer& in_buf,
-        tbnet::Connection* conn, const uint32_t channel_id)
+        easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4237,12 +4529,12 @@ namespace oceanbase
         TBSYS_LOG(INFO, "reload store handle=%lu", store_handle);
         sstable_mgr_.reload(store_handle);
       }
-      response_result_(ret, OB_UPS_RELOAD_STORE_RESPONSE, MY_VERSION, conn, channel_id);
+      response_result_(ret, OB_UPS_RELOAD_STORE_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
     int ObUpdateServer::ups_umount_store(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id)
+        easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4264,12 +4556,12 @@ namespace oceanbase
         sstable_mgr_.umount_store(umount_dir.ptr());
         sstable_mgr_.check_broken();
       }
-      ret = response_result_(ret, OB_UPS_UMOUNT_STORE_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_UMOUNT_STORE_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
     int ObUpdateServer::ups_slave_register(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
 
@@ -4291,42 +4583,25 @@ namespace oceanbase
       {
         TBSYS_LOG(INFO, "start log mgr add slave, obi_role=%s", obi_role_.get_role_str());
         err = log_mgr_.add_slave(slave_info.self, new_log_file_id, ObiRole::MASTER == obi_role_.get_role());
-      if (OB_SUCCESS != err)
+        if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "ObUpsLogMgr add_slave error, err=%d", err);
         }
 
-        char addr_buf[ADDR_BUF_LEN];
-        slave_info.self.to_string(addr_buf, sizeof(addr_buf));
-        addr_buf[ADDR_BUF_LEN - 1] = '\0';
-        TBSYS_LOG(INFO, "add slave, slave_addr=%s, err=%d", addr_buf, err);
+        TBSYS_LOG(INFO, "add slave, slave_addr=%s, err=%d", to_cstring(slave_info.self), err);
       }
-
-     // if (OB_SUCCESS == err)
-     // {
-     //   TBSYS_LOG(INFO, "lease = %d", param_.get_lease_on());
-     //   if (LEASE_ON == param_.get_lease_on())
-     //   {
-     //     ObLease lease;
-     //     TBSYS_LOG(INFO, "extend slave lease");
-     //     err = slave_mgr_.extend_lease(slave_info.self, lease);
-     //     if (OB_SUCCESS != err)
-     //     {
-     //       TBSYS_LOG(WARN, "failed to extend lease, err=%d", err);
-     //     }
-     //   }
-     // }
 
       // reply ups slave with related info
       if (OB_SUCCESS == err)
       {
+        // fetch_param暂时没用。
         ObUpsFetchParam fetch_param;
         fetch_param.fetch_log_ = true;
         fetch_param.fetch_ckpt_ = false;
-        fetch_param.min_log_id_ = log_mgr_.get_replay_point();
+        fetch_param.min_log_id_ = 0;
         fetch_param.max_log_id_ = new_log_file_id - 1;
         err = sstable_mgr_.fill_fetch_param(slave_info.min_sstable_id,
-            slave_info.max_sstable_id, param_.get_slave_sync_sstable_num(), fetch_param);
+            slave_info.max_sstable_id, config_.slave_sync_sstable_num, fetch_param);
         int64_t log_id;
         log_mgr_.get_max_log_seq_replayable(log_id);
         TBSYS_LOG(INFO, "receive slave register, max_log_id=%ld", log_id);
@@ -4338,7 +4613,7 @@ namespace oceanbase
         else
         {
           err = response_fetch_param_(err, fetch_param, log_id, OB_SLAVE_REG_RES, MY_VERSION,
-              conn, channel_id, out_buff);
+              req, channel_id, out_buff);
           if (OB_SUCCESS != err)
           {
             TBSYS_LOG(WARN, "failed to response fetch param, err=%d", err);
@@ -4350,7 +4625,7 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ups_slave_quit(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
 
@@ -4377,16 +4652,13 @@ namespace oceanbase
           TBSYS_LOG(WARN, "ObSlaveMgr delete_slave error, err=%d", err);
         }
 
-        char addr_buf[ADDR_BUF_LEN];
-        ups_slave.to_string(addr_buf, sizeof(addr_buf));
-        addr_buf[ADDR_BUF_LEN - 1] = '\0';
-        TBSYS_LOG(INFO, "slave quit, slave_addr=%s, err=%d", addr_buf, err);
+        TBSYS_LOG(INFO, "slave quit, slave_addr=%s, err=%d", to_cstring(ups_slave), err);
       }
 
       // reply ups slave
       if (OB_SUCCESS == err)
       {
-        err = response_result_(err, OB_SLAVE_QUIT_RES, MY_VERSION, conn, channel_id);
+        err = response_result_(err, OB_SLAVE_QUIT_RES, MY_VERSION, req, channel_id);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "failed to response slave quit, err=%d", err);
@@ -4402,7 +4674,20 @@ namespace oceanbase
       ObUpsMutator ups_mutator_stack;
       ObUpsMutator *ups_mutator_ptr = GET_TSI_MULT(ObUpsMutator, TSI_UPS_UPS_MUTATOR_1);
       ObUpsMutator &ups_mutator = (NULL == ups_mutator_ptr) ? ups_mutator_stack : *ups_mutator_ptr;
-      ret = ups_mutator.get_mutator().deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+      {
+        UpsSchemaMgrGuard guard;
+        const ObSchemaManagerV2* schema_mgr = table_mgr_.get_schema_mgr().get_schema_mgr(guard);
+        if (NULL == schema_mgr)
+        {
+          TBSYS_LOG(WARN, "failed to get schema");
+          ret = OB_SCHEMA_ERROR;
+        }
+        else
+        {
+          ups_mutator.get_mutator().set_compatible_schema(schema_mgr);
+          ret = ups_mutator.get_mutator().deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        }
+      }
       FILL_TRACE_LOG("mutator deserialize ret=%d", ret);
       if (OB_SUCCESS != ret)
       {
@@ -4413,17 +4698,18 @@ namespace oceanbase
         TBSYS_LOG(WARN, "scanner null pointer");
         ret = OB_ERROR;
       }
-      else
+
+      if (OB_SUCCESS == ret)
       {
         ret = table_mgr_.apply(using_id, handle, ups_mutator, scanner);
       }
-      INC_STAT_INFO(UPS_STAT_APPLY_COUNT, 1);
-      INC_STAT_INFO(UPS_STAT_APPLY_TIMEU, GET_TRACE_TIMEU());
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_COUNT, 1);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_TIMEU, GET_TRACE_TIMEU());
       FILL_TRACE_LOG("ret=%d", ret);
       PRINT_TRACE_LOG();
       if (OB_SUCCESS != ret)
       {
-        INC_STAT_INFO(UPS_STAT_APPLY_FAIL_COUNT, 1);
+        OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_FAIL_COUNT, 1);
       }
       return ret;
     }
@@ -4438,8 +4724,80 @@ namespace oceanbase
       return ret;
     }
 
+    int ObUpdateServer::response_result(int32_t ret_code, ObPacket &pkt)
+    {
+      int ret = OB_SUCCESS;
+      ret = response_result_(ret_code, pkt.get_packet_code(), pkt.get_api_version(),
+                              pkt.get_request(), pkt.get_channel_id());
+      // 忽略前两个字段 trace_id和chid
+      PROFILE_LOG(DEBUG, TRACE_ID SOURCE_CHANNEL_ID UPS_REQ_END_TIME, pkt.get_trace_id(), pkt.get_channel_id(), tbsys::CTimeUtil::getTime());
+      return ret;
+    }
+    int ObUpdateServer::response_result(int32_t ret_code, const char *ret_string, ObPacket &pkt)
+    {
+      return response_result_(ret_code, pkt.get_packet_code(), pkt.get_api_version(),
+                              pkt.get_request(), pkt.get_channel_id(), ret_string);
+    }
+
+    int ObUpdateServer::response_trans_id(int32_t ret_code, ObPacket &pkt, common::ObTransID &id, ObDataBuffer &out_buffer)
+    {
+      int ret = OB_SUCCESS;
+      ret =  response_data_(ret_code, id, pkt.get_packet_code(), pkt.get_api_version(),
+                            pkt.get_request(), pkt.get_channel_id(), out_buffer);
+      return ret;
+    }
+
+    int ObUpdateServer::response_scanner(int32_t ret_code, ObPacket &pkt, common::ObScanner &scanner, ObDataBuffer &out_buffer)
+    {
+      int ret = OB_SUCCESS;
+      ret =  response_data_(ret_code, scanner, pkt.get_packet_code(), pkt.get_api_version(),
+                            pkt.get_request(), pkt.get_channel_id(), out_buffer);
+      // 忽略前两个字段 trace_id和chid
+      PROFILE_LOG(DEBUG, TRACE_ID SOURCE_CHANNEL_ID UPS_REQ_END_TIME SCANNER_SIZE_BYTES, pkt.get_trace_id(), pkt.get_channel_id(), tbsys::CTimeUtil::getTime(), scanner.get_size());
+      return ret;
+    }
+
+    int ObUpdateServer::response_scanner(int32_t ret_code, ObPacket &pkt, common::ObNewScanner &new_scanner, ObDataBuffer &out_buffer)
+    {
+      int ret = OB_SUCCESS;
+      ret =  response_data_(ret_code, new_scanner, pkt.get_packet_code(), pkt.get_api_version(),
+                            pkt.get_request(), pkt.get_channel_id(), out_buffer);
+      // 忽略前两个字段 trace_id和chid
+      PROFILE_LOG(DEBUG, TRACE_ID SOURCE_CHANNEL_ID UPS_REQ_END_TIME SCANNER_SIZE_BYTES, pkt.get_trace_id(), pkt.get_channel_id(), tbsys::CTimeUtil::getTime(), new_scanner.get_size());
+      return ret;
+    }
+
+    int ObUpdateServer::response_scanner(int32_t ret_code, ObPacket &pkt, common::ObCellNewScanner &new_scanner, ObDataBuffer &out_buffer)
+    {
+      int ret = OB_SUCCESS;
+      ret =  response_data_(ret_code, new_scanner, pkt.get_packet_code(), pkt.get_api_version(),
+                            pkt.get_request(), pkt.get_channel_id(), out_buffer);
+      // 忽略前两个字段 trace_id和chid
+      PROFILE_LOG(DEBUG, TRACE_ID SOURCE_CHANNEL_ID UPS_REQ_END_TIME SCANNER_SIZE_BYTES, pkt.get_trace_id(), pkt.get_channel_id(), tbsys::CTimeUtil::getTime(), new_scanner.get_size());
+      return ret;
+    }
+
+    int ObUpdateServer::response_buffer(int32_t ret_code, ObPacket &pkt, common::ObDataBuffer &buffer)
+    {
+      int ret = OB_SUCCESS;
+      ThreadSpecificBuffer::Buffer *my_buffer = my_thread_buffer_.get_buffer();
+      if (NULL == my_buffer)
+      {
+        TBSYS_LOG(ERROR, "alloc thread buffer fail");
+        easy_request_wakeup(pkt.get_request());
+        ret = OB_MEM_OVERFLOW;
+      }
+      else
+      {
+        ObDataBuffer out_buffer(my_buffer->current(), my_buffer->remain());
+        ret = response_data_(ret_code, buffer, pkt.get_packet_code(), pkt.get_api_version(),
+                            pkt.get_request(), pkt.get_channel_id(), out_buffer);
+      }
+      return ret;
+    }
+
     int ObUpdateServer::response_result_(int32_t ret_code, int32_t cmd_type, int32_t func_version,
-        tbnet::Connection* conn, const uint32_t channel_id)
+        easy_request_t* req, const uint32_t channel_id, const char *ret_string/* = NULL*/)
     {
       int ret = OB_SUCCESS;
       common::ObResultCode result_msg;
@@ -4447,32 +4805,38 @@ namespace oceanbase
       if (NULL == my_buffer)
       {
         TBSYS_LOG(ERROR, "alloc thread buffer fail");
+        easy_request_wakeup(req);
         ret = OB_MEM_OVERFLOW;
       }
       else
       {
         ObDataBuffer out_buff(my_buffer->current(), my_buffer->remain());
         result_msg.result_code_ = ret_code;
+        if (NULL != ret_string)
+        {
+          result_msg.message_.assign_ptr(const_cast<char*>(ret_string), static_cast<int32_t>(strlen(ret_string) + 1));
+        }
         ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
         if (OB_SUCCESS == ret)
         {
-          ret = send_response(cmd_type, func_version, out_buff, conn, channel_id);
+          ret = send_response(cmd_type, func_version, out_buff, req, channel_id);
           if (OB_SUCCESS != ret)
           {
             TBSYS_LOG(WARN, "send response fail ret=%d conn=%p channel_id=%u result_msg=%d cmd_type=%d func_version=%d",
-                ret, conn, channel_id, ret_code, cmd_type, func_version);
+                ret, req, channel_id, ret_code, cmd_type, func_version);
           }
         }
         else
         {
+          easy_request_wakeup(req);
           TBSYS_LOG(WARN, "send response fail ret=%d conn=%p channel_id=%u result_msg=%d cmd_type=%d func_version=%d",
-              ret, conn, channel_id, ret_code, cmd_type, func_version);
+              ret, req, channel_id, ret_code, cmd_type, func_version);
         }
       }
       return ret;
     }
 
-    int ObUpdateServer::ups_end_transaction(tbnet::Packet** packets, ScannerArray &scanner_array, const int64_t start_idx,
+    int ObUpdateServer::ups_end_transaction(ObPacket** packets, ScannerArray &scanner_array, const int64_t start_idx,
         const int64_t last_idx, UpsTableMgrTransHandle& handle, int32_t last_err_code)
     {
       bool rollback = false;
@@ -4500,13 +4864,13 @@ namespace oceanbase
           {
             ObDataBuffer out_buff(my_buffer->current(), my_buffer->remain());
             tmp_ret = response_data_(resp_ret, *(scanner_array[i]), OB_WRITE_RES, MY_VERSION,
-                                      ob_packets[i]->get_connection(), ob_packets[i]->getChannelId(), out_buff);
+                                      ob_packets[i]->get_request(), ob_packets[i]->get_channel_id(), out_buff);
             TBSYS_LOG(DEBUG, "response result index=%ld send_ret=%d resp_ret=%d proc_ret=%d", i, tmp_ret, resp_ret, proc_ret);
           }
           else
           {
             tmp_ret = response_result_(resp_ret, OB_WRITE_RES, MY_VERSION,
-                ob_packets[i]->get_connection(), ob_packets[i]->getChannelId());
+                ob_packets[i]->get_request(), ob_packets[i]->get_channel_id());
             TBSYS_LOG(DEBUG, "response result index=%ld send_ret=%d resp_ret=%d proc_ret=%d", i, tmp_ret, resp_ret, proc_ret);
           }
         }
@@ -4520,7 +4884,7 @@ namespace oceanbase
         {
           ObDataBuffer out_buff(my_buffer->current(), my_buffer->remain());
           tmp_ret = response_data_(resp_ret, *(scanner_array[last_idx]), OB_WRITE_RES, MY_VERSION,
-                                    ob_packets[last_idx]->get_connection(), ob_packets[last_idx]->getChannelId(), out_buff);
+                                    ob_packets[last_idx]->get_request(), ob_packets[last_idx]->get_channel_id(), out_buff);
           TBSYS_LOG(DEBUG, "response result index=%ld send_ret=%d resp_ret=%d proc_ret=%d", last_idx, tmp_ret, resp_ret, proc_ret);
         }
         else
@@ -4528,7 +4892,7 @@ namespace oceanbase
           resp_ret = (OB_SUCCESS == last_err_code) ? resp_ret : last_err_code;
           // 最后一个如果成功则返回提交的结果 如果失败则返回apply的结果
           tmp_ret = response_result_(resp_ret, OB_WRITE_RES, MY_VERSION,
-              ob_packets[last_idx]->get_connection(), ob_packets[last_idx]->getChannelId());
+              ob_packets[last_idx]->get_request(), ob_packets[last_idx]->get_channel_id());
           TBSYS_LOG(DEBUG, "response result index=%ld send_ret=%d resp_ret=%d proc_ret=%d", last_idx, tmp_ret, resp_ret, proc_ret);
         }
       }
@@ -4536,7 +4900,7 @@ namespace oceanbase
       int64_t trans_proc_time = tbsys::CTimeUtil::getTime() - start_trans_timestamp_;
       static __thread int64_t counter = 0;
       counter++;
-      if (trans_proc_time > param_.get_trans_proc_time_warn_us())
+      if (trans_proc_time > config_.trans_proc_time_warn)
       {
         TBSYS_LOG(WARN, "transaction process time is too long, process_time=%ld cur_time=%ld response_num=%ld "
             "last_log_network_elapse=%ld last_log_disk_elapse=%ld trans_counter=%ld "
@@ -4546,9 +4910,14 @@ namespace oceanbase
             read_thread_queue_.size(), write_thread_queue_.size(), lease_thread_queue_.size(), log_thread_queue_.size());
         counter = 0;
       }
-
-      INC_STAT_INFO(UPS_STAT_BATCH_COUNT, 1);
-      INC_STAT_INFO(UPS_STAT_BATCH_TIMEU, GET_TRACE_TIMEU());
+      FILL_TRACE_LOG("process_time=%ld cur_time=%ld response_num=%ld "
+                "last_log_network_elapse=%ld last_log_disk_elapse=%ld trans_counter=%ld "
+                "read_task_queue_size=%zu write_task_queue_size=%zu lease_task_queue_size=%zu log_task_queue_size=%zu",
+                trans_proc_time, tbsys::CTimeUtil::getTime(), last_idx - start_idx + 1,
+                log_mgr_.get_last_net_elapse(), log_mgr_.get_last_disk_elapse(), counter,
+                read_thread_queue_.size(), write_thread_queue_.size(), lease_thread_queue_.size(), log_thread_queue_.size());
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_BATCH_COUNT, 1);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_BATCH_TIMEU, GET_TRACE_TIMEU());
       FILL_TRACE_LOG("resp_ret=%d proc_ret=%d", resp_ret, proc_ret);
       PRINT_TRACE_LOG();
       return proc_ret;
@@ -4556,21 +4925,85 @@ namespace oceanbase
 
     void ObUpdateServer::set_log_sync_delay_stat_param()
     {
-      TBSYS_LOG(INFO, "set_log_sync_delay_stat_param()");
-      log_mgr_.get_delay_stat().set_delay_warn_time_us(param_.get_log_sync_delay_warn_time_threshold_us());
-      log_mgr_.get_delay_stat().set_report_interval_us(param_.get_log_sync_delay_warn_report_interval_us());
-      log_mgr_.get_delay_stat().set_max_n_lagged_log_allowed(param_.get_max_n_lagged_log_allowed());
+      TBSYS_LOG(INFO, "set_log_sync_delay_stat_param log_sync_delay_warn_time_threshold=%s "
+                "log_sync_delay_warn_report_interval=%s "
+                "max_n_lagged_log_allowed=%s "
+                "disk_warn_threshold=%s "
+                "net_warn_threshold=%s",
+                config_.log_sync_delay_warn_time_threshold.str(),
+                config_.log_sync_delay_warn_report_interval.str(),
+                config_.max_n_lagged_log_allowed.str(),
+                config_.disk_warn_threshold.str(),
+                config_.net_warn_threshold.str());
+      log_mgr_.get_delay_stat().set_delay_warn_time_us(config_.log_sync_delay_warn_time_threshold);
+      log_mgr_.get_delay_stat().set_report_interval_us(config_.log_sync_delay_warn_report_interval);
+      log_mgr_.get_delay_stat().set_max_n_lagged_log_allowed(config_.max_n_lagged_log_allowed);
+      log_mgr_.set_disk_warn_threshold_us(config_.disk_warn_threshold);
+      log_mgr_.set_net_warn_threshold_us(config_.net_warn_threshold);
     }
 
     void ObUpdateServer::set_log_replay_thread_param()
     {
-      TBSYS_LOG(INFO, "set_log_replay_thread_param()");
-      log_replay_thread_.set_replay_wait_time_us(param_.get_replay_wait_time_us());
-      log_replay_thread_.set_fetch_log_wait_time_us(param_.get_fetch_log_wait_time_us());
+      TBSYS_LOG(INFO, "set_log_replay_thread_param replay_wait_time=%s fetch_log_wait_time=%s",
+                config_.replay_wait_time.str(), config_.fetch_log_wait_time.str());
+      log_replay_thread_.set_replay_wait_time_us(config_.replay_wait_time);
+      log_replay_thread_.set_fetch_log_wait_time_us(config_.fetch_log_wait_time);
     }
 
-    int ObUpdateServer::ups_reload_conf(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id)
+    void ObUpdateServer::apply_conf()
+    {
+      TBSYS_LOG(INFO, "==========apply conf begin==========");
+
+      set_log_replay_thread_param();
+      set_log_sync_delay_stat_param();
+
+      table_mgr_.set_replay_checksum_flag(0 != config_.replay_checksum_flag);
+      TBSYS_LOG(INFO, "set_replay_checksum_flag replay_checksum_flag=%s",
+                config_.replay_checksum_flag.str());
+
+      slave_mgr_.set_log_sync_timeout_us(config_.log_sync_timeout);
+      TBSYS_LOG(INFO, "set_log_sync_timeout log_sync_timeout=%s",
+                config_.log_sync_timeout.str());
+
+      ob_set_memory_size_limit(config_.total_memory_limit);
+      TBSYS_LOG(INFO, "set_memory_size_limit total_memory_limit=%s",
+                config_.total_memory_limit.str());
+
+      set_lsync_server(config_.lsync_ip, (int32_t)config_.lsync_port);
+      TBSYS_LOG(INFO, "set_lsync_server lsync_ip=%s lsync_port=%s",
+                config_.lsync_ip.str(), config_.lsync_port.str());
+
+      g_conf.using_static_cm_column_id = (0 != config_.using_static_cm_column_id);
+      TBSYS_LOG(INFO, "set using_static_cm_column_id=%s", STR_BOOL(g_conf.using_static_cm_column_id));
+
+      g_conf.using_hash_index = (0 != config_.using_hash_index);
+      TBSYS_LOG(INFO, "set using_hash_index=%s", STR_BOOL(g_conf.using_hash_index));
+
+      MemTableAttr memtable_attr;
+      if (OB_SUCCESS == table_mgr_.get_memtable_attr(memtable_attr))
+      {
+        memtable_attr.total_memlimit = config_.table_memory_limit;
+        table_mgr_.set_memtable_attr(memtable_attr);
+        TBSYS_LOG(INFO, "set_memtable_attr table_memory_limit=%s",
+                  config_.table_memory_limit.str());
+      }
+
+      if (static_cast<int64_t>(config_.low_priv_cur_percent) >= 0)
+      {
+        read_thread_queue_.set_low_priv_cur_percent(config_.low_priv_cur_percent);
+        TBSYS_LOG(INFO, "set_low_priv_cur_percent low_priv_cur_percent=%s",
+                  config_.low_priv_cur_percent.str());
+      }
+
+      sstable_query_.enlarge_cache_size(config_.blockcache_size, config_.blockindex_cache_size);
+      TBSYS_LOG(INFO, "enlarge_cache_size, blockcache_size=%s, blockindex_cache_size=%s",
+                config_.blockcache_size.str(), config_.blockindex_cache_size.str());
+
+      TBSYS_LOG(INFO, "==========apply conf end==========");
+    }
+
+    int ObUpdateServer::ups_reload_conf(const int32_t version,
+        easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       ObString conf_file;
@@ -4579,40 +5012,12 @@ namespace oceanbase
       {
         ret = OB_ERROR_FUNC_VERSION;
       }
-      else
-      {
-        ret = conf_file.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
-        if (OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "deserialize conf file error, ret=%d", ret);
-        }
-      }
 
       if (OB_SUCCESS == ret)
       {
-        ret = param_.reload_from_config(conf_file);
-        if (OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "failed to reload config, ret=%d", ret);
-        }
-        else
-        {
-          set_log_replay_thread_param();
-          set_log_sync_delay_stat_param();
-          ob_set_memory_size_limit(param_.get_total_memory_limit());
-          MemTableAttr memtable_attr;
-          if (OB_SUCCESS == table_mgr_.get_memtable_attr(memtable_attr))
-          {
-            memtable_attr.total_memlimit = param_.get_table_memory_limit();
-            table_mgr_.set_memtable_attr(memtable_attr);
-          }
-          if (param_.get_low_priv_cur_percent() >= 0)
-          {
-            read_thread_queue_.set_low_priv_cur_percent(param_.get_low_priv_cur_percent());
-          }
-        }
+        apply_conf();
       }
-      ret = response_result_(ret, OB_UPS_RELOAD_CONF_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_RELOAD_CONF_RESPONSE, MY_VERSION, req, channel_id);
 
       return ret;
     }
@@ -4650,10 +5055,18 @@ namespace oceanbase
       TBSYS_LOG(DEBUG, "receive hb, master_addr_=%s, self_lease=%ld, obi_role=%s, cur_time=%ld, lease_time=%ld",
           hb.ups_master_.to_cstring(), hb.self_lease_, hb.obi_role_.get_role_str(), cur_time_us, hb.self_lease_ - cur_time_us);
 
+      if (hb.schema_version_ > schema_version_)
+      {
+        schema_version_ = hb.schema_version_;
+      }
       if (hb.self_lease_ == OB_MAX_UPS_LEASE_DURATION_US)
       {
         lease_expire_time_us_ = hb.self_lease_;
         TBSYS_LOG(INFO, "rootserver down, receive the overlength lease. lease_time=%ld", OB_MAX_UPS_LEASE_DURATION_US);
+      }
+      if (OB_SUCCESS != (err = config_mgr_.got_version(hb.config_version_)))
+      {
+        TBSYS_LOG(WARN, "Process config failed, ret: [%d]", err);
       }
       else if (hb.self_lease_ >= lease_expire_time_us_)
       {
@@ -4703,7 +5116,7 @@ namespace oceanbase
       }
 
       if (OB_SUCCESS == err)
-     {
+      {
        if (is_obi_change && is_role_change)
        {
          if (ObiRole::MASTER == obi_role_.get_role()
@@ -4774,6 +5187,10 @@ namespace oceanbase
          }
        }
      }
+      if (is_obi_change)
+      {
+        settled_obi_role_.set_role(obi_role_.get_role());
+      }
       return err;
     }
 
@@ -4804,7 +5221,7 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ups_rs_revoke_lease(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
       common::ObResultCode result_msg;
@@ -4843,7 +5260,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
-        err = send_response(OB_RS_UPS_REVOKE_LEASE_RESPONSE, MY_VERSION, out_buff, conn, channel_id);
+        err = send_response(OB_RS_UPS_REVOKE_LEASE_RESPONSE, MY_VERSION, out_buff, req, channel_id);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "fail to send response. err = %d", err);
@@ -4853,37 +5270,56 @@ namespace oceanbase
       return err;
     }
 
-    bool ObUpdateServer::get_service_state()
+    bool ObUpdateServer::can_serve_read_req(const bool is_consistency_read)
     {
       bool is_provide_service = false;
+      ObConsistencyType::Type consistency_type = static_cast<ObConsistencyType::Type>(
+        static_cast<int64_t>(config_.consistency_type));
       //从内部表中取出一致性级别
 
-      if (ObConsistencyType::STRONG_CONSISTENCY == consistency_type_.get_consistency_type()
-          && ObiRole::MASTER == obi_role_.get_role()
-          && ObUpsRoleMgr::MASTER == role_mgr_.get_role()
-          && ObUpsRoleMgr::ACTIVE == role_mgr_.get_state())
+      if (is_consistency_read)
       {
-        is_provide_service = true;
+        if (/*ObiRole::MASTER == obi_role_.get_role()
+            && */ObUpsRoleMgr::MASTER == role_mgr_.get_role()
+            && ObUpsRoleMgr::ACTIVE == role_mgr_.get_state())
+        {
+          is_provide_service = true;
+        }
       }
-      else if (ObConsistencyType::NORMAL_CONSISTENCY == consistency_type_.get_consistency_type()
-          && ObUpsRoleMgr::ACTIVE == role_mgr_.get_state())
+      else
       {
-        is_provide_service = true;
+        if (ObConsistencyType::WEAK_CONSISTENCY == consistency_type)
+        {
+          is_provide_service = true;
+        }
+        else
+        {
+          if (ObUpsRoleMgr::ACTIVE == role_mgr_.get_state())
+          {
+            is_provide_service = true;
+          }
+        }
       }
-      else if (ObConsistencyType::WEAK_CONSISTENCY == consistency_type_.get_consistency_type())
+
+      if (!is_provide_service)
       {
-        is_provide_service = true;
+        TBSYS_LOG(WARN, "can not serve read req, server_consistency=%s,"
+                  " req_consistency=%s, obi_role=%s, role=%s, state=%s",
+                  config_.consistency_type.str(),
+                  STR_BOOL(is_consistency_read), obi_role_.get_role_str(),
+                  role_mgr_.get_role_str(), role_mgr_.get_state_str());
+
       }
       return is_provide_service;
     }
 
     //add :rs ups hb
     int ObUpdateServer::ups_rs_lease(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int err = OB_SUCCESS;
       UNUSED(channel_id);
-      UNUSED(conn);
+      UNUSED(req);
 
       ObMsgUpsHeartbeat hb;
       if (hb.MY_VERSION != version)
@@ -4927,11 +5363,12 @@ namespace oceanbase
           }
         }
       }
+      easy_request_wakeup(req);
       return err;
     }
 
     /*  int ObUpdateServer::ups_change_vip(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id)
+        easy_request_t* req, const uint32_t channel_id)
         {
         int ret = OB_SUCCESS;
 
@@ -4956,13 +5393,13 @@ namespace oceanbase
         slave_mgr_.reset_vip(new_vip);
         }
 
-        ret = response_result_(ret, OB_UPS_CHANGE_VIP_RESPONSE, MY_VERSION, conn, channel_id);
+        ret = response_result_(ret, OB_UPS_CHANGE_VIP_RESPONSE, MY_VERSION, req, channel_id);
 
         return ret;
         }
      */
     int ObUpdateServer::ups_dump_text_memtable(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id)
+        easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -4982,7 +5419,7 @@ namespace oceanbase
           TBSYS_LOG(INFO, "dumping memtables to dir=[%.*s]", dump_dir.length(), dump_dir.ptr());
         }
       }
-      response_result_(ret, OB_UPS_DUMP_TEXT_MEMTABLE_RESPONSE, MY_VERSION, conn, channel_id);
+      response_result_(ret, OB_UPS_DUMP_TEXT_MEMTABLE_RESPONSE, MY_VERSION, req, channel_id);
       if (OB_SUCCESS == ret)
       {
         table_mgr_.dump_memtable(dump_dir);
@@ -4991,7 +5428,7 @@ namespace oceanbase
     }
 
     int ObUpdateServer::ups_dump_text_schemas(const int32_t version,
-        tbnet::Connection* conn, const uint32_t channel_id)
+        easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5008,12 +5445,12 @@ namespace oceanbase
         ob_print_mod_memory_usage();
       }
 
-      ret = response_result_(ret, OB_UPS_DUMP_TEXT_SCHEMAS_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_DUMP_TEXT_SCHEMAS_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
     int ObUpdateServer::ups_force_fetch_schema(const int32_t version,
-        tbnet::Connection* conn, const uint32_t channel_id)
+        easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5022,15 +5459,14 @@ namespace oceanbase
       }
       if (OB_SUCCESS == ret)
       {
-        bool write_log = true;
-        ret = update_schema(false, write_log);
+        ret = do_async_update_whole_schema();
       }
-      ret = response_result_(ret, OB_UPS_FORCE_FETCH_SCHEMA_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_FORCE_FETCH_SCHEMA_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
     int ObUpdateServer::ups_memory_watch(const int32_t version,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5044,15 +5480,16 @@ namespace oceanbase
         memory_info.cur_limit_size = ob_get_memory_size_limit();
         table_mgr_.get_memtable_memory_info(memory_info.table_mem_info);
         table_mgr_.log_table_info();
+        trans_executor_.log_trans_info();
         ob_print_mod_memory_usage();
       }
       ret = response_data_(ret, memory_info, OB_UPS_MEMORY_WATCH_RESPONSE, MY_VERSION,
-          conn, channel_id, out_buff);
+          req, channel_id, out_buff);
       return ret;
     }
 
     int ObUpdateServer::ups_memory_limit_set(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5079,12 +5516,12 @@ namespace oceanbase
         table_mgr_.log_table_info();
       }
       ret = response_data_(ret, memory_info, OB_UPS_MEMORY_LIMIT_SET_RESPONSE, MY_VERSION,
-          conn, channel_id, out_buff);
+          req, channel_id, out_buff);
       return ret;
     }
 
     int ObUpdateServer::ups_priv_queue_conf_set(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5098,25 +5535,44 @@ namespace oceanbase
         ret = priv_queue_conf.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
         if (OB_SUCCESS == ret)
         {
-          param_.set_priv_queue_conf(priv_queue_conf);
-          if (param_.get_low_priv_cur_percent() >= 0)
+          if (priv_queue_conf.low_priv_network_lower_limit != 0)
           {
-            read_thread_queue_.set_low_priv_cur_percent(param_.get_low_priv_cur_percent());
+            config_.low_priv_network_lower_limit = priv_queue_conf.low_priv_network_lower_limit;
+          }
+
+          if (priv_queue_conf.low_priv_network_upper_limit != 0)
+          {
+            config_.low_priv_network_upper_limit = priv_queue_conf.low_priv_network_upper_limit;
+          }
+
+          if (priv_queue_conf.low_priv_adjust_flag != 0)
+          {
+            config_.low_priv_adjust_flag = priv_queue_conf.low_priv_adjust_flag;
+          }
+
+          if (priv_queue_conf.low_priv_cur_percent != 0)
+          {
+            config_.low_priv_cur_percent = priv_queue_conf.low_priv_cur_percent;
+          }
+
+          if (static_cast<int64_t>(config_.low_priv_cur_percent) >= 0)
+          {
+            read_thread_queue_.set_low_priv_cur_percent(config_.low_priv_cur_percent);
           }
         }
-        priv_queue_conf.low_priv_network_lower_limit = param_.get_low_priv_network_lower_limit();
-        priv_queue_conf.low_priv_network_upper_limit = param_.get_low_priv_network_upper_limit();
-        priv_queue_conf.low_priv_adjust_flag = param_.get_low_priv_adjust_flag();
-        priv_queue_conf.low_priv_cur_percent = param_.get_low_priv_cur_percent();
+        priv_queue_conf.low_priv_network_lower_limit = config_.low_priv_network_lower_limit;
+        priv_queue_conf.low_priv_network_upper_limit = config_.low_priv_network_upper_limit;
+        priv_queue_conf.low_priv_adjust_flag = config_.low_priv_adjust_flag;
+        priv_queue_conf.low_priv_cur_percent = config_.low_priv_cur_percent;
       }
 
       ret = response_data_(ret, priv_queue_conf, OB_UPS_PRIV_QUEUE_CONF_SET_RESPONSE, MY_VERSION,
-          conn, channel_id, out_buff);
+          req, channel_id, out_buff);
       return ret;
     }
 
     int ObUpdateServer::ups_clear_active_memtable(const int32_t version,
-        tbnet::Connection* conn, const uint32_t channel_id)
+        easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (!(ObiRole::MASTER == obi_role_.get_role()
@@ -5135,12 +5591,12 @@ namespace oceanbase
       {
         ret = table_mgr_.clear_active_memtable();
       }
-      ret = response_result_(ret, OB_UPS_CLEAR_ACTIVE_MEMTABLE_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_CLEAR_ACTIVE_MEMTABLE_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
     int ObUpdateServer::ups_switch_commit_log(const int32_t version,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       if (!(ObiRole::MASTER == obi_role_.get_role()
@@ -5163,11 +5619,11 @@ namespace oceanbase
         TBSYS_LOG(INFO, "switch log file id ret=%d new_log_file_id=%lu", ret, new_log_file_id);
       }
       ret = response_data_(proc_ret, new_log_file_id, OB_UPS_SWITCH_COMMIT_LOG_RESPONSE, MY_VERSION,
-          conn, channel_id, out_buff);
+          req, channel_id, out_buff);
       return ret;
     }
     int ObUpdateServer::ups_get_slave_info(const int32_t version,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       common::ObResultCode result;
@@ -5187,7 +5643,7 @@ namespace oceanbase
       }
       if (OB_SUCCESS == ret)
       {
-        ret = send_response(OB_UPS_GET_SLAVE_INFO_RESPONSE, MY_VERSION, out_buff, conn, channel_id);
+        ret = send_response(OB_UPS_GET_SLAVE_INFO_RESPONSE, MY_VERSION, out_buff, req, channel_id);
       }
       if (OB_SUCCESS != ret)
       {
@@ -5198,7 +5654,7 @@ namespace oceanbase
     //*/
 
     int ObUpdateServer::ups_get_last_frozen_version(const int32_t version,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5209,17 +5665,17 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         ret = table_mgr_.get_last_frozen_memtable_version(last_frozen_memtable_version);
-        TBSYS_LOG(INFO, "ups get last frozen version[%ld]", last_frozen_memtable_version);
+        TBSYS_LOG(INFO, "ups get last frozen version[%ld] ret=%d", last_frozen_memtable_version, ret);
       }
       ret = response_data_(ret, last_frozen_memtable_version, OB_UPS_GET_LAST_FROZEN_VERSION_RESPONSE, MY_VERSION,
-          conn, channel_id, out_buff);
+          req, channel_id, out_buff);
       TBSYS_LOG(INFO, "rs get last frozeon version, version=%lu ret=%d",
                 last_frozen_memtable_version, ret);
       return ret;
     }
 
     int ObUpdateServer::ups_get_table_time_stamp(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5238,13 +5694,14 @@ namespace oceanbase
         proc_ret = table_mgr_.get_table_time_stamp(major_version, time_stamp);
       }
       TBSYS_LOG(INFO, "get_table_time_stamp ret=%d major_version=%lu time_stamp=%ld src=%s",
-                proc_ret, major_version, time_stamp, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()));
+                proc_ret, major_version, time_stamp, NULL == req ? NULL :
+                get_peer_ip(req));
       ret = response_data_(proc_ret, time_stamp, OB_UPS_GET_TABLE_TIME_STAMP_RESPONSE, MY_VERSION,
-          conn, channel_id, out_buff);
+          req, channel_id, out_buff);
       return ret;
     }
 
-    int ObUpdateServer::ups_enable_memtable_checksum(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_enable_memtable_checksum(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5255,11 +5712,11 @@ namespace oceanbase
       {
         table_mgr_.set_replay_checksum_flag(true);
       }
-      ret = response_result_(ret, OB_UPS_ENABLE_MEMTABLE_CHECKSUM_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_ENABLE_MEMTABLE_CHECKSUM_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
-    int ObUpdateServer::ups_disable_memtable_checksum(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id)
+    int ObUpdateServer::ups_disable_memtable_checksum(const int32_t version, easy_request_t* req, const uint32_t channel_id)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5270,12 +5727,12 @@ namespace oceanbase
       {
         table_mgr_.set_replay_checksum_flag(false);
       }
-      ret = response_result_(ret, OB_UPS_DISABLE_MEMTABLE_CHECKSUM_RESPONSE, MY_VERSION, conn, channel_id);
+      ret = response_result_(ret, OB_UPS_ENABLE_MEMTABLE_CHECKSUM_RESPONSE, MY_VERSION, req, channel_id);
       return ret;
     }
 
     int ObUpdateServer::ups_fetch_stat_info(const int32_t version,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5284,17 +5741,17 @@ namespace oceanbase
       }
       if (OB_SUCCESS == ret)
       {
-        SET_STAT_INFO(UPS_STAT_MEMORY_TOTAL, ob_get_memory_size_handled());
-        SET_STAT_INFO(UPS_STAT_MEMORY_LIMIT, ob_get_memory_size_limit());
+        OB_STAT_SET(UPDATESERVER, UPS_STAT_MEMORY_TOTAL, ob_get_memory_size_handled());
+        OB_STAT_SET(UPDATESERVER, UPS_STAT_MEMORY_LIMIT, ob_get_memory_size_limit());
         table_mgr_.update_memtable_stat_info();
       }
       ret = response_data_(ret, stat_mgr_, OB_FETCH_STATS_RESPONSE, MY_VERSION,
-          conn, channel_id, out_buff);
+          req, channel_id, out_buff);
       return ret;
     }
 
     int ObUpdateServer::ups_get_schema(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5306,21 +5763,22 @@ namespace oceanbase
       CommonSchemaManagerWrapper sm;
       if (OB_SUCCESS != (proc_ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), (int64_t*)&major_version)))
       {
-        TBSYS_LOG(WARN, "decode major_version fail ret=%d", ret);
+        TBSYS_LOG(WARN, "decode major_version fail ret=%d", proc_ret);
       }
       else
       {
         proc_ret = table_mgr_.get_schema(major_version, sm);
       }
       TBSYS_LOG(INFO, "get_schema ret=%d major_version=%lu src=%s",
-                proc_ret, major_version, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()));
+                proc_ret, major_version, NULL == req ? NULL :
+                get_peer_ip(req));
       ret = response_data_(proc_ret, sm, OB_FETCH_SCHEMA_RESPONSE, MY_VERSION,
-          conn, channel_id, out_buff);
+          req, channel_id, out_buff);
       return ret;
     }
 
     int ObUpdateServer::ups_get_sstable_range_list(const int32_t version, common::ObDataBuffer& in_buff,
-        tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
@@ -5346,9 +5804,53 @@ namespace oceanbase
         proc_ret = table_mgr_.get_sstable_range_list(major_version, table_id, ti_list);
       }
       TBSYS_LOG(INFO, "get_sstable_range_list ret=%d major_version=%lu table_id=%lu src=%s",
-                proc_ret, major_version, table_id, NULL == conn ? NULL : inet_ntoa_r(conn->getPeerId()));
+                proc_ret, major_version, table_id, NULL == req ? NULL :
+                get_peer_ip(req));
       ret = response_data_(proc_ret, ti_list.inst, OB_RS_FETCH_SPLIT_RANGE_RESPONSE, MY_VERSION,
-          conn, channel_id, out_buff);
+          req, channel_id, out_buff);
+      return ret;
+    }
+
+    int ObUpdateServer::ups_set_config(const int32_t version, common::ObDataBuffer& in_buff,
+                                       easy_request_t* req, const uint32_t channel_id)
+    {
+      UNUSED(version);
+      int ret = OB_SUCCESS;
+      static const int MY_VERSION = 1;
+      common::ObString config_str;
+      if (OB_SUCCESS != (ret = config_str.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position())))
+      {
+        TBSYS_LOG(ERROR, "Deserialize config string failed! ret: [%d]", ret);
+      }
+      else if (OB_SUCCESS != (ret = config_.add_extra_config(config_str.ptr(), true)))
+      {
+        TBSYS_LOG(ERROR, "Set config failed! ret: [%d]", ret);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "Set config successfully! str: [%s]", config_str.ptr());
+      }
+
+      if (OB_SUCCESS != (ret = response_result_(ret, OB_SET_CONFIG_RESPONSE, MY_VERSION, req, channel_id)))
+      {
+        TBSYS_LOG(ERROR, "send response fail, ret: [%d]", ret);
+      }
+
+      return ret;
+    }
+
+    int ObUpdateServer::ups_get_config(const int32_t version, easy_request_t* req,
+                                       const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      UNUSED(version);
+      int ret = OB_SUCCESS;
+      static const int MY_VERSION = 1;
+
+      if (OB_SUCCESS != (ret = response_data_(ret, config_, OB_GET_CONFIG_RESPONSE, MY_VERSION, req, channel_id, out_buff)))
+      {
+        TBSYS_LOG(ERROR, "send response fail, ret: [%d]", ret);
+      }
+
       return ret;
     }
 
@@ -5380,12 +5882,12 @@ namespace oceanbase
             TBSYS_LOG(DEBUG, "stat_size=%ld cur_time_ms=%ld last_stat_time_ms=%ld", s_stat_size,
                 cur_time_ms, s_last_stat_time_ms);
 
-            int64_t adjust_flag = param_.get_low_priv_adjust_flag();
+            int64_t adjust_flag = config_.low_priv_adjust_flag;
 
             if (1 == adjust_flag) // auto adjust low priv percent
             {
-              int64_t lower_limit = param_.get_low_priv_network_lower_limit() * 1024L * 1024L;
-              int64_t upper_limit = param_.get_low_priv_network_upper_limit() * 1024L * 1024L;
+              int64_t lower_limit = config_.low_priv_network_lower_limit;
+              int64_t upper_limit = config_.low_priv_network_upper_limit;
 
               int64_t low_priv_percent = read_thread_queue_.get_low_priv_cur_percent();
 
@@ -5423,46 +5925,6 @@ namespace oceanbase
         }
       }
       return ret;
-    }
-    void ObUpdateServer::RefreshLsyncAddrDuty::runTimerTask()
-    {
-      int err = OB_SUCCESS;
-      ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
-      if (NULL == ups_main)
-      {
-        TBSYS_LOG(WARN, "get ups_main fail");
-      }
-      else
-      {
-        ObUpdateServer &ups = ups_main->get_update_server();
-        if (OB_SUCCESS != (err = ups.refresh_lsync_server_addr()))
-        {
-          //TBSYS_LOG(WARN, "ups.refresh_lsync_server_addr()=>%d", err);
-        }
-      }
-    }
-
-    int ObUpdateServer::refresh_lsync_server_addr()
-    {
-      int err = OB_SUCCESS;
-      ObServer master;
-      if (true)
-      {}
-      else if (OB_SUCCESS != (err = ups_rpc_stub_.get_inst_master_ups(root_server_, master,
-                                                                 param_.get_refresh_lsync_addr_timeout())))
-      {
-        if (OB_RESPONSE_TIME_OUT != err)
-        {
-          TBSYS_LOG(ERROR, "ups_rpc_stub.get_ups_instance_master()=>%d", err);
-        }
-      }
-      else
-      {
-        master.set_port(param_.get_lsync_port());
-        set_lsync_server(master.get_ipv4(), master.get_port());
-        //fetch_lsync_.set_lsync_server(get_lsync_server());
-      }
-      return err;
     }
 
     const ObServer& ObUpdateServer::get_ups_log_master()
@@ -5522,7 +5984,8 @@ namespace oceanbase
     void UpsWarmUpDuty::runTimerTask()
     {
       int64_t warm_up_time = get_warm_up_time();
-      if (tbsys::CTimeUtil::getTime() > (duty_start_time_ + warm_up_time))
+      if (tbsys::CTimeUtil::getTime() > (duty_start_time_ + warm_up_time)
+          || CacheWarmUpConf::STOP_PERCENT <= cur_warm_up_percent_)
       {
         submit_force_drop();
         TBSYS_LOG(INFO, "warm up finished, will drop memtable, cur_warm_up_percent=%ld cur_time=%ld duty_start_time=%ld warm_time=%ld",
@@ -5542,7 +6005,7 @@ namespace oceanbase
 
     int64_t UpsWarmUpDuty::get_warm_up_time()
     {
-      int64_t ret = get_warm_up_conf().warm_up_time_s * 1000000;
+      int64_t ret = get_conf_warm_up_time();
       int64_t active_mem_limit = get_active_mem_limit();
       int64_t oldest_memtable_size = get_oldest_memtable_size();
       if (0 != active_mem_limit
@@ -5556,10 +6019,8 @@ namespace oceanbase
 
     int64_t UpsWarmUpDuty::get_warm_up_step_interval()
     {
-      int64_t ret = get_warm_up_conf().warm_up_step_interval_us;
       double warm_up_step_interval = ceil(static_cast<double>(get_warm_up_time()) / (CacheWarmUpConf::STOP_PERCENT / CacheWarmUpConf::STEP_PERCENT));
-      ret = std::min(ret, static_cast<int64_t>(warm_up_step_interval));
-      return ret;
+      return static_cast<int64_t>(warm_up_step_interval);
     }
 
     int ObUpsLogServerGetter::init(ObUpdateServer* ups)
@@ -5645,14 +6106,16 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       int64_t now_us = tbsys::CTimeUtil::getTime();
-      if (task.launch_time_ < last_launch_time_)
+      if (task.launch_time_ + prefetch_timeout_ < now_us)
       {
-        TBSYS_LOG(WARN, "task finished[lauch_time=%ld], but timeout, now_us=%ld, last_launch_time[%ld]", task.launch_time_, now_us, last_launch_time_);
+        TBSYS_LOG(WARN, "task finished, but timeout: lauch_time[%ld] + timeout[%ld] <  now_us[%ld]",
+                  task.launch_time_, prefetch_timeout_, now_us);
       }
       else
       {
         last_done_time_ = now_us;
       }
+      __sync_add_and_fetch(&running_task_num_, -1);
       return err;
     }
 
@@ -5666,7 +6129,7 @@ namespace oceanbase
       {
         err = OB_NOT_INIT;
       }
-      else if (last_launch_time_ > last_done_time_ && last_launch_time_ + prefetch_timeout_ > now_us)
+      else if (running_task_num_ > 0)
       {}
       else
       {
@@ -5682,9 +6145,30 @@ namespace oceanbase
         else
         {
           last_launch_time_ = now_us;
+          __sync_add_and_fetch(&running_task_num_, +1);
         }
       }
       return err;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    int ObUpdateServer::ui_deserialize_mutator(ObDataBuffer& buffer, ObMutator &mutator)
+    {
+      int ret = OB_SUCCESS;
+      UpsSchemaMgrGuard guard;
+      const ObSchemaManagerV2* schema_mgr = table_mgr_.get_schema_mgr().get_schema_mgr(guard);
+      if (NULL == schema_mgr)
+      {
+        TBSYS_LOG(WARN, "failed to get schema");
+        ret = OB_SCHEMA_ERROR;
+      }
+      else
+      {
+        mutator.set_compatible_schema(schema_mgr);
+        ret = mutator.deserialize(buffer.get_data(), buffer.get_capacity(), buffer.get_position());
+      }
+      return ret;
     }
   }
 }

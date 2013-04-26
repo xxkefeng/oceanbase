@@ -1,15 +1,30 @@
-#include "tbnet.h"
+/*
+ * (C) 2007-2010 Taobao Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ *
+ *
+ * Version: 0.1: ob_ms_rpc_event.h,v 0.1 2011/09/26 14:01:30 zhidong Exp $
+ *
+ * Authors:
+ *   zhidong <xielun.szd@taobao.com>
+ *     - some work details if you want
+ *
+ */
+
 #include "common/ob_define.h"
 #include "common/ob_packet.h"
 #include "common/ob_result.h"
 #include "common/ob_read_common_data.h"
 #include "ob_merge_server_main.h"
-#include "ob_ms_request_event.h"
+#include "ob_ms_request.h"
 #include "ob_ms_rpc_event.h"
 #include "ob_ms_async_rpc.h"
-#include "ob_ms_counter_infos.h"
 
-using namespace tbnet;
+
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 
@@ -38,12 +53,12 @@ uint64_t ObMergerRpcEvent::get_client_id(void) const
   return client_request_id_;
 }
 
-const ObMergerRequestEvent * ObMergerRpcEvent::get_client_request(void) const
+const ObMergerRequest * ObMergerRpcEvent::get_client_request(void) const
 {
   return client_request_;
 }
 
-int ObMergerRpcEvent::init(const uint64_t client_id, ObMergerRequestEvent * request)
+int ObMergerRpcEvent::init(const uint64_t client_id, ObMergerRequest * request)
 {
   int ret = OB_SUCCESS;
   if ((OB_INVALID_ID == client_id) || (NULL == request))
@@ -56,61 +71,35 @@ int ObMergerRpcEvent::init(const uint64_t client_id, ObMergerRequestEvent * requ
   {
     client_request_id_ = client_id;
     client_request_ = request;
-    TBSYS_LOG(DEBUG, "init rpc event succ:client[%lu], event[%lu], request[%p]",
-        client_id, get_event_id(), request);
   }
   return ret;
 }
 
-int ObMergerRpcEvent::parse_packet(tbnet::Packet * packet, void * args)
+int ObMergerRpcEvent::parse_packet(ObPacket * packet, void * args)
 {
   int ret = OB_SUCCESS;
+  UNUSED(args);
   if (NULL == packet)
   {
-    ret = OB_INPUT_PARAM_ERROR;
-    TBSYS_LOG(WARN, "check packet is NULL:client[%lu], request[%lu], event[%lu]",
-        client_request_id_, client_request_->get_request_id(), get_event_id()); 
+    //ret = OB_INPUT_PARAM_ERROR;
+    ret = OB_RESPONSE_TIME_OUT;
+    TBSYS_LOG(WARN, "check packet is NULL:server[%s], client[%lu], request[%lu], event[%lu]",
+        server_.to_cstring(), client_request_id_, client_request_->get_request_id(), get_event_id());
   }
-  else if (packet->isRegularPacket())
+  else
   {
-    ret = deserialize_packet(*dynamic_cast<ObPacket *>(packet), ObCommonRpcEvent::get_result());
+    ret = deserialize_packet(*packet, ObCommonRpcEvent::get_result());
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(WARN, "deserialize packet failed:client[%lu], request[%lu], "
-          "event[%lu], ret[%d]", client_request_id_, client_request_->get_request_id(),
+      TBSYS_LOG(WARN, "deserialize packet failed:server[%s], client[%lu], request[%lu], "
+          "event[%lu], ret[%d]", server_.to_cstring(), client_request_id_, client_request_->get_request_id(),
           ObCommonRpcEvent::get_event_id(), ret);
     }
   }
-  else// if (NULL != args)
-  {
-    UNUSED(args);
-    tbnet::ControlPacket *ctrl_packet = static_cast<tbnet::ControlPacket*>(packet);
-    if (NULL == ctrl_packet)
-    {
-      ret = OB_ERROR;
-      TBSYS_LOG(ERROR, "not regular packet discard anyway:client[%lu], request[%lu], "
-          "event[%lu], code[%d]", client_request_id_, client_request_->get_request_id(),
-          ObCommonRpcEvent::get_event_id(), packet->getPCode());
-    }
-    else if (tbnet::ControlPacket::CMD_TIMEOUT_PACKET == ctrl_packet->getCommand())
-    {
-      ret = OB_RESPONSE_TIME_OUT;
-      TBSYS_LOG(WARN, "timeout packet:client[%lu], request[%lu], event[%lu], command[%d]",
-          client_request_id_, client_request_->get_request_id(), 
-          ObCommonRpcEvent::get_event_id(), ctrl_packet->getCommand());
-    }
-    else
-    {
-      ret = OB_CONN_ERROR;
-      TBSYS_LOG(WARN, "bad or disconnect packet:client[%lu], request[%lu], event[%lu], "
-          "command[%d]", client_request_id_, client_request_->get_request_id(),
-          ObCommonRpcEvent::get_event_id(), ctrl_packet->getCommand());
-    }
-  }
   return ret;
 }
 
-tbnet::IPacketHandler::HPRetCode ObMergerRpcEvent::handlePacket(tbnet::Packet * packet, void * args)
+int ObMergerRpcEvent::handle_packet(ObPacket * packet, void * args)
 {
   int ret = OB_SUCCESS;
   if (false == check_inner_stat())
@@ -126,38 +115,12 @@ tbnet::IPacketHandler::HPRetCode ObMergerRpcEvent::handlePacket(tbnet::Packet * 
   else
   {
     this->end();
-    switch (get_req_type())
-    {
-      case ObMergerRpcEvent::GET_RPC:
-        ms_get_counter_set().inc(ObMergerCounterIds::C_CS_GET, get_time_used());
-        break;
-      case ObMergerRpcEvent::SCAN_RPC:
-        ms_get_counter_set().inc(ObMergerCounterIds::C_CS_SCAN, get_time_used());
-        break;
-      default:
-        TBSYS_LOG(ERROR, "unknown rpc type [event:%p,client:%lu, request:%lu, "
-            "event_id:%lu,req_type:%d]", this, client_request_id_, 
-            client_request_->get_request_id(), get_event_id(), get_req_type());
-    }
     /// parse the packet for get result code and result scanner
     ret = parse_packet(packet, args);
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(WARN, "parse the packet failed:client[%lu], request[%lu], event[%lu], ptr[%p]",
-          client_request_id_, client_request_->get_request_id(), get_event_id(), this);
       /// set result code, maybe timeout packet, connection errors.
       ObCommonRpcEvent::set_result_code(ret);
-    }
-
-    char ip_addr[ObMergerAsyncRpcStub::MAX_SERVER_LEN];
-    get_server().to_string(ip_addr,sizeof(ip_addr));
-    ObPacket* obpacket = dynamic_cast<ObPacket*>(packet);
-    if (NULL != obpacket)
-    {
-      TBSYS_LOG(DEBUG, "handle packet eventid[%lu], time_used[%ld], server[%s], "
-          "result code=%d, packet code=%d, session_id=%ld", 
-          get_event_id(), get_time_used(), ip_addr, get_result_code(), 
-          obpacket->get_packet_code(), obpacket->get_session_id());
     }
 
     if (client_request_ != NULL)
@@ -167,7 +130,7 @@ tbnet::IPacketHandler::HPRetCode ObMergerRpcEvent::handlePacket(tbnet::Packet * 
       ret = client_request_->signal(*this);
     }
   }
-  return tbnet::IPacketHandler::FREE_CHANNEL;
+  return ret;
 }
 
 int ObMergerRpcEvent::deserialize_packet(ObPacket & packet, ObScanner & result)
@@ -189,7 +152,6 @@ int ObMergerRpcEvent::deserialize_packet(ObPacket & packet, ObScanner & result)
     }
     else
     {
-      // packet header
       data_length += data_buff->get_position();
     }
     if (packet.get_packet_code() == OB_SESSION_END)
@@ -205,7 +167,7 @@ int ObMergerRpcEvent::deserialize_packet(ObPacket & packet, ObScanner & result)
   ObResultCode code;
   if (OB_SUCCESS == ret)
   {
-    ret = code.deserialize(data_buff->get_data(), data_length, data_buff->get_position()); 
+    ret = code.deserialize(data_buff->get_data(), data_length, data_buff->get_position());
     if (OB_SUCCESS != ret)
     {
       TBSYS_LOG(ERROR, "deserialize result failed:pos[%ld], ret[%d]",
@@ -241,7 +203,7 @@ void ObMergerRpcEvent::print_info(FILE * file) const
     }
     else
     {
-      fprintf(file, "merger rpc event:client[%lu], request[%lu], ptr[%p]\n", 
+      fprintf(file, "merger rpc event:client[%lu], request[%lu], ptr[%p]\n",
           client_request_id_, client_request_->get_request_id(), client_request_);
     }
     fflush(file);

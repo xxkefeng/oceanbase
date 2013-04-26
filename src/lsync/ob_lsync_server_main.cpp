@@ -35,7 +35,7 @@ namespace oceanbase
     //     level = TBSYS_LOG_LEVEL_DEBUG;
     //   TBSYS_LOGGER._level = level;
     // }
-    
+
     ObLsyncServerMain* ObLsyncServerMain::get_instance()
     {
       if (NULL == instance_)
@@ -50,9 +50,9 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
 
-      if (OB_SUCCESS != (err = param_.load_from_file(config_file_name_)))
+      if (OB_SUCCESS != (err = param_.load_from_file(config_)))
       {
-        TBSYS_LOG(WARN, "load_from_file('%s')=>%d", config_file_name_, err);
+        TBSYS_LOG(WARN, "load_from_file('%s')=>%d", config_, err);
       }
       else
       {
@@ -96,11 +96,11 @@ namespace oceanbase
           break;
       }
     }
-    const char* ObLsyncServerMain::parse_cmd_line(const int argc,  char* const* argv)
+    void ObLsyncServerMain::parse_cmd_line(const int argc,  char* const* argv)
     {
       int opt = 0;
       const char* opt_string = "hNVf:d:s:t:D:p:C";
-      struct option longopts[] = 
+      struct option longopts[] =
       {
         {"config_file", 1, NULL, 'f'},
         {"help", 0, NULL, 'h'},
@@ -161,7 +161,7 @@ namespace oceanbase
       }
 
       optind = 1;
-      return BaseMain::parse_cmd_line(rest_idx, const_cast<char* const*>(rest_argv));
+      BaseMain::parse_cmd_line(rest_idx, const_cast<char* const*>(rest_argv));
     }
 
     void ObLsyncServerMain::print_usage(const char *prog_name)

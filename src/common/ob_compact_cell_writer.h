@@ -16,13 +16,14 @@
  *
  */
 
-#ifndef OCEANBASE_COMMON_COMPACT_CELL_WRITER_H_ 
+#ifndef OCEANBASE_COMMON_COMPACT_CELL_WRITER_H_
 #define OCEANBASE_COMMON_COMPACT_CELL_WRITER_H_
 
 #include "ob_buffer_helper.h"
 #include "ob_cell_meta.h"
 #include "ob_compact_cell_util.h"
 #include "ob_compact_store_type.h"
+#include "ob_row.h"
 
 namespace oceanbase
 {
@@ -30,6 +31,7 @@ namespace oceanbase
   {
     /*
      * 紧凑格式写入类
+     * 注意：目前的设计不允许写入OB_INVALID_ID的列
      */
     class ObCompactCellWriter
     {
@@ -50,6 +52,14 @@ namespace oceanbase
          */
         int append(const ObObj &value, ObObj *clone_value = NULL);
         int append_escape(int64_t escape);
+
+        int append_row(const ObRowkey& rowkey, const ObRow& row);
+
+        int append_row(const ObRow& row);
+
+        int append_rowkey(const ObRowkey& rowkey);
+
+        int append_rowvalue(const ObRow& row);
 
         inline int row_delete()
         {
@@ -82,7 +92,15 @@ namespace oceanbase
           return buf_writer_.pos();
         }
 
+        inline int64_t size() const
+        {
+          return buf_writer_.pos();
+        }
         inline char *get_buf()
+        {
+          return buf_writer_.buf();
+        }
+        inline char* get_buf() const
         {
           return buf_writer_.buf();
         }
@@ -100,6 +118,18 @@ namespace oceanbase
         ObBufferWriter buf_writer_;
         enum ObCompactStoreType store_type_;
     };
+
+    inline int ObCompactCellWriter::append(const common::ObObj &value,
+        common::ObObj *clone_value /* = NULL */)
+    {
+      int ret = common::OB_SUCCESS;
+      if(common::OB_SUCCESS != (ret = append(
+              common::OB_INVALID_ID, value, clone_value)))
+      {
+        TBSYS_LOG(WARN, "append value fail:ret[%d]", ret);
+      }
+      return ret;
+    }
   }
 }
 

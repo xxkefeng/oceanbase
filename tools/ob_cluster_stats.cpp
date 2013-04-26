@@ -1,6 +1,6 @@
 /*
  *  (C) 2007-2010 Taobao Inc.
- *  
+ *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
  *  published by the Free Software Foundation.
@@ -30,36 +30,36 @@ namespace
   const int64_t UPS_MASTER_END_INDEX = 10;
 };
 
-namespace oceanbase 
-{ 
+namespace oceanbase
+{
   namespace tools
   {
 
-    int32_t ObClusterStats::refresh() 
+    int32_t ObClusterStats::refresh()
     {
       int ret = 0;
-      int32_t server_type = static_cast<int32_t>(store_.diff.get_server_type());
-      if (server_type == ObStatManager::SERVER_TYPE_ROOT)
+      ObRole server_type = store_.diff.get_server_type();
+      if (server_type == OB_ROOTSERVER)
       {
         ret = ObServerStats::refresh();
       }
-      else if (server_type == ObStatManager::SERVER_TYPE_UPDATE)
+      else if (server_type == OB_UPDATESERVER)
       {
         ObServer update_server;
         ret = rpc_stub_.get_update_server(update_server);
         ObClientRpcStub update_stub;
         if (OB_SUCCESS == ret)
         {
-          ret = update_stub.initialize(update_server, 
-              &GFactory::get_instance().get_base_client().get_client_manager());
+          ret = update_stub.initialize(update_server,
+              &GFactory::get_instance().get_base_client().get_client_mgr());
         }
         if (OB_SUCCESS == ret)
         {
           ret = update_stub.fetch_stats(store_.current);
         }
       }
-      else if (server_type == ObStatManager::SERVER_TYPE_CHUNK
-          || server_type == ObStatManager::SERVER_TYPE_MERGE)
+      else if (server_type == OB_CHUNKSERVER
+          || server_type == OB_MERGESERVER)
       {
         ObChunkServerManager obsm;
         ret = rpc_stub_.rs_dump_cs_info(obsm);
@@ -72,14 +72,14 @@ namespace oceanbase
           while (it != obsm.end())
           {
             node = it->server_;
-            if (server_type == ObStatManager::SERVER_TYPE_CHUNK)
+            if (server_type == OB_CHUNKSERVER)
               node.set_port(it->port_cs_);
             else
               node.set_port(it->port_ms_);
 
             node.to_string(ipstr, OB_MAX_SERVER_ADDR_SIZE);
             /*
-            fprintf(stderr, "dump server ip:%s, server status:%ld, serving:%d\n", 
+            fprintf(stderr, "dump server ip:%s, server status:%ld, serving:%d\n",
                 ipstr, it->status_, ObServerStatus::STATUS_SERVING);
                 */
 
@@ -88,7 +88,7 @@ namespace oceanbase
               ObClientRpcStub node_stub;
               ObStatManager node_stats;
               node_stats.set_server_type(server_type);
-              ret = node_stub.initialize( node, &GFactory::get_instance().get_base_client().get_client_manager());
+              ret = node_stub.initialize( node, &GFactory::get_instance().get_base_client().get_client_mgr());
               if (OB_SUCCESS != ret) { ++it; continue ;}
               ret = node_stub.fetch_stats(node_stats);
               //printf("ret=%d, node_stats:%lu\n", ret, node_stats.get_server_type());
@@ -110,10 +110,10 @@ namespace oceanbase
         }
 
       }
-      return ret; 
+      return ret;
     }
 
-    int load_string(tbsys::CConfig& config, char* dest, const int32_t size, 
+    int load_string(tbsys::CConfig& config, char* dest, const int32_t size,
         const char* section, const char* name, bool not_null)
     {
       int ret = OB_SUCCESS;
@@ -137,7 +137,7 @@ namespace oceanbase
       {
         if ((int32_t)strlen(value) >= size)
         {
-          TBSYS_LOG(ERROR, "%s.%s too long, length (%d) > %d", 
+          TBSYS_LOG(ERROR, "%s.%s too long, length (%d) > %d",
               section, name, (int32_t)strlen(value), size);
           ret = OB_SIZE_OVERFLOW;
         }
@@ -151,12 +151,12 @@ namespace oceanbase
       return ret;
     }
 
-    ObAppStats::ObAppStats(ObClientRpcStub &stub, const int64_t server_type, const char* config_file_name) 
-      : ObServerStats(stub, server_type) 
-    { 
+    ObAppStats::ObAppStats(ObClientRpcStub &stub, const ObRole server_type, const char* config_file_name)
+      : ObServerStats(stub, server_type)
+    {
       root_server_array_.init(MAX_SERVER_NUM, root_servers_, 0);
       tbsys::CConfig config;
-      if(config.load(config_file_name)) 
+      if(config.load(config_file_name))
       {
         fprintf(stderr, "load file %s error\n", config_file_name);
       }
@@ -203,11 +203,11 @@ namespace oceanbase
       }
     }
 
-    int ObAppStats::sum_cs_cluster_stats(const ObServer& rs, const int64_t server_type)
+    int ObAppStats::sum_cs_cluster_stats(const ObServer& rs, const ObRole server_type)
     {
       ObClientRpcStub rs_stub;
       ObChunkServerManager obsm;
-      int ret = rs_stub.initialize(rs, &GFactory::get_instance().get_base_client().get_client_manager());
+      int ret = rs_stub.initialize(rs, &GFactory::get_instance().get_base_client().get_client_mgr());
       if (OB_SUCCESS == ret)
       {
         ret = rs_stub.rs_dump_cs_info(obsm);
@@ -222,14 +222,14 @@ namespace oceanbase
         while (it != obsm.end())
         {
           node = it->server_;
-          if (server_type == ObStatManager::SERVER_TYPE_CHUNK)
+          if (server_type == OB_CHUNKSERVER)
             node.set_port(it->port_cs_);
           else
             node.set_port(it->port_ms_);
 
           /*
           node.to_string(ipstr, 64);
-             fprintf(stderr, "dump server ip:%s, server status:%ld, serving:%d\n", 
+             fprintf(stderr, "dump server ip:%s, server status:%ld, serving:%d\n",
              ipstr, it->status_, ObServerStatus::STATUS_SERVING);
              */
 
@@ -247,7 +247,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObAppStats::sum_ups_cluster_stats(const ObServer& rs, const int64_t server_type)
+    int ObAppStats::sum_ups_cluster_stats(const ObServer& rs, const ObRole server_type)
     {
       ObClientRpcStub rs_stub;
       ObUpsList upslist;
@@ -256,8 +256,8 @@ namespace oceanbase
 
       int ret = OB_SUCCESS;
 
-      if (OB_SUCCESS != (ret = rs_stub.initialize(rs, 
-              &GFactory::get_instance().get_base_client().get_client_manager())))
+      if (OB_SUCCESS != (ret = rs_stub.initialize(rs,
+              &GFactory::get_instance().get_base_client().get_client_mgr())))
       {
         fprintf(stderr, "initialize server stub error\n");
       }
@@ -279,11 +279,11 @@ namespace oceanbase
       return ret;
     }
 
-    int ObAppStats::sum_cluster_stats(const int64_t server_type, const common::ObArrayHelper<common::ObServer>& server_array)
+    int ObAppStats::sum_cluster_stats(const ObRole server_type, const common::ObArrayHelper<common::ObServer>& server_array)
     {
       ObStatManager node_stats;
       node_stats.set_server_type(server_type);
-      char addr_string[MAX_SERVER_NUM]; 
+      char addr_string[MAX_SERVER_NUM];
       int ret = OB_SUCCESS;
 
       for (int i = 0; i < server_array.get_array_index(); i++)
@@ -291,8 +291,8 @@ namespace oceanbase
         ObServer addr = *server_array.at(i);
         addr.to_string(addr_string, MAX_SERVER_NUM);
         ObClientRpcStub remote_stub;
-        if (OB_SUCCESS != (ret = remote_stub.initialize(addr, 
-                &GFactory::get_instance().get_base_client().get_client_manager())))
+        if (OB_SUCCESS != (ret = remote_stub.initialize(addr,
+                &GFactory::get_instance().get_base_client().get_client_mgr())))
         {
           fprintf(stderr, "initialize server stub error\n");
           break;
@@ -302,7 +302,7 @@ namespace oceanbase
           fprintf(stderr, "fetch server (%s) stats error\n", addr_string);
           break;
         }
-        if (store_.current.begin() == store_.current.end())
+        if (store_.current.begin(mod_) == store_.current.end(mod_))
           store_.current = node_stats;
         else
           store_.current.add(node_stats);
@@ -311,20 +311,20 @@ namespace oceanbase
       return ret;
     }
 
-    int32_t ObAppStats::refresh() 
+    int32_t ObAppStats::refresh()
     {
       int ret = 0;
-      int32_t server_type = static_cast<int32_t>(store_.diff.get_server_type());
+      ObRole server_type = store_.diff.get_server_type();
 
       store_.current.reset();
       store_.current.set_server_type(server_type);
 
 
-      if (server_type == ObStatManager::SERVER_TYPE_ROOT)
+      if (server_type == OB_ROOTSERVER)
       {
         ret = sum_cluster_stats(server_type, root_server_array_);
       }
-      else if (server_type == ObStatManager::SERVER_TYPE_UPDATE)
+      else if (server_type == OB_UPDATESERVER)
       {
         ObStatManager node_stats;
         node_stats.set_server_type(server_type);
@@ -337,8 +337,8 @@ namespace oceanbase
             ObClientRpcStub ups_stub;
             ObServer update_server;
 
-            if (OB_SUCCESS != (ret = rs_stub.initialize(*root_server_array_.at(i), 
-                &GFactory::get_instance().get_base_client().get_client_manager())))
+            if (OB_SUCCESS != (ret = rs_stub.initialize(*root_server_array_.at(i),
+                &GFactory::get_instance().get_base_client().get_client_mgr())))
             {
               fprintf(stderr, "initialize rs stub failed\n");
               break;
@@ -348,8 +348,8 @@ namespace oceanbase
               fprintf(stderr, "get update server addr from rs failed\n");
               break;
             }
-            else if (OB_SUCCESS != (ret = ups_stub.initialize(update_server, 
-                    &GFactory::get_instance().get_base_client().get_client_manager())))
+            else if (OB_SUCCESS != (ret = ups_stub.initialize(update_server,
+                    &GFactory::get_instance().get_base_client().get_client_mgr())))
             {
               fprintf(stderr, "initialize ups stub failed\n");
               break;
@@ -366,21 +366,21 @@ namespace oceanbase
         }
 
         // set apply stat. value
-        ObStatManager::const_iterator it = store_.current.begin();
+        ObStatManager::const_iterator it = store_.current.begin(mod_);
         ObStat *stat_item = NULL;;
-        while (it != store_.current.end())
+        while (it != store_.current.end(mod_))
         {
           for (int index = UPS_MASTER_START_INDEX; index <= UPS_MASTER_END_INDEX; ++index)
           {
-            node_stats.get_stat(it->get_table_id(), stat_item);
+            node_stats.get_stat(it->get_mod_id(), it->get_table_id(), stat_item);
             if (NULL != stat_item)
               const_cast<ObStat*>(it)->set_value(index, stat_item->get_value(index));
           }
           ++it;
         }
       }
-      else if (server_type == ObStatManager::SERVER_TYPE_CHUNK
-          || server_type == ObStatManager::SERVER_TYPE_MERGE)
+      else if (server_type == OB_CHUNKSERVER
+          || server_type == OB_MERGESERVER)
       {
         for (int i = 0; i < root_server_array_.get_array_index(); ++i)
         {
@@ -389,7 +389,7 @@ namespace oceanbase
         }
       }
 
-      return ret; 
+      return ret;
     }
 
   }

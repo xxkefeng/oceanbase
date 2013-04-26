@@ -61,9 +61,9 @@ TEST_F(ObRunFileTest, test_all)
   ObRunFile run_file;
   char* fname = (char*)"ob_run_file_test.run";
   ObString filename;
-  ASSERT_EQ(false, run_file.is_opened());
+  ASSERT_FALSE(run_file.is_opened());
   ASSERT_NE(OB_SUCCESS, run_file.open(filename));
-  filename.assign(fname, strlen(fname));
+  filename.assign(fname, (int32_t)strlen(fname));
   ASSERT_EQ(OB_SUCCESS, run_file.open(filename));
   ASSERT_EQ(true, run_file.is_opened());
   const int64_t bucket_count = 4;
@@ -117,7 +117,7 @@ TEST_F(ObRunFileTest, test_all)
     ASSERT_EQ(OB_SUCCESS, run_file.end_read_bucket());
   }
   ASSERT_EQ(OB_SUCCESS, run_file.close());
-  ASSERT_EQ(false, run_file.is_opened());
+  ASSERT_FALSE(run_file.is_opened());
   ASSERT_EQ(OB_SUCCESS, input_data_.close());
 }
 

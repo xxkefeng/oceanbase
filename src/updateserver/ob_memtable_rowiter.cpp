@@ -171,20 +171,12 @@ namespace oceanbase
       else
       {
         sstable_row.clear();
-        if (OB_SUCCESS != (ret = sstable_row.set_table_id(key.table_id)))
+        if (OB_SUCCESS != (ret = sstable_row.set_internal_rowkey(key.table_id, key.row_key)))
         {
-          TBSYS_LOG(WARN, "set table id to sstable_row fail key=[%s]", key.log_str());
+          TBSYS_LOG(WARN, "set internal rowkey to sstable_row fail key=[%s]", key.log_str());
         }
-        else if (OB_SUCCESS != (ret = sstable_row.set_row_key(key.row_key)))
-        {
-          TBSYS_LOG(WARN, "set row key to sstable_row fail key=[%s]", key.log_str());
-        }
-        else if (OB_SUCCESS != (ret = sstable_row.set_column_group_id(DEFAULT_COLUMN_GROUP_ID)))
-        {
-          TBSYS_LOG(WARN, "set column group id=%d to sstable_row fail key=[%s]",
-              DEFAULT_COLUMN_GROUP_ID, key.log_str());
-        }
-        get_iter_.set_(key, pvalue, NULL, NULL);
+        // TODO sstable是否支持读取rowkey列
+        get_iter_.set_(key, pvalue, NULL, true, NULL);
         rc_iter_.set_iterator(&get_iter_);
         while (OB_SUCCESS == (ret = rc_iter_.next_cell()))
         {
@@ -203,7 +195,7 @@ namespace oceanbase
           {
             column_id = OB_FULL_ROW_COLUMN_ID;
           }
-          if (OB_SUCCESS != (ret = sstable_row.add_obj(ci->value_, column_id)))
+          if (OB_SUCCESS != (ret = sstable_row.shallow_add_obj(ci->value_, column_id)))
           {
             TBSYS_LOG(WARN, "add obj to sstable_row fail ret=%d [%s]", ret, print_cellinfo(ci));
             break;
@@ -241,6 +233,11 @@ namespace oceanbase
         }
       }
       return bret;
+    }
+
+    const ObRowkeyInfo *MemTableRowIterator::get_rowkey_info(const uint64_t table_id) const
+    {
+      return RowkeyInfoCache::get_rowkey_info(table_id);
     }
 
     bool MemTableRowIterator::get_store_type(int &store_type)

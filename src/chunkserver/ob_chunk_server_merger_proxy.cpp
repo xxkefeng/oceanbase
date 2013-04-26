@@ -16,7 +16,6 @@
 
 #include "ob_chunk_server_merger_proxy.h"
 #include "common/ob_read_common_data.h"
-#include "common/ob_range.h"
 #include "common/ob_scanner.h"
 #include "common/ob_cell_array.h"
 

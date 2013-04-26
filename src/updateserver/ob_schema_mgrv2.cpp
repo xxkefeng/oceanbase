@@ -129,6 +129,14 @@ namespace oceanbase
       return bret;
     }
 
+    void CommonSchemaManagerWrapper::print_info() const
+    {
+      if (NULL != schema_mgr_impl_)
+      {
+        schema_mgr_impl_->print_info();
+      }
+    }
+
     const CommonSchemaManager *CommonSchemaManagerWrapper::get_impl() const
     {
       return schema_mgr_impl_;
@@ -253,6 +261,19 @@ namespace oceanbase
       rwlock_.unlock();
     }
 
+    int64_t UpsSchemaMgr::get_version() const
+    {
+      int64_t ret = 0;
+      SchemaHandle schema_handle = INVALID_SCHEMA_HANDLE;
+      int tmp_ret = OB_SUCCESS;
+      if (OB_SUCCESS == (tmp_ret = get_schema_handle(schema_handle)))
+      {
+        ret = schema_handle->get_schema_mgr().get_version();
+        revert_schema_handle(schema_handle);
+      }
+      return ret;
+    }
+
     uint64_t UpsSchemaMgr::get_create_time_column_id(const SchemaHandle &schema_handle, const uint64_t table_id) const
     {
       uint64_t ret = OB_INVALID_ID;
@@ -354,32 +375,8 @@ namespace oceanbase
       else
       {
         const CommonSchemaManager &schema_mgr = schema_handle->get_schema_mgr();
-        sstable::ObSSTableSchemaColumnDef column_info;
-        const CommonColumnSchema *iter = NULL;
-        for (iter = schema_mgr.column_begin(); iter != schema_mgr.column_end(); iter++)
-        {
-          if (NULL == iter)
-          {
-            TBSYS_LOG(WARN, "invalid column schema");
-            ret = OB_ERROR;
-            break;
-          }
-          else
-          {
-            column_info.reserved_ = 0;
-            column_info.column_group_id_ = DEFAULT_COLUMN_GROUP_ID;
-            column_info.column_name_id_ = static_cast<uint32_t>(iter->get_id());
-            column_info.column_value_type_ = iter->get_type();
-            column_info.table_id_ = static_cast<uint32_t>(iter->get_table_id());
-            if (OB_SUCCESS != (ret = sstable_schema.add_column_def(column_info)))
-            {
-              TBSYS_LOG(WARN, "add_column_def fail ret=%d group_id=%hu column_id=%u value_type=%d table_id=%u",
-                        ret, column_info.column_group_id_, column_info.column_name_id_, 
-                        column_info.column_value_type_, column_info.table_id_);
-              break;
-            }
-          }
-        }
+        sstable_schema.reset();
+        ret = oceanbase::sstable::build_sstable_schema(schema_mgr, sstable_schema);
       }
       return ret;
     }
@@ -425,8 +422,8 @@ namespace oceanbase
           }
           revert_schema_handle(schema_handle);
         }
+        fclose(fd);
       }
-      fclose(fd);
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -13,8 +13,8 @@
  */
 #include "common/ob_file.h"
 #include "common/ob_record_header.h"
+#include "common/ob_common_stat.h"
 #include "ob_blockcache.h"
-#include "ob_sstable_stat.h"
 #include "ob_sstable_block_index_v2.h"
 #include "ob_sstable_writer.h"
 
@@ -39,7 +39,7 @@ namespace oceanbase
     {
     }
 
-    int ObBlockCache::init(const ObBlockCacheConf& conf)
+    int ObBlockCache::init(const int64_t cache_mem_size)
     {
       int ret = OB_SUCCESS;
 
@@ -47,7 +47,7 @@ namespace oceanbase
       {
         TBSYS_LOG(INFO, "have inited");
       }
-      else if (OB_SUCCESS != kv_cache_.init(conf.block_cache_memsize_mb * 1024 * 1024))
+      else if (OB_SUCCESS != kv_cache_.init(cache_mem_size))
       {
         TBSYS_LOG(WARN, "init kv cache fail");
         ret = OB_ERROR;
@@ -55,9 +55,28 @@ namespace oceanbase
       else
       {
         inited_ = true;
-        TBSYS_LOG_US(DEBUG, "init blockcache succ block_cache_memsize_mb=%ld, "
-                            "ficache_max_num=%ld",
-                     conf.block_cache_memsize_mb, conf.ficache_max_num);
+        TBSYS_LOG_US(DEBUG, "init blockcache succ cache_mem_size=%ld, ", cache_mem_size);
+      }
+
+      return ret;
+    }
+
+    int ObBlockCache::enlarg_cache_size(const int64_t cache_mem_size)
+    {
+      int ret = OB_SUCCESS;
+
+      if (!inited_)
+      {
+        TBSYS_LOG(INFO, "not inited");
+        ret = OB_NOT_INIT;
+      }
+      else if (OB_SUCCESS != (ret = kv_cache_.enlarge_total_size(cache_mem_size)))
+      {
+        TBSYS_LOG(WARN, "enlarge total block cache size of kv cache fail");
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "success enlarge block cache size to %ld", cache_mem_size);
       }
 
       return ret;
@@ -170,16 +189,22 @@ namespace oceanbase
           buffer_handle.block_cache_ = this;
           buffer_handle.buffer_ = output_value.buffer;
           ret = static_cast<int>(nbyte);
-          INC_STAT(table_id, INDEX_BLOCK_CACHE_HIT, 1);
+#ifndef _SSTABLE_NO_STAT_
+          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_CACHE_HIT, 1);
+#endif
         }
         else
         {
-          INC_STAT(table_id, INDEX_BLOCK_CACHE_MISS, 1);
+#ifndef _SSTABLE_NO_STAT_
+          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_CACHE_MISS, 1);
+#endif
           status = read_record(*fileinfo_cache_, sstable_id, offset, nbyte, buffer);
           if (OB_SUCCESS == status && NULL != buffer)
           {
-            INC_STAT(table_id, INDEX_DISK_IO_NUM, 1); 
-            INC_STAT(table_id, INDEX_DISK_IO_BYTES, nbyte); 
+#ifndef _SSTABLE_NO_STAT_
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_NUM, 1); 
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_BYTES, nbyte); 
+#endif
             input_value.nbyte = nbyte;
             input_value.buffer = const_cast<char*>(buffer);
 
@@ -261,7 +286,9 @@ namespace oceanbase
           buffer_handle.block_cache_ = this;
           buffer_handle.buffer_ = output_value.buffer;
           ret = static_cast<int>(data_index.size);
-          INC_STAT(table_id, INDEX_BLOCK_CACHE_HIT, 1);
+#ifndef _SSTABLE_NO_STAT_
+          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_CACHE_HIT, 1);
+#endif
         }
         else
         {
@@ -321,10 +348,11 @@ namespace oceanbase
             status = read_record(*fileinfo_cache_, sstable_id, 
                 readahead_offset, readahead_size, buffer);
 
-            INC_STAT(table_id, INDEX_BLOCK_CACHE_MISS, 1);
-            INC_STAT(table_id, INDEX_DISK_IO_NUM, 1); 
-            INC_STAT(table_id, INDEX_DISK_IO_BYTES, readahead_size);
-            
+#ifndef _SSTABLE_NO_STAT_
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_CACHE_MISS, 1);
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_NUM, 1); 
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_BYTES, readahead_size);
+#endif            
             ObIOStat stat;
             stat.total_read_size_ = readahead_size;
             stat.total_read_times_ = 1;
@@ -524,13 +552,22 @@ namespace oceanbase
           ret_size = static_cast<int32_t>(nbyte);
           if (from_cache)
           {
-            INC_STAT(table_id, INDEX_BLOCK_CACHE_HIT, 1);
+#ifndef _SSTABLE_NO_STAT_
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_CACHE_HIT, 1);
+#endif
           }
           else
           {
-            INC_STAT(table_id, INDEX_BLOCK_CACHE_MISS, 1);
-            INC_STAT(table_id, INDEX_DISK_IO_NUM, 1); 
-            INC_STAT(table_id, INDEX_DISK_IO_BYTES, nbyte); 
+#ifndef _SSTABLE_NO_STAT_
+            //daily merge doesn't read data from sstable and copy to cache,
+            //so it needn't update cache miss stat 
+            if (aio_buf_mgr->is_copy2cache())
+            {
+              OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_CACHE_MISS, 1);
+            }
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_NUM, 1); 
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_BYTES, nbyte); 
+#endif
           }
         }
         else

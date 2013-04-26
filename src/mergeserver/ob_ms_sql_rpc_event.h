@@ -14,7 +14,7 @@ namespace oceanbase
 
   namespace mergeserver
   {
-    class ObMsSqlRequestEvent;
+    class ObMsSqlRequest;
     class ObMsSqlRpcEvent:public ObCommonSqlRpcEvent
     {
     public:
@@ -25,21 +25,24 @@ namespace oceanbase
       };
       ObMsSqlRpcEvent();
       virtual ~ObMsSqlRpcEvent();
-    
+
     public:
       // reset stat for reuse
       void reset(void);
-      
+      void invalidate(void);
+
       /// client for request event check
       uint64_t get_client_id(void) const;
-      const ObMsSqlRequestEvent * get_client_request(void) const;
+      const ObMsSqlRequest * get_client_request(void) const;
 
       // set eventid and client request in the init step
-      virtual int init(const uint64_t client_id, ObMsSqlRequestEvent * request);
+      virtual int init(const uint64_t client_id, ObMsSqlRequest * request);
 
       /// handle the response of read param
-      virtual tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Packet * packet, void *args);
-    
+      //virtual tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Packet * packet, void *args);
+
+      int handle_packet(common::ObPacket* packet, void* args);
+
       /// print info for debug
       void print_info(FILE * file) const;
 
@@ -59,30 +62,39 @@ namespace oceanbase
       {
         return timeout_us_;
       }
-      
+      void set_timestamp(const int64_t timestamp)
+      {
+        timestamp_ = timestamp;
+      }
+      int64_t get_timestamp()const
+      {
+        return timestamp_;
+      }
+      void lock() // be carefull!!
+      {
+        lock_.lock();
+      }
     private:
       // check inner stat
       inline bool check_inner_stat(void) const;
-      
-      // deserialize the response packet 
+
+      // deserialize the response packet
       int deserialize_packet(common::ObPacket & packet, common::ObNewScanner & result);
-      
+
       // parse the packet
-      int parse_packet(tbnet::Packet * packet, void * args);
+      int parse_packet(common::ObPacket * packet, void * args);
 
     protected:
+      int32_t magic_;
       int32_t req_type_;
       // the request id
       uint64_t client_request_id_;
-      ObMsSqlRequestEvent * client_request_;
+      ObMsSqlRequest * client_request_;
+      // wait delayed return packet
+      tbsys::CThreadMutex lock_;
       int64_t timeout_us_;
+      int64_t timestamp_;
     };
-    
-    bool ObMsSqlRpcEvent::check_inner_stat(void) const
-    {
-      return (client_request_ != NULL);
-    }
-
   }
 }
 

@@ -36,6 +36,7 @@ namespace oceanbase
         int dump_for_debug() const;
         int64_t get_start_id() const;
         int64_t get_end_id() const;
+        int64_t to_string(char* buf, const int64_t len) const;
       protected:
         int get_next_entry(const int64_t pos, int64_t& next_pos, int64_t& log_id) const;
       private:

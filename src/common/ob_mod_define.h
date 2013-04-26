@@ -72,7 +72,12 @@ namespace oceanbase
         OB_TSI_FACTORY,
         OB_THREAD_OBJPOOL,
         OB_ROW_COMPACTION,
+        OB_COMMON_COMPACTOR,
         OB_SQL_RPC_SCAN,
+        OB_SQL_RPC_GET,
+        OB_COMMON_ARRAY,
+        OB_LIGHTY_QUEUE,
+        OB_SEQ_QUEUE,
 
         OB_FILE_DIRECTOR_UTIL,
         OB_FETCH_RUNABLE,
@@ -80,10 +85,10 @@ namespace oceanbase
         OB_SCAN_PARAM,
         OB_MUTATOR,
         OB_SCANNER,
-        OB_LOG_WRITER,
-        OB_SINGLE_LOG_READER,
         OB_BUFFER,
         OB_THREAD_STORE,
+        OB_LOG_WRITER,
+        OB_SINGLE_LOG_READER,
         OB_REGEX,
         OB_SLAB,
         OB_SLAVE_MGR,
@@ -92,6 +97,11 @@ namespace oceanbase
         OB_HASH_NODE,
         OB_PAGE_ARENA,
         OB_NB_ACCESSOR,
+        OB_TP_PAGE_ARENA,
+        OB_SCHEMA,
+        OB_ROW_ITER_ADAPTOR,
+        OB_WAITABLE_POOL,
+        OB_ASYNC_FILE_APPENDER,
 
        // mergeserver modules
         OB_MS_CELL_ARRAY,
@@ -102,6 +112,7 @@ namespace oceanbase
         OB_MS_REQUEST_EVENT,
         OB_MS_RPC_EVENT,
         OB_MS_GET_EVENT,
+        OB_MS_SERVICE_FUNC,
 
         // updateserver modules
         OB_UPS_ENGINE,
@@ -110,19 +121,44 @@ namespace oceanbase
         OB_UPS_SCHEMA,
         OB_UPS_RESOURCE_POOL_NODE,
         OB_UPS_RESOURCE_POOL_ARRAY,
+        OB_UPS_PARAM_DATA,
+        OB_UPS_SESSION_CTX,
+        OB_UPS_LOG_REPLAY_WORKER,
+        OB_UPS_TRANS_EXECUTOR_TASK,
+        OB_UPS_RESULT,
+        OB_UPS_PHYPLAN_ALLOCATOR,
 
         // chunkserver modules
         OB_CS_SSTABLE_READER,
         OB_CS_TABLET_IMAGE,
         OB_CS_IMPORT_SSTABLE,
+        OB_CS_SERVICE_FUNC,
 
         // sstable modules
         OB_SSTABLE_AIO,
-        OB_SSTABLE_EGT_SCAN,
+        OB_SSTABLE_GET_SCAN,
         OB_SSTABLE_WRITER,
         OB_SSTABLE_READER,
 
+        // obmysql modules
+        OB_MYSQL_PACKET,
         OB_COMPACTSSTABLE_WRITER,
+
+        // rootserver modules
+        OB_RS_ROOT_TABLE,
+        OB_RS_TABLET_MANAGER,
+        OB_RS_SERVER_MANAGER,
+        OB_RS_SCHEMA_MANAGER,
+
+        // sql modules
+        OB_SQL_PARSER,
+        OB_SQL_TRANSFORMER,
+        OB_SQL_SESSION,
+        OB_SQL_ROW_STORE,
+        OB_SQL_EXECUTER,
+        OB_SQL_SCAN_PARAM,
+        OB_SQL_GET_PARAM,
+        OB_SQL_RPC_REQUEST,
 
         OB_MOD_END
       };
@@ -139,7 +175,12 @@ namespace oceanbase
       ADD_MOD(OB_TSI_FACTORY);
       ADD_MOD(OB_THREAD_OBJPOOL);
       ADD_MOD(OB_ROW_COMPACTION);
+      ADD_MOD(OB_COMMON_COMPACTOR);
       ADD_MOD(OB_SQL_RPC_SCAN);
+      ADD_MOD(OB_SQL_RPC_GET);
+      ADD_MOD(OB_COMMON_ARRAY);
+      ADD_MOD(OB_LIGHTY_QUEUE);
+      ADD_MOD(OB_SEQ_QUEUE);
       ADD_MOD(OB_FILE_DIRECTOR_UTIL);
       ADD_MOD(OB_FETCH_RUNABLE);
       ADD_MOD(OB_GET_PARAM);
@@ -158,8 +199,11 @@ namespace oceanbase
       ADD_MOD(OB_HASH_NODE);
       ADD_MOD(OB_PAGE_ARENA);
       ADD_MOD(OB_NB_ACCESSOR);
-      ADD_MOD(OB_BUFFER);
-      ADD_MOD(OB_THREAD_STORE);
+      ADD_MOD(OB_TP_PAGE_ARENA);
+      ADD_MOD(OB_SCHEMA);
+      ADD_MOD(OB_ROW_ITER_ADAPTOR);
+      ADD_MOD(OB_WAITABLE_POOL);
+      ADD_MOD(OB_ASYNC_FILE_APPENDER);
 
       ADD_MOD(OB_MS_CELL_ARRAY);
       ADD_MOD(OB_MS_LOCATION_CACHE);
@@ -169,6 +213,7 @@ namespace oceanbase
       ADD_MOD(OB_MS_REQUEST_EVENT);
       ADD_MOD(OB_MS_RPC_EVENT);
       ADD_MOD(OB_MS_GET_EVENT);
+      ADD_MOD(OB_MS_SERVICE_FUNC);
 
       ADD_MOD(OB_UPS_ENGINE);
       ADD_MOD(OB_UPS_MEMTABLE);
@@ -176,16 +221,39 @@ namespace oceanbase
       ADD_MOD(OB_UPS_SCHEMA);
       ADD_MOD(OB_UPS_RESOURCE_POOL_NODE);
       ADD_MOD(OB_UPS_RESOURCE_POOL_ARRAY);
+      ADD_MOD(OB_UPS_PARAM_DATA);
+      ADD_MOD(OB_UPS_SESSION_CTX);
+      ADD_MOD(OB_UPS_LOG_REPLAY_WORKER);
+      ADD_MOD(OB_UPS_TRANS_EXECUTOR_TASK);
+      ADD_MOD(OB_UPS_RESULT);
+      ADD_MOD(OB_UPS_PHYPLAN_ALLOCATOR);
 
       ADD_MOD(OB_CS_SSTABLE_READER);
       ADD_MOD(OB_CS_TABLET_IMAGE);
       ADD_MOD(OB_CS_IMPORT_SSTABLE);
+      ADD_MOD(OB_CS_SERVICE_FUNC);
 
       ADD_MOD(OB_SSTABLE_AIO);
-      ADD_MOD(OB_SSTABLE_EGT_SCAN);
+      ADD_MOD(OB_SSTABLE_GET_SCAN);
       ADD_MOD(OB_SSTABLE_WRITER);
       ADD_MOD(OB_SSTABLE_READER);
+
+      ADD_MOD(OB_MYSQL_PACKET);
       ADD_MOD(OB_COMPACTSSTABLE_WRITER);
+
+      ADD_MOD(OB_RS_ROOT_TABLE);
+      ADD_MOD(OB_RS_TABLET_MANAGER);
+      ADD_MOD(OB_RS_SERVER_MANAGER);
+      ADD_MOD(OB_RS_SCHEMA_MANAGER);
+
+      ADD_MOD(OB_SQL_PARSER);
+      ADD_MOD(OB_SQL_TRANSFORMER);
+      ADD_MOD(OB_SQL_SESSION);
+      ADD_MOD(OB_SQL_ROW_STORE);
+      ADD_MOD(OB_SQL_EXECUTER);
+      ADD_MOD(OB_SQL_SCAN_PARAM);
+      ADD_MOD(OB_SQL_GET_PARAM);
+      ADD_MOD(OB_SQL_RPC_REQUEST);
 
       ADD_MOD(OB_MOD_END);
     }

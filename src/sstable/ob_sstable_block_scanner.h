@@ -20,43 +20,20 @@
 #include "common/ob_define.h"
 #include "common/ob_string.h"
 #include "common/ob_common_param.h"
+#include "common/ob_rowkey.h"
+#include "common/ob_range2.h"
 #include "ob_sstable_block_reader.h"
+#include "ob_scan_column_indexes.h"
 
 namespace oceanbase
 {
   namespace sstable
   {
+    class ObSSTableScanParam;
+    class ObSSTableReader;
     class ObScanColumnIndexes;
     class ObSSTableBlockScanner
     {
-      public:
-        struct BlockData
-        {
-          char* internal_buffer_;
-          int64_t internal_bufsiz_;
-          const char* data_buffer_;
-          int64_t data_bufsiz_;
-          int64_t store_style_;
-
-          BlockData() 
-            :  internal_buffer_(NULL), internal_bufsiz_(0), 
-            data_buffer_(NULL),  data_bufsiz_(0), store_style_(0) 
-          {
-          }
-
-          BlockData(char* ib, const int64_t ibsz, 
-              const char* db, const int64_t dbsz, const int64_t store_style)
-            : internal_buffer_(ib), internal_bufsiz_(ibsz), 
-            data_buffer_(db),  data_bufsiz_(dbsz), store_style_(store_style)
-          {
-          }
-
-          inline bool available() const 
-          {
-            return NULL != internal_buffer_ && 0 < internal_bufsiz_ 
-              && NULL != data_buffer_ &&  0 < data_bufsiz_ && 0 < store_style_;
-          }
-        };
       public:
         ObSSTableBlockScanner(const ObScanColumnIndexes& column_indexes);
         ~ObSSTableBlockScanner();
@@ -106,6 +83,15 @@ namespace oceanbase
           return ret;
         }
 
+        inline int is_row_finished(bool* is_row_finished)
+        {
+          if (NULL != is_row_finished) 
+          {
+            *is_row_finished = is_row_finished_;
+          }
+          return common::OB_SUCCESS;
+        }
+
         /**
          * @param [in] range scan range(start key, end key, border flag).
          * @param [in] block_data_buf sstable block data buffer.
@@ -115,20 +101,24 @@ namespace oceanbase
          *                             doesn't exit  
          * @return OB_SUCCESS on success, otherwise failed.
          */
-        int set_scan_param(const oceanbase::common::ObRange& range, 
-            const bool is_reverse_scan, const BlockData& block_data, 
-            bool &need_looking_forward, bool not_exit_col_ret_nop = false);
+        int set_scan_param(
+            const common::ObNewRange& range,
+            const bool is_reverse_scan,
+            const ObSSTableBlockReader::BlockDataDesc& data_desc,
+            const ObSSTableBlockReader::BlockData& block_data, 
+            bool &need_looking_forward, 
+            bool not_exit_col_ret_nop = false);
 
       private:
         typedef ObSSTableBlockReader::const_iterator const_iterator;
         typedef ObSSTableBlockReader::iterator iterator;
       private:
         int load_current_row(const_iterator row_index);
-        int store_sparse_column(const int64_t column_index);
-        int store_current_cell(const int64_t column_index);
+        int store_sparse_column(const ObScanColumnIndexes::Column & column);
+        int store_dense_column(const ObScanColumnIndexes::Column & column);
+        int store_current_cell(const ObScanColumnIndexes::Column & column);
         int store_and_advance_column();
-        int get_current_column_index(const int64_t cursor, 
-            uint64_t& column_id, int64_t& column_index) const;
+        int get_current_column_index(const int64_t cursor, ObScanColumnIndexes::Column & column) const;
 
         void next_row();
         bool start_of_block();
@@ -137,9 +127,9 @@ namespace oceanbase
         int initialize(const bool is_reverse_scan, const int64_t store_style, 
           const bool not_exit_col_ret_nop);
 
-        int locate_start_pos(const common::ObRange& range,
+        int locate_start_pos(const common::ObNewRange& range,
             const_iterator& start_iterator, bool& need_looking_forward);
-        int locate_end_pos(const common::ObRange& range,
+        int locate_end_pos(const common::ObNewRange& range,
             const_iterator& last_iterator, bool& need_looking_forward);
 
       private:
@@ -150,6 +140,7 @@ namespace oceanbase
         int64_t sstable_data_store_style_;
         bool    is_reverse_scan_;
         bool    is_row_changed_;
+        bool    is_row_finished_;
         bool    handled_del_row_;
         bool    not_exit_col_ret_nop_;
 
@@ -162,6 +153,8 @@ namespace oceanbase
         const_iterator row_last_index_;
         
         common::ObCellInfo current_cell_info_;
+        common::ObRowkey current_rowkey_;
+        common::ObMemBuf rowkey_buffer_;
         common::ObObj current_ids_[common::OB_MAX_COLUMN_NUMBER];
         common::ObObj current_columns_[common::OB_MAX_COLUMN_NUMBER];
 

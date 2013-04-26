@@ -42,8 +42,8 @@ int ObParamDecoder::decode_cell(const bool is_ext, const ObCellInfo & org_cell,
     {
       decoded_cell.table_id_ = table_schema->get_table_id();
       // delete row is already using this column id
-      // using OB_MAX_COLUMN_ID for exist type
-      decoded_cell.column_id_ = OB_MAX_COLUMN_ID;
+      // using OB_ALL_MAX_COLUMN_ID for exist type
+      decoded_cell.column_id_ = OB_ALL_MAX_COLUMN_ID;
       decoded_cell.row_key_ = org_cell.row_key_;
       decoded_cell.value_ = org_cell.value_;
     }

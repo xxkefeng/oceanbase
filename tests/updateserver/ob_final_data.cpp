@@ -61,13 +61,13 @@ ObFinalResult::~ObFinalResult()
   cell_array_->clear();
   delete row_infos_;
   delete cell_array_;
-}  
+}
 
 int ObFinalResult::apply_join(ObSchemaManager &schema_mgr,
-                              oceanbase::common::ObCellInfo& left_cell, 
+                              oceanbase::common::ObCellInfo& left_cell,
                               const oceanbase::common::ObJoinInfo &join_info)
 {
-  int err = OB_SUCCESS; 
+  int err = OB_SUCCESS;
   ObCellInfo get_cell;
   const ObSchema *right_schema = NULL;
   uint64_t right_table_id = OB_INVALID_ID;
@@ -87,7 +87,7 @@ int ObFinalResult::apply_join(ObSchemaManager &schema_mgr,
   {
     right_key_end_pos += 1;
   }
-  get_cell.row_key_.assign(left_cell.row_key_.ptr() + right_key_start_pos, 
+  get_cell.row_key_.assign(left_cell.row_key_.ptr() + right_key_start_pos,
                            right_key_end_pos - right_key_start_pos);
   right_table_id  =  join_info.get_table_id_joined();
   right_column_id =  join_info.find_right_column_id(left_cell.column_id_);
@@ -101,7 +101,7 @@ int ObFinalResult::apply_join(ObSchemaManager &schema_mgr,
   {
     const ObColumnSchema * column_info = NULL;
     get_cell.table_name_.assign(const_cast<char*>(right_schema->get_table_name()),
-                                strlen(right_schema->get_table_name())); 
+                                strlen(right_schema->get_table_name()));
     column_info = right_schema->find_column_info(right_column_id);
     if (NULL == column_info)
     {
@@ -110,7 +110,7 @@ int ObFinalResult::apply_join(ObSchemaManager &schema_mgr,
     }
     if (OB_SUCCESS == err)
     {
-      get_cell.column_name_.assign(const_cast<char*>(column_info->get_name()), 
+      get_cell.column_name_.assign(const_cast<char*>(column_info->get_name()),
                                    strlen(column_info->get_name()));
       err = get_param.add_cell(get_cell);
     }
@@ -196,11 +196,11 @@ int ObFinalResult::parse_from_file(const char *  filename, const char *schema_fn
     }
     if (OB_SUCCESS == err && value_type != "int")
     {
-      TBSYS_LOG(WARN,"value type error [line_number:%lld,value_type:%s]", 
+      TBSYS_LOG(WARN,"value type error [line_number:%lld,value_type:%s]",
                 line_number, value_type.c_str());
       err = OB_INVALID_ARGUMENT;
     }
-    if (OB_SUCCESS == err 
+    if (OB_SUCCESS == err
         && op_type != "null"
         && op_type != "row_not_exist"
         && op_type != "noop"
@@ -210,7 +210,7 @@ int ObFinalResult::parse_from_file(const char *  filename, const char *schema_fn
         && op_type != "del_row"
        )
     {
-      TBSYS_LOG(WARN,"optype error [line_number:%lld,optype:%s]", 
+      TBSYS_LOG(WARN,"optype error [line_number:%lld,optype:%s]",
                 line_number, op_type.c_str());
       err = OB_INVALID_ARGUMENT;
     }
@@ -293,7 +293,7 @@ int ObFinalResult::add_cell(const ObCellInfo & add_cell)
   row_info.row_key_ = add_cell.row_key_;
   map<ObRowInfo, vector<ObCellInfo> >::iterator target = row_infos_->find(row_info);
   ObCellInfo *cell_out = NULL;
-  err = cell_array_->append(add_cell, cell_out); 
+  err = cell_array_->append(add_cell, cell_out);
   if (OB_SUCCESS == err)
   {
     if (ObActionFlag::OP_DEL_ROW == cell_out->value_.get_ext()
@@ -322,7 +322,7 @@ int ObFinalResult::add_cell(const ObCellInfo & add_cell)
           TBSYS_LOG(WARN,"unexpected error");
           err = OB_ERR_UNEXPECTED;
         }
-        if (OB_SUCCESS == err 
+        if (OB_SUCCESS == err
             && ObActionFlag::OP_ROW_DOES_NOT_EXIST != cell_out->value_.get_ext()
             && ObActionFlag::OP_DEL_ROW != cell_out->value_.get_ext())
         {
@@ -347,16 +347,16 @@ int ObFinalResult::get(const ObGetParam &get_param, ObScanner &scanner,bool ret_
     row_info.row_key_ = get_param[get_idx]->row_key_;
     cur_cell = *(get_param[get_idx]);
     target = row_infos_->lower_bound(row_info);
-    if (get_idx > 0 
-        && prev_row_not_exist 
+    if (get_idx > 0
+        && prev_row_not_exist
         && get_param[get_idx]->table_name_ == get_param[get_idx-1]->table_name_
         && get_param[get_idx]->row_key_ == get_param[get_idx-1]->row_key_
        )
     {
       continue;
     }
-    if (row_infos_->end() ==  target 
-        || row_info < target->first  
+    if (row_infos_->end() ==  target
+        || row_info < target->first
         || target->second.size() == 0)
     {
       prev_row_not_exist = true;
@@ -393,7 +393,7 @@ int ObFinalResult::get(const ObGetParam &get_param, ObScanner &scanner,bool ret_
   return err;
 }
 
-int ObFinalResult::scan(const ObScanParam &scan_param, ObScanner &scanner) 
+int ObFinalResult::scan(const ObScanParam &scan_param, ObScanner &scanner)
 {
   UNUSED(scanner);
   int err = OB_SUCCESS;
@@ -408,11 +408,11 @@ int ObFinalResult::scan(const ObScanParam &scan_param, ObScanner &scanner)
   ObCellInfo cur_cell;
   start.table_name_ = scan_param.get_table_name();
   end.table_name_ = scan_param.get_table_name();
-  if (!scan_param.get_range()->border_flag_.is_min_value())
+  if (!scan_param.get_range()->start_key_.is_min_row())
   {
     start.row_key_ = scan_param.get_range()->start_key_;
   }
-  if (!scan_param.get_range()->border_flag_.is_max_value())
+  if (!scan_param.get_range()->end_key_.is_max_row())
   {
     end.row_key_ = scan_param.get_range()->end_key_;
   }
@@ -438,7 +438,7 @@ int ObFinalResult::scan(const ObScanParam &scan_param, ObScanner &scanner)
   }
   for (;start_it != end_it && OB_SUCCESS == err; start_it ++)
   {
-    for (int64_t scan_idx = 0; 
+    for (int64_t scan_idx = 0;
         scan_idx < scan_param.get_column_name_size() && OB_SUCCESS == err;
         scan_idx ++)
     {
@@ -465,7 +465,7 @@ int ObFinalResult::scan(const ObScanParam &scan_param, ObScanner &scanner)
 }
 
 
-bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner, 
+bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
                   ObFinalResult & local_result)
 {
   int err = OB_SUCCESS;
@@ -478,12 +478,12 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
   {
     TBSYS_LOG(WARN,"fail to get local result");
   }
-  for (int64_t get_idx = 0; 
+  for (int64_t get_idx = 0;
       get_idx < get_param.get_cell_size() && OB_SUCCESS == err;
       get_idx ++)
   {
     int ob_err = ob_scanner.next_cell();
-    int local_err = local_scanner.next_cell(); 
+    int local_err = local_scanner.next_cell();
     if (OB_ITER_END == ob_err && OB_ITER_END == local_err)
     {
       err = OB_SUCCESS;
@@ -529,7 +529,7 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
       {
         TBSYS_LOG(WARN,"ob result table name error [idx:%lld,ob.table_name_:%.*s,"
                   "param.table_name_:%.*s]", get_idx,ob_cell->table_name_.length(),
-                  ob_cell->table_name_.ptr(), get_param[get_idx]->table_name_.length(), 
+                  ob_cell->table_name_.ptr(), get_param[get_idx]->table_name_.length(),
                   get_param[get_idx]->table_name_.ptr());
         err = OB_INVALID_ARGUMENT;
       }
@@ -537,7 +537,7 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
       {
         TBSYS_LOG(WARN,"ob result rowkey error [idx:%lld,ob.row_key_:%.*s,"
                   "param.row_key_:%.*s]", get_idx,ob_cell->row_key_.length(),
-                  ob_cell->row_key_.ptr(), get_param[get_idx]->row_key_.length(), 
+                  ob_cell->row_key_.ptr(), get_param[get_idx]->row_key_.length(),
                   get_param[get_idx]->row_key_.ptr());
         err = OB_INVALID_ARGUMENT;
       }
@@ -545,17 +545,17 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
       {
         TBSYS_LOG(WARN,"ob result column name error [idx:%lld,ob.column_name_:%.*s,"
                   "param.column_name_:%.*s]", get_idx,ob_cell->column_name_.length(),
-                  ob_cell->column_name_.ptr(), get_param[get_idx]->column_name_.length(), 
+                  ob_cell->column_name_.ptr(), get_param[get_idx]->column_name_.length(),
                   get_param[get_idx]->column_name_.ptr());
         err = OB_INVALID_ARGUMENT;
-      } 
+      }
 
       /// check local result
       if (local_cell->table_name_ != get_param[get_idx]->table_name_)
       {
         TBSYS_LOG(WARN,"local result table name error [idx:%lld,ob.table_name_:%.*s,"
                   "param.table_name_:%.*s]", get_idx,local_cell->table_name_.length(),
-                  local_cell->table_name_.ptr(), get_param[get_idx]->table_name_.length(), 
+                  local_cell->table_name_.ptr(), get_param[get_idx]->table_name_.length(),
                   get_param[get_idx]->table_name_.ptr());
         err = OB_INVALID_ARGUMENT;
       }
@@ -563,7 +563,7 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
       {
         TBSYS_LOG(WARN,"local result rowkey error [idx:%lld,local.row_key_:%.*s,"
                   "param.row_key_:%.*s]", get_idx,local_cell->row_key_.length(),
-                  local_cell->row_key_.ptr(), get_param[get_idx]->row_key_.length(), 
+                  local_cell->row_key_.ptr(), get_param[get_idx]->row_key_.length(),
                   get_param[get_idx]->row_key_.ptr());
         err = OB_INVALID_ARGUMENT;
       }
@@ -571,26 +571,26 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
       {
         TBSYS_LOG(WARN,"local result column_name error [idx:%lld,local.column_name_:%.*s,"
                   "param.column_name_:%.*s]", get_idx,local_cell->column_name_.length(),
-                  local_cell->column_name_.ptr(), get_param[get_idx]->column_name_.length(), 
+                  local_cell->column_name_.ptr(), get_param[get_idx]->column_name_.length(),
                   get_param[get_idx]->column_name_.ptr());
         err = OB_INVALID_ARGUMENT;
       }
-      */ 
+      */
       TBSYS_LOG(DEBUG, "ob.table_name:%.*s,ob.rowkey:%.*s,ob.column_name:%.*s",
-                ob_cell->table_name_.length(),ob_cell->table_name_.ptr(),  
-                ob_cell->row_key_.length(),ob_cell->row_key_.ptr(),  
+                ob_cell->table_name_.length(),ob_cell->table_name_.ptr(),
+                ob_cell->row_key_.length(),ob_cell->row_key_.ptr(),
                 ob_cell->column_name_.length(),ob_cell->column_name_.ptr()
                );
       TBSYS_LOG(DEBUG, "local.table_name:%.*s,local.rowkey:%.*s,local.column_name:%.*s",
-                local_cell->table_name_.length(),local_cell->table_name_.ptr(),  
-                local_cell->row_key_.length(),local_cell->row_key_.ptr(),  
+                local_cell->table_name_.length(),local_cell->table_name_.ptr(),
+                local_cell->row_key_.length(),local_cell->row_key_.ptr(),
                 local_cell->column_name_.length(),local_cell->column_name_.ptr()
                );
       if (local_cell->table_name_ != ob_cell->table_name_)
       {
         TBSYS_LOG(WARN,"table name not coincident [idx:%lld,ob.table_name_:%.*s,"
                   "local.table_name_:%.*s]", get_idx,ob_cell->table_name_.length(),
-                  ob_cell->table_name_.ptr(), local_cell->table_name_.length(), 
+                  ob_cell->table_name_.ptr(), local_cell->table_name_.length(),
                   local_cell->table_name_.ptr());
         err = OB_INVALID_ARGUMENT;
       }
@@ -598,7 +598,7 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
       {
         TBSYS_LOG(WARN,"rowkey not coincident [idx:%lld,ob.row_key_:%.*s,"
                   "local.row_key_:%.*s]", get_idx,ob_cell->row_key_.length(),
-                  ob_cell->row_key_.ptr(), local_cell->row_key_.length(), 
+                  ob_cell->row_key_.ptr(), local_cell->row_key_.length(),
                   local_cell->row_key_.ptr());
         err = OB_INVALID_ARGUMENT;
       }
@@ -606,7 +606,7 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
       {
         TBSYS_LOG(WARN,"column name not coincident [idx:%lld,ob.column_name_:%.*s,"
                   "local.column_name_:%.*s]", get_idx,ob_cell->column_name_.length(),
-                  ob_cell->column_name_.ptr(), local_cell->column_name_.length(), 
+                  ob_cell->column_name_.ptr(), local_cell->column_name_.length(),
                   local_cell->column_name_.ptr());
         err = OB_INVALID_ARGUMENT;
       }
@@ -626,13 +626,13 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
           if (ob_cell->value_.get_ext() != local_cell->value_.get_ext())
           {
             TBSYS_LOG(WARN,"ext not coincident [idx:%lld,ob.ext:%lld,"
-                      "local.ext:%lld]",get_idx, ob_cell->value_.get_ext(), 
+                      "local.ext:%lld]",get_idx, ob_cell->value_.get_ext(),
                       local_cell->value_.get_ext());
             err = OB_INVALID_ARGUMENT;
           }
           if (ob_cell->value_.get_ext() == 0  && OB_SUCCESS == err)
           {
-            if (ob_cell->value_.get_type() == ObNullType 
+            if (ob_cell->value_.get_type() == ObNullType
                 && ob_cell->value_.get_type() == local_cell->value_.get_type())
             {
               /// check pass
@@ -644,7 +644,7 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
                 err = local_cell->value_.get_int(local_value);
                 if (OB_SUCCESS != err)
                 {
-                  TBSYS_LOG(WARN,"fail to get int from local, ext:%lld,type:%d", 
+                  TBSYS_LOG(WARN,"fail to get int from local, ext:%lld,type:%d",
                             local_cell->value_.get_ext(),local_cell->value_.get_type());
                 }
                 else
@@ -657,7 +657,7 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
                 err = ob_cell->value_.get_int(ob_value);
                 if (OB_SUCCESS != err)
                 {
-                  TBSYS_LOG(WARN,"fail to get int from ob, ext:%lld,type:%d", 
+                  TBSYS_LOG(WARN,"fail to get int from ob, ext:%lld,type:%d",
                             ob_cell->value_.get_ext(),ob_cell->value_.get_type());
                 }
                 else
@@ -685,7 +685,7 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
         }
       }
     }
-  } 
+  }
 
   if (OB_SUCCESS == err && ob_scanner.next_cell() != OB_ITER_END)
   {
@@ -710,7 +710,7 @@ bool check_result(const ObGetParam &get_param,  ObScanner &ob_scanner,
   return res;
 }
 
-bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner, 
+bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
                   ObFinalResult & local_result)
 {
   int err = OB_SUCCESS;
@@ -746,7 +746,7 @@ bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
       }
       if (OB_SUCCESS != err)
       {
-        TBSYS_LOG(WARN,"fail to get cell from ob result [row_idx:%lld,idx:%lld]", 
+        TBSYS_LOG(WARN,"fail to get cell from ob result [row_idx:%lld,idx:%lld]",
                   row_number, scan_idx);
       }
       if (OB_SUCCESS == err)
@@ -773,7 +773,7 @@ bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
         }
         if (OB_SUCCESS != err)
         {
-          TBSYS_LOG(WARN,"fail to get cell from local result [row_idx:%lld,idx:%lld]", 
+          TBSYS_LOG(WARN,"fail to get cell from local result [row_idx:%lld,idx:%lld]",
                     row_number, scan_idx);
         }
       }
@@ -788,7 +788,7 @@ bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
         {
           TBSYS_LOG(WARN,"ob result table name error [row_idx:%lld,idx:%lld,ob.table_name_:%.*s,"
                     "param.table_name_:%.*s]", row_number, scan_idx,ob_cell->table_name_.length(),
-                    ob_cell->table_name_.ptr(), scan_param.get_table_name().length(), 
+                    ob_cell->table_name_.ptr(), scan_param.get_table_name().length(),
                     scan_param.get_table_name().ptr());
           err = OB_INVALID_ARGUMENT;
         }
@@ -797,7 +797,7 @@ bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
         {
           TBSYS_LOG(WARN,"ob result rowkey error [row_idx:%lld,idx:%lld,ob.column_name_:%.*s,"
                     "param.column_name_:%.*s]", row_number, scan_idx,ob_cell->column_name_.length(),
-                    ob_cell->column_name_.ptr(), scan_param.get_column_name()[scan_idx].length(), 
+                    ob_cell->column_name_.ptr(), scan_param.get_column_name()[scan_idx].length(),
                     scan_param.get_column_name()[scan_idx].ptr());
           err = OB_INVALID_ARGUMENT;
         }
@@ -806,7 +806,7 @@ bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
         {
           TBSYS_LOG(WARN,"ob result table name error [row_idx:%lld,idx:%lld,ob.table_name_:%.*s,"
                     "param.table_name_:%.*s]", row_number, scan_idx,local_cell->table_name_.length(),
-                    local_cell->table_name_.ptr(), scan_param.get_table_name().length(), 
+                    local_cell->table_name_.ptr(), scan_param.get_table_name().length(),
                     scan_param.get_table_name().ptr());
           err = OB_INVALID_ARGUMENT;
         }
@@ -815,7 +815,7 @@ bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
         {
           TBSYS_LOG(WARN,"ob result rowkey error [row_idx:%lld,idx:%lld,ob.column_name_:%.*s,"
                     "param.column_name_:%.*s]", row_number,scan_idx,local_cell->column_name_.length(),
-                    local_cell->column_name_.ptr(), scan_param.get_column_name()[scan_idx].length(), 
+                    local_cell->column_name_.ptr(), scan_param.get_column_name()[scan_idx].length(),
                     scan_param.get_column_name()[scan_idx].ptr());
           err = OB_INVALID_ARGUMENT;
         }
@@ -825,7 +825,7 @@ bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
         {
           TBSYS_LOG(WARN,"rowkey error [row_idx:%lld,idx:%lld,ob.row_key_:%.*s,"
                     "local.row_key_:%.*s]", row_number, scan_idx,ob_cell->row_key_.length(),
-                    ob_cell->row_key_.ptr(), local_cell->row_key_.length(), 
+                    ob_cell->row_key_.ptr(), local_cell->row_key_.length(),
                     local_cell->row_key_.ptr());
           err = OB_INVALID_ARGUMENT;
         }
@@ -846,7 +846,7 @@ bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
                       row_number, scan_idx, ob_cell->value_.get_ext(), local_cell->value_.get_ext());
             err = OB_INVALID_ARGUMENT;
           }
-          if (ob_cell->value_.get_type() == ObNullType 
+          if (ob_cell->value_.get_type() == ObNullType
               && ob_cell->value_.get_type() == local_cell->value_.get_type())
           {
             /// check pass
@@ -888,7 +888,7 @@ bool check_result(const ObScanParam &scan_param,  ObScanner &ob_scanner,
     }
 
     row_number ++;
-  } 
+  }
 
   if (OB_SUCCESS != err)
   {

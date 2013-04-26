@@ -16,7 +16,11 @@
 
 #include "utility.h"
 #include "ob_define.h"
+#include "easy_inet.h"
+#include "ob_rowkey.h"
+#include "ob_common_param.h"
 #include "ob_scanner.h"
+
 namespace oceanbase
 {
   namespace common
@@ -270,6 +274,17 @@ namespace oceanbase
       return bret;
     }
 
+    const char* get_file_path(const char* file_dir, const char* file_name)
+    {
+      static __thread char file_path[OB_MAX_FILE_NAME_LENGTH];
+      file_path[0] = '\0';
+      if (NULL != file_dir && NULL != file_path)
+      {
+        snprintf(file_path, sizeof(file_path), "%s/%s", file_dir, file_name);
+      }
+      return file_path;
+    }
+
     char* str_trim(char *str)
     {
       char *p = str, *sa = str;
@@ -305,7 +320,7 @@ namespace oceanbase
     {
       static const int64_t BUFFER_SIZE = 32;
       static __thread char buffers[2][BUFFER_SIZE];
-      static __thread int64_t i = 0;
+      static __thread uint64_t i = 0;
       char *buffer = buffers[i++ % 2];
       buffer[0] = '\0';
 
@@ -324,6 +339,16 @@ namespace oceanbase
       return buffer;
     }
 
+    const char *inet_ntoa_r(easy_addr_t addr)
+    {
+      static const int64_t BUFFER_SIZE = 64;
+      static __thread char buffers[2][BUFFER_SIZE];
+      static __thread uint64_t i = 0;
+      char *buffer = buffers[i++ % 2];
+      buffer[0] = '\0';
+      return easy_inet_addr_to_str(&addr, buffer, BUFFER_SIZE);
+    }
+
     void databuff_printf(char *buf, const int64_t buf_len, int64_t& pos, const char* fmt, ...)
     {
       if (NULL != buf && 0 <= pos && pos <= buf_len)
@@ -331,6 +356,7 @@ namespace oceanbase
         va_list args;
         va_start(args, fmt);
         int len = vsnprintf(buf+pos, buf_len-pos, fmt, args);
+        va_end(args);
         if (len < buf_len-pos)
         {
           pos += len;
@@ -363,10 +389,10 @@ namespace oceanbase
           ret = "double";
           break;
         case ObDateTimeType:
-          ret = "odatetime";
+          ret = "datetime";
           break;
         case ObPreciseDateTimeType:
-          ret = "datetime";
+          ret = "precisedatetime";
           break;
         case ObModifyTimeType:
           ret = "modifytime";
@@ -390,7 +416,7 @@ namespace oceanbase
     {
       static const int32_t BUFFER_SIZE = 1024;
       static __thread char buffer[2][BUFFER_SIZE];
-      static __thread int64_t i = 0;
+      static __thread uint64_t i = 0;
       buffer[i % 2][0] = '\0';
       struct tm time_struct;
       int64_t time_s = time_us / 1000000;
@@ -432,7 +458,7 @@ namespace oceanbase
           if (is_row_changed)
           {
             fprintf(fd, "\n");
-            print_rowkey(fd, cell->row_key_);
+            fprintf(fd, "%s", to_cstring(cell->row_key_));
             fprintf(fd, "|");
           }
           fprintf(fd, "%.*s ", cell->column_name_.length(),  cell->column_name_.ptr());
@@ -503,6 +529,81 @@ namespace oceanbase
       return x < y? y: x;
     }
 
+    int get_double_expand_size(int64_t &current_size, const int64_t limit_size)
+    {
+      int ret = OB_SUCCESS;
+      int64_t new_size = current_size << 1;
+      if (current_size > limit_size)
+      {
+        ret = OB_SIZE_OVERFLOW;
+      }
+      else if (new_size > limit_size)
+      {
+        current_size = limit_size;
+      }
+      else
+      {
+        current_size = new_size;
+      }
+      return ret;
+    }
+
+    easy_addr_t convert_addr_from_server(const ObServer *server)
+    {
+      int64_t server_id = server->get_ipv4_server_id();
+      uint32_t port = static_cast<uint32_t>(server_id >> 32 & 0xFFFFFFFF);
+      uint32_t ip = static_cast<uint32_t>(server_id & 0xFFFFFFFF);
+      char host[OB_SERVER_ADDR_STR_LEN];
+      snprintf(host, OB_SERVER_ADDR_STR_LEN, "%d.%d.%d.%d",
+               ip & 0xFF, (ip >> 8) & 0xFF,
+               (ip >> 16) & 0xFF, (ip >> 24) & 0xFF);
+      return easy_inet_str_to_addr(host, port);
+    }
+
+    int64_t convert_addr_to_server(easy_addr_t addr)
+    {
+      int64_t server_id;
+      char buffer[OB_SERVER_ADDR_STR_LEN];
+      easy_inet_addr_to_str(&addr, buffer, OB_SERVER_ADDR_STR_LEN);
+      int port = 0;
+      int x = 0;
+      char *tmp = strchr(buffer, ':');
+      if (NULL != tmp && tmp > buffer)
+      {
+        int64_t iplen = tmp - buffer;
+        char ip[OB_SERVER_ADDR_STR_LEN];
+        memcpy(ip, buffer, iplen);
+        ip[iplen] = 0;
+
+        x = inet_addr(ip);
+        if (x == (int)INADDR_NONE)
+        {
+          struct hostent *hp;
+          if (NULL == (hp = gethostbyname(ip)))
+          {
+            x = 0;
+          }
+          else
+          {
+            x = ((struct in_addr*)hp->h_addr)->s_addr;
+          }
+        }
+        //when ':' is not last char of buffer
+        if (iplen < OB_SERVER_ADDR_STR_LEN - 1)
+        {
+          port = atoi(tmp + 1);
+        }
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "no port information %s", buffer);
+      }
+      uint64_t lport = port;
+      server_id = lport << 32;
+      server_id = server_id | x;
+      return server_id;
+    }
+
     const char *print_string(const ObString &str)
     {
       static const int64_t BUFFER_SIZE = 16 * 1024;
@@ -515,7 +616,7 @@ namespace oceanbase
     {
       static const int64_t BUFFER_SIZE = 128 * 1024;
       static __thread char buffers[2][BUFFER_SIZE];
-      static __thread int64_t i = 0;
+      static __thread uint64_t i = 0;
       char *buffer = buffers[i++ % 2];
       buffer[0] = '\0';
       if (NULL != ci)
@@ -523,23 +624,21 @@ namespace oceanbase
         int32_t rowkey_len = 0;
         const char *rowkey_str = NULL;
         if (NULL != ci->row_key_.ptr()
-            && 0 != ci->row_key_.length()
-            && !str_isprint(ci->row_key_.ptr(), ci->row_key_.length()))
+            && 0 != ci->row_key_.length())
         {
-          char hex_buffer[BUFFER_SIZE] = "0x ";
-          common::hex_to_str(ci->row_key_.ptr(), ci->row_key_.length(), hex_buffer + strlen(hex_buffer), static_cast<int32_t>(BUFFER_SIZE - strlen(hex_buffer)));
+          char hex_buffer[BUFFER_SIZE];
+          rowkey_len = static_cast<int32_t>(ci->row_key_.to_string(hex_buffer, BUFFER_SIZE));
           rowkey_str = hex_buffer;
-          rowkey_len = static_cast<int32_t>(strlen(hex_buffer));
         }
         else
         {
-          rowkey_str = ci->row_key_.ptr();
-          rowkey_len = ci->row_key_.length();
+          rowkey_str = NULL;
+          rowkey_len = 0;
         }
         if (NULL == ext_info)
         {
           snprintf(buffer, BUFFER_SIZE, "table_id=%lu table_name=[%.*s] table_name_ptr=%p table_name_length=%d "
-                  "row_key=[%.*s] row_key_ptr=%p row_key_length=%d "
+                  "row_key=[%.*s] row_key_ptr=%p row_key_length=%ld "
                   "column_id=%lu column_name=[%.*s] column_name_ptr=%p column_name_length=%d "
                   "%s",
                   ci->table_id_, ci->table_name_.length(), ci->table_name_.ptr(), ci->table_name_.ptr(), ci->table_name_.length(),
@@ -550,7 +649,7 @@ namespace oceanbase
         else
         {
           snprintf(buffer, BUFFER_SIZE, "%s table_id=%lu table_name=[%.*s] table_name_ptr=%p table_name_length=%d "
-                  "row_key=[%.*s] row_key_ptr=%p row_key_length=%d "
+                  "row_key=[%.*s] row_key_ptr=%p row_key_length=%ld "
                   "column_id=%lu column_name=[%.*s] column_name_ptr=%p column_name_length=%d "
                   "%s",
                   ext_info,
@@ -563,93 +662,168 @@ namespace oceanbase
       return buffer;
     }
 
-    const char *range2str(const ObVersionRange &range)
+    void dump_scanner(const common::ObScanner &scanner, const int32_t log_level, const int32_t type)
+    {
+      ObCellInfo* ci = NULL;
+      int ret = OB_SUCCESS;
+      bool is_row_changed = false;
+      int64_t cell_num = 0;
+      int64_t row_num = 0;
+      int64_t pos = 0;
+      int64_t used = 0;
+      const int64_t row_bufsiz = 1024;
+      char row_buffer[row_bufsiz];
+
+      TBSYS_LOGGER.logMessage(TBSYS_LOG_NUM_LEVEL(log_level),
+          "size:%ld, cell:%ld, row:%ld",
+          scanner.get_size(), scanner.get_cell_num(), scanner.get_row_num());
+      if (type == 0) // dump by cell
+      {
+        ObScanner::Iterator iter = scanner.begin();
+        for (; iter != scanner.end(); ++iter, ++cell_num)
+        {
+          ret = iter.get_cell(&ci, &is_row_changed);
+          if (OB_SUCCESS == ret && NULL != ci)
+          {
+            TBSYS_LOGGER.logMessage(TBSYS_LOG_NUM_LEVEL(log_level),
+                "cell:%ld, row changed=%d, %s", cell_num, is_row_changed, print_cellinfo(ci));
+          }
+        }
+      }
+      else // dump by row
+      {
+        ObScanner::RowIterator iter = scanner.row_begin();
+        for (; iter != scanner.row_end(); ++iter, ++row_num)
+        {
+          ret = iter.get_row(&ci, &cell_num);
+          if (OB_SUCCESS != ret || NULL == ci || cell_num <= 0)
+            break;
+
+          pos = 0;
+          used = snprintf(row_buffer + pos, row_bufsiz - pos, "row:%ld:[%s]::", row_num, to_cstring(ci[0].row_key_));
+          pos += used;
+          if (pos + 1 > row_bufsiz) continue;
+
+          for (int64_t i = 0; i < cell_num; ++i)
+          {
+            used = snprintf(row_buffer + pos, row_bufsiz - pos, "column:[%ld][%.*s]:value[%s]%s",
+                ci[i].column_id_, ci[i].column_name_.length(), ci[i].column_name_.ptr(),
+                to_cstring(ci[i].value_), i < cell_num - 1 ? "|" : "");
+            pos += used;
+            if (pos + 1 > row_bufsiz) break;
+          }
+
+          TBSYS_LOGGER.logMessage(TBSYS_LOG_NUM_LEVEL(log_level), "%s", row_buffer);
+        }
+      }
+    }
+
+    const char *range2str(const ObVersionRange &version_range)
     {
       static const int64_t BUFFER_SIZE = 1024;
       static __thread char buffers[2][BUFFER_SIZE];
-      static __thread int64_t i = 0;
+      static __thread uint64_t i = 0;
       char *buffer = buffers[i++ % 2];
       buffer[0] = '\0';
-      const char *start_bound = range.border_flag_.inclusive_start() ? "[" : "(";
-      const char *end_bound = range.border_flag_.inclusive_end() ? "]" : ")";
-      if (range.border_flag_.is_min_value())
+      const char *start_bound = version_range.border_flag_.inclusive_start() ? "[" : "(";
+      const char *end_bound = version_range.border_flag_.inclusive_end() ? "]" : ")";
+      if (version_range.border_flag_.is_min_value())
       {
-        if (range.border_flag_.is_max_value())
+        if (version_range.border_flag_.is_max_value())
         {
           snprintf(buffer, BUFFER_SIZE, "%sMIN,MAX%s", start_bound, end_bound);
         }
         else
         {
-          snprintf(buffer, BUFFER_SIZE, "%sMIN,%d-%hd-%hd%s", start_bound, range.end_version_.major_,
-                   range.end_version_.minor_,range.end_version_.is_final_minor_, end_bound);
+          snprintf(buffer, BUFFER_SIZE, "%sMIN,%ld%s", start_bound, version_range.end_version_.version_, end_bound);
         }
       }
       else
       {
-        if (range.border_flag_.is_max_value())
+        if (version_range.border_flag_.is_max_value())
         {
-          snprintf(buffer, BUFFER_SIZE, "%s%d-%hd-%hd,MAX%s", start_bound,range.start_version_.major_,
-                   range.start_version_.minor_,range.start_version_.is_final_minor_, end_bound);          
+          snprintf(buffer, BUFFER_SIZE, "%s%ld,MAX%s", start_bound, version_range.start_version_.version_, end_bound);
         }
         else
         {
-          snprintf(buffer, BUFFER_SIZE, "%s%d-%hd-%hd,%d-%hd-%hd%s", start_bound, range.start_version_.major_,
-                   range.start_version_.minor_,range.start_version_.is_final_minor_,
-                   range.end_version_.major_,range.end_version_.minor_,range.start_version_.is_final_minor_,
-                   end_bound);
+          snprintf(buffer, BUFFER_SIZE, "%s%ld,%ld%s", start_bound, version_range.start_version_.version_,
+              version_range.end_version_.version_, end_bound);
         }
       }
       return buffer;
     }
 
-    const char *scan_range2str(const common::ObRange &scan_range)
+    const char *scan_range2str(const common::ObNewRange &scan_range)
     {
       static const int64_t BUFFER_SIZE = 1024;
       static __thread char buffers[2][BUFFER_SIZE];
-      static __thread int64_t i = 0;
+      static __thread uint64_t i = 0;
       char *buffer = buffers[i++ % 2];
       buffer[0] = '\0';
       const char *start_bound = scan_range.border_flag_.inclusive_start() ? "[" : "(";
       const char *end_bound = scan_range.border_flag_.inclusive_end() ? "]" : ")";
-      if (scan_range.border_flag_.is_min_value())
+      if (scan_range.start_key_.is_min_row())
       {
-        if (scan_range.border_flag_.is_max_value())
+        if (scan_range.end_key_.is_max_row())
         {
           snprintf(buffer, BUFFER_SIZE, "table_id=%lu %sMIN,MAX%s", scan_range.table_id_, start_bound, end_bound);
         }
         else
         {
           char hex_buffer[BUFFER_SIZE] = {'\0'};
-          hex_to_str(scan_range.end_key_.ptr(), scan_range.end_key_.length(), hex_buffer, BUFFER_SIZE);
+          scan_range.end_key_.to_string(hex_buffer, BUFFER_SIZE);
           snprintf(buffer, BUFFER_SIZE, "table_id=%lu %sMIN,%s%s", scan_range.table_id_, start_bound, hex_buffer, end_bound);
         }
       }
       else
       {
-        if (scan_range.border_flag_.is_max_value())
+        if (scan_range.end_key_.is_max_row())
         {
           char hex_buffer[BUFFER_SIZE] = {'\0'};
-          hex_to_str(scan_range.start_key_.ptr(), scan_range.start_key_.length(), hex_buffer, BUFFER_SIZE);
+          scan_range.start_key_.to_string(hex_buffer, BUFFER_SIZE);
           snprintf(buffer, BUFFER_SIZE, "table_id=%lu %s%s,MAX%s", scan_range.table_id_, start_bound, hex_buffer, end_bound);
         }
         else
         {
           char hex_buffers[2][BUFFER_SIZE];
           hex_buffers[0][0] = '\0';
-          hex_to_str(scan_range.start_key_.ptr(), scan_range.start_key_.length(), hex_buffers[0], BUFFER_SIZE);
+          scan_range.start_key_.to_string(hex_buffers[0], BUFFER_SIZE);
           hex_buffers[1][0] = '\0';
-          hex_to_str(scan_range.end_key_.ptr(), scan_range.end_key_.length(), hex_buffers[1], BUFFER_SIZE);
+          scan_range.end_key_.to_string(hex_buffers[1], BUFFER_SIZE);
           snprintf(buffer, BUFFER_SIZE, "table_id=%lu %s%s,%s%s", scan_range.table_id_, start_bound, hex_buffers[0], hex_buffers[1], end_bound);
         }
       }
       return buffer;
     }
 
+    const char * print_role(const ObRole role)
+    {
+      const char * role_string = NULL;
+      switch(role)
+      {
+      case OB_CHUNKSERVER:
+        role_string = "chunkserver";
+        break;
+      case OB_MERGESERVER:
+        role_string = "mergeserver";
+        break;
+      case OB_ROOTSERVER:
+        role_string = "rootserver";
+        break;
+      case OB_UPDATESERVER:
+        role_string = "updateserver";
+        break;
+      default:
+        role_string = "invalid_role";
+      }
+      return role_string;
+    }
+
     const char *print_obj(const ObObj &obj)
     {
       static const int64_t BUFFER_SIZE = 128 * 1024;
       static __thread char buffers[2][BUFFER_SIZE];
-      static __thread int64_t i = 0;
+      static __thread uint64_t i = 0;
       char *buffer = buffers[i++ % 2];
       buffer[0] = '\0';
       switch (obj.get_type())
@@ -663,6 +837,22 @@ namespace oceanbase
             int64_t tmp = 0;
             obj.get_int(tmp, is_add);
             snprintf(buffer, BUFFER_SIZE, "obj_type=int value=%ld is_add=%s", tmp, STR_BOOL(is_add));
+          }
+          break;
+        case ObFloatType:
+          {
+            bool is_add = false;
+            float tmp = 0.0;
+            obj.get_float(tmp, is_add);
+            snprintf(buffer, BUFFER_SIZE, "obj_type=float value=%f is_add=%s", tmp, STR_BOOL(is_add));
+          }
+          break;
+        case ObDoubleType:
+          {
+            bool is_add = false;
+            double tmp = 0.0;
+            obj.get_double(tmp, is_add);
+            snprintf(buffer, BUFFER_SIZE, "obj_type=double value=%lf is_add=%s", tmp, STR_BOOL(is_add));
           }
           break;
         case ObDateTimeType:
@@ -750,7 +940,7 @@ namespace oceanbase
       return bret;
     }
 
-    int replace_str(char* src_str, const int64_t src_str_buf_size, 
+    int replace_str(char* src_str, const int64_t src_str_buf_size,
       const char* match_str, const char* replace_str)
     {
       int ret                 = OB_SUCCESS;
@@ -760,7 +950,7 @@ namespace oceanbase
       const char* find_pos    = NULL;
       char new_str[OB_MAX_EXPIRE_CONDITION_LENGTH];
 
-      if (NULL == src_str || src_str_buf_size <= 0 
+      if (NULL == src_str || src_str_buf_size <= 0
           || NULL == match_str || NULL == replace_str)
       {
         TBSYS_LOG(WARN, "invalid param, src_str=%p, src_str_buf_size=%ld, "
@@ -774,7 +964,7 @@ namespace oceanbase
         replace_str_len = strlen(replace_str);
         while(NULL != find_pos)
         {
-          str_len = find_pos - src_str + replace_str_len 
+          str_len = find_pos - src_str + replace_str_len
             + strlen(find_pos + match_str_len);
           if (str_len >= OB_MAX_EXPIRE_CONDITION_LENGTH
               || str_len >= src_str_buf_size)
@@ -800,7 +990,23 @@ namespace oceanbase
 
       return ret;
     }
+
+    template <>
+    int64_t to_string<ObString>(const ObString &obj, char *buffer, const int64_t buffer_size)
+    {
+      snprintf(buffer, buffer_size, "0x ");
+      int64_t ret = common::hex_to_str(obj.ptr(), obj.length(), &buffer[3], static_cast<int32_t>(buffer_size) - 3) + 3;
+      if (ret >= buffer_size)
+      {
+        ret = buffer_size - 1;
+      }
+      return ret;
+    }
+
+    template <>
+    const char* to_cstring<const char*>(const char* const& str)
+    {
+      return str;
+    }
   } // end namespace common
 } // end namespace oceanbase
-
-

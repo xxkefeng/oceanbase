@@ -17,6 +17,7 @@
 #ifndef __OCEANBASE_CHUNKSERVER_OB_UPDATE_SERVER_H__
 #define __OCEANBASE_CHUNKSERVER_OB_UPDATE_SERVER_H__
 
+#include "easy_io_struct.h"
 #include "common/ob_single_server.h"
 #include "common/ob_packet_factory.h"
 #include "common/thread_buffer.h"
@@ -28,18 +29,22 @@
 #include "common/ob_packet_queue_thread.h"
 #include "common/priority_packet_queue_thread.h"
 #include "common/ob_rs_ups_message.h"
+#include "common/ob_cur_time.h"
 #include "ob_ups_slave_mgr.h"
 #include "common/ob_perm_components.h"
 #include "common/ob_login_mgr.h"
 #include "common/ob_pointer_array.h"
-
-#include "mergeserver/ob_ms_rpc_stub.h"
-#include "mergeserver/ob_ms_tablet_location.h"
-#include "mergeserver/ob_ms_schema_manager.h"
-
+#include "common/ob_schema_manager.h"
+#include "common/ob_new_scanner.h"
+#include "common/ob_new_scanner_helper.h"
+#include "common/ob_general_rpc_stub.h"
+#include "common/location/ob_tablet_location_list.h"
+#include "common/location/ob_tablet_location_cache_proxy.h"
+#include "common/ob_ms_list.h"
+#include "common/ob_config_manager.h"
 #include "ob_ups_timer_task.h"
 #include "ob_ups_rpc_stub.h"
-#include "ob_update_server_param.h"
+#include "ob_update_server_config.h"
 #include "ob_ups_table_mgr.h"
 #include "ob_ups_log_mgr.h"
 #include "ob_ups_replay_runnable.h"
@@ -49,9 +54,11 @@
 #include "ob_ups_fetch_runnable.h"
 #include "ob_ups_cache.h"
 #include "ob_obi_slave_stat.h"
-#include "ob_commit_log_receiver.h"
-#include "ob_ups_fetch_lsync.h"
 #include "ob_slave_sync_type.h"
+#include "ob_trans_executor.h"
+#include "ob_trigger_handler.h"
+#include "ob_util_interface.h"
+#include "common/ob_trace_id.h"
 namespace oceanbase
 {
   namespace updateserver
@@ -100,32 +107,37 @@ namespace oceanbase
           int64_t launch_time_;
         };
       public:
-        ObPrefetchLogTaskSubmitter(): prefetch_timeout_(0), last_launch_time_(0), last_done_time_(0), ups_(NULL) {}
+        ObPrefetchLogTaskSubmitter(): running_task_num_(0), prefetch_timeout_(0), last_launch_time_(0), last_done_time_(0), ups_(NULL) {}
         virtual ~ObPrefetchLogTaskSubmitter() {}
         int init(int64_t prefetch_timeout, ObUpdateServer* ups);
         virtual int done(Task& task);
         virtual int submit_task(void* arg);
       private:
+        int64_t running_task_num_;
         int64_t prefetch_timeout_;
         int64_t last_launch_time_;
         int64_t last_done_time_;
         ObUpdateServer* ups_;
     };
 
+    class TransExecutor;
     class ObUpdateServer
-      : public common::ObBaseServer, public tbnet::IPacketQueueHandler, public common::IBatchPacketQueueHandler
+      : public common::ObBaseServer, public ObPacketQueueHandler, public common::IBatchPacketQueueHandler, public ObUtilInterface
     {
+      friend class TransExecutor;
       public:
-        ObUpdateServer(ObUpdateServerParam& param);
+        ObUpdateServer(common::ObConfigManager &config_mgr,
+                       ObUpdateServerConfig& config);
         ~ObUpdateServer();
       private:
         DISALLOW_COPY_AND_ASSIGN(ObUpdateServer);
       public:
-        tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Connection *connection, tbnet::Packet *packet);
-        bool handleBatchPacket(tbnet::Connection *connection, tbnet::PacketQueue &packetQueue);
+        //tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Connection *connection, tbnet::Packet *packet);
+        int handleBatchPacket(ObPacketQueue &packetQueue);
         /** packet queue handler */
-        bool handlePacketQueue(tbnet::Packet *packet, void *args);
-        bool handleBatchPacketQueue(const int64_t batch_num, tbnet::Packet** packets, void* args);
+        int handlePacket(ObPacket *packet);
+        bool handlePacketQueue(ObPacket *packet, void *args);
+        bool handleBatchPacketQueue(const int64_t batch_num, ObPacket** packets, void* args);
 
         /** called before start server */
         virtual int initialize();
@@ -136,6 +148,7 @@ namespace oceanbase
         virtual int start_service();
         virtual void stop();
         int wait_until_log_sync();
+        bool is_master_lease_valid() const;
       public:
         const common::ObClientManager& get_client_manager() const
         {
@@ -145,9 +158,9 @@ namespace oceanbase
         int renew_master_inst_ups();
 
         common::ThreadSpecificBuffer::Buffer* get_rpc_buffer() const;
-        const ObUpdateServerParam& get_param() const
+        const ObUpdateServerConfig& get_param() const
         {
-          return param_;
+          return config_;
         }
 
         ObUpsCache& get_ups_cache()
@@ -183,28 +196,7 @@ namespace oceanbase
           return master_inst_root_server_;
         }
 
-        int init_client_wrapper();
-
-        // for test only
-        ObClientWrapper* get_client_wrapper()
-        {
-          return client_wrapper_;
-        }
-
-        mergeserver::ObMergerSchemaManager* get_merger_schema()
-        {
-          return merger_schema_;
-        }
-
-        mergeserver::ObMergerRpcStub& get_merger_stub()
-        {
-          return merger_stub_;
-        }
-
-        mergeserver::ObMergerTabletLocationCache& get_tablet_cache()
-        {
-          return tablet_cache_;
-        }
+        int set_io_thread_count(int32_t io_thread_count);
 
         inline ObUpsSlaveMgr& get_slave_mgr()
         {
@@ -230,17 +222,14 @@ namespace oceanbase
         {
           return obi_role_;
         }
-
-        inline UpsStatMgr &get_stat_mgr()
-        {
-          return stat_mgr_;
-        }
-
         inline SSTableMgr &get_sstable_mgr()
         {
           return sstable_mgr_;
         }
-
+        inline ObTriggerHandler &get_trigger_handler()
+        {
+          return trigger_handler_;
+        }
         inline ObTransferSSTableQuery &get_sstable_query()
         {
           return sstable_query_;
@@ -278,17 +267,19 @@ namespace oceanbase
           server_lock_.unlock();
         }
 
+        inline TransExecutor &get_trans_executor()
+        {
+          return trans_executor_;
+        }
+
         void set_log_sync_delay_stat_param();
         void set_log_replay_thread_param();
-        int refresh_lsync_server_addr();
-        class RefreshLsyncAddrDuty : public common::ObTimerTask
-        {
-          public:
-            virtual void runTimerTask();
-        };
-        int update_schema(const bool always_try, const bool write_log);
+
+        int sync_update_schema(const bool always_try, const bool write_log, bool only_core_tables);
 
         int submit_major_freeze();
+
+        int submit_auto_freeze();
 
         int submit_handle_frozen();
 
@@ -303,15 +294,20 @@ namespace oceanbase
         int submit_immediately_drop();
         int submit_replay_commit_log();
         int submit_prefetch_remote_log(ObPrefetchLogTaskSubmitter::Task& task);
+        int submit_switch_schema(CommonSchemaManagerWrapper& schema_mgr);
         int submit_grant_keep_alive();
         int submit_lease_task();
         int submit_check_keep_alive();
         int submit_fake_write_for_keep_alive();
+        int submit_update_schema();
+        int submit_kill_zombie();
 
         void schedule_warm_up_duty();
         int submit_load_bypass(const common::ObPacket *packet);
         int submit_check_cur_version();
-          
+
+        void apply_conf();
+
       private:
         int start_threads();
         ///@fn switch form master_slave/slave_master/slave_slave to master_master
@@ -323,8 +319,9 @@ namespace oceanbase
         int reregister_followed(const common::ObServer &master);
         int reregister_standalone();
         int reregister_to_rootserver();
-        int set_schema();
+        //int set_schema();
         int set_timer_major_freeze();
+        int set_timer_kill_zombie();
         int set_timer_handle_fronzen();
         int set_timer_refresh_lsync_addr();
         int set_timer_switch_skey();
@@ -339,34 +336,38 @@ namespace oceanbase
         //add
         int register_and_continue_fetch(const ObServer &master);
         int register_to_master_ups(const ObServer &master);
-        int slave_standalone_prepare(uint64_t &log_id_start, uint64_t &log_seq_start);
         int start_standalone_();
         int set_fetch_thread(const ObUpsFetchParam &fetch_param);
 
         int set_self_(const char* dev_name, const int32_t port);
 
-        int slave_register_followed(const common::ObServer &master, ObUpsFetchParam& fetch_param);
         int slave_register_followed(const ObServer &master, ObUpsFetchParam & fetch_param, uint64_t &max_log_seq);
-        int slave_register_standalone(uint64_t &log_id_start, uint64_t &log_seq_start);
         //add:
         int ups_update_lease(const common::ObMsgUpsHeartbeat &hb);
         int ups_revoke_lease(const common::ObMsgRevokeLease &revoke_info);
-        bool is_lease_valid();
+        bool is_lease_valid() const;
         bool get_sync_state();
-        bool get_service_state();
+        bool can_serve_read_req(const bool is_consistency_read);
         int init_fetch_thread(const common::ObFetchParam &fetch_param);
+        int response_result(int32_t ret_code, ObPacket &pkt);
+        int response_result(int32_t ret_code, const char *ret_string, ObPacket &pkt);
+        int response_trans_id(int32_t ret_code, ObPacket &pkt, common::ObTransID &id, ObDataBuffer &out_buffer);
+        int response_scanner(int32_t ret_code, ObPacket &pkt, common::ObScanner &scanner, ObDataBuffer &out_buffer);
+        int response_scanner(int32_t ret_code, ObPacket &pkt, common::ObNewScanner &new_scanner, ObDataBuffer &out_buffer);
+        int response_scanner(int32_t ret_code, ObPacket &pkt, common::ObCellNewScanner &new_scanner, ObDataBuffer &out_buffer);
+        int response_buffer(int32_t ret_code, ObPacket &pkt, common::ObDataBuffer &buffer);
       private:
         //add:
         int start_timer_schedule();
-        int return_not_master(const int32_t version, tbnet::Connection * conn, 
+        int return_not_master(const int32_t version, easy_request_t* req,
             const uint32_t channel_id, const int32_t packet_code);
 
         int ups_rs_lease(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_rs_revoke_lease(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ob_login(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_switch_skey();
         int check_keep_alive_();
         int grant_keep_alive_();
@@ -375,135 +376,154 @@ namespace oceanbase
         int register_to_rootserver(const uint64_t log_seq_id);
         void set_register_msg(const uint64_t log_id, ObMsgUpsRegister &msg_register);
         int set_obi_role(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         ///slave_master ups send fetch param to slave_slave
         int slave_set_fetch_param(const int32_t version, common::ObDataBuffer& in_buff,
-                    tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+                    easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_slave_write_log(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_fetch_log_for_slave(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff, common::ObPacket* packet);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff, common::ObPacket* packet);
+
         int ups_fill_log_cursor_for_slave(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_get_clog_status(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_set_sync_limit(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_get_clog_cursor(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
-        int ups_get_clog_master(const int32_t version, tbnet::Connection* conn,
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int ups_get_clog_master(const int32_t version, easy_request_t* req,
                                 const uint32_t channel_id, common::ObDataBuffer& out_buff);
-        int ups_get_log_sync_delay_stat(const int32_t version, tbnet::Connection* conn,
+        int ups_get_log_sync_delay_stat(const int32_t version, easy_request_t* req,
                                         const uint32_t channel_id, common::ObDataBuffer& out_buff);
-        int ups_ping(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
+        int ups_get_clog_stat(const int32_t version, easy_request_t* req,
+                              const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int ups_sql_scan(const int32_t version, common::ObDataBuffer& in_buff,
+                         easy_request_t* req, const uint32_t channel_id,
+                         common::ObDataBuffer& out_buff);
+        int ups_ping(const int32_t version, easy_request_t* req, const uint32_t channel_id);
+        int ups_new_get(const int32_t version, common::ObDataBuffer& in_buff,
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+            const int64_t start_time, const int64_t packet_timewait, const int32_t priority);
+        int ups_new_scan(const int32_t version, common::ObDataBuffer& in_buff,
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+            const int64_t start_time, const int64_t packet_timewait, const int32_t priority);
+
         int ups_get(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
             const int64_t start_time, const int64_t packet_timewait, const int32_t priority);
         int ups_scan(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
             const int64_t start_time, const int64_t packet_timewait, const int32_t priority);
         int ups_preprocess(const int32_t version, const int32_t packet_code, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff,
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
             const int64_t start_time, const int64_t packet_timewait);
         int ups_slave_register(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_slave_quit(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
 
         int ups_dump_text_memtable(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id);
         int ups_dump_text_schemas(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id);
         int ups_force_fetch_schema(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id);
-        int ups_reload_conf(const int32_t version, common::ObDataBuffer& in_buf,
-            tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id);
+        int ups_reload_conf(const int32_t version,
+            easy_request_t* req, const uint32_t channel_id);
         int ups_renew_lease(const int32_t version, common::ObDataBuffer& in_buf,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_grant_lease(const int32_t version, common::ObDataBuffer& in_buf,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_change_vip(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id);
         int ups_memory_watch(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_memory_limit_set(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_priv_queue_conf_set(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_clear_active_memtable(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id);
         int ups_switch_commit_log(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_get_last_frozen_version(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_get_slave_info(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_rs_get_max_log_seq(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_get_table_time_stamp(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
-        int ups_enable_memtable_checksum(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
-        int ups_disable_memtable_checksum(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int ups_enable_memtable_checksum(const int32_t version, easy_request_t* req, const uint32_t channel_id);
+        int ups_disable_memtable_checksum(const int32_t version, easy_request_t* req, const uint32_t channel_id);
         int ups_fetch_stat_info(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_get_schema(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_get_sstable_range_list(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
 
         int ups_start_transaction(const MemTableTransType type, UpsTableMgrTransHandle& handle);
         int ups_apply(const bool using_id, UpsTableMgrTransHandle& handle, common::ObDataBuffer& in_buff, common::ObScanner *scanner);
-        int ups_end_transaction(tbnet::Packet** packets, ScannerArray &scanner_array, const int64_t start_idx,
+        int ups_end_transaction(common::ObPacket** packets, ScannerArray &scanner_array, const int64_t start_idx,
             const int64_t last_idx, UpsTableMgrTransHandle& handle, int32_t last_err_code);
 
         int ups_freeze_memtable(const int32_t version, common::ObPacket *packet_orig, common::ObDataBuffer& in_buff, const int pcode);
         int ups_switch_schema(const int32_t version, common::ObPacket *packet_orig, common::ObDataBuffer &in_buf);
         int ups_create_memtable_index();
-        int ups_drop_memtable(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
-        int ups_delay_drop_memtable(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
-        int ups_immediately_drop_memtable(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
+        int ups_drop_memtable(const int32_t version, easy_request_t* req, const uint32_t channel_id);
+        int ups_delay_drop_memtable(const int32_t version, easy_request_t* req, const uint32_t channel_id);
+        int ups_immediately_drop_memtable(const int32_t version, easy_request_t* req, const uint32_t channel_id);
         int ups_drop_memtable();
         int ups_load_bypass(const int32_t version,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff, const int pcode);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff, const int pcode);
         int ups_check_cur_version();
         int ups_get_bloomfilter(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_store_memtable(const int32_t version, common::ObDataBuffer &in_buf,
-            tbnet::Connection* conn, const uint32_t channel_id);
-        int ups_erase_sstable(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id);
+        int ups_erase_sstable(const int32_t version, easy_request_t* req, const uint32_t channel_id);
         int ups_handle_frozen();
-        int ups_load_new_store(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
-        int ups_reload_all_store(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
-        int ups_froce_report_frozen_version(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
+        int ups_load_new_store(const int32_t version, easy_request_t* req, const uint32_t channel_id);
+        int ups_reload_all_store(const int32_t version, easy_request_t* req, const uint32_t channel_id);
+        int ups_froce_report_frozen_version(const int32_t version, easy_request_t* req, const uint32_t channel_id);
         int ups_reload_store(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id);
         int ups_umount_store(const int32_t version, common::ObDataBuffer& in_buff,
-            tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id);
         int ups_change_log_level(const int32_t version, common::ObDataBuffer& in_buff,
-                                 tbnet::Connection* conn, const uint32_t channel_id);
+                                 easy_request_t* req, const uint32_t channel_id);
         int ups_stop_server(const int32_t version, common::ObDataBuffer& in_buff,
-                                 tbnet::Connection* conn, const uint32_t channel_id);
+                                 easy_request_t* req, const uint32_t channel_id);
+        int ups_set_config(const int32_t version, common::ObDataBuffer& in_buff,
+                           easy_request_t* req, const uint32_t channel_id);
+        int ups_get_config(const int32_t version, easy_request_t* req,
+                           const uint32_t channel_id, common::ObDataBuffer& out_buff);
+
+
         int ups_handle_fake_write_for_keep_alive();
 
 
         int response_result_(int32_t ret_code, int32_t cmd_type, int32_t func_version,
-            tbnet::Connection* conn, const uint32_t channel_id);
+            easy_request_t* req, const uint32_t channel_id, const char *ret_string = NULL);
         int response_scanner_(int32_t ret_code, const common::ObScanner &scanner,
             int32_t cmd_type, int32_t func_version,
-            tbnet::Connection* conn, const uint32_t channel_id,
+            easy_request_t* req, const uint32_t channel_id,
             common::ObDataBuffer& out_buff);
         int response_fetch_param_(int32_t ret_code, const ObUpsFetchParam& fetch_param,
             const int64_t log_id, int32_t cmd_type, int32_t func_version,
-            tbnet::Connection* conn, const uint32_t channel_id,
+            easy_request_t* req, const uint32_t channel_id,
             common::ObDataBuffer& out_buff);
         int response_lease_(int32_t ret_code, const common::ObLease& lease,
             int32_t cmd_type, int32_t func_version,
-            tbnet::Connection* conn, const uint32_t channel_id,
+            easy_request_t* req, const uint32_t channel_id,
             common::ObDataBuffer& out_buff);
         template <class T>
         int response_data_(int32_t ret_code, const T &data,
                           int32_t cmd_type, int32_t func_version,
-                          tbnet::Connection* conn, const uint32_t channel_id,
+                          easy_request_t* req, const uint32_t channel_id,
                           common::ObDataBuffer& out_buff, const int32_t* priority = NULL);
         int low_priv_speed_control_(const int64_t scanner_size);
 
@@ -513,17 +533,20 @@ namespace oceanbase
                               const common::ObPacket *packet = NULL);
         template <class Queue>
         int submit_async_task_(const common::PacketCode pcode, Queue &qthread, int32_t task_queue_size,
-            const int32_t version, common::ObDataBuffer& in_buff, tbnet::Connection* conn,
+            const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req,
             const uint32_t channel_id, const int64_t timeout);
 
         int report_frozen_version_();
         int replay_commit_log_();
         int prefetch_remote_log_(ObDataBuffer& in_buf);
         int check_frozen_version();
+        int do_async_update_whole_schema();
 
         //add
-        int slave_ups_receive_keep_alive(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
-        int ups_clear_fatal_status(const int32_t version, tbnet::Connection* conn, const uint32_t channel_id);
+        int slave_ups_receive_keep_alive(const int32_t version, easy_request_t* req, const uint32_t channel_id);
+        int ups_clear_fatal_status(const int32_t version, easy_request_t* req, const uint32_t channel_id);
+      public:
+        int ui_deserialize_mutator(ObDataBuffer& buffer, ObMutator &mutator);
       private:
         static const int MY_VERSION = 1;
         static const int HEARTBEAT_VERSION = 2;
@@ -559,7 +582,8 @@ namespace oceanbase
         static const int64_t RPC_TIMEOUT = 2 * 1000L * 1000L; // rpc timeout used by client wrapper
 
       private:
-        ObUpdateServerParam& param_;
+        ObUpdateServerConfig &config_;
+        common::ObConfigManager &config_mgr_;
         common::ObPacketFactory packet_factory_;
         common::ObClientManager client_manager_;
         ObUpsRpcStub ups_rpc_stub_;
@@ -570,9 +594,8 @@ namespace oceanbase
         common::PriorityPacketQueueThread read_thread_queue_; // for read task
         common::BatchPacketQueueThread write_thread_queue_; // for write task
         common::ObPacketQueueThread lease_thread_queue_; // for lease
-        common::ObPacketQueueThread log_thread_queue_;
+        common::ObPacketQueueThread log_thread_queue_;// useless queue
         common::ObPacketQueueThread store_thread_; // store sstable
-        common::ObPacketQueueThread preprocess_thread_queue_; // preprocess write task
         ObUpsFetchRunnable fetch_thread_;
         ObUpsReplayRunnable log_replay_thread_;
         //common::ObCheckRunnable check_thread_;
@@ -585,12 +608,13 @@ namespace oceanbase
         int32_t preprocess_task_queue_size_;
 
         ObUpsCache ups_cache_;
+        ObUpsLogMgr log_mgr_;
         ObUpsTableMgr table_mgr_;
         common::ObUserTable user_table_cache_;
         common::ObSKeyTable skey_table_cache_;
         common::ObPermTable perm_table_cache_;
-        common::ObLoginMgr login_mgr_;
         ObUpsRoleMgr role_mgr_;
+        common::ObiRole settled_obi_role_;
         common::ObiRole obi_role_;
         ObiSlaveStat obi_slave_stat_;
         common::ObServer root_server_;
@@ -602,7 +626,6 @@ namespace oceanbase
         mutable common::SpinRWLock server_lock_;
         ObUpsLogServerGetter ups_log_server_getter_;
         ObPrefetchLogTaskSubmitter prefetch_log_task_submitter_;
-        ObUpsLogMgr log_mgr_;
         ObReplayLogSrc replay_log_src_;
         UpsStatMgr stat_mgr_;
         SSTableMgr sstable_mgr_;
@@ -611,14 +634,19 @@ namespace oceanbase
         HandleFrozenDuty handle_frozen_duty_;
         SwitchSKeyDuty switch_skey_duty_; // 仅master调度
         UpsWarmUpDuty warm_up_duty_;
-        RefreshLsyncAddrDuty refresh_lsync_addr_duty_;
+        TimeUpdateDuty time_update_duty_;
         ObUpsCheckKeepAliveTask check_keep_alive_duty_;
         ObUpsGrantKeepAliveTask grant_keep_alive_duty_;
+        KillZombieDuty kill_zombie_duty_;
         ObUpsLeaseTask ups_lease_task_;
-        TimeUpdateDuty time_update_duty_;
         common::ObTimer timer_;
+        common::ObTimer config_timer_;
+        common::MsList ms_list_task_;
         //ObCommitLogReceiver clog_receiver_;
         //ObUpsFetchLsync fetch_lsync_;
+        volatile uint64_t grant_keep_alive_guard_;
+        volatile uint64_t check_keep_alive_guard_;
+        volatile uint64_t check_lease_guard_;
 
         int64_t start_trans_timestamp_;
         //bool is_first_log_;
@@ -626,19 +654,17 @@ namespace oceanbase
         bool is_log_mgr_start_;
         tbsys::CThreadMutex mutex_;
         int64_t lease_timeout_in_advance_;
-        ObConsistencyType consistency_type_;
         int64_t lease_expire_time_us_;
         //int64_t last_keep_alive_time_;
         int64_t keep_alive_valid_interval_;
         int64_t ups_renew_reserved_us_;
         common::ObServer master_inst_root_server_;
-        ObSlaveSyncType slave_type_;
-        ObClientWrapper* client_wrapper_;
-        mergeserver::ObMergerSchemaManager* merger_schema_; // useless
-        mergeserver::ObMergerRpcStub merger_stub_;
-        mergeserver::ObMergerTabletLocationCache tablet_cache_;
-        common::ThreadSpecificBuffer merger_rpc_buffer_;
-
+        volatile int64_t schema_version_;
+        volatile uint64_t schema_lock_;
+        ObTriggerHandler trigger_handler_;
+        TransExecutor trans_executor_;
+        ObLogReplayWorker replay_worker_;
+        ObAsyncLogApplier log_applier_;
     };
   }
 }

@@ -19,7 +19,10 @@
 
 #include "common/base_main.h"
 #include "common/ob_shadow_server.h"
+#include "common/ob_config_manager.h"
+#include "common/ob_version.h"
 #include "ob_update_server.h"
+#include "ob_update_server_config.h"
 
 namespace oceanbase
 {
@@ -28,6 +31,8 @@ namespace oceanbase
     class ObUpdateServerMain : public common::BaseMain
     {
       static const int SIG_RESET_MEMORY_LIMIT = 34;
+      static const int SIG_INC_WORK_THREAD = 35;
+      static const int SIG_DEC_WORK_THREAD = 36;
       protected:
         ObUpdateServerMain();
 
@@ -50,7 +55,8 @@ namespace oceanbase
         }
 
       private:
-        ObUpdateServerParam param_;
+        ObUpdateServerConfig ups_config_;
+        ObConfigManager config_mgr_;
         ObUpdateServer server_;
         common::ObShadowServer shadow_server_;
     };

@@ -30,7 +30,7 @@ namespace oceanbase
         static int convert(const ObUpsRow &row, ObString &compact_row);
         static int convert(uint64_t table_id, const ObString &compact_row, ObUpsRow &row);
 
-        static int convert(uint64_t table_id, const ObString &compact_row, ObUpsRow &row, ObString *rowkey);
+        static int convert(uint64_t table_id, const ObString &compact_row, ObUpsRow &row, ObRowkey *rowkey, ObObj *rowkey_buf);
     };
   }
 }

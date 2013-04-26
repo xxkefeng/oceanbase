@@ -18,7 +18,7 @@
 
 #include "common/ob_define.h"
 #include "common/ob_get_param.h"
-#include "common/ob_ups_rpc_stub.h"
+#include "common/ob_sql_ups_rpc_proxy.h"
 #include "ob_rowkey_phy_operator.h"
 #include "common/ob_row.h"
 
@@ -37,12 +37,12 @@ namespace oceanbase
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
         virtual int open();
         virtual int close();
-        virtual int get_next_row(const ObString *&rowkey, const ObRow *&row);
+        virtual int get_next_row(const ObRowkey *&rowkey, const ObRow *&row);
         virtual void set_row_desc(const ObRowDesc &row_desc);
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
-        virtual int get_row_desc(const common::ObRowDesc *&row_desc) const {row_desc=NULL;return OB_NOT_IMPLEMENT;}
+        virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
 
-        inline int set_rpc_stub(ObUpsRpcStub *rpc_stub);
+        inline int set_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy);
         inline int set_network_timeout(int64_t network_timeout);
         virtual void reset();
 
@@ -64,11 +64,9 @@ namespace oceanbase
         const ObGetParam *get_param_;
         ObGetParam cur_get_param_;
         ObNewScanner cur_new_scanner_;
-        ObUpsRpcStub *rpc_stub_;
+        ObSqlUpsRpcProxy *rpc_proxy_;
         ObUpsRow cur_ups_row_;
-        ObString cur_rowkey_;
-        ObServer ups_server;
-        int64_t got_cell_count_;
+        int64_t got_row_count_;
         const ObRowDesc *row_desc_;
         int64_t network_timeout_;
     };
@@ -88,17 +86,17 @@ namespace oceanbase
       return ret;
     }
 
-    int ObUpsMultiGet::set_rpc_stub(ObUpsRpcStub *rpc_stub)
+    int ObUpsMultiGet::set_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy)
     {
       int ret = OB_SUCCESS;
-      if(NULL == rpc_stub)
+      if(NULL == rpc_proxy)
       {
         ret = OB_INVALID_ARGUMENT;
-        TBSYS_LOG(WARN, "rpc_stub is null");
+        TBSYS_LOG(WARN, "rpc_proxy is null");
       }
       else
       {
-        rpc_stub_ = rpc_stub;
+        rpc_proxy_ = rpc_proxy;
       }
       return ret;
     }

@@ -53,7 +53,6 @@ void ObMergerServerCounter::dump(void) const
   int64_t count = 0;
   int32_t ip = 0;
   int32_t port = 2600;
-  char addr[MAX_ADDR_LEN] = "";
   ObServer server;
   ObHashMap<int32_t, int64_t>::const_iterator iter = counter_map_.begin();
   for (;iter != counter_map_.end(); ++iter)
@@ -61,8 +60,7 @@ void ObMergerServerCounter::dump(void) const
     ip = iter->first;
     count = iter->second;
     server.set_ipv4_addr(ip, port);
-    server.to_string(addr, sizeof(addr));
-    TBSYS_LOG(TRACE, "dump server query counter:addr[%s], count[%ld]", addr, count);
+    TBSYS_LOG(TRACE, "dump server query counter:server[%s], count[%ld]", server.to_cstring(), count);
   }
 }
 
@@ -71,7 +69,6 @@ int ObMergerServerCounter::inc(const ObServer & server, const int64_t count)
   // first reset the old values
   check_reset();
   int64_t server_count = 0;
-  char addr[MAX_ADDR_LEN] = "";
   int ret = counter_map_.get(server.get_ipv4(), server_count);
   if (HASH_EXIST == ret)
   {
@@ -83,20 +80,19 @@ int ObMergerServerCounter::inc(const ObServer & server, const int64_t count)
   }
   else
   {
-    server.to_string(addr, sizeof(addr));
-    TBSYS_LOG(WARN, "get server count failed:server[%s], ret[%d]", addr, ret);
+    TBSYS_LOG(WARN, "get server count failed:server[%s], ret[%d]", server.to_cstring(), ret);
   }
   // no matter succ or fail
   ret = counter_map_.set(server.get_ipv4(), server_count, 1);
   if ((ret != HASH_OVERWRITE_SUCC) && (ret != HASH_INSERT_SUCC))
   {
-    server.to_string(addr, sizeof(addr));
-    TBSYS_LOG(WARN, "overwrite or insert failed:server[%s], ret[%d]", addr, ret);
+    TBSYS_LOG(WARN, "overwrite or insert failed:server[%s], ret[%d]", server.to_cstring(), ret);
   }
   else
   {
     ret = OB_SUCCESS;
-    TBSYS_LOG(DEBUG, "update server count succ:server[%s], count[%ld]", addr, server_count);
+    TBSYS_LOG(DEBUG, "update server count succ:server[%s], count[%ld]",
+        server.to_cstring(), server_count);
   }
   return ret;
 }
@@ -104,18 +100,15 @@ int ObMergerServerCounter::inc(const ObServer & server, const int64_t count)
 int64_t ObMergerServerCounter::get(const common::ObServer & server) const
 {
   int64_t count = 0;
-  char addr[MAX_ADDR_LEN] = "";
   int ret = counter_map_.get(server.get_ipv4(), count);
   if ((HASH_EXIST != ret) && (HASH_NOT_EXIST != ret))
   {
-    server.to_string(addr, sizeof(addr));
-    TBSYS_LOG(WARN, "get server count failed:server[%s], ret[%d]", addr, ret);
+    TBSYS_LOG(WARN, "get server count failed:server[%s], ret[%d]", server.to_cstring(), ret);
   }
   else
   {
     ret = OB_SUCCESS;
-    server.to_string(addr, sizeof(addr));
-    TBSYS_LOG(DEBUG, "get server count succ:server[%s], count[%ld]", addr, count);
+    TBSYS_LOG(DEBUG, "get server count succ:server[%s], count[%ld]", server.to_cstring(), count);
   }
   return count;
 }

@@ -28,6 +28,8 @@ dev_name=bond0
 vip=10.1.1.1
 port=2500
 
+# libeasy处理io的线程个数
+io_thread_count=1
 # 处理线程池大小
 thread_count=20
 # 读任务队列大小
@@ -77,6 +79,8 @@ expected_process_us=10000
 # balance_worker_idle_sleep_sec=300
 # 进程启动后，启动负载均衡和缺失复本复制前的等待时间，单位秒
 migrate_wait_seconds=90
+#rs是否缓存schema_manager
+__enable_cache_schema=1
 # 是否是数据导入型应用
 is_import=0
 
@@ -90,10 +94,12 @@ lease_reserved_us=8500000
 ups_renew_reserved_us=7770000
 # 第一个UPS注册后等待这段时间之后才选主，default 10s
 waiting_reigster_duration_us=10000000
+#是否需要解析主主UPS和备主UPS的流量配置值
+is_ups_flow_control=0
 #主主UPS的流量分配
-read_master_master_ups_percent=-1
+read_master_master_ups_percent=0
 #备主UPS的流量分配
-read_slave_master_ups_percent=-1
+read_slave_master_ups_percent=0
 [schema]
 file_name=/home/admin/oceanbase/etc/schema.ini
 

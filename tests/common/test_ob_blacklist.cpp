@@ -13,7 +13,6 @@ int main(int argc, char **argv)
 class TestBlackList: public ::testing::Test, public ObBlackList
 {
 public:
-  
   virtual void SetUp()
   {
   }
@@ -43,7 +42,7 @@ TEST_F(TestBlackList, check)
     EXPECT_TRUE(false == list.check(i));
   }
 
-  list.init(MAX_LIST_COUNT, 9, 10, 10, 1); 
+  list.init(MAX_LIST_COUNT, 9, 10, 10, 1);
   for (int32_t i = 0; i < 2 * MAX_LIST_COUNT; ++i)
   {
     if (i < MAX_LIST_COUNT)
@@ -106,7 +105,7 @@ TEST_F(TestBlackList, reset)
   {
     EXPECT_TRUE(false == list.check(i));
   }
-  list.init(MAX_LIST_COUNT, 9, 10, 10, 1); 
+  list.init(MAX_LIST_COUNT, 9, 10, 10, 1);
   for (int32_t i = 0; i < 2 * MAX_LIST_COUNT; ++i)
   {
     if (i < MAX_LIST_COUNT)
@@ -141,7 +140,7 @@ TEST_F(TestBlackList, reset)
   {
     EXPECT_TRUE(list.check(i) == false);
   }
-  
+
   list.reset();
   for (int32_t i = 0; i < MAX_LIST_COUNT; ++i)
   {

@@ -62,7 +62,7 @@ namespace oceanbase
       int get_start_key_of_next_block(sstable::ObBlockCache& block_cache, 
                                       uint64_t& table_id,
                                       uint64_t& column_group_id,
-                                      common::ObString& start_key,
+                                      common::ObRowkey& start_key,
                                       sstable::ObSSTableReader* sstable_reader = NULL);
 
       /**
@@ -135,7 +135,8 @@ namespace oceanbase
        * @return ObSSTableReader* return the sstable reader which the 
        *         sstable belong to, if fail, return NULL.
        */
-      sstable::ObSSTableReader* get_sstable_reader(const uint64_t sstable_id);
+      sstable::ObSSTableReader* get_sstable_reader(const uint64_t sstable_id,
+        ObTablet* &tablet);
 
       /**
        * decompress block data, first get the sstable reader by 

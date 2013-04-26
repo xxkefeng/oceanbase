@@ -11,7 +11,7 @@
  *
  * Authors:
  *   wushi <wushi.ly@taobao.com>
- *   为了便于调试内存错误的bug，如果定义了名为__OB_MALLOC_DIRECT___的环境变量，
+ *   为了便于调试内存错误的bug，如果定义了名为__OB_MALLOC_DIRECT__的环境变量，
  *   内存池将直接调用new和delete分配和释放内存
  *
  */
@@ -75,6 +75,7 @@ namespace oceanbase
       virtual void print_mod_memory_usage(bool print_to_std = false);
 
       int64_t get_mod_memory_usage(int32_t mod_id);
+      void mod_usage_update(const int64_t delta, const int32_t mod_id);
 
       /// @fn free all memory allocated from system
       virtual void clear()=0;

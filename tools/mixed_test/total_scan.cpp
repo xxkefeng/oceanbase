@@ -12,6 +12,7 @@ struct CmdLine
 {
   static const int64_t DEFAULT_TABLE_START_VERSION = 2;
   static const int64_t DEFAULT_PREFIX_START = 1;
+  static const int64_t DEFAULT_TEST_TIMES = 10240;
   static const char *DEFAULT_LOG_LEVEL;
 
   char *serv_addr;
@@ -22,6 +23,7 @@ struct CmdLine
   int64_t table_start_version;
   char *schema_file;
   int64_t prefix_start;
+  int64_t test_times;
   bool check;
   const char *log_level;
 
@@ -35,6 +37,7 @@ struct CmdLine
     table_start_version = DEFAULT_TABLE_START_VERSION;
     schema_file = NULL;
     prefix_start = DEFAULT_PREFIX_START;
+    test_times = DEFAULT_TEST_TIMES;
     check = false;
     log_level = DEFAULT_LOG_LEVEL;
   };
@@ -42,9 +45,9 @@ struct CmdLine
   void log_all()
   {
     TBSYS_LOG(INFO, "serv_addr=%s serv_port=%ld schema_addr=%s schema_port=%ld using_id=%s table_start_version=%ld "
-              "schema_file=%s prefix_start=%ld check=%s log_level=%s",
+              "schema_file=%s prefix_start=%ld test_times=%ld check=%s log_level=%s",
               serv_addr, serv_port, schema_addr, schema_port, STR_BOOL(using_id), table_start_version,
-              schema_file, prefix_start, STR_BOOL(check), log_level);
+              schema_file, prefix_start, test_times, STR_BOOL(check), log_level);
   };
 
   bool is_valid()
@@ -80,13 +83,15 @@ void print_usage()
   fprintf(stderr, "   -s|--prefix_start rowkey prefix start number, must be same as multi_write [default %ld]\n", CmdLine::DEFAULT_PREFIX_START);
   fprintf(stderr, "   -k|--check check the read result or not [default not]\n");
 
+  fprintf(stderr, "   -m|--test_times random get test times [default %ld], support MAX\n", CmdLine::DEFAULT_TEST_TIMES);
+
   fprintf(stderr, "\n");
 }
 
 void parse_cmd_line(int argc, char **argv, CmdLine &clp)
 {
   int opt = 0;
-  const char* opt_string = "a:p:r:o:it:f:s:w:kh";
+  const char* opt_string = "a:p:r:o:it:f:s:m:w:kh";
   struct option longopts[] =
   {
     {"serv_addr", 1, NULL, 'a'},
@@ -97,6 +102,7 @@ void parse_cmd_line(int argc, char **argv, CmdLine &clp)
     {"table_start_version", 1, NULL, 't'},
     {"schema_file", 1, NULL, 'f'},
     {"prefix_start", 1, NULL, 's'},
+    {"test_times", 1, NULL, 'm'},
     {"log_level", 1, NULL, 'w'},
     {"check", 1, NULL, 'k'},
     {"help", 0, NULL, 'h'},
@@ -130,6 +136,16 @@ void parse_cmd_line(int argc, char **argv, CmdLine &clp)
     case 's':
       clp.prefix_start = atoll(optarg);
       break;
+    case 'm':
+      if (0 == strcmp("MAX", optarg))
+      {
+        clp.test_times = INT64_MAX;
+      }
+      else
+      {
+        clp.test_times = atoll(optarg);
+      }
+      break;
     case 'w':
       clp.log_level = optarg;
       break;
@@ -159,15 +175,18 @@ void scan_check_all(MutatorBuilder &mb, ClientWrapper &client, const int64_t tab
     int ret = OB_SUCCESS;
     bool is_fullfilled = false;
     int64_t fullfilled_item_num = 0;
-    RowChecker rc;
     int64_t row_counter = 0;
     ObScanner scanner;
     while (!is_fullfilled
           && OB_SUCCESS == ret)
     {
+      RowChecker rc;
       int64_t timeu = tbsys::CTimeUtil::getTime();
+      scan_param.set_limit_info(0, 2048);
       ret = client.scan(scan_param, scanner);
-      TBSYS_LOG(INFO, "scan ret=%d timeu=%ld", ret, tbsys::CTimeUtil::getTime() - timeu);
+      timeu = tbsys::CTimeUtil::getTime() - timeu;
+      int64_t cur_prefix_row_counter = 0;
+      int64_t cur_row_counter = 0;
       if (OB_SUCCESS == ret)
       {
         while (OB_SUCCESS == scanner.next_cell())
@@ -178,10 +197,19 @@ void scan_check_all(MutatorBuilder &mb, ClientWrapper &client, const int64_t tab
           {
             if (is_row_changed)
             {
-              row_counter++;
+              if (rc.is_prefix_changed(ci->row_key_))
+              {
+                cur_prefix_row_counter = 0;
+              }
+              cur_prefix_row_counter++;
+              cur_row_counter++;
             }
             if (!check)
             {
+              if (is_row_changed)
+              {
+                rc.add_rowkey(ci->row_key_);
+              }
               continue;
             }
             if (!using_id)
@@ -190,7 +218,7 @@ void scan_check_all(MutatorBuilder &mb, ClientWrapper &client, const int64_t tab
             }
             if (is_row_changed && 0 != rc.cell_num())
             {
-              std::string row_key_str(rc.get_cur_rowkey().ptr(), 0, rc.get_cur_rowkey().length());
+              std::string row_key_str(to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).ptr(), 0, to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).length());
 
               bool get_row_bret = get_check_row(mb.get_schema(i), rc.get_cur_rowkey(), mb.get_cellinfo_builder(i), client, table_start_version, using_id);
 
@@ -206,7 +234,7 @@ void scan_check_all(MutatorBuilder &mb, ClientWrapper &client, const int64_t tab
                 && 0 != rc.rowkey_num()
                 && rc.is_prefix_changed(ci->row_key_))
             {
-              std::string row_key_str(rc.get_last_rowkey().ptr(), 0, rc.get_last_rowkey().length());
+              std::string row_key_str(to_obstr(TestRowkeyHelper(rc.get_last_rowkey())).ptr(), 0, to_obstr(TestRowkeyHelper(rc.get_last_rowkey())).length());
 
               bool bret = rc.check_rowkey(mb.get_rowkey_builder(i));
               if (!bret)
@@ -223,7 +251,7 @@ void scan_check_all(MutatorBuilder &mb, ClientWrapper &client, const int64_t tab
         }
         if (0 != rc.cell_num())
         {
-          std::string row_key_str(rc.get_cur_rowkey().ptr(), 0, rc.get_cur_rowkey().length());
+          std::string row_key_str(to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).ptr(), 0, to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).length());
 
           bool get_row_bret = get_check_row(mb.get_schema(i), rc.get_cur_rowkey(), mb.get_cellinfo_builder(i), client, table_start_version, using_id);
 
@@ -236,24 +264,26 @@ void scan_check_all(MutatorBuilder &mb, ClientWrapper &client, const int64_t tab
           }
         }
       }
-      scanner.get_is_req_fullfilled(is_fullfilled, fullfilled_item_num);
-      ObRange *range = const_cast<ObRange*>(scan_param.get_range());
-      scanner.get_last_row_key(range->start_key_);
-      range->border_flag_.unset_min_value();
-      range->border_flag_.unset_inclusive_start();
-    }
-    if (check
-        && 0 != rc.rowkey_num())
-    {
-      std::string row_key_str(rc.get_last_rowkey().ptr(), 0, rc.get_last_rowkey().length());
-
-      bool bret = rc.check_rowkey(mb.get_rowkey_builder(i));
-      if (!bret)
+      TBSYS_LOG(INFO, "total_scan ret=%d timeu=%ld row_counter=%ld last_prefix_row_counter=%ld",
+                ret, timeu, cur_row_counter, cur_prefix_row_counter);
+      if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(ERROR, "[%s] [row_key check_ret=%s]", row_key_str.c_str(), STR_BOOL(bret));
+        ret = OB_SUCCESS;
+        continue;
       }
+      scanner.get_is_req_fullfilled(is_fullfilled, fullfilled_item_num);
+      ObNewRange *range = const_cast<ObNewRange*>(scan_param.get_range());
+      scanner.get_last_row_key(range->start_key_);
+      ObString start_key_str;
+      range->start_key_.get_obj_ptr()[0].get_varchar(start_key_str);
+      memset(start_key_str.ptr() + RowkeyBuilder::I64_STR_LENGTH, 0, mb.get_rowkey_builder(i).get_suffix_length());
+      if (!is_fullfilled)
+      {
+        cur_row_counter -= cur_prefix_row_counter;
+      }
+      row_counter += cur_row_counter;
     }
-    TBSYS_LOG(INFO, "table_id=%lu row_counter=%ld", mb.get_schema(i).get_table_id(), row_counter);
+    TBSYS_LOG(INFO, "table_id=%lu total_row_counter=%ld", mb.get_schema(i).get_table_id(), row_counter);
   }
 }
 
@@ -289,11 +319,14 @@ int main(int argc, char **argv)
   }
   schema_mgr.print_info();
 
-  MutatorBuilder mb;
-  mb.init4read(schema_mgr, clp.prefix_start, clp.serv_addr, static_cast<int32_t>(clp.serv_port), clp.table_start_version, clp.using_id);
-
   ClientWrapper client;
   client.init(clp.serv_addr, static_cast<int32_t>(clp.serv_port));
-  scan_check_all(mb, client, clp.table_start_version, clp.using_id, clp.check);
+  for (int64_t i = 0; i < clp.test_times; i++)
+  {
+    MutatorBuilder mb;
+    mb.init4read(schema_mgr, clp.prefix_start, clp.serv_addr, static_cast<int32_t>(clp.serv_port), clp.table_start_version, clp.using_id);
+    scan_check_all(mb, client, clp.table_start_version, clp.using_id, clp.check);
+  }
+  client.destroy();
 }
 

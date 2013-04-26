@@ -6,14 +6,14 @@
 #include <gtest/gtest.h>
 
 #include "common/ob_schema.h"
-#include "ob_ms_schema_manager.h"
+#include "common/ob_schema_manager.h"
 
 using namespace std;
 using namespace oceanbase::common;
-using namespace oceanbase::mergeserver;
 
 int main(int argc, char **argv)
 {
+  ob_init_memory_pool();
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
@@ -36,10 +36,10 @@ TEST_F(TestSchemaManager, test_init)
   ObMergerSchemaManager * pmanager = new ObMergerSchemaManager;
   EXPECT_TRUE(pmanager != NULL);
   ObMergerSchemaManager & manager = *pmanager;
-  int ret = manager.init(schema);
+  int ret = manager.init(false, schema);
   EXPECT_TRUE(ret == OB_SUCCESS);
   // init twice
-  ret = manager.init(schema);
+  ret = manager.init(false, schema);
   EXPECT_TRUE(ret == OB_INIT_TWICE);
   manager.print_info();
   delete pmanager;
@@ -64,10 +64,10 @@ static void * routine(void * argv)
     else
     {
       usleep(static_cast<useconds_t>(i + 50));
-      EXPECT_TRUE(OB_SUCCESS == manager->release_schema(schema_ptr->get_version()));
+      EXPECT_TRUE(OB_SUCCESS == manager->release_schema(schema_ptr, schema->get_version()));
     }
 
-    schema_ptr = manager->get_schema(1024 + i);
+    schema_ptr = manager->get_user_schema(1024 + i);
     if (schema_ptr == NULL)
     {
       printf("get schema failed:version[%lu], thread[%lu]\n", 1024 + i, pthread_self());
@@ -75,7 +75,7 @@ static void * routine(void * argv)
     else
     {
       usleep(static_cast<useconds_t>(i + 50));
-      EXPECT_TRUE(OB_SUCCESS == manager->release_schema(schema_ptr->get_version()));
+      EXPECT_TRUE(OB_SUCCESS == manager->release_schema(schema_ptr, schema_ptr->get_version()));
     }
 
     delete schema;
@@ -91,7 +91,7 @@ TEST_F(TestSchemaManager, test_multi_thread)
   EXPECT_TRUE(NULL != schema);
   ObSchemaManagerV2 * sample = new ObSchemaManagerV2(1022);
   EXPECT_TRUE(NULL != sample);
-  EXPECT_TRUE(OB_SUCCESS == schema->init(*sample));
+  EXPECT_TRUE(OB_SUCCESS == schema->init(false, *sample));
   
   const uint64_t MAX_THREAD_COUNT = 15;
   pthread_t threads[MAX_THREAD_COUNT];
@@ -120,7 +120,7 @@ TEST_F(TestSchemaManager, test_add_schema)
   int ret = manager.add_schema(schema);
   EXPECT_TRUE(ret != OB_SUCCESS);
   // init
-  ret = manager.init(schema);
+  ret = manager.init(false, schema);
   EXPECT_TRUE(ret == OB_SUCCESS);
   
   // not new version
@@ -142,7 +142,7 @@ TEST_F(TestSchemaManager, test_add_schema)
     ret = manager.add_schema(schema, &pschema);
     EXPECT_TRUE(ret == OB_SUCCESS);
     EXPECT_TRUE(pschema->get_version() == int64_t(300 + i * 2));
-    ret = manager.release_schema(pschema->get_version());
+    ret = manager.release_schema(pschema, pschema->get_version());
   }
 
   // full  
@@ -153,7 +153,7 @@ TEST_F(TestSchemaManager, test_add_schema)
   // full and inuse
   for (uint64_t i = 0; i <= ObMergerSchemaManager::MAX_VERSION_COUNT; ++i)
   {
-    const ObSchemaManagerV2 * schema = manager.get_schema(300 + i * 2);
+    const ObSchemaManagerV2 * schema = manager.get_user_schema(300 + i * 2);
     // do nothing
     if (schema == NULL)
     {
@@ -172,18 +172,18 @@ TEST_F(TestSchemaManager, test_add_schema)
   pmanager = NULL;
 }
 
-TEST_F(TestSchemaManager, test_get_schema)
+TEST_F(TestSchemaManager, test_get_user_schema)
 {
   ObMergerSchemaManager * pmanager = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != pmanager);
 
   ObMergerSchemaManager & manager = *pmanager;
   // not init
-  const ObSchemaManagerV2 * schema = manager.get_schema(100);
+  const ObSchemaManagerV2 * schema = manager.get_user_schema(100);
   EXPECT_TRUE(schema == NULL);
   
   ObSchemaManagerV2 schema1(100);
-  int ret = manager.init(schema1);
+  int ret = manager.init(false, schema1);
   EXPECT_TRUE(ret == OB_SUCCESS);
   
   // add more
@@ -192,9 +192,9 @@ TEST_F(TestSchemaManager, test_get_schema)
     ObSchemaManagerV2 schema2(200 * (i + 1)); 
     ret = manager.add_schema(schema2);
     EXPECT_TRUE(ret == OB_SUCCESS);
-    schema = manager.get_schema(200 * (i + 1));
+    schema = manager.get_user_schema(200 * (i + 1));
     EXPECT_TRUE(schema != NULL);
-    ret = manager.release_schema(200 * (i + 1));
+    ret = manager.release_schema(schema, 200 * (i + 1));
     EXPECT_TRUE(ret == OB_SUCCESS);
   }
   
@@ -203,7 +203,7 @@ TEST_F(TestSchemaManager, test_get_schema)
   // get schema
   for (uint64_t i = 0; i < ObMergerSchemaManager::MAX_VERSION_COUNT * 2; ++i)
   {
-    schema = manager.get_schema(200 * (i + 1));
+    schema = manager.get_user_schema(200 * (i + 1));
     if (i < ObMergerSchemaManager::MAX_VERSION_COUNT)
     {
       // not find
@@ -238,7 +238,7 @@ TEST_F(TestSchemaManager, test_version)
   
   // init
   ObSchemaManagerV2 schema1(0);
-  int ret = manager.init(schema1);
+  int ret = manager.init(false, schema1);
   EXPECT_TRUE(ret == OB_SUCCESS);
   
   // add more to full

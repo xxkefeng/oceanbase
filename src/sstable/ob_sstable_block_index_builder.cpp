@@ -95,7 +95,8 @@ namespace oceanbase
       if (OB_SUCCESS == ret 
           && (OB_SUCCESS == (ret = encode_i64(buf, buf_len, pos, sstable_block_count_)))
           && (OB_SUCCESS == (ret = encode_i32(buf, buf_len, pos, end_key_char_stream_offset_)))
-          && (OB_SUCCESS == (ret = encode_i32(buf, buf_len, pos, reserved32_)))
+          && (OB_SUCCESS == (ret = encode_i16(buf, buf_len, pos, rowkey_flag_)))
+          && (OB_SUCCESS == (ret = encode_i16(buf, buf_len, pos, reserved16_)))
           && (OB_SUCCESS == (ret = encode_i64(buf, buf_len, pos, reserved64_[0])))
           && (OB_SUCCESS == (ret = encode_i64(buf, buf_len, pos, reserved64_[1]))))
       { 
@@ -126,7 +127,8 @@ namespace oceanbase
       if (OB_SUCCESS == ret 
           && (OB_SUCCESS == (ret = decode_i64(buf, data_len, pos, &sstable_block_count_)))
           && (OB_SUCCESS == (ret = decode_i32(buf, data_len, pos, &end_key_char_stream_offset_)))
-          && (OB_SUCCESS == (ret = decode_i32(buf, data_len, pos, &reserved32_)))
+          && (OB_SUCCESS == (ret = decode_i16(buf, data_len, pos, &rowkey_flag_)))
+          && (OB_SUCCESS == (ret = decode_i16(buf, data_len, pos, &reserved16_)))
           && (OB_SUCCESS == (ret = decode_i64(buf, data_len, pos, &reserved64_[0])))
           && (OB_SUCCESS == (ret = decode_i64(buf, data_len, pos, &reserved64_[1]))))
       {
@@ -145,7 +147,8 @@ namespace oceanbase
     {
       return (encoded_length_i64(sstable_block_count_) 
               + encoded_length_i32(end_key_char_stream_offset_) 
-              + encoded_length_i32(reserved32_)
+              + encoded_length_i16(rowkey_flag_)
+              + encoded_length_i16(reserved16_)
               + encoded_length_i64(reserved64_[0])
               + encoded_length_i64(reserved64_[1]));
     }
@@ -154,6 +157,54 @@ namespace oceanbase
     int ObSSTableBlockIndexBuilder::init()
     {
       return OB_SUCCESS;
+    }
+
+    int ObSSTableBlockIndexBuilder::add_entry(const uint64_t table_id,
+                                              const uint64_t column_group_id,
+                                              const ObRowkey &key, 
+                                              const int32_t record_size) 
+    {
+      int ret     = OB_SUCCESS;
+      ObSSTableBlockIndexItem index_item;
+
+      if (record_size < 0 || key.get_obj_cnt() <= 0 || NULL == key.get_obj_ptr()
+          || table_id == OB_INVALID_ID || table_id == 0 || OB_INVALID_ID == column_group_id)
+      {
+        TBSYS_LOG(WARN, "invalid param, table_id=%lu, key_len=%ld,"
+                        "key_ptr=%p, record_size=%d, column_group_id=%lu", 
+                  table_id, key.get_obj_cnt(), key.get_obj_ptr(), record_size, column_group_id);
+        ret = OB_ERROR;
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        index_item.rowkey_column_count_ = static_cast<int16_t>(key.get_obj_cnt());
+        index_item.column_group_id_ = static_cast<uint16_t>(column_group_id);
+        index_item.table_id_ = static_cast<uint32_t>(table_id);
+        index_item.block_record_size_ = record_size;
+        index_item.block_end_key_size_ = static_cast<int16_t>(key.get_serialize_objs_size());
+        index_item.reserved_ = 0; 
+      
+        ret = index_items_buf_.add_index_item(index_item);
+        if (OB_SUCCESS == ret) 
+        {
+          ret = end_keys_buf_.add_key(key);
+          if (OB_ERROR == ret)
+          {
+            TBSYS_LOG(WARN, "failed to add end key");
+          }
+          else
+          {
+            index_block_header_.sstable_block_count_++;
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "failed to add index item");
+          ret = OB_ERROR;
+        }
+      }
+      return ret;
     }
 
     int ObSSTableBlockIndexBuilder::add_entry(const uint64_t table_id,
@@ -175,7 +226,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        index_item.reserved16_ = 0;
+        index_item.rowkey_column_count_ = 0;
         index_item.column_group_id_ = static_cast<uint16_t>(column_group_id);
         index_item.table_id_ = static_cast<uint32_t>(table_id);
         index_item.block_record_size_ = record_size;
@@ -204,8 +255,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSSTableBlockIndexBuilder::build_block_index(char* index_block, const int64_t buffer_size, 
-                                                      int64_t& index_size)
+    int ObSSTableBlockIndexBuilder::build_block_index(const bool use_binary_rowkey, 
+        char* index_block, const int64_t buffer_size, int64_t& index_size)
     {
       int ret                   = OB_SUCCESS;
       int64_t index_block_size  = get_index_block_size();
@@ -228,6 +279,8 @@ namespace oceanbase
       {
         index_block_header_.end_key_char_stream_offset_ 
             = static_cast<int32_t>(header_size + index_items_size);
+        // new rowkey obj array format, force set to 1.
+        index_block_header_.rowkey_flag_ = use_binary_rowkey ? 0 : 1;
         if (OB_SUCCESS == index_block_header_.serialize(index_block,
                                                         header_size, pos))
         {

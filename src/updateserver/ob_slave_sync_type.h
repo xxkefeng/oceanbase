@@ -56,6 +56,7 @@ namespace oceanbase
         ~ObConsistencyType();
         void set_consistency_type(const Type type);
         Type get_consistency_type() const;
+        const char* get_type_str() const;
       private:
         Type consistency_type_;
     };

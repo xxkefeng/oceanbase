@@ -19,6 +19,7 @@
 
 #include "tbrwlock.h"
 #include "common/ob_define.h"
+#include "common/ob_spin_lock.h"
 #include "common/ob_mutator.h"
 #include "common/ob_read_common_data.h"
 #include "common/bloom_filter.h"
@@ -34,6 +35,8 @@
 #include "common/ob_token.h"
 #include "ob_trans_mgr.h"
 #include "ob_ups_log_utils.h"
+#include "ob_sessionctx_factory.h"
+#include "common/ob_new_scanner.h"
 
 namespace oceanbase
 {
@@ -41,7 +44,6 @@ namespace oceanbase
   {
     // UpsTableMgr manages the active and frozen memtable of UpdateServer.
     // It also acts as an entry point for apply/replay/get/scan operation.
-    class ObClientWrapper;
     class ObUpsRpcStub;
     struct UpsTableMgrTransHandle
     {
@@ -55,7 +57,15 @@ namespace oceanbase
     const static int64_t MT_REPLAY_OP_CREATE_INDEX = 0x0000000000000001;
     const static int64_t FLAG_MAJOR_LOAD_BYPASS = 0x0000000000000001;
     const static int64_t FLAG_MINOR_LOAD_BYPASS = 0x0000000000000002;
-    class ObUpsTableMgr : public common::IRpcStub
+    class ObIUpsTableMgr
+    {
+      public:
+        virtual ~ObIUpsTableMgr() {};
+      public:
+        virtual int apply(RWSessionCtx &session_ctx, common::ObIterator &iter) = 0;
+        virtual UpsSchemaMgr &get_schema_mgr() = 0;
+    };
+    class ObUpsTableMgr : public ObIUpsTableMgr
     {
       friend class TestUpsTableMgrHelper;
       friend bool get_key_prefix(const TEKey &te_key, TEKey &prefix_key);
@@ -164,7 +174,7 @@ namespace oceanbase
       };
 
       public:
-        ObUpsTableMgr(ObUpsCache& ups_cache);
+        ObUpsTableMgr(common::ObILogWriter &log_writer);
         ~ObUpsTableMgr();
         int init();
         int reg_table_mgr(SSTableMgr &sstable_mgr);
@@ -174,12 +184,19 @@ namespace oceanbase
         }
 
       public:
+        int add_memtable_uncommited_checksum(uint64_t *checksum);
+        int check_checksum(const uint64_t checksum2check,
+                           const uint64_t checksum_before_mutate,
+                           const uint64_t checksum_after_mutate);
         int start_transaction(const MemTableTransType type,
                               UpsTableMgrTransHandle &handle);
         int end_transaction(UpsTableMgrTransHandle &handle, bool rollback);
         int pre_process(const bool using_id, common::ObMutator& ups_mutator, const common::IToken *token);
         int apply(const bool using_id, UpsTableMgrTransHandle &handle, ObUpsMutator &ups_mutator, common::ObScanner *scanner);
+        int apply(const bool using_id, RWSessionCtx &session_ctx, ILockInfo &lock_info, common::ObMutator &mutator);
+        int apply(RWSessionCtx &session_ctx, common::ObIterator &iter);
         int replay(ObUpsMutator& ups_mutator, const ReplayType replay_type);
+        int replay_mgt_mutator(ObUpsMutator& ups_mutator, const ReplayType replay_type);
         int set_schemas(const CommonSchemaManagerWrapper &schema_manager);
         int switch_schemas(const CommonSchemaManagerWrapper &schema_manager);
         int get_active_memtable_version(uint64_t &version);
@@ -209,17 +226,41 @@ namespace oceanbase
         // @param [in] get_param param used to get data
         // @param [out] scanner result data of get operation.
         // @return OB_SUCCESS if success, other error code if error occurs.
-        int get(const common::ObGetParam& get_param, common::ObScanner& scanner, const int64_t start_time, const int64_t timeout);
+        int get(const common::ObGetParam& get_param, ObScanner& scanner, const int64_t start_time, const int64_t timeout);
+        int get(const BaseSessionCtx &session_ctx,
+                const common::ObGetParam& get_param,
+                common::ObScanner& scanner,
+                const int64_t start_time,
+                const int64_t timeout);
         // Scans row range.
         //
         // @param [in] scan_param param used to scan data
         // @param [out] scanner result data of scan operation
         // @return OB_SUCCESS if success, other error code if error occurs.
-        int scan(const common::ObScanParam& scan_param, common::ObScanner& scanner, const int64_t start_time, const int64_t timeout);
+        int scan(const common::ObScanParam& scan_param, ObScanner& scanner, const int64_t start_time, const int64_t timeout);
+        int scan(const BaseSessionCtx &session_ctx,
+                const common::ObScanParam &scan_param,
+                common::ObScanner &scanner,
+                const int64_t start_time,
+                const int64_t timeout);
 
-        virtual int rpc_get(common::ObGetParam &get_param, common::ObScanner &scanner, const int64_t timeouut);
+        int new_get(const common::ObGetParam& get_param, common::ObCellNewScanner& scanner, const int64_t start_time, const int64_t timeout);
+        int new_get(BaseSessionCtx &session_ctx,
+                    const common::ObGetParam& get_param,
+                    common::ObCellNewScanner& scanner,
+                    const int64_t start_time,
+                    const int64_t timeout,
+                    const sql::ObLockFlag lock_flag = sql::LF_NONE);
 
-        int get_mutate_result(common::ObCellInfo &mutate_cell, common::ObIterator &active_data, common::ObScanner &scanner);
+        int new_scan(const common::ObScanParam& scan_param, common::ObCellNewScanner& scanner, const int64_t start_time, const int64_t timeout);
+        int new_scan(BaseSessionCtx &session_ctx,
+                    const common::ObScanParam &scan_param,
+                    common::ObCellNewScanner &scanner,
+                    const int64_t start_time,
+                    const int64_t timeout);
+
+        //virtual int rpc_get(common::ObGetParam &get_param, common::ObScanner &scanner, const int64_t timeouut);
+
 
         int load_sstable_bypass(SSTableMgr &sstable_mgr, int64_t &loaded_num);
         int check_cur_version();
@@ -227,6 +268,7 @@ namespace oceanbase
         void update_merged_version(ObUpsRpcStub &rpc_stub, const common::ObServer &root_server, const int64_t timeout_us);
 
       public:
+        bool need_auto_freeze() const;
         int freeze_memtable(const TableMgr::FreezeType freeze_type, uint64_t &frozen_version, bool &report_version_changed,
                             const common::ObPacket *resp_packet = NULL);
         void store_memtable(const bool all);
@@ -247,32 +289,66 @@ namespace oceanbase
         void set_warm_up_percent(const int64_t warm_up_percent);
         int get_schema(const uint64_t major_version, CommonSchemaManagerWrapper &sm);
         int get_sstable_range_list(const uint64_t major_version, const uint64_t table_id, TabletInfoList &ti_list);
+        int fill_commit_log(ObUpsMutator &ups_mutator, TraceLog::LogBuffer &tlog_buffer);
+        int flush_commit_log(TraceLog::LogBuffer &tlog_buffer);
 
       private:
+        int write_schema(const CommonSchemaManagerWrapper &schema_manager);
         int set_mutator_(ObUpsMutator &mutator);
-        int get_(TableList &table_list, const common::ObGetParam& get_param, common::ObScanner& scanner,
+        template<class T>
+        int get_(const common::ObGetParam& get_param, T& scanner, const int64_t start_time, const int64_t timeout);
+        template<class T>
+        int get_(const BaseSessionCtx &session_ctx,
+                const common::ObGetParam& get_param,
+                T& scanner,
+                const int64_t start_time,
+                const int64_t timeout,
+                const sql::ObLockFlag lock_flag = sql::LF_NONE);
+
+        template<class T>
+        int scan_(const common::ObScanParam& scan_param, T& scanner, const int64_t start_time, const int64_t timeout);
+        template<class T>
+        int scan_(const BaseSessionCtx &session_ctx,
+                  const common::ObScanParam& scan_param,
+                  T& scanner,
+                  const int64_t start_time,
+                  const int64_t timeout);
+
+        template<class T>
+        int get_(TableList &table_list, const common::ObGetParam& get_param, T& scanner,
                 const int64_t start_time, const int64_t timeout);
+        template<class T>
+        int get_(const BaseSessionCtx &session_ctx,
+                TableList &table_list,
+                const common::ObGetParam& get_param,
+                T& scanner,
+                const int64_t start_time,
+                const int64_t timeout,
+                const sql::ObLockFlag lock_flag);
 
+        template<class T>
         int get_row_(TableList &table_list, const int64_t first_cell_idx, const int64_t last_cell_idx,
-            const common::ObGetParam& get_param, common::ObScanner& scanner,
+            const common::ObGetParam& get_param, T& scanner,
             const int64_t start_time, const int64_t timeout);
+        template<class T>
+        int get_row_(const BaseSessionCtx &session_ctx,
+                    TableList &table_list,
+                    const int64_t first_cell_idx,
+                    const int64_t last_cell_idx,
+                    const common::ObGetParam& get_param,
+                    T& scanner,
+                    const int64_t start_time,
+                    const int64_t timeout,
+                    const sql::ObLockFlag lock_flag);
 
-        int add_to_scanner_(common::ObIterator& ups_merger, common::ObScanner& scanner,
+        template<class T>
+        int add_to_scanner_(common::ObIterator& ups_merger, T& scanner,
             int64_t& row_count, const int64_t start_time, const int64_t timeout, const int64_t result_limit_size = UINT64_MAX);
       private:
-        ObClientWrapper* get_client_wrapper_();
-
         int check_permission_(common::ObMutator &mutator, const common::IToken &token);
         int trans_name2id_(common::ObMutator &mutator);
-        int trans_cond_name2id_(common::ObMutator &mutator);
-        int fill_commit_log_(ObUpsMutator &ups_mutator);
-        int flush_commit_log_();
-        int prepare_ups_cache_(const uint64_t table_id, const uint64_t column_id, const common::ObString &row_key,
-                              const CommonSchemaManager* common_schema_mgr, ObClientWrapper* client_wrapper);
-        int add_ups_cache_(const int64_t last_frozen_version, const common::ObCellInfo& cell_info);
-        int check_condition_(common::ObMutator& mutator);
-        int check_cond_info_(const int64_t op_type, const common::ObObj& cell_value,
-            const common::ObObj& cond_value);
+        int fill_commit_log_(ObUpsMutator &ups_mutator, TraceLog::LogBuffer &tlog_buffer);
+        int flush_commit_log_(TraceLog::LogBuffer &tlog_buffer);
         int handle_freeze_log_(ObUpsMutator &ups_mutator, const ReplayType replay_type);
 
       private:
@@ -281,9 +357,9 @@ namespace oceanbase
 
       private:
         char *log_buffer_;
+        common::ObSpinLock schema_lock_;
         UpsSchemaMgr schema_mgr_;
         TableMgr table_mgr_;
-        ObUpsCache& ups_cache_;
         bool check_checksum_;
         bool has_started_;
         uint64_t last_bypass_checksum_;

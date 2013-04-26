@@ -14,6 +14,7 @@
 
 #include "ob_single_log_reader.h"
 #include "ob_log_dir_scanner.h"
+#include "ob_log_generator.h"
 using namespace oceanbase::common;
 
 const int64_t ObSingleLogReader::LOG_BUFFER_MAX_LENGTH = 1 << 21;
@@ -253,6 +254,14 @@ int ObSingleLogReader::read_header(ObLogEntry& entry)
       TBSYS_LOG(ERROR, "Get an illegal log entry, log file maybe corrupted");
       err = OB_LAST_LOG_RUINNED;
     }
+  }
+  else if (ObLogGenerator::is_eof(log_buffer_.get_data() + log_buffer_.get_position(),
+                                  log_buffer_.get_limit() - log_buffer_.get_position()))
+  {
+    err = OB_READ_NOTHING;
+    pread_pos_ -= log_buffer_.get_limit() - log_buffer_.get_position();
+    log_buffer_.get_limit() = log_buffer_.get_position();
+    //TBSYS_LOG(WARN, "read eof, reset pread_pos=%ld, log_buf_pos=%ld", pread_pos_, log_buffer_.get_limit());
   }
   else if (OB_SUCCESS != (err = entry.deserialize(log_buffer_.get_data(), log_buffer_.get_limit(),
                                                   log_buffer_.get_position())))

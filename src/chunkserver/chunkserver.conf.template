@@ -11,6 +11,8 @@ port = 2600
 task_queue_size = 1000
 # 处理线程池大小，OLAP应用中建议配置为cpu核的2倍左右，不能reload
 task_thread_count = 50
+# libeasy 处理IO的线程个数
+io_thread_count = 3
 
 ## sstable相关选项，可以通过switch schema来reload，需要保证reload时所有cs没有做每日合并 ##
 # cs上统一配置的每个表的sstable最大大小，在schema中也可以为每个
@@ -141,6 +143,9 @@ max_groupby_mem_size_mbyte = 16
 compactsstable_cache_size_mb = 0
 # 后台获取ups分发数据的线程数，默认为1，最大为16
 compactsstable_cache_thread_num = 1
+# 新旁路导入加载sstable的线程数，默认为0，默认不启用该功能，如果需要配置该值，
+# 该设置值一般与磁盘数量相等，每个磁盘一个加载线程，不能reload
+bypass_sstable_loader_thread_num = 0
 
 ## 流控选项，可以reload ##
 # 流控选项，请求预留给ms的处理时间，单位；微秒，默认值300毫秒，如果一个请求的
@@ -159,6 +164,9 @@ upslist_interval_us = 5000000
 blacklist_timeout_us = 5000000
 # 从ups读取失败多少次后，加入黑名单，默认值100次
 blacklist_fail_count = 100
+
+#内建join功能每小批的条数，需要根据内置cache大小配置，太大会导致cache内存不够导致join失败
+join_batch_count = 3000
 
 ## cache相关选项，不能reload ##
 [memory_cache]

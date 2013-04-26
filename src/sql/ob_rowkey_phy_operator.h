@@ -17,8 +17,8 @@
 #ifndef _OB_ROWKEY_PHY_OPERATOR_H
 #define _OB_ROWKEY_PHY_OPERATOR_H 1
 
-#include "common/ob_string.h"
 #include "ob_phy_operator.h"
+#include "common/ob_rowkey.h"
 
 namespace oceanbase
 {
@@ -29,9 +29,9 @@ namespace oceanbase
       public:
         virtual ~ObRowkeyPhyOperator() {};
 
-        int get_next_row(const common::ObRow *&row);
-        virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
-        virtual int get_next_row(const common::ObString *&rowkey, const common::ObRow *&row) = 0;
+        virtual int get_next_row(const common::ObRow *&row);
+        virtual int get_row_desc(const common::ObRowDesc *&row_desc) const = 0;
+        virtual int get_next_row(const common::ObRowkey *&rowkey, const common::ObRow *&row) = 0;
 
       private:
         // disallow copy

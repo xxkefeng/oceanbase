@@ -31,7 +31,7 @@ int ObUpsRowUtil::convert(const ObUpsRow &row, ObString &compact_row)
   uint64_t column_id = OB_INVALID_ID;
   ObObj cell_clone;
 
-  if(row.is_delete_row())
+  if(row.get_is_delete_row())
   {
     if(OB_SUCCESS != (ret = cell_writer.row_delete()))
     {
@@ -81,23 +81,19 @@ int ObUpsRowUtil::convert(const ObUpsRow &row, ObString &compact_row)
 
 int ObUpsRowUtil::convert(uint64_t table_id, const ObString &compact_row, ObUpsRow &row)
 {
-  return convert(table_id, compact_row, row, NULL);
+  return convert(table_id, compact_row, row, NULL, NULL);
 }
 
-int ObUpsRowUtil::convert(uint64_t table_id, const ObString &compact_row, ObUpsRow &row, ObString *rowkey)
+int ObUpsRowUtil::convert(uint64_t table_id, const ObString &compact_row, ObUpsRow &row, ObRowkey *rowkey, ObObj *rowkey_buf)
 {
   int ret = OB_SUCCESS;
   ObCompactCellIterator cell_reader;
   uint64_t column_id = OB_INVALID_ID;
-  ObObj cell;
   bool is_row_finished = false;
   const ObObj *rowkey_obj = NULL;
   const ObObj *value = NULL;
-  ObString tmp_rowkey;
 
-  row.set_delete_row(false);
-
-  cell.set_ext(ObActionFlag::OP_NOP);
+  row.reuse();
 
   if(NULL == rowkey)
   {
@@ -107,29 +103,41 @@ int ObUpsRowUtil::convert(uint64_t table_id, const ObString &compact_row, ObUpsR
   {
     cell_reader.init(compact_row, DENSE_SPARSE);
   }
-
-  for(int64_t i=0;OB_SUCCESS == ret && i<row.get_column_num();i++)
-  {
-    if(OB_SUCCESS != (ret = row.raw_set_cell(i, cell)))
-    {
-      TBSYS_LOG(WARN, "raw set cell fail:ret[%d], i[%ld]", ret, i);
-    }
-  }
   
   if(OB_SUCCESS == ret && NULL != rowkey)
   {
-    if(OB_SUCCESS != (ret = cell_reader.next_cell()))
+    if(NULL == rowkey_buf)
     {
-      TBSYS_LOG(WARN, "next cell fail:ret[%d]", ret);
+      ret = OB_INVALID_ARGUMENT;
+      TBSYS_LOG(WARN, "rowkey_buf should not be null");
     }
-    else if(OB_SUCCESS != (ret = cell_reader.get_cell(rowkey_obj, &is_row_finished)))
+
+    int64_t rowkey_cnt = 0;
+    while(OB_SUCCESS == ret)
     {
-      TBSYS_LOG(WARN, "get cell fail:ret[%d]", ret);
+      if(OB_SUCCESS != (ret = cell_reader.next_cell()))
+      {
+        TBSYS_LOG(WARN, "next cell fail:ret[%d]", ret);
+      }
+      else if(OB_SUCCESS != (ret = cell_reader.get_cell(rowkey_obj, &is_row_finished)))
+      {
+        TBSYS_LOG(WARN, "get cell fail:ret[%d]", ret);
+      }
+
+      if(OB_SUCCESS == ret && is_row_finished)
+      {
+        break;
+      }
+
+      if(OB_SUCCESS == ret)
+      {
+        rowkey_buf[rowkey_cnt ++] = *rowkey_obj;
+      }
     }
 
     if(OB_SUCCESS == ret)
     {
-      rowkey_obj->get_varchar(*rowkey);
+      rowkey->assign(rowkey_buf, rowkey_cnt);
     }
   }
 
@@ -151,12 +159,16 @@ int ObUpsRowUtil::convert(uint64_t table_id, const ObString &compact_row, ObUpsR
     }
     else if(ObExtendType == value->get_type() && ObActionFlag::OP_DEL_ROW == value->get_ext())
     {
-      row.set_delete_row(true);
+      row.set_is_delete_row(true);
     }
     else if (OB_SUCCESS != (ret = row.set_cell(table_id, column_id, *value)))
     {
       TBSYS_LOG(WARN, "failed to set cell, err=%d", ret);
       break;
+    }
+    else
+    {
+      row.set_is_all_nop(false);
     }
   }
   return ret;

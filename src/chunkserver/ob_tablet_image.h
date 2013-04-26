@@ -25,6 +25,7 @@
 #include "common/ob_atomic.h"
 #include "sstable/ob_disk_path.h"
 #include "sstable/ob_sstable_reader.h"
+#include "compactsstablev2/ob_compact_sstable_reader.h"
 #include "ob_tablet.h"
 
 namespace oceanbase 
@@ -67,7 +68,7 @@ namespace oceanbase
       public:
         ObTabletRowkeyBuilder();
         ~ObTabletRowkeyBuilder();
-        int append_range(const common::ObRange& range);
+        int append_range(const common::ObNewRange& range);
     };
 
     class ObTabletExtendBuilder : public ObTabletBuilder
@@ -94,6 +95,8 @@ namespace oceanbase
       int64_t meta_data_size_;
     };
 
+    class ObDiskManager;
+
     class ObMultiVersionTabletImage;
     class ObTabletImage
     {
@@ -109,13 +112,15 @@ namespace oceanbase
         int destroy();
         int dump(const bool dump_sstable = false) const;
 
-        int acquire_tablet(const common::ObRange& range, const int32_t scan_direction, ObTablet* &tablet) const;
-        int release_tablet(ObTablet* tablet) const;
-        int acquire_sstable(const sstable::ObSSTableId& sstable_id, sstable::ObSSTableReader* &reader) const;
-        int release_sstable(sstable::ObSSTableReader* reader) const;
+        int acquire_tablet(const common::ObNewRange& range, const int32_t scan_direction, ObTablet* &tablet) const;
+        int release_tablet(ObTablet* tablet, bool* is_remove_sstable = NULL) const;
+        int acquire_tablet(const sstable::ObSSTableId& sstable_id, ObTablet* &tablet) const;
         int include_sstable(const sstable::ObSSTableId& sstable_id) const;
 
-        int remove_tablet(const common::ObRange& range, int32_t &disk_no);
+        int remove_sstable(ObTablet* tablet) const;
+
+        int remove_tablet(const common::ObNewRange& range, int32_t &disk_no);
+        int delete_table(const uint64_t table_id, tbsys::CRWLock& lock);
 
         /*
          * scan traverses over all tablets,
@@ -133,8 +138,10 @@ namespace oceanbase
         inline void set_data_version(int64_t version) { data_version_ = version; }
 
         int add_tablet(ObTablet* tablet);
-        int alloc_tablet_object(const common::ObRange& range, ObTablet* &tablet);
+        int alloc_tablet_object(const common::ObNewRange& range, ObTablet* &tablet);
+        ObTablet* alloc_tablet_object();
         void set_fileinfo_cache(common::IFileInfoMgr& fileinfo_cache);
+        void set_disk_manger(ObDiskManager* disk_manager);
 
         inline void incr_merged_tablet_count() { common::atomic_inc(&merged_tablet_count_); }
         inline void decr_merged_tablet_count() { common::atomic_dec(&merged_tablet_count_); }
@@ -177,25 +184,32 @@ namespace oceanbase
             const char* buf, const int64_t data_len, int64_t& pos);
 
       private:
-        int find_sstable(const sstable::ObSSTableId& sstable_id, sstable::ObSSTableReader* &reader) const;
-        int find_tablet(const common::ObRange& range, const int32_t scan_direction, ObTablet* &tablet) const;
-        int find_tablet(const uint64_t table_id, const common::ObBorderFlag &border_flag, 
-            const common::ObString& key, const int32_t search_mode, ObTablet* &tablet) const;
+        int find_tablet(const sstable::ObSSTableId& sstable_id, ObTablet* &tablet) const;
+        int find_tablet(const common::ObNewRange& range, const int32_t scan_direction, ObTablet* &tablet) const;
+        int find_tablet( const uint64_t table_id, const common::ObRowkey& key, const ObRowkeyInfo* ri, 
+            const ObBorderFlag& border_flag, const int32_t scan_direction, ObTablet* &tablet) const;
+
+        int acquire_tablets(const uint64_t table_id, common::ObVector<ObTablet*>& table_tablets);
+        int release_tablets(const common::ObVector<ObTablet*>& table_tablets);
+        int remove_table_tablets(const uint64_t table_id);
       private:
         sstable::ObSSTableReader* alloc_sstable_object();
-        ObTablet* alloc_tablet_object();
+        compactsstablev2::ObCompactSSTableReader* alloc_compact_sstable_object();
         int reset();
         inline int acquire() { return atomic_inc_return((atomic_t*) &ref_count_); }
         inline int release() { return atomic_dec_return((atomic_t*) &ref_count_); }
 
       private:
         static const int64_t DEFAULT_TABLET_NUM = 128 * 1024L;
+        static const int64_t DEFAULT_TABLE_TABLET_NUM = 8 * 1024L;
         typedef common::hash::ObHashMap<sstable::ObSSTableId, ObTablet*, 
           common::hash::NoPthreadDefendMode> HashMap;
 
       private:
         common::ObSortedVector<ObTablet*> tablet_list_;
         common::ObVector<sstable::ObSSTableReader*> sstable_list_;
+        common::ObVector<ObTablet*> delete_table_tablet_list_;
+        common::ObVector<ObTablet*> report_tablet_list_;
         HashMap sstable_to_tablet_map_;
         bool hash_map_inited_;
         // all tablets has same data_version_ for now.
@@ -210,7 +224,8 @@ namespace oceanbase
         common::ModuleArena allocator_;
 
         common::IFileInfoMgr* fileinfo_cache_;
-        mutable tbsys::CThreadMutex alloc_sstable_mutex_;
+        ObDiskManager* disk_manager_;
+        mutable tbsys::CThreadMutex alloc_mutex_;
     };
 
     class ObMultiVersionTabletImage 
@@ -231,6 +246,8 @@ namespace oceanbase
 
       public:
         explicit ObMultiVersionTabletImage(common::IFileInfoMgr& fileinfo_cache);
+        ObMultiVersionTabletImage(common::IFileInfoMgr& fileinfo_cache,
+          ObDiskManager& disk_manager);
         ~ObMultiVersionTabletImage();
       public:
         /**
@@ -243,12 +260,12 @@ namespace oceanbase
          *the tablet which version is newest.
          *@param [out] tablet search result.
          */
-        int acquire_tablet(const common::ObRange &range, 
+        int acquire_tablet(const common::ObNewRange &range, 
             const ScanDirection scan_direction, 
             const int64_t version, 
             ObTablet* &tablet) const;
         int acquire_tablet_all_version(
-            const common::ObRange &range, 
+            const common::ObNewRange &range, 
             const ScanDirection scan_direction, 
             const ScanPosition from_index,
             const int64_t version, 
@@ -265,18 +282,15 @@ namespace oceanbase
          * cause need traverse every tablet to find which one
          * include sstable.
          */
-        int acquire_sstable(
+        int acquire_tablet(
             const sstable::ObSSTableId& sstable_id, 
             const int64_t version, 
-            sstable::ObSSTableReader* &reader) const;
-        int acquire_sstable_all_version(
+            ObTablet* &tablet) const;
+        int acquire_tablet_all_version(
             const sstable::ObSSTableId& sstable_id, 
             const ScanPosition from_index,
             const int64_t version, 
-            sstable::ObSSTableReader* &reader) const;
-
-        int release_sstable(const int64_t version,
-            sstable::ObSSTableReader* reader) const;
+            ObTablet* &tablet) const;
 
         /**
          * check sstable if alive in current images.
@@ -314,16 +328,14 @@ namespace oceanbase
 
         int upgrade_service();
 
-        int drop_compactsstable();
-
         /**
          * remove specific version of tablet 
          * @param range of tablet
          * @param version of tablet
          * @param [out] disk no of meta index file.
          */
-        int remove_tablet(const common::ObRange& range, 
-            const int64_t version, int32_t &disk_no);
+        int remove_tablet(const common::ObNewRange& range, 
+            const int64_t version, int32_t &disk_no, bool sync = true);
 
         /**
          * check if can launch a new merge process with version
@@ -337,7 +349,7 @@ namespace oceanbase
          * @param [out] tablets for merge
          */
         int get_tablets_for_merge(const int64_t current_frozen_version, 
-            int32_t &size, ObTablet *tablets[]) const;
+            int64_t &size, ObTablet *tablets[]) const;
 
         /**
          * check if remains some tablets which has data version = %version
@@ -357,8 +369,9 @@ namespace oceanbase
          * @param version of tablet.
          * @param [out] tablet object pointer.
          */
-        int alloc_tablet_object(const common::ObRange& range, 
+        int alloc_tablet_object(const common::ObNewRange& range, 
             const int64_t version, ObTablet* &tablet);
+        int alloc_tablet_object(const int64_t version, ObTablet* &tablet);
 
         /**
          * write tablet image to disk index file
@@ -379,6 +392,8 @@ namespace oceanbase
         int load_tablets(const int32_t* disk_no_array, const int32_t size, 
             const bool load_sstable = false);
 
+        int delete_table(const uint64_t table_id);
+
         /*
          * scan traverses over all tablets,
          * begin_scan_tablets, get_next_tablet will add
@@ -396,12 +411,37 @@ namespace oceanbase
         int64_t get_serving_version() const;
 
         void dump(const bool dump_sstable = true) const;
+        inline void reset()
+        {
+          for (int64_t i = 0; i < MAX_RESERVE_VERSION_COUNT; ++i)
+          {
+            if (NULL != image_tracker_[i]) image_tracker_[i]->reset();
+          }
+        }
+        inline int prepare_for_service()
+        {
+          return initialize_service_index();
+        }
 
         int serialize(const int32_t index, const int32_t disk_no, char* buf, const int64_t buf_len, int64_t &pos);
         int deserialize(const int32_t disk_no, const char* buf, const int64_t buf_len, int64_t &pos);
 
         common::IFileInfoMgr& get_fileinfo_cache() const { return fileinfo_cache_; }
         const char* print_tablet_image_stat() const;
+
+        inline const ObTabletImage &get_serving_image() const
+        {
+          return get_image(get_serving_version());
+        }
+
+      public:
+        struct ObTabletImageStat
+        {
+          int64_t old_ver_tablets_num_;
+          int64_t old_ver_merged_tablets_num_;
+          int64_t new_ver_tablets_num_;
+        };
+        void get_image_stat(ObTabletImageStat& stat);
 
       private:
         int64_t get_eldest_index() const;
@@ -429,6 +469,12 @@ namespace oceanbase
         {
           return has_tablet(version % MAX_RESERVE_VERSION_COUNT);
         }
+        inline bool has_report_tablet(const int64_t index) const
+        {
+          return NULL != image_tracker_[index] 
+            && image_tracker_[index]->data_version_ > 0
+            && image_tracker_[index]->report_tablet_list_.size() > 0;
+        }
 
         inline bool has_match_version_tablet(const int64_t version) const
         {
@@ -436,8 +482,16 @@ namespace oceanbase
             && get_image(version).data_version_ == version;
         }
 
+        //check if the version is existent, not care tablets count
+        inline bool has_match_version(const int64_t version) const
+        {
+          int64_t index = version % MAX_RESERVE_VERSION_COUNT;
+          return index >= 0 && NULL != image_tracker_[index] 
+            && image_tracker_[index]->data_version_ == version;
+        }
 
         int64_t initialize_service_index();
+        int adjust_inconsistent_tablets();
 
         // check tablet image object for prepare to store tablets.
         int prepare_tablet_image(const int64_t version, const bool destroy_exist);
@@ -476,23 +530,38 @@ namespace oceanbase
           }
           inline bool is_end() const
           {
-            return cur_vi_ == end_vi_ && (!image_.has_tablet(cur_vi_) 
-                || cur_ti_ >= image_.image_tracker_[cur_vi_]->tablet_list_.size());
+            return cur_vi_ == end_vi_ && (!image_.has_report_tablet(cur_vi_) 
+                || cur_ti_ >= image_.image_tracker_[cur_vi_]->report_tablet_list_.size());
           }
           inline bool is_last_tablet() const
           {
-            return image_.has_tablet(cur_vi_) 
-              && cur_ti_ == image_.image_tracker_[cur_vi_]->tablet_list_.size() - 1;
+            return image_.has_report_tablet(cur_vi_) 
+              && cur_ti_ == image_.image_tracker_[cur_vi_]->report_tablet_list_.size() - 1;
           }
           inline ObTablet* get_tablet() const
           {
             ObTablet* tablet = NULL;
-            if (image_.has_tablet(cur_vi_))
+            if (image_.has_report_tablet(cur_vi_))
             {
-              tablet = image_.image_tracker_[cur_vi_]->tablet_list_.at(static_cast<int32_t>(cur_ti_));
+              tablet = image_.image_tracker_[cur_vi_]->report_tablet_list_.at(static_cast<int32_t>(cur_ti_));
               image_.image_tracker_[cur_vi_]->acquire();
+              tablet->inc_ref();
             }
             return tablet;
+          }
+          inline int end()
+          {
+            int ret = common::OB_SUCCESS;
+
+            if (cur_vi_ >= 0 && cur_vi_ < ObMultiVersionTabletImage::MAX_RESERVE_VERSION_COUNT
+                && image_.has_report_tablet(cur_vi_))
+            {
+              ret = image_.image_tracker_[cur_vi_]->release_tablets(
+                  image_.image_tracker_[cur_vi_]->report_tablet_list_);
+              image_.image_tracker_[cur_vi_]->report_tablet_list_.reset();
+            }
+            reset();
+            return ret;
           }
           int start();
           int next();
@@ -503,6 +572,7 @@ namespace oceanbase
         ObTabletImage *image_tracker_[MAX_RESERVE_VERSION_COUNT];
         Iterator iterator_;
         common::IFileInfoMgr& fileinfo_cache_;
+        ObDiskManager* disk_manager_;
         mutable tbsys::CRWLock lock_;
     };
 

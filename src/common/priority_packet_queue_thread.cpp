@@ -16,8 +16,11 @@
 
 #include "priority_packet_queue_thread.h"
 #include "ob_probability_random.h"
-
-using namespace tbnet;
+#include "ob_trace_id.h"
+#include "ob_tsi_factory.h"
+#include "ob_profile_log.h"
+#include "ob_profile_type.h"
+#include "ob_atomic.h"
 
 namespace oceanbase {
 namespace common {
@@ -41,7 +44,7 @@ PriorityPacketQueueThread::PriorityPacketQueueThread() : tbsys::CDefaultRunnable
 }
 
 // 构造
-PriorityPacketQueueThread::PriorityPacketQueueThread(int threadCount, IPacketQueueHandler *handler, void *args)
+PriorityPacketQueueThread::PriorityPacketQueueThread(int threadCount, ObPacketQueueHandler *handler, void *args)
         : tbsys::CDefaultRunnable(threadCount)
 {
   _stop = 0;
@@ -65,7 +68,7 @@ PriorityPacketQueueThread::~PriorityPacketQueueThread()
 }
 
 // 线程参数设置
-void PriorityPacketQueueThread::setThreadParameter(int threadCount, IPacketQueueHandler *handler, void *args)
+void PriorityPacketQueueThread::setThreadParameter(int threadCount, ObPacketQueueHandler *handler, void *args)
 {
     setThreadCount(threadCount);
     _handler = handler;
@@ -151,11 +154,15 @@ ObPacket* PriorityPacketQueueThread::pop_packet_(const int64_t priority)
 
   return packet;
 }
+void PriorityPacketQueueThread::set_ip_port(const IpPort & ip_port)
+{
+  ip_port_ = ip_port;
+}
 
 // Runnable 接口
 void PriorityPacketQueueThread::run(tbsys::CThread *, void *)
 {
-  Packet *packet = NULL;
+  ObPacket *packet = NULL;
   int64_t priority = -1;
   static const int64_t TASK_WAIT_TIME = 1; // wait 1ms if there is no task
 
@@ -200,7 +207,27 @@ void PriorityPacketQueueThread::run(tbsys::CThread *, void *)
     // handle packet
     if (_handler)
     {
+      int64_t trace_id = packet->get_trace_id();
+      if (0 == trace_id)
+      {
+        TraceId *new_id = GET_TSI_MULT(TraceId, TSI_COMMON_PACKET_TRACE_ID_1);
+        (new_id->id).seq_ = atomic_inc(&(SeqGenerator::seq_generator_));
+        (new_id->id).ip_ = ip_port_.ip_;
+        (new_id->id).port_ = ip_port_.port_;
+        packet->set_trace_id(new_id->uval_);
+      }
+      else
+      {
+        uint32_t *channel_id = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_CHID_1);
+        *channel_id = packet->get_channel_id();
+        TraceId *id = GET_TSI_MULT(TraceId, TSI_COMMON_PACKET_TRACE_ID_1);
+        id->uval_ = static_cast<uint64_t>(trace_id);
+      }
+      int64_t st = tbsys::CTimeUtil::getTime();
+      PROFILE_LOG(DEBUG, HANDLE_PACKET_START_TIME PCODE, st, packet->get_packet_code());
       _handler->handlePacketQueue(packet, _args);
+      int64_t ed = tbsys::CTimeUtil::getTime();
+      PROFILE_LOG(DEBUG, HANDLE_PACKET_END_TIME PCODE, ed, packet->get_packet_code());
     }
   }
 
@@ -216,7 +243,27 @@ void PriorityPacketQueueThread::run(tbsys::CThread *, void *)
         _cond[priority].unlock();
         ret = true;
         if (_handler) {
+          int64_t trace_id = packet->get_trace_id();
+          if (0 == trace_id)
+          {
+            TraceId *new_id = GET_TSI_MULT(TraceId, TSI_COMMON_PACKET_TRACE_ID_1);
+            (new_id->id).seq_ = atomic_inc(&(SeqGenerator::seq_generator_));
+            (new_id->id).ip_ = ip_port_.ip_;
+            (new_id->id).port_ = ip_port_.port_;
+            packet->set_trace_id(new_id->uval_);
+          }
+          else
+          {
+            uint32_t *channel_id = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_CHID_1);
+            *channel_id = packet->get_channel_id();
+            TraceId *id = GET_TSI_MULT(TraceId, TSI_COMMON_PACKET_TRACE_ID_1);
+            id->uval_ = static_cast<uint64_t>(trace_id);
+          }
+          int64_t st = tbsys::CTimeUtil::getTime();
+          PROFILE_LOG(DEBUG, HANDLE_PACKET_START_TIME PCODE, st, packet->get_packet_code());
           ret = _handler->handlePacketQueue(packet, _args);
+          int64_t ed = tbsys::CTimeUtil::getTime();
+          PROFILE_LOG(DEBUG, HANDLE_PACKET_END_TIME PCODE, ed, packet->get_packet_code());
         }
         //if (ret) delete packet;
 

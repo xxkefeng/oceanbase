@@ -23,9 +23,9 @@
 #include "ob_chunk_server_main.h"
 #include "common/file_directory_utils.h"
 
-namespace oceanbase 
+namespace oceanbase
 {
-  namespace chunkserver 
+  namespace chunkserver
   {
     const char *ObDiskManager::PROC_MOUNTS_FILE = "/proc/mounts";
     const int32_t ObDiskManager::PROC_MOUNTS_FILE_SIZE = 4096;
@@ -61,7 +61,7 @@ namespace oceanbase
         tbsys::CWLockGuard guard(lock_);
         max_sstable_size_ = max_sstable_size;
         reset();
-        
+
         for(int n = 1; n <= OB_MAX_DISK_NUMBER; ++n) //disk index start from 1
         {
           snprintf (disk_dir, sizeof(disk_dir), "%s%c%d", data_dir, '/', n);
@@ -107,8 +107,8 @@ namespace oceanbase
       return ret;
     }
 
-    
-    /** 
+
+    /**
      * @brief these two functions is for migrate,
      *        migration is not very often,so we just select the most free disk
      *        when migration is done,invoke the shrink_space
@@ -136,7 +136,7 @@ namespace oceanbase
           }
 
           this_avail = (disk_[i].avail_ - pending_files_[i] * max_sstable_size_);
-          
+
           if (this_avail > avail)
           {
             avail = this_avail;
@@ -182,7 +182,7 @@ namespace oceanbase
       {
         int64_t avail_index = -1;
         int32_t sstable_num = INT32_MAX;
-        
+
         int64_t avail = 0;
         int64_t this_avail = 0;
 
@@ -193,7 +193,7 @@ namespace oceanbase
         int64_t best_index = -1;
 
         int64_t concurrent_writer =  ObChunkServerMain::get_instance()->get_chunk_server()
-                                                            .get_param().get_merge_thread_per_disk();
+                                                            .get_config().merge_thread_per_disk;
 
         if (concurrent_writer <= 0)
           concurrent_writer = 1; //for test
@@ -212,7 +212,7 @@ namespace oceanbase
           {
             continue;
           }
-          
+
           //find the most available disk
           if (this_avail > avail)
           {
@@ -220,7 +220,7 @@ namespace oceanbase
             avail_index = i;
           }
 
-          //find the most available disk that no more than concurrent_writer pending files 
+          //find the most available disk that no more than concurrent_writer pending files
           if ( pending_files_[i] < concurrent_writer && (this_avail > no_pending_avail))
           {
             no_pending_avail = this_avail;
@@ -228,7 +228,7 @@ namespace oceanbase
           }
 
           //find the disk that no more than concurrent_writer pending files & have the least sstable files
-          if (sstable_files_[i] <= sstable_num 
+          if (sstable_files_[i] <= sstable_num
               && pending_files_[i] < concurrent_writer)
           {
             if (sstable_files_[i] < sstable_num ||
@@ -300,7 +300,7 @@ namespace oceanbase
       }
       return;
     }
-        
+
     void ObDiskManager::set_disk_status(const int32_t disk_no,const ObDiskStatus stat)
     {
       tbsys::CWLockGuard guard(lock_);
@@ -355,7 +355,7 @@ namespace oceanbase
       }
       return used;
     }
-        
+
     const int32_t* ObDiskManager::get_disk_no_array(int32_t& disk_num) const
     {
       tbsys::CRLockGuard guard(lock_);
@@ -371,13 +371,13 @@ namespace oceanbase
       struct stat st;
       char f_path[common::OB_MAX_FILE_NAME_LENGTH];
       const char *path_check = path;
-      
+
       if (NULL == path || '\0' == *path)
       {
         TBSYS_LOG(WARN,"path is null");
         err = OB_ERROR;
       }
-      
+
       if ((OB_SUCCESS == err) && NULL == (fp = fopen(PROC_MOUNTS_FILE,"r")))
       {
         TBSYS_LOG(WARN,"open %s failed",PROC_MOUNTS_FILE);

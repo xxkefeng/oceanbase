@@ -248,7 +248,8 @@ int ObLogDirScanner::search_log_dir_(const char* log_dir)
   if (NULL == plog_dir)
   {
     err = mkdir(log_dir, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
-    if (err != 0)
+    if (err != 0
+        && EEXIST != errno)
     {
       TBSYS_LOG(ERROR, "mkdir[\"%s\"] error[%s]", log_dir, strerror(errno));
       ret = OB_ERROR;

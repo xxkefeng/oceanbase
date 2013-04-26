@@ -2,9 +2,9 @@
  //
  // ob_sstable_mgr.cpp updateserver / Oceanbase
  //
- // Copyright (C) 2010, 2012 Taobao.com, Inc.
+ // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2011-03-24 by Yubai (yubai.lk@taobao.com)
+ // Created on 2011-03-24 by Yubai (yubai.lk@taobao.com) 
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- //
+ // 
  // Change Log
  //
 ////====================================================================
@@ -583,7 +583,7 @@ namespace oceanbase
       StoreInfo *ret = NULL;
       if (0 != store_num_)
       {
-        int64_t store_pos = (int64_t)atomic_inc((uint64_t*)&loop_pos_) % store_num_;
+        uint64_t store_pos = atomic_inc((uint64_t*)&loop_pos_) % store_num_;
         ret = store_infos_[store_pos];
       }
       return ret;
@@ -731,6 +731,7 @@ namespace oceanbase
     {
       bool bret = false;
       sstable::ObSSTableSchema sstable_schema;
+      const ObRowkeyInfo *rowkey_info = NULL;
       ObString compressor_str;
       int store_type = 0;
       int64_t block_size = 0;
@@ -780,9 +781,24 @@ namespace oceanbase
           {
             if (OB_SUCCESS != (tmp_ret = iter.get_row(sstable_row)))
             {
+              if (OB_SCHEMA_ERROR == tmp_ret)
+              {
+                continue;
+              }
               TBSYS_LOG(WARN, "get row fail ret=%d", tmp_ret);
               break;
             }
+            else if (NULL == (rowkey_info = iter.get_rowkey_info(sstable_row.get_table_id())))
+            {
+              TBSYS_LOG(WARN, "get rowkey info failed, table_id=%lu", sstable_row.get_table_id());
+              tmp_ret = OB_SCHEMA_ERROR;
+            }
+            /* TODO::: set_rowkey_info for write old fashion sstable
+            else if (OB_SUCCESS != (tmp_ret = sstable_row.set_rowkey_info(rowkey_info)))
+            {
+              TBSYS_LOG(WARN, "set rowkey info failed");
+            }
+            */
             else if (OB_SUCCESS != (tmp_ret = sstable_writer.append_row(sstable_row, approx_space_usage)))
             {
               TBSYS_LOG(WARN, "append row fail ret=%d table_id=%lu", tmp_ret, sstable_row.get_table_id());
@@ -899,7 +915,7 @@ namespace oceanbase
             }
             else
             {
-              TBSYS_LOG(INFO, "rename [%s] to [%s] succ", fpath_tmp, fpath);
+              TBSYS_LOG(INFO, "rename [%s] to [%s] succ timeu=%ld", fpath_tmp, fpath, tbsys::CTimeUtil::getTime() - timestamp);
               sstable_info.add_store(store_handle);
             }
           }
@@ -2065,3 +2081,4 @@ namespace oceanbase
     }
   }
 }
+

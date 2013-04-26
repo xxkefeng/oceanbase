@@ -32,7 +32,7 @@ namespace oceanbase
       /// initialize
       int set_param(const common::ObScanParam & scan_param, common::ObCellArray & cells);
       /// add a subscanrequest's result
-      int add_sharding_result(common::ObScanner & sharding_res, const common::ObRange & query_range, bool &is_finish);
+      int add_sharding_result(common::ObScanner & sharding_res, const common::ObNewRange & query_range, bool &is_finish);
       /// finish processing result, like orderby grouped result
       int seal();
 

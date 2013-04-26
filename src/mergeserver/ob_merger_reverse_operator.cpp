@@ -46,7 +46,7 @@ int  mergeserver::ObMergerReverseOperator::set_param(const ObScanParam & scan_pa
   return err;
 }
 
-int mergeserver::ObMergerReverseOperator::add_sharding_result(ObScanner & sharding_res, const ObRange &query_range, 
+int mergeserver::ObMergerReverseOperator::add_sharding_result(ObScanner & sharding_res, const ObNewRange &query_range, 
   bool &is_finish)
 {
   int err = OB_SUCCESS;

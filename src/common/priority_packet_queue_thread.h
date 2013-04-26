@@ -18,9 +18,10 @@
 #ifndef OCEANBASE_COMMON_PRIORITY_PACKET_QUEUE_THREAD_H
 #define OCEANBASE_COMMON_PRIORITY_PACKET_QUEUE_THREAD_H
 
-#include "tbnet.h"
 #include "ob_packet.h"
 #include "ob_packet_queue.h"
+#include "ob_packet_queue_handler.h"
+#include "ob_trace_id.h"
 
 namespace oceanbase {
 namespace common {
@@ -38,13 +39,13 @@ public:
   PriorityPacketQueueThread();
 
   // 构造
-  PriorityPacketQueueThread(int threadCount, tbnet::IPacketQueueHandler *handler, void *args);
+  PriorityPacketQueueThread(int threadCount, ObPacketQueueHandler *handler, void *args);
 
   // 析构
   ~PriorityPacketQueueThread();
 
   // 参数设置
-  void setThreadParameter(int threadCount, tbnet::IPacketQueueHandler *handler, void *args);
+  void setThreadParameter(int threadCount, ObPacketQueueHandler *handler, void *args);
 
   // stop
   void stop(bool waitFinish = false);
@@ -55,12 +56,12 @@ public:
   // Runnable 接口
   void run(tbsys::CThread *thread, void *arg);
 
-  tbnet::Packet* head(int priority)
+  ObPacket* head(int priority)
   {
     return _queues[priority].head();
   }
 
-  tbnet::Packet* tail(int priority)
+  ObPacket* tail(int priority)
   {
     return _queues[priority].tail();
   }
@@ -79,7 +80,7 @@ public:
   {
     return _percent[LOW_PRIV];
   }
-
+  void set_ip_port(const IpPort & ip_port);
   void set_low_priv_cur_percent(const int64_t low_priv_percent)
   {
     if (low_priv_percent <= LOW_PRIV_MAX_PERCENT && low_priv_percent >= LOW_PRIV_MIN_PERCENT)
@@ -114,7 +115,7 @@ private:
 
 private:
   ObPacketQueue _queues[QUEUE_NUM];
-  tbnet::IPacketQueueHandler *_handler;
+  ObPacketQueueHandler *_handler;
   tbsys::CThreadCond _cond[QUEUE_NUM];
   tbsys::CThreadCond _pushcond[QUEUE_NUM];
   void *_args;
@@ -123,6 +124,7 @@ private:
   bool _waiting[QUEUE_NUM];
   int32_t _percent[QUEUE_NUM];
   int32_t _sum;
+  IpPort ip_port_;
 };
 
 }

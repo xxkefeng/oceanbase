@@ -19,6 +19,8 @@
 #include "ob_rowkey_phy_operator.h"
 #include "common/ob_ups_row.h"
 #include "common/ob_range.h"
+#include "ob_sstable_scan.h"
+#include "ob_ups_scan.h"
 
 namespace oceanbase
 {
@@ -26,39 +28,8 @@ namespace oceanbase
 
   namespace sql
   {
-    // 用于CS从合并sstable中的静态数据和UPS中的增量数据
-    class ObTabletFuse: public ObPhyOperator
+    class ObTabletFuse: public ObPhyOperator, public ObLastRowkeyInterface
     {
-      public:
-        ObTabletFuse();
-        virtual ~ObTabletFuse();
-
-        int set_child(int32_t child_idx, ObPhyOperator &child_operator);
-        int set_sstable_scan(ObRowkeyPhyOperator *sstable_scan);
-        int set_incremental_scan(ObRowkeyPhyOperator *incremental_scan);
-
-        int open();
-        int close();
-        int get_next_row(const ObRow *&row);
-        int64_t to_string(char* buf, const int64_t buf_len) const;
-        int get_row_desc(const common::ObRowDesc *&row_desc) const {row_desc=NULL;return OB_NOT_IMPLEMENT;}
-      private:
-        // disallow copy
-        ObTabletFuse(const ObTabletFuse &other);
-        ObTabletFuse& operator=(const ObTabletFuse &other);
-
-        int compare_rowkey(const ObString &rowkey1, const ObString &rowkey2);
-        bool check_inner_stat();
-
-      private:
-        // data members
-        ObRowkeyPhyOperator *sstable_scan_; // 从sstable读取的静态数据
-        ObRowkeyPhyOperator *incremental_scan_; // 从UPS读取的增量数据
-        const ObRow *last_sstable_row_;
-        const ObUpsRow *last_incr_row_;
-        const ObString *sstable_rowkey_;
-        const ObString *incremental_rowkey_;
-        ObRow curr_row_;
     };
   } // end namespace sql
 } // end namespace oceanbase

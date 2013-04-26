@@ -29,7 +29,7 @@ BigqueryReader::~BigqueryReader()
 {
 }
 
-int BigqueryReader::init(ObSqlClient& ob_client, PrefixInfo& prefix_info)
+int BigqueryReader::init(MysqlClient& ob_client, PrefixInfo& prefix_info)
 {
   int err = 0;
   ob_client_ = &ob_client;

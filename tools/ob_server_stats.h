@@ -9,9 +9,10 @@
 #include "stats.h"
 #include "client_rpc.h"
 
+using namespace oceanbase::common;
 
-namespace oceanbase 
-{ 
+namespace oceanbase
+{
   namespace tools
   {
 
@@ -19,7 +20,7 @@ namespace oceanbase
     struct Present
     {
       public:
-        enum 
+        enum
         {
           PerSecond = 1,
           Ratio,
@@ -59,12 +60,31 @@ namespace oceanbase
         };
 
       public:
-        explicit ObServerStats(ObClientRpcStub &stub, const int64_t server_type) 
+        explicit ObServerStats(ObClientRpcStub &stub, const common::ObRole server_type)
           : rpc_stub_(stub), show_header_(50), show_date_(1)
         {
           store_.current.set_server_type(server_type);
           store_.prev.set_server_type(server_type);
           store_.diff.set_server_type(server_type);
+          switch (server_type)
+          {
+            case OB_ROOTSERVER:
+              mod_ = OB_STAT_ROOTSERVER;
+              break;
+            case OB_UPDATESERVER:
+              mod_ = OB_STAT_UPDATESERVER;
+              break;
+            case OB_CHUNKSERVER:
+              mod_ = OB_STAT_CHUNKSERVER;
+              break;
+            case OB_MERGESERVER:
+              mod_ = OB_STAT_MERGESERVER;
+              break;
+            default:
+              mod_ = 0;
+              TBSYS_LOG(WARN, "invalid role");
+              break;
+          }
         }
 
         virtual ~ObServerStats() {}
@@ -87,12 +107,12 @@ namespace oceanbase
       private:
         void output_header();
         void initialize_empty_value();
-        int  calc_hit_ratio(oceanbase::common::ObStat &stat_item, 
+        int  calc_hit_ratio(oceanbase::common::ObStat &stat_item,
             const int ratio, const int hit, const int miss);
-        int calc_div_value(oceanbase::common::ObStat &stat_item, 
+        int calc_div_value(oceanbase::common::ObStat &stat_item,
             const int div, const int time, const int count);
-        int64_t print_value(const Present::ServerInfo & server_info, 
-            oceanbase::common::ObStatManager::const_iterator it, 
+        int64_t print_value(const Present::ServerInfo & server_info,
+            oceanbase::common::ObStatManager::const_iterator it,
             const uint32_t index,
             const int32_t interval) const;
 
@@ -104,6 +124,7 @@ namespace oceanbase
         int32_t show_date_;
         Store store_;
         Present present_;
+        uint64_t mod_;
     };
 
 

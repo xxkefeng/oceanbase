@@ -17,9 +17,11 @@
 #include "common/ob_define.h"
 #include "common/ob_malloc.h"
 #include "common/ob_action_flag.h"
+#include "common/ob_rowkey_helper.h"
 #include "ob_sstable_scanner.h"
+#include "ob_sstable_reader.h"
+#include "ob_sstable_scan_param.h"
 #include "ob_sstable_block_index_v2.h"
-#include "ob_scan_column_indexes.h"
 #include "ob_sstable_trailer.h" 
 
 using namespace oceanbase::common;
@@ -30,7 +32,8 @@ namespace oceanbase
   {
     ObSSTableBlockScanner::ObSSTableBlockScanner(const ObScanColumnIndexes& column_indexes)
       : initialize_status_(OB_NOT_INIT), sstable_data_store_style_(OB_SSTABLE_STORE_DENSE), 
-      is_reverse_scan_(false), is_row_changed_(false), handled_del_row_(false), not_exit_col_ret_nop_(false),
+      is_reverse_scan_(false), is_row_changed_(false), is_row_finished_(false), 
+      handled_del_row_(false), not_exit_col_ret_nop_(false),
       column_cursor_(0),current_column_count_(0), query_column_indexes_(column_indexes), 
       row_cursor_(NULL), row_start_index_(NULL), row_last_index_(NULL)
     {
@@ -88,22 +91,17 @@ namespace oceanbase
     int ObSSTableBlockScanner::store_and_advance_column()
     {
       int ret = OB_SUCCESS;
-      int64_t column_index = ObScanColumnIndexes::INVALID_COLUMN;
+      ObScanColumnIndexes::Column column;
 
-      if (OB_SUCCESS != (ret = get_current_column_index(
-              column_cursor_, current_cell_info_.column_id_, column_index)))
+      if (OB_SUCCESS != (ret = get_current_column_index(column_cursor_, column)))
       {
-        TBSYS_LOG(ERROR, "get column index error, ret = %d, cursor=%ld, id= %lu, index=%ld", 
-            ret, column_cursor_, current_cell_info_.column_id_, column_index);
+        TBSYS_LOG(ERROR, "get column index error, ret = %d, cursor=%ld, id= %lu, index=%d", 
+            ret, column_cursor_, column.id_, column.index_);
       }
-      else if (OB_SUCCESS != (ret = store_current_cell(column_index)))
+      else if (OB_SUCCESS != (ret = store_current_cell(column)))
       {
-        TBSYS_LOG(ERROR, "store current cell error, ret = %d, cursor=%ld, id=%lu, index=%ld", 
-            ret, column_cursor_, current_cell_info_.column_id_, column_index);
-      }
-      else if (sstable_data_store_style_ == OB_SSTABLE_STORE_DENSE)
-      {
-        ++column_cursor_;
+        TBSYS_LOG(ERROR, "store current cell error, ret = %d, cursor=%ld, type=%d, index=%d, id=%lu", 
+            ret, column_cursor_, column.type_, column.index_, column.id_);
       }
       return ret;
     }
@@ -132,6 +130,7 @@ namespace oceanbase
       else
       {
         is_row_changed_ = start_of_block();
+        is_row_finished_ = false;
         if (column_cursor_ < query_column_indexes_.get_column_count())
         {
           ret = store_and_advance_column();
@@ -158,31 +157,37 @@ namespace oceanbase
             ret = store_and_advance_column();
           }
         }
+
+        if (OB_SUCCESS == ret 
+            && column_cursor_ >= query_column_indexes_.get_column_count())
+        {
+          is_row_finished_ = true;
+        }
       }
 
       return ret;
     }
 
     inline int ObSSTableBlockScanner::get_current_column_index(
-        const int64_t cursor, uint64_t& column_id, int64_t& column_index) const
+        const int64_t cursor, ObScanColumnIndexes::Column& column) const
     {
-      int ret = OB_SUCCESS;
-      if (sstable_data_store_style_ == OB_SSTABLE_STORE_DENSE)
+      int ret = query_column_indexes_.get_column(cursor, column);
+      if (OB_SUCCESS != ret)
       {
-        ret = query_column_indexes_.get_column(cursor, column_id, column_index);
+        TBSYS_LOG(ERROR, "query_column_indexes_ cursor=%ld not exist.", cursor);
       }
-      else if (sstable_data_store_style_ == OB_SSTABLE_STORE_SPARSE)
+      else if (sstable_data_store_style_ == OB_SSTABLE_STORE_SPARSE && column.type_ == ObScanColumnIndexes::Normal)
       {
-        column_id = OB_INVALID_ID;
+        // for sparse sstable, column offset search at current_ids_
         uint64_t data_column_id = OB_INVALID_ID;
-        column_index = ObScanColumnIndexes::NOT_EXIST_COLUMN;
-        ret = query_column_indexes_.get_column_id(cursor, column_id);
+        column.type_ =  ObScanColumnIndexes::NotExist;
         for (int64_t i = 0; i < current_column_count_ && OB_SUCCESS == ret; ++i)
         {
           ret = current_ids_[i].get_int(reinterpret_cast<int64_t&>(data_column_id));
-          if (OB_SUCCESS == ret && data_column_id == column_id)
+          if (OB_SUCCESS == ret && data_column_id == column.id_)
           {
-            column_index = i;
+            column.type_ = ObScanColumnIndexes::Normal;
+            column.index_ = static_cast<int32_t>(i);
             break;
           }
         }
@@ -203,7 +208,7 @@ namespace oceanbase
       }
       else if (OB_SUCCESS != (ret = 
          reader_.get_row(static_cast<int>(sstable_data_store_style_), row_index, 
-            current_cell_info_.row_key_, current_ids_, current_columns_, current_column_count_) ))
+            current_rowkey_, current_ids_, current_columns_, current_column_count_) ))
       {
         TBSYS_LOG(ERROR, "read current row error, store style=%ld, current row cursor=%d,%d",
             sstable_data_store_style_, row_index->offset_, row_index->size_);
@@ -211,7 +216,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSSTableBlockScanner::store_sparse_column(const int64_t column_index)
+    int ObSSTableBlockScanner::store_sparse_column(const ObScanColumnIndexes::Column &column)
     {
       int ret                 = OB_SUCCESS;
       bool is_del_row         = false;
@@ -261,13 +266,17 @@ namespace oceanbase
         {
           ++column_cursor_;
           handled_del_row_ = true;
-          if (column_index == ObScanColumnIndexes::NOT_EXIST_COLUMN)
+          if (column.type_ == ObScanColumnIndexes::Rowkey)
+          {
+            current_cell_info_.value_ = *(current_rowkey_.ptr() + column.index_);
+          }
+          else if (column.type_ == ObScanColumnIndexes::NotExist)
           {
             current_cell_info_.value_.set_ext(ObActionFlag::OP_NOP);
           }
           else
           {
-            current_cell_info_.value_ = current_columns_[column_index];
+            current_cell_info_.value_ = current_columns_[column.index_];
           }
         }
       }
@@ -275,54 +284,67 @@ namespace oceanbase
       return ret;
     }
 
-    inline int ObSSTableBlockScanner::store_current_cell(const int64_t column_index)
+    int ObSSTableBlockScanner::store_dense_column(const ObScanColumnIndexes::Column & column)
     {
       int ret = OB_SUCCESS;
-
-      if (column_index == ObScanColumnIndexes::ROWKEY_COLUMN)
+      if (column.type_ == ObScanColumnIndexes::Rowkey)
       {
-        // TODO store row key
-        current_cell_info_.value_.set_varchar(current_cell_info_.row_key_);
+        current_cell_info_.value_ = *(current_rowkey_.ptr() + column.index_);
       }
-      else if (column_index == ObScanColumnIndexes::NOT_EXIST_COLUMN)
+      else if (column.type_ == ObScanColumnIndexes::NotExist)
       {
         //only dense format return null cell if column non-existent
-        if (sstable_data_store_style_ == OB_SSTABLE_STORE_DENSE)
+        if (not_exit_col_ret_nop_)
         {
-          if (not_exit_col_ret_nop_)
-          {
-            current_cell_info_.value_.set_ext(ObActionFlag::OP_NOP);
-          }
-          else
-          {
-            current_cell_info_.value_.set_null();
-          }
+          current_cell_info_.value_.set_ext(ObActionFlag::OP_NOP);
         }
         else
         {
-          ret = store_sparse_column(column_index);
+          current_cell_info_.value_.set_null();
         }
+      }
+      else if (column.index_ >= current_column_count_)
+      {
+          TBSYS_LOG(ERROR, "column_index=%d > current_column_count_=%ld", 
+              column.index_, current_column_count_);
+          ret = OB_ERROR;
       }
       else
       {
-        if (column_index >= current_column_count_)
-        {
-          TBSYS_LOG(ERROR, "column_index=%ld > current_column_count_=%ld", 
-              column_index, current_column_count_);
-          ret = OB_ERROR;
-        }
-        else
-        {
-          if (sstable_data_store_style_ == OB_SSTABLE_STORE_DENSE)
-          {
-            current_cell_info_.value_ = current_columns_[column_index];
-          }
-          else
-          {
-            ret = store_sparse_column(column_index);
-          }
-        }
+        current_cell_info_.value_ = current_columns_[column.index_];
       }
+
+      TBSYS_LOG(DEBUG, "store dense column:(type:%d, index:%d, value:%s)", 
+          column.type_, column.index_, to_cstring(current_cell_info_.value_));
+
+      if (OB_SUCCESS == ret) 
+      {
+        ++column_cursor_;
+      }
+
+      return ret;
+    }
+
+    int ObSSTableBlockScanner::store_current_cell(const ObScanColumnIndexes::Column& column)
+    {
+      int ret = OB_SUCCESS;
+
+      if (OB_SUCCESS == ret)
+      {
+        current_cell_info_.table_id_ = 0;
+        current_cell_info_.row_key_ = current_rowkey_;
+        current_cell_info_.column_id_ = column.id_;
+      }
+
+      if (sstable_data_store_style_ == OB_SSTABLE_STORE_DENSE)
+      {
+        ret = store_dense_column(column);
+      }
+      else
+      {
+        ret = store_sparse_column(column);
+      }
+
       return ret;
     }
 
@@ -332,6 +354,7 @@ namespace oceanbase
       sstable_data_store_style_ = store_style;
       is_reverse_scan_ = is_reverse_scan;
       is_row_changed_ = false;
+      is_row_finished_ = false;
       handled_del_row_ = false;
       not_exit_col_ret_nop_ = not_exit_col_ret_nop;
 
@@ -360,31 +383,34 @@ namespace oceanbase
      *    others, internal error code.
      */
     int ObSSTableBlockScanner::set_scan_param( 
-        const ObRange& range, const bool is_reverse_scan,
-        const BlockData& block_data, bool &need_looking_forward, bool not_exit_col_ret_nop) 
+        const common::ObNewRange& range,
+        const bool is_reverse_scan,
+        const ObSSTableBlockReader::BlockDataDesc& data_desc,  
+        const ObSSTableBlockReader::BlockData& block_data, 
+        bool &need_looking_forward, 
+        bool not_exit_col_ret_nop) 
     {
       int32_t ret = OB_SUCCESS; 
-      int64_t pos = 0;
 
       need_looking_forward = true;
       reader_.reset();  //reset reader before assign start_iterator and last_iterator
       const_iterator start_iterator = reader_.end();
       const_iterator last_iterator = reader_.end();
 
-      if (!block_data.available())
+
+      if (!block_data.available() || !data_desc.available())
       {
-        TBSYS_LOG(ERROR, "block_data invalid, bd=%p,bdsz=%ld, store=%ld",
-            block_data.data_buffer_, block_data.data_bufsiz_, block_data.store_style_);
+        TBSYS_LOG(ERROR, "block_data,desc invalid, bd=(%p,%ld, %p, %ld), desc=(%p,%ld,%ld) ",
+            block_data.data_buffer_, block_data.data_bufsiz_, block_data.internal_buffer_, block_data.internal_bufsiz_,
+            data_desc.rowkey_info_, data_desc.rowkey_column_count_, data_desc.store_style_);
         ret = OB_INVALID_ARGUMENT;
       }
       else if (OB_SUCCESS != (ret = initialize(is_reverse_scan, 
-        block_data.store_style_, not_exit_col_ret_nop)))
+        data_desc.store_style_, not_exit_col_ret_nop)))
       {
         // cannot happen
       }
-      else if (OB_SUCCESS != (ret =  reader_.deserialize(
-              block_data.internal_buffer_, block_data.internal_bufsiz_,
-              block_data.data_buffer_, block_data.data_bufsiz_, pos)) )
+      else if (OB_SUCCESS != (ret =  reader_.deserialize(data_desc, block_data)) )
       {
         TBSYS_LOG(ERROR, "deserialize error, ret=%d, data bufsiz=%ld", 
             ret, block_data.data_bufsiz_);
@@ -402,9 +428,8 @@ namespace oceanbase
       else  if (start_iterator > last_iterator)
       {
         TBSYS_LOG(DEBUG, "query key not exist in this block, start_iterator > last_iterator."
-            " pls check input parameters, start_key and end_key.");
-        common::hex_dump(range.start_key_.ptr(), range.start_key_.length(), TBSYS_LOG_LEVEL_INFO);
-        common::hex_dump(range.end_key_.ptr(), range.end_key_.length(), TBSYS_LOG_LEVEL_INFO);
+            " pls check input parameters, start_key(%s) and end_key(%s).", 
+            to_cstring(range.start_key_), to_cstring(range.end_key_));
         ret = OB_BEYOND_THE_RANGE;
         need_looking_forward = false;
       }
@@ -441,15 +466,15 @@ namespace oceanbase
     }
 
 
-    int ObSSTableBlockScanner::locate_start_pos(const common::ObRange& range,
+    int ObSSTableBlockScanner::locate_start_pos(const common::ObNewRange& range,
         const_iterator& start_iterator, bool& need_looking_forward)
     {
       int ret = OB_SUCCESS;
       start_iterator = reader_.end();
-      ObString query_start_key = range.start_key_;
-      ObString find_start_key;
+      ObRowkey query_start_key = range.start_key_;
+      ObRowkey find_start_key;
 
-      if (range.border_flag_.is_min_value())
+      if (range.start_key_.is_min_row())
       {
         start_iterator = reader_.begin();
       }
@@ -508,14 +533,14 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSSTableBlockScanner::locate_end_pos(const common::ObRange& range,
+    int ObSSTableBlockScanner::locate_end_pos(const common::ObNewRange& range,
         const_iterator& last_iterator, bool& need_looking_forward)
     {
       int ret = OB_SUCCESS;
       last_iterator = reader_.end();
-      ObString query_end_key = range.end_key_;
+      ObRowkey query_end_key = range.end_key_;
 
-      if (range.border_flag_.is_max_value())
+      if (range.end_key_.is_max_row())
       {
         last_iterator = reader_.end();
         --last_iterator;
@@ -544,7 +569,7 @@ namespace oceanbase
 
         // now %last_iterator >= begin() && %last_iterator < end();
         // check if scan %end_key_ less than %last_iterator.row_key
-        ObString find_end_key;
+        ObRowkey find_end_key;
         ret = reader_.get_row_key(last_iterator, find_end_key);
         if (OB_SUCCESS == ret)
         {

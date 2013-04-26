@@ -239,14 +239,16 @@ namespace oceanbase
 
       ObString table_name;
       ObString column_name;
-      ObString row_key;
+      ObRowkey row_key;
+      ObObj rowkey_obj;
       ObString value;
       ObObj obj;
       table_name.assign_ptr(const_cast<char*>(SKEY_TABLE_NAME), static_cast<int32_t>(strlen(SKEY_TABLE_NAME)));
       column_name.assign_ptr(const_cast<char*>(SKEY_COL_NAME), static_cast<int32_t>(strlen(SKEY_COL_NAME)));
 
       uint64_t version = htonll(timestamp);
-      row_key.assign_ptr((char*)&version, sizeof(version));
+      rowkey_obj.set_varchar(ObString(0, sizeof(version), (char*)&version));
+      row_key.assign(&rowkey_obj, 1);
       value.assign_ptr((char*)&skey_info, sizeof(skey_info));
       obj.set_varchar(value);
 
@@ -257,7 +259,8 @@ namespace oceanbase
       else
       {
         uint64_t cur_version_key = htonll(CUR_VERSION_KEY);
-        row_key.assign_ptr((char*)&cur_version_key, sizeof(CUR_VERSION_KEY));
+        rowkey_obj.set_varchar(ObString(0, sizeof(CUR_VERSION_KEY), (char*)&cur_version_key));
+        row_key.assign(&rowkey_obj, 1);
         value.assign_ptr((char*)&cur_skey_info, sizeof(cur_skey_info));
         obj.set_varchar(value);
         if (OB_SUCCESS != (ret = mutator.update(table_name, row_key, column_name, obj)))

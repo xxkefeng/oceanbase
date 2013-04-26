@@ -2,9 +2,9 @@
  //
  // ob_hashutils.cpp / hash / common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2010-07-23 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2010-07-23 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -1102,9 +1102,9 @@ namespace oceanbase
                 }
                 else
                 {
-                  HASH_WRITE_LOG(HASH_DEBUG, "new succ block=%p block_size=%lu node_size=%lu type=[%s]",
-                                block, sizeof(Block), sizeof(Node), typeid(T).name());
-                  memset(block, 0, sizeof(Block));
+                  //memset(block, 0, sizeof(Block));
+                  block->ref_cnt = 0;
+                  block->cur_pos = 0;
                   block->nodes = (Node*)(block->nodes_buffer);
                   block->next = block_list_head_;
                   block_list_head_ = block;
@@ -1225,4 +1225,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_HASH_HASHUTILS_H_
-

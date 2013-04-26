@@ -1,98 +1,39 @@
 /*
  *   (C) 2007-2010 Taobao Inc.
- *   
+ *
  *   Version: 0.1
- *           
+ *
  *   Authors:
  *      qushan <qushan@taobao.com>
  *        - some work details if you want
- *               
+ *
  */
 
 #include <stdint.h>
 #include <tblog.h>
 #include "common/ob_trace_log.h"
-#include "sstable/ob_sstable_stat.h"
+#include "common/ob_schema_manager.h"
+#include "sstable/ob_sstable_schema.h"
 #include "ob_chunk_server.h"
 #include "ob_chunk_server_main.h"
+#include "common/ob_tbnet_callback.h"
+#include "ob_chunk_callback.h"
+#include "common/ob_config_manager.h"
+#include "common/ob_profile_log.h"
 
 using namespace oceanbase::common;
 
-namespace oceanbase 
-{ 
-#ifndef NO_STAT
-  namespace sstable
-  {
-    using namespace oceanbase::chunkserver;
-
-    void set_stat(const uint64_t table_id, const int32_t index, const int64_t value)
-    {
-      switch (index)
-      {
-      case INDEX_BLOCK_INDEX_CACHE_HIT:
-        OB_CHUNK_STAT(set_value, table_id, ObChunkServerStatManager::INDEX_BLOCK_INDEX_CACHE_HIT, value);
-        break;
-      case INDEX_BLOCK_INDEX_CACHE_MISS:
-        OB_CHUNK_STAT(set_value, table_id, ObChunkServerStatManager::INDEX_BLOCK_INDEX_CACHE_MISS, value);
-        break;
-      case INDEX_BLOCK_CACHE_HIT:
-        OB_CHUNK_STAT(set_value, table_id, ObChunkServerStatManager::INDEX_BLOCK_CACHE_HIT, value);
-        break;
-      case INDEX_BLOCK_CACHE_MISS:
-        OB_CHUNK_STAT(set_value, table_id, ObChunkServerStatManager::INDEX_BLOCK_CACHE_MISS, value);
-        break;
-      case INDEX_DISK_IO_NUM:
-        OB_CHUNK_STAT(set_value, table_id, ObChunkServerStatManager::INDEX_DISK_IO_NUM, value);
-        break;
-      case INDEX_DISK_IO_BYTES:
-        OB_CHUNK_STAT(set_value, table_id, ObChunkServerStatManager::INDEX_DISK_IO_BYTES, value);
-        break;
-      case INDEX_SSTABLE_ROW_CACHE_HIT:
-        OB_CHUNK_STAT(set_value, table_id, ObChunkServerStatManager::INDEX_SSTABLE_ROW_CACHE_HIT, value);
-        break;
-      case INDEX_SSTABLE_ROW_CACHE_MISS:
-        OB_CHUNK_STAT(set_value, table_id, ObChunkServerStatManager::INDEX_SSTABLE_ROW_CACHE_MISS, value);
-        break;
-      default:
-        break;
-      }
-    }
-
-    void inc_stat(const uint64_t table_id, const int32_t index, const int64_t inc_value)
-    {
-      switch (index)
-      {
-      case INDEX_BLOCK_INDEX_CACHE_HIT:
-        OB_CHUNK_STAT(inc, table_id, ObChunkServerStatManager::INDEX_BLOCK_INDEX_CACHE_HIT, inc_value);
-        break;
-      case INDEX_BLOCK_INDEX_CACHE_MISS:
-        OB_CHUNK_STAT(inc, table_id, ObChunkServerStatManager::INDEX_BLOCK_INDEX_CACHE_MISS, inc_value);
-        break;
-      case INDEX_BLOCK_CACHE_HIT:
-        OB_CHUNK_STAT(inc, table_id, ObChunkServerStatManager::INDEX_BLOCK_CACHE_HIT, inc_value);
-        break;
-      case INDEX_BLOCK_CACHE_MISS:
-        OB_CHUNK_STAT(inc, table_id, ObChunkServerStatManager::INDEX_BLOCK_CACHE_MISS, inc_value);
-        break;
-      case INDEX_DISK_IO_NUM:
-        OB_CHUNK_STAT(inc, table_id, ObChunkServerStatManager::INDEX_DISK_IO_NUM, inc_value);
-        break;
-      case INDEX_DISK_IO_BYTES:
-        OB_CHUNK_STAT(inc, table_id, ObChunkServerStatManager::INDEX_DISK_IO_BYTES, inc_value);
-        break;
-      default:
-        break;
-      }
-    }
-  }
-#endif
-
-  namespace chunkserver 
+namespace oceanbase
+{
+  namespace chunkserver
   {
 
-    ObChunkServer::ObChunkServer()
-      : response_buffer_(RESPONSE_PACKET_BUFFER_SIZE),
-      rpc_buffer_(RPC_BUFFER_SIZE)
+    ObChunkServer::ObChunkServer(ObChunkServerConfig &config,
+                                 ObConfigManager &config_mgr)
+      : config_(config), config_mgr_(config_mgr),
+        file_service_(), file_client_(), file_client_rpc_buffer_(),
+        response_buffer_(RESPONSE_PACKET_BUFFER_SIZE),
+        rpc_buffer_(RPC_BUFFER_SIZE)
     {
     }
 
@@ -109,7 +50,7 @@ namespace oceanbase
     {
       return response_buffer_.get_buffer();
     }
-        
+
     const common::ThreadSpecificBuffer* ObChunkServer::get_thread_specific_rpc_buffer() const
     {
       return &rpc_buffer_;
@@ -120,9 +61,9 @@ namespace oceanbase
       return self_;
     }
 
-    const common::ObServer& ObChunkServer::get_root_server() const
+    const common::ObServer ObChunkServer::get_root_server() const
     {
-      return param_.get_root_server();
+      return config_.get_root_server();
     }
 
     const common::ObClientManager& ObChunkServer::get_client_manager() const
@@ -130,14 +71,19 @@ namespace oceanbase
       return client_manager_;
     }
 
-    const ObChunkServerParam & ObChunkServer::get_param() const 
+    ObConfigManager & ObChunkServer::get_config_mgr()
     {
-      return param_;
+      return config_mgr_;
     }
 
-    ObChunkServerParam & ObChunkServer::get_param() 
+    const ObChunkServerConfig & ObChunkServer::get_config() const
     {
-      return param_;
+      return config_;
+    }
+
+    ObChunkServerConfig & ObChunkServer::get_config()
+    {
+      return config_;
     }
 
     ObChunkServerStatManager & ObChunkServer::get_stat_manager()
@@ -145,22 +91,24 @@ namespace oceanbase
       return stat_;
     }
 
-    const ObTabletManager & ObChunkServer::get_tablet_manager() const 
+    const ObTabletManager & ObChunkServer::get_tablet_manager() const
     {
       return tablet_manager_;
     }
 
-    ObTabletManager & ObChunkServer::get_tablet_manager() 
+    ObTabletManager & ObChunkServer::get_tablet_manager()
     {
       return tablet_manager_;
     }
 
+    /*
     ObRootServerRpcStub & ObChunkServer::get_rs_rpc_stub()
     {
       return rs_rpc_stub_;
     }
+    */
 
-    ObMergerRpcStub & ObChunkServer::get_rpc_stub()
+    common::ObGeneralRpcStub & ObChunkServer::get_rpc_stub()
     {
       return rpc_stub_;
     }
@@ -173,6 +121,16 @@ namespace oceanbase
     ObMergerSchemaManager* ObChunkServer::get_schema_manager()
     {
       return schema_mgr_;
+    }
+
+    ObFileClient& ObChunkServer::get_file_client()
+    {
+      return file_client_;
+    }
+
+    ObFileService& ObChunkServer::get_file_service()
+    {
+      return file_service_;
     }
 
     int ObChunkServer::set_self(const char* dev_name, const int32_t port)
@@ -189,7 +147,7 @@ namespace oceanbase
         bool res = self_.set_ipv4_addr(ip, port);
         if (!res)
         {
-          TBSYS_LOG(ERROR, "chunk server dev:%s, port:%d is invalid.", 
+          TBSYS_LOG(ERROR, "chunk server dev:%s, port:%d is invalid.",
               dev_name, port);
           ret = OB_ERROR;
         }
@@ -211,6 +169,11 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
+        ret = sql_rpc_stub_.init(&rpc_buffer_, &client_manager_);
+      }
+
+      if (OB_SUCCESS == ret)
+      {
         newest_schema_mgr = new(std::nothrow)ObSchemaManagerV2;
         if (NULL == newest_schema_mgr)
         {
@@ -227,19 +190,30 @@ namespace oceanbase
         }
         else
         {
-          retry_times = param_.get_retry_times();
-          timeout = param_.get_network_time_out();
+          retry_times = config_.retry_times;
+          timeout = config_.network_timeout;
           for (int64_t i = 0; i <= retry_times; ++i)
           {
-            ret = rpc_stub_.fetch_schema(timeout, get_root_server(), 
-                                          0, *newest_schema_mgr);
+            // fetch core table schema for startup.
+            ret = rpc_stub_.fetch_schema(timeout, get_root_server(),
+                                          0, true, *newest_schema_mgr);
             if (OB_SUCCESS == ret)
             {
-              ret = schema_mgr_->init(*newest_schema_mgr);
+              ret = schema_mgr_->init(true, *newest_schema_mgr);
               break;
             }
             usleep(RETRY_INTERVAL_TIME);
           }
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "cannot fetch schema from rootserver, delegate to schema schedule task.");
+            ret = OB_SUCCESS;
+          }
+        }
+
+        if (OB_SUCCESS == ret)
+        {
+          sstable::set_global_sstable_schema_manager(schema_mgr_);
         }
       }
 
@@ -255,19 +229,19 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        ret = rpc_proxy_->init(&rpc_stub_, schema_mgr_);
+        ret = rpc_proxy_->init(&rpc_stub_, &sql_rpc_stub_, schema_mgr_);
       }
 
       // set update server black list param
       if (OB_SUCCESS == ret)
       {
-        ret = rpc_proxy_->set_blacklist_param(param_.get_ups_blacklist_timeout(),
-            param_.get_ups_fail_count());
+        ret = rpc_proxy_->set_blacklist_param(config_.ups_blacklist_timeout,
+                                              config_.ups_fail_count);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "set update server black list param failed:ret=%d", ret);
+          TBSYS_LOG(WARN, "set update server black list config failed:ret=%d", ret);
         }
-      } 
+      }
 
       if (OB_SUCCESS == ret)
       {
@@ -278,7 +252,7 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         int32_t count = 0;
-        for (int32_t i = 0; i <= param_.get_retry_times(); ++i)
+        for (int32_t i = 0; i <= config_.retry_times; ++i)
         {
           ret = rpc_proxy_->fetch_update_server_list(count);
           if (OB_SUCCESS == ret)
@@ -297,14 +271,14 @@ namespace oceanbase
           delete rpc_proxy_;
           rpc_proxy_ = NULL;
         }
-        
+
         if (NULL != schema_mgr_)
         {
           delete schema_mgr_;
           schema_mgr_ = NULL;
         }
       }
-      
+
       if (NULL != newest_schema_mgr)
       {
         delete newest_schema_mgr;
@@ -321,66 +295,71 @@ namespace oceanbase
       // process packet one by one.
       set_batch_process(false);
 
-      // read configure item value from configure file.
-      // this step is the very first thing.
-      ret = param_.load_from_config();
-
       // set listen port
-      if (OB_SUCCESS == ret) 
+      if (OB_SUCCESS == ret)
       {
-        param_.show_param();
-        ret = set_listen_port(param_.get_chunk_server_port());
+        ret = set_listen_port((int)config_.port);
+      }
+
+      //set call back func
+      if (OB_SUCCESS == ret)
+      {
+        memset(&server_handler_, 0, sizeof(easy_io_handler_pt));
+        server_handler_.encode = ObTbnetCallback::encode;
+        server_handler_.decode = ObTbnetCallback::decode;
+        server_handler_.process = ObChunkCallback::process;
+        //server_handler_.batch_process = ObTbnetCallback::batch_process;
+        server_handler_.get_packet_id = ObTbnetCallback::get_packet_id;
+        server_handler_.on_disconnect = ObTbnetCallback::on_disconnect;
+        server_handler_.user_data = this;
       }
 
       if (OB_SUCCESS == ret)
       {
-        ret = set_dev_name(param_.get_dev_name());
+        ret = set_dev_name(config_.devname);
         if (OB_SUCCESS == ret)
         {
-          ret = set_self(param_.get_dev_name(), 
-              param_.get_chunk_server_port());
+          ret = set_self(config_.devname, (int32_t)config_.port);
         }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        set_self_to_thread_queue(self_);
       }
 
       // task queue and work thread count
       if (OB_SUCCESS == ret)
       {
-        ret = set_default_queue_size(static_cast<int32_t>(param_.get_task_queue_size()));
+        ret = set_default_queue_size((int)config_.task_queue_size);
       }
 
       if (OB_SUCCESS == ret)
       {
-        ret = set_thread_count(param_.get_task_thread_count());
+        ret = set_thread_count((int)config_.task_thread_count);
       }
 
       if (OB_SUCCESS == ret)
       {
-        ret = set_min_left_time(param_.get_task_left_time());
-      }
-
-      // set packet factory object.
-      if (OB_SUCCESS == ret)
-      {
-        ret = set_packet_factory(&packet_factory_);
-      }
-
-      // initialize client_manager_ for server remote procedure call.
-      if (OB_SUCCESS == ret)
-      {
-        ret = client_manager_.initialize(get_transport(), get_packet_streamer());
+        ret = set_io_thread_count((int)config_.io_thread_count);
       }
 
       if (OB_SUCCESS == ret)
       {
-        ret = rs_rpc_stub_.init( param_.get_root_server(), &client_manager_);
+        ret = set_min_left_time(config_.task_left_time);
+      }
+
+      //TODO  initialize client_manager_ for server remote procedure call.
+      if (OB_SUCCESS == ret)
+      {
+        ret = client_manager_.initialize(eio_, &server_handler_);
       }
 
       if (OB_SUCCESS == ret)
       {
-        ret = tablet_manager_.init(&param_);
+        ret = tablet_manager_.init(&config_);
       }
 
-      // server initialize, including start transport, 
+      // server initialize, including start transport,
       // listen port, accept socket data from client
       if (OB_SUCCESS == ret)
       {
@@ -392,6 +371,24 @@ namespace oceanbase
         ret = service_.initialize(this);
       }
 
+      // init file service
+      if (OB_SUCCESS == ret)
+      {
+        int64_t max_migrate_task_count = get_config().max_migrate_task_count;
+        ret = file_service_.initialize(this,
+            &this->get_default_task_queue_thread(),
+            config_.network_timeout,
+            static_cast<uint32_t>(max_migrate_task_count));
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        ret = file_client_.initialize(&file_client_rpc_buffer_,
+                                      &client_manager_, config_.migrate_band_limit_per_second);
+      }
+
+      stat_.init(get_self());
+      ObStatSingleton::init(&stat_);
       return ret;
     }
 
@@ -415,34 +412,6 @@ namespace oceanbase
       //TODO maybe need more destroy
     }
 
-    tbnet::IPacketHandler::HPRetCode ObChunkServer::handlePacket(
-        tbnet::Connection *connection, tbnet::Packet *packet)
-    {
-      tbnet::IPacketHandler::HPRetCode rc = tbnet::IPacketHandler::FREE_CHANNEL;
-      if (NULL == packet || !packet->isRegularPacket())
-      {
-        TBSYS_LOG(WARN, "packet is illegal, discard.");
-      }
-      else 
-      {
-        ObPacket* ob_packet = (ObPacket*) packet;
-        ob_packet->set_connection(connection);
-
-        // handle heartbeat packet directly (in tbnet event loop thread)
-        // generally, heartbeat service nerver be blocked and must be
-        // response immediately, donot put into work thread pool.
-        if (ob_packet->get_packet_code() == OB_REQUIRE_HEARTBEAT)
-        {
-          ObSingleServer::handle_request(ob_packet);
-        }
-        else
-        {
-          rc = ObSingleServer::handlePacket(connection, packet);
-        }
-      }
-      return rc;
-    }
-
     int64_t ObChunkServer::get_process_timeout_time(
       const int64_t receive_time, const int64_t network_timeout)
     {
@@ -451,7 +420,7 @@ namespace oceanbase
 
       if (network_timeout <= 0)
       {
-        timeout = param_.get_network_time_out();
+        timeout = config_.network_timeout;
       }
 
       timeout_time = receive_time + timeout;
@@ -465,48 +434,58 @@ namespace oceanbase
       ObPacket* ob_packet = base_packet;
       int32_t packet_code = ob_packet->get_packet_code();
       int32_t version = ob_packet->get_api_version();
-      int32_t channel_id = ob_packet->getChannelId();
+      int32_t channel_id = ob_packet->get_channel_id();
       int64_t receive_time = ob_packet->get_receive_ts();
       int64_t network_timeout = ob_packet->get_source_timeout();
-      
-      if (OB_GET_REQUEST == packet_code || OB_SCAN_REQUEST == packet_code)
+      int64_t wait_time = 0;
+      easy_request_t* req = ob_packet->get_request();
+      if (NULL == req || NULL == req->ms || NULL == req->ms->c)
       {
-        FILL_TRACE_LOG("request from peer=%s, wait_time_in_queue=%ld, packet_code=%d",
-          tbsys::CNetUtil::addrToString(ob_packet->get_connection()->getPeerId()).c_str(), 
-          tbsys::CTimeUtil::getTime() - receive_time, packet_code);
+        TBSYS_LOG(ERROR, "req or req->ms or req->ms->c is NULL, should not reach here");
       }
-
-      ret = ob_packet->deserialize();
-      if (OB_SUCCESS == ret) 
+      else
       {
-        int64_t timeout_time = get_process_timeout_time(receive_time, network_timeout);
-        ObDataBuffer* in_buffer = ob_packet->get_buffer(); 
-        if (NULL == in_buffer)
+        if (OB_GET_REQUEST == packet_code || OB_SCAN_REQUEST == packet_code
+            || OB_SQL_GET_REQUEST == packet_code || OB_SQL_SCAN_REQUEST == packet_code)
         {
-          TBSYS_LOG(ERROR, "in_buffer is NUll should not reach this");
+          wait_time = tbsys::CTimeUtil::getTime() - receive_time;
+          PROFILE_LOG(DEBUG, "request from peer=%s, wait_time_in_queue=%ld, packet_code=%d",
+                         get_peer_ip(ob_packet->get_request()), wait_time, packet_code);
+          OB_STAT_INC(CHUNKSERVER, INDEX_META_REQUEST_COUNT);
+          OB_STAT_INC(CHUNKSERVER, INDEX_META_QUEUE_WAIT_TIME, wait_time);
         }
-        else
+
+        ret = ob_packet->deserialize();
+        if (OB_SUCCESS == ret)
         {
-          tbnet::Connection* connection = ob_packet->get_connection();
-          ThreadSpecificBuffer::Buffer* thread_buffer = 
-            response_buffer_.get_buffer();
-          if (NULL != thread_buffer)
+          int64_t timeout_time = get_process_timeout_time(receive_time, network_timeout);
+          ObDataBuffer* in_buffer = ob_packet->get_buffer();
+          if (NULL == in_buffer)
           {
-            thread_buffer->reset();
-            ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
-            //TODO read thread stuff multi thread 
-            TBSYS_LOG(DEBUG, "handle packet, packe code is %d, packet:%p", 
-                packet_code, ob_packet);
-            ret = service_.do_request(receive_time, packet_code, 
-                version, channel_id, connection, *in_buffer, out_buffer, timeout_time);
+            TBSYS_LOG(ERROR, "in_buffer is NUll should not reach this");
           }
           else
           {
-            TBSYS_LOG(ERROR, "get thread buffer error, ignore this packet");
+            ThreadSpecificBuffer::Buffer* thread_buffer =
+              response_buffer_.get_buffer();
+            if (NULL != thread_buffer)
+            {
+              thread_buffer->reset();
+              ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
+              //TODO read thread stuff multi thread
+              TBSYS_LOG(DEBUG, "handle packet, packe code is %d, packet:%p",
+                        packet_code, ob_packet);
+              ret = service_.do_request(receive_time, packet_code,
+                                        version, channel_id, req,
+                                        *in_buffer, out_buffer, timeout_time);
+            }
+            else
+            {
+              TBSYS_LOG(ERROR, "get thread buffer error, ignore this packet");
+            }
           }
         }
       }
-
       return ret;
     }
   } // end namespace chunkserver

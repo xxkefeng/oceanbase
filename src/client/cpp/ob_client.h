@@ -322,15 +322,19 @@ namespace oceanbase
       ObClient();
       virtual ~ObClient();
 
-      void close();
+
+#ifdef NDEBUG
     protected:
+#else
+    public:
+#endif
 //      int init_us_addr();
 
       int init_ms_addr();
 
       int init_reqs();
 
-
+      void close();
 
       OB_REQ* acquire_req();
 

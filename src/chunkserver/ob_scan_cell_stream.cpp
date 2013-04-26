@@ -72,7 +72,7 @@ namespace oceanbase
     int ObScanCellStream::scan(const ObScanParam & param)
     {
       int ret = OB_SUCCESS;
-      const ObRange * range = param.get_range();
+      const ObNewRange * range = param.get_range();
       if (NULL == range)
       {
         TBSYS_LOG(WARN, "check scan param failed");
@@ -207,7 +207,7 @@ namespace oceanbase
         }
         else if (is_fullfill)
         {
-          ObRange result_range;
+          ObNewRange result_range;
           ret = ObCellStream::cur_result_.get_range(result_range);
           if (OB_SUCCESS != ret)
           {

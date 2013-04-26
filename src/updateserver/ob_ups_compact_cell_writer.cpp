@@ -25,14 +25,14 @@ int ObUpsCompactCellWriter::write_varchar(const ObObj &value, ObObj *clone_value
   ObString varchar_written;
 
   value.get_varchar(varchar_value);
-  if(varchar_value.length() > UINT16_MAX)
+  if(varchar_value.length() > INT32_MAX)
   {
     ret = OB_SIZE_OVERFLOW;
     TBSYS_LOG(WARN, "varchar is too long:[%d]", varchar_value.length());
   }
   if(OB_SUCCESS == ret)
   {
-    ret = buf_writer_.write<uint16_t>((uint16_t)(varchar_value.length()));
+    ret = buf_writer_.write<int32_t>((int32_t)(varchar_value.length()));
   }
   if(OB_SUCCESS == ret)
   {

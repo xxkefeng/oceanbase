@@ -117,10 +117,10 @@ int ObRowUtil::convert(const ObRow &row, ObString &compact_row, ObRow &out_row)
 
 int ObRowUtil::convert(const ObString &compact_row, ObRow &row)
 {
-  return convert(compact_row, row, NULL);
+  return convert(compact_row, row, NULL, NULL);
 }
 
-int ObRowUtil::convert(const ObString &compact_row, ObRow &row, ObString *rowkey)
+int ObRowUtil::convert(const ObString &compact_row, ObRow &row, ObRowkey *rowkey, ObObj *rowkey_buf)
 {
   int ret = OB_SUCCESS;
   ObCompactCellIterator cell_reader;
@@ -131,7 +131,6 @@ int ObRowUtil::convert(const ObString &compact_row, ObRow &row, ObString *rowkey
   int64_t cell_idx = 0;
 
   const ObObj *rowkey_obj = NULL;
-  ObString tmp_rowkey;
 
   if(NULL == rowkey)
   {
@@ -145,18 +144,38 @@ int ObRowUtil::convert(const ObString &compact_row, ObRow &row, ObString *rowkey
 
   if(OB_SUCCESS == ret && NULL != rowkey)
   {
-    if(OB_SUCCESS != (ret = cell_reader.next_cell()))
+    if(NULL == rowkey_buf)
     {
-      TBSYS_LOG(WARN, "next cell fail:ret[%d]", ret);
+      ret = OB_INVALID_ARGUMENT;
+      TBSYS_LOG(WARN, "rowkey_buf should not be null");
     }
-    else if(OB_SUCCESS != (ret = cell_reader.get_cell(rowkey_obj, &is_row_finished)))
+
+    int64_t rowkey_cnt = 0;
+    while(OB_SUCCESS == ret)
     {
-      TBSYS_LOG(WARN, "get cell fail:ret[%d]", ret);
+      if(OB_SUCCESS != (ret = cell_reader.next_cell()))
+      {
+        TBSYS_LOG(WARN, "next cell fail:ret[%d]", ret);
+      }
+      else if(OB_SUCCESS != (ret = cell_reader.get_cell(rowkey_obj, &is_row_finished)))
+      {
+        TBSYS_LOG(WARN, "get cell fail:ret[%d]", ret);
+      }
+
+      if(OB_SUCCESS == ret && is_row_finished)
+      {
+        break;
+      }
+
+      if(OB_SUCCESS == ret)
+      {
+        rowkey_buf[rowkey_cnt ++] = *rowkey_obj;
+      }
     }
 
     if(OB_SUCCESS == ret)
     {
-      rowkey_obj->get_varchar(*rowkey);
+      rowkey->assign(rowkey_buf, rowkey_cnt);
     }
   }
 
@@ -178,9 +197,14 @@ int ObRowUtil::convert(const ObString &compact_row, ObRow &row, ObString *rowkey
       break;
     }
   }
+  if (OB_UNLIKELY(OB_SUCCESS != ret))
+  {
+    TBSYS_LOG(WARN, "fail to read next cell[%d]", ret);
+  }
   if (cell_idx != row.get_column_num())
   {
-    TBSYS_LOG(ERROR, "corrupted row data, col=%ld cell_num=%ld", row.get_column_num(), cell_idx);
+    const ObRowDesc *row_desc = row.get_row_desc();
+    TBSYS_LOG(ERROR, "corrupted row data, row_desc[%s] col=%ld cell_num=%ld", to_cstring(*row_desc), row.get_column_num(), cell_idx);
     ret = OB_ERR_UNEXPECTED;
   }
   return ret;

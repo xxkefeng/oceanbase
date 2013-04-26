@@ -27,7 +27,7 @@ class WriteWorker : public tbsys::CDefaultRunnable
     WriteWorker();
     ~WriteWorker();
 
-    int init(KeyGenerator& key_gen, ObSqlClient& ob_client, PrefixInfo& prefix_info, const char* rs_ip, int32_t rs_port);
+    int init(KeyGenerator& key_gen, MysqlClient& ob_client, PrefixInfo& prefix_info);
 
   public:
     virtual void run(tbsys::CThread* thread, void* arg);

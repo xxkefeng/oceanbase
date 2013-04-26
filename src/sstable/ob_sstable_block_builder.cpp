@@ -39,16 +39,6 @@ namespace oceanbase
       }
     }
 
-    const char* ObSSTableBlockBuilder::row_index_buf() const 
-    { 
-      return row_index_buf_; 
-    }
-
-    const char* ObSSTableBlockBuilder::block_buf() const
-    { 
-      return block_buf_; 
-    }
-
     void ObSSTableBlockBuilder::reset() 
     {
       row_index_buf_cur_ = row_index_buf_;
@@ -58,38 +48,12 @@ namespace oceanbase
       block_buf_cur_ = block_buf_ + block_header_.get_serialize_size();
     }
 
-    const int64_t ObSSTableBlockBuilder::get_row_index_array_offset() const 
-    {
-      return block_header_.row_index_array_offset_;
-    }
-
-    const int64_t ObSSTableBlockBuilder::get_row_count() const
-    {
-      return block_header_.row_count_;
-    }
-
-    const int64_t ObSSTableBlockBuilder::get_block_size() const
-    {
-      return ((block_buf_cur_ - block_buf_) 
-              + (row_index_buf_cur_ - row_index_buf_));
-    }
-
-    const int64_t ObSSTableBlockBuilder::get_row_index_size() const
-    {
-      return (row_index_buf_cur_ - row_index_buf_);
-    }
-
-    const int64_t ObSSTableBlockBuilder::get_block_data_size() const
-    {
-      return (block_buf_cur_ - block_buf_);
-    }
-
-    const int64_t ObSSTableBlockBuilder::get_row_index_remain() const
+    inline const int64_t ObSSTableBlockBuilder::get_row_index_remain() const
     {
       return (row_index_buf_size_ - (row_index_buf_cur_ - row_index_buf_));
     }
 
-    const int64_t ObSSTableBlockBuilder::get_block_data_remain() const
+    inline const int64_t ObSSTableBlockBuilder::get_block_data_remain() const
     {
       return (block_buf_size_ - row_index_buf_size_ 
               - (block_buf_cur_ - block_buf_));
@@ -214,7 +178,6 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret && NULL != block_buf_)
       {
-        memset(block_buf_, 0, block_buf_size_);
         //reserve space to store block header
         block_buf_cur_ = block_buf_ + block_header_.get_serialize_size();
         row_index_buf_ = block_buf_ + block_buf_size_ - row_index_buf_size_;
@@ -298,11 +261,11 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSSTableBlockBuilder::add_row(const ObSSTableRow &row) 
+    int ObSSTableBlockBuilder::add_row(const ObSSTableRow &row, const int64_t row_serialize_size) 
     {
       int ret             = OB_SUCCESS;
       int32_t row_offset  = get_block_data_size();
-      int64_t row_size    = row.get_serialize_size();
+      int64_t row_size    = row_serialize_size > 0 ? row_serialize_size : row.get_serialize_size();
       int64_t block_pos   = 0;
       int64_t index_pos   = 0;
 
@@ -335,7 +298,7 @@ namespace oceanbase
           && OB_SUCCESS == (ret = ensure_space(row_size)))
       {
         ret = row.serialize(block_buf_cur_, 
-                            get_block_data_remain(), block_pos);
+                            get_block_data_remain(), block_pos, row_size);
         if (OB_SUCCESS == ret)
         {
           ret = encode_i32(row_index_buf_cur_, 

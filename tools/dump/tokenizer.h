@@ -46,6 +46,10 @@ class RecordDelima {
       type_ = CHAR_DELIMA;
     }
 
+    unsigned char get_char_delima() const {
+      return part1_;
+    }
+
     bool is_delima(const char *buff, int64_t pos, int64_t buff_size) const;
 
     RecordDelimaType delima_type() const { return type_; }
@@ -83,6 +87,8 @@ class Tokenizer {
     static void tokenize(Slice &data, char delima, int &token_nr, TokenInfo *tokens);
 
     static void tokenize(Slice &data, const RecordDelima &delima, int &token_nr, TokenInfo *tokens);
+
+    static void tokenize_gbk(Slice &slice, char delima, int &token_nr, TokenInfo *tokens);
 };
 
 #endif

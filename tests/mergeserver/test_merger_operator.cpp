@@ -37,29 +37,32 @@
 #include "mergeserver/ob_merger_sorted_operator.h"
 #include "mergeserver/ob_merger_groupby_operator.h"
 #include "mergeserver/ob_merger_operator.h"
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace testing;
-using namespace std;   
-
+using namespace std;
+static CharArena allocator_;
+static const int64_t max_memory_size = 10 * 1024 * 1024;
 TEST(ObMergerOperator, group_result)
 {
   ObStringBuf buf;
   char row_key_buf[32];
   int32_t row_key_len = 0;
   ObString str;
-  ObString row_key;
+  ObRowkey row_key;
+  ObRowkey key;
   ObCellInfo cell;
   cell.table_id_ = 1;
   cell.column_id_ = 1;
   row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",0);
-  str.assign(row_key_buf,row_key_len);
-  EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
-  ObRange q_range;
+  key = make_rowkey(row_key_buf,row_key_len, &allocator_);
+  EXPECT_EQ(buf.write_string(key,&row_key),OB_SUCCESS);
+  ObNewRange q_range;
   q_range.start_key_ = row_key;
   q_range.border_flag_.set_inclusive_start();
-  q_range.border_flag_.set_max_value();
+  q_range.end_key_.set_max_row();
   ObScanParam org_param;
   ObScanParam decoded_param;
   ObString table_name;
@@ -74,7 +77,7 @@ TEST(ObMergerOperator, group_result)
   c_ptr = "item_category";
   str.assign((char*)c_ptr, static_cast<int32_t>(strlen(c_ptr)));
   EXPECT_EQ(buf.write_string(str,&column_name), OB_SUCCESS);
-  EXPECT_EQ(org_param.add_column(column_name), OB_SUCCESS); 
+  EXPECT_EQ(org_param.add_column(column_name), OB_SUCCESS);
   EXPECT_EQ(org_param.get_group_by_param().add_groupby_column(column_name), OB_SUCCESS);
   EXPECT_EQ(org_param.add_orderby_column(column_name),OB_SUCCESS);
 
@@ -112,26 +115,25 @@ TEST(ObMergerOperator, group_result)
   ObMergerOperator g_operator;
   uint64_t table_id = 1001;
   cell.table_id_ = table_id;
-  EXPECT_EQ(g_operator.set_param(10000000, *ms_scan_param.get_ms_param()), OB_SUCCESS);
+  EXPECT_EQ(g_operator.set_param(max_memory_size, *ms_scan_param.get_ms_param()), OB_SUCCESS);
   EXPECT_EQ(g_operator.get_result_row_width(), 4);
   /// add item_category 1
   ObScanner result_of_category_1;
-  ObRange   range_of_category_1;
-  range_of_category_1.border_flag_.set_min_value();
-  range_of_category_1.border_flag_.set_max_value();
+  ObNewRange   range_of_category_1;
+  range_of_category_1.set_whole_range();
   range_of_category_1.border_flag_.set_inclusive_end();
   range_of_category_1.border_flag_.set_inclusive_start();
   int row_key_count = 0;
   row_key_len = snprintf(row_key_buf,sizeof(row_key_buf),"%d", row_key_count);
-  str.assign(row_key_buf,row_key_len);
-  EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
+  key = make_rowkey(row_key_buf,row_key_len, &allocator_);
+  EXPECT_EQ(buf.write_string(key,&row_key),OB_SUCCESS);
   cell.row_key_ = row_key;
   row_key_count ++;
   /// category
   int64_t category = 1;
   cell.value_.set_int(category);
   EXPECT_EQ(result_of_category_1.add_cell(cell), OB_SUCCESS);
-  /// price 
+  /// price
   int64_t price = 10000;
   cell.value_.set_int(price);
   EXPECT_EQ(result_of_category_1.add_cell(cell), OB_SUCCESS);
@@ -148,9 +150,8 @@ TEST(ObMergerOperator, group_result)
   EXPECT_EQ(g_operator.add_sharding_result(result_of_category_1,range_of_category_1,0,is_finish, can_free_res),OB_SUCCESS);
   /// add item_category 2
   ObScanner result_of_category_2;
-  ObRange   range_of_category_2;
-  range_of_category_2.border_flag_.set_max_value();
-  range_of_category_2.border_flag_.unset_min_value();
+  ObNewRange   range_of_category_2;
+  range_of_category_2.end_key_.set_max_row();
   range_of_category_2.border_flag_.unset_inclusive_start();
   range_of_category_2.start_key_ = row_key;
   category = 2;
@@ -159,8 +160,8 @@ TEST(ObMergerOperator, group_result)
   for (int32_t i = 1; i < 9; i ++,row_key_count ++, fullfilled_item_num ++)
   {
     row_key_len = snprintf(row_key_buf,sizeof(row_key_buf),"%d", row_key_count);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
+    key = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(key,&row_key),OB_SUCCESS);
     cell.row_key_ = row_key;
 
     cell.value_.set_int(category);

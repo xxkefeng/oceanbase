@@ -2,11 +2,11 @@
  * (C) 2010 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * test_block_cache_reader_loader.cpp for test block cache 
- * reader and loader. 
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * test_block_cache_reader_loader.cpp for test block cache
+ * reader and loader.
  *
  * Authors:
  *   huating <huating.zmq@taobao.com>
@@ -18,48 +18,26 @@
 #include <stdint.h>
 #include "gtest/gtest.h"
 #include "common/ob_common_param.h"
+#include "common/ob_common_stat.h"
 #include "sstable/ob_blockcache.h"
 #include "sstable/ob_sstable_writer.h"
 #include "sstable/ob_disk_path.h"
-#include "sstable/ob_sstable_stat.h"
 #include "chunkserver/ob_fileinfo_cache.h"
 #include "chunkserver/ob_block_cache_reader.h"
 #include "chunkserver/ob_block_cache_loader.h"
 #include "chunkserver/ob_switch_cache_utility.h"
+#include "chunkserver/ob_chunk_server_config.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::sstable;
 using namespace oceanbase::chunkserver;
 
+
 namespace oceanbase
 {
   namespace sstable
   {
-  //  void inc_stat(const uint64_t table_id, const int32_t index, const int64_t inc_value)
-  //  {
-  //    UNUSED(table_id);
-  //    UNUSED(index);
-  //    UNUSED(inc_value);
-
-  //    //TODO: add your handle code
-  //    switch (index)
-  //    {
-  //    case INDEX_BLOCK_INDEX_CACHE_HIT:
-  //      break;
-  //    case INDEX_BLOCK_INDEX_CACHE_MISS:
-  //      break;
-  //    case INDEX_BLOCK_CACHE_HIT:
-  //      break;
-  //    case INDEX_BLOCK_CACHE_MISS:
-  //      break;
-  //    case INDEX_DISK_IO_NUM:
-  //      break;
-  //    case INDEX_DISK_IO_BYTES:
-  //      break;
-  //    default:
-  //      break;
-  //    }
-  //  }
   }
 }
 
@@ -67,7 +45,7 @@ namespace oceanbase
 {
   namespace tests
   {
-    namespace chunkserver 
+    namespace chunkserver
     {
       static const int64_t table_id = 100;
       static const int64_t sstable_file_id = 1001;
@@ -89,12 +67,14 @@ namespace oceanbase
       static ModulePageAllocator mod(0);
       static ModuleArena allocator(ModuleArena::DEFAULT_PAGE_SIZE, mod);
       static ObSSTableReader reader_(allocator, fic);
+      static CharArena allocator_;
+
 
       class TestObBlockCacheReaderLoader: public ::testing::Test
       {
       public:
         TestObBlockCacheReaderLoader()
-        : old_index_cache_(fic), old_block_cache_(fic), 
+        : old_index_cache_(fic), old_block_cache_(fic),
           new_index_cache_(fic), new_block_cache_(fic)
         {
         }
@@ -103,29 +83,20 @@ namespace oceanbase
         {
         }
 
-        void init_conf(ObBlockCacheConf &conf)
-        {
-          conf.block_cache_memsize_mb = 128;
-          conf.ficache_max_num = 1024;
-        }
-
         int init()
         {
           int ret = OB_SUCCESS;
 
-          ObBlockCacheConf conf;
-          init_conf(conf);
-          EXPECT_EQ(OB_SUCCESS, ret);
-        
-          ret = old_block_cache_.init(conf);
-          EXPECT_EQ(OB_SUCCESS, ret);
-          ret = new_block_cache_.init(conf);
           EXPECT_EQ(OB_SUCCESS, ret);
 
-          ObBlockIndexCacheConf bic_conf = {16 * 1024 * 1024};
-          ret = old_index_cache_.init(bic_conf);
+          ret = old_block_cache_.init(conf_.block_cache_size);
           EXPECT_EQ(OB_SUCCESS, ret);
-          ret = new_index_cache_.init(bic_conf);
+          ret = new_block_cache_.init(conf_.block_cache_size);
+          EXPECT_EQ(OB_SUCCESS, ret);
+
+          ret = old_index_cache_.init(conf_.block_index_cache_size);
+          EXPECT_EQ(OB_SUCCESS, ret);
+          ret = new_index_cache_.init(conf_.block_index_cache_size);
           EXPECT_EQ(OB_SUCCESS, ret);
 
           return ret;
@@ -136,10 +107,10 @@ namespace oceanbase
         {
           int err = OB_SUCCESS;
           UNUSED(sstable);
-  
+
           ObSSTableSchema sstable_schema;
           ObSSTableSchemaColumnDef column_def;
-  
+
           EXPECT_TRUE(NULL != cell_infos);
           EXPECT_TRUE(row_num > 0);
           EXPECT_TRUE(col_num > 0);
@@ -151,9 +122,18 @@ namespace oceanbase
           char* path_str = sstable_file_path;
           int64_t path_len = OB_MAX_FILE_NAME_LENGTH;
 
+          column_def.reserved_ = 0;
+          column_def.rowkey_seq_ = 1;
+          column_def.column_group_id_= 0;
+          column_def.column_name_id_ = 1; //rowkey column id;
+          column_def.column_value_type_ = ObVarcharType;
+          column_def.table_id_ = static_cast<uint32_t>(table_id);
+          sstable_schema.add_column_def(column_def);
+
           for (int64_t i = 0; i < col_num; ++i)
           {
             column_def.reserved_ = 0;
+            column_def.rowkey_seq_ = 0;
             if (i >=2)
             {
               column_def.column_group_id_= 2;
@@ -162,12 +142,12 @@ namespace oceanbase
             {
               column_def.column_group_id_= 0;
             }
-            column_def.column_name_id_ = static_cast<uint32_t>(cell_infos[0][i].column_id_);
+            column_def.column_name_id_ = static_cast<uint16_t>(cell_infos[0][i].column_id_);
             column_def.column_value_type_ = cell_infos[0][i].value_.get_type();
             column_def.table_id_ = static_cast<uint32_t>(table_id);
             sstable_schema.add_column_def(column_def);
           }
-  
+
           if (0 == sst_id)
           {
             sstable_file_id = 100;
@@ -176,7 +156,7 @@ namespace oceanbase
           {
             sstable_file_id = sst_id;
           }
-  
+
           ObSSTableId sstable_id(sst_id);
           get_sstable_path(sstable_id, path_str, path_len);
           char cmd[256];
@@ -187,22 +167,22 @@ namespace oceanbase
           remove(path.ptr());
 
           ObSSTableWriter writer;
-          err = writer.create_sstable(sstable_schema, path, compress_name, 0);
+          err = writer.create_sstable(sstable_schema, path, compress_name, 0, 1, 4 * 1024);
           EXPECT_EQ(OB_SUCCESS, err);
-  
+
           for (int64_t i = 0; i < row_num; ++i)
           {
             ObSSTableRow row;
             row.set_table_id(table_id);
             row.set_column_group_id(0);
-            err = row.set_row_key(cell_infos[i][0].row_key_);
+            err = row.set_rowkey(cell_infos[i][0].row_key_);
             EXPECT_EQ(OB_SUCCESS, err);
             for (int64_t j = 0; j < 2; ++j)
             {
               err = row.add_obj(cell_infos[i][j].value_);
               EXPECT_EQ(OB_SUCCESS, err);
             }
-  
+
             int64_t space_usage = 0;
             err = writer.append_row(row, space_usage);
             EXPECT_EQ(OB_SUCCESS, err);
@@ -213,45 +193,45 @@ namespace oceanbase
             ObSSTableRow row;
             row.set_table_id(table_id);
             row.set_column_group_id(2);
-            err = row.set_row_key(cell_infos[i][0].row_key_);
+            err = row.set_rowkey(cell_infos[i][0].row_key_);
             EXPECT_EQ(OB_SUCCESS, err);
             for (int64_t j = 2; j < col_num; ++j)
             {
               err = row.add_obj(cell_infos[i][j].value_);
               EXPECT_EQ(OB_SUCCESS, err);
             }
-  
+
             int64_t space_usage = 0;
             err = writer.append_row(row, space_usage);
             EXPECT_EQ(OB_SUCCESS, err);
           }
-  
+
           int64_t offset = 0;
           err = writer.close_sstable(offset);
           EXPECT_EQ(OB_SUCCESS, err);
-  
+
           err = fic.init(1024);
           EXPECT_EQ(OB_SUCCESS, err);
 
-          err = reader_.open(sstable_id);
+          err = reader_.open(sstable_id, 0);
           EXPECT_EQ(OB_SUCCESS, err);
           EXPECT_TRUE(reader_.is_opened());
-  
+
           return err;
         }
-  
+
       public:
         static void SetUpTestCase()
         {
           int err = OB_SUCCESS;
-      
+
           //malloc
           cell_infos = new ObCellInfo*[ROW_NUM + NON_EXISTENT_ROW_NUM];
           for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
           {
             cell_infos[i] = new ObCellInfo[COL_NUM];
           }
-      
+
           for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
           {
             for (int64_t j = 0; j < COL_NUM; ++j)
@@ -259,7 +239,7 @@ namespace oceanbase
               row_key_strs[i][j] = new char[50];
             }
           }
-      
+
           // init cell infos
           for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
           {
@@ -267,18 +247,18 @@ namespace oceanbase
             {
               cell_infos[i][j].table_id_ = table_id;
               sprintf(row_key_strs[i][j], "row_key_%08ld", i);
-              cell_infos[i][j].row_key_.assign(row_key_strs[i][j], static_cast<int32_t>(strlen(row_key_strs[i][j])));
+              cell_infos[i][j].row_key_ = make_rowkey(row_key_strs[i][j], &allocator_);
               cell_infos[i][j].column_id_ = j + 2;
               cell_infos[i][j].value_.set_int(1000 + i * COL_NUM + j);
             }
           }
-      
+
           //init sstable
-          err = init_sstable(reader_, (const ObCellInfo**)cell_infos, 
+          err = init_sstable(reader_, (const ObCellInfo**)cell_infos,
                              ROW_NUM, COL_NUM, sstable_file_id);
           EXPECT_EQ(OB_SUCCESS, err);
         }
-      
+
         static void TearDownTestCase()
         {
           for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
@@ -292,7 +272,7 @@ namespace oceanbase
               }
             }
           }
-      
+
           for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
           {
             if (NULL != cell_infos[i])
@@ -313,11 +293,11 @@ namespace oceanbase
         virtual void SetUp()
         {
           int ret;
-  
+
           ret = init();
           ASSERT_EQ(OB_SUCCESS, ret);
         }
-      
+
         virtual void TearDown()
         {
           int ret;
@@ -329,6 +309,7 @@ namespace oceanbase
         }
 
       public:
+        ObChunkServerConfig conf_;
         ObBlockIndexCache old_index_cache_;
         ObBlockCache old_block_cache_;
         ObBlockIndexCache new_index_cache_;
@@ -344,33 +325,33 @@ namespace oceanbase
         uint64_t table_id = 100;
         uint64_t column_group_id = 0;
 
-        ObString start_key = cell_infos[0][0].row_key_;
-        ObString end_key = cell_infos[ROW_NUM - 1][0].row_key_;
+        ObRowkey start_key = cell_infos[0][0].row_key_;
+        ObRowkey end_key = cell_infos[ROW_NUM - 1][0].row_key_;
 
-        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+                                                  table_id, column_group_id,
                                                   start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+                                                  table_id, column_group_id,
                                                   end_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
 
-        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
+        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
                                                         column_group_id, start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_,
+                                                  table_id, column_group_id,
                                                   start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
+        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
                                                         column_group_id, end_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_,
+                                                  table_id, column_group_id,
                                                   end_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
+        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
                                                         column_group_id, end_key, &reader_);
         ASSERT_EQ(OB_ITER_END, ret);
       }
@@ -381,25 +362,25 @@ namespace oceanbase
         uint64_t table_id = 100;
         uint64_t column_group_id = 0;
 
-        ObString start_key = cell_infos[0][0].row_key_;
+        ObRowkey start_key = cell_infos[0][0].row_key_;
 
-        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+                                                  table_id, column_group_id,
                                                   start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+                                                  table_id, column_group_id,
                                                   start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
 
-        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
+        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
                                                         column_group_id, start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_,
+                                                  table_id, column_group_id,
                                                   start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
+        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
                                                         column_group_id, start_key, &reader_);
         ASSERT_EQ(OB_ITER_END, ret);
       }
@@ -410,63 +391,60 @@ namespace oceanbase
         uint64_t table_id = 100;
         uint64_t column_group_id = 0;
 
-        ObString start_key = cell_infos[0][0].row_key_;
-        ObString end_key = cell_infos[ROW_NUM - 1][0].row_key_;
+        ObRowkey start_key = cell_infos[0][0].row_key_;
+        ObRowkey end_key = cell_infos[ROW_NUM - 1][0].row_key_;
 
-        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+                                                  table_id, column_group_id,
                                                   start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+                                                  table_id, column_group_id,
                                                   end_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
 
-        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
+        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
                                                         column_group_id, start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_,
+                                                  table_id, column_group_id,
                                                   start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
-                                                        column_group_id, end_key, &reader_);
-        ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_, 
-                                                  table_id, column_group_id, 
-                                                  end_key, &reader_);
-        ASSERT_EQ(OB_SUCCESS, ret); 
-        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
+        //ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
+        //                                                column_group_id, end_key, &reader_);
+        //ASSERT_EQ(OB_SUCCESS, ret);
+        //ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_,
+        //                                          table_id, column_group_id,
+        //                                          end_key, &reader_);
+        //ASSERT_EQ(OB_SUCCESS, ret);
+        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
                                                         column_group_id, end_key, &reader_);
         ASSERT_EQ(OB_ITER_END, ret);
-        
+
         ret = cache_utility_.destroy_cache(old_block_cache_, old_index_cache_);
-        ASSERT_EQ(OB_SUCCESS, ret); 
-        ObBlockCacheConf conf;
-        init_conf(conf);
+        ASSERT_EQ(OB_SUCCESS, ret);
         old_block_cache_.set_fileinfo_cache(fic);
-        ret = old_block_cache_.init(conf);
-        EXPECT_EQ(OB_SUCCESS, ret);  
-        ObBlockIndexCacheConf bic_conf = {16 * 1024 * 1024};  
-        old_index_cache_.set_fileinfo_cache(fic);    
-        ret = old_index_cache_.init(bic_conf);
+        ret = old_block_cache_.init(conf_.block_cache_size);
+        EXPECT_EQ(OB_SUCCESS, ret);
+        old_index_cache_.set_fileinfo_cache(fic);
+        ret = old_index_cache_.init(conf_.block_index_cache_size);
         EXPECT_EQ(OB_SUCCESS, ret);
 
-        ret = cache_reader_.get_start_key_of_next_block(new_block_cache_, table_id, 
+        ret = cache_reader_.get_start_key_of_next_block(new_block_cache_, table_id,
                                                         column_group_id, start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                  table_id, column_group_id, 
+        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+                                                  table_id, column_group_id,
                                                   start_key, &reader_);
         ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_reader_.get_start_key_of_next_block(new_block_cache_, table_id, 
-                                                        column_group_id, end_key, &reader_);
-        ASSERT_EQ(OB_SUCCESS, ret);
-        ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                  table_id, column_group_id, 
-                                                  end_key, &reader_);
-        ASSERT_EQ(OB_SUCCESS, ret); 
-        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
+        //ret = cache_reader_.get_start_key_of_next_block(new_block_cache_, table_id,
+        //                                                column_group_id, end_key, &reader_);
+        //ASSERT_EQ(OB_SUCCESS, ret);
+        //ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+        //                                          table_id, column_group_id,
+        //                                          end_key, &reader_);
+        //ASSERT_EQ(OB_SUCCESS, ret);
+        ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
                                                         column_group_id, end_key, &reader_);
         ASSERT_EQ(OB_ITER_END, ret);
       }
@@ -477,24 +455,24 @@ namespace oceanbase
         uint64_t table_id = 100;
         uint64_t column_group_id = 0;
         uint64_t column_group_id2 = 2;
-        ObString row_key;
+        ObRowkey row_key;
 
         for (int i = 0; i < ROW_NUM; i++)
         {
           row_key = cell_infos[i][0].row_key_;
-          ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                    table_id, column_group_id, 
+          ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+                                                    table_id, column_group_id,
                                                     row_key, &reader_);
           ASSERT_EQ(OB_SUCCESS, ret);
-          ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_, 
-                                                    table_id, column_group_id2, 
+          ret = cache_loader_.load_block_into_cache(old_index_cache_, old_block_cache_,
+                                                    table_id, column_group_id2,
                                                     row_key, &reader_);
           ASSERT_EQ(OB_SUCCESS, ret);
         }
 
         for (int i = 0; i < ROW_NUM; i++)
         {
-          ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id, 
+          ret = cache_reader_.get_start_key_of_next_block(old_block_cache_, table_id,
                                                           column_group_id, row_key, &reader_);
           if (OB_ITER_END == ret)
           {
@@ -504,8 +482,8 @@ namespace oceanbase
           {
             ASSERT_EQ(OB_SUCCESS, ret);
           }
-          ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_, 
-                                                    table_id, column_group_id, 
+          ret = cache_loader_.load_block_into_cache(new_index_cache_, new_block_cache_,
+                                                    table_id, column_group_id,
                                                     row_key, &reader_);
           ASSERT_EQ(OB_SUCCESS, ret);
         }

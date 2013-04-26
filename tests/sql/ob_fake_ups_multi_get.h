@@ -21,6 +21,9 @@
 #include "common/ob_row_desc.h"
 #include "common/ob_ups_row.h"
 #include "ob_fake_ups_scan.h"
+#include <map>
+
+using namespace std;
 
 namespace oceanbase
 {
@@ -35,7 +38,7 @@ namespace oceanbase
 
           int open();
           int get_next_row(const ObRow *&row);
-          int get_next_row(const ObString *&rowkey, const ObRow *&row);
+          int get_next_row(const ObRowkey *&rowkey, const ObRow *&row);
           int close();
           virtual int get_row_desc(const common::ObRowDesc *&row_desc) const {row_desc=NULL;return OB_NOT_IMPLEMENT;}
           void set_row_desc(const ObRowDesc &row_desc)
@@ -60,8 +63,11 @@ namespace oceanbase
         private:
           ObRowDesc curr_row_desc_;
           ObUpsRow curr_row_;
-          ObArray<ObString> row_key_array_;
+          int32_t curr_idx_;
           ObFakeUpsScan ups_scan_;
+          ObRowStore row_store_;
+          map<ObRowkey, const ObRowStore::StoredRow *> row_map_;
+          CharArena rowkey_arena_;
       };
     }
   }

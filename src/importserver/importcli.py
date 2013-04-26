@@ -127,12 +127,11 @@ def SendRequest():
           sys.exit(1)
         else:
           if data == 'FAILED':
-            print('Failed')
             sys.exit(1)
           elif data == 'SUCCESSFUL':
             break
           else:
-            sys.stdout.write(data)
+            print(data)
   except socket.error as err:
     print('Network error: {0}'.format(err))
     sys.exit(1)

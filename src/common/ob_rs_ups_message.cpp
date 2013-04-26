@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_rs_ups_message.cpp
@@ -33,6 +33,14 @@ int ObMsgUpsHeartbeat::serialize(char* buf, const int64_t buf_len, int64_t &pos)
   {
     TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
   }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, schema_version_)))
+  {
+    TBSYS_LOG(ERROR, "serailize schema_version fail, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, config_version_)))
+  {
+    TBSYS_LOG(ERROR, "serailize config_version fail, err=%d", ret);
+  }
   return ret;
 }
 
@@ -53,6 +61,14 @@ int ObMsgUpsHeartbeat::deserialize(const char* buf, const int64_t data_len, int6
   {
     TBSYS_LOG(ERROR, "failed to deserialize, err=%d", ret);
   }
+  else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &schema_version_)))
+  {
+    TBSYS_LOG(ERROR, "deserialize schema_version fail, ret: [%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &config_version_)))
+  {
+    TBSYS_LOG(ERROR, "deserialize config_version fail, ret: [%d]", ret);
+  }
   return ret;
 }
 
@@ -63,7 +79,7 @@ int ObMsgUpsHeartbeatResp::serialize(char* buf, const int64_t buf_len, int64_t &
   {
     TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
   }
-  else if (OB_SUCCESS != (ret = serialization::encode_vi32(buf, buf_len, 
+  else if (OB_SUCCESS != (ret = serialization::encode_vi32(buf, buf_len,
                                                            pos, (int32_t)status_)))
   {
     TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
@@ -119,18 +135,23 @@ int ObMsgUpsRegister::serialize(char* buf, const int64_t buf_len, int64_t &pos) 
   {
     TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
   }
-  else if (OB_SUCCESS != (ret = serialization::encode_vi32(buf, buf_len, 
+  else if (OB_SUCCESS != (ret = serialization::encode_vi32(buf, buf_len,
                                                            pos, inner_port_)))
   {
     TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
   }
-  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, 
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len,
                                                            pos, log_seq_num_)))
   {
     TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
   }
-  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, 
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len,
                                                            pos, lease_)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vstr(buf, buf_len,
+                                                           pos, server_version_)))
   {
     TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
   }
@@ -140,6 +161,8 @@ int ObMsgUpsRegister::serialize(char* buf, const int64_t buf_len, int64_t &pos) 
 int ObMsgUpsRegister::deserialize(const char* buf, const int64_t data_len, int64_t &pos)
 {
   int ret = OB_SUCCESS;
+  int64_t server_version_length = 0;
+  const char * server_version_temp = NULL;
   if (OB_SUCCESS != (ret = addr_.deserialize(buf, data_len, pos)))
   {
     TBSYS_LOG(ERROR, "deserialize error");
@@ -159,6 +182,15 @@ int ObMsgUpsRegister::deserialize(const char* buf, const int64_t data_len, int64
   {
     TBSYS_LOG(ERROR, "deserialize error");
     ret = OB_INVALID_ARGUMENT;
+  }
+  else if (NULL == (server_version_temp = serialization::decode_vstr(buf, data_len, pos, &server_version_length)))
+  {
+    TBSYS_LOG(ERROR, "deserialize error");
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else
+  {
+    memcpy(server_version_, server_version_temp, server_version_length);
   }
   return ret;
 }

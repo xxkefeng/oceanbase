@@ -11,11 +11,11 @@
  *
  * Authors:
  *   wushi <wushi.ly@taobao.com>
- *   为了便于调试内存错误的bug，如果定义了名为__OB_MALLOC_DIRECT___的环境变量，
+ *   为了便于调试内存错误的bug，如果定义了名为__OB_MALLOC_DIRECT__的环境变量，
  *   内存池将直接调用new和delete分配和释放内存
  *
  */
-#ifndef OCEANBASE_COMMON_OB_MALLOC_H_ 
+#ifndef OCEANBASE_COMMON_OB_MALLOC_H_
 #define OCEANBASE_COMMON_OB_MALLOC_H_
 #include <stdint.h>
 #include "ob_define.h"
@@ -26,11 +26,12 @@ namespace oceanbase
   {
     /// @fn int oceanbase/common::ob_init_memory_pool(int64_t block_size)
     ///   初始化全局的内存池，在调用ob_malloc分配内存前必须调用该函数进行初始化
-    /// 
+    ///
     /// @param block_size 每次从系统分配的内存块的大小
-    int ob_init_memory_pool(int64_t block_size = 64*1024);
-
+    int ob_init_memory_pool(int64_t block_size = OB_MALLOC_BLOCK_SIZE);
+    void ob_mod_usage_update(const int64_t delta, const int32_t mod_id);
     /// @fn 从全局内存池中分配nbyte的缓冲区
+    void *ob_malloc(void *ptr, size_t size); //alloc mem for libeasy easy_pool
     void *ob_malloc(const int64_t nbyte, const int32_t mod_id = 0, int64_t *got_size = NULL);
     void *ob_malloc_emergency(const int64_t nbyte, const int32_t mod_id = 0, int64_t *got_size = NULL);
 
@@ -85,7 +86,7 @@ namespace oceanbase
 
       }
 
-      explicit ObMemBuf(const int64_t default_size) 
+      explicit ObMemBuf(const int64_t default_size)
       : buf_ptr_(NULL), buf_size_(default_size)
       {
 
@@ -120,6 +121,74 @@ namespace oceanbase
       int64_t buf_size_;
       int32_t mod_id_;
     };
+
+    class ObMemBufAllocatorWrapper
+    {
+      public:
+        ObMemBufAllocatorWrapper(ObMemBuf& mem_buf) : mem_buf_(mem_buf) {}
+      public:
+        inline char* alloc(int64_t sz)
+        {
+          char* ptr = NULL;
+          if (OB_SUCCESS == mem_buf_.ensure_space(sz))
+          {
+            ptr = mem_buf_.get_buffer();
+          }
+          return ptr;
+        }
+        inline void free(char* ptr)
+        {
+          UNUSED(ptr);
+        }
+      private:
+        ObMemBuf& mem_buf_;
+    };
+
+
+    class ObRawBufAllocatorWrapper
+    {
+      public:
+        ObRawBufAllocatorWrapper(char *mem_buf, int64_t mem_buf_len) : mem_buf_(mem_buf),mem_buf_len_(mem_buf_len) {}
+      public:
+        inline char* alloc(int64_t sz)
+        {
+          char* ptr = NULL;
+          if (mem_buf_len_ >= sz)
+          {
+            ptr = mem_buf_;
+          }
+          return ptr;
+        }
+        inline void free(char* ptr)
+        {
+          UNUSED(ptr);
+        }
+      private:
+        char * mem_buf_;
+        int64_t mem_buf_len_;
+    };
   }
 }
+
+#define OB_NEW(T, mod_id, ...)                  \
+  ({                                            \
+  T* ret = NULL;                                \
+  void *buf = ob_malloc(sizeof(T), mod_id);     \
+  if (NULL != buf)                              \
+  {                                             \
+    ret = new(buf) T(__VA_ARGS__);              \
+  }                                             \
+  ret;                                          \
+  })
+
+#define OB_DELETE(T, mod_id, ptr)               \
+  do{                                           \
+    if (NULL != ptr)                            \
+    {                                           \
+      ptr->~T();                                \
+      ob_free(ptr, mod_id);                     \
+      ptr = NULL;                               \
+    }                                           \
+  } while(0)
+
 #endif /* OCEANBASE_SRC_COMMON_OB_MALLOC_H_ */

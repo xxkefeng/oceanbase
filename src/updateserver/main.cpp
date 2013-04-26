@@ -18,13 +18,13 @@
 #include "common/ob_malloc.h"
 #include "ob_update_server_main.h"
 #include <malloc.h>
+#include "easy_pool.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::updateserver;
 
 namespace
 {
-  const char* PUBLIC_SECTION_NAME = "public";
   static const int DEFAULT_MMAP_MAX_VAL = 655360;
 }
 
@@ -32,20 +32,23 @@ int main(int argc, char** argv)
 {
   mallopt(M_MMAP_MAX, DEFAULT_MMAP_MAX_VAL);
   ob_init_memory_pool();
+  tbsys::WarningBuffer::set_warn_log_on(true);
+  //easy_pool_set_allocator(ob_malloc);
   ObUpdateServerMain* ups = ObUpdateServerMain::get_instance();
   int ret = OB_SUCCESS;
-  if (NULL == ups) 
+  if (NULL == ups)
   {
     fprintf(stderr, "cannot start updateserver, new ObUpdateServerMain failed\n");
     ret = OB_ERROR;
   }
-  else 
+  else
   {
-    ret = ups->start(argc, argv, PUBLIC_SECTION_NAME);
+    ret = ups->start(argc, argv);
     if (OB_SUCCESS == ret)
     {
       ups->destroy();
     }
+    BaseMain::restart_server(argc, argv);
   }
 
   return ret;

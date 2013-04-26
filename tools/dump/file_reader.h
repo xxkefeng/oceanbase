@@ -5,6 +5,7 @@
 #include "slice.h"
 #include "tokenizer.h"
 #include <string>
+#include "iconv.h"
 
 class RecordBlock {
   public:
@@ -28,25 +29,28 @@ class RecordBlock {
     int64_t offset_;
 };
 
+extern int kReadBufferSize;
+
 class FileReader {
-  static const int kReadBufferSize = 10 * 1024;  /* 2M */
   public:
+    //static const int kReadBufferSize = 1 * 128 * 1024;  /* 128K */
+
     FileReader(const char *file_name);
-    ~FileReader();
+    virtual ~FileReader();
 
     //open file
-    int open();
+    virtual int open();
 
     int read();
 
-    int get_records(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima);
+    virtual int get_records(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima, int64_t max_rec_extracted);
 
     bool eof() const { return eof_; }
 
-  private:
+  protected:
     void shrink(int64_t pos);
 
-    int extract_record(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima);
+    int extract_record(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima, int64_t max_rec_extracted);
 
     void append_int32(std::string &buffer, uint32_t value);
 
@@ -63,6 +67,24 @@ class FileReader {
     bool eof_;
 
     oceanbase::common::FileUtils file_;
+};
+
+class EncodingFileReader : public FileReader
+{
+  public:
+    EncodingFileReader(const char *file_name);
+    virtual ~EncodingFileReader();
+
+    int open();
+    int get_records(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima, int64_t max_rec_extracted);
+
+  private:
+    int convert_string_encode();
+
+  private:
+    iconv_t cd_;
+    char *raw_buffer_;
+    int64_t raw_buffer_size_;
 };
 
 #endif

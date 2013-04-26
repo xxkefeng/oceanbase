@@ -122,7 +122,8 @@ int ObLogReader::read_log(LogCommand &cmd, uint64_t &seq, char* &log_data, int64
         {
           TBSYS_LOG(ERROR, "log_file_reader_ close error[ret=%d]", ret);
         }
-        else if (OB_SUCCESS != (open_err = open_log_(++cur_log_file_id_, seq)))
+        else if (OB_SUCCESS != (open_err = open_log_(++cur_log_file_id_, seq))
+                 && OB_READ_NOTHING != open_err)
         {
           TBSYS_LOG(WARN, "open_log(file_id=%ld, seq=%ld)=>%d", cur_log_file_id_, seq, open_err);
         }

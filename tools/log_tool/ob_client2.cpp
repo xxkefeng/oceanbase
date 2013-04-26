@@ -17,7 +17,6 @@
 #include "common/ob_malloc.h"
 #include "common/ob_obi_role.h"
 #include "common/ob_schema.h"
-#include "common/ob_client_config.h"
 #include "common/ob_log_cursor.h"
 #include "common/ob_scan_param.h"
 #include "common/ob_mutator.h"
@@ -26,8 +25,13 @@
 #include "ob_utils.h"
 #include "ob_client2.h"
 #include "file_utils.h"
+#include "cached_item.h"
 #include "updateserver/ob_log_sync_delay_stat.h"
 #include "updateserver/ob_ups_clog_status.h"
+#include "builder.h"
+#if ROWKEY_IS_OBJ
+#include "updateserver/ob_clog_stat.h"
+#endif
 
 using namespace oceanbase::common;
 using namespace oceanbase::updateserver;
@@ -38,10 +42,12 @@ const int64_t MAX_N_COLUMNS = 1<<12;
 const char* _usages = "Usages:\n"
   "\t# You can set env var 'log_level' to 'DEBUG'/'WARN'...\n"
   "\t#         set env var 'n_transport' to a number\n"
+  "\t%1$s send ip:port packet file\n"
   "\t%1$s desc rs_ip:rs_port table\n"
   "\t%1$s get_obi_role rs_ip:rs_port\n"
   "\t%1$s get_master_ups rs_ip:rs_port\n"
   "\t%1$s get_client_cfg rs_ip:rs_port\n"
+  "\t%1$s get_server rs_ip:rs_port type\n"
   "\t%1$s get_ms rs_ip:rs_port\n"
   "\t%1$s get_replayed_cursor ups_ip:ups_port\n"
   "\t%1$s get_max_log_seq_replayable ups_ip:ups_port\n"
@@ -52,11 +58,15 @@ const char* _usages = "Usages:\n"
   "\t%1$s set rs_ip:rs_port table column rowkey value server\n"
   "\t# default set args: server=ms\n"
   "\t%1$s randset rs table=any server=ups n_row=-1\n"
-  "\t%1$s stress rs server=ups|ms|ip:port duration=-1 start=write_start_id end=-1 write=1 scan=1 mget=1 write_size=1 scan_size=1 mget_size=1\n"
-  "\t# default set args: server=ms\n"
+  "\tno_randstr=0 dist=[urand|fixed|seq] write_type=[mutator|insert|upcond|ping|test_sync_delay] %1$s stress rs server=mmups|ups|ms|ip:port duration=-1 start=write_start_id end=-1 write=1 scan=1 mget=1 write_size=1 scan_size=1 mget_size=1\n"
+  "\t# default args: write_type=write server=ms duration=-1\n"
   "\t%1$s send_mutator rs log_file server=ups\n"
   "\t%1$s get_log_sync_delay_stat ups\n"
-  "\t%1$s get_clog_status ups\n";
+  "\t%1$s sync_delay rs\n"
+  "\t%1$s get_clog_stat ups\n"
+  "\t%1$s get_clog_status ups\n"
+  "\t%1$s ip2str ip\n"
+  "\t%1$s ts2str ts\n";
 
 struct ServerList
 {
@@ -115,23 +125,70 @@ struct ServerList
 };
 
 class RPC;
+struct RpcCfg
+{
+  RpcCfg(): err_(OB_SUCCESS) {}
+  ~RpcCfg() {}
+  bool is_ok() { return OB_SUCCESS == err_; }
+  int print() {
+    TBSYS_LOG(INFO, "server[%s], slave_ups[%s]", to_cstring(server_), to_cstring(slave_ups_));
+    return 0;
+  }
+  int err_;
+  ObSchemaManagerV2 schema_mgr_;
+  ObServer server_;
+  ObServer slave_ups_;
+};
+
+class RpcCfgGetter
+{
+  public:
+    RpcCfgGetter(): rpc_(NULL), rs_(NULL), type_(NULL) {}
+    ~RpcCfgGetter() {}
+  public:
+    int init(RPC* rpc, const char* rs, const char* type) {
+      int err = OB_SUCCESS;
+      if (NULL != rpc_ || NULL != rs_ || NULL != type_)
+      {
+        err = OB_NOT_INIT;
+      }
+      else if (NULL == rpc || NULL == rs || NULL == type)
+      {
+        err = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        rpc_ = rpc;
+        rs_ = rs;
+        type_ = type;
+      }
+      return err;
+    }
+    int get(RpcCfg& cfg);
+  private:
+    RPC* rpc_;
+    const char* rs_;
+    const char* type_;
+};
+typedef CachedItem<RpcCfg, RpcCfgGetter> RpcCfgSrc;
+
 class ClientWorker
 {
   public:
-    ClientWorker(): stop_(false), keep_going_on_err_(false), rpc_(NULL), schema_mgr_(NULL),
+    ClientWorker(): stop_(false), keep_going_on_err_(false), rpc_(NULL),
                     rs_(NULL), server_(NULL), start_(0), end_(0),
                     write_thread_count_(0), scan_thread_count_(0), mget_thread_count_(0),
                     write_req_size_(0), scan_req_size_(0), mget_req_size_(0),
                     finish_write_thread_count_(0), finish_scan_thread_count_(0), finish_mget_thread_count_(0),
-                    write_seq_(0), scan_seq_(0), mget_seq_(0),
+                    write_seq_(0), scan_seq_(0), mget_seq_(0), write_us_(0), scan_us_(0), mget_us_(0),
                     write_fail_count_(0), scan_fail_count_(0), mget_fail_count_(0)
   {}
     ~ClientWorker() { stop(); wait(); }
-    const static int64_t MAX_N_THREADS = 1<<16;
+    const static int64_t MAX_N_THREADS = 1<<14;
+    const static int64_t CFG_UPDATE_INTERVAL_US = 1000 * 1000;
     volatile bool stop_;
     bool keep_going_on_err_;
     RPC* rpc_;
-    ObSchemaManagerV2* schema_mgr_;
     const char* rs_;
     const char* server_;
     int64_t start_;
@@ -148,9 +205,14 @@ class ClientWorker
     volatile int64_t write_seq_;
     volatile int64_t scan_seq_;
     volatile int64_t mget_seq_;
+    volatile int64_t write_us_;
+    volatile int64_t scan_us_;
+    volatile int64_t mget_us_;
     volatile int64_t write_fail_count_;
     volatile int64_t scan_fail_count_;
     volatile int64_t mget_fail_count_;
+    RpcCfgGetter cfg_getter_;
+    RpcCfgSrc cfg_src_;
     pthread_t threads_[MAX_N_THREADS];
 
     int init(RPC* rpc, const char* rs,
@@ -160,9 +222,17 @@ class ClientWorker
       int err = OB_SUCCESS;
       if (NULL == rpc || NULL == rs || NULL == server || 0 >= start
           || 0 > write_thread_count || 0 > scan_thread_count || 0 > mget_thread_count
-          || write_thread_count + scan_thread_count + mget_thread_count > MAX_N_THREADS)
+ || write_thread_count + scan_thread_count + mget_thread_count > MAX_N_THREADS)
       {
         err = OB_INVALID_ARGUMENT;
+      }
+      else if (OB_SUCCESS != (err = cfg_getter_.init(rpc, rs, server)))
+      {
+        TBSYS_LOG(ERROR, "cfg_getter_.init(rs=%s, server=%s)=>%d", rs, server, err);
+      }
+      else if (OB_SUCCESS != (err = cfg_src_.init(&cfg_getter_, atoll(_cfg("cfg_update_interval", "1000000")))))
+      {
+        TBSYS_LOG(ERROR, "schema_getter.init()=>%d", err);
       }
       else
       {
@@ -193,10 +263,6 @@ class ClientWorker
       int err = OB_SUCCESS;
       if (!is_inited()){
         err = OB_NOT_INIT;
-      }
-      else if (OB_SUCCESS != (err = fetch_schema()))
-      {
-        TBSYS_LOG(ERROR, "fetch_schema()=>%d", err);
       }
       for(int64_t i = 0; OB_SUCCESS == err && i < get_thread_count(); i++) {
         if (0 != pthread_create(threads_ + i, NULL, (void*(*)(void*))ClientWorker::do_work, this)){
@@ -278,7 +344,7 @@ class ClientWorker
       return err;
     }
     int is_ups(bool& ret, ObServer& server);
-    int fetch_schema();
+    int fetch_schema(const int64_t version=0);
     int write(int64_t idx);
     int scan(int64_t idx);
     int mget(int64_t idx);
@@ -290,7 +356,8 @@ class ClientWorker
       public:
         Monitor(ClientWorker* worker): worker_(worker), start_time_(0),
                                        start_write_(0), start_scan_(0), start_mget_(0),
-                                       last_time_(0), last_write_(0), last_scan_(0), last_mget_(0)
+                                       last_time_(0), last_write_(0), last_scan_(0), last_mget_(0),
+                                       last_write_us_(0), last_scan_us_(0), last_mget_us_(0)
       {}
         ~Monitor() {}
         int report(){
@@ -299,19 +366,29 @@ class ClientWorker
           int64_t last_write0 = last_write_;
           int64_t last_scan0 = last_scan_;
           int64_t last_mget0 = last_mget_;
+          int64_t last_write_us0 = last_write_us_;
+          int64_t last_scan_us0 = last_scan_us_;
+          int64_t last_mget_us0 = last_mget_us_;
           last_time_ = tbsys::CTimeUtil::getTime(); 
           last_write_ = worker_->write_seq_;
           last_scan_ = worker_->scan_seq_;
           last_mget_ = worker_->mget_seq_;
+          last_write_us_ = worker_->write_us_;
+          last_scan_us_ = worker_->scan_us_;
+          last_mget_us_ = worker_->mget_us_;
           int64_t this_duration = last_time_ - last_time0;
           int64_t total_duration = last_time_ - start_time_;
-          TBSYS_LOG(INFO, "worker report: write=[total=%ld:%ld][tps=%ld:%ld][thread=%ld:%ld], scan=[total=%ld:%ld][qps=%ld:%ld][thread=%ld:%ld], mget=[total=%ld:%ld][qps=%ld:%ld][thread=%ld:%ld]",
+          TBSYS_LOG(INFO, "worker report: write=[total=%ld:%ld][tps=%ld:%ld][thread=%ld:%ld][rt=%ld:%ld], scan=[total=%ld:%ld][qps=%ld:%ld][thread=%ld:%ld][rt=%ld:%ld], mget=[total=%ld:%ld][qps=%ld:%ld][thread=%ld:%ld][rt=%ld:%ld]",
                     last_write_, worker_->write_fail_count_, 1000000 * (last_write_ - last_write0)/(this_duration + 1),
                     1000000 * (last_write_ - start_write_)/(total_duration + 1), worker_->write_thread_count_, worker_->finish_write_thread_count_,
+                    (last_write_us_ - last_write_us0)/(last_write_ - last_write0 + 1), last_write_us_/(last_write_ + 1),
                     last_scan_, worker_->scan_fail_count_, 1000000 * (last_scan_ - last_scan0)/(this_duration + 1),
                     1000000 * (last_scan_ - start_scan_)/total_duration, worker_->scan_thread_count_, worker_->finish_scan_thread_count_,
+                    (last_scan_us_ - last_scan_us0)/(last_scan_ - last_scan0 + 1), last_scan_us_/(last_scan_ + 1),
                     last_mget_, worker_->mget_fail_count_, 1000000 * (last_mget_ - last_mget0)/(this_duration + 1),
-                    1000000 * (last_mget_ - start_mget_)/(total_duration + 1), worker_->mget_thread_count_, worker_->finish_mget_thread_count_);
+                    1000000 * (last_mget_ - start_mget_)/(total_duration + 1), worker_->mget_thread_count_, worker_->finish_mget_thread_count_,
+                    (last_mget_us_ - last_mget_us0)/(last_mget_ - last_mget0 + 1), last_mget_us_/(last_mget_ + 1)
+            );
           return err;
         }
         int monitor(int64_t duration) {
@@ -337,6 +414,9 @@ class ClientWorker
         int64_t last_write_;
         int64_t last_scan_;
         int64_t last_mget_;
+        int64_t last_write_us_;
+        int64_t last_scan_us_;
+        int64_t last_mget_us_;
     };
     friend class Monitor;
 };
@@ -389,54 +469,6 @@ int desc_tables(ObDataBuffer& buf, ObSchemaManagerV2* schema_mgr, const char* ta
   {
     result = tmp_result;
   }
-  return err;
-}
-
-int make_version_range(ObVersionRange& version_range, int64_t start_version)
-{
-  int err = OB_SUCCESS;
-  if (start_version > 0)
-  {
-    version_range.border_flag_.set_inclusive_start();
-    version_range.border_flag_.unset_inclusive_end();
-    version_range.border_flag_.unset_min_value();
-    version_range.border_flag_.set_max_value();
-    version_range.start_version_ = start_version;
-    version_range.end_version_ = 0;
-  }
-  return err;
-}
-
-int set_range(ObDataBuffer& buf, ObScanParam& scan_param, ObString& table_name, int64_t start_version, const char* start_key, const char* end_key)
-{
-  int err = OB_SUCCESS;
-  ObRange range;
-  ObVersionRange version_range;
-  if (0 == strcmp(start_key, "min"))
-  {
-    TBSYS_LOG(INFO, "start_key is min");
-    range.border_flag_.set_min_value();
-  }
-  else if (OB_SUCCESS != (err = hex2bin(buf, range.start_key_, start_key, strlen(start_key))))
-  {
-    TBSYS_LOG(ERROR, "hex2bin()=>%d", err);
-  }
-  if (0 == strcmp(end_key, "max"))
-  {
-    TBSYS_LOG(INFO, "end_key is max");
-    range.border_flag_.set_max_value();
-  }
-  else if (OB_SUCCESS != (err = hex2bin(buf, range.end_key_, end_key, strlen(end_key))))
-  {
-    TBSYS_LOG(ERROR, "hex2bin()=>%d", err);
-  }
-  range.border_flag_.set_inclusive_start();
-  range.border_flag_.set_inclusive_end();
-  make_version_range(version_range, start_version);
-  scan_param.set_version_range(version_range);
-  scan_param.set(OB_INVALID_ID, table_name, range);
-  TBSYS_LOG(DEBUG, "scan_param{table_id=%ld, table_name=%.*s}", scan_param.get_table_id(),
-            scan_param.get_table_name().length(), scan_param.get_table_name().ptr());
   return err;
 }
 
@@ -562,7 +594,7 @@ int mutate_func(ObDataBuffer& buf, ObMutator& mutator, ObSchemaManagerV2& schema
 {
   int err = OB_SUCCESS;
   ObString table_name;
-  ObString rowkey;
+  ObRowkey rowkey;
   ObString column_name;
   const ObColumnSchemaV2* column_schema = NULL;
   ObString value;
@@ -572,9 +604,9 @@ int mutate_func(ObDataBuffer& buf, ObMutator& mutator, ObSchemaManagerV2& schema
   {
     TBSYS_LOG(ERROR, "alloc_str(%s)=>%d", _table_name, err);
   }
-  else if (OB_SUCCESS != (err = hex2bin(buf, rowkey, _rowkey, strlen(_rowkey))))
+  else if (OB_SUCCESS != (err = parse_rowkey(buf, rowkey, _rowkey, strlen(_rowkey))))
   {
-    TBSYS_LOG(ERROR, "hex2bin()=>%d", err);
+    TBSYS_LOG(ERROR, "parse_rowkey()=>%d", err);
   }
   else if (OB_SUCCESS != (err = alloc_str(buf, column_name, _column_name)))
   {
@@ -593,489 +625,6 @@ int mutate_func(ObDataBuffer& buf, ObMutator& mutator, ObSchemaManagerV2& schema
   else if (OB_SUCCESS != (err = mutator.update(table_name, rowkey, column_name, cell_value)))
   {
     TBSYS_LOG(ERROR, "mutator.update()=>%d", err);
-  }
-  return err;
-}
-
-int choose_table(ObDataBuffer& buf, ObSchemaManagerV2& schema_mgr, 
-                 ObString& table_name, const char* _table_name, int64_t seed)
-{
-  int err = OB_SUCCESS;
-  int64_t w = -1;
-  int64_t max_weight = -1;
-  const ObTableSchema* chosen_table = NULL;
-  if (NULL == _table_name)
-  {
-    err = OB_INVALID_ARGUMENT;
-  }
-  else if (0 != strcmp(_table_name, "any"))
-  {
-    if (OB_SUCCESS != (err = alloc_str(buf, table_name, _table_name)))
-    {
-      TBSYS_LOG(ERROR, "alloc_str(%s)=>%d", _table_name, err);
-    }
-  }
-  else
-  {
-    w = seed;
-    for(const ObTableSchema* table_schema = schema_mgr.table_begin();
-        table_schema != schema_mgr.table_end(); table_schema++)
-    {
-      TBSYS_LOG(DEBUG, "choose_table(cur=%s[%ld])", table_schema->get_table_name(), table_schema->get_table_id());
-      if (table_schema->get_table_id() >= OB_APP_MIN_TABLE_ID
-          && (w = rand2(w)) > max_weight)
-      {
-        max_weight = w;
-        chosen_table = table_schema;
-        //break; // always choose first user table, otherwise build_rand_scan_param() will not work
-      }
-    }
-    if (NULL == chosen_table)
-    {
-      err = OB_ENTRY_NOT_EXIST;
-      TBSYS_LOG(ERROR, "no table been chosen");
-    }
-    else if (OB_SUCCESS != (err = alloc_str(buf, table_name, chosen_table->get_table_name())))
-    {
-      TBSYS_LOG(ERROR, "alloc_str(%s)=>%d", chosen_table->get_table_name(), err);
-    }
-  }
-  return err;
-}
-
-int choose_rowkey(ObDataBuffer& buf, ObSchemaManagerV2& schema_mgr, 
-                  const ObString& table_name, ObString& rowkey, int64_t seed)
-{
-  int err = OB_SUCCESS;
-  const ObTableSchema* table_schema = NULL;
-  char _rowkey[OB_MAX_ROW_KEY_LENGTH];
-  if (NULL == (table_schema = schema_mgr.get_table_schema(table_name)))
-  {
-    err = OB_SCHEMA_ERROR;
-  }
-  else if (OB_SUCCESS != (err = rand_str(_rowkey, table_schema->get_rowkey_max_length() + 1, seed)))
-  {
-    TBSYS_LOG(ERROR, "rand_str(len=%ld)=>%d", sizeof(_rowkey), err);
-  }
-  else if (OB_SUCCESS != (err = alloc_str(buf, rowkey, _rowkey)))
-  {
-    TBSYS_LOG(ERROR, "alloc_str(%s)=>%d", _rowkey, err);
-  }
-  TBSYS_LOG(DEBUG, "choose_rowkey('%*s')", rowkey.length(), rowkey.ptr());
-  return err;
-}
-
-int64_t rand_choose_column(const ObColumnSchemaV2* column_schema, int64_t n_column, int64_t seed)
-{
-  int64_t column_id = -1;
-  while(0 > column_id)
-  {
-    column_id = (seed = rand2(seed)) % n_column;
-    if (column_schema[column_id].get_join_info())
-    {
-      column_id = -1;
-    }
-    else
-    {
-      switch(column_schema[column_id].get_type())
-      {
-        case ObIntType:
-        case ObFloatType:
-        case ObVarcharType:
-          break;
-        default:
-          column_id = -1;
-          break;
-      }
-    }
-  }
-  return column_id;
-}
-
-int choose_column(ObDataBuffer& buf, ObSchemaManagerV2& schema_mgr, 
-                  const ObString& table_name, ObString& column_name, int64_t seed)
-{
-  int err = OB_SUCCESS;
-  int64_t n_column = 0;
-  const ObTableSchema* table_schema = NULL;
-  const ObColumnSchemaV2* column_schema = NULL;
-  if (NULL == (table_schema = schema_mgr.get_table_schema(table_name)))
-  {
-    err = OB_SCHEMA_ERROR;
-  }
-  else if (NULL == (column_schema = schema_mgr.get_table_schema(table_schema->get_table_id(), (int32_t&)n_column)))
-  {
-    err = OB_SCHEMA_ERROR;
-    TBSYS_LOG(ERROR, "schema_mgr.get_table_schema(table_id=%ld)=>%d", table_schema->get_table_id(), err);
-  }
-  else if (OB_SUCCESS != (err = alloc_str(buf, column_name, column_schema[rand_choose_column(column_schema, n_column, seed)].get_name())))
-  {
-    TBSYS_LOG(ERROR, "alloc_str()=>%d", err);
-  }
-  TBSYS_LOG(DEBUG, "choose_column('%*s')", column_name.length(), column_name.ptr());
-  return err;
-}
-
-int choose_value(ObDataBuffer& buf, ObSchemaManagerV2& schema_mgr, 
-                 const ObString& table_name, ObString& column_name, ObObj& value, int64_t seed)
-{
-  int err = OB_SUCCESS;
-  const ObColumnSchemaV2* column_schema = NULL;
-  char _str[1<<4];
-  ObString str;
-  if (NULL == (column_schema = schema_mgr.get_column_schema(table_name, column_name)))
-  {
-    err = OB_SCHEMA_ERROR;
-  }
-  else
-  {
-    switch(column_schema->get_type())
-    {
-      case ObIntType:
-        value.set_int(rand2(seed));
-        break;
-      case ObFloatType:
-        value.set_float(static_cast<float>(1.0) * static_cast<float>(rand2(seed))/static_cast<float>(RAND_MAX));
-        break;
-      case ObVarcharType:
-        if (OB_SUCCESS != (err = rand_str(_str, sizeof(_str), seed)))
-        {
-          TBSYS_LOG(ERROR, "rand_str(len=%ld)=>%d", sizeof(_str), err);
-        }
-        else if (OB_SUCCESS != (err = alloc_str(buf, str, _str)))
-        {
-          TBSYS_LOG(ERROR, "alloc_str(str=%s)=>%d", _str, err);
-        }
-        else
-        {
-          value.set_varchar(str);
-        }
-        break;
-      default:
-        break;
-    }
-  }
-  TBSYS_LOG(DEBUG, "choose_value(table=%*s, column=%*s)", table_name.length(), table_name.ptr(),
-            column_name.length(), column_name.ptr());
-  return err;
-}
-
-int build_rand_mutator(ObDataBuffer& buf, ObMutator& mutator, int64_t seed, ObSchemaManagerV2& schema_mgr,
-                       const char* _table_name)
-{
-  int err = OB_SUCCESS;
-  ObString table_name;
-  ObString rowkey;
-  ObString column_name;
-  ObObj cell_value;
-  if (OB_SUCCESS != (err = choose_table(buf, schema_mgr, table_name, _table_name, seed)))
-  {
-    TBSYS_LOG(ERROR, "choose_table(table=%s)=>%d", _table_name, err);
-  }
-  else if (OB_SUCCESS != (err = choose_rowkey(buf, schema_mgr, table_name, rowkey, seed)))
-  {
-    TBSYS_LOG(ERROR, "choose_rowkey(table=%*s)=>%d", table_name.length(), table_name.ptr(), err);
-  }
-  else if (OB_SUCCESS != (err = choose_column(buf, schema_mgr, table_name, column_name, seed)))
-  {
-    TBSYS_LOG(ERROR, "choose_column(table=%*s)=>%d", table_name.length(), table_name.ptr(), err);
-  }
-  else if (OB_SUCCESS != (err = choose_value(buf, schema_mgr, table_name, column_name, cell_value, seed)))
-  {
-    TBSYS_LOG(ERROR, "choose_value(table=%*s, column=%*s)=>%d", table_name.length(), table_name.ptr(),
-              column_name.length(), column_name.ptr(), err);
-  }
-  else if (OB_SUCCESS != (err = mutator.update(table_name, rowkey, column_name, cell_value)))
-  {
-    TBSYS_LOG(ERROR, "mutator.update()=>%d", err);
-  }
-  return err;
-}
-
-int build_rand_batch_mutator(ObDataBuffer& buf, ObMutator& mutator, int64_t start, int64_t end, ObSchemaManagerV2& schema_mgr,
-                             const char* _table_name)
-{
-  int err = OB_SUCCESS;
-  for(int64_t i = start; i < end; i++)
-  {
-    err = build_rand_mutator(buf, mutator, i, schema_mgr, _table_name);
-  }
-  return err;
-}
-
-int add_cell_to_get_param(ObGetParam& get_param, ObString& table_name, ObString& row_key, ObString& column_name)
-{
-  int err = OB_SUCCESS;
-  ObCellInfo cell_info;
-  cell_info.table_name_ = table_name;
-  cell_info.row_key_ = row_key;
-  cell_info.column_name_ = column_name;
-  err = get_param.add_cell(cell_info);
-  return err;
-}
-
-int build_rand_get_param(ObDataBuffer& buf, ObGetParam& get_param, int64_t seed, ObSchemaManagerV2& schema_mgr,
-                       const char* _table_name)
-{
-  int err = OB_SUCCESS;
-  ObString table_name;
-  ObString rowkey;
-  ObString column_name;
-  if (OB_SUCCESS != (err = choose_table(buf, schema_mgr, table_name, _table_name, seed)))
-  {
-    TBSYS_LOG(ERROR, "choose_table(table=%s)=>%d", _table_name, err);
-  }
-  else if (OB_SUCCESS != (err = choose_rowkey(buf, schema_mgr, table_name, rowkey, seed)))
-  {
-    TBSYS_LOG(ERROR, "choose_rowkey(table=%*s)=>%d", table_name.length(), table_name.ptr(), err);
-  }
-  else if (OB_SUCCESS != (err = choose_column(buf, schema_mgr, table_name, column_name, seed)))
-  {
-    TBSYS_LOG(ERROR, "choose_column(table=%*s)=>%d", table_name.length(), table_name.ptr(), err);
-  }
-  else if (OB_SUCCESS != (err = add_cell_to_get_param(get_param, table_name, rowkey, column_name)))
-  {
-    TBSYS_LOG(ERROR, "get_param.add_cell()=>%d", err);
-  }
-  return err;
-}
-
-int build_rand_mget_param(ObDataBuffer& buf, ObGetParam& get_param, int64_t start, int64_t end, ObSchemaManagerV2& schema_mgr,
-                          const char* _table_name, int64_t start_version)
-{
-  int err = OB_SUCCESS;
-  ObVersionRange version_range;
-  if (0 >= start_version)
-  {
-    TBSYS_LOG(DEBUG, "no need to set start_version");
-  }
-  else if (OB_SUCCESS != (err = make_version_range(version_range, start_version)))
-  {
-    TBSYS_LOG(ERROR, "make_version_range(%ld)=>%d", start_version, err);
-  }
-  else
-  {
-    get_param.set_version_range(version_range);
-  }
-  for(int64_t i = start; OB_SUCCESS == err && i < end; i++)
-  {
-    err = build_rand_get_param(buf, get_param, i, schema_mgr, _table_name);
-  }
-  if (OB_SUCCESS == err)
-  {
-    get_param.set_is_read_consistency(false);
-  }
-  return err;
-}
-
-int set_range2(ObScanParam& scan_param, ObString& table_name, int64_t start_version,
-              ObString& start_key, ObString& end_key)
-{
-  int err = OB_SUCCESS;
-  ObRange range;
-  ObVersionRange version_range;
-  range.start_key_ = start_key;
-  range.end_key_ = end_key;
-  range.border_flag_.set_inclusive_start();
-  range.border_flag_.set_inclusive_end();
-  make_version_range(version_range, start_version);
-  scan_param.set_version_range(version_range);
-  scan_param.set(OB_INVALID_ID, table_name, range);
-  return err;
-}
-
-int build_rand_scan_param(ObDataBuffer& buf, ObScanParam& scan_param, int64_t start, int64_t end,
-                          ObSchemaManagerV2& schema_mgr, const char* _table_name, int64_t start_version)
-{
-  int err = OB_SUCCESS;
-  int64_t limit = 200;
-  ObString table_name;
-  ObString rowkey;
-  ObString column_name;
-  ObString start_key;
-  ObString end_key;
-  if (OB_SUCCESS != (err = choose_table(buf, schema_mgr, table_name, _table_name, start)))
-  {
-    TBSYS_LOG(ERROR, "choose_table(table=%s)=>%d", _table_name, err);
-  }
-  else if (OB_SUCCESS != (err = choose_rowkey(buf, schema_mgr, table_name, start_key, start)))
-  {
-    TBSYS_LOG(ERROR, "choose_rowkey(table=%*s)=>%d", table_name.length(), table_name.ptr(), err);
-  }
-  else if (OB_SUCCESS != (err = choose_rowkey(buf, schema_mgr, table_name, end_key, end)))
-  {
-    TBSYS_LOG(ERROR, "choose_rowkey(table=%*s)=>%d", table_name.length(), table_name.ptr(), err);
-  }
-  else if (OB_SUCCESS != (err = set_range2(scan_param, table_name, start_version, start_key, end_key)))
-  {
-    TBSYS_LOG(ERROR, "set_range(table_name=%.*s, start_version=%ld)=>%d",
-              table_name.length(), table_name.ptr(), start_version, err);
-  }
-  else if (OB_SUCCESS != (err = scan_param.set_limit_info(0, limit)))
-  {
-    TBSYS_LOG(ERROR, "scan_param.set_limit_info(offset=%d, limit=%ld)=>%d", 0, limit, err);
-  }
-  else
-  {
-    scan_param.set_is_read_consistency(false);
-  }
-  return err;
-}
-
-int cell_info_resolve_table_name(ObSchemaManagerV2& sch_mgr, ObCellInfo& cell)
-{
-  int err = OB_SUCCESS;
-  uint64_t table_id = cell.table_id_;
-  const ObTableSchema* table_schema = NULL;
-  const char* table_name = NULL;
-  // `table_id == OB_INVALID_ID' is possible when cell.op_type == OB_USE_OB or cell.op_type == OB_USE_DB
-  if (OB_INVALID_ID != table_id)
-  {
-    if (NULL == (table_schema = sch_mgr.get_table_schema(table_id)))
-    {
-      err = OB_SCHEMA_ERROR;
-      TBSYS_LOG(WARN, "sch_mge.get_table_schema(table_id=%lu)=>NULL", table_id);
-    }
-    else if (NULL == (table_name = table_schema->get_table_name()))
-    {
-      err = OB_SCHEMA_ERROR;
-      TBSYS_LOG(ERROR, "get_table_name(table_id=%lu) == NULL", table_id);
-    }
-    else
-    {
-      cell.table_name_.assign_ptr((char*)table_name, static_cast<int32_t>(strlen(table_name)));
-      //cell.table_id_ = OB_INVALID_ID;
-    }
-  }
-  return err;
-}
-
-int cell_info_resolve_column_name(ObSchemaManagerV2& sch_mgr, ObCellInfo& cell)
-{
-  int err = OB_SUCCESS;
-  uint64_t table_id = cell.table_id_;
-  uint64_t column_id = cell.column_id_;
-  const ObColumnSchemaV2* column_schema = NULL;
-  const char* column_name = NULL;
-  // `table_id == OB_INVALID_ID' is possible when cell.op_type == OB_USE_OB or cell.op_type == OB_USE_DB
-  // `column_id == OB_INVALID_ID' is possible when cell.op_type == OB_USE_OB or cell.op_type == OB_USE_DB
-  //                                                        or cell.op_type == OB_DEL_ROW
-  if (OB_INVALID_ID != table_id && OB_INVALID_ID != column_id)
-  {
-    if (NULL == (column_schema = sch_mgr.get_column_schema(table_id, column_id)))
-    {
-      err = OB_SCHEMA_ERROR;
-      TBSYS_LOG(ERROR, "sch_mgr.get_column_schema(table_id=%lu, column_id=%lu) == NULL", table_id, column_id);
-    }
-    else if(NULL == (column_name = column_schema->get_name()))
-    {
-      err = OB_SCHEMA_ERROR;
-      TBSYS_LOG(ERROR, "get_column_name(table_id=%lu, column_id=%lu) == NULL", table_id, column_id);
-    }
-    else
-    {
-      cell.column_name_.assign_ptr((char*)column_name, static_cast<int32_t>(strlen(column_name)));
-      //cell.column_id_ = OB_INVALID_ID;
-    }
-  }
-  return err;
-}
-
-static void dump_ob_mutator_cell(ObMutatorCellInfo& cell)
-{
-  uint64_t op = cell.op_type.get_ext();
-  uint64_t table_id = cell.cell_info.table_id_;
-  uint64_t column_id = cell.cell_info.column_id_;
-  ObString table_name = cell.cell_info.table_name_;
-  ObString column_name = cell.cell_info.column_name_;
-  TBSYS_LOG(INFO, "cell{op=%lu, table=%lu[%*s], column=%lu[%*s]", op,
-            table_id, table_name.length(), table_name.ptr(), column_id, column_name.length(), column_name.ptr());
-}
-
-int dump_ob_mutator(ObMutator& mut)
-{
-  int err = OB_SUCCESS;
-  TBSYS_LOG(DEBUG, "dump_ob_mutator");
-  mut.reset_iter();
-  while (OB_SUCCESS == err && OB_SUCCESS == (err = mut.next_cell()))
-  {
-    ObMutatorCellInfo* cell = NULL;
-    if (OB_SUCCESS != (err = mut.get_cell(&cell)))
-    {
-      TBSYS_LOG(ERROR, "mut.get_cell()=>%d", err);
-    }
-    else
-    {
-      dump_ob_mutator_cell(*cell);
-    }
-  }
-  if (OB_ITER_END == err)
-  {
-    err = OB_SUCCESS;
-  }
-  return err;
-}
-
-int ob_mutator_resolve_name(ObSchemaManagerV2& sch_mgr, ObMutator& mut)
-{
-  int err = OB_SUCCESS;
-  while (OB_SUCCESS == err && OB_SUCCESS == (err = mut.next_cell()))
-  {
-    ObMutatorCellInfo* cell = NULL;
-    if (OB_SUCCESS != (err = mut.get_cell(&cell)))
-    {
-      TBSYS_LOG(ERROR, "mut.get_cell()=>%d", err);
-    }
-    else if (OB_SUCCESS != (err = cell_info_resolve_column_name(sch_mgr, cell->cell_info)))
-    {
-      TBSYS_LOG(ERROR, "resolve_column_name(table_id=%lu, column_id=%lu)=>%d",
-                cell->cell_info.table_id_, cell->cell_info.column_id_, err);
-    }
-    else if (OB_SUCCESS != (err = cell_info_resolve_table_name(sch_mgr, cell->cell_info)))
-    {
-      TBSYS_LOG(ERROR, "resolve_table_name(table_id=%lu)=>%d", cell->cell_info.table_id_, err);
-    }
-  }
-  if (OB_ITER_END == err)
-  {
-    err = OB_SUCCESS;
-  }
-  return err;
-}
-int mutator_add_(ObMutator& dst, ObMutator& src)
-{
-  int err = OB_SUCCESS;
-  src.reset_iter();
-  while ((OB_SUCCESS == err) && (OB_SUCCESS == (err = src.next_cell())))
-  {
-    ObMutatorCellInfo* cell = NULL;
-    if (OB_SUCCESS != (err = src.get_cell(&cell)))
-    {
-      TBSYS_LOG(ERROR, "mut.get_cell()=>%d", err);
-    }
-    else if (OB_SUCCESS != (err = dst.add_cell(*cell)))
-    {
-      TBSYS_LOG(ERROR, "dst.add_cell()=>%d", err);
-    }
-  }
-  if (OB_ITER_END == err)
-  {
-    err = OB_SUCCESS;
-  }
-  return err;
-}
-    
-int mutator_add(ObMutator& dst, ObMutator& src, int64_t size_limit)
-{
-  int err = OB_SUCCESS;
-  if (dst.get_serialize_size() + src.get_serialize_size() > size_limit)
-  {
-    err = OB_SIZE_OVERFLOW;
-    TBSYS_LOG(DEBUG, "mutator_add(): size overflow");
-  }
-  else if (OB_SUCCESS != (err = mutator_add_(dst, src)))
-  {
-    TBSYS_LOG(ERROR, "mutator_add()=>%d", err);
   }
   return err;
 }
@@ -1099,7 +648,8 @@ struct RPC : public BaseClient
     ObDataBuffer buf(cbuf, sizeof(cbuf));
     const char* result = NULL;
     ObSchemaManagerV2 schema_mgr;
-    if (OB_SUCCESS != (err = send_request(rs, OB_FETCH_SCHEMA, _dummy_, schema_mgr)))
+    int64_t version = 0;
+    if (OB_SUCCESS != (err = send_request(rs, OB_FETCH_SCHEMA, version, schema_mgr)))
     {
       TBSYS_LOG(ERROR, "send_request()=>%d", err);
     }
@@ -1147,18 +697,48 @@ struct RPC : public BaseClient
   int get_client_cfg(const char* rs)
   {
     int err = OB_SUCCESS;
-    char cbuf[MAX_BUF_SIZE];
-    int64_t pos = 0;
-    ObClientConfig clicfg;
-    if (OB_SUCCESS != (err = send_request(rs, OB_GET_CLIENT_CONFIG, _dummy_, clicfg)))
+    UNUSED(rs);
+    // char cbuf[MAX_BUF_SIZE];
+    // int64_t pos = 0;
+    // ObClientConfig clicfg;
+    // if (OB_SUCCESS != (err = send_request(rs, OB_GET_CLIENT_CONFIG, _dummy_, clicfg)))
+    // {
+    //   TBSYS_LOG(ERROR, "send_request()=>%d", err);
+    // }
+    // else
+    // {
+    //   clicfg.print(cbuf, sizeof(cbuf), pos);
+    //   cbuf[sizeof(cbuf)-1] = 0;
+    //   printf("%s\n", cbuf);
+    // }
+    printf("not supported.\n");
+    return err;
+  }
+
+  int send(const char* svr, const int64_t packet, const char* file)
+  {
+    int err = OB_SUCCESS;
+    int64_t len = 0;
+    const char* cbuf = NULL;
+    ObDataBuffer data;
+    if (OB_SUCCESS != (err = get_file_len(file, len)))
     {
-      TBSYS_LOG(ERROR, "send_request()=>%d", err);
+      TBSYS_LOG(ERROR, "get_file_len(%s)=>%d", file, err);
+    }
+    else if (OB_SUCCESS != (err = file_map_read(file, len, cbuf)))
+    {
+      TBSYS_LOG(ERROR, "file_map_read(%s, %ld)=>%d", file, len, err);
     }
     else
     {
-      clicfg.print(cbuf, sizeof(cbuf), pos);
-      cbuf[sizeof(cbuf)-1] = 0;
-      printf("%s\n", cbuf);
+      data.set_data((char*)cbuf, len);
+      data.get_position() = len;
+    }
+    if (OB_SUCCESS != err)
+    {}
+    else if (OB_SUCCESS != (err = send_request(svr, (int)packet, data, _dummy_)))
+    {
+      TBSYS_LOG(ERROR, "send_request(GET_MS_LIST)=>%d", err);
     }
     return err;
   }
@@ -1249,7 +829,8 @@ struct RPC : public BaseClient
   {
     int err = OB_SUCCESS;
     ServerList ms_list;
-    if (0 != strcmp("ms", _server) && 0 != strcmp("ups", _server))
+    if (0 != strcmp("ms", _server) && 0 != strcmp("ups", _server) && 0 != strcmp("mmups", _server)
+        && 0 != strcmp("slave_ups", _server))
     {
       if (OB_SUCCESS != (err = to_server(server, _server)))
       {
@@ -1277,6 +858,85 @@ struct RPC : public BaseClient
       {
         TBSYS_LOG(ERROR, "send_request()=>%d", err);
       }
+    }
+    else if (0 == strcmp("slave_ups", _server))
+    {
+      int ups_idx = 0;
+      ObServer master_ups;
+      ObUpsList ups_list;
+      if (OB_SUCCESS != (err = send_request(rs, OB_GET_UPDATE_SERVER_INFO, _dummy_, master_ups)))
+      {
+        TBSYS_LOG(ERROR, "send_request()=>%d", err);
+      }
+      else if (OB_SUCCESS != (err = send_request(rs, OB_GET_UPS, _dummy_, ups_list)))
+      {
+        TBSYS_LOG(ERROR, "send_request()=>%d", err);
+      }
+      for(ups_idx = 0; OB_SUCCESS == err && ups_idx < ups_list.ups_count_; ups_idx++)
+      {
+        if (!(ups_list.ups_array_[ups_idx].addr_ == master_ups))
+        {
+          server = ups_list.ups_array_[ups_idx].addr_;
+          break;
+        }
+      }
+      if (ups_idx >= ups_list.ups_count_)
+      {
+        err = OB_ENTRY_NOT_EXIST;
+      }
+    }
+    else if (0 == strcmp("mmups", _server))
+    {
+      printf("not support mmups server type.\n");
+      #if 0
+      int tmp_err = OB_SUCCESS;
+      ObClientConfig client_config;
+      ObiRole role;
+      ObServer master_inst_rs;
+      ObServer tmp_rs, null_server;
+      if (OB_SUCCESS != (err = send_request(rs, OB_GET_CLIENT_CONFIG, _dummy_, client_config)))
+      {
+        TBSYS_LOG(WARN, "fail to get client config, err = %d", err);
+      }
+      for (int32_t i = 0; OB_SUCCESS == err && i < client_config.obi_list_.obi_count_ && i < client_config.obi_list_.MAX_OBI_COUNT; ++i)
+      {
+        tmp_rs = client_config.obi_list_.conf_array_[i].get_rs_addr();
+        if (OB_SUCCESS != (tmp_err = send_request(tmp_rs, OB_GET_OBI_ROLE, _dummy_, role)))
+        {
+          TBSYS_LOG(WARN, "fail to get obi role .rs_addr=%s, err=%d", to_cstring(tmp_rs), tmp_err);
+        }
+        else if (ObiRole::MASTER == role.get_role())
+        {
+          master_inst_rs = tmp_rs;
+          break;
+        }
+      }
+      if (OB_SUCCESS != err)
+      {}
+      else if (master_inst_rs == null_server)
+      {
+        err = OB_ENTRY_NOT_EXIST;
+      }
+      else if (OB_SUCCESS != (err = send_request(master_inst_rs, OB_GET_UPDATE_SERVER_INFO, _dummy_, server)))
+      {
+        TBSYS_LOG(ERROR, "send_request()=>%d", err);
+      }
+      #endif
+    }
+    return err;
+  }
+
+  int get_server(const char* rs, const char* type)
+  {
+    int err = OB_SUCCESS;
+    ObServer server;
+    if (OB_SUCCESS != (err = choose_server(rs, type, server)))
+    {
+      TBSYS_LOG(ERROR, "choose_server(rs=%s, type=%s)=>%d", rs, type, err);
+    }
+    else
+    {
+      printf("%s\n", server.to_cstring());
     }
     return err;
   }
@@ -1334,7 +994,8 @@ struct RPC : public BaseClient
     ObSchemaManagerV2 schema_mgr;
     ObServer server;
     ObMutator mutator;
-    if (OB_SUCCESS != (err = send_request(rs, OB_FETCH_SCHEMA, _dummy_, schema_mgr)))
+    int64_t schema_version = 0;
+    if (OB_SUCCESS != (err = send_request(rs, OB_FETCH_SCHEMA, schema_version, schema_mgr)))
     {
       TBSYS_LOG(ERROR, "send_request()=>%d", err);
     }
@@ -1366,8 +1027,9 @@ struct RPC : public BaseClient
     ObSchemaManagerV2 schema_mgr;
     ObServer server;
     ObMutator mutator;
+    int64_t schema_version = 0;
     const bool keep_going_on_err = false;
-    if (OB_SUCCESS != (err = send_request(rs, OB_FETCH_SCHEMA, _dummy_, schema_mgr)))
+    if (OB_SUCCESS != (err = send_request(rs, OB_FETCH_SCHEMA, schema_version, schema_mgr)))
     {
       TBSYS_LOG(ERROR, "send_request()=>%d", err);
     }
@@ -1398,10 +1060,10 @@ struct RPC : public BaseClient
     return err;
   }
 
-  int ping_req(ObServer& server, int64_t idx, int64_t worker_id)
+  int ping_req(ObServer& server, int64_t idx, int64_t worker_id, int64_t& rt)
   {
     int err = OB_SUCCESS;
-    if (OB_SUCCESS != (err = send_request(server, OB_PING_REQUEST, _dummy_, _dummy_, worker_id)))
+    if (OB_SUCCESS != (err = send_request(server, OB_PING_REQUEST, _dummy_, _dummy_, worker_id, &rt)))
     {
       TBSYS_LOG(ERROR, "send_ping(server=%s, iter=[%ld])=>%d", server.to_cstring(), idx, err);
     }
@@ -1412,34 +1074,295 @@ struct RPC : public BaseClient
     return err;
   }
 
-  int write_req(ObServer& server, ObSchemaManagerV2& schema_mgr, int64_t start, int64_t end, int64_t worker_id)
+  int sync_delay(const char* rs)
   {
     int err = OB_SUCCESS;
-    int send_err = OB_SUCCESS;
-    const char* table = "any";
-    char cbuf[MAX_BUF_SIZE];
-    ObDataBuffer buf(cbuf, sizeof(cbuf));
-    ObMutator mutator;
-    if (OB_SUCCESS != (err = build_rand_batch_mutator(buf, mutator, start, end, schema_mgr, table)))
+    ObServer master;
+    ObServer slave;
+    ObSchemaManagerV2 schema_mgr;
+    int64_t version = 0;
+    int64_t rt = 0;
+    if (OB_SUCCESS != (err = send_request(rs, OB_FETCH_SCHEMA, version, schema_mgr)))
     {
-      TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
+      TBSYS_LOG(ERROR, "send_request()=>%d", err);
     }
-    else if (OB_SUCCESS != (send_err = send_request(server, OB_WRITE, mutator, _dummy_, worker_id)))
+    else if (OB_SUCCESS != (err = choose_server(rs, "ups", master)))
     {
-      err = send_err;
-      TBSYS_LOG(ERROR, "send_write(server=%s, iter=[%ld,%ld])=>%d", server.to_cstring(), start, end, send_err);
+      TBSYS_LOG(ERROR, "get_master_ups()=>%d", err);
+    }
+    else if (OB_SUCCESS != (err = choose_server(rs, "slave_ups", slave)))
+    {
+      TBSYS_LOG(ERROR, "get_slave_ups()=>%d", err);
+    }
+    else if (OB_SUCCESS != (err = test_sync_delay(master, slave, schema_mgr, time(NULL), 0, rt)))
+    {
+      TBSYS_LOG(ERROR, "test_sync_delay(master=%s, slave=%s)=>%d", to_cstring(master), to_cstring(slave), err);
     }
     else
     {
-      TBSYS_LOG(DEBUG, "%s mutate[%ld, %ld] OK!", server.to_cstring(), start, end);
+      char result[1024];
+      int64_t len = sizeof(result);
+      int64_t pos = 0;
+      repr(result, len, pos, master);
+      repr(result, len, pos, "->");
+      repr(result, len, pos, slave);
+      printf("%s, delay=%ldus\n", result, rt);
     }
     return err;
   }
 
-  int mget_req(ObServer& server, ObSchemaManagerV2& schema_mgr, int64_t start, int64_t end, int64_t worker_id, int64_t start_version)
+  int get_last_cell_from_scanner(ObScanner& scanner, ObCellInfo*& cell_info)
   {
     int err = OB_SUCCESS;
-    const char* table = "any";
+    cell_info = NULL;
+    while(OB_SUCCESS == err)
+    {
+      if (OB_SUCCESS != (err = scanner.next_cell()))
+      {}
+      else if (OB_SUCCESS != (err = scanner.get_cell(&cell_info)))
+      {}
+    }
+    if (OB_ITER_END == err && NULL != cell_info)
+    {
+      err = OB_SUCCESS;
+    }
+    return err;
+  }
+
+  int test_sync_delay(ObServer& master, ObServer& slave, ObSchemaManagerV2& schema_mgr, int64_t start, int64_t worker_id, int64_t& rt)
+  {
+    int err = OB_SUCCESS;
+    int send_err = OB_SUCCESS;
+    const char* _table_name = "any";
+    char cbuf[MAX_BUF_SIZE];
+    ObDataBuffer buf(cbuf, sizeof(cbuf));
+    ObString table_name;
+    int64_t table_id = 0;
+    ObRowkey rowkey;
+    ObString column_name;
+    int64_t column_id = 0;
+    ObObj cell_value;
+    int64_t seed = start;
+    ObMutator mutator;
+    ObGetParam get_param;
+    ObVersionRange version_range;
+    int64_t start_version = 0;
+    if (OB_SUCCESS != (err = choose_table(buf, schema_mgr, table_name, _table_name, seed)))
+    {
+      TBSYS_LOG(ERROR, "choose_table(table=%s)=>%d", _table_name, err);
+    }
+    else if (OB_SUCCESS != (err = choose_rowkey(buf, schema_mgr, table_name, rowkey, seed)))
+    {
+      TBSYS_LOG(ERROR, "choose_rowkey(table=%*s)=>%d", table_name.length(), table_name.ptr(), err);
+    }
+    else if (OB_SUCCESS != (err = choose_column(buf, schema_mgr, table_name, column_name, seed, true)))
+    {
+      TBSYS_LOG(ERROR, "choose_column(table=%*s)=>%d", table_name.length(), table_name.ptr(), err);
+    }
+    else if (OB_SUCCESS != (err = choose_value(buf, schema_mgr, table_name, column_name, cell_value, seed)))
+    {
+      TBSYS_LOG(ERROR, "choose_value(table=%*s, column=%*s)=>%d", table_name.length(), table_name.ptr(),
+                column_name.length(), column_name.ptr(), err);
+    }
+    else if (OB_SUCCESS != (err = send_request(master, OB_UPS_GET_LAST_FROZEN_VERSION, _dummy_, start_version)))
+    {
+      TBSYS_LOG(ERROR, "send_request(get_last_frozen_version)=>%d", err);
+    }
+    else if (OB_SUCCESS != (err = mutator.update(table_name, rowkey, column_name, cell_value)))
+    {
+      TBSYS_LOG(ERROR, "mutator.update()=>%d", err);
+    }
+    else if (OB_SUCCESS != (err = get_table_id(schema_mgr, table_name, table_id)))
+    {
+      TBSYS_LOG(ERROR, "get_table_id(%.*s)=>%d", table_name.length(), table_name.ptr(), err);
+    }
+    else if (OB_SUCCESS != (err = get_column_id(schema_mgr, table_name, column_name, column_id)))
+    {
+      TBSYS_LOG(ERROR, "get_table_id(%.*s, column_name=%.*s)=>%d", table_name.length(), table_name.ptr(),
+                column_name.length(), column_name.ptr(), err);
+    }
+    else if (OB_SUCCESS != (err = add_cell_to_get_param(get_param, table_id, rowkey, column_id)))
+    {
+      TBSYS_LOG(ERROR, "get_param.add_cell()=>%d", err);
+    }
+    else
+    {
+      start_version++;
+      TBSYS_LOG(INFO, "start_version=%ld", start_version);
+    }
+    TBSYS_LOG(INFO, "mutator[table=%.*s, column_name=%.*s, rowkey=%s]",  table_name.length(), table_name.ptr(),
+              column_name.length(), column_name.ptr(), to_cstring(rowkey));
+    if (OB_SUCCESS != err)
+    {}
+    else if (0 >= start_version)
+    {
+      TBSYS_LOG(DEBUG, "no need to set start_version");
+    }
+    else if (OB_SUCCESS != (err = make_version_range(version_range, start_version)))
+    {
+      TBSYS_LOG(ERROR, "make_version_range(%ld)=>%d", start_version, err);
+    }
+    else
+    {
+      get_param.set_version_range(version_range);
+      get_param.set_is_read_consistency(false);
+    }
+
+    if (OB_SUCCESS != err)
+    {}
+    else if (OB_SUCCESS != (send_err = send_request(master, OB_WRITE, mutator, _dummy_, worker_id, &rt)))
+    {
+      err = send_err;
+      TBSYS_LOG(ERROR, "send_write(server=%s, iter=%ld)=>%d", to_cstring(master), start, send_err);
+    }
+    else
+    {
+      ObScanner scanner;
+      ObCellInfo* cell_info = NULL;
+      int64_t start_us = tbsys::CTimeUtil::getTime();
+      int64_t cur_us = start_us;
+      int64_t max_retry_time = 100000;
+      int64_t i = 0;
+      for(i = 0; OB_SUCCESS == err && i < max_retry_time; i++)
+      {
+        if (OB_SUCCESS != (err = send_request(slave, OB_GET_REQUEST, get_param, scanner, worker_id)))
+        {
+          TBSYS_LOG(ERROR, "send_request(server=%s, iter=%ld)=>%d", to_cstring(slave), start, err);
+        }
+        else if (OB_SUCCESS != (err = get_last_cell_from_scanner(scanner, cell_info)) && OB_ITER_END != err)
+        {
+          TBSYS_LOG(ERROR, "get_last_cell_from_scanner()=>%d", err);
+        }
+        else if (OB_ITER_END == err)
+        {
+          TBSYS_LOG(ERROR, "no cell in scanner");
+        }
+        else if (cell_value.get_type() == cell_info->value_.get_type() && cell_value == cell_info->value_)
+        {
+          rt = cur_us - start_us;
+          break;
+        }
+        else
+        {
+          char tmp_buf[1024];
+          int64_t pos = 0;
+          repr(tmp_buf, sizeof(tmp_buf), pos, "queried_value:");
+          repr(tmp_buf, sizeof(tmp_buf), pos, cell_info->value_);
+          repr(tmp_buf, sizeof(tmp_buf), pos, "inserted_value:");
+          repr(tmp_buf, sizeof(tmp_buf), pos, cell_value);
+          TBSYS_LOG(ERROR, "%s", tmp_buf);
+          ObUpsCLogStatus master_stat, slave_stat;
+          if (OB_SUCCESS != (err = send_request(master, OB_GET_CLOG_STATUS, _dummy_, master_stat)))
+          {
+            TBSYS_LOG(ERROR, "send_request(ups=%s, OB_GET_CLOG_STATUS)=>%d", to_cstring(master), err);
+          }
+          else if (OB_SUCCESS != (err = send_request(slave, OB_GET_CLOG_STATUS, _dummy_, slave_stat)))
+          {
+            TBSYS_LOG(ERROR, "send_request(ups=%s, OB_GET_CLOG_STATUS)=>%d", to_cstring(slave), err);
+          }
+          else
+          {
+            char buf1[1024];
+            char buf2[1024];
+            master_stat.to_str(buf1, sizeof(buf1));
+            slave_stat.to_str(buf2, sizeof(buf2));
+            fprintf(stderr, "------\n%s%s", buf1, buf2);
+          }
+        }
+        cur_us = tbsys::CTimeUtil::getTime();
+      }
+      if (max_retry_time == i)
+      {
+        err = OB_LOG_NOT_SYNC;
+        TBSYS_LOG(WARN, "log_not_sync within %ld retry", max_retry_time);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "sync within %ld retry", i);
+      }
+    }
+    return err;
+  }
+
+  int write_req(ObServer& server, ObSchemaManagerV2& schema_mgr, int64_t start, int64_t end, int64_t worker_id, int64_t& rt)
+  {
+    int err = OB_SUCCESS;
+    int send_err = OB_SUCCESS;
+    const char* table = _cfg("table","any");
+    char cbuf[MAX_BUF_SIZE];
+    ObDataBuffer buf(cbuf, sizeof(cbuf));
+    ObMutator mutator;
+    const char* write_type = getenv("write_type")?: "mutator";
+    ObPacket::tsi_req_sign() = start;
+    if (0 == strcmp(write_type, "mutator"))
+    {
+      if (OB_SUCCESS != (err = build_rand_batch_mutator(buf, mutator, start, end, schema_mgr, table)))
+      {
+        TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
+      }
+      else if (OB_SUCCESS != (send_err = send_request(server, OB_WRITE, mutator, _dummy_, worker_id, &rt)))
+      {
+        err = send_err;
+        TBSYS_LOG(ERROR, "send_write(server=%s, iter=[%ld,%ld])=>%d", to_cstring(server), start, end, send_err);
+      }
+      else
+      {
+        TBSYS_LOG(DEBUG, "%s mutate[%ld, %ld] OK!", to_cstring(server), start, end);
+      }
+    }
+    else if (0 == strcmp(write_type, "insert"))
+    {
+      #if ROWKEY_IS_OBJ
+      PhyPlanBuilder builder(table, start, schema_mgr);
+      ObPhysicalPlan plan;
+      if (OB_SUCCESS != (err = builder.build_insert(plan, end - start)))
+      {
+        TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
+      }
+      else if (OB_SUCCESS != (send_err = send_request(server, OB_PHY_PLAN_EXECUTE, plan, _dummy_, worker_id, &rt)))
+      {
+        err = send_err;
+        if (OB_ERR_PRIMARY_KEY_DUPLICATE != err)
+        {
+          TBSYS_LOG(ERROR, "send_write(server=%s, iter=[%ld,%ld])=>%d", to_cstring(server), start, end, send_err);
+        }
+      }
+      else
+      {
+        TBSYS_LOG(DEBUG, "%s mutate[%ld, %ld] OK!", to_cstring(server), start, end);
+      }
+      #endif
+    }
+    else if (0 == strcmp(write_type, "upcond"))
+    {
+      #if ROWKEY_IS_OBJ
+      PhyPlanBuilder builder(table, start, schema_mgr);
+      ObPhysicalPlan plan;
+      if (OB_SUCCESS != (err = builder.build_upcond(plan, end - start)))
+      {
+        TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
+      }
+      else if (OB_SUCCESS != (send_err = send_request(server, OB_PHY_PLAN_EXECUTE, plan, _dummy_, worker_id, &rt)))
+      {
+        err = send_err;
+        if (OB_ERR_PRIMARY_KEY_DUPLICATE != err)
+        {
+          TBSYS_LOG(ERROR, "send_write(server=%s, iter=[%ld,%ld])=>%d", to_cstring(server), start, end, send_err);
+        }
+      }
+      else
+      {
+        TBSYS_LOG(DEBUG, "%s mutate[%ld, %ld] OK!", to_cstring(server), start, end);
+      }
+      #endif
+    }
+    return err;
+  }
+
+  int mget_req(ObServer& server, ObSchemaManagerV2& schema_mgr, int64_t start, int64_t end, int64_t worker_id, int64_t start_version, int64_t& rt)
+  {
+    int err = OB_SUCCESS;
+    const char* table = _cfg("table", "any");
     char cbuf[MAX_BUF_SIZE];
     ObDataBuffer buf(cbuf, sizeof(cbuf));
     ObGetParam get_param;
@@ -1448,7 +1371,7 @@ struct RPC : public BaseClient
     {
       TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
     }
-    else if (OB_SUCCESS != (err = send_request(server, OB_GET_REQUEST, get_param, scanner, worker_id)))
+    else if (OB_SUCCESS != (err = send_request(server, OB_GET_REQUEST, get_param, scanner, worker_id, &rt)))
     {
       TBSYS_LOG(ERROR, "send_request(server=%s, iter=[%ld, %ld])=>%d", server.to_cstring(), start, end, err);
     }
@@ -1459,7 +1382,7 @@ struct RPC : public BaseClient
     return err;
   }
 
-  int scan_req(ObServer& server, ObSchemaManagerV2& schema_mgr, int64_t start, int64_t end, int64_t worker_id, int64_t start_version)
+  int scan_req(ObServer& server, ObSchemaManagerV2& schema_mgr, int64_t start, int64_t end, int64_t worker_id, int64_t start_version, int64_t& rt)
   {
     int err = OB_SUCCESS;
     const char* table = "any";
@@ -1471,7 +1394,7 @@ struct RPC : public BaseClient
     {
       TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
     }
-    else if (OB_SUCCESS != (err = send_request(server, OB_SCAN_REQUEST, scan_param, scanner, worker_id)))
+    else if (OB_SUCCESS != (err = send_request(server, OB_SCAN_REQUEST, scan_param, scanner, worker_id, &rt)))
     {
       TBSYS_LOG(ERROR, "send_request(server=%s, iter=[%ld, %ld])=>%d", server.to_cstring(), start, end, err);
     }
@@ -1490,8 +1413,8 @@ struct RPC : public BaseClient
     int err = OB_SUCCESS;
     ClientWorker worker;
     ClientWorker::Monitor monitor(&worker);
-    TBSYS_LOG(INFO, "stress(rs=%s, server=%s, duration=%ld, range=[%ld,%ld), thread=%ld:%ld:%ld, req_size=%ld:%ld:%ld)",
-              rs, server, duration, start, end, write_thread, scan_thread, mget_thread, write_size, scan_size, mget_size);
+    TBSYS_LOG(INFO, "stress(rs=%s, server=%s, duration=%ld, range=[%ld,%ld), thread=%ld:%ld:%ld, req_size=%ld:%ld:%ld, table=%s)",
+              rs, server, duration, start, end, write_thread, scan_thread, mget_thread, write_size, scan_size, mget_size, getenv("table"));
     if (OB_SUCCESS != (err = worker.init(this, rs, server, start, end,
                                          write_thread, scan_thread, mget_thread, write_size, scan_size, mget_size)))
     {
@@ -1520,6 +1443,7 @@ struct RPC : public BaseClient
     ObMutator final_mutator;
     const char* buf = NULL;
     int64_t len = 0;
+    int64_t schema_version = 0;
     const bool use_name = true;
     const bool show_mutator = false;
     const bool keep_going_on_err = true;
@@ -1528,7 +1452,7 @@ struct RPC : public BaseClient
     {
       err = OB_INVALID_ARGUMENT;
     }
-    else if (OB_SUCCESS != (err = send_request(rs, OB_FETCH_SCHEMA, _dummy_, schema_mgr)))
+    else if (OB_SUCCESS != (err = send_request(rs, OB_FETCH_SCHEMA, schema_version, schema_mgr)))
     {
       TBSYS_LOG(ERROR, "send_request(OB_FETCH_SCHEMA)=>%d", err);
     }
@@ -1630,6 +1554,34 @@ struct RPC : public BaseClient
     }
     return err;
   }
+
+#if ROWKEY_IS_OBJ
+  int get_clog_stat(const char* ups)
+  {
+    int err = OB_SUCCESS;
+    ObClogStat stat;
+    if (NULL == ups)
+    {
+      err = OB_INVALID_ARGUMENT;
+    }
+    else if (OB_SUCCESS != (err = send_request(ups, OB_GET_CLOG_STAT, _dummy_, stat)))
+    {
+      TBSYS_LOG(ERROR, "send_request(ups=%s, OB_GET_CLOG_STATUS)=>%d", ups, err);
+    }
+    else
+    {
+      printf("%s\n", to_cstring(stat));
+    }
+    return err;
+  }
+#else
+  int get_clog_stat(const char* ups)
+  {
+    int err = OB_SUCCESS;
+    printf("%s get_clog_status not support\n", ups);
+    return err;
+  }
+#endif
   int get_log_sync_delay_stat(const char* ups)
   {
     int err = OB_SUCCESS;
@@ -1653,18 +1605,62 @@ struct RPC : public BaseClient
     }
     return err;
   }
+  int ip2str(const int64_t ip)
+  {
+    int err = OB_SUCCESS;
+    printf("%s\n", tbsys::CNetUtil::addrToString(ip).c_str());
+    return err;
+  }
+  int ts2str(const int64_t ts)
+  {
+    int err = OB_SUCCESS;
+    printf("%s\n", time2str(ts));
+    return err;
+  }
   bool is_init_;
 };
 
-int ClientWorker::fetch_schema() {
+int RpcCfgGetter::get(RpcCfg& cfg) {
   int err = OB_SUCCESS;
-  if (NULL == schema_mgr_ && NULL == (schema_mgr_ = new(std::nothrow)ObSchemaManagerV2()))
+  int64_t version = 0;
+  ObServer old_server = cfg.server_;
+  ObServer null_server;
+  cfg.err_ = OB_SUCCESS;
+  if (NULL == rpc_ || NULL == rs_)
   {
-    err = OB_ALLOCATE_MEMORY_FAILED;
+    err = OB_NOT_INIT;
   }
-  else if (OB_SUCCESS != (err = rpc_->send_request(rs_, OB_FETCH_SCHEMA, _dummy_, *schema_mgr_)))
+  else if (OB_SUCCESS != (err = rpc_->send_request(rs_, OB_FETCH_SCHEMA, version, cfg.schema_mgr_)))
   {
-    TBSYS_LOG(ERROR, "send_request(OB_FETCH_SCHEMA)=>%d", err);
+    TBSYS_LOG(ERROR, "send_request(rs=%s, FETCH_SCHEMA)=>%d", rs_, err);
+  }
+  else if (OB_SUCCESS != (err = rpc_->choose_server(rs_, type_, cfg.server_)))
+  {
+    TBSYS_LOG(ERROR, "choose_server(rs=%s, type=%s)=>%d", rs_, type_, err);
+  }
+  else if (OB_SUCCESS != (err = rpc_->choose_server(rs_, "slave_ups", cfg.slave_ups_))
+           && OB_ENTRY_NOT_EXIST != err)
+  {
+    TBSYS_LOG(ERROR, "choose_server(rs=%s, 'slave_ups')=>%d", rs_, err);
+  }
+  else if (cfg.server_ == null_server)
+  {
+    err = OB_NEED_RETRY;
+    TBSYS_LOG(ERROR, "cfg.server[%s]", to_cstring(cfg.server_));
+    TBSYS_LOG(ERROR, "cfg.slave_ups[%s]", to_cstring(cfg.slave_ups_));
+  }
+  else
+  {
+    err = OB_SUCCESS;
+  }
+  cfg.err_ = err;
+  if (OB_SUCCESS != err)
+  {
+    cfg.print();
+  }
+  if (OB_SUCCESS == err && !(old_server == cfg.server_))
+  {
+    TBSYS_LOG(INFO, "cfg change: server[%s->%s]", to_cstring(old_server), to_cstring(cfg.server_));
   }
   return err;
 }
@@ -1690,39 +1686,130 @@ int ClientWorker::is_ups(bool& ret, ObServer& server) {
 int ClientWorker::write(int64_t idx) {
   int err = OB_SUCCESS;
   int64_t write_seq = 0;
+  int64_t rt = 0;
   ObServer server;
   int64_t interval = 100000;
-  const char* write_type = getenv("write_type")?: "write";
-  bool is_ping = (0 == strcmp(write_type, "ping"));
-  if (OB_SUCCESS != (err = rpc_->choose_server(rs_, server_, server)))
+  const char* write_type = getenv("write_type")?: "mutator";
+  const bool fixed_row = (0 == strcmp(_cfg("dist", "urand"), "fixed"));
+  if (0 == strcmp(write_type, "mutator") || 0 == strcmp(write_type, "delete")
+      || 0 == strcmp(write_type, "insert") || 0 == strcmp(write_type, "upcond"))
   {
-    TBSYS_LOG(ERROR, "send_request(get_update_server)=>%d", err);
+    int64_t write_req_size = 0;
+    for(; !stop_ && OB_SUCCESS == err && (end_ < 0 || write_seq_ < end_);){
+      RpcCfg* cfg = NULL;
+      RpcCfgSrc::Guard guard(cfg, cfg_src_);
+      if (fixed_row)
+      {
+        write_req_size = 1;
+        write_seq = start_ + (__sync_fetch_and_add(&write_seq_, 1) % write_req_size_);
+      }
+      else
+      {
+        write_req_size = write_req_size_;
+        write_seq = __sync_fetch_and_add(&write_seq_, write_req_size_);
+      }
+      if (NULL == cfg)
+      {
+        TBSYS_LOG(DEBUG, "cfg is not OK.");
+      }
+      else if (OB_SUCCESS != (err = rpc_->write_req(cfg->server_, cfg->schema_mgr_, write_seq, write_seq + write_req_size, idx, rt)))
+      {
+        __sync_fetch_and_add(&write_fail_count_, write_req_size);
+        if (OB_ERR_PRIMARY_KEY_DUPLICATE != err)
+        {
+          TBSYS_LOG(ERROR, "write_req([%ld-%ld], id=%ld)=>%d", write_seq, write_seq + write_req_size, idx, err);
+        }
+      }
+      else
+      {
+        __sync_fetch_and_add(&write_us_, rt);
+      }
+      if(keep_going_on_err_ && OB_SUCCESS != err)
+      {
+        err = OB_SUCCESS;
+        usleep(static_cast<useconds_t>(interval));
+      }
+    }
   }
-  for(; !is_ping && !stop_ && OB_SUCCESS == err && (end_ < 0 || write_seq_ < end_);){
-    write_seq = __sync_fetch_and_add(&write_seq_, write_req_size_);
-    if (OB_SUCCESS != (err = rpc_->write_req(server, *schema_mgr_, write_seq, write_seq + write_req_size_, idx)))
-    {
-      __sync_fetch_and_add(&write_fail_count_, write_req_size_);
-      TBSYS_LOG(ERROR, "write_req([%ld-%ld], id=%ld)=>%d", write_seq, write_seq + write_req_size_, idx, err);
-    }
-    if(keep_going_on_err_ && OB_SUCCESS != err)
-    {
-      err = OB_SUCCESS;
-      usleep(static_cast<useconds_t>(interval));
+  else if (0 == strcmp(write_type, "mget"))
+  {
+    int64_t start_version = 1;
+    for(; !stop_ && OB_SUCCESS == err && (end_ < 0 || write_seq_ < end_);){
+      RpcCfg* cfg = NULL;
+      RpcCfgSrc::Guard guard(cfg, cfg_src_);
+      write_seq = __sync_fetch_and_add(&write_seq_, write_req_size_);
+      if (NULL == cfg)
+      {
+        TBSYS_LOG(DEBUG, "cfg is not OK.");
+      }
+      else if (OB_SUCCESS != (err = rpc_->mget_req(cfg->server_, cfg->schema_mgr_, write_seq, write_seq + write_req_size_, idx, start_version, rt)))
+      {
+        __sync_fetch_and_add(&write_fail_count_, write_req_size_);
+        if (OB_ERR_PRIMARY_KEY_DUPLICATE != err)
+        {
+          TBSYS_LOG(ERROR, "write_req([%ld-%ld], id=%ld)=>%d", write_seq, write_seq + write_req_size_, idx, err);
+        }
+      }
+      else
+      {
+        __sync_fetch_and_add(&write_us_, rt);
+      }
+      if(keep_going_on_err_ && OB_SUCCESS != err)
+      {
+        err = OB_SUCCESS;
+        usleep(static_cast<useconds_t>(interval));
+      }
     }
   }
-  for(; is_ping && !stop_ && OB_SUCCESS == err && (end_ < 0 || write_seq_ < end_);) {
-    write_seq = __sync_fetch_and_add(&write_seq_, 1);
-    if (OB_SUCCESS != (err = rpc_->ping_req(server, write_seq, idx)))
-    {
-      __sync_fetch_and_add(&write_fail_count_, 1);
-      TBSYS_LOG(ERROR, "ping_req([%ld], id=%ld)=>%d", write_seq, idx, err);
+  else if (0 == strcmp(write_type, "ping"))
+  {
+    for(; !stop_ && OB_SUCCESS == err && (end_ < 0 || write_seq_ < end_);) {
+      write_seq = __sync_fetch_and_add(&write_seq_, 1);
+      if (OB_SUCCESS != (err = rpc_->ping_req(server, write_seq, idx, rt)))
+      {
+        __sync_fetch_and_add(&write_fail_count_, 1);
+        TBSYS_LOG(ERROR, "ping_req([%ld], id=%ld)=>%d", write_seq, idx, err);
+      }
+      else
+      {
+        __sync_fetch_and_add(&write_us_, rt);
+      }
+      if(keep_going_on_err_ && OB_SUCCESS != err)
+      {
+        err = OB_SUCCESS;
+        usleep(static_cast<useconds_t>(interval));
+      }
     }
-    if(keep_going_on_err_ && OB_SUCCESS != err)
-    {
-      err = OB_SUCCESS;
-      usleep(static_cast<useconds_t>(interval));
+  }
+  else if (0 == strcmp(write_type, "test_sync_delay"))
+  {
+    for(; !stop_ && OB_SUCCESS == err && (end_ < 0 || write_seq_ < end_);) {
+      RpcCfg* cfg = NULL;
+      RpcCfgSrc::Guard guard(cfg, cfg_src_);
+      write_seq = __sync_fetch_and_add(&write_seq_, 1);
+      if (NULL == cfg)
+      {
+        TBSYS_LOG(DEBUG, "cfg is not OK.");
+      }
+      else if (OB_SUCCESS != (err = rpc_->test_sync_delay(cfg->server_, cfg->slave_ups_, cfg->schema_mgr_, write_seq, idx, rt)))
+      {
+        __sync_fetch_and_add(&write_fail_count_, 1);
+        TBSYS_LOG(ERROR, "test_sync_delay([%ld], id=%ld)=>%d", write_seq, idx, err);
+      }
+      else
+      {
+        __sync_fetch_and_add(&write_us_, rt);
+      }
+      if(keep_going_on_err_ && OB_SUCCESS != err)
+      {
+        err = OB_SUCCESS;
+        usleep(static_cast<useconds_t>(interval));
+      }
     }
+  }
+  else
+  {
+    TBSYS_LOG(ERROR, "write(type=%s): not known write_type", write_type);
   }
   return err;
 }
@@ -1730,6 +1817,7 @@ int ClientWorker::write(int64_t idx) {
 int ClientWorker::mget(int64_t idx) {
   int err = OB_SUCCESS;
   int64_t mget_seq = 0;
+  int64_t rt = 0;
   ObServer server;
   ObServer ups;
   bool server_is_ups = false;
@@ -1760,21 +1848,22 @@ int ClientWorker::mget(int64_t idx) {
     start_version++;
   }
   for(; !stop_ && OB_SUCCESS == err;){
+    RpcCfg* cfg = NULL;
+    RpcCfgSrc::Guard guard(cfg, cfg_src_);
     __sync_fetch_and_add(&mget_seq_, mget_req_size_);
-    mget_seq = write_seq_ - mget_req_size_;
-    if (mget_seq > 0)
+    int64_t mget_req = start_ + random() % (write_seq_ - start_);
+    if (NULL == cfg)
     {
-      mget_seq = random() % mget_seq + 1;
+      TBSYS_LOG(DEBUG, "cfg is not OK.");
     }
-    if (mget_seq <= 0)
-    {
-      TBSYS_LOG(INFO, "mget_seq[%ld] <= 0, need wait", mget_seq);
-      usleep(100000);
-    }
-    else if (OB_SUCCESS != (err = rpc_->mget_req(server, *schema_mgr_, mget_seq, mget_seq + mget_req_size_, idx, start_version)))
+    else if (OB_SUCCESS != (err = rpc_->mget_req(cfg->server_, cfg->schema_mgr_, mget_req, mget_req + mget_req_size_, idx, start_version, rt)))
     {
       __sync_fetch_and_add(&mget_fail_count_, mget_req_size_);
       TBSYS_LOG(ERROR, "mget_req([%ld-%ld], id=%ld)=>%d", mget_seq, mget_seq + mget_req_size_, idx, err);
+    }
+    else
+    {
+      __sync_fetch_and_add(&mget_us_, rt);
     }
     if(keep_going_on_err_ && OB_SUCCESS != err)
     {
@@ -1788,6 +1877,7 @@ int ClientWorker::mget(int64_t idx) {
 int ClientWorker::scan(int64_t idx) {
   int err = OB_SUCCESS;
   int64_t scan_seq = 0;
+  int64_t rt = 0;
   ObServer server;
   ObServer ups;
   bool server_is_ups = false;
@@ -1818,6 +1908,8 @@ int ClientWorker::scan(int64_t idx) {
     start_version++;
   }
   for(; !stop_ && OB_SUCCESS == err;){
+    RpcCfg* cfg = NULL;
+    RpcCfgSrc::Guard guard(cfg, cfg_src_);
     __sync_fetch_and_add(&scan_seq_, scan_req_size_);
     scan_seq = write_seq_ - scan_req_size_;
     if (scan_seq > 0)
@@ -1829,10 +1921,18 @@ int ClientWorker::scan(int64_t idx) {
       TBSYS_LOG(INFO, "scan_seq[%ld] <= 0, need wait", scan_seq);
       usleep(100000);
     }
-    else if (OB_SUCCESS != (err = rpc_->scan_req(server, *schema_mgr_, scan_seq, scan_seq + scan_req_size_, idx, start_version)))
+    else if (NULL == cfg)
+    {
+      TBSYS_LOG(DEBUG, "cfg is not OK.");
+    }
+    else if (OB_SUCCESS != (err = rpc_->scan_req(cfg->server_, cfg->schema_mgr_, scan_seq, scan_seq + scan_req_size_, idx, start_version, rt)))
     {
       __sync_fetch_and_add(&scan_fail_count_, scan_req_size_);
       TBSYS_LOG(ERROR, "scan_req([%ld-%ld], id=%ld)=>%d", scan_seq, scan_seq + scan_req_size_, idx, err);
+    }
+    else
+    {
+      __sync_fetch_and_add(&scan_us_, rt);
     }
     if(keep_going_on_err_ && OB_SUCCESS != err)
     {
@@ -1860,6 +1960,10 @@ int main(int argc, char *argv[])
   {
     TBSYS_LOG(ERROR, "rpc.initialize()=>%d", err);
   }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.send, StrArg(server), IntArg(packet), StrArg(file)):OB_NEED_RETRY))
+  {
+    report_error(err, "send()=>%d", err);
+  }
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.desc, StrArg(rs), StrArg(table, "*")):OB_NEED_RETRY))
   {
     report_error(err, "desc()=>%d", err);
@@ -1867,6 +1971,10 @@ int main(int argc, char *argv[])
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.get_obi_role, StrArg(rs)):OB_NEED_RETRY))
   {
     report_error(err, "get_obi_role()=>%d", err);
+  }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.get_server, StrArg(rs), StrArg(type)):OB_NEED_RETRY))
+  {
+    report_error(err, "get_server()=>%d", err);
   }
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.get_master_ups, StrArg(rs)):OB_NEED_RETRY))
   {
@@ -1926,9 +2034,25 @@ int main(int argc, char *argv[])
   {
     report_error(err, "get_log_sync_delay_stat()=>%d", err);
   }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.sync_delay, StrArg(rs)):OB_NEED_RETRY))
+  {
+    report_error(err, "sync_delay()=>%d", err);
+  }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.get_clog_stat, StrArg(ups)):OB_NEED_RETRY))
+  {
+    report_error(err, "get_clog_stat()=>%d", err);
+  }
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.get_clog_status, StrArg(ups)):OB_NEED_RETRY))
   {
     report_error(err, "get_clog_status()=>%d", err);
+  }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.ip2str, IntArg(ip)):OB_NEED_RETRY))
+  {
+    report_error(err, "ip2str()=>%d", err);
+  }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.ts2str, IntArg(ts)):OB_NEED_RETRY))
+  {
+    report_error(err, "ts2str()=>%d", err);
   }
   else
   {

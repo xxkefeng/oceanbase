@@ -17,8 +17,9 @@
 #ifndef __OCEANBASE_UPDATESERVER_OB_UPS_RPC_PROXY_H__
 #define __OCEANBASE_UPDATESERVER_OB_UPS_RPC_PROXY_H__
 
+#include "common/ob_schema_manager.h"
 #include "mergeserver/ob_ms_rpc_proxy.h"
-#include "mergeserver/ob_ms_schema_manager.h"
+#include "mergeserver/ob_ms_tablet_location_proxy.h"
 #include "ob_ups_table_mgr.h"
 #include "ob_ups_cache.h"
 
@@ -35,8 +36,8 @@ namespace oceanbase
 
         ~ObUpsMergerRpcProxy();
 
-        int init(mergeserver::ObMergerRpcStub* rpc_stub, mergeserver::ObMergerSchemaManager* schema,
-            mergeserver::ObMergerTabletLocationCache* cache, mergeserver::ObMergerServiceMonitor* monitor = NULL);
+        int init(mergeserver::ObMergerRpcStub* rpc_stub, common::ObMergerSchemaManager* schema,
+            mergeserver::ObMergerLocationCacheProxy* cache);
 
       public:
         virtual int cs_get(const common::ObGetParam& get_param, mergeserver::ObMergerTabletLocation& addr,

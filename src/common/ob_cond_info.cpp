@@ -1,12 +1,16 @@
 #include "ob_action_flag.h"
 #include "ob_string_buf.h"
 #include "ob_cond_info.h"
+#include "ob_rowkey_helper.h"
+#include "utility.h"
 
 using namespace oceanbase::common;
 
 ObCondInfo::ObCondInfo()
 {
   op_type_ = NIL;
+  rowkey_info_ = NULL;
+  memset(rowkey_col_buf_, 0, sizeof(ObObj)*OB_MAX_ROWKEY_COLUMN_NUMBER);
 }
 
 
@@ -17,11 +21,13 @@ ObCondInfo::~ObCondInfo()
 void ObCondInfo::reset()
 {
   op_type_ = NIL;
+  rowkey_info_ = NULL;
+  memset(rowkey_col_buf_, 0, sizeof(ObObj)*OB_MAX_ROWKEY_COLUMN_NUMBER);
   cell_.reset();
 }
 
 void ObCondInfo::set(const ObLogicOperator op_type, const ObString & table_name,
-    const ObString & row_key, const ObString & column_name, const ObObj & value)
+    const ObRowkey& row_key, const ObString & column_name, const ObObj & value)
 {
   op_type_ = op_type;
   cell_.table_name_ = table_name;
@@ -31,7 +37,7 @@ void ObCondInfo::set(const ObLogicOperator op_type, const ObString & table_name,
 }
 
 
-void ObCondInfo::set(const ObString & table_name, const ObString & row_key, const bool is_exist)
+void ObCondInfo::set(const ObString & table_name, const ObRowkey& row_key, const bool is_exist)
 {
   op_type_ = NIL;
   cell_.table_name_ = table_name;
@@ -47,7 +53,7 @@ void ObCondInfo::set(const ObString & table_name, const ObString & row_key, cons
   }
 }
 
-void ObCondInfo::set(const ObLogicOperator op_type, const uint64_t table_id, const ObString & row_key,
+void ObCondInfo::set(const ObLogicOperator op_type, const uint64_t table_id, const ObRowkey& row_key,
     const uint64_t column_id, const ObObj & value)
 {
   op_type_ = op_type;
@@ -57,13 +63,13 @@ void ObCondInfo::set(const ObLogicOperator op_type, const uint64_t table_id, con
   cell_.value_ = value;
 }
 
-void ObCondInfo::set(const uint64_t table_id, const ObString & row_key, const bool is_exist)
+void ObCondInfo::set(const uint64_t table_id, const ObRowkey& row_key, const bool is_exist)
 {
   op_type_ = NIL;
   cell_.table_id_ = table_id;
   cell_.row_key_ = row_key;
-  // WARNING: must use OB_MAX_COLUMN_ID for check row exist
-  cell_.column_id_ = OB_MAX_COLUMN_ID;
+  // WARNING: must use OB_ALL_MAX_COLUMN_ID for check row exist
+  cell_.column_id_ = OB_ALL_MAX_COLUMN_ID;
   if (!is_exist)
   {
     cell_.value_.set_ext(ObActionFlag::OP_ROW_DOES_NOT_EXIST);
@@ -132,8 +138,7 @@ DEFINE_SERIALIZE(ObCondInfo)
   
   if (OB_SUCCESS == ret)
   {
-    obj.set_varchar(cell_.row_key_);
-    ret = obj.serialize(buf, buf_len, pos);
+    ret = cell_.row_key_.serialize(buf, buf_len, pos);
     if (OB_SUCCESS != ret)
     {
       TBSYS_LOG(WARN, "serialize rowkey failed:ret[%d]", ret);
@@ -225,18 +230,22 @@ DEFINE_DESERIALIZE(ObCondInfo)
 
   if (OB_SUCCESS == ret)
   {
-    ret = obj.deserialize(buf, data_len, pos);
-    if (ret != OB_SUCCESS)
+    int64_t obj_cnt  = OB_MAX_ROWKEY_COLUMN_NUMBER;
+    bool    is_binary_rowkey = false;
+    ObRowkeyInfo info;
+    if (NULL != rowkey_info_) { info = *rowkey_info_; }
+    if (OB_SUCCESS != (ret = get_rowkey_compatible(buf, data_len, pos, 
+            info, rowkey_col_buf_, obj_cnt, is_binary_rowkey)))
     {
       TBSYS_LOG(WARN, "deserialize rowkey failed:ret[%d]", ret);
     }
+    else if (is_binary_rowkey && NULL == rowkey_info_)
+    {
+      TBSYS_LOG(WARN, "have not set rowkey_info cannot deserialize rowkey of string type");
+    }
     else
     {
-      ret = obj.get_varchar(cell_.row_key_);
-      if (ret != OB_SUCCESS)
-      {
-        TBSYS_LOG(WARN, "check get varchar rowkey failed:ret[%d]", ret);
-      }
+      cell_.row_key_.assign(rowkey_col_buf_, obj_cnt);
     }
   }
 
@@ -272,8 +281,7 @@ DEFINE_GET_SERIALIZE_SIZE(ObCondInfo)
     obj.set_varchar(cell_.column_name_);
     total_size += obj.get_serialize_size();
   }
-  obj.set_varchar(cell_.row_key_);
-  total_size += obj.get_serialize_size();
+  total_size += cell_.row_key_.get_serialize_size();
   total_size += cell_.value_.get_serialize_size();
   return total_size;
 }

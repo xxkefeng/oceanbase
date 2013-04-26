@@ -7,11 +7,12 @@
 
 #include "common/ob_schema.h"
 #include "common/ob_malloc.h"
-#include "ob_ms_tablet_location.h"
+#include "common/location/ob_tablet_location_cache.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
-using namespace oceanbase::mergeserver;
+static CharArena allocator_;
 
 int main(int argc, char **argv)
 {
@@ -36,7 +37,7 @@ const static int64_t timeout = 1000 * 1000 * 1000L;
 
 TEST_F(TestTabletLocation, test_init)
 {
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   int ret = cache.init(1000, 100, timeout);
   EXPECT_TRUE(ret == OB_SUCCESS);
 }
@@ -44,7 +45,7 @@ TEST_F(TestTabletLocation, test_init)
 
 TEST_F(TestTabletLocation, test_size)
 {
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   EXPECT_TRUE(cache.size() == 0);
   int ret = cache.clear();
   EXPECT_TRUE(ret != OB_SUCCESS);
@@ -54,7 +55,7 @@ TEST_F(TestTabletLocation, test_size)
   EXPECT_TRUE(cache.size() == 0);
   ret = cache.clear();
   EXPECT_TRUE(ret == OB_SUCCESS);
-  
+
   char temp[100];
   char temp_end[100];
   uint64_t count = 0;
@@ -67,7 +68,7 @@ TEST_F(TestTabletLocation, test_size)
     ObServer server;
     server.set_ipv4_addr(static_cast<int32_t>(i + 256), static_cast<int32_t>(1024 + i));
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -77,10 +78,10 @@ TEST_F(TestTabletLocation, test_size)
     ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
     ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
 
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = 1;
-    range.start_key_ = start_key;
-    range.end_key_ = end_key;
+    range.start_key_ = TestRowkeyHelper(start_key, &allocator_);
+    range.end_key_ = TestRowkeyHelper(end_key, &allocator_);
 
     ret = cache.set(range, location);
     EXPECT_TRUE(OB_SUCCESS == ret);
@@ -89,24 +90,25 @@ TEST_F(TestTabletLocation, test_size)
   ret = cache.clear();
   EXPECT_TRUE(ret == OB_SUCCESS);
   EXPECT_TRUE(cache.size() == 0);
-  
+
   // not find items
   for (uint64_t i = START_ROW; i < END_ROW; ++i)
   {
     snprintf(temp, 100, "row_%ld", i+1);
     ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
-    ObMergerTabletLocationList location;
-    ret = cache.get(1, start_key, location);
+    ObRowkey key = TestRowkeyHelper(start_key, &allocator_);
+    ObTabletLocationList location;
+    ret = cache.get(1, key, location);
     EXPECT_TRUE(ret != OB_SUCCESS);
   }
-  
+
   // set again
   for (uint64_t i = START_ROW; i < END_ROW; i += 10)
   {
     ObServer server;
     server.set_ipv4_addr(static_cast<int32_t>(i + 256), static_cast<int32_t>(1024 + i));
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -116,25 +118,26 @@ TEST_F(TestTabletLocation, test_size)
     ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
     ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
 
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = 1;
-    range.start_key_ = start_key;
-    range.end_key_ = end_key;
+    range.start_key_ = TestRowkeyHelper(start_key, &allocator_);
+    range.end_key_ = TestRowkeyHelper(end_key, &allocator_);
 
     ret = cache.set(range, location);
     EXPECT_TRUE(OB_SUCCESS == ret);
   }
-  
+
   // find in cache
   for (uint64_t i = START_ROW; i < END_ROW; ++i)
   {
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
-    ObMergerTabletLocationList location;
+    ObString key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(key_str, &allocator_);
+    ObTabletLocationList location;
     ret = cache.get(1, start_key, location);
     EXPECT_TRUE(ret == OB_SUCCESS);
   }
-  
+
   EXPECT_TRUE(cache.size() == count);
   ret = cache.clear();
   EXPECT_TRUE(ret == OB_SUCCESS);
@@ -143,8 +146,9 @@ TEST_F(TestTabletLocation, test_size)
   for (uint64_t i = START_ROW; i < END_ROW; ++i)
   {
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
-    ObMergerTabletLocationList location;
+    ObString key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(key_str, &allocator_);
+    ObTabletLocationList location;
     ret = cache.get(1, start_key, location);
     EXPECT_TRUE(ret != OB_SUCCESS);
   }
@@ -153,14 +157,14 @@ TEST_F(TestTabletLocation, test_size)
 
 TEST_F(TestTabletLocation, test_set)
 {
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   int ret = cache.init(50000 * 5, 1000, 10000);
   EXPECT_TRUE(ret == OB_SUCCESS);
 
   char temp[100];
   char temp_end[100];
   uint64_t count = 0;
-  ObMergerTabletLocationList temp_location;
+  ObTabletLocationList temp_location;
   // warning
   // not more than 10 bit rows because of the string key
   const uint64_t START_ROW = 10L;
@@ -171,7 +175,7 @@ TEST_F(TestTabletLocation, test_set)
     ObServer server;
     server.set_ipv4_addr(static_cast<int32_t>(i + 256), static_cast<int32_t>(1024 + i));
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -181,26 +185,26 @@ TEST_F(TestTabletLocation, test_set)
     ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
     ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
 
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = 1;
-    range.start_key_ = start_key;
-    range.end_key_ = end_key;
+    range.start_key_ = TestRowkeyHelper(start_key, &allocator_);
+    range.end_key_ = TestRowkeyHelper(end_key, &allocator_);
 
     ret = cache.set(range, location);
     EXPECT_TRUE(ret == OB_SUCCESS);
 
-    // get location 
-    ret = cache.get(1, end_key, temp_location);
+    // get location
+    ret = cache.get(1, range.end_key_, temp_location);
     EXPECT_TRUE(ret == OB_SUCCESS);
     EXPECT_TRUE(temp_location.get_timestamp() < tbsys::CTimeUtil::getTime());
     //printf("tablet_id[%lu]\n", temp_location.begin()->tablet_id_);
-    
+
     // small data
     //EXPECT_TRUE(temp_location.begin()->tablet_id_ == i);
     EXPECT_TRUE(temp_location[0].server_.chunkserver_.get_port() == (int32_t)(i + 1024));
     EXPECT_TRUE(temp_location[0].server_.chunkserver_.get_ipv4() == (int32_t)(i + 256));
     printf("row_key[%s], host[%u]\n", temp, temp_location[0].server_.chunkserver_.get_ipv4());
-    
+
     // overwrite
     ret = cache.set(range, location);
     EXPECT_TRUE(ret == OB_SUCCESS);
@@ -211,13 +215,14 @@ TEST_F(TestTabletLocation, test_set)
   }
   //
   EXPECT_TRUE(cache.size() == count);
-  
-  // get 
+
+  // get
   for (uint64_t i = START_ROW; i < END_ROW; ++i)
   {
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
-    
+    ObString start_key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(start_key_str, &allocator_);
+
     ret = cache.get(1, start_key, temp_location);
     EXPECT_TRUE(ret == OB_SUCCESS);
     EXPECT_TRUE(temp_location.get_timestamp() < tbsys::CTimeUtil::getTime());
@@ -226,27 +231,29 @@ TEST_F(TestTabletLocation, test_set)
     EXPECT_TRUE(temp_location[0].server_.chunkserver_.get_ipv4() == (int32_t)(i/10 * 10 + 256));
     printf("row_key[%s], host[%u]\n", temp, temp_location[0].server_.chunkserver_.get_ipv4());
   }
-  
+
   // update
   for (uint64_t i = START_ROW; i < END_ROW; i += 10)
   {
     ObServer server;
     server.set_ipv4_addr(static_cast<int32_t>(i + 255), static_cast<int32_t>(1023 + i));
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
 
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObString start_key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(start_key_str, &allocator_);
     location.set_timestamp(i);
     ret = cache.update(1, start_key, location);
     EXPECT_TRUE(ret == OB_SUCCESS);
-    
+
     // update not exist
     snprintf(temp, 100, "wor_%ld", i + 10);
-    start_key.assign(temp, static_cast<int32_t>(strlen(temp)));
+    start_key_str.assign(temp, static_cast<int32_t>(strlen(temp)));
+    start_key = TestRowkeyHelper(start_key_str, &allocator_);
 
     ret = cache.update(1, start_key, location);
     EXPECT_TRUE(ret != OB_SUCCESS);
@@ -256,7 +263,8 @@ TEST_F(TestTabletLocation, test_set)
   for (uint64_t i = START_ROW; i < END_ROW; ++i)
   {
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObString start_key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(start_key_str, &allocator_);
     ret = cache.get(1, start_key, temp_location);
     EXPECT_TRUE(ret == OB_SUCCESS);
     //EXPECT_TRUE(temp_location.begin()->tablet_id_ == (i/10 * 10));
@@ -268,24 +276,26 @@ TEST_F(TestTabletLocation, test_set)
   for (uint64_t i = START_ROW; i < END_ROW; i += 10)
   {
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
-    
+    ObString start_key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(start_key_str, &allocator_);
+
     printf("del rowkey[%s]\n", temp);
     ret = cache.del(1, start_key);
     EXPECT_TRUE(ret == OB_SUCCESS);
-    
+
     --count;
     EXPECT_TRUE(cache.size() == count);
-    
+
     ret = cache.del(2, start_key);
     EXPECT_TRUE(ret != OB_SUCCESS);
   }
-  
+
   // after delete
   for (uint64_t i = START_ROW; i < END_ROW; ++i)
   {
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObString start_key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(start_key_str, &allocator_);
     //printf("get rowkey[%s]\n", temp);
     ret = cache.get(1, start_key, temp_location);
     EXPECT_TRUE(ret != OB_SUCCESS);
@@ -295,14 +305,14 @@ TEST_F(TestTabletLocation, test_set)
 
 TEST_F(TestTabletLocation, test_split)
 {
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   int ret = cache.init(50000 * 5, 1000, 10000);
   EXPECT_TRUE(ret == OB_SUCCESS);
 
   char temp[100];
   char temp_end[100];
   uint64_t count = 0;
-  ObMergerTabletLocationList temp_location;
+  ObTabletLocationList temp_location;
   // warning
   // not more than 10 bit rows because of the string key
   const uint64_t START_ROW = 10L;
@@ -312,7 +322,7 @@ TEST_F(TestTabletLocation, test_split)
     ObServer server;
     server.set_ipv4_addr(static_cast<int32_t>(i + 256), static_cast<int32_t>(1024 + i));
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -322,23 +332,23 @@ TEST_F(TestTabletLocation, test_split)
     ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
     ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
 
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = 1;
-    range.start_key_ = start_key;
-    range.end_key_ = end_key;
+    range.start_key_ = TestRowkeyHelper(start_key, &allocator_);
+    range.end_key_ = TestRowkeyHelper(end_key, &allocator_);
 
     ret = cache.set(range, location);
     EXPECT_TRUE(ret == OB_SUCCESS);
 
-    // get location 
-    ret = cache.get(1, end_key, temp_location);
+    // get location
+    ret = cache.get(1, range.end_key_, temp_location);
     EXPECT_TRUE(ret == OB_SUCCESS);
     EXPECT_TRUE(temp_location.get_timestamp() < tbsys::CTimeUtil::getTime());
-    
+
     // small data
     EXPECT_TRUE(temp_location[0].server_.chunkserver_.get_port() == (int32_t)(i + 1024));
     EXPECT_TRUE(temp_location[0].server_.chunkserver_.get_ipv4() == (int32_t)(i + 256));
-    
+
     // overwrite
     ret = cache.set(range, location);
     EXPECT_TRUE(ret == OB_SUCCESS);
@@ -349,7 +359,7 @@ TEST_F(TestTabletLocation, test_split)
   }
   //
   EXPECT_TRUE(cache.size() == count);
-  
+
   // split
   count = 0;
   for (uint64_t i = START_ROW; i < END_ROW; i += 5)
@@ -357,7 +367,7 @@ TEST_F(TestTabletLocation, test_split)
     ObServer server;
     server.set_ipv4_addr(static_cast<int32_t>(i + 255), static_cast<int32_t>(1023 + i));
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -365,16 +375,15 @@ TEST_F(TestTabletLocation, test_split)
     snprintf(temp_end, 100, "row_%lu", i + 5);
     ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
     ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = 1;
-    range.start_key_ = start_key;
-    range.end_key_ = end_key;
+    range.start_key_ = TestRowkeyHelper(start_key, &allocator_);
+    range.end_key_ = TestRowkeyHelper(end_key, &allocator_);
     location.set_timestamp(i);
     ret = cache.set(range, location);
     EXPECT_TRUE(ret == OB_SUCCESS);
     snprintf(temp, 100, "row_%ld", i+1);
-    start_key.assign(temp, static_cast<int32_t>(strlen(temp)));
-    ret = cache.get(1, start_key, temp_location);
+    ret = cache.get(1, make_rowkey(temp, &allocator_), temp_location);
     EXPECT_TRUE(ret == OB_SUCCESS);
     ++count;
   }
@@ -383,10 +392,11 @@ TEST_F(TestTabletLocation, test_split)
   for (uint64_t i = START_ROW; i < END_ROW; ++i)
   {
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObString start_key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(start_key_str, &allocator_);
     ret = cache.get(1, start_key, temp_location);
     EXPECT_TRUE(ret == OB_SUCCESS);
-    printf("expect[%ld:%ld], real[%d:%d]\n", (i/5 * 5 + 255), (i/5 * 5 + 1023), 
+    printf("expect[%ld:%ld], real[%d:%d]\n", (i/5 * 5 + 255), (i/5 * 5 + 1023),
         temp_location[0].server_.chunkserver_.get_ipv4(), temp_location[0].server_.chunkserver_.get_port());
     EXPECT_TRUE(temp_location[0].server_.chunkserver_.get_port() == (int32_t)(i/5 * 5 + 1023));
     EXPECT_TRUE(temp_location[0].server_.chunkserver_.get_ipv4() == (int32_t)(i/5 * 5 + 255));
@@ -395,7 +405,7 @@ TEST_F(TestTabletLocation, test_split)
 
 TEST_F(TestTabletLocation, test_pressure)
 {
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   int ret = cache.init(50000 * 5, 1000, 10000);
   EXPECT_TRUE(ret == OB_SUCCESS);
 
@@ -403,7 +413,8 @@ TEST_F(TestTabletLocation, test_pressure)
   char tempkey[100];
   char temp_end[100];
   snprintf(tempkey, 100, "rowkey_rowkey_12_rowkey_rowkey");
-  ObString search_key(100, static_cast<int32_t>(strlen(tempkey)), tempkey);
+  ObString search_key_str(100, static_cast<int32_t>(strlen(tempkey)), tempkey);
+  ObRowkey search_key = TestRowkeyHelper(search_key_str, &allocator_);
   //ObString search_key(100, strlen(temp), temp);
 
   snprintf(temp, 100, "rowkey_rowkey_11_rowkey_rowkey");
@@ -411,11 +422,11 @@ TEST_F(TestTabletLocation, test_pressure)
   ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
   ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
 
-  ObRange range;
+  ObNewRange range;
   range.table_id_ = 1;
-  range.start_key_ = start_key;
-  range.end_key_ = end_key;
-  ObMergerTabletLocationList location;
+  range.start_key_ = TestRowkeyHelper(start_key, &allocator_);
+  range.end_key_ = TestRowkeyHelper(end_key, &allocator_);
+  ObTabletLocationList location;
 
   // for debug cache memory leak
   int64_t count = 0;//1000000;
@@ -434,18 +445,19 @@ static const uint64_t END = 90000L;
 
 void * del_routine(void * argv)
 {
-  ObMergerTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
+  ObTabletLocationCache * cache = (ObTabletLocationCache *) argv;
   EXPECT_TRUE(cache != NULL);
 
   char temp[100];
   const uint64_t START_ROW = START + (int64_t(pthread_self())%10 * 100);
   const uint64_t END_ROW = END;
-  ObMergerTabletLocationList temp_location;
-  // get 
+  ObTabletLocationList temp_location;
+  // get
   for (uint64_t i = START_ROW; i < END_ROW; i += 10)
   {
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObString start_key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(start_key_str, &allocator_);
     cache->del(1, start_key);
   }
   return NULL;
@@ -453,18 +465,19 @@ void * del_routine(void * argv)
 
 void * get_routine(void * argv)
 {
-  ObMergerTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
+  ObTabletLocationCache * cache = (ObTabletLocationCache *) argv;
   EXPECT_TRUE(cache != NULL);
 
   char temp[100];
   const uint64_t START_ROW = START + (int64_t(pthread_self())%10 * 100);
   const uint64_t END_ROW = END;
-  ObMergerTabletLocationList temp_location;
-  // get 
+  ObTabletLocationList temp_location;
+  // get
   for (uint64_t i = START_ROW; i < END_ROW; i += 10)
   {
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObString start_key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(start_key_str, &allocator_);
     cache->get(1, start_key, temp_location);
   }
   return NULL;
@@ -472,7 +485,7 @@ void * get_routine(void * argv)
 
 void * set_routine(void * argv)
 {
-  ObMergerTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
+  ObTabletLocationCache * cache = (ObTabletLocationCache *) argv;
   EXPECT_TRUE(cache != NULL);
 
   char temp[100];
@@ -485,7 +498,7 @@ void * set_routine(void * argv)
     ObServer server;
     server.set_ipv4_addr(static_cast<int32_t>(i + 256), static_cast<int32_t>(1024 + i));
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
@@ -495,10 +508,10 @@ void * set_routine(void * argv)
     ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
     ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
 
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = 1;
-    range.start_key_ = start_key;
-    range.end_key_ = end_key;
+    range.start_key_ = TestRowkeyHelper(start_key, &allocator_);
+    range.end_key_ = TestRowkeyHelper(end_key, &allocator_);
 
     int ret = cache->set(range, location);
     EXPECT_TRUE(ret == OB_SUCCESS);
@@ -508,7 +521,7 @@ void * set_routine(void * argv)
 
 void * update_routine(void * argv)
 {
-  ObMergerTabletLocationCache * cache = (ObMergerTabletLocationCache *) argv;
+  ObTabletLocationCache * cache = (ObTabletLocationCache *) argv;
   EXPECT_TRUE(cache != NULL);
   char temp[100];
   const uint64_t START_ROW = START + (int64_t(pthread_self())%10 * 100);
@@ -519,13 +532,14 @@ void * update_routine(void * argv)
     ObServer server;
     server.set_ipv4_addr(static_cast<int32_t>(i + 255), static_cast<int32_t>(1023 + i));
     ObTabletLocation addr(i, server);
-    ObMergerTabletLocationList location;
+    ObTabletLocationList location;
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
     EXPECT_TRUE(OB_SUCCESS == location.add(addr));
-    
+
     snprintf(temp, 100, "row_%ld", i+1);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObString start_key_str(100, static_cast<int32_t>(strlen(temp)), temp);
+    ObRowkey start_key = TestRowkeyHelper(start_key_str, &allocator_);
     location.set_timestamp(i);
 
     cache->update(1, start_key, location);
@@ -533,16 +547,16 @@ void * update_routine(void * argv)
   return NULL;
 }
 
-#if false 
+#if false
 TEST_F(TestTabletLocation, test_thread)
 {
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   int ret = cache.init(50000 * 5, 1000, 10000);
   EXPECT_TRUE(ret == OB_SUCCESS);
-  
+
   static const int THREAD_COUNT = 30;
   pthread_t threads[THREAD_COUNT][4];
-  
+
   for (int i = 0; i < THREAD_COUNT; ++i)
   {
     ret = pthread_create(&threads[i][0], NULL, set_routine, &cache);
@@ -560,12 +574,12 @@ TEST_F(TestTabletLocation, test_thread)
     ret = pthread_create(&threads[i][2], NULL, update_routine, &cache);
     EXPECT_TRUE(ret == OB_SUCCESS);
   }
-  
+
   for (int i = 0; i < THREAD_COUNT; ++i)
   {
     ret = pthread_create(&threads[i][3], NULL, del_routine, &cache);
     EXPECT_TRUE(ret == OB_SUCCESS);
-  } 
+  }
 
   for (int i = 0; i < 4; ++i)
   {

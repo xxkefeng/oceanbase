@@ -17,7 +17,7 @@
 #ifndef __OCEANBASE_BIGQUERY_READER_H__
 #define __OCEANBASE_BIGQUERY_READER_H__
 
-#include "obsql_client.h"
+#include "mysql_client.h"
 #include "value_generator.h"
 #include "bigquery.h"
 
@@ -29,7 +29,7 @@ class BigqueryReader
     BigqueryReader();
     ~BigqueryReader();
 
-    int init(ObSqlClient& ob_client, PrefixInfo& prefix_info);
+    int init(MysqlClient& ob_client, PrefixInfo& prefix_info);
 
   public:
     int read_data(uint64_t prefix);
@@ -45,7 +45,7 @@ class BigqueryReader
     int get_bigquery_two_col(uint64_t prefix, ValueRule& rule, Bigquery& query, Array& result);
     int verify_result(Array& expected_result, Array& result);
   private:
-    ObSqlClient* ob_client_;
+    MysqlClient* ob_client_;
     PrefixInfo* prefix_info_;
 };
 

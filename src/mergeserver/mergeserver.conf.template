@@ -5,6 +5,8 @@ port=2800
 dev_name=bond0
 #建议配置50000
 task_queue_size=50000
+#libeasy用于接收网络数据的线程数
+io_thread_count=3
 #建议配置30~50，取决于机器上部署的模块，可以使用的核心的4倍
 task_thread_count=32
 #ms与cs、ups的网络通信超时时间，建议配置3000000(3s)，复杂查询可以增大
@@ -54,6 +56,10 @@ slow_query_threshold = 100000
 #query cache允许使用的内存大小，默认值为0，不启用query cache，设置值大于0启用
 query_cache_size_mbyte=0
 
-[root_server]              
+[root_server]
 vip=10.1.1.1
 port=2500
+
+[obmysql]
+# SQL服务端口，默认2828
+obmysql_port=2828

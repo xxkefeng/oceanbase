@@ -25,14 +25,21 @@ namespace oceanbase
     using namespace common::serialization;
     using namespace sstable;
 
-    ObSSTableReader* ObBlockCacheReader::get_sstable_reader(const uint64_t sstable_id)
+    ObSSTableReader* ObBlockCacheReader::get_sstable_reader(const uint64_t sstable_id,
+      ObTablet* &tablet)
     {
       ObSSTableReader* reader = NULL;
       ObSSTableId sst_id(sstable_id);
+      int ret = OB_SUCCESS;
+      tablet = NULL;
 
       if (NULL != tablet_image_)
       {
-        tablet_image_->acquire_sstable(sst_id, tablet_version_, reader);
+        ret = tablet_image_->acquire_tablet(sst_id, tablet_version_, tablet);
+        if (OB_SUCCESS == ret && NULL != tablet)
+        {
+          ret = tablet->find_sstable(sst_id, reader);
+        }
       }
 
       return reader;
@@ -160,6 +167,7 @@ namespace oceanbase
       const ObSSTableSchemaColumnDef* column_def  = NULL;
       ObDataIndexKey dataindex_key;
       static ObBufferHandle handle; //we must ensure only one thread call this function
+      ObTablet* tablet = NULL;
 
       table_id = OB_INVALID_ID;
       column_group_id = OB_INVALID_ID;
@@ -168,7 +176,7 @@ namespace oceanbase
       {
         if (NULL == sstable_reader)
         {
-          reader = get_sstable_reader(dataindex_key.sstable_id);
+          reader = get_sstable_reader(dataindex_key.sstable_id, tablet);
         }
         else
         {
@@ -185,7 +193,7 @@ namespace oceanbase
                  && NULL != (column_def = schema->get_column_def(0)))
         {
           table_id = column_def->table_id_;
-          column_group_id = column_def->column_group_id_;
+          column_group_id = schema->get_table_first_column_group_id(table_id);
           ret = parse_record_buffer(handle, dataindex_key.size, reader);
         }
         else
@@ -207,9 +215,9 @@ namespace oceanbase
         TBSYS_LOG(WARN, "load block from obcache failed, ret=%d", ret);
       }
 
-      if (NULL == sstable_reader && NULL != reader)
+      if (NULL == sstable_reader && NULL != tablet)
       {
-        ret = tablet_image_->release_sstable(tablet_version_, reader);
+        ret = tablet_image_->release_tablet(tablet);
       }
 
       return ret;
@@ -218,15 +226,16 @@ namespace oceanbase
     int ObBlockCacheReader::get_start_key_of_next_block(ObBlockCache& block_cache, 
                                                         uint64_t& table_id,
                                                         uint64_t& column_group_id,
-                                                        ObString& start_key,
+                                                        ObRowkey& start_key,
                                                         ObSSTableReader* sstable_reader)
     {
       int ret                   = OB_SUCCESS;
       const char* start_row     = NULL;
       int64_t pos               = 0;
       int64_t block_header_size = sizeof(ObSSTableBlockHeader);
-      int16_t key_len           = 0;
+      int64_t column_count      = 0;
 
+      UNUSED(start_key);
       do
       {
         //traverse until find a valid block or reach the end block
@@ -243,18 +252,18 @@ namespace oceanbase
         }
         if (OB_SUCCESS == ret)
         {
+          sstable_reader->get_schema()->get_rowkey_column_count(table_id, column_count);
           start_row = uncompressed_buf_.get_buffer() + sizeof(ObSSTableBlockHeader);
-          ret = decode_i16(start_row, uncompressed_data_size_ - block_header_size, 
-                           pos, &key_len);
+          if (column_count == 0)
+          {
+          }
+          else
+          {
+            start_key.assign(const_cast<ObObj*>(start_key.ptr()), column_count);
+            ret = start_key.deserialize_objs(start_row, uncompressed_data_size_ - block_header_size, pos);
+          }
         }
-        if (OB_SUCCESS == ret && key_len > 0)
-        {
-          start_key.assign(const_cast<char*>(start_row + sizeof(int16_t)), key_len);
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "failed to deserialize key length, key_len=%d", key_len);
-        }
+
       }
       else if (OB_ITER_END == ret)
       {

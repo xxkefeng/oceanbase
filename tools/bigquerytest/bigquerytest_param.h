@@ -55,6 +55,7 @@ class BigqueryTestParam
       return client_id_;
     }
 
+    /*
     inline char* get_ob_ip()
     {
       return ob_ip_;
@@ -64,7 +65,13 @@ class BigqueryTestParam
     {
       return ob_port_;
     }
+    */
+    inline char* get_ob_addr()
+    {
+      return ob_addr_;
+    }
 
+    /*
     inline char* get_ob_rs_ip()
     {
       return ob_rs_ip_;
@@ -74,6 +81,7 @@ class BigqueryTestParam
     {
       return ob_rs_port_;
     }
+    */
 
   private:
     int load_string(char* dest, const int64_t size, 
@@ -83,10 +91,11 @@ class BigqueryTestParam
     int8_t client_id_;
     int64_t write_thread_count_;
     int64_t read_thread_count_;
-    char ob_ip_[128];
-    int ob_port_;
-    char ob_rs_ip_[128];
-    int ob_rs_port_;
+    //char ob_ip_[128];
+    //int ob_port_;
+    //char ob_rs_ip_[128];
+    //int ob_rs_port_;
+    char ob_addr_[1024];
 };
 
 #endif //OCEANBASE_SQLTEST_PARAM_H_

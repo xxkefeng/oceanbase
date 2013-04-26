@@ -38,11 +38,14 @@
 #include "common/ob_packet.h"
 #include "common/utility.h"
 #include "common/ob_tablet_info.h"
+#include "common/data_buffer.h"
+#include "common/ob_schema.h"
 
 namespace oceanbase
 {
   namespace updateserver
   {
+    class CommonSchemaManagerWrapper;
     typedef common::ObSchemaManagerV2 CommonSchemaManager;
     typedef common::ObColumnSchemaV2 CommonColumnSchema;
     typedef common::ObTableSchema CommonTableSchema;
@@ -52,16 +55,15 @@ namespace oceanbase
     struct CacheWarmUpConf;
     struct SSTableID;
     extern bool is_in_range(const int64_t key, const common::ObVersionRange &version_range);
-    extern bool is_in_range(const common::ObString &key, const common::ObRange &range);
     extern bool is_range_valid(const common::ObVersionRange &version_range);
     extern int precise_sleep(const int64_t microsecond);
-    extern const char *inet_ntoa_r(const uint64_t ipport);
+    extern const char *inet_ntoa_r(easy_addr_t addr);
     extern int64_t get_max_row_cell_num();
     extern int64_t get_table_available_warn_size();
     extern int64_t get_table_available_error_size();
     extern int64_t get_table_memory_limit();
     extern bool ups_available_memory_warn_callback(const int64_t mem_size_available);
-    extern const CacheWarmUpConf &get_warm_up_conf();
+    extern int64_t get_conf_warm_up_time();
     extern void set_warm_up_percent(const int64_t warm_up_percent);
     extern void submit_force_drop();
     extern void schedule_warm_up_duty();
@@ -75,12 +77,13 @@ namespace oceanbase
     extern void submit_immediately_drop();
     extern uint64_t get_create_time_column_id(const uint64_t table_id);
     extern uint64_t get_modify_time_column_id(const uint64_t table_id);
+    extern int get_ups_schema_mgr(CommonSchemaManagerWrapper& schema_mgr);
     extern void set_client_mgr_err(const int err);
+    extern int64_t get_memtable_hash_buckets_size();
 
     struct GConf
     {
       bool using_static_cm_column_id;
-      volatile int64_t cur_time;
       volatile int64_t global_schema_version;
       bool using_hash_index;
     };
@@ -146,6 +149,9 @@ namespace oceanbase
     template <>
     int ups_deserialize<int32_t>(int32_t &data, char *buf, const int64_t data_len, int64_t& pos);    
 
+    template <>
+    int ups_serialize<common::ObDataBuffer>(const common::ObDataBuffer &data, char *buf, const int64_t data_len, int64_t& pos);
+
     struct Dummy
     {
       int serialize(char* buf, int64_t len, int64_t& pos) const
@@ -166,15 +172,6 @@ namespace oceanbase
       public:
         SwitchSKeyDuty() {};
         virtual ~SwitchSKeyDuty() {};
-        virtual void runTimerTask();
-    };
-
-    class TimeUpdateDuty : public common::ObTimerTask
-    {
-      public:
-        static const int64_t SCHEDULE_PERIOD = 2000;
-        TimeUpdateDuty() {};
-        virtual ~TimeUpdateDuty() {};
         virtual void runTimerTask();
     };
 
@@ -284,49 +281,31 @@ namespace oceanbase
     {
       static const int64_t STOP_PERCENT = 100; // 100%
       static const int64_t STEP_PERCENT = 1; // 1%
-      static const int64_t DEFAULT_WARM_UP_TIME_S = 600; //10min
-      static const int64_t MIN_WARM_UP_TIME_S = 10; // 10s
-      static const int64_t MAX_WARM_UP_TIME_S = 1800; // 30min
-
-      // 预热时间(默认10分钟)
-      int64_t warm_up_time_s;
-      // 读取sstable的比例两次步进的时间间隔(根据warm_up_time_us计算出)
-      int64_t warm_up_step_interval_us;
-
-      CacheWarmUpConf() : warm_up_time_s(DEFAULT_WARM_UP_TIME_S),
-                          warm_up_step_interval_us(DEFAULT_WARM_UP_TIME_S * 1000L * 1000L / (STOP_PERCENT / STEP_PERCENT))
-      {
-      };
-
-      bool check()
-      {
-        bool bret = false;
-        if (0 == warm_up_time_s)
-        {
-          warm_up_step_interval_us = 0;
-          bret = true;
-        }
-        else if (MIN_WARM_UP_TIME_S > warm_up_time_s)
-        {
-          TBSYS_LOG(WARN, "warm_up_time_s=%ld cannot smaller than %ld", warm_up_time_s, MIN_WARM_UP_TIME_S);
-        }
-        else if (MAX_WARM_UP_TIME_S < warm_up_time_s)
-        {
-          TBSYS_LOG(WARN, "warm_up_time_s=%ld cannot larger than %ld", warm_up_time_s, MAX_WARM_UP_TIME_S);
-        }
-        else
-        {
-          warm_up_step_interval_us = warm_up_time_s * 1000L * 1000L / (STOP_PERCENT / STEP_PERCENT);
-          bret = true;
-        }
-        return bret;
-      };
     };
 
     struct TabletInfoList
     {
       common::ObStringBuf allocator;
       common::ObTabletInfoList inst;
+    };
+
+    class ObIUpsTableMgr;
+    class RowkeyInfoCache
+    {
+      public:
+        RowkeyInfoCache() : rkinfo_table_id_(common::OB_INVALID_ID),
+                            rkinfo_()
+        {
+        };
+        virtual ~RowkeyInfoCache()
+        {
+        };
+      public:
+        virtual const common::ObRowkeyInfo *get_rowkey_info(const uint64_t table_id) const;
+        virtual const common::ObRowkeyInfo *get_rowkey_info(ObIUpsTableMgr &table_mgr, const uint64_t table_id) const;
+      protected:
+        mutable uint64_t rkinfo_table_id_;
+        mutable common::ObRowkeyInfo rkinfo_;
     };
   }
 
@@ -351,6 +330,7 @@ namespace oceanbase
         return (a.range_.end_key_ < b.range_.end_key_);
       };
     };
+
   }
 }
 

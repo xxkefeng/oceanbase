@@ -1,7 +1,6 @@
 #ifndef OCEANBASE_COMMON_SQL_RPC_EVENT_H_
 #define OCEANBASE_COMMON_SQL_RPC_EVENT_H_
 
-#include "tbnet.h"
 #include "common/ob_packet.h"
 #include "common/ob_define.h"
 #include "common/ob_server.h"
@@ -11,7 +10,7 @@ namespace oceanbase
 {
   namespace mergeserver
   {
-    class ObCommonSqlRpcEvent:public tbnet::IPacketHandler 
+    class ObCommonSqlRpcEvent
     {
     public:
       ObCommonSqlRpcEvent();
@@ -33,6 +32,9 @@ namespace oceanbase
       int32_t get_result_code(void) const;
       void set_result_code(const int32_t code);
       
+      /// get handler
+      easy_io_process_pt* get_handler() const;
+
       /// get response for serialize the result from net io buffer
       common::ObNewScanner & get_result(void);
       /// get response for read and response code
@@ -42,7 +44,7 @@ namespace oceanbase
       void print_info(FILE * file) const;
       
       /// for test
-      virtual tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Packet * packet, void *args);
+      //virtual tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Packet * packet, void *args);
 
       void start();
       void end();
@@ -85,6 +87,9 @@ namespace oceanbase
       int64_t start_time_us_;
       int64_t end_time_us_;
       int64_t session_id_;
+
+      //packet handler
+      easy_io_process_pt* handler_;
     };
   }
 }

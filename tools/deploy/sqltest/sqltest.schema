@@ -10,6 +10,10 @@ max_column_id=50
 column_info=1,6,status,int
 column_info=1,7,mykey,int
 
+column_info=1,8,prefix,int
+
+rowkey=prefix(8%int)
+
 rowkey_max_length=8
 rowkey_split=0
 
@@ -23,6 +27,11 @@ column_info=1,7,column2,varchar,20
 column_info=1,8,column3,int
 column_info=1,10,column4,varchar, 20
 column_info=1,11,timestamp,int
+
+column_info=1,12,prefix,int
+column_info=1,13,suffix,int
+
+rowkey=prefix(8%int),suffix(8%int)
 
 rowkey_max_length=16
 rowkey_split=0

@@ -99,15 +99,15 @@ TEST_F(ObRowUtilTest, basic_test)
   ObCompactCellWriter cell_writer;
   OK(cell_writer.init(buf, 1024, DENSE_SPARSE));
 
-  const char *rowkey = "rowkey_00001";
-  ObString rowkey_str;
-  rowkey_str.assign_ptr(const_cast<char *>(rowkey), (int32_t)(strlen(rowkey)));
-  ObObj rowkey_obj;
-  rowkey_obj.set_varchar(rowkey_str);
+  ObRowkey rowkey;
+  ObObj rowkey_obj[OB_MAX_ROWKEY_COLUMN_NUMBER];
+  rowkey_obj[0].set_int(3);
+  rowkey_obj[1].set_int(30);
 
-  OK(cell_writer.append(rowkey_obj));
-  OK(cell_writer.rowkey_finish());
-
+  rowkey.assign(rowkey_obj, 2);
+  
+  OK(cell_writer.append_rowkey(rowkey));
+  
   ObObj value;
   ObRowDesc row_desc;
   for(int64_t i=0;i<10;i++)
@@ -122,12 +122,13 @@ TEST_F(ObRowUtilTest, basic_test)
   compact_row.assign_ptr(cell_writer.get_buf(), (int32_t)cell_writer.size());
 
   ObRow row;
-  ObString rk;
+  ObRowkey rk;
+  ObObj rk_obj[OB_MAX_ROWKEY_COLUMN_NUMBER];
 
   row.set_row_desc(row_desc);
-  OK(ObRowUtil::convert(compact_row, row, &rk));
+  OK(ObRowUtil::convert(compact_row, row, &rk, rk_obj));
 
-  ASSERT_EQ(0, strncmp(rowkey, rk.ptr(), rk.length()));
+  ASSERT_TRUE( rowkey == rk );
 
   const ObObj *cell = NULL;
   uint64_t column_id = OB_INVALID_ID;

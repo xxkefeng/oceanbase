@@ -1,7 +1,5 @@
 #include "ob_ms_sub_scan_request.h"
 #include "ob_ms_rpc_event.h"
-//#include "ob_ms_request_event.h"
-//#include "ob_cs_task_dispatcher.h"
 #include "ob_read_param_modifier.h"
 
 namespace oceanbase
@@ -19,21 +17,21 @@ namespace oceanbase
     }
 
 
-    int ObMergerSubScanRequest::init(ObScanParam *scan_param, 
-      ObRange & query_range, 
-      const int64_t limit_offset, 
-      const int64_t limit_count, 
-      const ObChunkServer cs_replicas[], 
-      const int32_t replica_count, 
-      const bool scan_full_tablet, 
+    int ObMergerSubScanRequest::init(ObScanParam *scan_param,
+      ObNewRange & query_range,
+      const int64_t limit_offset,
+      const int64_t limit_count,
+      const ObChunkServerItem cs_replicas[],
+      const int32_t replica_count,
+      const bool scan_full_tablet,
       ObStringBuf *buffer_pool)
     {
       int err = OB_SUCCESS;
       int i = 0;
-      if (replica_count > ObMergerTabletLocationList::MAX_REPLICA_COUNT)
+      if (replica_count > ObTabletLocationList::MAX_REPLICA_COUNT)
       {
-        TBSYS_LOG(WARN, "replica count exceeds max value. [replica_count:%d][max_count:%d]", 
-          replica_count, ObMergerTabletLocationList::MAX_REPLICA_COUNT);
+        TBSYS_LOG(WARN, "replica count exceeds max value. [replica_count:%d][max_count:%d]",
+          replica_count, ObTabletLocationList::MAX_REPLICA_COUNT);
         err = OB_INVALID_ARGUMENT;
       }
       else if (replica_count <= 0)
@@ -55,7 +53,7 @@ namespace oceanbase
         for (i = 0; i < replica_count; i++)
         {
           cs_replicas_[i] = cs_replicas[i];
-          cs_replicas_[i].status_ = ObChunkServer::UNREQUESTED;
+          cs_replicas_[i].status_ = ObChunkServerItem::UNREQUESTED;
         }
         for (i = 0; i < MAX_BACKUP_TASK_NUM; i++)
         {
@@ -106,13 +104,14 @@ namespace oceanbase
       session_id_ = ObCommonRpcEvent::INVALID_SESSION_ID;
     }
 
-    int ObMergerSubScanRequest::select_cs(ObChunkServer & selected_server)
+    int ObMergerSubScanRequest::select_cs(ObChunkServerItem & selected_server)
     {
       int sel_replica = -1;
       int err = OB_SUCCESS;
 
-      sel_replica = ObChunkServerTaskDispatcher::get_instance()->select_cs(reinterpret_cast<ObChunkServer*>(cs_replicas_),
+      sel_replica = ObChunkServerTaskDispatcher::get_instance()->select_cs(reinterpret_cast<ObChunkServerItem*>(cs_replicas_),
         total_replica_count_, last_tried_replica_idx_, query_range_);
+
       if (sel_replica < 0 || sel_replica >= total_replica_count_)
       {
         TBSYS_LOG(WARN, "no valid chunkserver selected. [sel_replica=%d]", sel_replica);
@@ -123,15 +122,15 @@ namespace oceanbase
         last_tried_replica_idx_ = sel_replica;
         selected_server = cs_replicas_[sel_replica];
         tried_replica_count_++;
-        TBSYS_LOG(DEBUG, "[tried_replica_count_:%d,total_replica_count_:%d]", tried_replica_count_, total_replica_count_);
+        // TBSYS_LOG(DEBUG, "[tried_replica_count_:%d,total_replica_count_:%d]", tried_replica_count_, total_replica_count_);
       }
       return err;
     }
 
+
     /// create a rpc event for this sub request
-    int ObMergerSubScanRequest::add_event(ObMergerRpcEvent *rpc_event, 
-      ObMergerRequestEvent *client_request,
-      ObChunkServer & selected_server)
+    int ObMergerSubScanRequest::add_event(ObMergerRpcEvent *rpc_event,
+      ObMergerRequest *client_request, ObChunkServerItem & selected_server)
     {
       int err = OB_SUCCESS;
       //int client_request_id = 0;
@@ -187,10 +186,10 @@ namespace oceanbase
 
     /// check if agent_event belong to this, and if agent_event is the first finished backup task
     /// if agent_event belong to this, set belong_to_this to true, and increment finished_backup_task_count_
-    /// if agent_event belong to this, and it is not the first finished backup task, agent_event 
+    /// if agent_event belong to this, and it is not the first finished backup task, agent_event
     /// will be directly destroyed
-    int ObMergerSubScanRequest::agent_event_finish(ObMergerRpcEvent * agent_event, 
-      bool &belong_to_this, 
+    int ObMergerSubScanRequest::agent_event_finish(ObMergerRpcEvent * agent_event,
+      bool &belong_to_this,
       bool &is_first)
     {
       int err = OB_SUCCESS;
@@ -212,7 +211,7 @@ namespace oceanbase
       {
         if (OB_SUCCESS != (err = check_event_id(agent_event->get_event_id(), exist)))
         {
-          TBSYS_LOG(WARN, "check_event_id failed. [err=%d]", err); 
+          TBSYS_LOG(WARN, "check_event_id failed. [err=%d]", err);
         }
         else
         {
@@ -226,7 +225,7 @@ namespace oceanbase
             }
             if ((NULL == result_) && (OB_SUCCESS == agent_event->get_result_code()))  /// first finished backup task
             {
-              TBSYS_LOG(DEBUG, "new agent event arrived. add to result set. scanner=%p", &(agent_event->get_result()));
+              // TBSYS_LOG(DEBUG, "new agent event arrived. add to result set. scanner=%p", &(agent_event->get_result()));
               result_ = agent_event;
             }
           }

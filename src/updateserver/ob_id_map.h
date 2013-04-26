@@ -22,13 +22,21 @@
 #include "common/ob_define.h"
 #include "common/ob_malloc.h"
 #include "common/ob_fixed_queue.h"
+#include "common/ob_spin_rwlock.h"
 
+#define IDMAP_INVALID_ID 0
 namespace oceanbase
 {
   namespace updateserver
   {
-#define ATOMIC_CAS(val, cmpv, newv) __sync_val_compare_and_swap((val), (cmpv), (newv))
-    template <typename T>
+    enum FetchMod
+    {
+      FM_SHARED = 0,
+      FM_MUTEX_BLOCK = 1,
+      FM_MUTEX_NONBLOCK = 2,
+    };
+
+    template <typename T, typename ID_TYPE = uint64_t>
     class ObIDMap
     {
       enum Stat
@@ -38,7 +46,8 @@ namespace oceanbase
       };
       struct Node
       {
-        volatile uint64_t id;
+        common::SpinRWLock lock;
+        volatile ID_TYPE id;
         volatile Stat stat;
         T *data;
       };
@@ -46,21 +55,23 @@ namespace oceanbase
         ObIDMap();
         ~ObIDMap();
       public:
-        int init(const uint64_t num);
+        int init(const ID_TYPE num);
         void destroy();
       public:
-        int assign(T *value, uint64_t &id);
-        int get(const uint64_t id, T *&value) const;
-        int erase(const uint64_t id);
+        int assign(T *value, ID_TYPE &id);
+        int get(const ID_TYPE id, T *&value) const;
+        T *fetch(const ID_TYPE id, const FetchMod mod = FM_SHARED);
+        void revert(const ID_TYPE id, const bool erase = false);
+        void erase(const ID_TYPE id);
         int size() const;
       public:
-        // callback::operator()(const uint64_t id)
+        // callback::operator()(const ID_TYPE id)
         template <typename Callback>
         void traverse(Callback &cb) const
         {
           if (NULL != array_)
           {
-            for (uint64_t i = 0; i < num_; i++)
+            for (ID_TYPE i = 0; i < num_; i++)
             {
               if (ST_USING == array_[i].stat)
               {
@@ -70,26 +81,38 @@ namespace oceanbase
           }
         };
       private:
-        uint64_t num_;
+        ID_TYPE num_;
+        ID_TYPE overflow_limit_;
         Node *array_;
         common::ObFixedQueue<Node> free_list_;
     };
 
-    template <typename T>
-    ObIDMap<T>::ObIDMap() : num_(0),
-                            array_(NULL),
-                            free_list_()
+    inline int calc_clz(const uint32_t s)
+    {
+      return __builtin_clz(s);
+    }
+
+    inline int calc_clz(const uint64_t s)
+    {
+      return __builtin_clzl(s);
+    }
+
+    template <typename T, typename ID_TYPE>
+    ObIDMap<T, ID_TYPE>::ObIDMap() : num_(0),
+                                     overflow_limit_(0),
+                                     array_(NULL),
+                                     free_list_()
     {
     }
 
-    template <typename T>
-    ObIDMap<T>::~ObIDMap()
+    template <typename T, typename ID_TYPE>
+    ObIDMap<T, ID_TYPE>::~ObIDMap()
     {
       destroy();
     }
 
-    template <typename T>
-    int ObIDMap<T>::init(const uint64_t num)
+    template <typename T, typename ID_TYPE>
+    int ObIDMap<T, ID_TYPE>::init(const ID_TYPE num)
     {
       int ret = common::OB_SUCCESS;
       if (NULL != array_)
@@ -99,12 +122,12 @@ namespace oceanbase
       }
       else if (0 >= num)
       {
-        TBSYS_LOG(WARN, "invalid param num=%ld", num);
+        TBSYS_LOG(WARN, "invalid param num=%lu", (uint64_t)num);
         ret = common::OB_INVALID_ARGUMENT;
       }
-      else if (NULL == (array_ = (Node*)common::ob_malloc(num * sizeof(Node))))
+      else if (NULL == (array_ = (Node*)common::ob_malloc((num + 1) * sizeof(Node))))
       {
-        TBSYS_LOG(WARN, "malloc array fail num=%ld", num);
+        TBSYS_LOG(WARN, "malloc array fail num=%lu", (uint64_t)(num + 1));
         ret = common::OB_MEM_OVERFLOW;
       }
       else if (common::OB_SUCCESS != (ret = free_list_.init(num)))
@@ -113,17 +136,19 @@ namespace oceanbase
       }
       else
       {
-        memset(array_, 0, num * sizeof(Node));
-        for (uint64_t i = 0; i < num; i++)
+        memset(array_, 0, (num + 1) * sizeof(Node));
+        for (ID_TYPE i = 0; i < (num + 1); i++)
         {
           array_[i].id = i;
-          if (common::OB_SUCCESS != (ret = free_list_.push(&(array_[i]))))
+          if (0 != i
+              && common::OB_SUCCESS != (ret = free_list_.push(&(array_[i]))))
           {
-            TBSYS_LOG(WARN, "push to free list fail ret=%d i=%ld", ret, i);
+            TBSYS_LOG(WARN, "push to free list fail ret=%d i=%lu", ret, (uint64_t)i);
             break;
           }
         }
-        num_ = num;
+        num_ = num + 1;
+        overflow_limit_ = (num_ << (calc_clz(num_) - 1)); // only use 31/63-low-bit, make sure integer multiples of num_
       }
       if (common::OB_SUCCESS != ret)
       {
@@ -132,8 +157,8 @@ namespace oceanbase
       return ret;
     }
 
-    template <typename T>
-    void ObIDMap<T>::destroy()
+    template <typename T, typename ID_TYPE>
+    void ObIDMap<T, ID_TYPE>::destroy()
     {
       free_list_.destroy();
       if (NULL != array_)
@@ -144,8 +169,8 @@ namespace oceanbase
       num_ = 0;
     }
 
-    template <typename T>
-    int ObIDMap<T>::assign(T *value, uint64_t &id)
+    template <typename T, typename ID_TYPE>
+    int ObIDMap<T, ID_TYPE>::assign(T *value, ID_TYPE &id)
     {
       int ret = common::OB_SUCCESS;
       Node *node = NULL;
@@ -169,11 +194,11 @@ namespace oceanbase
       return ret;
     }
 
-    template <typename T>
-    int ObIDMap<T>::get(const uint64_t id, T *&value) const
+    template <typename T, typename ID_TYPE>
+    int ObIDMap<T, ID_TYPE>::get(const ID_TYPE id, T *&value) const
     {
       int ret = common::OB_SUCCESS;
-      uint64_t pos = id % num_;
+      ID_TYPE pos = id % num_;
       if (NULL == array_)
       {
         TBSYS_LOG(WARN, "have not inited");
@@ -182,7 +207,8 @@ namespace oceanbase
       else
       {
         T *retv = NULL;
-        if (id != array_[pos].id)
+        if (id != array_[pos].id
+            || ST_USING != array_[pos].stat)
         {
           ret = common::OB_ENTRY_NOT_EXIST;
         }
@@ -190,7 +216,8 @@ namespace oceanbase
         {
           retv = array_[pos].data;
           // double check
-          if (id != array_[pos].id)
+          if (id != array_[pos].id
+              || ST_USING != array_[pos].stat)
           {
             ret = common::OB_ENTRY_NOT_EXIST;
             retv = NULL;
@@ -204,34 +231,99 @@ namespace oceanbase
       return ret;
     }
 
-    template <typename T>
-    int ObIDMap<T>::erase(const uint64_t id)
+    template <typename T, typename ID_TYPE>
+    T *ObIDMap<T, ID_TYPE>::fetch(const ID_TYPE id, const FetchMod mod)
     {
-      int ret = common::OB_SUCCESS;
-      uint64_t pos = id % num_;
-      if (NULL == array_)
+      T *ret = NULL;
+      if (NULL != array_)
       {
-        TBSYS_LOG(WARN, "have not inited");
-        ret = common::OB_NOT_INIT;
-      }
-      else
-      {
-        uint64_t oldv = array_[pos].id;
-        uint64_t newv = array_[pos].id + num_;
-        if (id != oldv)
+        ID_TYPE pos = id % num_;
+        bool lock_succ = false;
+        if (FM_SHARED == mod)
         {
-          TBSYS_LOG(WARN, "id do not match param_id=%lu node_id=%ld pos=%lu", id, array_[pos].id, pos);
-          ret = common::OB_ENTRY_NOT_EXIST;
+          array_[pos].lock.rdlock();
+          lock_succ = true;
         }
-        else if (oldv != ATOMIC_CAS(&(array_[pos].id), oldv, newv))
+        else if (FM_MUTEX_BLOCK == mod)
         {
-          TBSYS_LOG(WARN, "id=%lu has already erased", id);
-          ret = common::OB_ENTRY_NOT_EXIST;
+          array_[pos].lock.wrlock();
+          lock_succ = true;
+        }
+        else if (FM_MUTEX_NONBLOCK == mod)
+        {
+          if (array_[pos].lock.try_wrlock())
+          {
+            lock_succ = true;
+          }
+        }
+
+        if (!lock_succ)
+        {
+          // do nothing
+        }
+        else if (id == array_[pos].id
+                && ST_USING == array_[pos].stat)
+        {
+          ret = array_[pos].data;
         }
         else
         {
-          array_[pos].data = NULL;
+          array_[pos].lock.unlock();
+        }
+      }
+      return ret;
+    }
+
+    template <typename T, typename ID_TYPE>
+    void ObIDMap<T, ID_TYPE>::revert(const ID_TYPE id, const bool erase)
+    {
+      if (NULL != array_)
+      {
+        ID_TYPE pos = id % num_;
+        if (erase
+            && id == array_[pos].id
+            && ST_USING == array_[pos].stat)
+        {
+          if ((overflow_limit_ - num_) < array_[pos].id)
+          {
+            array_[pos].id = pos;
+          }
+          else
+          {
+            array_[pos].id += num_;
+          }
           array_[pos].stat = ST_FREE;
+          array_[pos].data = NULL;
+          int tmp_ret = common::OB_SUCCESS;
+          if (common::OB_SUCCESS != (tmp_ret = free_list_.push(&(array_[pos]))))
+          {
+            TBSYS_LOG(ERROR, "push to free list fail ret=%d free list size=%ld", tmp_ret, free_list_.get_total());
+          }
+        }
+        array_[pos].lock.unlock();
+      }
+    }
+
+    template <typename T, typename ID_TYPE>
+    void ObIDMap<T, ID_TYPE>::erase(const ID_TYPE id)
+    {
+      if (NULL != array_)
+      {
+        ID_TYPE pos = id % num_;
+        common::SpinWLockGuard guard(array_[pos].lock);
+        if (id == array_[pos].id
+            && ST_USING == array_[pos].stat)
+        {
+          if ((overflow_limit_ - num_) < array_[pos].id)
+          {
+            array_[pos].id = pos;
+          }
+          else
+          {
+            array_[pos].id += num_;
+          }
+          array_[pos].stat = ST_FREE;
+          array_[pos].data = NULL;
           int tmp_ret = common::OB_SUCCESS;
           if (common::OB_SUCCESS != (tmp_ret = free_list_.push(&(array_[pos]))))
           {
@@ -239,13 +331,12 @@ namespace oceanbase
           }
         }
       }
-      return ret;
     }
 
-    template <typename T>
-    int ObIDMap<T>::size() const
+    template <typename T, typename ID_TYPE>
+    int ObIDMap<T, ID_TYPE>::size() const
     {
-      return static_cast<int>(num_ - free_list_.get_total());
+      return static_cast<int>(free_list_.get_free());
     }
   } // namespace updateserver
 } // namespace oceanbase

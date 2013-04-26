@@ -41,15 +41,16 @@ namespace oceanbase
   {
     using namespace common;
 
+    typedef hash::ObHashMap<uint64_t, ObCellInfoNode*> column_map_t;
+    static __thread column_map_t *column_map = NULL;
+
     template <class Allocator>
     bool merge(const TEKey &te_key, TEValue &te_value, Allocator &allocator, int64_t stop_trans_id = INT64_MAX)
     {
-      typedef hash::ObHashMap<uint64_t, ObCellInfoNode*> column_map_t;
       typedef column_map_t::iterator column_map_iterator_t;
       int64_t timeu = tbsys::CTimeUtil::getTime();
 
       bool bret = true;
-      static __thread column_map_t *column_map = NULL;
       if (NULL == column_map)
       {
         column_map = GET_TSI_MULT(column_map_t, TSI_UPS_COLUMN_MAP_1);
@@ -221,8 +222,8 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "merge te_value fail %s", te_value.log_str());
       }
 
-      INC_STAT_INFO(UPS_STAT_MERGE_COUNT, 1);
-      INC_STAT_INFO(UPS_STAT_MERGE_TIMEU, timeu);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_MERGE_COUNT, 1);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_MERGE_TIMEU, timeu);
 
       return bret;
     }

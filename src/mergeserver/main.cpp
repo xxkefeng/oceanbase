@@ -2,48 +2,50 @@
 #include "common/base_main.h"
 #include "common/ob_malloc.h"
 #include "ob_merge_server_main.h"
-#include "ob_ms_counter_infos.h"
 #include <malloc.h>
 #include <stdlib.h>
 #include <time.h>
+#include "easy_pool.h"
+#include "tbsys.h"
+#ifdef __OB_MDEBUG__
+#include <dmalloc.h>
+#endif
 
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
-namespace 
+namespace
 {
   static const int DEFAULT_MMAP_MAX_VAL = 1024*1024*1024;
 };
 
 int main(int argc, char *argv[])
 {
+#ifdef __OB_MDEBUG__
+  /* set the dmalloc flags */
+  dmalloc_debug_setup("debug=0x404c03,log=/tmp/dmalloc.log,inter=1");
+#endif
   int rc  = OB_SUCCESS;
   mallopt(M_MMAP_MAX, DEFAULT_MMAP_MAX_VAL);
   srandom(static_cast<uint32_t>(time(NULL)));
-  mallopt(M_MMAP_MAX, DEFAULT_MMAP_MAX_VAL); 
+  mallopt(M_MMAP_MAX, DEFAULT_MMAP_MAX_VAL);
   ob_init_memory_pool();
-  if (OB_SUCCESS != (rc = ms_get_counter_set().init(ms_get_counter_infos())))
+  tbsys::WarningBuffer::set_warn_log_on(true);
+  //easy_pool_set_allocator(ob_malloc);
+  BaseMain* mergeServer = ObMergeServerMain::get_instance();
+  if (NULL == mergeServer)
   {
-    TBSYS_LOG(WARN,"fail to init counter set");
+    fprintf(stderr, "mergeserver start failed, instance is NULL.");
+    rc = OB_ERROR;
   }
   else
   {
-    BaseMain* mergeServer = ObMergeServerMain::get_instance();
-    if (NULL == mergeServer)
-    {
-      fprintf(stderr, "mergeserver start failed, instance is NULL.");
-      rc = OB_ERROR;
-    }
-    else
-    {
-      rc = mergeServer->start(argc, argv, "merge_server");
-    }
+    rc = mergeServer->start(argc, argv);
+  }
 
-    if (NULL != mergeServer)
-    {
-      mergeServer->destroy();
-    }
+  if (NULL != mergeServer)
+  {
+    mergeServer->destroy();
   }
 
   return rc;
 }
-

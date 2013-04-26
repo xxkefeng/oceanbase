@@ -23,11 +23,13 @@
 #include "common/ob_read_common_data.h"
 #include "common/ob_string.h"
 #include "common/ob_malloc.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase;
 using namespace oceanbase::common;
 const int64_t TIMEOUT =  10000000L;
+static CharArena allocator_;
 
 struct CParam
 {
@@ -148,7 +150,7 @@ int parse_cmd_args(int argc, char **argv, CParam & param)
 }
 
 int check_result(const CParam & param, const int64_t count,
-    const ObString & table_name, const ObString & rowkey, ObScanner & scanner)
+    const ObString & table_name, const ObRowkey& rowkey, ObScanner & scanner)
 {
   int err = OB_SUCCESS;
   int64_t row_key = 0;
@@ -176,7 +178,7 @@ int check_result(const CParam & param, const int64_t count,
           || (cur_cell->row_key_ != rowkey))
       {
         TBSYS_LOG(ERROR, "check table name rowkey or type failed");
-        hex_dump(cur_cell->row_key_.ptr(), cur_cell->row_key_.length());  
+        //hex_dump(cur_cell->row_key_.ptr(), cur_cell->row_key_.length());
         cur_cell->value_.dump();
         err = OB_ERROR;
         break;
@@ -192,7 +194,8 @@ int check_result(const CParam & param, const int64_t count,
         }
         column_id = column->get_id();
         int64_t pos = 0;
-        serialization::decode_i64(cur_cell->row_key_.ptr(), cur_cell->row_key_.length(), pos, &row_key);
+        ObString str_rowkey = TestRowkeyHelper(cur_cell->row_key_);
+        serialization::decode_i64(str_rowkey.ptr(), str_rowkey.length(), pos, &row_key);
         cur_cell->value_.get_int(value);
         // TBSYS_LOG(INFO, "check value:value[%ld], rowkey[%ld], column[%lu]", value, row_key, column_id);
         if ((uint64_t)value != (((row_key << 24) | (column_id << 16)) | (count + 1)))
@@ -221,7 +224,7 @@ int apply(CParam &param, MockClient &client)
   }
   else
   {
-    ObString rowkey_str;
+    ObRowkey rowkey_str;
     ObString column_str;
     ObMutator mutator;
     ObScanner scanner;
@@ -237,7 +240,7 @@ int apply(CParam &param, MockClient &client)
       mutator.reset();
       int64_t pos = 0;
       serialization::encode_i64(buffer, sizeof(buffer), pos, i);
-      rowkey_str.assign(buffer, static_cast<int32_t>(pos)); 
+      rowkey_str = make_rowkey(buffer, pos);
       const ObColumnSchemaV2 * temp_column = column_info;
       for (int32_t j = 0; j < size; ++j)
       {
@@ -304,7 +307,7 @@ int apply(CParam &param, MockClient &client)
           }
         }
       }
-      if (OB_SUCCESS == err) 
+      if (OB_SUCCESS == err)
       {
         // check return value
         err = check_result(param, param.count_, table_name, rowkey_str, scanner);
@@ -356,4 +359,3 @@ int main(int argc, char **argv)
   delete param.schema_mgr_;
   return err;
 }
-

@@ -2,9 +2,9 @@
  //
  // ob_sstable_mgr.h updateserver / Oceanbase
  //
- // Copyright (C) 2010, 2012 Taobao.com, Inc.
+ // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2011-03-23 by Yubai (yubai.lk@taobao.com)
+ // Created on 2011-03-23 by Yubai (yubai.lk@taobao.com) 
  //
  // -------------------------------------------------------------------
  //
@@ -13,7 +13,7 @@
  // sstable文件管理器
  //
  // -------------------------------------------------------------------
- //
+ // 
  // Change Log
  //
 ////====================================================================
@@ -101,6 +101,7 @@ namespace oceanbase
         virtual int reset_iter() = 0;
         virtual bool get_compressor_name(common::ObString &compressor_str) = 0;
         virtual bool get_sstable_schema(sstable::ObSSTableSchema &sstable_schema) = 0;
+        virtual const common::ObRowkeyInfo *get_rowkey_info(const uint64_t table_id) const = 0;
         virtual bool get_store_type(int &store_type) = 0;
         virtual bool get_block_size(int64_t &block_size) = 0;
     };
@@ -272,7 +273,7 @@ namespace oceanbase
       {
         static const int64_t BUFFER_SIZE = 128;
         static __thread char buffers[2][BUFFER_SIZE];
-        static __thread int64_t i = 0;
+        static __thread uint64_t i = 0;
         char *buffer = buffers[i++ % 2];
         buffer[0] = '\0';
         snprintf(buffer, BUFFER_SIZE, "sstable_id=%lu name=[%lu_%lu-%lu]",
@@ -493,3 +494,4 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_UPDATESERVER_SSTABLE_MGR_H_
+

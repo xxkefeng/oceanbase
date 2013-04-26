@@ -16,6 +16,12 @@
 #include "ob_root_balancer.h"
 #include "common/utility.h"
 #include "ob_root_util.h"
+#include "ob_root_ms_provider.h"
+#include "ob_root_ups_provider.h"
+#include "common/roottable/ob_scan_helper_impl.h"
+#include "common/ob_table_id_name.h"
+#include "common/ob_common_stat.h"
+#include "ob_root_server2.h"
 using namespace oceanbase::rootserver;
 using namespace oceanbase::common;
 
@@ -26,6 +32,8 @@ ObRootBalancer::ObRootBalancer()
    root_table_rwlock_(NULL),
    server_manager_rwlock_(NULL),
    log_worker_(NULL),
+   role_mgr_(NULL),
+   ups_manager_(NULL),
    balance_start_time_us_(0),
    balance_timeout_us_(0),
    balance_last_migrate_succ_time_(0),
@@ -51,7 +59,6 @@ void ObRootBalancer::do_balance(bool &did_migrating)
   {
     TBSYS_LOG(WARN, "restart server fail:err[%d]", err);
   }
-
   if (nb_is_in_batch_migrating())
   {
     nb_check_migrate_timeout();
@@ -70,10 +77,9 @@ void ObRootBalancer::check_components()
   OB_ASSERT(server_manager_);
   OB_ASSERT(root_table_rwlock_);
   OB_ASSERT(server_manager_rwlock_);
-  OB_ASSERT(schema_manager_);
-  OB_ASSERT(schema_manager_rwlock_);
   OB_ASSERT(log_worker_);
   OB_ASSERT(role_mgr_);
+  OB_ASSERT(ups_manager_);
   OB_ASSERT(restart_server_);
 }
 
@@ -100,33 +106,44 @@ inline int ObRootBalancer::need_copy(int32_t available_num, int32_t lost_num)
 
 int32_t ObRootBalancer::nb_get_table_count()
 {
-  int32_t ret = 0;
-  tbsys::CRLockGuard guard(*schema_manager_rwlock_);
-  if (NULL == schema_manager_)
+  int32_t ret = OB_SUCCESS;
+  common::ObSchemaManagerV2 *schema_manager = OB_NEW(ObSchemaManagerV2, ObModIds::OB_RS_SCHEMA_MANAGER);
+  if (NULL == schema_manager)
   {
-    TBSYS_LOG(ERROR, "schema_manager is NULL");
+    TBSYS_LOG(WARN, "fail to new schema_manager.");
+    ret = OB_ALLOCATE_MEMORY_FAILED;
   }
   else
   {
-    const ObTableSchema* it = NULL;
-    for (it = schema_manager_->table_begin(); schema_manager_->table_end() != it; ++it)
+    ret = root_server_->get_schema(false, false, *schema_manager);
+    if (OB_SUCCESS != ret)
     {
-      ret++;
+      TBSYS_LOG(WARN, "fail to get schema manager. ret=%d", ret);
     }
   }
-  return ret;
+  int32_t count = 0;
+  if (OB_SUCCESS == ret)
+  {
+    const ObTableSchema* it = NULL;
+    for (it = schema_manager->table_begin(); schema_manager->table_end() != it; it++)
+    {
+      count ++;
+    }
+  }
+  if (NULL != schema_manager)
+  {
+    OB_DELETE(ObSchemaManagerV2, ObModIds::OB_RS_SCHEMA_MANAGER, schema_manager);
+    schema_manager = NULL;
+  }
+  return count;
 }
 
 uint64_t ObRootBalancer::nb_get_next_table_id(int32_t table_count, int32_t seq/*=-1*/)
 {
   uint64_t ret = OB_INVALID_ID;
-  // for each table
-  tbsys::CRLockGuard guard(*schema_manager_rwlock_);
-  if (NULL == schema_manager_)
-  {
-    TBSYS_LOG(ERROR, "schema_manager is NULL");
-  }
-  else if (0 >= table_count)
+  int err = OB_SUCCESS;
+  TBSYS_LOG(DEBUG, "get next table id. table_count=%d, seq=%d", table_count, seq);
+  if (0 >= table_count)
   {
     // no table
   }
@@ -137,16 +154,39 @@ uint64_t ObRootBalancer::nb_get_next_table_id(int32_t table_count, int32_t seq/*
       seq = balance_next_table_seq_;
       balance_next_table_seq_++;
     }
-    int32_t idx = 0;
-    const ObTableSchema* it = NULL;
-    for (it = schema_manager_->table_begin(); schema_manager_->table_end() != it; ++it)
+    common::ObSchemaManagerV2* schema_manager = OB_NEW(ObSchemaManagerV2, ObModIds::OB_RS_SCHEMA_MANAGER);
+    if (NULL == schema_manager)
     {
-      if (seq % table_count == idx)
+      TBSYS_LOG(WARN, "fail to new schema_manager.");
+      err = OB_ALLOCATE_MEMORY_FAILED;
+    }
+
+    if (OB_SUCCESS == err)
+    {
+      err = root_server_->get_schema(false, false, *schema_manager);
+      if (OB_SUCCESS != err)
       {
-        ret = it->get_table_id();
-        break;
+        TBSYS_LOG(WARN, "fail to get schema manager. ret=%d", err);
       }
-      idx++;
+    }
+    if (OB_SUCCESS == err)
+    {
+      int32_t idx = 0;
+      const ObTableSchema* it = NULL;
+      for (it = schema_manager->table_begin(); schema_manager->table_end() != it; ++it)
+      {
+        if (seq % table_count == idx)
+        {
+          ret = it->get_table_id();
+          break;
+        }
+        idx++;
+      }
+    }
+    if (NULL != schema_manager)
+    {
+      OB_DELETE(ObSchemaManagerV2, ObModIds::OB_RS_SCHEMA_MANAGER, schema_manager);
+      schema_manager = NULL;
     }
   }
   return ret;
@@ -174,7 +214,7 @@ int ObRootBalancer::nb_find_dest_cs(ObRootTable2::const_iterator meta, int64_t l
       if (it->status_ != ObServerStatus::STATUS_DEAD
           && it->status_ != ObServerStatus::STATUS_SHUTDOWN
           && it->balance_info_.table_sstable_count_ < low_bound
-          && mnow > (it->register_time_ + 1000LL*1000*config_->flag_cs_probation_period_seconds_.get()))
+          && mnow > (it->register_time_ + config_->cs_probation_period))
       {
         cs_idx = static_cast<int32_t>(it - server_manager_->begin());
         // this cs does't have this tablet
@@ -207,7 +247,7 @@ int ObRootBalancer::nb_check_rereplication(ObRootTable2::const_iterator it, Rere
 {
   int ret = OB_SUCCESS;
   act = RA_NOP;
-  if (config_->flag_enable_rereplication_.get())
+  if (config_->enable_rereplication)
   {
     int64_t last_version = 0;
     int32_t valid_replicas_num = 0;
@@ -223,7 +263,7 @@ int ObRootBalancer::nb_check_rereplication(ObRootTable2::const_iterator it, Rere
         }
       }
     }
-    int64_t tablet_replicas_num = config_->flag_tablet_replicas_num_.get();
+    int64_t tablet_replicas_num = config_->tablet_replicas_num;
     if (valid_replicas_num < tablet_replicas_num)
     {
       lost_copy = static_cast<int32_t>(tablet_replicas_num - valid_replicas_num);
@@ -235,14 +275,14 @@ int ObRootBalancer::nb_check_rereplication(ObRootTable2::const_iterator it, Rere
       }
       else if (-1 == did_need_copy)
       {
-        if (now - it->last_dead_server_time_ > config_->flag_safe_lost_one_duration_seconds_.get()*1000000LL)
+        if (now - it->last_dead_server_time_ > config_->safe_lost_one_time)
         {
           act = RA_COPY;
         }
         else
         {
-          TBSYS_LOG(DEBUG, "copy delayed, now=%ld lost_replica_time=%ld duration_sec=%d",
-                    now, it->last_dead_server_time_, config_->flag_safe_lost_one_duration_seconds_.get());
+          TBSYS_LOG(DEBUG, "copy delayed, now=%ld lost_replica_time=%ld safe_log_time=%s",
+                      now, it->last_dead_server_time_, config_->safe_lost_one_time.str());
         }
       }
     }
@@ -268,7 +308,7 @@ int ObRootBalancer::nb_select_copy_src(ObRootTable2::const_iterator it,
       ObServerStatus *src_cs = server_manager_->get_server_status(it->server_info_indexes_[i]);
       int32_t migrate_count = src_cs->balance_info_.migrate_to_.count();
       if (migrate_count < min_count
-          && migrate_count < config_->flag_balance_max_migrate_out_per_cs_.get())
+          && migrate_count < config_->balance_max_migrate_out_per_cs)
       {
         min_count = migrate_count;
         src_cs_idx = static_cast<int32_t>(src_cs - server_manager_->begin());
@@ -323,7 +363,7 @@ int ObRootBalancer::nb_check_add_migrate(ObRootTable2::const_iterator it, const 
                                         int32_t cs_num, int32_t migrate_out_per_cs)
 {
   int ret = OB_SUCCESS;
-  int64_t delta_count = config_->flag_balance_tolerance_count_.get();
+  int64_t delta_count = config_->balance_tolerance_count;
   for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
   {
     int32_t cs_idx = it->server_info_indexes_[i];
@@ -371,17 +411,22 @@ int ObRootBalancer::nb_check_add_migrate(ObRootTable2::const_iterator it, const 
   return ret;
 }
 
-int ObRootBalancer::nb_del_copy(ObRootTable2::const_iterator it, const ObTabletInfo* tablet)
+int ObRootBalancer::nb_del_copy(ObRootTable2::const_iterator it, const ObTabletInfo* tablet, int32_t &last_delete_cs_index)
 {
   int ret = OB_ENTRY_NOT_EXIST;
   int64_t min_version = INT64_MAX;
   int32_t delete_idx = -1;
   int32_t valid_replicas_num = 0;
+  bool all_copy_have_same_version = true;
   for (int32_t i = 0; i < OB_SAFE_COPY_COUNT; i++)
   {
     if (OB_INVALID_INDEX != it->server_info_indexes_[i])
     {
       valid_replicas_num ++;
+      if (INT64_MAX != min_version && it->tablet_version_[i] != min_version)
+      {
+        all_copy_have_same_version = false;
+      }
       if (it->tablet_version_[i] < min_version)
       {
         min_version = it->tablet_version_[i];
@@ -389,8 +434,24 @@ int ObRootBalancer::nb_del_copy(ObRootTable2::const_iterator it, const ObTabletI
       }
     }
   } // end for
+  int64_t tablet_replicas_num = config_->tablet_replicas_num;
+  if (valid_replicas_num > tablet_replicas_num
+      && all_copy_have_same_version)
+  {
+    delete_idx = -1;
+    for (int32_t i = 0; i < OB_SAFE_COPY_COUNT; i++)
+    {
+      if (OB_INVALID_INDEX != it->server_info_indexes_[i]
+          && last_delete_cs_index != it->server_info_indexes_[i])
+      {
+        delete_idx = i;
+        last_delete_cs_index = it->server_info_indexes_[i];
+      break;
+      }
+    }
+  }
+
   // remove one replica if necessary
-  int64_t tablet_replicas_num = config_->flag_tablet_replicas_num_.get();
   if (valid_replicas_num > tablet_replicas_num
       && -1 != delete_idx)
   {
@@ -420,73 +481,167 @@ int ObRootBalancer::nb_del_copy(ObRootTable2::const_iterator it, const ObTabletI
   return ret;
 }
 
+void ObRootBalancer::check_table_rereplication(const uint64_t table_id,
+    const int64_t avg_count, const int64_t cs_num, bool & table_found, bool & scan_next_table)
+{
+  RereplicationAction ract;
+  int64_t delta_count = config_->balance_tolerance_count;
+  // scan the root table
+  int32_t last_delete_cs_index = OB_INVALID_INDEX;
+  ObRootTable2::const_iterator it;
+  const ObTabletInfo* tablet = NULL;
+  tbsys::CRLockGuard guard(*root_table_rwlock_);
+  for (it = root_table_->begin(); it != root_table_->end(); ++it)
+  {
+    tablet = root_table_->get_tablet_info(it);
+    if (NULL != tablet)
+    {
+      if (tablet->range_.table_id_ == table_id)
+      {
+        if (!table_found)
+        {
+          table_found = true;
+        }
+        // check re-replication
+        int add_ret = OB_ERROR;
+        if (OB_SUCCESS == nb_check_rereplication(it, ract))
+        {
+          if (RA_COPY == ract)
+          {
+            add_ret = nb_add_copy(it, tablet, avg_count - delta_count, static_cast<int32_t>(cs_num));
+          }
+          else if (RA_DELETE == ract)
+          {
+            add_ret = nb_del_copy(it, tablet, last_delete_cs_index);
+          }
+        }
+        // terminate condition
+        if (server_manager_->is_migrate_infos_full())
+        {
+          scan_next_table = false;
+          break;
+        }
+      }
+      else
+      {
+        if (table_found)
+        {
+          break;
+        }
+      }
+    }
+  }
+  if (false == table_found)
+  {
+    TBSYS_LOG(WARN, "not find the table in root table:table_id[%lu], root_table[%p]", table_id, root_table_);
+  }
+}
+
+bool ObRootBalancer::check_not_ini_table(const uint64_t table_id) const
+{
+  bool exist = false;
+  ObSchemaManagerV2* schema_manager = root_server_->get_ini_schema();
+  if (NULL == schema_manager)
+  {
+    TBSYS_LOG(ERROR, "schema_manager is NULL");
+  }
+  else
+  {
+    for(const ObTableSchema* table = schema_manager->table_begin();
+        table != schema_manager->table_end(); ++table)
+    {
+      if (table->get_table_id() == table_id)
+      {
+        exist = true;
+        break;
+      }
+    }
+  }
+  return !exist;
+}
+
 int ObRootBalancer::do_rereplication_by_table(const uint64_t table_id, bool &scan_next_table)
 {
   int ret = OB_SUCCESS;
   int64_t avg_size = 0;
   int64_t avg_count = 0;
-  int64_t delta_count = config_->flag_balance_tolerance_count_.get();
   int32_t cs_num = 0;
   int32_t migrate_out_per_cs = 0;
   int32_t shutdown_num = 0;
   scan_next_table = true;
   if (OB_SUCCESS != (ret = nb_calculate_sstable_count(table_id, avg_size, avg_count,
-                                                      cs_num, migrate_out_per_cs, shutdown_num)))
+          cs_num, migrate_out_per_cs, shutdown_num)))
   {
     TBSYS_LOG(WARN, "calculate table size error, err=%d", ret);
   }
   else if (0 < cs_num)
   {
-    ObRootTable2::const_iterator it;
-    const ObTabletInfo* tablet = NULL;
     bool table_found = false;
-    RereplicationAction ract;
-    // scan the root table
-    tbsys::CRLockGuard guard(*root_table_rwlock_);
-    for (it = root_table_->begin(); it != root_table_->sorted_end(); ++it)
+    check_table_rereplication(table_id, avg_count, cs_num, table_found, scan_next_table);
+    if (!table_found)
     {
-      tablet = root_table_->get_tablet_info(it);
-      if (NULL != tablet)
+      if (table_id < OB_APP_MIN_TABLE_ID)
       {
-        if (tablet->range_.table_id_ == table_id)
+        TBSYS_LOG(ERROR, "system table not find:table_id[%lu]", table_id);
+        ret = OB_INNER_STAT_ERROR;
+      }
+      else if (root_server_->is_master() && root_server_->get_obi_role().get_role() != common::ObiRole::MASTER)
+      {
+        // not create ini table
+        if (check_not_ini_table(table_id))
         {
-          if (!table_found)
+          // create empty tablets on chunkservers now
+          TBSYS_LOG(INFO, "table[%lu] has not been create, create empty tablets on chunkserver now", table_id);
+          ret = create_table(table_id);
+          if (ret != OB_SUCCESS)
           {
-            table_found = true;
+            TBSYS_LOG(WARN, "create table not in root table and not ini table failed:table_id[%lu]", table_id);
           }
-          // check re-replication
-          int add_ret = OB_ERROR;
-          if (OB_SUCCESS == nb_check_rereplication(it, ract))
+          else
           {
-            if (RA_COPY == ract)
-            {
-              add_ret = nb_add_copy(it, tablet, avg_count - delta_count, cs_num);
-            }
-            else if (RA_DELETE == ract)
-            {
-              add_ret = nb_del_copy(it, tablet);
-            }
-          }
-          // terminate condition
-          if (server_manager_->is_migrate_infos_full())
-          {
-            scan_next_table = false;
-            break;
-          }
-        }
-        else
-        {
-          if (table_found)
-          {
-            // another table
-            break;
+            TBSYS_LOG(INFO, "slave cluster master rootserver create not ini table succ:table_id[%lu]", table_id);
           }
         }
       }
-    } // end for
+      else
+      {
+        TBSYS_LOG(ERROR, "check master cluster find table not in root table:role[%d], master[%d], table_id[%lu]",
+            root_server_->get_obi_role().get_role(), root_server_->is_master(), table_id);
+      }
+    }
+  }
+  else
+  {
+    TBSYS_LOG(DEBUG, "cs number is zero. can't do rereplication.");
   }
   return ret;
 }
+
+int ObRootBalancer::create_table(const uint64_t table_id)
+{
+  TableSchema table_schema;
+  int ret = root_server_->get_table_schema(table_id, table_schema);
+  if (OB_SUCCESS != ret)
+  {
+    TBSYS_LOG(WARN, "fail to get table schema; table_id=%lu", table_id);
+  }
+  else
+  {
+    ObArray<ObServer> cs;
+    ret = root_server_->create_empty_tablet(table_schema, cs);
+    if (OB_SUCCESS == ret)
+    {
+      TBSYS_LOG(INFO, "create empty tablet success. table_id=%lu", table_id);
+    }
+    else
+    {
+      TBSYS_LOG(WARN, "fail to create emptry tablet. table_id=%lu, ret =%d, OB_ENTRY_EXIST=%d",
+          table_id, ret, OB_ENTRY_EXIST);
+    }
+  }
+  return ret;
+}
+
 void ObRootBalancer::check_shutdown_process()
 {
   ObChunkServerManager::const_iterator it;
@@ -510,9 +665,7 @@ void ObRootBalancer::check_shutdown_process()
       }
       if (0 == count)
       {
-        char addr_buf[OB_IP_STR_BUFF];
-        it->server_.to_string(addr_buf, OB_IP_STR_BUFF);
-        TBSYS_LOG(INFO, "shutdown chunkserver[%s] is finished", addr_buf );
+        TBSYS_LOG(INFO, "shutdown chunkserver[%s] is finished", to_cstring(it->server_));
       }
     }
   }
@@ -550,7 +703,7 @@ int ObRootBalancer::nb_balance_by_table(const uint64_t table_id, bool &scan_next
     bool table_found = false;
     // scan the root table
     tbsys::CRLockGuard guard(*root_table_rwlock_);
-    for (it = root_table_->begin(); it != root_table_->sorted_end(); ++it)
+    for (it = root_table_->begin(); it != root_table_->end(); ++it)
     {
       tablet = root_table_->get_tablet_info(it);
       if (NULL != tablet)
@@ -563,8 +716,8 @@ int ObRootBalancer::nb_balance_by_table(const uint64_t table_id, bool &scan_next
           }
           // do balnace if needed
           if ((!is_curr_table_balanced || 0 < shutdown_num)
-              && config_->flag_enable_balance_.get()
-              && it->can_be_migrated_now(config_->flag_tablet_migrate_disabling_period_us_.get()))
+              && config_->enable_balance
+              && it->can_be_migrated_now(config_->tablet_migrate_disabling_period))
           {
             nb_check_add_migrate(it, tablet, avg_count, cs_num, migrate_out_per_cs);
           }
@@ -592,7 +745,7 @@ int ObRootBalancer::nb_balance_by_table(const uint64_t table_id, bool &scan_next
 bool ObRootBalancer::nb_is_curr_table_balanced(int64_t avg_sstable_count, const ObServer& except_cs) const
 {
   bool ret = true;
-  int64_t delta_count = config_->flag_balance_tolerance_count_.get();
+  int64_t delta_count = config_->balance_tolerance_count;
   int32_t cs_out = 0;
   int32_t cs_in = 0;
   ObChunkServerManager::const_iterator it;
@@ -643,6 +796,7 @@ int ObRootBalancer::nb_calculate_sstable_count(const uint64_t table_id, int64_t 
     // prepare
     tbsys::CWLockGuard guard(*server_manager_rwlock_);
     server_manager_->reset_balance_info_for_table(cs_count, shutdown_count);
+    TBSYS_LOG(DEBUG, "reset balance info. cs_count=%d, shutdown_count=%d", cs_count, shutdown_count);
   } // end lock
   {
     // calculate sum
@@ -650,7 +804,7 @@ int ObRootBalancer::nb_calculate_sstable_count(const uint64_t table_id, int64_t 
     const ObTabletInfo* tablet = NULL;
     tbsys::CRLockGuard guard(*root_table_rwlock_);
     bool table_found = false;
-    for (it = root_table_->begin(); it != root_table_->sorted_end(); ++it)
+    for (it = root_table_->begin(); it != root_table_->end(); ++it)
     {
       tablet = root_table_->get_tablet_info(it);
       if (NULL != tablet)
@@ -694,7 +848,7 @@ int ObRootBalancer::nb_calculate_sstable_count(const uint64_t table_id, int64_t 
     {
       avg_size = total_size / (cs_count - shutdown_count);
       // make sure the shutting-down servers can find dest cs
-      avg_count = total_count / (cs_count - shutdown_count) + 1 + config_->flag_balance_tolerance_count_.get();
+      avg_count = total_count / (cs_count - shutdown_count) + 1 + config_->balance_tolerance_count;
     }
     int64_t sstable_avg_size = -1;
     if (0 != total_count)
@@ -707,14 +861,14 @@ int ObRootBalancer::nb_calculate_sstable_count(const uint64_t table_id, int64_t 
     {
       if (it->status_ != ObServerStatus::STATUS_DEAD)
       {
-        if (it->balance_info_.table_sstable_count_ > avg_count + config_->flag_balance_tolerance_count_.get()
+        if (it->balance_info_.table_sstable_count_ > avg_count + config_->balance_tolerance_count
             || ObServerStatus::STATUS_SHUTDOWN == it->status_)
         {
           out_cs++;
         }
       }
     }
-    migrate_out_per_cs = config_->flag_balance_max_migrate_out_per_cs_.get();
+    migrate_out_per_cs = (int32_t)config_->balance_max_migrate_out_per_cs;
     if (0 < out_cs
         && out_cs < cs_count)
     {
@@ -725,9 +879,9 @@ int ObRootBalancer::nb_calculate_sstable_count(const uint64_t table_id, int64_t 
       }
     }
     TBSYS_LOG(DEBUG, "sstable distribution, table_id=%lu total_size=%ld total_count=%ld "
-              "cs_num=%d shutdown_num=%d avg_size=%ld avg_count=%ld sstable_avg_size=%ld migrate_out_per_cs=%d",
-              table_id, total_size, total_count,
-              cs_count, shutdown_count, avg_size, avg_count, sstable_avg_size, migrate_out_per_cs);
+        "cs_num=%d shutdown_num=%d avg_size=%ld avg_count=%ld sstable_avg_size=%ld migrate_out_per_cs=%d",
+        table_id, total_size, total_count,
+        cs_count, shutdown_count, avg_size, avg_count, sstable_avg_size, migrate_out_per_cs);
   }
   return ret;
 }
@@ -765,25 +919,24 @@ void ObRootBalancer::nb_print_balance_info(char *buf, const int64_t buf_len, int
   }
 }
 
-int ObRootBalancer::send_msg_migrate(const ObServer &src, const ObServer &dest, const ObRange& range, bool keep_src)
+int ObRootBalancer::send_msg_migrate(const ObServer &src, const ObServer &dest, const ObNewRange& range, bool keep_src)
 {
   int ret = OB_SUCCESS;
-  ret = rpc_stub_->migrate_tablet(src, dest, range, keep_src, config_->flag_network_timeout_us_.get());
-  static char row_key_dump_buff[OB_MAX_ROW_KEY_LENGTH * 2];
-  char f_server[OB_IP_STR_BUFF];
-  char t_server[OB_IP_STR_BUFF];
-  range.to_string(row_key_dump_buff, OB_MAX_ROW_KEY_LENGTH * 2);
-  src.to_string(f_server, OB_IP_STR_BUFF);
-  dest.to_string(t_server, OB_IP_STR_BUFF);
+  ret = rpc_stub_->migrate_tablet(src, dest, range, keep_src, config_->network_timeout);
   if (OB_SUCCESS == ret)
   {
+    static char row_key_dump_buff[OB_MAX_ROW_KEY_LENGTH * 2];
+    range.to_string(row_key_dump_buff, OB_MAX_ROW_KEY_LENGTH * 2);
+    char f_server[OB_IP_STR_BUFF];
+    char t_server[OB_IP_STR_BUFF];
+    src.to_string(f_server, OB_IP_STR_BUFF);
+    dest.to_string(t_server, OB_IP_STR_BUFF);
     TBSYS_LOG(INFO, "migrate tablet, tablet=%s src=%s dest=%s keep_src=%c",
-        row_key_dump_buff, f_server, t_server, keep_src?'Y':'N');
+              row_key_dump_buff, f_server, t_server, keep_src?'Y':'N');
   }
   else
   {
-    TBSYS_LOG(WARN, "failed to send migrate msg, err=%d, tablet=%s, src=%s, dest=%s,keep_src=%c",
-        ret, row_key_dump_buff, f_server, t_server, keep_src?'Y':'N');
+    TBSYS_LOG(WARN, "failed to send migrate msg, err=%d", ret);
   }
   return ret;
 }
@@ -792,7 +945,7 @@ int ObRootBalancer::nb_start_batch_migrate()
 {
   int ret = OB_SUCCESS;
   int32_t sent_count = 0;
-  int32_t batch_migrate_per_cs = config_->flag_balance_max_concurrent_migrate_num_.get();
+  int32_t batch_migrate_per_cs = (int32_t)config_->balance_max_concurrent_migrate_num;
   ObChunkServerManager::iterator it;
   for (it = server_manager_->begin(); it != server_manager_->end(); ++it)
   {
@@ -850,8 +1003,6 @@ int ObRootBalancer::nb_start_batch_migrate()
 void ObRootBalancer::nb_print_migrate_infos() const
 {
   TBSYS_LOG(INFO, "print migrate infos:");
-  char addr_buf1[OB_IP_STR_BUFF];
-  char addr_buf2[OB_IP_STR_BUFF];
   static char range_buf[OB_MAX_ROW_KEY_LENGTH * 2];
   int32_t idx = 0;
   int32_t total_in = 0;
@@ -863,9 +1014,8 @@ void ObRootBalancer::nb_print_migrate_infos() const
     {
       total_in += it->balance_info_.curr_migrate_in_num_;
       total_out += it->balance_info_.curr_migrate_out_num_;
-      it->server_.to_string(addr_buf1, OB_IP_STR_BUFF);
       TBSYS_LOG(INFO, "balance info, cs=%s in=%d out=%d",
-                addr_buf1, it->balance_info_.curr_migrate_in_num_,
+                to_cstring(it->server_), it->balance_info_.curr_migrate_in_num_,
                 it->balance_info_.curr_migrate_out_num_);
 
       if(0 < it->balance_info_.migrate_to_.count())
@@ -880,10 +1030,9 @@ void ObRootBalancer::nb_print_migrate_infos() const
             if (NULL != dest_cs
                 && ObServerStatus::STATUS_DEAD != dest_cs->status_)
             {
-              dest_cs->server_.to_string(addr_buf2, OB_IP_STR_BUFF);
               minfo->range_.to_string(range_buf, OB_MAX_ROW_KEY_LENGTH*2);
               TBSYS_LOG(INFO, "migrate info, idx=%d src_cs=%s dest_cs=%s range=%s stat=%s src_out=%d dest_in=%d keep_src=%c",
-                        idx, addr_buf1, addr_buf2, range_buf, minfo->get_stat_str(),
+                        idx, to_cstring(it->server_), to_cstring(dest_cs->server_), range_buf, minfo->get_stat_str(),
                         it->balance_info_.curr_migrate_out_num_,
                         dest_cs->balance_info_.curr_migrate_in_num_,
                         minfo->keep_src_?'Y':'N');
@@ -913,7 +1062,7 @@ int ObRootBalancer::nb_check_migrate_timeout()
   int ret = OB_SUCCESS;
   int64_t mnow = tbsys::CTimeUtil::getMonotonicTime();
   if (nb_is_in_batch_migrating()
-      && balance_timeout_us_ + config_->flag_balance_timeout_us_delta_.get() + balance_start_time_us_ < mnow)
+      && balance_timeout_us_ + config_->balance_timeout_delta + balance_start_time_us_ < mnow)
   {
     TBSYS_LOG(WARN, "balance batch migrate timeout, start_us=%ld prev_timeout_us=%ld done=%d total=%d",
               balance_start_time_us_, balance_timeout_us_,
@@ -933,7 +1082,7 @@ int ObRootBalancer::nb_check_migrate_timeout()
       balance_batch_migrate_done_num_ = 1;
     }
     balance_timeout_us_ = balance_batch_migrate_count_ * elapsed_us / balance_batch_migrate_done_num_;
-    int64_t balance_max_timeout_us = 1000000LL * config_->flag_balance_max_timeout_seconds_.get();
+    int64_t balance_max_timeout_us = config_->balance_max_timeout;
     if (0 < balance_max_timeout_us
         && balance_timeout_us_ > balance_max_timeout_us)
     {
@@ -944,7 +1093,7 @@ int ObRootBalancer::nb_check_migrate_timeout()
     balance_batch_migrate_count_ = 0;
     balance_batch_copy_count_ = 0;
     balance_batch_migrate_done_num_ = 0;
-    server_manager_->reset_balance_info(config_->flag_balance_max_migrate_out_per_cs_.get());
+    server_manager_->reset_balance_info((int32_t)config_->balance_max_migrate_out_per_cs);
   }
   return ret;
 }
@@ -962,7 +1111,7 @@ void ObRootBalancer::nb_batch_migrate_done()
     TBSYS_LOG(INFO, "balance batch migrate done, elapsed_us=%ld prev_timeout_us=%ld done=%d",
               mnow - balance_start_time_us_, balance_timeout_us_, balance_batch_migrate_count_);
 
-    server_manager_->reset_balance_info(config_->flag_balance_max_migrate_out_per_cs_.get());
+    server_manager_->reset_balance_info((int32_t)config_->balance_max_migrate_out_per_cs);
     balance_timeout_us_ = mnow - balance_start_time_us_;
     balance_start_time_us_ = 0;
     balance_batch_migrate_count_ = 0;
@@ -980,7 +1129,8 @@ int ObRootBalancer::nb_trigger_next_migrate(ObRootTable2::iterator it, const com
   ObServerStatus *dest_cs = server_manager_->get_server_status(dest_cs_idx);
   if (NULL == src_cs || NULL == dest_cs || NULL == tablet)
   {
-    TBSYS_LOG(WARN, "invalid cs, src_cs_idx=%d dest_cs_id=%d", src_cs_idx, dest_cs_idx);
+    TBSYS_LOG(WARN, "invalid cs, src_cs_idx=%d dest_cs_id=%d, tablet=%p",
+        src_cs_idx, dest_cs_idx, tablet);
     ret = OB_INVALID_ARGUMENT;
   }
   else if (ObServerStatus::STATUS_DEAD == src_cs->status_)
@@ -1005,11 +1155,11 @@ int ObRootBalancer::nb_trigger_next_migrate(ObRootTable2::iterator it, const com
     balance_last_migrate_succ_time_ = tbsys::CTimeUtil::getMonotonicTime();
     if (keep_src)
     {
-      stat_manager_->inc(ObRootStatManager::ROOT_TABLE_ID, ObRootStatManager::INDEX_COPY_COUNT);
+      OB_STAT_INC(ROOTSERVER, INDEX_COPY_COUNT);
     }
     else
     {
-      stat_manager_->inc(ObRootStatManager::ROOT_TABLE_ID, ObRootStatManager::INDEX_MIGRATE_COUNT);
+      OB_STAT_INC(ROOTSERVER, INDEX_MIGRATE_COUNT);
     }
     if (balance_batch_migrate_done_num_ >= balance_batch_migrate_count_)
     {
@@ -1032,11 +1182,12 @@ void ObRootBalancer::do_new_balance()
   balance_batch_copy_count_ = 0;
   balance_batch_migrate_done_num_ = 0;
   balance_last_migrate_succ_time_ = 0;
-  server_manager_->reset_balance_info(config_->flag_balance_max_migrate_out_per_cs_.get());
+  server_manager_->reset_balance_info((int32_t)config_->balance_max_migrate_out_per_cs);
   delete_list_.reset();
   TBSYS_LOG(DEBUG, "rereplication begin");
   int32_t table_count = nb_get_table_count();
   bool scan_next_table = true;
+  TBSYS_LOG(DEBUG, "table_count = %d", table_count);
   for (int32_t i = 0; i < table_count && scan_next_table; ++i) // for each table
   {
     uint64_t table_id = OB_INVALID_ID;
@@ -1047,7 +1198,6 @@ void ObRootBalancer::do_new_balance()
                 table_id, table_count, balance_batch_migrate_count_, delete_list_.get_tablet_size());
     }
   }
-  TBSYS_LOG(DEBUG, "new balance begin");
   for (int32_t i = 0; i < table_count && scan_next_table; ++i) // for each table
   {
     uint64_t table_id = OB_INVALID_ID;
@@ -1062,8 +1212,9 @@ void ObRootBalancer::do_new_balance()
   if (0 < delete_list_.get_tablet_size())
   {
     TBSYS_LOG(INFO, "will delete replicas, num=%ld", delete_list_.get_tablet_size());
-    ObRootUtil::delete_tablets(*rpc_stub_, *server_manager_, delete_list_, config_->flag_network_timeout_us_.get());
+    ObRootUtil::delete_tablets(*rpc_stub_, *server_manager_, delete_list_, config_->network_timeout);
   }
+  //
   if (0 < balance_batch_migrate_count_)
   {
     TBSYS_LOG(INFO, "batch migrate begin, count=%d(copy=%d) timeout=%ld",
@@ -1145,7 +1296,7 @@ bool ObRootBalancer::nb_is_all_tablets_replicated(int32_t expected_replicas_num)
   ObRootTable2::const_iterator it;
   int32_t replicas_num = 0;
   tbsys::CRLockGuard guard(*root_table_rwlock_);
-  for (it = root_table_->begin(); it != root_table_->sorted_end(); ++it)
+  for (it = root_table_->begin(); it != root_table_->end(); ++it)
   {
     replicas_num = 0;
     for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
@@ -1158,7 +1309,7 @@ bool ObRootBalancer::nb_is_all_tablets_replicated(int32_t expected_replicas_num)
     if (replicas_num < expected_replicas_num)
     {
       TBSYS_LOG(DEBUG, "tablet not replicated, num=%d expected=%d",
-                replicas_num, expected_replicas_num);
+          replicas_num, expected_replicas_num);
       ret = false;
       break;
     }
@@ -1183,7 +1334,7 @@ bool ObRootBalancer::nb_did_cs_have_no_tablets(const common::ObServer &cs) const
     ret = true;
     ObRootTable2::const_iterator it;
     tbsys::CRLockGuard guard(*root_table_rwlock_);
-    for (it = root_table_->begin(); it != root_table_->sorted_end(); ++it)
+    for (it = root_table_->begin(); it != root_table_->end(); ++it)
     {
       for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
       {
@@ -1248,7 +1399,7 @@ void ObRootBalancer::nb_print_shutting_down_progress(char *buf, const int64_t bu
   {
     ObRootTable2::const_iterator it;
     tbsys::CRLockGuard guard(*root_table_rwlock_);
-    for (it = root_table_->begin(); it != root_table_->sorted_end(); ++it)
+    for (it = root_table_->begin(); it != root_table_->end(); ++it)
     {
       // for each tablet
       for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)

@@ -16,18 +16,24 @@
 #ifndef _OB_TABLET_SCAN_H
 #define _OB_TABLET_SCAN_H 1
 
-#include "sql/ob_phy_operator.h"
 #include "sql/ob_sstable_scan.h"
 #include "sql/ob_ups_scan.h"
 #include "sql/ob_tablet_fuse.h"
-#include "sql/ob_tablet_join.h"
+#include "sql/ob_tablet_direct_join.h"
+#include "sql/ob_tablet_cache_join.h"
 #include "sql/ob_sql_expression.h"
-#include "sql/ob_operator_factory.h"
 #include "sql/ob_project.h"
 #include "sql/ob_filter.h"
+#include "sql/ob_scalar_aggregate.h"
+#include "sql/ob_sort.h"
+#include "sql/ob_merge_groupby.h"
 #include "sql/ob_limit.h"
+#include "sql/ob_table_rename.h"
+#include "sql/ob_tablet_scan_fuse.h"
 #include "common/ob_schema.h"
-#include <set>
+#include "common/hash/ob_hashset.h"
+#include "sql/ob_sql_scan_param.h"
+#include "sql/ob_tablet_read.h"
 
 namespace oceanbase
 {
@@ -35,8 +41,9 @@ namespace oceanbase
   {
     namespace test
     {
-      class ObTabletScanTest_create_plan_Test;
-      class ObTabletScanTest_create_plan2_Test;
+      class ObTabletScanTest_create_plan_not_join_Test;
+      class ObTabletScanTest_create_plan_join_Test;
+      class ObTabletScanTest_serialize_Test;
     }
 
     // 用于CS从磁盘扫描一个tablet，合并、join动态数据，并执行计算过滤等
@@ -55,93 +62,73 @@ namespace oceanbase
     //   tablet_scan_op.close();
     //   send_response(results);
     // }
-    class ObTabletScan: public ObPhyOperator
+    class ObTabletScan : public ObTabletRead
     {
-      friend class test::ObTabletScanTest_create_plan_Test;
-      friend class test::ObTabletScanTest_create_plan2_Test;
+      friend class test::ObTabletScanTest_create_plan_not_join_Test;
+      friend class test::ObTabletScanTest_create_plan_join_Test;
+      friend class test::ObTabletScanTest_serialize_Test;
 
       public:
         ObTabletScan();
         virtual ~ObTabletScan();
+        
+        void reset(void);
+        inline int get_tablet_range(ObNewRange& range);
 
-        int open();
-        int close();
-        int get_next_row(const ObRow *&row);
-        int get_row_desc(const common::ObRowDesc *&row_desc) const {row_desc=NULL;return OB_NOT_IMPLEMENT;}
-        /// 设置要扫描的tablet
-        void set_range(const ObRange &scan_range);
-
-        /// 设置批量做join的个数，需要做join时才生效
-        void set_join_batch_count(int64_t join_batch_count)
-        {
-          join_batch_count_ = join_batch_count;
-        }
-
-        /**
-         * 添加一个需输出的column
-         *
-         * @note 只有通过复合列结算新生成的列才需要new_column_id
-         * @param expr [in] 需输出的列（这个列可能是个复合列的结果）
-         *
-         * @return OB_SUCCESS或错误码
-         */
-        int add_output_column(const ObSqlExpression& expr);
-
-        /**
-         * 添加一个filter
-         *
-         * @param expr [in] 过滤表达式
-         *
-         * @return OB_SUCCESS或错误码
-         */
-        int add_filter(const ObSqlExpression& expr);
-        /**
-         * 指定limit/offset
-         *
-         * @param limit [in]
-         * @param offset [in]
-         *
-         * @return OB_SUCCESS或错误码
-         */
-        int set_limit(const int64_t limit, const int64_t offset);
-
-        int set_child(int32_t child_idx, ObPhyOperator &child_operator);
+        virtual int create_plan(const ObSchemaManagerV2 &schema_mgr);
+        
+        bool has_incremental_data() const;
         int64_t to_string(char* buf, const int64_t buf_len) const;
-
-        int set_schema_manager(ObSchemaManagerV2 *schema_mgr);
-        int set_operator_factory(ObOperatorFactory *op_factory);
-        int set_ups_rpc_stub(ObUpsRpcStub *ups_rpc_stub);
+        inline void set_sql_scan_param(const ObSqlScanParam &sql_scan_param);
+        void set_scan_context(const ScanContext &scan_context)
+        {
+          scan_context_ = scan_context;
+        }
 
       private:
         // disallow copy
         ObTabletScan(const ObTabletScan &other);
         ObTabletScan& operator=(const ObTabletScan &other);
 
-        int create_plan();
-        virtual int get_join_cond(ObTabletJoin::TableJoinInfo &table_join_info) = 0;
-        bool check_inner_stat();
+        bool check_inner_stat() const;
+        int need_incremental_data(
+            ObArray<uint64_t> &basic_columns, 
+            ObTabletJoin::TableJoinInfo &table_join_info, 
+            int64_t start_data_version, 
+            int64_t end_data_version);
+        int build_sstable_scan_param(ObArray<uint64_t> &basic_columns, 
+            const ObSqlScanParam &sql_scan_param, sstable::ObSSTableScanParam &sstable_scan_param) const;
 
       private:
         // data members
-        ObRange scan_range_;
-        ObArray<ObSqlExpression> out_columns_;
-        int64_t join_batch_count_;
-        ObPhyOperator *op_root_;
-        ObSstableScan *op_sstable_scan_;
-        ObUpsScan *op_ups_scan_;
-        ObUpsMultiGet *op_ups_multi_get_;
-        ObTabletFuse *op_tablet_fuse_;
-        ObTabletJoin *op_tablet_join_;
-        ObSchemaManagerV2 *schema_mgr_;
-        ObOperatorFactory *op_factory_;
-        ObUpsRpcStub *ups_rpc_stub_;
-        ObProject project_;
-        ObFilter filter_;
-        ObLimit limit_;
-        bool has_project_;
-        bool has_filter_;
-        bool has_limit_;
+        const ObSqlScanParam *sql_scan_param_;
+        ScanContext scan_context_;
+        ObSSTableScan op_sstable_scan_;
+
+        /* operator maybe used */
+        ObUpsScan op_ups_scan_;
+        ObTabletScanFuse op_tablet_scan_fuse_;
+        ObTabletDirectJoin op_tablet_join_;
+        ObTableRename op_rename_;
+        ObFilter op_filter_;
+        ObProject op_project_;
+        ObScalarAggregate op_scalar_agg_;
+        ObMergeGroupBy op_group_;
+        ObSort op_group_columns_sort_;
+        ObLimit op_limit_;
     };
+
+    int ObTabletScan::get_tablet_range(ObNewRange& range) 
+    { 
+      int ret = OB_SUCCESS;
+      ret = op_sstable_scan_.get_tablet_range(range);
+      return ret;
+    }
+
+    void ObTabletScan::set_sql_scan_param(const ObSqlScanParam &sql_scan_param)
+    {
+      sql_scan_param_ = &sql_scan_param;
+    }
   } // end namespace sql
 } // end namespace oceanbase
 

@@ -30,15 +30,28 @@ ObSqlExpression::~ObSqlExpression()
 {
 }
 
+ObSqlExpression::ObSqlExpression(const ObSqlExpression &other)
+{
+  *this = other;
+}
+
 ObSqlExpression& ObSqlExpression::operator=(const ObSqlExpression &other)
 {
-  post_expr_ = other.post_expr_;
-  column_id_ = other.column_id_;
-  table_id_ = other.table_id_;
-  is_aggr_func_ = other.is_aggr_func_;
-  is_distinct_ = other.is_distinct_;
-  aggr_func_ = other.aggr_func_;
+  if (&other != this)
+  {
+    post_expr_ = other.post_expr_;
+    column_id_ = other.column_id_;
+    table_id_ = other.table_id_;
+    is_aggr_func_ = other.is_aggr_func_;
+    is_distinct_ = other.is_distinct_;
+    aggr_func_ = other.aggr_func_;
+  }
   return *this;
+}
+
+int ObSqlExpression:: add_expr_obj(const ObObj &obj)
+{
+  return post_expr_.add_expr_obj(obj);
 }
 
 int ObSqlExpression::add_expr_item(const ExprItem &item)
@@ -151,43 +164,43 @@ int ObSqlExpression::serialize_basic_param(char* buf, const int64_t buf_len, int
   ObObj obj;
   if (OB_SUCCESS == ret)
   {
-	obj.set_int((int64_t)column_id_);
-	if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
+    obj.set_int((int64_t)column_id_);
+    if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
   }
   if (OB_SUCCESS == ret)
   {
-	obj.set_int((int64_t)table_id_);
-	if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
+    obj.set_int((int64_t)table_id_);
+    if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
   }
   if (OB_SUCCESS == ret)
   {
-	obj.set_bool(is_aggr_func_);
-	if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
+    obj.set_bool(is_aggr_func_);
+    if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
   }
   if (OB_SUCCESS == ret)
   {
-	obj.set_bool(is_distinct_);
-	if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
+    obj.set_bool(is_distinct_);
+    if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
   }
   if (OB_SUCCESS == ret)
   {
-	obj.set_int((int64_t)aggr_func_);
-	if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
+    obj.set_int((int64_t)aggr_func_);
+    if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
   }
   return ret;
 }
@@ -199,70 +212,70 @@ int ObSqlExpression::deserialize_basic_param(const char* buf, const int64_t data
   int64_t val = 0;
   if (OB_SUCCESS == ret)
   {
-	if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
-	if (OB_SUCCESS != (ret = obj.get_int(val)))
-	{
-	  TBSYS_LOG(WARN, "fail to get int value. ret=%d, column_id_=%lu", ret, column_id_);
-	}
-	else
-	{
-	  column_id_ = (uint64_t)val;
-	}
+    if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
+    if (OB_SUCCESS != (ret = obj.get_int(val)))
+    {
+      TBSYS_LOG(WARN, "fail to get int value. ret=%d, column_id_=%lu", ret, column_id_);
+    }
+    else
+    {
+      column_id_ = (uint64_t)val;
+    }
   }
   if (OB_SUCCESS == ret)
   {
-	if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
-	if (OB_SUCCESS != (ret = obj.get_int(val)))
-	{
-	  TBSYS_LOG(WARN, "fail to get int value. ret=%d, table_id_=%lu", ret, table_id_);
-	}
-	else
-	{
-	  table_id_ = val;
-	}
+    if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
+    if (OB_SUCCESS != (ret = obj.get_int(val)))
+    {
+      TBSYS_LOG(WARN, "fail to get int value. ret=%d, table_id_=%lu", ret, table_id_);
+    }
+    else
+    {
+      table_id_ = val;
+    }
   }
   if (OB_SUCCESS == ret)
   {
-	if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
-	if (OB_SUCCESS != (ret = obj.get_bool(is_aggr_func_)))
-	{
-	  TBSYS_LOG(WARN, "fail to get int value. ret=%d, is_aggr_func_=%d", ret, is_aggr_func_);
-	}
+    if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
+    if (OB_SUCCESS != (ret = obj.get_bool(is_aggr_func_)))
+    {
+      TBSYS_LOG(WARN, "fail to get int value. ret=%d, is_aggr_func_=%d", ret, is_aggr_func_);
+    }
   }
   if (OB_SUCCESS == ret)
   {
-	if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
-	if (OB_SUCCESS != (ret = obj.get_bool(is_distinct_)))
-	{
-	  TBSYS_LOG(WARN, "fail to get int value. ret=%d, is_distinct_=%d", ret, is_distinct_);
-	}
+    if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
+    if (OB_SUCCESS != (ret = obj.get_bool(is_distinct_)))
+    {
+      TBSYS_LOG(WARN, "fail to get int value. ret=%d, is_distinct_=%d", ret, is_distinct_);
+    }
   }
   if (OB_SUCCESS == ret)
   {
-	if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
-	{
-	  TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-	}
-	if (OB_SUCCESS != (ret = obj.get_int(val)))
-	{
-	  TBSYS_LOG(WARN, "fail to get int value. ret=%d, aggr_func_=%d", ret, aggr_func_);
-	}
-	else
-	{
-	  aggr_func_ = (ObItemType)val;
-	}
+    if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
+    {
+      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
+    }
+    if (OB_SUCCESS != (ret = obj.get_int(val)))
+    {
+      TBSYS_LOG(WARN, "fail to get int value. ret=%d, aggr_func_=%d", ret, aggr_func_);
+    }
+    else
+    {
+      aggr_func_ = (ObItemType)val;
+    }
   }
   return ret;
 }
@@ -291,3 +304,23 @@ int64_t ObSqlExpression::get_basic_param_serialize_size() const
 	size += obj.get_serialize_size();
   return size;
 }
+
+int ObSqlExpressionUtil::make_column_expr(const uint64_t tid, const uint64_t cid, ObSqlExpression &expr)
+{
+  int ret = OB_SUCCESS;
+  ExprItem item;
+ 
+  item.type_ = T_REF_COLUMN;
+  item.value_.cell_.tid = tid;
+  item.value_.cell_.cid = cid;
+  if (OB_SUCCESS != (ret = expr.add_expr_item(item)))
+  {
+    TBSYS_LOG(WARN, "fail to add expr item. ret=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = expr.add_expr_item_end()))
+  {
+    TBSYS_LOG(WARN, "fail to add expr item. ret=%d", ret);
+  }
+  return ret;
+}
+

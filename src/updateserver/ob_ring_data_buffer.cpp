@@ -194,6 +194,7 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "block[%ld].reset(new_pos=%ld)=>%d", end_pos_>>block_size_shift_, end_pos_, err);
       }
+      __sync_synchronize();
       return err;
     }
 
@@ -220,6 +221,7 @@ namespace oceanbase
       }
       else
       {
+        __sync_synchronize();
         end_pos_ += len;
       }
       return err;

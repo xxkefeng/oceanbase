@@ -20,11 +20,6 @@
 using namespace oceanbase::common;
 using namespace oceanbase::lsync;
 
-namespace
-{
-  const char* PUBLIC_SECTION_NAME = "public";
-}
-
 int main(int argc, char** argv)
 {
   int ret = OB_SUCCESS;
@@ -39,7 +34,7 @@ int main(int argc, char** argv)
     ret = OB_ERROR;
     TBSYS_LOG(ERROR, "new ObLsyncServerMain failed");
   }
-  else if (OB_SUCCESS != (ret = lsync_server->start(argc, argv, PUBLIC_SECTION_NAME)))
+  else if (OB_SUCCESS != (ret = lsync_server->start(argc, argv)))
   {
     TBSYS_LOG(ERROR, "lsync_server->start()=>%d", ret);
   }

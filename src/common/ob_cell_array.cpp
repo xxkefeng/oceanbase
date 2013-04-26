@@ -137,7 +137,6 @@ int ObCellArray::copy_cell_(ObInnerCellInfo &dst, const ObCellInfo &src, const i
 {
   int err = OB_SUCCESS;
   ObInnerCellInfo *same_row_cell = &empty_inner_cell_;
-  char *tmp_buf = NULL;
 
   dst.table_id_ = src.table_id_;
   dst.column_id_ = src.column_id_;
@@ -155,18 +154,14 @@ int ObCellArray::copy_cell_(ObInnerCellInfo &dst, const ObCellInfo &src, const i
     }
     else if (src.row_key_.length() > 0)
     {
-      int64_t src_rowkey_len = src.row_key_.length();
-      tmp_buf = reinterpret_cast<char*>(page_arena_.alloc(src_rowkey_len));
-      if (NULL == tmp_buf)
+      err = src.row_key_.deep_copy(dst.row_key_, page_arena_);
+      if (err != OB_SUCCESS)
       {
-        TBSYS_LOG(WARN, "%s", "fail to malloc buffer for  rowkey");
-        err = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(WARN, "deep copy new rowkey failed:err[%d]", err);
       }
       else
       {
-        allocated_memory_size_ += src_rowkey_len;
-        memcpy(tmp_buf, src.row_key_.ptr(), src_rowkey_len);
-        dst.row_key_.assign(tmp_buf, static_cast<int32_t>(src_rowkey_len));
+        allocated_memory_size_ += src.row_key_.get_deep_copy_size();
       }
     }
     else
@@ -190,7 +185,7 @@ int ObCellArray::copy_cell_(ObInnerCellInfo &dst, const ObCellInfo &src, const i
 }
 
 inline int ObCellArray::copy_cell_fast(ObInnerCellInfo &dst, const ObCellInfo &src, 
-  const ObString &row_key, const bool is_first_cell_of_row)
+  const ObRowkey& row_key, const bool is_first_cell_of_row)
 {
   int err = OB_SUCCESS;
 
@@ -206,19 +201,14 @@ inline int ObCellArray::copy_cell_fast(ObInnerCellInfo &dst, const ObCellInfo &s
     // allocate rowkey
     if (src.row_key_.length() > 0)
     {
-      char *tmp_buf = NULL;
-      int64_t src_rowkey_len = src.row_key_.length();
-      tmp_buf = reinterpret_cast<char*>(page_arena_.alloc(src_rowkey_len));
-      if (NULL == tmp_buf)
+      err = src.row_key_.deep_copy(dst.row_key_, page_arena_);
+      if (err != OB_SUCCESS)
       {
-        TBSYS_LOG(WARN, "fail to malloc buffer for rowkey");
-        err = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(WARN, "deep copy new rowkey failed:err[%d]", err);
       }
       else
       {
-        allocated_memory_size_ += src_rowkey_len;
-        memcpy(tmp_buf, src.row_key_.ptr(), src_rowkey_len);
-        dst.row_key_.assign(tmp_buf, static_cast<int32_t>(src_rowkey_len));
+        allocated_memory_size_ += src.row_key_.get_deep_copy_size();
       }
     }
     else
@@ -308,7 +298,7 @@ int ObCellArray::append(const ObCellInfo &cell, ObInnerCellInfo *& cell_out)
 }
 
 int ObCellArray::append(const ObCellInfo &cell, ObInnerCellInfo *& cell_out,
-    const ObString &row_key, const bool is_first_cell_of_row)
+    const ObRowkey &row_key, const bool is_first_cell_of_row)
 {
   int err = OB_SUCCESS;
   if (0 == cell_num_ && sorted_row_offsets_.size() <= 0)

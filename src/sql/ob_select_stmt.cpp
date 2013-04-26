@@ -13,11 +13,12 @@ ObSelectStmt::ObSelectStmt(ObStringBuf* name_pool)
 : ObStmt(name_pool, ObStmt::T_SELECT)
 {
   //if (m_columnMap.create(MAX_MAP_BUCKET_NUM) == -1)
-  //  throw new ParseException(name_pool_, "Create m_columnMap error!"); 
+  //  throw new ParseException(name_pool_, "Create m_columnMap error!");
   left_query_id_ = OB_INVALID_ID;
   right_query_id_ = OB_INVALID_ID;
-  limit_ = -1;
-  offset_ = 0;
+  limit_count_id_  = OB_INVALID_ID;
+  limit_offset_id_ = OB_INVALID_ID;
+  for_update_ = false;
   gen_joined_tid_ = UINT64_MAX - 2;
 }
 
@@ -47,10 +48,10 @@ int ObSelectStmt::check_alias_name(
   if (schema_checker == NULL)
   {
     ret = OB_ERR_SCHEMA_UNSET;
-    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG, 
+    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
         "Schema(s) are not set");
   }
-  
+
   for (int32_t i = 0; ret == OB_SUCCESS && i < table_items_.size(); i++)
   {
     /* check if it is column of base-table */
@@ -101,8 +102,8 @@ int ObSelectStmt::check_alias_name(
 }
 
 int ObSelectStmt::add_select_item(
-    uint64_t eid, 
-    bool is_real_alias, 
+    uint64_t eid,
+    bool is_real_alias,
     const ObString& alias_name,
     const ObString& expr_name,
     const ObObjType& type)
@@ -113,9 +114,9 @@ int ObSelectStmt::add_select_item(
     SelectItem item;
     item.expr_id_ = eid;
     item.is_real_alias_ = is_real_alias;
-    ret = alloc_str_by_obstring(alias_name, item.alias_name_, name_pool_);
+    ret = ob_write_string(*name_pool_, alias_name, item.alias_name_);
     if (ret == OB_SUCCESS)
-      ret = alloc_str_by_obstring(expr_name, item.expr_name_, name_pool_);
+      ret = ob_write_string(*name_pool_, expr_name, item.expr_name_);
     if (ret == OB_SUCCESS)
     {
       item.type_ = type;
@@ -162,8 +163,8 @@ JoinedTable* ObSelectStmt::get_joined_table(uint64_t table_id)
 
 int ObSelectStmt::check_having_ident(
   ResultPlan& result_plan,
-  ObString& column_name, 
-  TableItem* table_item, 
+  ObString& column_name,
+  TableItem* table_item,
   ObRawExpr*& ret_expr) const
 {
   ObSqlRawExpr  *sql_expr;
@@ -174,7 +175,7 @@ int ObSelectStmt::check_having_ident(
   if (logical_plan == NULL)
   {
     ret = OB_ERR_LOGICAL_PLAN_FAILD;
-    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG, 
+    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
               "Wrong invocation of ObStmt::add_table_item, logical_plan must exist!!!");
   }
 
@@ -185,7 +186,7 @@ int ObSelectStmt::check_having_ident(
     if (schema_checker == NULL)
     {
       ret = OB_ERR_SCHEMA_UNSET;
-      snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG, 
+      snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
               "Schema(s) are not set");
     }
   }
@@ -224,7 +225,7 @@ int ObSelectStmt::check_having_ident(
         if (ret_expr)
         {
           ret = OB_ERR_COLUMN_AMBIGOUS;
-          snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG, 
+          snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
               "column %.*s of having clause is ambiguous", column_name.length(), column_name.ptr());
           parse_free(ret_expr);
           ret_expr = NULL;
@@ -257,7 +258,7 @@ int ObSelectStmt::check_having_ident(
       }
     }
   }
-  
+
   // No non-duplicated ident found
   if (ret == OB_SUCCESS && ret_expr == NULL)
   {
@@ -268,13 +269,13 @@ int ObSelectStmt::check_having_ident(
       //ObRawExpr* expr = logical_plan->get_expr(group_expr_ids_[i])->get_expr();
       if (expr->get_expr_type() != T_REF_COLUMN)
         continue;
-      
+
       ObBinaryRefRawExpr* col_expr = dynamic_cast<ObBinaryRefRawExpr *>(expr);
       // Only need to check original columns, alias columns are already checked before
       if (table_item == NULL || table_item->table_id_ == col_expr->get_first_ref_id())
       {
         ColumnItem* column_item = get_column_item_by_id(
-                                      col_expr->get_first_ref_id(), 
+                                      col_expr->get_first_ref_id(),
                                       col_expr->get_second_ref_id());
         if (column_item && column_name == column_item->column_name_)
         {
@@ -293,7 +294,7 @@ int ObSelectStmt::check_having_ident(
   if (ret == OB_SUCCESS && ret_expr == NULL)
   {
     ret = OB_ERR_COLUMN_UNKNOWN;
-    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG, 
+    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
         "Unknown %.*s in having clause", column_name.length(), column_name.ptr());
   }
   return ret;
@@ -308,7 +309,10 @@ int ObSelectStmt::copy_select_items(ObSelectStmt* select_stmt)
   {
     const SelectItem& select_item = select_stmt->get_select_item(i);
     new_select_item.expr_id_ = select_item.expr_id_;
-    ret = alloc_str_by_obstring(select_item.alias_name_, new_select_item.alias_name_, name_pool_);
+    new_select_item.type_ = select_item.type_;
+    ret = ob_write_string(*name_pool_, select_item.alias_name_, new_select_item.alias_name_);
+    if (ret == OB_SUCCESS)
+      ret = ob_write_string(*name_pool_, select_item.expr_name_, new_select_item.expr_name_);
     if (ret == OB_SUCCESS)
       ret = select_items_.push_back(new_select_item);
   }
@@ -318,7 +322,7 @@ int ObSelectStmt::copy_select_items(ObSelectStmt* select_stmt)
 void ObSelectStmt::print(FILE* fp, int32_t level, int32_t index)
 {
   int32_t i;
-  
+
   print_indentation(fp, level);
   fprintf(fp, "ObSelectStmt %d Begin\n", index);
   ObStmt::print(fp, level);
@@ -411,7 +415,7 @@ void ObSelectStmt::print(FILE* fp, int32_t level, int32_t index)
       }
       fprintf(fp, "\n");
     }
-    
+
   }
   else
   {
@@ -453,28 +457,26 @@ void ObSelectStmt::print(FILE* fp, int32_t level, int32_t index)
     else
       fprintf(fp, ", ");
     OrderItem& item = order_items_[i];
-    fprintf(fp, "<%lu, %s>", item.expr_id_, 
+    fprintf(fp, "<%lu, %s>", item.expr_id_,
       item.order_type_ == OrderItem::ASC ? "ASC" : "DESC");
     if (i == order_items_.size() - 1)
       fprintf(fp, "\n");
   }
 
-  if (limit_ != -1 || offset_ != 0)
+  if (has_limit())
   {
     print_indentation(fp, level);
     fprintf(fp, "LIMIT ::= <");
-    if (limit_ == -1)
+    if (limit_count_id_ == OB_INVALID_ID)
       fprintf(fp, "NULL, ");
     else
-      fprintf(fp, "%lu, ", limit_);
-    if (offset_ == 0)
+      fprintf(fp, "%lu, ", limit_count_id_);
+    if (limit_offset_id_ == OB_INVALID_ID)
       fprintf(fp, "NULL>\n");
     else
-      fprintf(fp, "%lu>\n", offset_);
+      fprintf(fp, "%lu>\n", limit_offset_id_);
   }
-  
+
   print_indentation(fp, level);
   fprintf(fp, "ObSelectStmt %d End\n", index);
 }
-
-

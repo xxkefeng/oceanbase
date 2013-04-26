@@ -1254,21 +1254,6 @@ TEST(Test_ob_composite_column, ii_test)
   result.get_bool(b);
   ASSERT_EQ(b, true);
 
-
-  build_polish_expr_simple_is_ii(arr);
-  column.set_expression(arr,data_buf);
-  column.calc_composite_val(result, ca, 0, 1);  /* 0 is 1 */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
-
-
-  build_polish_expr_simple_is_not_ii(arr);
-  column.set_expression(arr,data_buf);
-  column.calc_composite_val(result, ca, 0, 1);  /* 0 is not 1 */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
-
-
   build_polish_expr_simple_is_ic(arr);
   column.set_expression(arr,data_buf);  
   column.calc_composite_val(result, ca, 0, 1);  /* 0 is NULL */
@@ -1409,45 +1394,36 @@ TEST(Test_ob_composite_column, null_test)
   build_polish_expr_simple_is_not_ic(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 1);  /* 0 is not NULL */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
-
 
   build_polish_expr_simple_eq_ii(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* NULL == NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_le_ii(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* NULL <= NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_ge_ii(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* NULL >= NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_ne_ii(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* NULL != NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_lt_ii(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* NULL < NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_gt_ii(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* NULL > NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
+  ASSERT_TRUE(result.is_null());
 
 
 
@@ -1493,38 +1469,32 @@ TEST(Test_ob_composite_column, null_ic_test)
   build_polish_expr_simple_eq_ic(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 1);  /* NULL == NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_le_ic(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 1);  /* NULL <= NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_ge_ic(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 1);  /* NULL >= NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_ne_ic(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 1);  /* NULL != NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_lt_ic(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 1);  /* NULL < NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_gt_ic(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 1);  /* NULL > NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
+  ASSERT_TRUE(result.is_null());
 
   
   
@@ -1536,41 +1506,32 @@ TEST(Test_ob_composite_column, null_ic_test)
   build_polish_expr_simple_eq_icons(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* 0 == NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_le_icons(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* 0 >= NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_ge_icons(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* 0 <= NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_ne_icons(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* 0 != NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_lt_icons(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* 0 > NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, true);
+  ASSERT_TRUE(result.is_null());
 
   build_polish_expr_simple_gt_icons(arr);
   column.set_expression(arr,data_buf);
   column.calc_composite_val(result, ca, 0, 2);  /* 0 < NULL  */
-  result.get_bool(b);
-  ASSERT_EQ(b, false);
-
-
-
+  ASSERT_TRUE(result.is_null());
 }
 
 
@@ -2305,7 +2266,6 @@ TEST(Test_ob_composite_column, composite_test_null_like_pattern)
 	ObObj result;
   ObCellArray org_cell_array;
   int64_t beg = 0, end = 0;
-  bool b = false;
  
   ObCompositeColumn column;
 
@@ -2317,8 +2277,7 @@ TEST(Test_ob_composite_column, composite_test_null_like_pattern)
   ret = column.calc_composite_val(result, org_cell_array, beg = 0, end = 0);
   ASSERT_EQ(OB_SUCCESS, ret);
   /* null like 'col' */
-  ASSERT_EQ(OB_SUCCESS, result.get_bool(b));
-  ASSERT_EQ(b, false);  
+  ASSERT_TRUE(result.is_null());
 }
 
 
@@ -3595,61 +3554,6 @@ TEST(Test_ob_composite_column, calc_test_4)
   EXPECT_EQ(OB_SUCCESS, column.calc_composite_val(result, cells, 0, 0));
   ASSERT_EQ(OB_SUCCESS, result.get_bool(b));
   ASSERT_EQ(b, false);
-
-  expr = (char*)"'home' is 'home'";
-  str.assign(expr, static_cast<int32_t>(strlen(expr)));
-  EXPECT_EQ(OB_SUCCESS, postexpr.set_expression(str, name_to_idx_map, parser));
-  expr_array = postexpr.get_expression();
-  EXPECT_EQ(OB_SUCCESS, column.set_expression(expr_array, data_buf));
-  EXPECT_EQ(OB_SUCCESS, column.calc_composite_val(result, cells, 0, 0));
-  ASSERT_EQ(OB_SUCCESS, result.get_bool(b));
-  ASSERT_EQ(b, true);
-
-  expr = (char*)"'home' is 3";
-  str.assign(expr, static_cast<int32_t>(strlen(expr)));
-  EXPECT_EQ(OB_SUCCESS, postexpr.set_expression(str, name_to_idx_map, parser));
-  expr_array = postexpr.get_expression();
-  EXPECT_EQ(OB_SUCCESS, column.set_expression(expr_array, data_buf));
-  EXPECT_EQ(OB_SUCCESS, column.calc_composite_val(result, cells, 0, 0));
-  ASSERT_EQ(OB_SUCCESS, result.get_bool(b));
-  ASSERT_EQ(b, false);
-
-
-  expr = (char*)"3.0 is 'home'";
-  str.assign(expr, static_cast<int32_t>(strlen(expr)));
-  EXPECT_EQ(OB_SUCCESS, postexpr.set_expression(str, name_to_idx_map, parser));
-  expr_array = postexpr.get_expression();
-  EXPECT_EQ(OB_SUCCESS, column.set_expression(expr_array, data_buf));
-  EXPECT_EQ(OB_SUCCESS, column.calc_composite_val(result, cells, 0, 0));
-  ASSERT_EQ(OB_SUCCESS, result.get_bool(b));
-  ASSERT_EQ(b, false);
-
-  expr = (char*)"3.0 is 3";
-  str.assign(expr, static_cast<int32_t>(strlen(expr)));
-  EXPECT_EQ(OB_SUCCESS, postexpr.set_expression(str, name_to_idx_map, parser));
-  expr_array = postexpr.get_expression();
-  EXPECT_EQ(OB_SUCCESS, column.set_expression(expr_array, data_buf));
-  EXPECT_EQ(OB_SUCCESS, column.calc_composite_val(result, cells, 0, 0));
-  ASSERT_EQ(OB_SUCCESS, result.get_bool(b));
-  ASSERT_EQ(b, false);
-
-  expr = (char*)"3.0 is 3.0";
-  str.assign(expr, static_cast<int32_t>(strlen(expr)));
-  EXPECT_EQ(OB_SUCCESS, postexpr.set_expression(str, name_to_idx_map, parser));
-  expr_array = postexpr.get_expression();
-  EXPECT_EQ(OB_SUCCESS, column.set_expression(expr_array, data_buf));
-  EXPECT_EQ(OB_SUCCESS, column.calc_composite_val(result, cells, 0, 0));
-  ASSERT_EQ(OB_SUCCESS, result.get_bool(b));
-  ASSERT_EQ(b, true);
-
-  expr = (char*)"3-1.0 is 2.0";
-  str.assign(expr, static_cast<int32_t>(strlen(expr)));
-  EXPECT_EQ(OB_SUCCESS, postexpr.set_expression(str, name_to_idx_map, parser));
-  expr_array = postexpr.get_expression();
-  EXPECT_EQ(OB_SUCCESS, column.set_expression(expr_array, data_buf));
-  EXPECT_EQ(OB_SUCCESS, column.calc_composite_val(result, cells, 0, 0));
-  ASSERT_EQ(OB_SUCCESS, result.get_bool(b));
-  ASSERT_EQ(b, true); 
 }
 
 TEST(Test_ob_composite_column, calc_test_5)

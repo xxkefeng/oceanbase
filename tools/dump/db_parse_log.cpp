@@ -107,6 +107,7 @@ int DbLogParser::parse_log(int64_t log_id)
   while (OB_SUCCESS == ret) {
     int64_t pos = 0;
 
+    //TODO: when meet ups switch commitlog, refresh schema 
     if (OB_LOG_UPS_MUTATOR == cmd) {
       ObUpsMutator mut;
 
@@ -201,7 +202,9 @@ void DbLogParser::run(tbsys::CThread *thread, void *args)
   UNUSED(thread);
   UNUSED(args);
 
+  TBSYS_LOG(INFO, "starting log parser thread");
   while (running_ == true && (ret = monitor_->fetch_log(log_id)) == OB_SUCCESS) {
+    TBSYS_LOG(INFO, "succeed fetch a log, id=%ld", log_id);
     ret = parse_log(log_id);
     if (ret != OB_SUCCESS) {
       //get log file from nas directly

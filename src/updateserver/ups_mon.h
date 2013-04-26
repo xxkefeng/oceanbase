@@ -16,9 +16,9 @@
 #define OCEANBASE_UPDATESERVER_UPS_MON_H_
 
 #include "tbsys.h"
-#include "tbnet.h"
 #include "common/ob_define.h"
 #include "common/ob_server.h"
+#include "common/ob_base_client.h"
 #include "common/ob_client_manager.h"
 #include "common/ob_packet_factory.h"
 #include "common/ob_result.h"
@@ -62,27 +62,6 @@ namespace oceanbase
       static const char* DEFAULT_LOG_LEVEL;
     }; // end class UpsMon
 
-    class BaseClient
-    {
-    public:
-      BaseClient();
-      virtual ~BaseClient();
-    public:
-      virtual int initialize();
-      virtual int destroy();
-      virtual int wait();
-      
-      inline common::ObClientManager * get_client_mgr()
-      {
-        return &client_;
-      }
-
-    private:
-      tbnet::DefaultPacketStreamer streamer_;
-      tbnet::Transport transport_;
-      common::ObPacketFactory factory_;
-      common::ObClientManager client_;
-    }; // end class BaseClient
   } // end namespace updateserver
 } // end namespace oceanbase
 

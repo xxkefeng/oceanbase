@@ -19,7 +19,7 @@
 #include "common/ob_composite_column.h"
 #include "common/ob_array_helper.h"
 #include "common/ob_scanner.h"
-#include "common/ob_range.h"
+#include "common/ob_range2.h"
 namespace oceanbase
 {
   namespace mergeserver
@@ -31,8 +31,8 @@ namespace oceanbase
       ~ObMergerGroupByOperator();
 
       int set_param(const int64_t max_memory_size, const common::ObScanParam & param);
-      int add_sharding_result(common::ObScanner & sharding_res,
-        const common::ObRange & query_range, const int64_t limit_offset, bool &is_finish);
+      int add_sharding_result(common::ObScanner & sharding_res, 
+        const common::ObNewRange & query_range, const int64_t limit_offset, bool &is_finish);
 
       int seal();
 

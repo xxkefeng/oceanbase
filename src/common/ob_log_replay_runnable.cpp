@@ -171,3 +171,8 @@ void ObLogReplayRunnable::get_cur_replay_point(int64_t& log_file_id, int64_t& lo
   log_seq_id = log_reader_.get_last_log_seq_id() + 1;
   log_offset = log_reader_.get_last_log_offset();
 }
+
+int ObLogReplayRunnable::get_replayed_cursor(ObLogCursor& replay_cursor)
+{
+  return log_reader_.get_next_cursor(replay_cursor);
+}

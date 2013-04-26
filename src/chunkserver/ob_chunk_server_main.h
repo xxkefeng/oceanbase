@@ -1,28 +1,26 @@
 /*
  *   (C) 2007-2010 Taobao Inc.
- *   
- *         
+ *
+ *
  *   Version: 0.1 2010-8-12
- *           
+ *
  *   Authors:
  *      qushan <qushan@taobao.com>
- *               
+ *
  */
 #ifndef OCEANBASE_CHUNKSERVER_CHUNKSERVERMAIN_H_
 #define OCEANBASE_CHUNKSERVER_CHUNKSERVERMAIN_H_
 
 #include "common/base_main.h"
+#include "common/ob_version.h"
+#include "common/ob_config_manager.h"
 #include "ob_chunk_server.h"
+#include "ob_chunk_server_config.h"
 
-extern const char* svn_version();
-extern const char* build_date();
-extern const char* build_time();
-
-namespace oceanbase 
-{ 
+namespace oceanbase
+{
   namespace chunkserver
   {
-
 
     class ObChunkServerMain : public common::BaseMain
     {
@@ -39,7 +37,9 @@ namespace oceanbase
       protected:
         virtual void print_version();
       private:
+        ObChunkServerConfig cs_config_;
         ObChunkServer server_;
+        ObConfigManager config_mgr_;
     };
 
 

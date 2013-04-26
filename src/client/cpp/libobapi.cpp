@@ -701,18 +701,6 @@ int64_t ob_fetch_whole_res_row_num(OB_RES* ob_res)
   return num;
 }
 
-int64_t ob_fetch_res_is_precision(OB_RES* ob_res)
-{
-  OB_ERR_CODE err_code = OB_ERR_SUCCESS;
-  int64_t ret = 0;
-  ENSURE_COND(NULL != ob_res);
-  if (OB_ERR_SUCCESS == err_code)
-  {
-    ret = ob_res->scanner.front().get_is_result_precision() ? 1 : 0;
-  }
-  return ret;
-}
-
 int ob_is_fetch_all_res(OB_RES* ob_res)
 {
   OB_ERR_CODE err_code = OB_ERR_SUCCESS;

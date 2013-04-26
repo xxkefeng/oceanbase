@@ -43,6 +43,7 @@ namespace oceanbase
         // Gets the current cell.
         virtual int get_cell(T** cell) = 0;
         virtual int get_cell(T** cell, bool* is_row_changed) = 0;
+        virtual int is_row_finished(bool* is_row_finished) {UNUSED(is_row_finished); return OB_NOT_IMPLEMENT;};
     };
     typedef ObIteratorTmpl<ObCellInfo> ObIterator;
     typedef ObIteratorTmpl<ObInnerCellInfo> ObInnerIterator;

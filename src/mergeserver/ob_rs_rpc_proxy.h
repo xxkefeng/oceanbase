@@ -2,8 +2,12 @@
 #define _OB_MERGER_RS_RPC_PROXY_H_
 
 #include "tbsys.h"
-#include "common/ob_string.h"
+#include "common/ob_rowkey.h"
 #include "common/ob_server.h"
+#include "common/ob_schema_service.h"
+#include "common/location/ob_tablet_location_list.h"
+#include "common/ob_strings.h"
+#include "common/ob_general_rpc_proxy.h"
 
 namespace oceanbase
 {
@@ -11,61 +15,70 @@ namespace oceanbase
   {
     class ObString;
     class ObServer;
+    class ObNewRange;
+    class ObRowkey;
     class ObSchemaManagerV2;
+    class ObMergerSchemaManager;
+    class ObTabletLocationList;
+    class ObTabletLocationCache;
+    class ObGeneralRpcStub;
   };
 
   namespace mergeserver
   {
     // root server rpc proxy
-    class ObMergerRpcStub;
-    class ObMergerSchemaManager;
-    class ObMergerTabletLocationList;
-    class ObMergerTabletLocationCache;
-    class ObMergerRootRpcProxy
+    class ObMergerRootRpcProxy : public common::ObGeneralRootRpcProxy
     {
     public:
       ObMergerRootRpcProxy(const int64_t retry_times, const int64_t timeout,
           const common::ObServer & root);
       virtual ~ObMergerRootRpcProxy();
-    
+
     public:
       // retry interval time
       static const int64_t RETRY_INTERVAL_TIME = 20; // 20 ms usleep
+      static const int64_t CREATE_DROP_TABLE_TIME_OUT = 5 * 1000 * 1000; // 5s
       ///
-      int init(ObMergerRpcStub * rpc_stub);
-    
-      // register merge server
-      // param  @merge_server localhost merge server addr
-      int register_merger(const common::ObServer & merge_server);
-      
+      int init(common::ObGeneralRpcStub *rpc_stub);
+
       // merge server heartbeat with root server
       // param  @merge_server localhost merge server addr
       int async_heartbeat(const common::ObServer & merge_server);
-    
+
       // fetch newest schema
-      int fetch_newest_schema(ObMergerSchemaManager * schem_manager, 
+      int fetch_newest_schema(common::ObMergerSchemaManager * schema_manager,
           const common::ObSchemaManagerV2 ** manager);
 
       // fetch current schema version
       int fetch_schema_version(int64_t & timestamp);
-    
+
+      // create table
+      int create_table(bool if_not_exists, const common::TableSchema & table_schema);
+      // drop tables
+      int drop_table(bool if_exists, const common::ObStrings & tables);
+      // alter table
+      int alter_table(const common::AlterTableSchema & alter_schema);
     public:
       // scan tablet location through root_server rpc call
-      // param  @table_id table id of root table 
+      // param  @table_id table id of root table
       //        @row_key row key included in tablet range
       //        @location tablet location
-      int scan_root_table(ObMergerTabletLocationCache * cache, 
-          const uint64_t table_id, const common::ObString & row_key,
-          const common::ObServer & server, ObMergerTabletLocationList & location);
-    
+      virtual int scan_root_table(ObTabletLocationCache * cache,
+          const uint64_t table_id, const common::ObRowkey & row_key,
+          const common::ObServer & server, ObTabletLocationList & location);
     private:
       // check inner stat
       bool check_inner_stat(void) const;
-    
+      // ok find a tablet item
+      void find_tablet_item(const uint64_t table_id, const common::ObRowkey & row_key,
+          const common::ObRowkey & start_key, const common::ObRowkey & end_key,
+          const common::ObServer & addr, common::ObNewRange & range, bool & find,
+          ObTabletLocationList & list, ObTabletLocationList & location);
+
     private:
       int64_t rpc_timeout_;                         // rpc call timeout
       int64_t rpc_retry_times_;                     // rpc retry times
-      const ObMergerRpcStub * rpc_stub_;            // rpc stub bottom module
+      const common::ObGeneralRpcStub *rpc_stub_;    // rpc stub bottom module
       common::ObServer root_server_;
     };
 
@@ -77,4 +90,3 @@ namespace oceanbase
 }
 
 #endif //_OB_MERGER_RS_RPC_PROXY_H_
-

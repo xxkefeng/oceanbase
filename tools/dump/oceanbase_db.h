@@ -26,10 +26,23 @@
 #include "common/ob_schema.h"
 #include "common/ob_mutator.h"
 #include "common/ob_object.h"
+#include "common/ob_base_client.h"
 #include "db_table_info.h"
 #include <string>
 #include <map>
 #include <vector>
+
+#define RPC_WITH_RETIRES(RPC, retries, RET) {                                                       \
+  int __RPC_LOCAL_INDEX__ = 0;                                                                      \
+  while (__RPC_LOCAL_INDEX__++ < retries) {                                                         \
+    (RET) = (RPC);                                                                                  \
+    if ((RET) != 0) {                                                                               \
+      TBSYS_LOG(WARN, "call {%s} failed, ret = %d, retry = %d", #RPC, (RET), __RPC_LOCAL_INDEX__);  \
+    } else {                                                                                        \
+      break;                                                                                        \
+    }                                                                                               \
+  }                                                                                                 \
+}
 
 namespace oceanbase {
   namespace api {
@@ -53,157 +66,175 @@ namespace oceanbase {
         int add(const std::string &column_name, const ObObj &val);
 
         int32_t op() const { return op_; }
-      private:
-        RowMutator(const std::string &table_name, const ObString &rowkey, 
-                   DbTranscation *tnx);
 
+        RowMutator();
+        RowMutator(const std::string &table_name, const ObRowkey &rowkey, 
+            DbTranscation *tnx);
+
+      private:
+        
         void set_op(int32_t op) { op_ = op; }
+        void set(const std::string &table_name, const ObRowkey &rowkey, 
+            DbTranscation *tnx);
 
         std::string table_name_;
-        std::string rowkey_;
+        ObRowkey rowkey_;
         DbTranscation *tnx_;
         int32_t op_;
     };
 
     class DbTranscation {
-      friend class RowMutator;
-      friend class OceanbaseDb;
       public:
-      int insert_mutator(const char* table_name, const ObString &rowkey, RowMutator *&mutator);
-      int update_mutator(const char* table_name, const ObString &rowkey, RowMutator *&mutator);
+        friend class RowMutator;
+        friend class OceanbaseDb;
+      public:
+        DbTranscation();
+        DbTranscation(OceanbaseDb *db);
 
-      int free_row_mutator(RowMutator *&mutator);
+        int insert_mutator(const char* table_name, const ObRowkey &rowkey, RowMutator *mutator);
+        int update_mutator(const char* table_name, const ObRowkey &rowkey, RowMutator *mutator);
 
-      int commit();
-      int abort();
+        int free_row_mutator(RowMutator *&mutator);
+
+        int commit();
+        int abort();
+        int reset();
+        inline void set_db(OceanbaseDb *db)
+        {
+          db_ = db;
+          assert(db_ != NULL);
+        }
 
       private:
-      DbTranscation(OceanbaseDb *db);
-      int add_cell(ObMutatorCellInfo &cell);
+        int add_cell(ObMutatorCellInfo &cell);
 
-      OceanbaseDb *db_;
-      ObMutator mutator_;
+        OceanbaseDb *db_;
+        ObMutator mutator_;
     };
 
     struct DbMutiGetRow {
       DbMutiGetRow() :columns(NULL) { }
 
-      ObString rowkey;
-      std::vector<std::string> *columns;
+      ObRowkey rowkey;
+      const std::vector<std::string> *columns;
       std::string table;
     };
 
     class OceanbaseDb {
-      typedef std::map< ObString, TabletInfo> CacheRow;
-      typedef std::map<std::string, CacheRow > CacheSet;
+      private:
+        typedef std::map<ObRowkey, TabletInfo> CacheRow;
+        typedef std::map<std::string, CacheRow > CacheSet;
       public:
-      struct DbStats {
-        int64_t total_succ_gets;
-        int64_t total_fail_gets;
-        int64_t total_send_bytes;
-        int64_t total_recv_bytes;
-        int64_t total_succ_apply;
-        int64_t total_fail_apply;
+        struct DbStats {
+          int64_t total_succ_gets;
+          int64_t total_fail_gets;
+          int64_t total_send_bytes;
+          int64_t total_recv_bytes;
+          int64_t total_succ_apply;
+          int64_t total_fail_apply;
 
-        DbStats() {
-          memset(this, 0, sizeof(DbStats));
-        }
-      };
+          DbStats() {
+            memset(this, 0, sizeof(DbStats));
+          }
+        };
 
       public:
-      static const uint64_t kTabletTimeout = 10;
-      friend class DbTranscation;
+        static const uint64_t kTabletTimeout = 10;
+        friend class DbTranscation;
       public:
-      OceanbaseDb(const char *ip, unsigned short port, int64_t timeout = kDefaultTimeout, 
-                  uint64_t tablet_timeout = kTabletTimeout);
-      ~OceanbaseDb();
+        OceanbaseDb(const char *ip, unsigned short port, int64_t timeout = kDefaultTimeout, 
+            uint64_t tablet_timeout = kTabletTimeout);
+        ~OceanbaseDb();
 
-      int get(std::string &table, std::vector<std::string> &columns,
-              const DbRowKey &rowkey, DbRecordSet &rs);
+        int get(const std::string &table, const std::vector<std::string> &columns,
+            const ObRowkey &rowkey, DbRecordSet &rs);
 
-      int get(std::string &table, std::vector<std::string> &columns,
-              const std::vector<DbRowKey> &rowkeys, DbRecordSet &rs);
+        int get(const std::string &table, const std::vector<std::string> &columns,
+            const std::vector<ObRowkey> &rowkeys, DbRecordSet &rs);
 
-      int get(const std::vector<DbMutiGetRow> &rows, DbRecordSet &rs);
+        int get(const std::vector<DbMutiGetRow> &rows, DbRecordSet &rs);
 
-      int init();
-      static int global_init(const char*log_dir, const char *level);
-      int get_ms_location(const DbRowKey &row_key, const std::string &table_name);
+        int init();
+        static int global_init(const char*log_dir, const char *level);
+        int get_ms_location(const ObRowkey &row_key, const std::string &table_name);
 
-      int get_tablet_location(const std::string &table, const DbRowKey &rowkey, 
-                              common::ObServer &server);
+        int get_tablet_location(const std::string &table, const ObRowkey &rowkey, 
+            common::ObServer &server);
 
-      int fetch_schema(common::ObSchemaManagerV2& schema_manager);
+        int fetch_schema(common::ObSchemaManagerV2& schema_manager);
 
-      int search_tablet_cache(const std::string &table, const DbRowKey &rowkey, TabletInfo &loc);
-      void insert_tablet_cache(const std::string &table, const DbRowKey &rowkey, TabletInfo &tablet);
+        int search_tablet_cache(const std::string &table, const ObRowkey &rowkey, TabletInfo &loc);
+        void insert_tablet_cache(const std::string &table, const ObRowkey &rowkey, TabletInfo &tablet);
 
-      DbStats db_stats() const { return db_stats_; }
+        DbStats db_stats() const { return db_stats_; }
 
-      int start_tnx(DbTranscation *&tnx);
-      void end_tnx(DbTranscation *&tnx);
+        int start_tnx(DbTranscation *&tnx);
+        void end_tnx(DbTranscation *&tnx);
 
-      int get_update_server(ObServer &server);
+        int get_update_server(ObServer &server);
 
-      void set_consistency(bool consistency) { consistency_ = consistency; }
+        void set_consistency(bool consistency) { consistency_ = consistency; }
 
-      bool get_consistency() const { return consistency_; }
+        bool get_consistency() const { return consistency_; }
 
-      int scan(const TabletInfo &tablets, const std::string &table, const std::vector<std::string> &columns, 
-               const DbRowKey &start_key, const DbRowKey &end_key, DbRecordSet &rs, int64_t version = 0, 
-               bool inclusive_start = false, bool inclusive_end = true);
+        int scan(const TabletInfo &tablets, const std::string &table, const std::vector<std::string> &columns, 
+            const ObRowkey &start_key, const ObRowkey &end_key, DbRecordSet &rs, int64_t version = 0, 
+            bool inclusive_start = false, bool inclusive_end = true);
 
-      int scan(const std::string &table, const std::vector<std::string> &columns, 
-               const DbRowKey &start_key, const DbRowKey &end_key, DbRecordSet &rs, int64_t version = 0, 
-               bool inclusive_start = false, bool inclusive_end = true);
+        int scan(const std::string &table, const std::vector<std::string> &columns, 
+            const ObRowkey &start_key, const ObRowkey &end_key, DbRecordSet &rs, int64_t version = 0, 
+            bool inclusive_start = false, bool inclusive_end = true);
 
-      int get_memtable_version(int64_t &version);
+        int get_memtable_version(int64_t &version);
+
+        int set_limit_info(const int64_t offset, const int64_t count);
 
       private:
-      int init_get_param(ObGetParam *&param, const std::vector<DbMutiGetRow> &rows);
+        int init_get_param(ObGetParam *&param, const std::vector<DbMutiGetRow> &rows);
 
-      int do_server_get(common::ObServer &server, 
-                        const DbRowKey& row_key, common::ObScanner &scanner, 
-                        common::ObDataBuffer& data_buff, const std::string &table_name, 
-                        std::vector<std::string> &columns);
+        int do_server_get(common::ObServer &server, 
+            const ObRowkey& row_key, common::ObScanner &scanner, 
+            common::ObDataBuffer& data_buff, const std::string &table_name, 
+            const std::vector<std::string> &columns);
 
-      int do_muti_get(common::ObServer &server, const std::vector<DbMutiGetRow>& rows, 
-                      ObScanner &scanner, ObDataBuffer& data_buff);
+        int do_muti_get(common::ObServer &server, const std::vector<DbMutiGetRow>& rows, 
+            ObScanner &scanner, ObDataBuffer& data_buff);
 
-      common::ObScanParam *get_scan_param(const std::string &table, const std::vector<std::string>& columns,
-                                          const DbRowKey &start_key, const DbRowKey &end_key,
-                                          bool inclusive_start = false, bool inclusive_end = true,
-                                          int64_t data_version = 0);
+        common::ObScanParam *get_scan_param(const std::string &table, const std::vector<std::string>& columns,
+            const ObRowkey &start_key, const ObRowkey &end_key,
+            bool inclusive_start = false, bool inclusive_end = true,
+            int64_t data_version = 0);
 
-      void free_tablet_cache();
-      void mark_ms_failure(ObServer &server, const std::string &table, const ObString &rowkey);
-      void try_mark_server_fail(TabletInfo &tablet_info, ObServer &server, bool &do_erase_tablet);
+        void free_tablet_cache();
+        void mark_ms_failure(ObServer &server, const std::string &table, const ObRowkey &rowkey);
+        void try_mark_server_fail(TabletInfo &tablet_info, ObServer &server, bool &do_erase_tablet);
 
-      int do_server_cmd(const ObServer &server, const int32_t opcode, 
-                        ObDataBuffer &inout_buffer, int64_t &pos);
+        int do_server_cmd(const ObServer &server, const int32_t opcode, 
+            ObDataBuffer &inout_buffer, int64_t &pos);
 
-      //reference count of db handle
-      void unref() { __sync_fetch_and_sub(&db_ref_, 1); }
-      void ref() { __sync_fetch_and_add (&db_ref_, 1); }
+        //reference count of db handle
+        void unref() { __sync_fetch_and_sub(&db_ref_, 1); }
+        void ref() { __sync_fetch_and_add (&db_ref_, 1); }
 
-      common::ObServer root_server_;
-      common::ObServer update_server_;
-      tbnet::Transport transport_;
-      common::ObPacketFactory packet_factory_;
-      tbnet::DefaultPacketStreamer streamer_;
-      common::ObClientManager client_;
+        common::ObServer root_server_;
+        common::ObServer update_server_;
+        common::ObBaseClient client_;
 
-      CacheSet cache_set_;
-      tbsys::CThreadMutex cache_lock_;
+        CacheSet cache_set_;
+        tbsys::CThreadMutex cache_lock_;
 
-      uint64_t tablet_timeout_;
-      int64_t timeout_;
-      bool inited_;
+        uint64_t tablet_timeout_;
+        int64_t timeout_;
+        bool inited_;
 
-      DbStats db_stats_;
+        DbStats db_stats_;
 
-      int64_t db_ref_;
-      bool consistency_;
+        int64_t db_ref_;
+        bool consistency_;
+
+        int64_t limit_offset_;
+        /// 0 means not limit
+        int64_t limit_count_;
     };
   }
 }

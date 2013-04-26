@@ -52,13 +52,14 @@ namespace oceanbase
         int64_t log_file_max_size = 1L << 24;
         uint64_t log_file_max_id = 1100;
         uint64_t log_max_seq = 22000;
+        ObLogCursor start_cursor;
 
         SlaveMgr4Test sm4t;
 
         uint64_t new_log_file_id;
         ObLogWriter log_writer;
         ASSERT_EQ(OB_SUCCESS, log_writer.init(log_dir, log_file_max_size, sm4t.get_slave_mgr(), 0));
-        ASSERT_EQ(OB_SUCCESS, log_writer.start_log(log_file_max_id, log_max_seq));
+        ASSERT_EQ(OB_SUCCESS, log_writer.start_log(set_cursor(start_cursor, log_file_max_id, log_max_seq, 0)));
         ASSERT_EQ(OB_SUCCESS, log_writer.switch_log_file(new_log_file_id));
         ASSERT_EQ(OB_SUCCESS, log_writer.switch_log_file(new_log_file_id));
         ASSERT_EQ(OB_SUCCESS, log_writer.write_log(OB_LOG_UPS_MUTATOR, lf, 100));
@@ -137,7 +138,7 @@ namespace oceanbase
 
         ObLogWriter *log_writer2 = new ObLogWriter();
         ASSERT_EQ(OB_SUCCESS, log_writer2->init(log_dir, log_file_max_size, sm4t.get_slave_mgr(), 0));
-        ASSERT_EQ(OB_SUCCESS, log_writer2->start_log(log_file_max_id - 10, log_max_seq));
+        ASSERT_EQ(OB_SUCCESS, log_writer2->start_log(set_cursor(start_cursor, log_file_max_id - 10, log_max_seq, 0)));
         ASSERT_EQ(OB_SUCCESS, log_writer2->write_log(OB_LOG_UPS_MUTATOR, lf, 100));
         ASSERT_EQ(OB_SUCCESS, log_writer2->flush_log());
         ASSERT_EQ(OB_SUCCESS, log_writer2->switch_log_file(new_log_file_id));

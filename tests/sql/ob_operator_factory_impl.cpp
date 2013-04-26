@@ -21,9 +21,9 @@ using namespace sql;
 using namespace test;
 
 
-ObSstableScan *ObOperatorFactoryImpl::new_sstable_scan()
+ObSSTableScanInterface *ObOperatorFactoryImpl::new_sstable_scan()
 {
-  return new ObFakeSstableScan("./tablet_scan_test_data/table1.ini");
+  return new ObFakeSSTableScan("./tablet_scan_test_data/table1.ini");
 }
 
 ObUpsScan *ObOperatorFactoryImpl::new_ups_scan()

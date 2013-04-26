@@ -51,25 +51,18 @@ void check_obj(const ObObj& expected, const ObObj& real)
   // TODO
 }
 
-void check_range(const ObRange& expected, const ObRange& real)
-{
-  check_string(expected.end_key_, real.end_key_);
-  check_string(expected.start_key_, real.start_key_);
-  EXPECT_EQ(expected.border_flag_.inclusive_start(), real.border_flag_.inclusive_start());
-  EXPECT_EQ(expected.border_flag_.inclusive_end(), real.border_flag_.inclusive_end());
-}
 
 void check_cell(const ObCellInfo& expected, const ObCellInfo& real)
 {
   EXPECT_EQ(expected.column_id_, real.column_id_);
   EXPECT_EQ(expected.table_id_, real.table_id_);
-  check_string(expected.row_key_, real.row_key_);
+  EXPECT_EQ(expected.row_key_, real.row_key_);
 }
 
 void check_cell_with_name(const ObCellInfo& expected, const ObCellInfo& real)
 {
   check_string(expected.table_name_, real.table_name_);
-  check_string(expected.row_key_, real.row_key_);
+  EXPECT_EQ(expected.row_key_, real.row_key_);
   check_string(expected.column_name_, real.column_name_);
 }
 

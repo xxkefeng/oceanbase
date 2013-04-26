@@ -2,7 +2,10 @@
 #include "slice.h"
 
 #include <string>
+#include "common/ob_tsi_factory.h"
 using namespace std;
+using namespace oceanbase;
+using namespace common;
 
 ImportComsumer::ImportComsumer(oceanbase::api::OceanbaseDb *db, ObRowBuilder *builder, const TableParam &param) : param_(param)
 {
@@ -70,11 +73,16 @@ int ImportComsumer::write_bad_record(RecordBlock &rec)
 int ImportComsumer::comsume(RecordBlock &obj)
 {
     Slice slice;
+    int ret = OB_SUCCESS;
 
-    DbTranscation *tnx = NULL;
-    int ret = db_->start_tnx(tnx);
-    if (ret != OB_SUCCESS) {
+    DbTranscation *tnx = GET_TSI_MULT(DbTranscation, 1);
+    if (NULL == tnx) {
+      ret = OB_ERROR;
       TBSYS_LOG(ERROR, "can't create new transcation");
+    }
+    else {
+      tnx->set_db(db_);
+      tnx->reset();
     }
 
     if (ret == OB_SUCCESS) {
@@ -93,8 +101,6 @@ int ImportComsumer::comsume(RecordBlock &obj)
       TBSYS_LOG(ERROR, "error ocurrs, so aborting transcation");
       tnx->abort();                             /* abort always success */
     }
-
-    db_->end_tnx(tnx);
 
     if (ret != OB_SUCCESS) {
       int err = write_bad_record(obj);

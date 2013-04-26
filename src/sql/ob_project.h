@@ -28,15 +28,21 @@ namespace oceanbase
       public:
         ObProject();
         virtual ~ObProject();
-        void reset(){};
+        void reset();
+        void clear();
 
         int add_output_column(const ObSqlExpression& expr);
+        inline int64_t get_output_column_size() const;
+        inline int64_t get_rowkey_cell_count() const;
+        inline void set_rowkey_cell_count(const int64_t count);
         virtual int open();
         virtual int close();
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         void assign(const ObProject &other);
+        const common::ObArray<ObSqlExpression> &get_output_columns() const;
+        virtual ObPhyOperatorType get_type() const;
 
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
@@ -49,13 +55,30 @@ namespace oceanbase
         common::ObArray<ObSqlExpression> columns_;
         common::ObRowDesc row_desc_;
         common::ObRow row_;
+        int64_t rowkey_cell_count_;
     };
-    /*
+
+    inline int64_t ObProject::get_output_column_size() const
+    {
+      return columns_.count();
+    }
+
     inline const common::ObArray<ObSqlExpression> &ObProject::get_output_columns() const
     {
       return columns_;
     }
-    */
+
+    inline int64_t ObProject::get_rowkey_cell_count() const
+    {
+      return rowkey_cell_count_;
+    }
+
+    inline void ObProject::set_rowkey_cell_count(const int64_t count)
+    {
+      rowkey_cell_count_ = count;
+    }
+
+
   } // end namespace sql
 } // end namespace oceanbase
 

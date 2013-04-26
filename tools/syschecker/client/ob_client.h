@@ -14,15 +14,18 @@
 #ifndef OCEANBASE_CLIENT_OB_CLIENT_H_
 #define OCEANBASE_CLIENT_OB_CLIENT_H_
 
-#include "ob_base_client.h"
-#include "ob_server_rpc.h"
+#include "common/ob_base_client.h"
+#include "common/ob_general_rpc_stub.h"
+#include "common/thread_buffer.h"
+#include "common/ob_array.h"
 #include "ob_server_manager.h"
+#include "ob_server_rpc.h"
 
 namespace oceanbase 
 {
   namespace client 
   {
-    class ObClient : public ObBaseClient
+    class ObClient : public common::ObBaseClient
     {
     public:
       ObClient(ObServerManager& servers_mgr);
@@ -49,10 +52,16 @@ namespace oceanbase
                   common::ObScanner& scanner);
 
       // chunk server interface
-      int cs_scan(const common::ObScanParam& scan_param,
-                  common::ObScanner& scanner);
-      int cs_get(const common::ObGetParam& get_param,
-                 common::ObScanner& scanner);
+      int cs_sql_scan(const sql::ObSqlScanParam& scan_param,
+                  common::ObNewScanner& scanner);
+      int cs_sql_get(const sql::ObSqlGetParam& get_param,
+                  common::ObNewScanner& scanner);
+      int get_last_frozen_version(int64_t &version);
+
+    public:
+      int set_ups_by_rs();
+      int set_cs_by_rs();
+      int set_ms_by_rs();
 
     private:
       static const int64_t DEFAULT_TIME_OUT = 2000000; //2s
@@ -61,6 +70,7 @@ namespace oceanbase
       DISALLOW_COPY_AND_ASSIGN(ObClient);
 
       ObServerRpc rpc_stub_;
+      common::ThreadSpecificBuffer thread_buffer_;
       ObServerManager& servers_mgr_;
       int64_t timeout_;
     };

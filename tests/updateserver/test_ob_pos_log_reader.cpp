@@ -76,7 +76,7 @@ namespace oceanbase
           srandom(static_cast<int32_t>(time(NULL)));
           ASSERT_EQ(OB_SUCCESS, log_generator.init(log_buf_size, log_file_max_size));
           ASSERT_EQ(OB_SUCCESS, log_generator.start_log(set_cursor(start_cursor, 1, 1, 0)));
-          ASSERT_EQ(OB_SUCCESS, log_writer.init(log_dir, OB_LOG_SYNC));
+          ASSERT_EQ(OB_SUCCESS, log_writer.init(log_dir, LOG_ALIGN-1, OB_LOG_SYNC));
           ASSERT_EQ(OB_SUCCESS, log_writer.start_log(set_cursor(start_cursor, 1, 1, 0)));
           ASSERT_EQ(OB_SUCCESS, pos_log_reader.init(log_dir, dio));
           err = OB_SUCCESS;

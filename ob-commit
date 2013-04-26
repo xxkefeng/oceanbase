@@ -27,13 +27,13 @@ sub print_help()
 sub print_version()
 {
 	print "ob-commit 1.1.0\n";
-	print "Copyright (C) 2011 Alibaba Group Holding Limited.\n\n";
+	print "Copyright (C) 2011, 2012 Alibaba Group Holding Limited.\n\n";
 	print "Written by Zhifeng YANG <zhuweng.yzf\@taobao.com>.\n";
 }
 
 our($opt_r, $opt_b, $opt_h, $opt_v, $opt_V, $opt_f);
 if (!getopts('hvfr:b:V'))
-{ 
+{
 	print_help();
 	exit 1;
 }
@@ -117,7 +117,7 @@ if ($review_page =~ /<span id="bugs_closed"[^>]*>(\d+)<\/span>/)
 {
 	$bug_id = $1;
 }
-if ($review_description =~ /http:\/\/bugfree.corp.taobao.com\/Bug.php\?BugID=(\d+)/)
+if ($review_description =~ /http:\/\/bugfree.corp.taobao.com\/bug\/(\d+)/)
 {
 	$bug_id = $1;
 }
@@ -126,7 +126,7 @@ if ($opt_b)
 	$bug_id = $opt_b;
 }
 if ($opt_V)
-{	
+{
 	print "BUG ID: $bug_id\n";
 	print "REVIEW SUMMARY: $review_summary\n";
 	print "REVIEW DESCRIPTION: $review_description\n";
@@ -169,12 +169,11 @@ if ($opt_V)
 }
 
 $commit_files = "";
-my $files_num = 0;
 my %files_name_map;
 if ($diff_page =~ /<a name="index_footer"><\/a>(.*)<\/ol>/s)
 {
 	my $index_footer = $1;
-	print "COMMIT FILES:\n";
+	#print "COMMIT FILES:\n";
 	while ($index_footer =~ m/li class="change_file_.*"><a href=\"#(\d+)\"[^>]*>([^<]+)<\/a>/gc)
 	{
 		my $seq = $1;
@@ -187,10 +186,31 @@ if ($diff_page =~ /<a name="index_footer"><\/a>(.*)<\/ol>/s)
 		}
 		$filename =~ s|$svn_path_prefix/(.*)|$1|;
 		$files_name_map{$orig_filename} = $filename;
-		print "$seq $filename\n";
+		#print "$seq $filename\n";
 		$commit_files = join(" ", $commit_files, $filename);
 	}
 }
+# get commit files using new method(from diff)
+print "COMMIT FILES:\n";
+$commit_files = "";
+%files_name_map = ();
+my $seq = 1;
+while ($review_diff =~ m/Index: (.*)\n===================================================================/gc)
+{
+    my $orig_filename = $1;
+    my $filename = $orig_filename;
+    if (substr($filename, 0, length($svn_path_prefix)) ne $svn_path_prefix)
+    {
+	print "ERROR: do you in the same dir as posting review?\nreview_file=$filename current_path=$svn_path_prefix\n";
+	exit 1;
+    }
+    $filename =~ s|$svn_path_prefix/(.*)|$1|;
+    $files_name_map{$orig_filename} = $filename;
+    print "$seq $filename\n";
+    $commit_files = join(" ", $commit_files, $filename);
+    $seq ++;
+}
+
 if ($commit_files eq "")
 {
 	print "ERROR: no commit file found, do you in the same dir as posting review?\n";
@@ -232,6 +252,8 @@ if ($opt_V)
 	print "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 }
 my $same_diff = 1;
+$review_diff =~ s|\r||g;
+$local_diff =~ s|\r||g;
 if ($review_diff ne $local_diff)
 {
 	$same_diff = 0;

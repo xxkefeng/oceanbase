@@ -6,7 +6,7 @@
 #include "common/utility.h"
 #include "sql/parse_node.h"
 #include "sql/build_plan.h"
-#include "sql/ob_multi_plan.h"
+#include "sql/ob_multi_logic_plan.h"
 #include "sql/ob_transformer.h"
 #include "sql/ob_schema_checker.h"
 
@@ -16,7 +16,6 @@ using namespace oceanbase::sql;
 
 const char* STR_SQL_TEST = "SQL_TEST_PHY_PLAN";
 const char* STR_SQL_FILE = "sql_file_2.sql";
-const int64_t OB_MAX_SQL_LENGTH = 65536;
 const int64_t BUF_LEN = 102400;
 
 // NOTE about sql_file_2.sql
@@ -125,25 +124,37 @@ int32_t run_sql_test_file(const char* file_name)
     result_plan.plan_tree_ = NULL;
     if (resolve(&result_plan, result.result_tree_) == OB_SUCCESS)
     {
-      ObMultiPlan* multi_plan = static_cast<ObMultiPlan*>(result_plan.plan_tree_);
+      ObMultiLogicPlan* multi_plan = static_cast<ObMultiLogicPlan*>(result_plan.plan_tree_);
       fflush(stderr);
       fprintf(stderr, "\n<<Part 3 : LOGICAL PLAN>>\n");
       multi_plan->print();
+      oceanbase::sql::ObSqlContext context;
 
-      ObTransformer ob_transformer(&str_buf);
-      ob_transformer.add_logical_plans(multi_plan);
       fprintf(stderr, "\n<<Part 4 : PHYSICAL PLAN>>\n");
-      for (int32_t i = 0; i < multi_plan->size(); i++)
+      //ObTransformer ob_transformer(str_buf, context);
+      ObTransformer ob_transformer(context);
+      ObMultiPhyPlan multi_phy_plan;
+      ErrStat err_stat;
+      if (OB_SUCCESS != (ret = ob_transformer.generate_physical_plans(*multi_plan, multi_phy_plan, err_stat)))
       {
-        ObPhysicalPlan * physical_plan = ob_transformer.get_physical_plan(i);
-        if (physical_plan)
+        TBSYS_LOG(WARN, "failed to transform to physical plan");
+        ret = OB_ERR_GEN_PLAN;
+      }
+      else
+      {
+        ObPhysicalPlan *phy_plan = NULL;
+        ObPhyOperator *exec_plan = NULL;
+        for (int32_t i = 0; i < multi_phy_plan.size(); i++)
         {
-          pos = physical_plan->to_string(buf, BUF_LEN);
-          fprintf(stderr, "%.*s\n", (int32_t)pos, buf);
-        }
-        else
-        {
-          fprintf(stderr, "Physical plan error of statmement %d!\n", i + 1);
+          if ((NULL != (phy_plan = multi_phy_plan.at(0))) && (NULL != (exec_plan = phy_plan->get_phy_query(0))))
+          {
+            pos = phy_plan->to_string(buf, BUF_LEN);
+            fprintf(stderr, "%.*s\n", (int32_t)pos, buf);
+          }
+          else
+          {
+            fprintf(stderr, "Physical plan error of statmement %d!\n", i + 1);
+          }
         }
       }
     }
@@ -153,7 +164,7 @@ int32_t run_sql_test_file(const char* file_name)
       fprintf(stderr, "Resolve error!\n");
       continue;
     }
-    
+
     destroy_plan(&result_plan);
     if (result.result_tree_)
     {
@@ -161,7 +172,7 @@ int32_t run_sql_test_file(const char* file_name)
       result.result_tree_ = NULL;
     }
   }
-  
+
   if (sql_fd)
     fclose(sql_fd);
   if (cur_fd)
@@ -324,7 +335,7 @@ int32_t cmp_sql_results(const char* file_name)
       }
     }
   }
-  
+
 errExit:
   if (sql_fd)
     fclose(sql_fd);
@@ -352,6 +363,3 @@ int main(int argc, char **argv)
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
-
-
-

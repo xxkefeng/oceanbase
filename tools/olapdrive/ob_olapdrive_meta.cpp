@@ -268,8 +268,8 @@ namespace oceanbase
       int32_t column_size                   = 0 ;
       ObCellInfo cell_info;
       ObString table_name;
-      char key_buf[KEY_META_ROWKEY_SIZE];
-      ObString row_key;
+      ObObj rowkey_objs[MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT];
+      ObRowkey row_key;
       ObVersionRange ver_range;
 
       ObScanner* scanner = GET_TSI_MULT(ObScanner,TSI_OLAP_SCANNER_1);
@@ -288,8 +288,8 @@ namespace oceanbase
         scanner->reset();
 
         //the row with key 0 in key meta table stores row key meta
-        memset(key_buf, 0, KEY_META_ROWKEY_SIZE);
-        row_key.assign (key_buf, KEY_META_ROWKEY_SIZE);
+        rowkey_objs[0].set_int(0);
+        row_key.assign (rowkey_objs, 1);
         table_name = olapdrive_schema_.get_key_meta_name();
   
         //build get_param
@@ -332,8 +332,8 @@ namespace oceanbase
         ret = client_.ms_get(*get_param, *scanner);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "failed to get cell from merge server, rowkey:");
-          hex_dump(row_key.ptr(), row_key.length(), true, TBSYS_LOG_LEVEL_WARN);
+          TBSYS_LOG(WARN, "failed to get cell from merge server, rowkey: %s",
+              to_cstring(row_key));
         }
       }     
 
@@ -384,8 +384,8 @@ namespace oceanbase
       const char* column_name_str           = NULL;
       int32_t column_size                   = 0;
       ObString table_name;
-      char key_buf[KEY_META_ROWKEY_SIZE];
-      ObString row_key;
+      ObObj rowkey_objs[MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT];
+      ObRowkey row_key;
       ObString column_name;
       ObObj obj;
       ObMutator* mutator = GET_TSI_MULT(ObMutator,TSI_OLAP_MUTATOR_1);
@@ -401,8 +401,8 @@ namespace oceanbase
         mutator->reset();
 
         //the row with key 0 in wide table stores row key range
-        memset(key_buf, 0, KEY_META_ROWKEY_SIZE);
-        row_key.assign (key_buf, KEY_META_ROWKEY_SIZE);
+        rowkey_objs[0].set_int(0);
+        row_key.assign (rowkey_objs, 1);
         table_name = olapdrive_schema_.get_key_meta_name();
   
         //build mutator
@@ -538,11 +538,10 @@ namespace oceanbase
       const ObColumnSchemaV2* column_schema = NULL;
       const char* column_name               = NULL;
       int32_t column_size                   = 0 ;
-      int64_t pos                           = 0;
       ObCellInfo cell_info;
       ObString table_name;
-      char key_buf[CAMPAIGN_ROWKEY_SIZE];
-      ObString row_key;
+      ObObj rowkey_objs[MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT];
+      ObRowkey row_key;
       ObVersionRange ver_range;
 
       ObScanner* scanner = GET_TSI_MULT(ObScanner,TSI_OLAP_SCANNER_1);
@@ -561,11 +560,9 @@ namespace oceanbase
         scanner->reset();
 
         //build rowkey
-        if ((OB_SUCCESS == (ret = encode_i64(key_buf, CAMPAIGN_ROWKEY_SIZE, pos, unit_id)))
-            && (OB_SUCCESS == (ret = encode_i64(key_buf, CAMPAIGN_ROWKEY_SIZE, pos, campaign_id))))
-        {
-          row_key.assign (key_buf, CAMPAIGN_ROWKEY_SIZE);
-        }
+        rowkey_objs[0].set_int(unit_id);
+        rowkey_objs[1].set_int(campaign_id);
+        row_key.assign (rowkey_objs, 2);
       }
 
       if (OB_SUCCESS == ret)
@@ -612,8 +609,8 @@ namespace oceanbase
         ret = client_.ms_get(*get_param, *scanner);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "failed to get cell from merge server, rowkey:");
-          hex_dump(row_key.ptr(), row_key.length(), true, TBSYS_LOG_LEVEL_WARN);
+          TBSYS_LOG(WARN, "failed to get cell from merge server, rowkey: %s", 
+              to_cstring(row_key));
         }
       }     
 
@@ -713,10 +710,9 @@ namespace oceanbase
       const ObColumnSchemaV2* column_schema = NULL;
       const char* column_name_str           = NULL;
       int32_t column_size                   = 0;
-      int64_t pos                           = 0;
       ObString table_name;
-      char key_buf[CAMPAIGN_ROWKEY_SIZE];
-      ObString row_key;
+      ObObj rowkey_objs[MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT];
+      ObRowkey row_key;
       ObString column_name;
       ObObj obj;
       ObMutator* mutator = GET_TSI_MULT(ObMutator,TSI_OLAP_MUTATOR_1);
@@ -732,11 +728,9 @@ namespace oceanbase
         mutator->reset();
 
         //build rowkey
-        if ((OB_SUCCESS == (ret = encode_i64(key_buf, CAMPAIGN_ROWKEY_SIZE, pos, unit_id)))
-            && (OB_SUCCESS == (ret = encode_i64(key_buf, CAMPAIGN_ROWKEY_SIZE, pos, campaign_id))))
-        {
-          row_key.assign (key_buf, CAMPAIGN_ROWKEY_SIZE);
-        }
+        rowkey_objs[0].set_int(unit_id);
+        rowkey_objs[1].set_int(campaign_id);
+        row_key.assign (rowkey_objs, 2);
       }
 
       if (OB_SUCCESS == ret)
@@ -863,11 +857,10 @@ namespace oceanbase
       const ObColumnSchemaV2* column_schema = NULL;
       const char* column_name               = NULL;
       int32_t column_size                   = 0;
-      int64_t pos                           = 0;
       ObCellInfo cell_info;
       ObString table_name;
-      char key_buf[ADGROUP_ROWKEY_SIZE];
-      ObString row_key;
+      ObObj rowkey_objs[MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT];
+      ObRowkey row_key;
       ObVersionRange ver_range;
 
       ObScanner* scanner = GET_TSI_MULT(ObScanner,TSI_OLAP_SCANNER_1);
@@ -886,12 +879,10 @@ namespace oceanbase
         scanner->reset();
 
         //build rowkey
-        if ((OB_SUCCESS == (ret = encode_i64(key_buf, ADGROUP_ROWKEY_SIZE, pos, unit_id)))
-            && (OB_SUCCESS == (ret = encode_i64(key_buf, ADGROUP_ROWKEY_SIZE, pos, campaign_id)))
-            && (OB_SUCCESS == (ret = encode_i64(key_buf, ADGROUP_ROWKEY_SIZE, pos, adgroup_id))))
-        {
-          row_key.assign (key_buf, ADGROUP_ROWKEY_SIZE);
-        }
+        rowkey_objs[0].set_int(unit_id);
+        rowkey_objs[1].set_int(campaign_id);
+        rowkey_objs[2].set_int(adgroup_id);
+        row_key.assign (rowkey_objs, 3);
       }
 
       if (OB_SUCCESS == ret)
@@ -938,8 +929,8 @@ namespace oceanbase
         ret = client_.ms_get(*get_param, *scanner);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "failed to get cell from merge server, rowkey:");
-          hex_dump(row_key.ptr(), row_key.length(), true, TBSYS_LOG_LEVEL_WARN);
+          TBSYS_LOG(WARN, "failed to get cell from merge server, rowkey: %s",
+              to_cstring(row_key));
         }
       }     
 
@@ -1037,10 +1028,9 @@ namespace oceanbase
       const ObColumnSchemaV2* column_schema = NULL;
       const char* column_name_str           = NULL;
       int32_t column_size                   = 0;
-      int64_t pos                           = 0;
       ObString table_name;
-      char key_buf[ADGROUP_ROWKEY_SIZE];
-      ObString row_key;
+      ObObj rowkey_objs[MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT];
+      ObRowkey row_key;
       ObString column_name;
       ObObj obj;
       ObMutator* mutator = GET_TSI_MULT(ObMutator,TSI_OLAP_MUTATOR_1);
@@ -1056,12 +1046,10 @@ namespace oceanbase
         mutator->reset();
 
         //build rowkey
-        if ((OB_SUCCESS == (ret = encode_i64(key_buf, ADGROUP_ROWKEY_SIZE, pos, unit_id)))
-            && (OB_SUCCESS == (ret = encode_i64(key_buf, ADGROUP_ROWKEY_SIZE, pos, campaign_id)))
-            && (OB_SUCCESS == (ret = encode_i64(key_buf, ADGROUP_ROWKEY_SIZE, pos, adgroup_id))))
-        {
-          row_key.assign (key_buf, ADGROUP_ROWKEY_SIZE);
-        }
+        rowkey_objs[0].set_int(unit_id);
+        rowkey_objs[1].set_int(campaign_id);
+        rowkey_objs[2].set_int(adgroup_id);
+        row_key.assign (rowkey_objs, 3);
       }
 
       if (OB_SUCCESS == ret)

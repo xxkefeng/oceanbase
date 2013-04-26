@@ -230,14 +230,14 @@ namespace oceanbase
         Symbol():length(0), type(0){};
         int length;
         int type;
-        char value[OB_MAX_SYMBOL_LENGTH];
+        char value[16 * 1024];  // FIXME: should use a predefined Macro
         int push(char c)
         {
           int err = OB_SUCCESS;
 
-          if (length < OB_MAX_SYMBOL_LENGTH)
+          if (length < 16 * 1024)
           {
-            TBSYS_LOG(DEBUG, "push:[lenght:%d]", length);
+            //TBSYS_LOG(DEBUG, "push:[lenght:%d]", length);
             value[length] = c;
             length++;
           }
@@ -466,7 +466,7 @@ namespace oceanbase
         {
           if (OB_SUCCESS == (err = sym.push(c)))
           {
-            TBSYS_LOG(DEBUG, "push c=%c", c);
+            //TBSYS_LOG(DEBUG, "push c=%c", c);
             pos++;
           }
         }
@@ -489,7 +489,7 @@ namespace oceanbase
         {
           if (OB_SUCCESS == (err = sym.push(c)))
           {
-            TBSYS_LOG(DEBUG, "push c=%c", c);
+            //TBSYS_LOG(DEBUG, "push c=%c", c);
             pos++;
           }
         }
@@ -516,7 +516,7 @@ namespace oceanbase
 
         if ( c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '=')
         {
-          TBSYS_LOG(DEBUG, "push c=%c", c);
+          //TBSYS_LOG(DEBUG, "push c=%c", c);
           if (OB_SUCCESS == (err = sym.push(c)))
           {
             pos++;
@@ -524,7 +524,7 @@ namespace oceanbase
         }
         else if(c == '>' || c == '<' || c == '!')
         {
-          TBSYS_LOG(DEBUG, "push c=%c", c);
+          //TBSYS_LOG(DEBUG, "push c=%c", c);
           if (OB_SUCCESS == (err = sym.push(c)))
           {
             pos++;
@@ -534,7 +534,7 @@ namespace oceanbase
               c = p[pos];
               if (c == '=')
               {
-                TBSYS_LOG(DEBUG, "push c=%c", c);
+                //TBSYS_LOG(DEBUG, "push c=%c", c);
                 if (OB_SUCCESS == (err = sym.push(c)))
                 {
                   pos++;
@@ -630,14 +630,13 @@ namespace oceanbase
         char c;
 
         skip_blank(p, pos);
-        TBSYS_LOG(DEBUG, "blank skiped");
         do{
           if (pos >= infix_max_len_)
           {
             break;
           }
           c = p[pos];
-          TBSYS_LOG(DEBUG, "c=%c", c);
+          //TBSYS_LOG(DEBUG, "c=%c", c);
           if (c == '(' || c == ')' || c == '>' || c == '<' || c == '!' || c == '=' ||
               c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == ' ')
           {
@@ -686,7 +685,8 @@ namespace oceanbase
         }
         return err;
       }
-      
+
+
       inline int get_datetime_v1(const char*p, int &pos, Symbol &sym)
       {
         return get_datetime(p, pos, sym, '#');
@@ -801,31 +801,31 @@ namespace oceanbase
           if(c == '>' || c == '<' || c == '!' || c == '=' ||
               c == '+' || c == '-' || c == '*' || c == '/' || c == '%')
           {
-            TBSYS_LOG(DEBUG, "get operator");
+            //TBSYS_LOG(DEBUG, "get operator");
             sym.type = OPERATOR;
             err = get_operator(p, pos, sym);
           }
           else if(c == '(')
           {
-            TBSYS_LOG(DEBUG, "get left parenthese");
+            //TBSYS_LOG(DEBUG, "get left parenthese");
             sym.type = OPERATOR;
             err = get_left_parenthese(p, pos, sym);
           }
           else if(c == ')')
           {
-            TBSYS_LOG(DEBUG, "get left parenthese");
+            //TBSYS_LOG(DEBUG, "get left parenthese");
             sym.type = OPERATOR;
             err = get_right_parenthese(p, pos, sym);
           }
           else if(c == '\'')
           {
-            TBSYS_LOG(DEBUG, "get string");
+            //TBSYS_LOG(DEBUG, "get string");
             sym.type = STRING;
             err = get_string(p, pos, sym);
           }
           else if(c == '#')
           {
-            TBSYS_LOG(DEBUG, "get datetime");
+            //TBSYS_LOG(DEBUG, "get datetime");
             sym.type = DATETIME;
             err = get_datetime_v1(p, pos, sym);
           }
@@ -883,45 +883,45 @@ namespace oceanbase
 
             if (true == is_datetime)
             { 
-              TBSYS_LOG(DEBUG, "get datetime");
+              //TBSYS_LOG(DEBUG, "get datetime");
               sym.type = DATETIME;
               err = get_datetime_v2(p, pos, sym);
             }
             else
             {
-              TBSYS_LOG(DEBUG, "get keyword");
+              //TBSYS_LOG(DEBUG, "get keyword");
               sym.type = KEYWORD;
               err = get_keyword(p, pos, sym);
             }
           }
           else if(c == '`')
           {
-            TBSYS_LOG(DEBUG, "get column name");
+            //TBSYS_LOG(DEBUG, "get column name");
             sym.type = COLUMN_NAME;
             err = get_column_name(p, pos, sym);
           }
           else if(c == '.' || (c >= '0' && c <= '9'))
           {
-            TBSYS_LOG(DEBUG, "get number");
+            //TBSYS_LOG(DEBUG, "get number");
             sym.type = NUMBER;
             err = get_number(p, pos, sym);
           }
           else if((c == 'b' || c == 'B') && c2 == '\'')
           {
-            TBSYS_LOG(DEBUG, "get string");
+            //TBSYS_LOG(DEBUG, "get string");
             sym.type = HEX_STRING;
             err = get_binary(p, pos, sym);
           }
           else
           {
-            TBSYS_LOG(DEBUG, "get keyword");
+            //TBSYS_LOG(DEBUG, "get keyword");
             sym.type = KEYWORD;
             err = get_keyword(p, pos, sym);
           }
         }
         else
         {
-          TBSYS_LOG(DEBUG, "end of input!!!!!!!!!!!!!!!!!!!!!!!");
+          //TBSYS_LOG(DEBUG, "end of input!!!!!!!!!!!!!!!!!!!!!!!");
         }
 
         return err;
@@ -970,7 +970,7 @@ namespace oceanbase
             hi = sym.value[i++];
             lo = sym.value[i++];
             sym.value[out++] = static_cast<char>(lo + (hi << 4));
-            TBSYS_LOG(DEBUG, "c=%c", sym.value[out-1]);
+            //TBSYS_LOG(DEBUG, "c=%c", sym.value[out-1]);
           }
           sym.length = out;
         }
@@ -1010,7 +1010,7 @@ namespace oceanbase
         ObString s;
         bool dig_found = false;
         int i = 0;
-        TBSYS_LOG(DEBUG, "sym type:%d,value:%.*s", sym.type, sym.length, sym.value);
+        //TBSYS_LOG(DEBUG, "sym type:%d,value:%.*s", sym.type, sym.length, sym.value);
         switch(sym.type)
         {
           case OPERATOR:
@@ -1131,7 +1131,6 @@ namespace oceanbase
             else
             {
               sym.encode.set_precise_datetime(tmp);
-              TBSYS_LOG(DEBUG, "=======datetime %ld =========", tmp);
             }
             break;
           case NUMBER:
@@ -1293,7 +1292,6 @@ namespace oceanbase
         {
           sym = symbols_.at(i);
           code = sym->code;
-          TBSYS_LOG(DEBUG, "code = %d", code);
           switch(code)
           {
             case peCodeLeftBracket:
@@ -1445,7 +1443,6 @@ namespace oceanbase
               }
            }
           } /* while */
-          TBSYS_LOG(DEBUG, "push new sym");
 
           if (OB_SUCCESS == err)
           {
@@ -1478,20 +1475,23 @@ namespace oceanbase
           {
             TBSYS_LOG(WARN, "fail to pop symbol from stack. stack is empty!");
             err = OB_ERROR;
-          }
-
-          code = sym->code;
-          if (peCodeLeftBracket == code)
-          {
             break;
           }
           else
           {
-            err = output(sym);
-            if (OB_SUCCESS != err)
+            code = sym->code;
+            if (peCodeLeftBracket == code)
             {
-              TBSYS_LOG(WARN, "unexpected error");
               break;
+            }
+            else
+            {
+              err = output(sym);
+              if (OB_SUCCESS != err)
+              {
+                TBSYS_LOG(WARN, "unexpected error");
+                break;
+              }
             }
           }
         }
@@ -1652,6 +1652,7 @@ namespace oceanbase
       public:
         ObPostfixExpression(){};
         ~ObPostfixExpression(){};
+         ObPostfixExpression& operator=(const ObPostfixExpression &other);
 
         /* @param expr:已经解析好了的后缀表达式数组 */
         int set_expression(const ObObj *expr, oceanbase::common::ObStringBuf  & data_buf);
@@ -1687,7 +1688,7 @@ namespace oceanbase
       private:
       private:
         static op_call_func_t call_func[ObExpression::MAX_FUNC];
-        ObObj expr_[OB_MAX_COMPOSITE_EXPR_COUNT];
+        ObObj expr_[OB_MAX_COMPOSITE_SYMBOL_COUNT];
         // ObExpressionParser parser_;
         // TODO: 修改成指针引用，减少数据拷贝
         ObExprObj stack_i[OB_MAX_COMPOSITE_SYMBOL_COUNT];

@@ -18,7 +18,6 @@
 #ifndef OCEANBASE_COMMON_BATCH_PACKET_QUEUE_THREAD_H
 #define OCEANBASE_COMMON_BATCH_PACKET_QUEUE_THREAD_H
 
-#include "tbnet.h"
 #include "ob_packet.h"
 #include "ob_packet_queue.h"
 #include "ob_switch.h"
@@ -30,7 +29,7 @@ namespace common {
 class IBatchPacketQueueHandler {
 public:
     virtual ~IBatchPacketQueueHandler() {}
-    virtual bool handleBatchPacketQueue(const int64_t packet_num, tbnet::Packet** packet, void *args) = 0;
+    virtual bool handleBatchPacketQueue(const int64_t packet_num, ObPacket** packet, void *args) = 0;
 };
 
 class BatchPacketQueueThread : public tbsys::CDefaultRunnable {
@@ -67,11 +66,11 @@ public:
     // 设置限速
     void setWaitTime(int t);
 
-    tbnet::Packet *head()
+    ObPacket *head()
     {
         return _queue.head();
     }
-    tbnet::Packet *tail()
+    ObPacket *tail()
     {
         return _queue.tail();
     }

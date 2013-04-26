@@ -1,11 +1,11 @@
 /**
  * (C) 2010-2011 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or 
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * ob_merger_sorted_operator.cpp for 
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * ob_merger_sorted_operator.cpp for
  *
  * Authors:
  *   wushi <wushi.ly@taobao.com>
@@ -16,13 +16,13 @@
 #include "common/ob_scan_param.h"
 #include "common/ob_scanner.h"
 #include "common/ob_range.h"
-using namespace oceanbase;
+
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace std;
 
-void oceanbase::mergeserver::ObMergerSortedOperator::sharding_result_t::init(ObScanner & sharding_res, const ObRange & query_range, 
-  const ObScanParam &param, ObString & last_process_rowkey, const int64_t fullfilled_item_num)
+void ObMergerSortedOperator::sharding_result_t::init(ObScanner & sharding_res, const ObNewRange & query_range,
+  const ObScanParam &param, ObRowkey & last_process_rowkey, const int64_t fullfilled_item_num)
 {
   sharding_res_ = &sharding_res;
   sharding_query_range_ = &query_range;
@@ -31,10 +31,10 @@ void oceanbase::mergeserver::ObMergerSortedOperator::sharding_result_t::init(ObS
   fullfilled_item_num_ = fullfilled_item_num;
 }
 
-bool oceanbase::mergeserver::ObMergerSortedOperator::sharding_result_t::operator <(const sharding_result_t &other) const
+bool ObMergerSortedOperator::sharding_result_t::operator <(const sharding_result_t &other) const
 {
   bool res = false;
-  if (param_->get_scan_direction() == ObScanParam::BACKWARD)
+  if (param_->get_scan_direction() == ScanFlag::BACKWARD)
   {
     res = (sharding_query_range_->compare_with_endkey2(*other.sharding_query_range_) > 0);
   }
@@ -45,17 +45,17 @@ bool oceanbase::mergeserver::ObMergerSortedOperator::sharding_result_t::operator
   return res;
 }
 
-oceanbase::mergeserver::ObMergerSortedOperator::ObMergerSortedOperator()
+ObMergerSortedOperator::ObMergerSortedOperator()
 {
   reset();
 }
 
 
-oceanbase::mergeserver::ObMergerSortedOperator::~ObMergerSortedOperator()
+ObMergerSortedOperator::~ObMergerSortedOperator()
 {
 }
 
-void oceanbase::mergeserver::ObMergerSortedOperator::reset()
+void ObMergerSortedOperator::reset()
 {
   sharding_result_count_ = 0;
   cur_sharding_result_idx_ = -1;
@@ -63,7 +63,7 @@ void oceanbase::mergeserver::ObMergerSortedOperator::reset()
   seamless_result_count_  = 0;
 }
 
-int oceanbase::mergeserver::ObMergerSortedOperator::set_param(const ObScanParam & scan_param)
+int ObMergerSortedOperator::set_param(const ObScanParam & scan_param)
 {
   int err = OB_SUCCESS;
   reset();
@@ -72,22 +72,22 @@ int oceanbase::mergeserver::ObMergerSortedOperator::set_param(const ObScanParam 
   return err;
 }
 
-void oceanbase::mergeserver::ObMergerSortedOperator::sort(bool &is_finish, ObScanner * last_sharding_res)
+void ObMergerSortedOperator::sort(bool &is_finish, ObScanner * last_sharding_res)
 {
   int64_t result_size = 0;
   bool seamless = true;
   int64_t seamless_result_idx = 0;
   int64_t seamless_row_count = 0;
   std::sort(sharding_result_arr_, sharding_result_arr_ + sharding_result_count_);
-  if ((ObScanParam::FORWARD == scan_param_->get_scan_direction())
+  if ((ScanFlag::FORWARD == scan_param_->get_scan_direction())
     && (sharding_result_arr_[0].sharding_query_range_->start_key_  != scan_range_.start_key_)
-    && (!sharding_result_arr_[0].sharding_query_range_->border_flag_.is_min_value()))
+    && (!sharding_result_arr_[0].sharding_query_range_->start_key_.is_min_row()))
   {
     seamless = false;
   }
-  else if ((ObScanParam::BACKWARD == scan_param_->get_scan_direction())
+  else if ((ScanFlag::BACKWARD == scan_param_->get_scan_direction())
     && (sharding_result_arr_[0].sharding_query_range_->end_key_  != scan_range_.end_key_)
-    && (!sharding_result_arr_[0].sharding_query_range_->border_flag_.is_max_value()))
+    && (!sharding_result_arr_[0].sharding_query_range_->end_key_.is_max_row()))
   {
     seamless = false;
   }
@@ -103,17 +103,17 @@ void oceanbase::mergeserver::ObMergerSortedOperator::sort(bool &is_finish, ObSca
       result_size += sharding_result_arr_[0].sharding_res_->get_serialize_size();
     }
   }
-  for (seamless_result_idx = 0; 
-    (seamless_result_idx < sharding_result_count_ - 1) && (seamless); 
+  for (seamless_result_idx = 0;
+    (seamless_result_idx < sharding_result_count_ - 1) && (seamless);
     seamless_result_idx++)
   {
-    if ((ObScanParam::FORWARD == scan_param_->get_scan_direction())
+    if ((ScanFlag::FORWARD == scan_param_->get_scan_direction())
       && (sharding_result_arr_[seamless_result_idx].last_row_key_
       != sharding_result_arr_[seamless_result_idx+1].sharding_query_range_->start_key_))
     {
       seamless = false;
     }
-    else if ((ObScanParam::BACKWARD == scan_param_->get_scan_direction())
+    else if ((ScanFlag::BACKWARD == scan_param_->get_scan_direction())
       && (sharding_result_arr_[seamless_result_idx].last_row_key_
       != sharding_result_arr_[seamless_result_idx+1].sharding_query_range_->end_key_))
     {
@@ -147,13 +147,17 @@ void oceanbase::mergeserver::ObMergerSortedOperator::sort(bool &is_finish, ObSca
     // if go ObMergerSortedOperator, means no groupby and orderby
     if (scan_range_.is_whole_range())
     {
+      /* the  (!is_fullfilled) condition assures that scan returns at least 2MB data to client.
+       * only if CS got more than 2MB result that is_fullfilled will be set to false at first transmition
+       */
       is_finish = (result_size >= OB_MAX_PACKET_LENGTH - FULL_SCANNER_RESERVED_BYTE_COUNT) ||
         ((sharding_result_arr_[seamless_result_count_-1].sharding_res_ == last_sharding_res) && !is_fullfilled);
     }
     else
     {
-      if ((sharding_result_arr_[0].sharding_query_range_->start_key_ == scan_range_.start_key_) 
-          && (sharding_result_arr_[seamless_result_count_ - 1].sharding_query_range_->end_key_ == scan_range_.end_key_))
+      if ((sharding_result_arr_[0].sharding_query_range_->start_key_ == scan_range_.start_key_)
+          && (seamless_result_count_ > 0
+            && sharding_result_arr_[seamless_result_count_ - 1].sharding_query_range_->end_key_ == scan_range_.end_key_))
       {
         if (OB_SUCCESS != (ret = sharding_result_arr_[seamless_result_count_ - 1].sharding_res_->get_is_req_fullfilled(
               last_scanner_is_fullfilled, item_num)))
@@ -163,7 +167,20 @@ void oceanbase::mergeserver::ObMergerSortedOperator::sort(bool &is_finish, ObSca
         }
         else if (true == last_scanner_is_fullfilled)
         {
-          is_finish = true;
+          ObNewRange scanner_range;
+          if (OB_SUCCESS != (ret =sharding_result_arr_[seamless_result_count_ - 1].sharding_res_->get_range(scanner_range)))
+          {
+            TBSYS_LOG(ERROR, "fail to get range");
+            is_finish= true;
+          }
+          else if (scanner_range.end_key_ < scan_range_.end_key_)
+          {
+            is_finish = false;
+          }
+          else
+          {
+            is_finish = true;
+          }
         }
         else
         {
@@ -178,7 +195,7 @@ void oceanbase::mergeserver::ObMergerSortedOperator::sort(bool &is_finish, ObSca
   }
 }
 
-int oceanbase::mergeserver::ObMergerSortedOperator::add_sharding_result(ObScanner & sharding_res, const ObRange &query_range, 
+int ObMergerSortedOperator::add_sharding_result(ObScanner & sharding_res, const ObNewRange &query_range,
   bool &is_finish)
 {
   int err = OB_SUCCESS;
@@ -189,15 +206,15 @@ int oceanbase::mergeserver::ObMergerSortedOperator::add_sharding_result(ObScanne
   }
   if ((OB_SUCCESS == err) && (sharding_result_count_ >= MAX_SHARDING_RESULT_COUNT))
   {
-    TBSYS_LOG(WARN,"array is full [MAX_SHARDING_RESULT_COUNT:%ld,sharding_result_count_:%ld]", 
+    TBSYS_LOG(WARN,"array is full [MAX_SHARDING_RESULT_COUNT:%ld,sharding_result_count_:%ld]",
       MAX_SHARDING_RESULT_COUNT, sharding_result_count_);
     err = OB_ARRAY_OUT_OF_RANGE;
   }
   /// @todo (wushi wushi.ly@taobao.com) check fullfill item number and size property
   bool is_fullfilled = false;
   int64_t fullfilled_item_num = 0;
-  ObString last_row_key;
-  ObRange cs_tablet_range;
+  ObRowkey last_row_key;
+  ObNewRange cs_tablet_range;
   if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = sharding_res.get_is_req_fullfilled(is_fullfilled,fullfilled_item_num))))
   {
     TBSYS_LOG(WARN,"fail to get fullfilled info from sharding result [err:%d]", err);
@@ -217,7 +234,6 @@ int oceanbase::mergeserver::ObMergerSortedOperator::add_sharding_result(ObScanne
     }
   }
 
-
   if (OB_SUCCESS == err)
   {
     if (is_fullfilled)
@@ -228,7 +244,7 @@ int oceanbase::mergeserver::ObMergerSortedOperator::add_sharding_result(ObScanne
       }
       if (OB_SUCCESS == err)
       {
-        if (ObScanParam::FORWARD == scan_param_->get_scan_direction())
+        if (ScanFlag::FORWARD == scan_param_->get_scan_direction())
         {
           last_row_key = cs_tablet_range.end_key_;
         }
@@ -251,11 +267,10 @@ int oceanbase::mergeserver::ObMergerSortedOperator::add_sharding_result(ObScanne
     sort(is_finish, &sharding_res);
   }
   TBSYS_LOG(DEBUG, "add sharding result. is_finish=%d, err=%d", is_finish, err);
-
   return err;
 }
 
-int oceanbase::mergeserver::ObMergerSortedOperator::seal()
+int ObMergerSortedOperator::seal()
 {
   int err = OB_SUCCESS;
   if ((OB_SUCCESS == err) && (NULL == scan_param_))
@@ -272,7 +287,7 @@ int oceanbase::mergeserver::ObMergerSortedOperator::seal()
 }
 
 
-int oceanbase::mergeserver::ObMergerSortedOperator::next_cell()
+int ObMergerSortedOperator::next_cell()
 {
   volatile int err = OB_SUCCESS;
   if ((OB_SUCCESS == err) && (cur_sharding_result_idx_ < 0))
@@ -305,7 +320,7 @@ int oceanbase::mergeserver::ObMergerSortedOperator::next_cell()
   return err;
 }
 
-int oceanbase::mergeserver::ObMergerSortedOperator::get_cell(ObInnerCellInfo ** cell, bool *is_row_changed)
+int ObMergerSortedOperator::get_cell(ObInnerCellInfo ** cell, bool *is_row_changed)
 {
   int err = OB_SUCCESS;
   if (NULL == cell)
@@ -338,7 +353,7 @@ int oceanbase::mergeserver::ObMergerSortedOperator::get_cell(ObInnerCellInfo ** 
   return err;
 }
 
-int oceanbase::mergeserver::ObMergerSortedOperator::get_cell(ObInnerCellInfo ** cell)
+int ObMergerSortedOperator::get_cell(ObInnerCellInfo ** cell)
 {
   return get_cell(cell,NULL);
 }

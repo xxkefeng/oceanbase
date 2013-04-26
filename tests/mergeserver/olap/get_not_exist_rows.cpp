@@ -3,9 +3,12 @@
 #include "common/ob_action_flag.h"
 #include "get_not_exist_rows.h"
 #include "olap.h"
+#include "../../common/test_rowkey_helper.h"
+
 using namespace oceanbase;
 using namespace oceanbase::common;
 GetNotExistRows GetNotExistRows::static_case_;
+static CharArena allocator_;
 
 bool GetNotExistRows::check_result(const uint32_t min_key_include, const uint32_t max_key_include, ObScanner &result,
   void *arg)
@@ -63,6 +66,7 @@ int GetNotExistRows::form_get_param(ObGetParam &get_param, const uint32_t min_ke
   const uint32_t random_selector = 1024*16;
   uint32_t start_key_val = static_cast<uint32_t>(max_key_include + 1 + random()%random_selector);
   uint32_t key;
+  char strkey[32];
   get_param.reset(true);
   ObCellInfo cell;
   cell.table_name_ = msolap::target_table_name;
@@ -70,7 +74,8 @@ int GetNotExistRows::form_get_param(ObGetParam &get_param, const uint32_t min_ke
   for (int32_t i = 0; (OB_SUCCESS == err) && (i < get_cell_count); i++, start_key_val ++)
   {
     key = htonl(start_key_val);
-    cell.row_key_.assign((char*)&key,sizeof(key));
+    snprintf(strkey, 32, "%d", key);
+    cell.row_key_ = make_rowkey(strkey, &allocator_);
     if (OB_SUCCESS != (err = get_param.add_cell(cell)))
     {
       TBSYS_LOG(WARN,"fail to add cell to ObGetParam [err:%d]", err);

@@ -175,7 +175,12 @@ namespace oceanbase
 
     ObRootMeta2CompareHelper::ObRootMeta2CompareHelper(ObTabletInfoManager* otim):tablet_info_manager_(otim)
     {
+      if (NULL == otim)
+      {
+        TBSYS_LOG(ERROR, "tablet_info_manager_ is NULL");
+      }
     }
+
     int ObRootMeta2CompareHelper::compare(const int32_t r1, const int32_t r2) const
     {
       int ret = 0;
@@ -189,10 +194,12 @@ namespace oceanbase
         {
           if (p_r1 == NULL)
           {
+            TBSYS_LOG(WARN, "no tablet info, idx=%d", r1);
             ret = -1;
           }
           else if (p_r2 == NULL)
           {
+            TBSYS_LOG(WARN, "no tablet info, idx=%d", r2);
             ret = 1;
           }
           else
@@ -207,7 +214,6 @@ namespace oceanbase
       }
       return ret;
     }
-
     bool ObRootMeta2CompareHelper::operator () (const ObRootMeta2& r1, const ObRootMeta2& r2) const
     {
       int res = compare(r1.tablet_info_index_, r2.tablet_info_index_);
@@ -217,6 +223,60 @@ namespace oceanbase
         res = static_cast<int> (r1.tablet_info_index_ - r2.tablet_info_index_);
       }
       return res < 0;
+    }
+
+    ObRootMeta2RangeLessThan::ObRootMeta2RangeLessThan(ObTabletInfoManager *tim)
+    {
+      tablet_info_manager_ = tim;
+    }
+
+    bool ObRootMeta2RangeLessThan::operator() (const ObRootMeta2& r1, const ObNewRange& r2) const
+    {
+      bool ret = true;
+      const ObTabletInfo* tablet_info = NULL;
+      if (NULL == tablet_info_manager_)
+      {
+        TBSYS_LOG(ERROR, "tablet_info_manager_ is NULL");
+      }
+      else
+      {
+        if (NULL == (tablet_info = tablet_info_manager_->get_tablet_info(r1.tablet_info_index_)))
+        {
+          TBSYS_LOG(ERROR, "tablet_info not exist");
+        }
+        else
+        {
+          ret = (tablet_info->range_.compare_with_endkey(r2) < 0);
+        }
+      }
+      return ret;
+    }
+
+    ObRootMeta2TableIdLessThan::ObRootMeta2TableIdLessThan(ObTabletInfoManager *tim)
+    {
+      tablet_info_manager_ = tim;
+    }
+
+    bool ObRootMeta2TableIdLessThan::operator() (const ObRootMeta2& r1, const ObNewRange& r2) const
+    {
+      bool ret = true;
+      const ObTabletInfo* tablet_info = NULL;
+      if (NULL == tablet_info_manager_)
+      {
+        TBSYS_LOG(ERROR, "tablet_info_manager_ is NULL");
+      }
+      else
+      {
+        if (NULL == (tablet_info = tablet_info_manager_->get_tablet_info(r1.tablet_info_index_)))
+        {
+          TBSYS_LOG(ERROR, "tablet_info not exist");
+        }
+        else
+        {
+          ret = (tablet_info->range_.table_id_ < r2.table_id_);
+        }
+      }
+      return ret;
     }
 
   } // end namespace rootserver

@@ -3,11 +3,13 @@
 #include "updateserver/ob_update_server_main.h"
 #include "test_helper.h"
 #include "test_utils.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace oceanbase;
 using namespace updateserver;
 using namespace common;
 
+static CharArena allocator_;
 void  __attribute__((constructor)) init_global_main()
 {
 }
@@ -38,7 +40,7 @@ int test_main(int argc, char **argv)
 
   cellinfo.op_type.set_ext(ObActionFlag::OP_INSERT);
   cellinfo.cell_info.table_id_ = 1001;
-  cellinfo.cell_info.row_key_.assign((char*)"rk0001_00000000000", 17);
+  cellinfo.cell_info.row_key_ = make_rowkey("rk0001_00000000000", &allocator_);
   cellinfo.cell_info.column_id_ = 5;
   cellinfo.cell_info.value_.set_int(1023);
   ret = mutator.get_mutator().add_cell(cellinfo);
@@ -71,12 +73,14 @@ int test_main(int argc, char **argv)
 
   uint64_t check_id = 1001;
   sstable::ObSSTableRow sstable_row;
+  ObRowkey rowkey(NULL, 1);
   while (OB_SUCCESS == row_iter.next_row())
   {
     ret = row_iter.get_row(sstable_row);
     assert(OB_SUCCESS == ret);
     assert(check_id++ == sstable_row.get_table_id());
-    assert(cellinfo.cell_info.row_key_ == sstable_row.get_row_key());
+    sstable_row.get_rowkey(rowkey);
+    assert(cellinfo.cell_info.row_key_ == rowkey);
 
     for (int32_t i = 0; i < sstable_row.get_obj_count();)
     {
@@ -93,7 +97,8 @@ int test_main(int argc, char **argv)
     ret = row_iter.get_row(sstable_row);
     assert(OB_SUCCESS == ret);
     assert(check_id++ == sstable_row.get_table_id());
-    assert(cellinfo.cell_info.row_key_ == sstable_row.get_row_key());
+    sstable_row.get_rowkey(rowkey);
+    assert(cellinfo.cell_info.row_key_ == rowkey);
 
     for (int32_t i = 0; i < sstable_row.get_obj_count();)
     {

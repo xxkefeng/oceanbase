@@ -14,15 +14,16 @@
  *
  */
 
-#include "ob_fake_ups_rpc_stub.h"
 #include "sql/ob_ups_multi_get.h"
 #include "common/ob_malloc.h"
 #include <gtest/gtest.h>
 #include "common/ob_string_buf.h"
+#include "ob_fake_sql_ups_rpc_proxy2.h"
 
 using namespace oceanbase;
 using namespace common;
 using namespace sql;
+using namespace sql::test;
 
 #define OK(value) ASSERT_EQ(OB_SUCCESS, (value))
 
@@ -40,7 +41,9 @@ class ObUpsMultiGetTest: public ::testing::Test
   protected:
     // data members
     ObStringBuf str_buf_;
+    CharArena arena_;
 };
+
 
 ObUpsMultiGetTest::ObUpsMultiGetTest()
 {
@@ -62,23 +65,19 @@ TEST_F(ObUpsMultiGetTest, basic_test)
 {
   ObUpsMultiGet ups_multi_get;
   ObGetParam get_param;
-  ObFakeUpsRpcStub rpc_stub;
+  ObFakeSqlUpsRpcProxy2 rpc_proxy;
   int64_t column_count = 3;
 
-  rpc_stub.set_column_count(column_count);
-  ups_multi_get.set_rpc_stub(&rpc_stub);
-  ups_multi_get.set_network_timeout(1000);
+  rpc_proxy.set_column_count(column_count);
+  ups_multi_get.set_rpc_proxy(&rpc_proxy);
+  ups_multi_get.set_network_timeout(1000 * 1000);
 
-  char rowkey_buf[100];
-  ObString tmp_rowkey;
-  ObString rowkey;
+  ObRowkey rowkey;
 
   ObCellInfo cell;
-  for(int64_t i=0;i<1000;i++)
+  for(int64_t i=0;i<1001;i++)
   {
-    sprintf(rowkey_buf, "rowkey_%05d", i);
-    tmp_rowkey.assign_ptr(rowkey_buf, strlen(rowkey_buf));
-    str_buf_.write_string(tmp_rowkey, &rowkey);
+    gen_rowkey(i, arena_, rowkey);
 
     for(int64_t j=0;j<column_count;j++)
     {
@@ -105,11 +104,11 @@ TEST_F(ObUpsMultiGetTest, basic_test)
   uint64_t table_id = OB_INVALID_ID;
   uint64_t column_id = OB_INVALID_ID;
   int64_t int_value = 0;
-  const ObString *rowkey_ptr = NULL;
+  const ObRowkey *rowkey_ptr = NULL;
 
   OK(ups_multi_get.open());
 
-  for(int i=0;i<100;i++)
+  for(int i=0;i<1001;i++)
   {
     OK(ups_multi_get.get_next_row(rowkey_ptr, ups_row));
     for(int j=0;j<column_count;j++)

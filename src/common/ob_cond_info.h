@@ -23,12 +23,13 @@
 #include "ob_action_flag.h"
 #include "ob_common_param.h"
 #include "ob_simple_condition.h"
-
+#include "ob_rowkey.h"
+#include "ob_schema.h"
+#include "ob_string_buf.h"
 namespace oceanbase
 {
   namespace common
   {
-    class ObStringBuf;
     class ObCondInfo
     {
     public:
@@ -46,13 +47,13 @@ namespace oceanbase
 
       // set cell info with name type and logic operator
       void set(const ObLogicOperator op_type, const ObString & table_name,
-          const ObString & row_key, const ObString & column_name, const ObObj & value);
-      void set(const ObString & table_name, const ObString & row_key, const bool is_exist);
+          const ObRowkey& row_key, const ObString & column_name, const ObObj & value);
+      void set(const ObString & table_name, const ObRowkey& row_key, const bool is_exist);
 
       // set cell info using id type and logic operator
-      void set(const ObLogicOperator op_type, const uint64_t table_id, const ObString& row_key,
+      void set(const ObLogicOperator op_type, const uint64_t table_id, const ObRowkey& row_key,
           const uint64_t column_id, const ObObj & value);
-      void set(const uint64_t table_id, const ObString & row_key, const bool is_exist);
+      void set(const uint64_t table_id, const ObRowkey& row_key, const bool is_exist);
 
       // set cell info
       void set(const ObLogicOperator op_type, const ObCellInfo & cell);
@@ -63,10 +64,14 @@ namespace oceanbase
       // for unit test
       bool operator == (const ObCondInfo & other) const;
 
+      inline void set_compatible_rowkey_info(const ObRowkeyInfo* rowkey_info) {rowkey_info_ = rowkey_info;};
+
       NEED_SERIALIZE_AND_DESERIALIZE;
     private:
       ObLogicOperator op_type_;
       ObCellInfo cell_;
+      const ObRowkeyInfo *rowkey_info_;
+      ObObj rowkey_col_buf_[common::OB_MAX_ROWKEY_COLUMN_NUMBER];
     };
 
     ObLogicOperator ObCondInfo::get_operator(void) const

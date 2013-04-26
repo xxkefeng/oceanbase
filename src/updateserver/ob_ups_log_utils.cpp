@@ -26,18 +26,14 @@ namespace oceanbase
 {
   namespace updateserver
   {
-    static bool is_align(int64_t x, int64_t n_bits)
-    {
-      return 0 == (x & ((1<<n_bits) - 1));
-    }
+    const char* ObLogReplayPoint::REPLAY_POINT_FILE = "log_replay_point";
 
-    int load_replay_point_func(const char* log_dir, int64_t& replay_point)
+    int load_replay_point_func(const char* log_dir, const char* replay_point_file, int64_t& replay_point)
     {
-      const int64_t UINT64_MAX_LEN = 16;
-      const char* log_replay_point_file = ObUpsLogMgr::UPS_LOG_REPLAY_POINT_FILE;
       int err = 0;
       int64_t len = 0;
       int open_ret = 0;
+      const int UINT64_MAX_LEN = 16;
       char rplpt_fn[OB_MAX_FILE_NAME_LENGTH];
       char rplpt_str[UINT64_MAX_LEN];
       int rplpt_str_len = 0;
@@ -48,7 +44,7 @@ namespace oceanbase
         err = OB_INVALID_ARGUMENT;
         TBSYS_LOG(ERROR, "Arguments are invalid[log_dir=%p]", log_dir);
       }
-      else if ((len = snprintf(rplpt_fn, sizeof(rplpt_fn), "%s/%s", log_dir, log_replay_point_file) < 0)
+      else if ((len = snprintf(rplpt_fn, sizeof(rplpt_fn), "%s/%s", log_dir, replay_point_file) < 0)
                && len >= (int64_t)sizeof(rplpt_fn))
       {
         err = OB_ERROR;
@@ -94,51 +90,53 @@ namespace oceanbase
       return err;
     }
 
-    // int write_replay_point_func(const char* log_dir, const int64_t replay_point)
-    // {
-    //   int err = OB_SUCCESS;
-    //   int len = 0;
-    //   int open_ret = 0;
-    //   FileUtils rplpt_file;
-    //   char rplpt_fn[OB_MAX_FILE_NAME_LENGTH];
-    //   char rplpt_str[ObUpsLogMgr::UINT64_MAX_LEN];
-    //   int rplpt_str_len = 0;
+    int write_replay_point_func(const char* log_dir, const char* replay_point_file, const int64_t replay_point)
+    {
+      int err = OB_SUCCESS;
+      const int UINT64_MAX_LEN = 16;
+      int len = 0;
+      int open_ret = 0;
+      FileUtils rplpt_file;
+      char rplpt_fn[OB_MAX_FILE_NAME_LENGTH];
+      char rplpt_str[UINT64_MAX_LEN];
+      int64_t rplpt_str_len = 0;
 
-    //   if (NULL == log_dir)
-    //   {
-    //     err = OB_INVALID_ARGUMENT;
-    //     TBSYS_LOG(ERROR, "Arguments are invalid[log_dir=%p]", log_dir);
-    //   }
-    //   else if ((len = snprintf(rplpt_fn, sizeof(rplpt_fn), "%s/%s", log_dir, ObUpsLogMgr::UPS_LOG_REPLAY_POINT_FILE) < 0)
-    //            && len >= (int64_t)sizeof(rplpt_fn))
-    //   {
-    //     err = OB_BUF_NOT_ENOUGH;
-    //     TBSYS_LOG(ERROR, "generate_replay_point_fn()=>%d", err);
-    //   }
-    //   else if (0 > (open_ret = rplpt_file.open(rplpt_fn, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH)))
-    //   {
-    //     err = OB_FILE_NOT_EXIST;
-    //     TBSYS_LOG(ERROR, "open file[\"%s\"] error[%s]", rplpt_fn, strerror(errno));
-    //   }
-    //   else if ((rplpt_str_len = snprintf(rplpt_str, sizeof(rplpt_str), "%lu", replay_point)) < 0
-    //            || rplpt_str_len >= (int64_t)sizeof(rplpt_str))
-    //   {
-    //     err = OB_BUF_NOT_ENOUGH;
-    //     TBSYS_LOG(ERROR, "snprintf rplpt_str error[%s][replay_point=%lu]", strerror(errno), replay_point);
-    //   }
-    //   else if (0 > (rplpt_str_len = rplpt_file.write(rplpt_str, rplpt_str_len)))
-    //   {
-    //     err = OB_ERR_SYS;
-    //     TBSYS_LOG(ERROR, "write error[%s][rplpt_str=%p rplpt_str_len=%d]", strerror(errno), rplpt_str, rplpt_str_len);
-    //   }
-    //   if (0 > open_ret)
-    //   {
-    //     rplpt_file.close();
-    //   }
-    //   return err;
-    // }
+      if (NULL == log_dir)
+      {
+        err = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "Arguments are invalid[log_dir=%p]", log_dir);
+      }
+      else if ((len = snprintf(rplpt_fn, sizeof(rplpt_fn), "%s/%s", log_dir, replay_point_file) < 0)
+               && len >= (int64_t)sizeof(rplpt_fn))
+      {
+        err = OB_BUF_NOT_ENOUGH;
+        TBSYS_LOG(ERROR, "generate_replay_point_fn()=>%d", err);
+      }
+      else if (0 > (open_ret = rplpt_file.open(rplpt_fn, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH)))
+      {
+        err = OB_FILE_NOT_EXIST;
+        TBSYS_LOG(ERROR, "open file[\"%s\"] error[%s]", rplpt_fn, strerror(errno));
+      }
+      else if ((rplpt_str_len = snprintf(rplpt_str, sizeof(rplpt_str), "%lu", replay_point)) < 0
+               || rplpt_str_len >= (int64_t)sizeof(rplpt_str))
+      {
+        err = OB_BUF_NOT_ENOUGH;
+        TBSYS_LOG(ERROR, "snprintf rplpt_str error[%s][replay_point=%lu]", strerror(errno), replay_point);
+      }
+      else if (0 > (rplpt_str_len = rplpt_file.write(rplpt_str, rplpt_str_len)))
+      {
+        err = OB_ERR_SYS;
+        TBSYS_LOG(ERROR, "write error[%s][rplpt_str=%p rplpt_str_len=%ld]", strerror(errno), rplpt_str, rplpt_str_len);
+      }
+      if (0 > open_ret)
+      {
+        rplpt_file.close();
+      }
+      return err;
+    }
 
-    int scan_log_dir_func(const char* log_dir, int64_t& replay_point, int64_t& min_log_file_id, int64_t& max_log_file_id)
+    int scan_log_dir_func(const char* log_dir, const char* replay_point_file,
+                          int64_t& replay_point, int64_t& min_log_file_id, int64_t& max_log_file_id)
     {
       int err = OB_SUCCESS;
       ObLogDirScanner scanner;
@@ -163,7 +161,8 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "get_max_log_file_id error[ret=%d]", err);
       }
-      else if (OB_SUCCESS != (err = load_replay_point_func(log_dir, replay_point)) && OB_FILE_NOT_EXIST != err)
+      else if (OB_SUCCESS != (err = load_replay_point_func(log_dir, replay_point_file, replay_point))
+               && OB_FILE_NOT_EXIST != err)
       {
         TBSYS_LOG(ERROR, "load_replay_point(log_dir=%s)=>%d", log_dir, err);
       }
@@ -190,11 +189,115 @@ namespace oceanbase
       return err;
     }
 
-    int get_replay_point_func(const char* log_dir, int64_t& replay_point)
+    int ObLogReplayPoint::init(const char* log_dir)
+    {
+      int err = OB_SUCCESS;
+      log_dir_ = log_dir;
+      return err;
+    }
+
+    int ObLogReplayPoint::write(const int64_t replay_point)
+    {
+      return write_replay_point_func(log_dir_, REPLAY_POINT_FILE, replay_point);
+    }
+
+    int ObLogReplayPoint::get(int64_t& replay_point)
     {
       int64_t min_log_id = -1;
       int64_t max_log_id = -1;
-      return scan_log_dir_func(log_dir, replay_point, min_log_id, max_log_id);
+      return scan_log_dir_func(log_dir_, REPLAY_POINT_FILE, replay_point, min_log_id, max_log_id);
+    }
+
+    int64_t set_counter(tbsys::CThreadCond& cond, volatile int64_t& counter, const int64_t new_counter)
+    {
+      int64_t old_counter = 0;
+      cond.lock();
+      old_counter = counter;
+      counter = new_counter;
+      cond.broadcast();
+      cond.unlock();
+      return old_counter;
+    }
+
+    int64_t wait_counter(tbsys::CThreadCond& cond, volatile int64_t& counter, const int64_t limit, const int64_t timeout_us)
+    {
+      int64_t end_time_us = 0;
+      int64_t wait_time_us = 0;
+      if (counter >= limit)
+      {}
+      else
+      {
+        end_time_us = tbsys::CTimeUtil::getTime() + timeout_us;
+        wait_time_us = timeout_us;
+        cond.lock();
+        while(wait_time_us > 0)
+        {
+          if (counter >= limit)
+          {
+            break;
+          }
+          else
+          {
+            cond.wait((int32_t)wait_time_us/1000);
+            wait_time_us = end_time_us - tbsys::CTimeUtil::getTime();
+          }
+        }
+        cond.unlock();
+      }
+      return counter;
+    }
+
+    static bool is_align(int64_t x, int64_t n_bits)
+    {
+      return 0 == (x & ((1<<n_bits) - 1));
+    }
+
+    int get_local_max_log_cursor_func(const char* log_dir, const ObLogCursor& start_cursor, ObLogCursor& end_cursor)
+    {
+      int err = OB_SUCCESS;
+      ObLogReader log_reader;
+      ObDirectLogReader direct_reader;
+      char* log_data = NULL;
+      int64_t data_len = 0;
+      LogCommand cmd = OB_LOG_UNKNOWN;
+      uint64_t seq;
+      end_cursor = start_cursor;
+
+      if (NULL == log_dir || start_cursor.file_id_ <= 0 || start_cursor.log_id_ != 0 || start_cursor.offset_ != 0)
+      {
+        err = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "invalid argument: log_dir=%s, log_cursor=%s", log_dir, start_cursor.to_str());
+      }
+      else if (OB_SUCCESS != (err = log_reader.init(&direct_reader, log_dir, start_cursor.file_id_, 0, false)))
+      {
+        TBSYS_LOG(ERROR, "ObLogReader init error[err=%d]", err);
+      }
+      while (OB_SUCCESS == err)
+      {
+        if (OB_SUCCESS != (err = log_reader.read_log(cmd, seq, log_data, data_len)) &&
+            OB_FILE_NOT_EXIST != err && OB_READ_NOTHING != err && OB_LAST_LOG_RUINNED != err)
+        {
+          TBSYS_LOG(ERROR, "ObLogReader read error[ret=%d]", err);
+        }
+        else if (OB_LAST_LOG_RUINNED == err)
+        {
+          TBSYS_LOG(WARN, "last_log[%s] broken!", end_cursor.to_str());
+          err = OB_ITER_END;
+        }
+        else if (OB_SUCCESS != err)
+        {
+          err = OB_ITER_END; // replay all
+        }
+        else if (OB_SUCCESS != (err = log_reader.get_next_cursor(end_cursor)))
+        {
+          TBSYS_LOG(ERROR, "log_reader.get_cursor()=>%d",  err);
+        }
+      }
+      if (OB_ITER_END == err)
+      {
+        err = OB_SUCCESS;
+      }
+      return err;
     }
 
     int get_local_max_log_cursor_func(const char* log_dir, const uint64_t log_file_id_by_sst, ObLogCursor& log_cursor)
@@ -203,7 +306,6 @@ namespace oceanbase
       ObLogCursor new_cursor;
       int64_t max_log_file_id = 0;
       ObLogDirScanner scanner;
-      bool stop = false;
       set_cursor(log_cursor, 0, 0, 0);
       if (NULL == log_dir)
       {
@@ -227,7 +329,7 @@ namespace oceanbase
         }
         TBSYS_LOG(INFO, "max_log_file_id=%ld, log_file_id_by_sst=%ld", max_log_file_id, log_file_id_by_sst);
         log_cursor.file_id_ = max(max_log_file_id, 0);
-        if (log_cursor.file_id_ >0 && OB_SUCCESS != (err = replay_local_log_func(stop, log_dir, log_cursor, new_cursor, NULL)))
+        if (log_cursor.file_id_ >0 && OB_SUCCESS != (err = get_local_max_log_cursor_func(log_dir, log_cursor, new_cursor)))
         {
           TBSYS_LOG(ERROR, "get_max_local_cursor(file_id=%ld)=>%d", log_cursor.file_id_, err);
         }
@@ -240,7 +342,7 @@ namespace oceanbase
         {
           ObLogCursor tmp_cursor = log_cursor;
           tmp_cursor.file_id_--;
-          if (OB_SUCCESS != (err = replay_local_log_func(stop, log_dir, tmp_cursor, new_cursor, NULL)))
+          if (OB_SUCCESS != (err = get_local_max_log_cursor_func(log_dir, tmp_cursor, new_cursor)))
           {
             TBSYS_LOG(ERROR, "get_max_local_cursor(): try previous file[id=%ld]=>%d", log_cursor.file_id_, err);
           }
@@ -254,13 +356,105 @@ namespace oceanbase
       return err;
     }
 
+    int replay_local_log_func(const volatile bool& stop, const char* log_dir,
+                              const ObLogCursor& start_cursor, ObLogCursor& end_cursor,
+                              ObLogReplayWorker& replay_worker)
+    {
+      int err = OB_SUCCESS;
+      char* buf = NULL;
+      int64_t len = ObLogWriter::LOG_BUFFER_SIZE;
+      int64_t read_count = 0;
+      int64_t end_id = 0;
+      ObPosLogReader reader;
+      ObLogLocation start_location;
+      ObLogLocation end_location;
+      int64_t start_time = tbsys::CTimeUtil::getTime();
+      end_cursor = start_cursor;
+
+      if (NULL == log_dir || start_cursor.file_id_ <= 0 || start_cursor.log_id_ != 0 || start_cursor.offset_ != 0)
+      {
+        err = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "invalid argument: log_dir=%s, log_cursor=%s", log_dir, start_cursor.to_str());
+      }
+      else if (NULL == (buf = (char*)ob_malloc(len)))
+      {
+        err = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(ERROR, "ob_malloc(len=%ld) fail", len);
+      }
+      else if (OB_SUCCESS != (err = get_first_log_id_func(log_dir, end_cursor.file_id_, end_cursor.log_id_, NULL))
+               && OB_ENTRY_NOT_EXIST != err)
+      {
+        TBSYS_LOG(ERROR, "get_first_log_id_func()=>%d", err);
+      }
+      else if (OB_ENTRY_NOT_EXIST == err)
+      {
+        TBSYS_LOG(WARN, "replay_local_log(start_file=%ld): NOT EXIST", start_location.file_id_);
+      }
+      else if (OB_SUCCESS != (err = reader.init(log_dir, true)))
+      {
+        TBSYS_LOG(ERROR, "located_log_reader init error[err=%d]", err);
+      }
+      else if (OB_SUCCESS != (err = replay_worker.start_log(end_cursor)))
+      {
+        TBSYS_LOG(ERROR, "replay_worker.start_log(%s)=>%d", end_cursor.to_str(), err);
+      }
+      else
+      {
+        start_location.file_id_ = end_cursor.file_id_;
+        start_location.log_id_ = end_cursor.log_id_;
+        end_location = start_location;
+      }
+      while (!stop && OB_SUCCESS == err)
+      {
+        if (OB_SUCCESS != (err = reader.get_log(start_location.log_id_, start_location, end_location,
+                                                     buf, len, read_count)))
+        {
+          TBSYS_LOG(ERROR, "reader.get_log(log_id=%ld)=>%d", start_location.log_id_, err);
+        }
+        else if (read_count <= 0)
+        {
+          break;
+        }
+        else if (OB_SUCCESS != (err = replay_worker.submit_batch(end_id, buf, read_count, RT_LOCAL)))
+        {
+          TBSYS_LOG(ERROR, "replay_worker.submit_batch(end_id=%ld, buf=%p[%ld])=>%d", end_id, buf, len, err);
+        }
+        else
+        {
+          start_location = end_location;
+        }
+      }
+      if (stop)
+      {
+        err = OB_CANCELED;
+      }
+      if (OB_SUCCESS != err)
+      {}
+      else if (OB_SUCCESS != (err = replay_worker.wait_task(end_id)))
+      {
+        TBSYS_LOG(ERROR, "replay_worker.wait_task(end_id=%ld)=>%d", end_id, err);
+      }
+      else
+      {
+        end_cursor.log_id_ = end_location.log_id_;
+        end_cursor.file_id_ = end_location.file_id_;
+        end_cursor.offset_ = end_location.offset_;
+      }
+      if (NULL != buf)
+      {
+        ob_free(buf);
+      }
+      TBSYS_LOG(INFO, "replay_local_log_profile: duration=%ld", tbsys::CTimeUtil::getTime() - start_time);
+      return err;
+    }
+
     int replay_single_log_func(ObUpsMutator& mutator, CommonSchemaManagerWrapper& schema,
                                ObUpsTableMgr* table_mgr, LogCommand cmd, const char* log_data, int64_t data_len,
-                               const ReplayType replay_type)
+                               const int64_t commit_id, const ReplayType replay_type)
     {
       int err = OB_SUCCESS;
       int64_t pos = 0;
-      int64_t log_id = 0;
+      int64_t file_id = 0;
       if (NULL == table_mgr || NULL == log_data || 0 >= data_len)
       {
         err = OB_INVALID_ARGUMENT;
@@ -282,7 +476,7 @@ namespace oceanbase
             }
             else if (OB_MEM_OVERFLOW == err)
             {
-              TBSYS_LOG(ERROR, "table_mgr->replay(log_cmd=%d, data=%p[%ld]):MEM_OVERFLOW", cmd, log_data, data_len);
+              TBSYS_LOG(WARN, "table_mgr->replay(log_cmd=%d, data=%p[%ld]):MEM_OVERFLOW", cmd, log_data, data_len);
             }
             break;
           case OB_UPS_SWITCH_SCHEMA:
@@ -301,14 +495,14 @@ namespace oceanbase
             }
             break;
           case OB_LOG_SWITCH_LOG:
-            if (OB_SUCCESS != (err = serialization::decode_i64(log_data, data_len, pos, (int64_t*)&log_id)))
+            if (OB_SUCCESS != (err = serialization::decode_i64(log_data, data_len, pos, (int64_t*)&file_id)))
             {
               TBSYS_LOG(ERROR, "decode_i64 log_id error, err=%d", err);
             }
             else
             {
               pos = data_len;
-              TBSYS_LOG(INFO, "replay log: SWITCH_LOG, log_id=%ld", log_id);
+              TBSYS_LOG(INFO, "replay log: SWITCH_LOG, file_id=%ld", file_id);
             }
             break;
           case OB_LOG_NOP:
@@ -321,13 +515,14 @@ namespace oceanbase
       }
       if (pos != data_len)
       {
-        TBSYS_LOG(ERROR, "pos[%ld] != data_len[%ld]", pos, data_len);
         err = OB_ERROR;
+        TBSYS_LOG(ERROR, "pos[%ld] != data_len[%ld]", pos, data_len);
+        //common::hex_dump(log_data, static_cast<int32_t>(data_len), false, TBSYS_LOG_LEVEL_WARN);
       }
-      if (OB_SUCCESS != err)
+      if (OB_SUCCESS != err && OB_MEM_OVERFLOW != err)
       {
-        TBSYS_LOG(ERROR, "replay_log(cmd=%d, log_data=%p, data_len=%ld)=>%d", cmd, log_data, data_len, err);
-        common::hex_dump(log_data, static_cast<int32_t>(data_len), false, TBSYS_LOG_LEVEL_WARN);
+        TBSYS_LOG(ERROR, "replay_log(cmd=%d, log_data=%p, data_len=%ld, commit_id=%ld)=>%d",
+                  cmd, log_data, data_len, commit_id, err);
       }
       return err;
     }
@@ -342,6 +537,8 @@ namespace oceanbase
       int64_t data_len = 0;
       LogCommand cmd = OB_LOG_UNKNOWN;
       uint64_t seq;
+      int64_t retry_wait_time_us = 100 * 1000;
+      int64_t start_time = tbsys::CTimeUtil::getTime();
       end_cursor = start_cursor;
 
       if (NULL == log_dir || start_cursor.file_id_ <= 0 || start_cursor.log_id_ != 0 || start_cursor.offset_ != 0)
@@ -384,6 +581,10 @@ namespace oceanbase
             {
               TBSYS_LOG(ERROR, "replay_single_log()=>%d",  err);
             }
+            else if (OB_NEED_RETRY == err)
+            {
+              usleep((useconds_t)retry_wait_time_us);
+            }
           }
         }
       }
@@ -403,6 +604,7 @@ namespace oceanbase
       {
         TBSYS_LOG(DEBUG, "replay_local_log(log_dir=%s, end_cursor=%s)=>%d", log_dir, end_cursor.to_str(), err);
       }
+      TBSYS_LOG(INFO, "replay_local_log_profile: duration=%ld", tbsys::CTimeUtil::getTime() - start_time);
       return err;
     }
 
@@ -411,6 +613,7 @@ namespace oceanbase
       int err = OB_SUCCESS;
       ObLogEntry log_entry;
       int64_t pos = 0;
+      int64_t retry_wait_time_us = 100 * 1000;
       while (OB_SUCCESS == err && pos < data_len)
       {
         if (OB_SUCCESS != (err = log_entry.deserialize(log_data, data_len, pos)))
@@ -431,6 +634,10 @@ namespace oceanbase
                 && OB_NEED_RETRY != err && OB_CANCELED != err)
             {
               TBSYS_LOG(ERROR, "replay_log(cmd=%d, log_data=%p, data_len=%d)=>%d", log_entry.cmd_, log_data + pos, log_entry.get_log_data_len(), err);
+            }
+            else if (OB_NEED_RETRY == err)
+            {
+              usleep((useconds_t)retry_wait_time_us);
             }
           }
         }
@@ -520,7 +727,8 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "set_entry(seq=%ld, cmd=%d, log_data=%p, data_len=%ld)=>%d", seq, cmd, log_data, data_len, err);
       }
-      else if (OB_SUCCESS != (err = serialize_log_entry(buf, len, pos, entry, log_data, data_len)))
+      else if (OB_SUCCESS != (err = serialize_log_entry(buf, len, pos, entry, log_data, data_len))
+               && OB_BUF_NOT_ENOUGH != err)
       {
         TBSYS_LOG(ERROR, "serialize_log_entry(buf=%p, len=%ld, pos=%ld, log_data=%p, data_len=%ld)=>%d",
                   buf, len, pos, log_data, data_len, err);
@@ -632,7 +840,7 @@ namespace oceanbase
       if (OB_SUCCESS != err && OB_INVALID_ARGUMENT != err)
       {
         TBSYS_LOG(ERROR, "parse log buf error:");
-        hex_dump(log_data, static_cast<int32_t>(len), true, TBSYS_LOG_LEVEL_WARN);
+        //hex_dump(log_data, static_cast<int32_t>(len), true, TBSYS_LOG_LEVEL_WARN);
       }
       else if (real_start_id > 0)
       {
@@ -673,7 +881,16 @@ namespace oceanbase
           last_align_end_pos = offset + pos;
         }
         old_pos = pos;
-        if (pos + log_entry.get_serialize_size() > len || is_file_end) // 循环唯一的出口
+        if (ObLogGenerator::is_eof(log_data + pos, len - pos))
+        {
+          TBSYS_LOG(WARN, "read_eof: offset=%ld, pos=%ld, log_id=%ld", offset, pos, real_end_id);
+          break;
+        }
+        else if (is_file_end)
+        {
+          break;
+        }
+        else if (pos + log_entry.get_serialize_size() > len || is_file_end)
         {
           break;
         }
@@ -713,7 +930,7 @@ namespace oceanbase
       if (OB_SUCCESS != err && OB_INVALID_ARGUMENT != err)
       {
         TBSYS_LOG(ERROR, "parse log buf error:");
-        hex_dump(log_data, static_cast<int32_t>(len), true, TBSYS_LOG_LEVEL_WARN);
+        //hex_dump(log_data, static_cast<int32_t>(len), true, TBSYS_LOG_LEVEL_WARN);
       }
       else if (last_align_end_id > 0)
       {
@@ -729,8 +946,11 @@ namespace oceanbase
         end_pos = 0;
         end_id = start_id;
       }
-      TBSYS_LOG(DEBUG, "trim_log_buffer(offset=%ld, align_bits=%ld, pos=%ld, aligned_pos=%ld, log=[%ld,%ld])=>%d",
-                offset, align_bits, pos, end_pos, start_id, end_id, err);
+      if (OB_SUCCESS == err && len > 0 && end_pos <= 0)
+      {
+        TBSYS_LOG(WARN, "trim_log_buffer(offset=%ld, align=%ld, len=%ld, end_pos=%ld): not found aligned pos",
+                  offset, align_bits, len, end_pos);
+      }
       return err;
     }
   } // end namespace updateserver

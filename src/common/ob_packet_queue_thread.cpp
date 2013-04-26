@@ -14,6 +14,10 @@
 
 #include "ob_packet_queue_thread.h"
 #include "ob_atomic.h"
+#include "easy_io.h"
+#include "ob_profile_log.h"
+#include "ob_profile_type.h"
+#include "ob_tsi_factory.h"
 
 using namespace oceanbase::common;
 
@@ -66,7 +70,7 @@ ObPacketQueueThread::~ObPacketQueueThread()
   }
 }
 
-void ObPacketQueueThread::setThreadParameter(int thread_count, tbnet::IPacketQueueHandler* handler, void* args)
+void ObPacketQueueThread::setThreadParameter(int thread_count, ObPacketQueueHandler *handler, void* args)
 {
   setThreadCount(thread_count);
   handler_ = handler;
@@ -77,7 +81,7 @@ void ObPacketQueueThread::setThreadParameter(int thread_count, tbnet::IPacketQue
   //extra packet queue to handle the control packets in the funture
   if (0 == max_waiting_thread_count_)
   {
-    max_waiting_thread_count_  = thread_count; 
+    max_waiting_thread_count_  = thread_count;
   }
 
   if (NULL == next_packet_buffer_)
@@ -168,7 +172,14 @@ void ObPacketQueueThread::pushQueue(ObPacketQueue& packet_queue, int max_queue_l
   cond_.signal();
   cond_.unlock();
 }
-
+void ObPacketQueueThread::set_ip_port(const IpPort & ip_port)
+{
+  ip_port_ = ip_port;
+}
+void ObPacketQueueThread::set_host(const ObServer &host)
+{
+  host_ = host;
+}
 bool ObPacketQueueThread::is_next_packet(ObPacket* packet) const
 {
   bool ret = false;
@@ -188,7 +199,7 @@ int64_t ObPacketQueueThread::generate_session_id()
 
 int64_t ObPacketQueueThread::get_session_id(ObPacket* packet) const
 {
-  int64_t session_id = packet->get_session_id(); 
+  int64_t session_id = packet->get_session_id();
   return session_id;
 }
 
@@ -215,14 +226,14 @@ ObPacket* ObPacketQueueThread::clone_next_packet(ObPacket* packet, int64_t threa
 bool ObPacketQueueThread::wakeup_next_thread(ObPacket* packet)
 {
   bool ret = false;
-
   int64_t session_id = get_session_id(packet);
-
   WaitObject wait_object;
   int hash_ret = next_wait_map_.get(session_id, wait_object);
   if (hash::HASH_EXIST != hash_ret)
   {
     // no thread wait for this packet;
+    // packet will not handled by server just tell libeasy request is done
+    easy_request_wakeup(packet->get_request());
     ret = false;
   }
   else
@@ -239,6 +250,7 @@ bool ObPacketQueueThread::wakeup_next_thread(ObPacket* packet)
     {
       if(OB_SESSION_END == packet->get_packet_code())
       {
+        wait_object.packet_ = clone_next_packet(packet, wait_object.thread_no_);
         wait_object.end_session();
       }
       else
@@ -258,7 +270,6 @@ bool ObPacketQueueThread::wakeup_next_thread(ObPacket* packet)
     }
     next_cond_[wait_object.thread_no_].unlock();
   }
-
   return ret;
 }
 
@@ -336,8 +347,8 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
     oldv = waiting_thread_count_;
     if (oldv > max_waiting_thread_count_)
     {
-      TBSYS_LOG(INFO, "current wait thread =%ld >= max wait =%ld", 
-          oldv, max_waiting_thread_count_);
+      TBSYS_LOG(INFO, "current wait thread =%ld >= max wait =%ld",
+        oldv, max_waiting_thread_count_);
       ret = OB_EAGAIN;
     }
     else if (atomic_compare_exchange(&waiting_thread_count_, oldv+1, oldv) == oldv)
@@ -351,6 +362,7 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
       }
       else if(wait_object.is_session_end())
       {
+        next_request = wait_object.packet_;
         ret = OB_NET_SESSION_END;
       }
       else if (NULL == wait_object.packet_)
@@ -361,6 +373,7 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
           hash_ret = next_wait_map_.get(session_id, wait_object);
           if((hash::HASH_EXIST == hash_ret) && wait_object.is_session_end())
           {
+            next_request = wait_object.packet_;
             ret = OB_NET_SESSION_END;
           }
           else if (hash::HASH_EXIST != hash_ret || NULL == wait_object.packet_)
@@ -372,6 +385,7 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
           {
             if (wait_object.is_session_end())
             {
+              next_request = wait_object.packet_;
               ret = OB_NET_SESSION_END;
             }
             else
@@ -421,7 +435,8 @@ void ObPacketQueueThread::run(tbsys::CThread* thread, void* args)
 
   long thread_no = reinterpret_cast<long>(args);
   set_thread_no(thread_no);
-
+  ObServer *host = GET_TSI_MULT(ObServer, TSI_COMMON_OBSERVER_1);
+  *host = host_;
   ObPacket* packet = NULL;
   while (!_stop)
   {
@@ -450,10 +465,34 @@ void ObPacketQueueThread::run(tbsys::CThread* thread, void* args)
 
     if (handler_)
     {
+      TBSYS_LOG(DEBUG, "pop packet code is %d", packet->get_packet_code());
+      int64_t trace_id = packet->get_trace_id();
+      if (0 == trace_id)
+      {
+        TraceId *new_id = GET_TSI_MULT(TraceId, TSI_COMMON_PACKET_TRACE_ID_1);
+        (new_id->id).seq_ = atomic_inc(&(SeqGenerator::seq_generator_));
+        (new_id->id).ip_ = ip_port_.ip_;
+        (new_id->id).port_ = ip_port_.port_;
+        packet->set_trace_id(new_id->uval_);
+      }
+      else
+      {
+        TraceId *id = GET_TSI_MULT(TraceId, TSI_COMMON_PACKET_TRACE_ID_1);
+        id->uval_ = static_cast<uint64_t>(trace_id);
+      }
+      uint32_t *src_channel_id = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_SOURCE_CHID_1);
+      //将来源包的chid设置到线程中
+      *src_channel_id = packet->get_channel_id();
+      // reset
+      uint32_t *channel_id = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_CHID_1);
+      *channel_id = 0;
+      int64_t st = tbsys::CTimeUtil::getTime();
+      PROFILE_LOG(DEBUG, HANDLE_PACKET_START_TIME PCODE, st, packet->get_packet_code());
       handler_->handlePacketQueue(packet, args_);
+      int64_t ed = tbsys::CTimeUtil::getTime();
+      PROFILE_LOG(DEBUG, HANDLE_PACKET_END_TIME PCODE, ed, packet->get_packet_code());
     }
   }
-
   cond_.lock();
   while (queue_.size() > 0)
   {
@@ -461,7 +500,35 @@ void ObPacketQueueThread::run(tbsys::CThread* thread, void* args)
     cond_.unlock();
     if (handler_ && wait_finish_)
     {
+      TBSYS_LOG(DEBUG, "pop packet code is %d", packet->get_packet_code());
+      int64_t trace_id = packet->get_trace_id();
+      if (0 == trace_id)
+      {
+        //从外部进来的packet，trace id为0
+        TraceId *new_id = GET_TSI_MULT(TraceId, TSI_COMMON_PACKET_TRACE_ID_1);
+        (new_id->id).seq_ = atomic_inc(&(SeqGenerator::seq_generator_));
+        (new_id->id).ip_ = ip_port_.ip_;
+        (new_id->id).port_ = ip_port_.port_;
+        //产生一个trace id
+        packet->set_trace_id(new_id->uval_);
+      }
+      else
+      {
+        TraceId *id = GET_TSI_MULT(TraceId, TSI_COMMON_PACKET_TRACE_ID_1);
+        id->uval_ = static_cast<uint64_t>(trace_id);
+      }
+      uint32_t *src_channel_id = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_SOURCE_CHID_1);
+      *src_channel_id = packet->get_channel_id();
+      // reset
+      uint32_t *channel_id = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_CHID_1);
+      *channel_id = 0;
+      int64_t st = tbsys::CTimeUtil::getTime();
+      //这个时候仅仅是有来源包，还没有开始发包，所有chid id设置为0
+      PROFILE_LOG(DEBUG, HANDLE_PACKET_START_TIME PCODE, st, packet->get_packet_code());
       handler_->handlePacketQueue(packet, args_);
+      int64_t ed = tbsys::CTimeUtil::getTime();
+      //这里已经有了chid id了
+      PROFILE_LOG(DEBUG, HANDLE_PACKET_END_TIME PCODE, ed, packet->get_packet_code());
     }
     cond_.lock();
   }

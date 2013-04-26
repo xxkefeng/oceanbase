@@ -521,7 +521,7 @@ namespace oceanbase
      * 
      * @return OB_SUCCESS on success
      */
-    int ObCompactRow::get_row_key(ObString& rowkey)
+    int ObCompactRow::get_row_key(ObRowkey& rowkey)
     {
       int ret = OB_SUCCESS;
       if (buf_pos_ <= 0 || NULL == buf_)
@@ -545,10 +545,12 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN,"invalid row");
         }
+        /* TODO
         else if ((ret = cell->value_.get_varchar(rowkey)) != OB_SUCCESS)
         {
           TBSYS_LOG(WARN,"get varchar failed,ret=%d",ret);
         }
+        */
         else if (rowkey.length() <= 0 || NULL == rowkey.ptr())
         {
           TBSYS_LOG(WARN,"rowkey is invalid");

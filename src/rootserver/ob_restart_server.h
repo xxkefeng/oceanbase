@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_restart_server.h
@@ -18,14 +18,13 @@
 #define _OB_RESTART_SERVER_H
 
 #include "ob_chunk_server_manager.h"
-#include "ob_root_config.h"
 #include "ob_root_table2.h"
 #include "ob_root_log_worker.h"
 #include "ob_root_rpc_stub.h"
 #include "common/ob_server.h"
 #include "common/ob_define.h"
 #include "ob_restart_server.h"
-
+#include "ob_root_server_config.h"
 
 namespace oceanbase
 {
@@ -37,7 +36,7 @@ namespace oceanbase
       ObRestartServer();
       int restart_servers();
 
-      inline void set_root_config(ObRootConfig* config)
+      inline void set_root_config(ObRootServerConfig* config)
       {
         config_ = config;
       }
@@ -76,7 +75,7 @@ namespace oceanbase
       void find_can_restart_server(int32_t expected_replicas_num);
 
     private:
-      ObRootConfig* config_;
+      ObRootServerConfig* config_;
       ObChunkServerManager* server_manager_;
       ObRootTable2* root_table_;
       ObRootRpcStub* rpc_stub_;

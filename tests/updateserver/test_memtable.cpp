@@ -11,6 +11,7 @@
 #include "updateserver/ob_update_server_main.h"
 #include "test_utils.h"
 #include "gtest/gtest.h"
+#include "../common/test_rowkey_helper.h"
 
 #define _US_ if (true) {
 #define _UE_ }
@@ -19,6 +20,7 @@ using namespace oceanbase;
 using namespace updateserver;
 using namespace common;
 using namespace common::hash;
+static CharArena allocator_;
 
 TEST(TestMemTable, init_and_destroy)
 {
@@ -123,8 +125,8 @@ TEST(TestMemTable, trans_set)
     ObMutatorCellInfo *mutator_ci = NULL;
     if (OB_SUCCESS == mutator.get_cell(&mutator_ci))
     {
-      ObString rk = mutator_ci->cell_info.row_key_;
-      memset(rk.ptr(), 0, rk.length());
+      ObRowkey rk = mutator_ci->cell_info.row_key_;
+      memset(const_cast<ObObj*>(rk.ptr()), 0, rk.length() * sizeof(ObObj));
     }
   }
   mutator.reset_iter();
@@ -587,7 +589,7 @@ TEST(TestMemTable, total_empty)
 
   iter.reset();
   mt.start_transaction(READ_TRANSACTION, td);
-  EXPECT_EQ(OB_SUCCESS, mt.get(td, 1000, ObString(17, 17, const_cast<char*>("pre_1001|suf_0000")), iter));
+  EXPECT_EQ(OB_SUCCESS, mt.get(td, 1000, make_rowkey("pre_1001|suf_0000", &allocator_), iter));
   rc.set_iterator(&iter);
   EXPECT_EQ(OB_SUCCESS, rc.next_cell());
   EXPECT_EQ(OB_SUCCESS, rc.get_cell(&ci));
@@ -615,7 +617,7 @@ TEST(TestMemTable, total_empty)
 
   iter.reset();
   mt.start_transaction(READ_TRANSACTION, td);
-  EXPECT_EQ(OB_SUCCESS, mt.get(td, 1000, ObString(17, 17, const_cast<char*>("pre_1001|suf_0000")), iter));
+  EXPECT_EQ(OB_SUCCESS, mt.get(td, 1000, make_rowkey("pre_1001|suf_0000", &allocator_), iter));
   rc.set_iterator(&iter);
   EXPECT_EQ(OB_SUCCESS, rc.next_cell());
   EXPECT_EQ(OB_SUCCESS, rc.get_cell(&ci));
@@ -643,7 +645,7 @@ TEST(TestMemTable, total_empty)
 
   iter.reset();
   mt.start_transaction(READ_TRANSACTION, td);
-  EXPECT_EQ(OB_SUCCESS, mt.get(td, 1000, ObString(17, 17, const_cast<char*>("pre_1001|suf_0000")), iter));
+  EXPECT_EQ(OB_SUCCESS, mt.get(td, 1000, make_rowkey("pre_1001|suf_0000", &allocator_), iter));
   rc.set_iterator(&iter);
   EXPECT_EQ(OB_SUCCESS, rc.next_cell());
   EXPECT_EQ(OB_SUCCESS, rc.get_cell(&ci));
@@ -671,7 +673,7 @@ TEST(TestMemTable, total_empty)
 
   iter.reset();
   mt.start_transaction(READ_TRANSACTION, td);
-  EXPECT_EQ(OB_SUCCESS, mt.get(td, 1000, ObString(17, 17, const_cast<char*>("pre_1001|suf_0000")), iter));
+  EXPECT_EQ(OB_SUCCESS, mt.get(td, 1000, make_rowkey("pre_1001|suf_0000", &allocator_), iter));
   rc.set_iterator(&iter);
   EXPECT_EQ(OB_SUCCESS, rc.next_cell());
   EXPECT_EQ(OB_SUCCESS, rc.get_cell(&ci));

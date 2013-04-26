@@ -23,10 +23,12 @@ namespace
   using namespace oceanbase::common;
   using namespace oceanbase::chunkserver;
 
-  int allocate_range_buffer(ObRange &range, ObMemBuf &buffer)
+  int allocate_range_buffer(ObNewRange &range, ObMemBuf &buffer)
   {
     int err = OB_SUCCESS;
-    int64_t buf_len = range.start_key_.length() + range.end_key_.length();
+    int64_t start_key_size = range.start_key_.get_deep_copy_size() ;
+    int64_t end_key_size = range.end_key_.get_deep_copy_size();
+    int64_t buf_len = start_key_size +  end_key_size;
     if (0 < buf_len)
     {
       if (OB_SUCCESS != buffer.ensure_space(buf_len))
@@ -36,15 +38,10 @@ namespace
       }
       else
       {
-        memcpy(buffer.get_buffer(), range.start_key_.ptr(), 
-               range.start_key_.length());
-        range.start_key_.assign(reinterpret_cast<char*>(buffer.get_buffer()),
-                                range.start_key_.length());
-        memcpy(reinterpret_cast<char*>(buffer.get_buffer()) + range.start_key_.length(), 
-               range.end_key_.ptr(), range.end_key_.length());
-        range.end_key_.assign(reinterpret_cast<char*>(buffer.get_buffer()) 
-                              + range.start_key_.length(),
-                              range.end_key_.length());
+        ObRawBufAllocatorWrapper start_wrapper(reinterpret_cast<char*>(buffer.get_buffer()), start_key_size);
+        ObRawBufAllocatorWrapper end_wrapper(reinterpret_cast<char*>(buffer.get_buffer()) + start_key_size, end_key_size);
+        range.start_key_.deep_copy(range.start_key_, start_wrapper);
+        range.end_key_.deep_copy(range.end_key_, end_wrapper);
       }
     }
     return err;
@@ -63,16 +60,13 @@ namespace
     if (OB_SUCCESS == err)
     {
       if (cur_version_range.border_flag_.is_max_value() 
-          || org_version_range.end_version_.major_ > (ObVersion::get_major(cs_version) + 1)
+          || org_version_range.end_version_ > cs_version + 1
           || (cur_version_range.border_flag_.inclusive_end() 
-              && org_version_range.end_version_.major_ == (ObVersion::get_major(cs_version) + 1))
-          || (cur_version_range.border_flag_.inclusive_end() &&
-              org_version_range.end_version_.major_ == (ObVersion::get_major(cs_version)) &&
-              (ObVersion::get_major(cs_version) != cs_version) && (!ObVersion::is_final_minor(cs_version))) )
+              && org_version_range.end_version_ == cs_version + 1))
       {
         cur_version_range.border_flag_.unset_min_value();
-        cur_version_range.border_flag_.unset_inclusive_start();          
-        cur_version_range.start_version_ = cs_version;
+        cur_version_range.border_flag_.set_inclusive_start();
+        cur_version_range.start_version_ = cs_version + 1;
 
         ObVersion cv = cs_version;
         FILL_TRACE_LOG("version range for ups:%s,org_version_range:%s,cs_version:%d-%hd-%hd",
@@ -98,10 +92,10 @@ namespace oceanbase
   {
     using namespace oceanbase::common;
 
-    bool is_finish_scan(const ObScanParam & param, const ObRange & result_range)
+    bool is_finish_scan(const ObScanParam & param, const ObNewRange & result_range)
     {
       bool ret = false;
-      if (ObScanParam::FORWARD == param.get_scan_direction())
+      if (ScanFlag::FORWARD == param.get_scan_direction())
       {
         if (result_range.compare_with_endkey2(*param.get_range()) >= 0)
         {
@@ -183,9 +177,9 @@ namespace oceanbase
       int err = OB_SUCCESS;
       const ObReadParam &org_read_param = org_scan_param;
       ObReadParam *read_param = scan_param;
-      ObRange tablet_range; 
-      const ObRange *org_scan_range = NULL;
-      ObRange cur_range;
+      ObNewRange tablet_range; 
+      const ObNewRange *org_scan_range = NULL;
+      ObNewRange cur_range;
       if(NULL != scan_param)
       {
         scan_param->reset();
@@ -204,7 +198,7 @@ namespace oceanbase
         }
       }
       
-      ObString last_row_key;
+      ObRowkey last_row_key;
       if (OB_SUCCESS == err)
       {
         if (request_fullfilled)
@@ -216,7 +210,7 @@ namespace oceanbase
             {
               err = OB_ITER_END;
             }
-            else if (ObScanParam::FORWARD == org_scan_param.get_scan_direction()) 
+            else if (ScanFlag::FORWARD == org_scan_param.get_scan_direction()) 
             {
               last_row_key = tablet_range.end_key_;
             }
@@ -244,16 +238,14 @@ namespace oceanbase
       {
         cur_range =*org_scan_range;
         // forward
-        if (ObScanParam::FORWARD == org_scan_param.get_scan_direction())
+        if (ScanFlag::FORWARD == org_scan_param.get_scan_direction())
         {
           cur_range.start_key_ = last_row_key;
-          cur_range.border_flag_.unset_min_value();
           cur_range.border_flag_.unset_inclusive_start();
         }
         else
         {
           cur_range.end_key_ = last_row_key;
-          cur_range.border_flag_.unset_max_value();
           if (request_fullfilled)
           {
             // tablet range start key
@@ -306,8 +298,8 @@ namespace oceanbase
       bool is_fullfill = false;
       int64_t fullfilled_row_num = 0;
       ObReadParam &read_param = param;
-      ObRange cs_range;
-      ObString cs_max_rowkey;
+      ObNewRange cs_range;
+      ObRowkey cs_max_rowkey;
       bool use_max_rowkey = false;
       err =  get_ups_read_param(read_param,cs_result);
       if (OB_SUCCESS == err)
@@ -326,7 +318,7 @@ namespace oceanbase
             if (false == is_finish_scan(param, cs_range))
             {
               use_max_rowkey = true;
-              if (ObScanParam::FORWARD == param.get_scan_direction()) 
+              if (ScanFlag::FORWARD == param.get_scan_direction()) 
               {
                 cs_max_rowkey = cs_range.end_key_;
               }
@@ -351,18 +343,16 @@ namespace oceanbase
     
       if (OB_SUCCESS == err && use_max_rowkey)
       {
-        ObRange new_range = *param.get_range();
-        if (ObScanParam::FORWARD == param.get_scan_direction())
+        ObNewRange new_range = *param.get_range();
+        if (ScanFlag::FORWARD == param.get_scan_direction())
         {
           new_range.end_key_ = cs_max_rowkey;
-          new_range.border_flag_.unset_max_value();
           new_range.border_flag_.set_inclusive_end();
         }
         else
         {
           // the smallest row key
           new_range.start_key_ = cs_max_rowkey;
-          new_range.border_flag_.unset_min_value();
           if (is_fullfill)
           {
             // not inclusive the tablet range start key

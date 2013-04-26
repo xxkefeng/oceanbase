@@ -24,7 +24,7 @@
 #include "common/ob_server.h"
 #include "common/ob_result.h"
 #include "common/serialization.h"
-
+#include "common/utility.h"
 using namespace oceanbase::common;
 
 namespace oceanbase
@@ -256,17 +256,20 @@ namespace oceanbase
         int initialize(const char* log_dir, uint64_t start_id, const char* dev, int port, int64_t timeout, int64_t convert_switch_log, int64_t lsync_retry_wait_time);
         virtual void destroy();
 
-        tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Connection *connection, tbnet::Packet *packet);
-        bool handleBatchPacket(tbnet::Connection *connection, tbnet::PacketQueue &packetQueue);
+        //tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Connection *connection, tbnet::Packet *packet);
+        //bool handleBatchPacket(tbnet::Connection *connection, ObPacketQueue &packetQueue);
+
+        int handlePacket(ObPacket *packet);
+        int handleBatchPacket(ObPacketQueue& packetQueue);
 
       private:
         int send_response_packet(int packet_code, int version, ObLsyncPacket* packet,
-                                 tbnet::Connection* conn, const uint32_t channel_id);
-        int handleRequest(tbnet::Connection* conn, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout);
-        int handleRequestMayNeedRetry(tbnet::Connection* conn, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout);
-        int ups_slave_register(tbnet::Connection* conn, const uint32_t channel_id, int packet_code, ObDataBuffer* buf);
-        int send_log(tbnet::Connection* conn, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout);
-        int send_log_(ObFetchLogRequest& req, tbnet::Connection* conn, const uint32_t channel_id, int64_t timeout);
+                                 easy_request_t* req, const uint32_t channel_id);
+        int handleRequest(easy_request_t* req, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout);
+        int handleRequestMayNeedRetry(easy_request_t* req, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout);
+        int ups_slave_register(easy_request_t* req, const uint32_t channel_id, int packet_code, ObDataBuffer* buf);
+        int send_log(easy_request_t* req, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout);
+        int send_log_(ObFetchLogRequest& req, easy_request_t* request, const uint32_t channel_id, int64_t timeout);
         int get_log(ObFetchLogRequest& req, char* buf, int64_t limit, int64_t& pos, int64_t timeout);
         bool is_registered(uint64_t id);
         int get_thread_buffer_(ObDataBuffer& data_buff);
@@ -277,7 +280,7 @@ namespace oceanbase
         ObSeekableLogReader reader_;
         int state_;
         uint64_t slave_id_;
-        ObPacketFactory my_packet_factory_;
+        //ObPacketFactory my_packet_factory_;
         ObDataBuffer log_buffer_;
         ThreadSpecificBuffer thread_buffer_;
     };

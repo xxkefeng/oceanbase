@@ -58,6 +58,11 @@ namespace oceanbase
       return rc_.get_cell(cell_info, is_row_changed);
     }
 
+    int MemTableEntityIterator::is_row_finished(bool *is_row_finished)
+    {
+      return rc_.is_row_finished(is_row_finished);
+    }
+
     void MemTableEntityIterator::reset()
     {
       memtable_iter_.reset();
@@ -123,9 +128,54 @@ namespace oceanbase
       return ret;
     }
 
+    int MemTableEntity::get(const BaseSessionCtx &session_ctx,
+                            const uint64_t table_id,
+                            const ObRowkey &row_key,
+                            ColumnFilter *column_filter,
+                            ITableIterator *iter)
+    {
+      int ret = OB_SUCCESS;
+      MemTableEntityIterator *sub_iter = dynamic_cast<MemTableEntityIterator*>(iter);
+      sub_iter->reset();
+      if (NULL == sub_iter)
+      {
+        TBSYS_LOG(WARN, "invalid param sub_iter=%p", sub_iter);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        ret = memtable_.get(session_ctx, table_id, row_key, sub_iter->get_memtable_iter(), column_filter);
+      }
+      return ret;
+    }
+
+    int MemTableEntity::get(const BaseSessionCtx &session_ctx,
+                            const uint64_t table_id,
+                            const ObRowkey &row_key,
+                            ColumnFilter *column_filter,
+                            const sql::ObLockFlag lock_flag,
+                            ITableIterator *iter)
+    {
+      int ret = OB_SUCCESS;
+      MemTableEntityIterator *sub_iter = dynamic_cast<MemTableEntityIterator*>(iter);
+      sub_iter->reset();
+      if (NULL == sub_iter)
+      {
+        TBSYS_LOG(WARN, "invalid param sub_iter=%p", sub_iter);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        ret = memtable_.get(session_ctx, table_id, row_key, sub_iter->get_memtable_iter(),
+                            column_filter,
+                            get_table_item().get_stat() == TableItem::ACTIVE? lock_flag: LF_NONE);
+      }
+      return ret;
+    }
+
     int MemTableEntity::get(TableTransDescriptor &trans_descriptor,
                             const uint64_t table_id,
-                            const ObString &row_key,
+                            const ObRowkey &row_key,
                             ColumnFilter *column_filter,
                             ITableIterator *iter)
     {
@@ -144,14 +194,14 @@ namespace oceanbase
       return ret;
     }
 
-    int MemTableEntity::scan(TableTransDescriptor &trans_descriptor,
+    int MemTableEntity::scan(const BaseSessionCtx &session_ctx,
                             const ObScanParam &scan_param,
                             ITableIterator *iter)
     {
       int ret = OB_SUCCESS;
       MemTableEntityIterator *sub_iter = dynamic_cast<MemTableEntityIterator*>(iter);
       sub_iter->reset();
-      const ObRange *scan_range = scan_param.get_range();
+      const ObNewRange *scan_range = scan_param.get_range();
       ColumnFilter *column_filter = get_tsi_columnfilter();
       if (NULL == sub_iter
           || NULL == scan_range)
@@ -161,7 +211,31 @@ namespace oceanbase
       }
       else
       {
-        bool reverse = (scan_param.get_scan_direction() == ObScanParam::BACKWARD);
+        bool reverse = (scan_param.get_scan_direction() == ScanFlag::BACKWARD);
+        column_filter = ColumnFilter::build_columnfilter(scan_param, column_filter);
+        ret = memtable_.scan(session_ctx, *scan_range, reverse, sub_iter->get_memtable_iter(), column_filter);
+      }
+      return ret;
+    }
+
+    int MemTableEntity::scan(TableTransDescriptor &trans_descriptor,
+                            const ObScanParam &scan_param,
+                            ITableIterator *iter)
+    {
+      int ret = OB_SUCCESS;
+      MemTableEntityIterator *sub_iter = dynamic_cast<MemTableEntityIterator*>(iter);
+      sub_iter->reset();
+      const ObNewRange *scan_range = scan_param.get_range();
+      ColumnFilter *column_filter = get_tsi_columnfilter();
+      if (NULL == sub_iter
+          || NULL == scan_range)
+      {
+        TBSYS_LOG(WARN, "invalid param sub_iter=%p scan_range=%p", sub_iter, scan_range);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        bool reverse = (scan_param.get_scan_direction() == ScanFlag::BACKWARD);
         column_filter = ColumnFilter::build_columnfilter(scan_param, column_filter);
         ret = memtable_.scan(trans_descriptor, *scan_range, reverse, sub_iter->get_memtable_iter(), column_filter);
       }
@@ -207,13 +281,19 @@ namespace oceanbase
       return MEMTABLE;
     }
 
+    ObRowIterAdaptor* ITableEntity::alloc_row_iter_adaptor(ResourcePool &rp, Guard &guard)
+    {
+      return rp.get_row_iter_adaptor_rp().get(guard.get_row_iter_adaptor_guard());
+    }
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     SSTableEntityIterator::SSTableEntityIterator() : get_param_(), sstable_iter_(NULL), column_filter_(NULL), cur_ci_ptr_(NULL),
+                                                     nop_cell_(),
                                                      is_row_changed_(false),
                                                      row_has_changed_(false),
                                                      iter_counter_(0)
     {
+      nop_cell_.value_.set_ext(ObActionFlag::OP_NOP);
     }
 
 
@@ -228,6 +308,25 @@ namespace oceanbase
 
     SSTableEntityIterator::~SSTableEntityIterator()
     {
+    }
+
+    int SSTableEntityIterator::is_row_finished(bool *is_row_finished)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == sstable_iter_)
+      {
+        TBSYS_LOG(WARN, "invalid sstable_iter=%p", sstable_iter_);
+        ret = OB_ERROR;
+      }
+      else if (OB_SUCCESS != (ret = sstable_iter_->is_row_finished(is_row_finished)))
+      {
+        TBSYS_LOG(WARN, "get is_row_finished from sstable_iter fail ret=%d", ret);
+      }
+      else
+      {
+        // do nothing
+      }
+      return ret;
     }
 
     int SSTableEntityIterator::next_cell()
@@ -264,6 +363,19 @@ namespace oceanbase
           {
             is_row_changed_ = row_has_changed_;
             row_has_changed_ = false;
+            break;
+          }
+          bool irf = false;
+          if (OB_SUCCESS != (ret = is_row_finished(&irf)))
+          {
+            break;
+          }
+          if (irf)
+          {
+            nop_cell_.table_id_ = cur_ci_ptr_->table_id_;
+            nop_cell_.row_key_ = cur_ci_ptr_->row_key_;
+            nop_cell_.column_id_ = OB_INVALID_ID;
+            cur_ci_ptr_ = &nop_cell_;
             break;
           }
         }
@@ -394,7 +506,9 @@ namespace oceanbase
         {
           *is_row_changed = is_row_changed_;
         }
-        TBSYS_LOG(DEBUG, "this=%p %s is_row_changed=%s", this, print_cellinfo(*cell_info), STR_BOOL(is_row_changed_));
+        bool irf = false;
+        is_row_finished(&irf);
+        TBSYS_LOG(DEBUG, "[SSTABLE_ITER] this=%p %s is_row_changed=%s is_row_finished=%s", this, print_cellinfo(*cell_info), STR_BOOL(is_row_changed_), STR_BOOL(irf));
       }
       return ret;
     }
@@ -495,9 +609,76 @@ namespace oceanbase
       return ret;
     }
 
+    int SSTableEntity::get(const BaseSessionCtx &session_ctx,
+                          const uint64_t table_id,
+                          const ObRowkey &row_key,
+                          ColumnFilter *column_filter,
+                          ITableIterator *iter)
+    {
+      UNUSED(session_ctx);
+      int ret = OB_SUCCESS;
+      SSTableEntityIterator *sub_iter = dynamic_cast<SSTableEntityIterator*>(iter);
+      sub_iter->reset();
+      ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
+      if (NULL == ups_main)
+      {
+        TBSYS_LOG(ERROR, "get ups main fail");
+        ret = OB_ERROR;
+      }
+      else if (NULL == sstable_reader_)
+      {
+        TBSYS_LOG(WARN, "invalid sstable_reader sstable_id=%lu", sstable_id_);
+        ret = OB_ERROR;
+      }
+      else if (NULL == column_filter
+              || NULL == sub_iter)
+      {
+        TBSYS_LOG(WARN, "invalid param column_filter=%p sub_iter=%p", column_filter, sub_iter);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        ObTransferSSTableQuery &sstable_query = ups_main->get_update_server().get_sstable_query();
+        ObGetParam &get_param = sub_iter->get_get_param();
+        get_param.reset();
+        ObCellInfo cell_info;
+        cell_info.table_id_ = table_id;
+        cell_info.row_key_ = row_key;
+        cell_info.column_id_ = OB_FULL_ROW_COLUMN_ID;
+        ObIterator *sstable_iter = &(sub_iter->get_sstable_getter());
+        get_param.set_is_result_cached(true);
+        if (OB_SUCCESS != (ret = get_param.add_only_one_cell(cell_info)))
+        {
+          TBSYS_LOG(WARN, "add cell to get_param fail ret=%d cell_info=[%s]", ret, print_cellinfo(&cell_info));
+        }
+        else if (OB_SUCCESS != (ret = sstable_query.get(get_param, *sstable_reader_, sstable_iter))
+                || NULL == sstable_iter)
+        {
+          TBSYS_LOG(WARN, "sstable query get fail ret=%d sstable_iter=%p cell_info=[%s]", ret, sstable_iter, print_cellinfo(&cell_info));
+        }
+        else
+        {
+          sub_iter->set_sstable_iter(sstable_iter);
+          sub_iter->set_column_filter(column_filter);
+        }
+      }
+      return ret;
+    }
+
+    int SSTableEntity::get(const BaseSessionCtx &session_ctx,
+                          const uint64_t table_id,
+                          const ObRowkey &row_key,
+                          ColumnFilter *column_filter,
+                           const sql::ObLockFlag lock_flag,
+                           ITableIterator *iter)
+    {
+      UNUSED(lock_flag);
+      return get(session_ctx, table_id, row_key, column_filter, iter);
+    }
+
     int SSTableEntity::get(TableTransDescriptor &trans_descriptor,
                           const uint64_t table_id,
-                          const ObString &row_key,
+                          const ObRowkey &row_key,
                           ColumnFilter *column_filter,
                           ITableIterator *iter)
     {
@@ -541,6 +722,58 @@ namespace oceanbase
                 || NULL == sstable_iter)
         {
           TBSYS_LOG(WARN, "sstable query get fail ret=%d sstable_iter=%p cell_info=[%s]", ret, sstable_iter, print_cellinfo(&cell_info));
+        }
+        else
+        {
+          sub_iter->set_sstable_iter(sstable_iter);
+          sub_iter->set_column_filter(column_filter);
+        }
+      }
+      return ret;
+    }
+
+    int SSTableEntity::scan(const BaseSessionCtx &session_ctx,
+                            const ObScanParam &scan_param,
+                            ITableIterator *iter)
+    {
+      UNUSED(session_ctx);
+      int ret = OB_SUCCESS;
+      SSTableEntityIterator *sub_iter = dynamic_cast<SSTableEntityIterator*>(iter);
+      sub_iter->reset();
+      ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
+      ColumnFilter *column_filter = get_tsi_columnfilter();
+      if (NULL == ups_main)
+      {
+        TBSYS_LOG(ERROR, "get ups main fail");
+        ret = OB_ERROR;
+      }
+      else if (NULL == sstable_reader_)
+      {
+        TBSYS_LOG(WARN, "invalid sstable_reader=%p", sstable_reader_);
+        ret = OB_ERROR;
+      }
+      else if (NULL == (column_filter = ColumnFilter::build_columnfilter(scan_param, column_filter)))
+      {
+        TBSYS_LOG(WARN, "build column_filter fail");
+        ret = OB_ERROR;
+      }
+      else if (NULL == sub_iter)
+      {
+        TBSYS_LOG(WARN, "invalid sub_iter=%p", sub_iter);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        ObScanParam scan_whole_row;
+        scan_whole_row.safe_copy(scan_param);
+        scan_whole_row.clear_column();
+        scan_whole_row.add_column(OB_FULL_ROW_COLUMN_ID);
+        ObTransferSSTableQuery &sstable_query = ups_main->get_update_server().get_sstable_query();
+        ObIterator *sstable_iter = &(sub_iter->get_sstable_scanner());
+        if (OB_SUCCESS != (ret = sstable_query.scan(scan_whole_row, *sstable_reader_, sstable_iter))
+            || NULL == sstable_iter)
+        {
+          TBSYS_LOG(WARN, "sstable query scan fail ret=%d sstable_iter=%p", ret, sstable_iter);
         }
         else
         {
@@ -722,11 +955,10 @@ namespace oceanbase
       {
         int64_t pre_load_timeu = tbsys::CTimeUtil::getTime();
         ObScanParam scan_param;
-        ObRange scan_range;
+        ObNewRange scan_range;
 
         scan_range.table_id_ = sstable_reader_->get_trailer().get_first_table_id();
-        scan_range.border_flag_.set_min_value();
-        scan_range.border_flag_.set_max_value();
+        scan_range.set_whole_range();
         scan_param.set(sstable_reader_->get_trailer().get_first_table_id(), ObString(), scan_range);
         scan_param.add_column(OB_FULL_ROW_COLUMN_ID);
 
@@ -768,7 +1000,7 @@ namespace oceanbase
         ti.occupy_size_ = 0;
         ti.crc_sum_ = 0;
 
-        ti.range_.end_key_.assign_ptr(NULL, 0);
+        ti.range_.end_key_.assign(NULL, 0);
         ObTransferSSTableQuery &sstable_query = ObUpdateServerMain::get_instance()->get_update_server().get_sstable_query();
         ret = sstable_query.get_sstable_end_key(*sstable_reader_, table_id, ti.range_.end_key_);
         if (NULL == ti.range_.end_key_.ptr()
@@ -777,7 +1009,7 @@ namespace oceanbase
           ret = OB_ENTRY_NOT_EXIST;
         }
         TBSYS_LOG(INFO, "get endkey [%s] from sstable %s ret=%d, ret",
-                  print_string(ti.range_.end_key_), SSTableID::log_str(sstable_id_), ret);
+                  to_cstring(ti.range_.end_key_), SSTableID::log_str(sstable_id_), ret);
       }
       return ret;
     }
@@ -929,16 +1161,12 @@ namespace oceanbase
         }
         else
         {
-          const char *compressor_name = ups_main->get_update_server().get_param().get_sstable_compressor_name();
-          int64_t block_size = ups_main->get_update_server().get_param().get_sstable_block_size();
+          const char *compressor_name = ups_main->get_update_server().get_param().sstable_compressor_name;
+          int64_t block_size = ups_main->get_update_server().get_param().sstable_block_size;
           if (NULL == compressor_name
               || 0 == strlen(compressor_name))
           {
             compressor_name = DEFAULT_COMPRESSOR_NAME;
-          }
-          if (0 >= block_size)
-          {
-            block_size = ObUpdateServerParam::DEFAULT_SSTABLE_BLOCK_SIZE;
           }
           if (OB_SUCCESS != (ret = row_iter_.init(&(memtable_entity_.get_memtable()), compressor_name, block_size)))
           {
@@ -982,7 +1210,7 @@ namespace oceanbase
       return ret;
     }
 
-    int TableItem::do_dump()
+    int TableItem::do_dump(ObILogWriter &log_writer)
     {
       int ret = OB_SUCCESS;
       if (DUMPING!= stat_)
@@ -1012,7 +1240,7 @@ namespace oceanbase
           else
           {
             SSTableID sst_id = sstable_entity_.get_sstable_id();
-            ups_main->get_update_server().get_log_mgr().write_replay_point(clog_id_);
+            log_writer.write_replay_point(clog_id_);
             TBSYS_LOG(INFO, "dump sstable succ ret=%d %s", ret, sst_id.log_str());
             stat_ = DUMPED;
           }
@@ -1049,6 +1277,10 @@ namespace oceanbase
       {
         row_iter_.destroy();
         memtable_entity_.deref();
+        if (0 != memtable_entity_.get_memtable().get_ref_cnt())
+        {
+          TBSYS_LOG(WARN, "notice memtable still has been used ret_cnt=%ld", memtable_entity_.get_memtable().get_ref_cnt());
+        }
         if (NULL != schema_)
         {
           schema_->~CommonSchemaManager();
@@ -1144,23 +1376,24 @@ namespace oceanbase
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    TableMgr::TableMgr() : inited_(false),
-                           sstable_scan_finished_(false),
-                           table_map_(sizeof(TableItemKey)),
-                           cur_major_version_(SSTableID::START_MAJOR_VERSION),
-                           cur_minor_version_(SSTableID::START_MINOR_VERSION),
-                           active_table_item_(NULL),
-                           frozen_memused_(0),
-                           frozen_memtotal_(0),
-                           frozen_rowcount_(0),
-                           last_major_freeze_time_(0),
-                           cur_warm_up_percent_(0),
-                           freeze_lock_(),
-                           table_list2add_(),
-                           last_clog_id_(0),
-                           merged_version_(0),
-                           merged_timestamp_(0),
-                           resource_pool_()
+    TableMgr::TableMgr(ObILogWriter &log_writer) : log_writer_(log_writer),
+                                                   inited_(false),
+                                                   sstable_scan_finished_(false),
+                                                   table_map_(sizeof(TableItemKey)),
+                                                   cur_major_version_(SSTableID::START_MAJOR_VERSION),
+                                                   cur_minor_version_(SSTableID::START_MINOR_VERSION),
+                                                   active_table_item_(NULL),
+                                                   frozen_memused_(0),
+                                                   frozen_memtotal_(0),
+                                                   frozen_rowcount_(0),
+                                                   last_major_freeze_time_(0),
+                                                   cur_warm_up_percent_(0),
+                                                   freeze_lock_(),
+                                                   table_list2add_(),
+                                                   last_clog_id_(0),
+                                                   merged_version_(0),
+                                                   merged_timestamp_(0),
+                                                   resource_pool_()
     {
     }
 
@@ -1182,7 +1415,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "allocate table item fail");
         ret = OB_ERROR;
       }
-      else if (OB_SUCCESS != (ret = active_table_item_->get_memtable().init()))
+      else if (OB_SUCCESS != (ret = active_table_item_->get_memtable().init(get_memtable_hash_buckets_size())))
       {
         TBSYS_LOG(WARN, "init memtable fail ret=%d", ret);
         table_allocator_.deallocate(active_table_item_);
@@ -1729,7 +1962,7 @@ namespace oceanbase
             {
               ret = OB_SUCCESS;
               ObTabletInfo ti;
-              ObString endkey_repl;
+              ObRowkey endkey_repl;
               if (NULL != table_item
                   && OB_SUCCESS == table_item->get_endkey(table_id, ti)
                   && OB_SUCCESS == (ret = ti_list.allocator.write_string(ti.range_.end_key_, &(endkey_repl))))
@@ -1738,7 +1971,7 @@ namespace oceanbase
                 if (OB_SUCCESS == (ret = endkey_vector.push_back(ti)))
                 {
                   TBSYS_LOG(INFO, "get and save endkey [%s] from %s succ",
-                            print_string(endkey_repl), SSTableID::log_str(table_item->get_sstable_id()));
+                            to_cstring(endkey_repl), SSTableID::log_str(table_item->get_sstable_id()));
                 }
               }
               if (OB_SUCCESS != ret)
@@ -1772,8 +2005,7 @@ namespace oceanbase
             ti.range_.border_flag_.set_inclusive_end();
             if (0 == i)
             {
-              ti.range_.start_key_.assign_ptr(NULL, 0);
-              ti.range_.border_flag_.set_min_value();
+              ti.range_.start_key_.set_min_row();
             }
             else
             {
@@ -1781,8 +2013,7 @@ namespace oceanbase
             }
             if (endkey_vector.size() == i)
             {
-              ti.range_.end_key_.assign_ptr(NULL, 0);
-              ti.range_.border_flag_.set_max_value();
+              ti.range_.end_key_.set_max_row();
             }
             else
             {
@@ -1797,8 +2028,7 @@ namespace oceanbase
           {
             ObTabletInfo ti;
             ti.range_.table_id_ = table_id;
-            ti.range_.border_flag_.set_min_value();
-            ti.range_.border_flag_.set_max_value();
+            ti.range_.set_whole_range();
             ti.range_.border_flag_.set_inclusive_end();
             ret = ti_list.inst.add_tablet(ti);
           }
@@ -1952,7 +2182,7 @@ namespace oceanbase
               else if (0 != table_list.push_back(table_entity))
               {
                 TBSYS_LOG(WARN, "push to list fail sstable_id=%lu", key.sst_id.id);
-                ret = OB_UPS_ACQUIRE_TABLE_FAIL;
+                ret = OB_MEM_OVERFLOW;
                 break;
               }
               else
@@ -2123,16 +2353,24 @@ namespace oceanbase
         {
           // 对于大小为0的table直接删除
           SSTableID sst_id = table_item2freeze->get_sstable_id();
-          int btree_ret = table_map_.remove(sst_id);
-          bool deallocated = false;
-          if (0 == table_item2freeze->dec_ref_cnt())
+          if (0 == sst_id.id)
           {
-            table_allocator_.deallocate(table_item2freeze);
-            deallocated = true;
+            int btree_ret = table_map_.remove(sst_id);
+            bool deallocated = false;
+            if (0 == table_item2freeze->dec_ref_cnt())
+            {
+              table_allocator_.deallocate(table_item2freeze);
+              deallocated = true;
+            }
+            table_item2freeze = NULL;
+            TBSYS_LOG(INFO, "drop empty frozen table %s btree_ret=%d deallocated=%s",
+                      sst_id.log_str(), btree_ret, STR_BOOL(deallocated));
           }
-          table_item2freeze = NULL;
-          TBSYS_LOG(INFO, "drop empty frozen table %s btree_ret=%d deallocated=%s",
-                    sst_id.log_str(), btree_ret, STR_BOOL(deallocated));
+          else
+          {
+            table_item2freeze->inc_ref_cnt();
+            TBSYS_LOG(INFO, "freeze an empty table %s", sst_id.log_str());
+          }
         }
         else
         {
@@ -2180,7 +2418,6 @@ namespace oceanbase
                                       bool &major_version_changed)
     {
       int ret = OB_SUCCESS;
-      ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
       if (!inited_)
       {
         TBSYS_LOG(WARN, "have not inited this=%p", this);
@@ -2191,19 +2428,14 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid active_table_item");
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (NULL == ups_main)
-      {
-        TBSYS_LOG(WARN, "get ups_main fail");
-        ret = OB_ERROR;
-      }
-      else if (0 >= active_table_item_->get_memtable().total()
-              || 0 >= active_table_item_->get_memtable().size())
-      {
+//    else if (0 >= active_table_item_->get_memtable().total()
+//            || 0 >= active_table_item_->get_memtable().size())
+//    {
 //        TBSYS_LOG(INFO, "active_mem_total=%ld need not freeze",
 //                  active_table_item_->get_memtable().total());
-        ret = OB_EAGAIN;
-      }
-      else if (mem_limit >= active_table_item_->get_memtable().total())
+//      ret = OB_EAGAIN;
+//    }
+      else if (mem_limit > active_table_item_->get_memtable().total())
       {
         ret = OB_EAGAIN;
       }
@@ -2220,7 +2452,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "someone has locked freeze action, loading bypass now, wait a moment");
         ret = OB_EAGAIN;
       }
-      else if (OB_SUCCESS != (ret = ups_main->get_update_server().get_log_mgr().switch_log_file(clog_id)))
+      else if (OB_SUCCESS != (ret = log_writer_.switch_log_file(clog_id)))
       {
         TBSYS_LOG(WARN, "switch commit log fail ret=%d", ret);
         freeze_lock_.unlock();
@@ -2300,7 +2532,7 @@ namespace oceanbase
       if (NULL != tmp_table_item)
       {
         int tmp_ret = OB_SUCCESS;
-        if (OB_SUCCESS != (tmp_ret = tmp_table_item->get_memtable().init()))
+        if (OB_SUCCESS != (tmp_ret = tmp_table_item->get_memtable().init(get_memtable_hash_buckets_size())))
         {
           TBSYS_LOG(WARN, "init memtable fail ret=%d", tmp_ret);
         }
@@ -2374,7 +2606,7 @@ namespace oceanbase
         map_lock_.unlock();
         if (NULL != table_item2dump)
         {
-          table_item2dump->do_dump();
+          table_item2dump->do_dump(log_writer_);
           SSTableID sst_id = table_item2dump->get_sstable_id();
           if (0 == table_item2dump->dec_ref_cnt())
           {
@@ -2583,7 +2815,9 @@ namespace oceanbase
                 table_item->get_memtable().get_attr(memtable_attr);
                 TBSYS_LOG(INFO, "[table_info] stat=%d %s timestamp=%ld sstable_loaded_time=%ld "
                           "mem_total=%ld mem_used=%ld total_line=%ld "
-                          "btree_line=%ld hash_line=%ld hash_bucket_using=%ld hash_uninit_unit_num=%ld mem_limit=%ld",
+                          "btree_line=%ld btree_alloc_mem=%ld btree_reserved_mem=%ld "
+                          "hash_line=%ld hash_bucket_using=%ld hash_uninit_unit_num=%ld "
+                          "checksum=%lu uncommited_checksum=%lu last_trans_id=%ld mem_limit=%ld",
                           table_item->get_stat(), sst_id.log_str(),
                           table_item->get_time_stamp(),
                           table_item->get_sstable_loaded_time(),
@@ -2591,11 +2825,17 @@ namespace oceanbase
                           table_item->get_memtable().used(),
                           table_item->get_memtable().size(),
                           table_item->get_memtable().btree_size(),
+                          table_item->get_memtable().btree_alloc_memory(),
+                          table_item->get_memtable().btree_reserved_memory(),
                           table_item->get_memtable().hash_size(),
                           table_item->get_memtable().hash_bucket_using(),
                           table_item->get_memtable().hash_uninit_unit_num(),
+                          table_item->get_memtable().get_checksum(),
+                          table_item->get_memtable().get_uncommited_checksum(),
+                          table_item->get_memtable().get_last_trans_id(),
                           memtable_attr.total_memlimit);
                 table_item->get_memtable().log_memory_info();
+                table_item->get_memtable().btree_dump_mem_info();
               }
               else
               {
@@ -2610,24 +2850,61 @@ namespace oceanbase
       }
     }
 
+    bool TableMgr::need_auto_freeze() const
+    {
+      bool bret = false;
+
+      int64_t mem_limit = 0;
+      int64_t num_limit = 0;
+      int64_t min_major_freeze_interval = 0;
+
+      ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
+      if (NULL != ups_main)
+      {
+        mem_limit = ups_main->get_update_server().get_param().active_mem_limit;
+        num_limit = ups_main->get_update_server().get_param().minor_num_limit;
+        min_major_freeze_interval = ups_main->get_update_server().get_param().min_major_freeze_interval;
+      }
+
+      if (NULL != active_table_item_
+          && 0 < active_table_item_->get_memtable().total()
+          && 0 < active_table_item_->get_memtable().size()
+          && mem_limit < active_table_item_->get_memtable().total())
+      {
+        if (((uint64_t)num_limit < (cur_minor_version_ + 1)
+              || SSTableID::MAX_MINOR_VERSION < (cur_minor_version_ + 1))
+            && (tbsys::CTimeUtil::getTime() - last_major_freeze_time_) < min_major_freeze_interval)
+        {
+          TBSYS_LOG(WARN, "major freeze interval too small last_major_freeze_time=%ld cur_time=%ld min_major_freeze_interval=%ld",
+                    last_major_freeze_time_, tbsys::CTimeUtil::getTime(), min_major_freeze_interval);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "need auto freeze active_total=%ld active_limit=%ld",
+                    active_table_item_->get_memtable().total(), mem_limit);
+          bret = true;
+        }
+      }
+
+      return bret;
+    }
+
     int TableMgr::try_freeze_memtable(const FreezeType freeze_type,
                                       uint64_t &new_version, uint64_t &frozen_version,
                                       uint64_t &clog_id, int64_t &time_stamp,
                                       bool &major_version_changed)
     {
-      int64_t mem_limit = ObUpdateServerParam::DEFAULT_ACTIVE_MEM_LIMIT_GB;
-      int64_t num_limit = ObUpdateServerParam::DEFAULT_MINOR_NUM_LIMIT;
-      int64_t min_major_freeze_interval = ObUpdateServerParam::DEFAULT_MIN_MAJOR_FREEZE_INTERVAL_S;
+      int64_t mem_limit = 0;
+      int64_t num_limit = 0;
+      int64_t min_major_freeze_interval = 0;
 
       ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
       if (NULL != ups_main)
       {
-        mem_limit = ups_main->get_update_server().get_param().get_active_mem_limit_gb();
-        num_limit = ups_main->get_update_server().get_param().get_minor_num_limit();
-        min_major_freeze_interval = ups_main->get_update_server().get_param().get_min_major_freeze_interval_s();
+        mem_limit = ups_main->get_update_server().get_param().active_mem_limit;
+        num_limit = ups_main->get_update_server().get_param().minor_num_limit;
+        min_major_freeze_interval = ups_main->get_update_server().get_param().min_major_freeze_interval;
       }
-      mem_limit *= (1024L * 1024L * 1024L);
-      min_major_freeze_interval *= 1000000;
 
       if (FORCE_MINOR == freeze_type)
       {
@@ -2689,7 +2966,7 @@ namespace oceanbase
 
     void TableMgr::try_erase_sstable(const bool force)
     {
-      int64_t time_limit = ObUpdateServerParam::DEFAULT_SSTABLE_TIME_LIMIT_S;
+      int64_t time_limit = 0;
       if (force)
       {
         time_limit = 0;
@@ -2699,9 +2976,8 @@ namespace oceanbase
         ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
         if (NULL != ups_main)
         {
-          time_limit = ups_main->get_update_server().get_param().get_sstable_time_limit_s();
+          time_limit = ups_main->get_update_server().get_param().sstable_time_limit;
         }
-        time_limit *= 1000000L;
       }
       try_erase_sstable(time_limit);
     }
@@ -2915,7 +3191,7 @@ namespace oceanbase
             TBSYS_LOG(WARN, "allocate table item fail");
             ret = OB_ERROR;
           }
-          else if (OB_SUCCESS != (ret = table_item->get_memtable().init()))
+          else if (OB_SUCCESS != (ret = table_item->get_memtable().init(get_memtable_hash_buckets_size())))
           {
             TBSYS_LOG(WARN, "init memtable fail ret=%d", ret);
             table_allocator_.deallocate(table_item);
@@ -3033,7 +3309,7 @@ namespace oceanbase
 
     void thread_read_prepare()
     {
-      static common::ModulePageAllocator mod_allocator(ObModIds::OB_SSTABLE_EGT_SCAN);
+      static common::ModulePageAllocator mod_allocator(ObModIds::OB_SSTABLE_GET_SCAN);
       static const int64_t QUERY_INTERNAL_PAGE_SIZE = 2 * 1024 * 1024;
       common::ModuleArena* internal_buffer_arena = GET_TSI_MULT(common::ModuleArena, TSI_SSTABLE_MODULE_ARENA_1);
       if (NULL == internal_buffer_arena)
@@ -3083,10 +3359,14 @@ namespace oceanbase
       else
       {
         ObUpdateServer &ups = ups_main->get_update_server();
-        int duty_hour = ups.get_param().get_major_freeze_duty_time().tm_hour;
-        int duty_min = ups.get_param().get_major_freeze_duty_time().tm_min;
-        if (duty_hour == human_time_ptr->tm_hour
-            && duty_min == human_time_ptr->tm_min)
+        int duty_hour = ups.get_param().major_freeze_duty_time.hour();
+        int duty_min = ups.get_param().major_freeze_duty_time.minute();
+        if (ups.get_param().major_freeze_duty_time.disable())
+        {
+          TBSYS_LOG(DEBUG, "Major freeze disabled");
+        }
+        else if (duty_hour == human_time_ptr->tm_hour
+                 && duty_min == human_time_ptr->tm_min)
         {
           if (!same_minute_flag_)
           {
@@ -3128,3 +3408,4 @@ namespace oceanbase
     }
   }
 }
+

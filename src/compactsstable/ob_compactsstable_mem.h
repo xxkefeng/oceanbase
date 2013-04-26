@@ -21,6 +21,7 @@
 #include "common/ob_string.h"
 #include "common/ob_column_filter.h"
 #include "common/ob_action_flag.h"
+#include "common/ob_rowkey.h"
 #include "ob_compact_row.h"
 #include "ob_block_membuf.h"
 
@@ -46,11 +47,11 @@ namespace oceanbase
 
     class ObCompactSSTableMem
     {
-    private:
+      public:
       static const int64_t OB_COMPACTSSTABLE_BLOCK_SIZE = 2 * 1024 * 1024L; //2M
       friend class TestCompactSSTableMem_write_mix_Test;
     public:
-      ObCompactSSTableMem(int64_t block_size = OB_COMPACTSSTABLE_BLOCK_SIZE);
+      ObCompactSSTableMem();
       ~ObCompactSSTableMem();
       
       int init(const ObFrozenVersionRange& version_range,
@@ -67,26 +68,22 @@ namespace oceanbase
       int64_t get_row_count() const { return row_count_; }
       int64_t get_frozen_time() const { return frozen_time_; }
 
-      int64_t get_data_size() const; //index + data
-      int64_t get_usage_size() const;
-      int64_t get_index_size() const;
-
     public:
-      int locate_start_pos(const common::ObRange& range,const char**& start_iterator);
-      int locate_end_pos(const common::ObRange& range,const char**& end_iterator);
-      int find(const common::ObString& rowkey,const char**& start_iterator);
-      bool is_row_exist(const common::ObString& rowkey);
+      int locate_start_pos(const common::ObNewRange& range,const char**& start_iterator);
+      int locate_end_pos(const common::ObNewRange& range,const char**& end_iterator);
+      int find(const common::ObRowkey& rowkey,const char**& start_iterator);
+      bool is_row_exist(const common::ObRowkey& rowkey);
 
     private:
       class Compare
       {
       public:
         Compare(ObCompactSSTableMem& mem);
-        bool operator()(const char* index,const common::ObString& rowkey);
+        bool operator()(const char* index,const common::ObRowkey& rowkey);
       private:
         ObCompactSSTableMem& mem_;
       };
-      const char** lower_bound(const char** start,const char** end,const common::ObString& rowkey);
+      const char** lower_bound(const char** start,const char** end,const common::ObRowkey& rowkey);
 
     private:
       static const int64_t INDEX_BLOCK_SIZE = 65536L; // 64K
@@ -128,8 +125,8 @@ namespace oceanbase
 
       void reset();
 
-      int set_scan_param(const common::ObRange& range, const common::ColumnFilter* cf,const bool is_reverse_scan);
-      int set_get_param(const common::ObString& rowkey,const common::ColumnFilter* cf);
+      int set_scan_param(const common::ObNewRange& range, const common::ColumnFilter* cf,const bool is_reverse_scan);
+      int set_get_param(const common::ObRowkey& rowkey,const common::ColumnFilter* cf);
 
       int next_cell();
 
@@ -148,8 +145,7 @@ namespace oceanbase
         }
         else if (common::OB_SUCCESS != iterator_status_)
         {
-          TBSYS_LOG(ERROR, "initialize status error=%d,mem_:%p,mem_->table_id_=%lu,iterator:%p",
-                    iterator_status_,mem_,mem_->get_table_id(),this);
+          TBSYS_LOG(ERROR, "initialize status error=%d", iterator_status_);
           ret = iterator_status_;
         }
         else
@@ -193,7 +189,7 @@ namespace oceanbase
       const char**           start_iterator_;
       const char**           end_iterator_;
       const char**           row_cursor_;
-      common::ObString       row_key_;
+      common::ObRowkey       row_key_;
       ObCellInfo             nop_cell_;
       int                    iterator_status_;
       bool                   is_reverse_scan_;
@@ -207,7 +203,7 @@ namespace oceanbase
 
     struct ObCompactSSTableMemNode
     {
-      ObCompactSSTableMemNode(int64_t block_size):mem_(block_size),next_(NULL) {}
+      ObCompactSSTableMemNode(): next_(NULL) {}
       ObCompactSSTableMem          mem_;
       ObCompactSSTableMemNode*     next_;
     };

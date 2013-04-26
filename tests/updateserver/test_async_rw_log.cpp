@@ -58,7 +58,7 @@ namespace oceanbase
         test_for_write_not_align = false;
       }
     };
-    int64_t Config::MAX_N_DATA_ITEMS = 1<<20;
+    int64_t Config::MAX_N_DATA_ITEMS = 1<<16;
 
     int apply_log(const common::LogCommand cmd, const uint64_t seq,
                   const char* log_data, const int64_t data_len)
@@ -226,10 +226,7 @@ namespace oceanbase
           {
             err = OB_SUCCESS;
           }
-          if (OB_SUCCESS != err)
-          {
-            stop();
-          }
+          stop();
           ASSERT_EQ(OB_SUCCESS, err);
         }
 
@@ -287,13 +284,13 @@ namespace oceanbase
       wait();
       ASSERT_EQ(OB_SUCCESS, err);
     }
+#endif
     TEST_F(ObReplayLogTest, Replay){
       setThreadCount((int)n_reader+1);
       start();
       wait();
       ASSERT_EQ(OB_SUCCESS, err);
     }
-#endif
   } // end namespace updateserver
 } // end namespace oceanbase
 

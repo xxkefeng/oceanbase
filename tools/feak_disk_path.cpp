@@ -254,14 +254,14 @@ namespace oceanbase
       return ret;
     }
 
-    int get_import_sstable_directory(const int32_t disk_no, char *path, 
-      const int64_t path_len)
+    static int get_sstable_directory_helper(const int32_t disk_no, char *path, 
+      const int64_t path_len, const char* import_dir_name)
     {
       int ret = OB_SUCCESS;
-      if (disk_no < 0 || NULL == path || path_len < 0)
+      if (disk_no < 0 || NULL == path || path_len < 0 || NULL == import_dir_name)
       {
-        TBSYS_LOG(WARN, "get_sstable_import_directory invalid arguments, "
-            "disk_no=%d, path=%p, path_len=%ld", disk_no, path, path_len);
+        TBSYS_LOG(WARN, "get_sstable_directory_helper invalid arguments, "
+            "disk_no=%d, path=%p, path_len=%ld, import_dir_name=%p", disk_no, path, path_len, import_dir_name);
         ret = OB_INVALID_ARGUMENT;
       }
       else
@@ -272,10 +272,11 @@ namespace oceanbase
         ret = get_config_item(data_dir, app_name);
         if (OB_SUCCESS == ret)
         {
-          int bufsiz = snprintf(path, path_len, "%s/%d/%s/import", data_dir, disk_no, app_name);
+          int bufsiz = snprintf(path, path_len, "%s/%d/%s/%s", data_dir, disk_no, app_name, import_dir_name);
           if (bufsiz + 1 > path_len)
           {
-            TBSYS_LOG(WARN, "get_sstable_import_directory, path_len=%ld <= bufsiz=%d", path_len, bufsiz);
+            TBSYS_LOG(WARN, "get_sstable_directory_helper, path_len=%ld <= bufsiz=%d, "
+                            "import_dir_name=%s", path_len, bufsiz, import_dir_name);
             ret = OB_SIZE_OVERFLOW;
           }
         }
@@ -284,15 +285,16 @@ namespace oceanbase
       return ret;
     }
 
-    int get_import_sstable_path(const int32_t disk_no, 
-      const char* sstable_name, char *path, const int64_t path_len)
+    static int get_sstable_path_helper(const int32_t disk_no, 
+      const char* sstable_name, char *path, const int64_t path_len, 
+      const char* import_dir_name)
     {
       int ret = OB_SUCCESS;
-      if (disk_no < 0 || NULL == sstable_name || NULL == path || path_len < 0)
+      if (disk_no < 0 || NULL == sstable_name || NULL == path || path_len < 0 || NULL == import_dir_name)
       {
         TBSYS_LOG(WARN, "get_import_sstable_path invalid arguments, "
-            "disk_no=%d, sstable_name=%p, path=%p,path_len=%ld", 
-            disk_no, sstable_name, path, path_len);
+            "disk_no=%d, sstable_name=%p, path=%p, path_len=%ld, import_dir_name=%p", 
+            disk_no, sstable_name, path, path_len, import_dir_name);
         ret = OB_INVALID_ARGUMENT;
       }
       else
@@ -303,12 +305,13 @@ namespace oceanbase
         ret = get_config_item(data_dir, app_name);
         if (OB_SUCCESS == ret)
         {
-          int bufsiz = snprintf(path, path_len, "%s/%d/%s/import/%s",
-              data_dir, disk_no, app_name, sstable_name);
+          int bufsiz = snprintf(path, path_len, "%s/%d/%s/%s/%s",
+              data_dir, disk_no, app_name, import_dir_name, sstable_name);
           if (bufsiz + 1 > path_len)
           {
-            TBSYS_LOG(WARN, "get_import_sstable_path, path_len=%ld <= bufsiz=%d", 
-                path_len, bufsiz);
+            TBSYS_LOG(WARN, "get_import_sstable_path, path_len=%ld <= bufsiz=%d, "
+                            "import_dir_name=%s", 
+                path_len, bufsiz, import_dir_name);
             ret = OB_SIZE_OVERFLOW;
           }
         }
@@ -317,5 +320,31 @@ namespace oceanbase
       return ret;
     }
 
+    int get_bypass_sstable_directory(const int32_t disk_no, char *path, const int64_t path_len)
+    {
+      return get_sstable_directory_helper(disk_no, path, path_len, "bypass");
+    }
+
+    int get_bypass_sstable_path(const int32_t disk_no, 
+      const char* sstable_name, char *path, const int64_t path_len)
+    {
+      return get_sstable_path_helper(disk_no, sstable_name, path, path_len, "bypass");
+    }
+
+#ifndef NO_STAT
+    void set_stat(const uint64_t table_id, const int32_t index, const int64_t value)
+    {
+      UNUSED(table_id);
+      UNUSED(index);
+      UNUSED(value);
+    }
+
+    void inc_stat(const uint64_t table_id, const int32_t index, const int64_t inc_value)
+    {
+      UNUSED(table_id);
+      UNUSED(index);
+      UNUSED(inc_value);
+    }
+#endif
   }
 }

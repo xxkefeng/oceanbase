@@ -153,6 +153,7 @@ namespace oceanbase
       else
       {
         memcpy(block_buf_ + get_end_pos(), buf, len);
+        __sync_synchronize();
         end_pos_ += len;
       }
       return err;

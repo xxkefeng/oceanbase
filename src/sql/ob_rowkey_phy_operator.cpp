@@ -21,15 +21,7 @@ using namespace oceanbase::sql;
 
 int ObRowkeyPhyOperator::get_next_row(const common::ObRow *&row)
 {
-  int ret = common::OB_NOT_IMPLEMENT;
-  UNUSED(row);
-  TBSYS_LOG(ERROR, "This function should not be used in ObRowkeyPhyOperator");
-  return ret;
+  const ObRowkey *rowkey = NULL;
+  return get_next_row(rowkey, row);
 }
 
-int ObRowkeyPhyOperator::get_row_desc(const common::ObRowDesc *&row_desc) const
-{
-  row_desc = NULL;
-  TBSYS_LOG(ERROR, "This function should not be used in ObRowkeyPhyOperator");
-  return OB_NOT_IMPLEMENT;
-}

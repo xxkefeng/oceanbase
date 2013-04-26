@@ -77,6 +77,17 @@ def dict_filter_out_special_attrs(d):
 {'normal_attr': 2}'''
     return dict_filter(lambda (k,v): not k.startswith('__'), d)
 
+def to_simple_obj(v):
+    if type(v) == int or type(v) == float or type(v) == str:
+        return v
+    else:
+        return type(v)
+def dict_strip(d):
+    if (type(d) == dict) and ('__parent__' in d):
+        return dict((k, to_simple_obj(v)) for k,v in d.items())
+    else:
+        return d
+
 def dict_map(func, d):
     '''>>> dict_map(lambda x:x*x, dict(i1=1,i2=2))
 {'i1': 1, 'i2': 4}'''
@@ -178,15 +189,18 @@ def sub(_str, env, find_attr=find_attr):
             try:
                 exec expr in globals(), new_env
             except Exception, e:
-                print e
+                print e, traceback.format_exc()
             return ''
         else:
             origon_expr = m.group(2) or m.group(3)
             expr = remove_brace(origon_expr)
-            if not re.match('(\w|[.])+$', expr):
+            if not re.match('([\w.])+(:-.+)?$', expr):
                 raise Exception('not support expr: %s'%(m.group(0)))
-            parent_path = re.sub('[.][^.]+$', '', expr)
-            parent, value = find_attr(new_env, parent_path), find_attr(new_env, expr)
+            exprs = re.split(':-', expr, 1)
+            parent_path = re.sub('[.]?[^.]+$', '', expr)
+            parent, value = find_attr(new_env, parent_path), find_attr(new_env, exprs[0])
+            if 2 == len(exprs) and value == None:
+                return sub(exprs[1], env, find_attr)
             try:
                 if value == None or type(value) != str and type(value) != int and type(value) != float:
                     return '$%s'%(origon_expr)
@@ -215,7 +229,7 @@ def check_until_timeout(call, timeout, interval=0.1):
     while not gcfg.get('stop', False) and time.time() < end_time:
         result = call()
         if type(result) == IterEnd: return True
-        print 'wait %fs: %s'%(time.time() + timeout - end_time, result)
+        info('wait %fs: %s'%(time.time() + timeout - end_time, result))
         sys.stdout.flush()
         time.sleep(interval)
 
@@ -255,6 +269,9 @@ def multiple_expand(str):
 >>> multiple_expand('[abc]')
 ['abc']'''
     return [''.join(parts) for parts in itertools.product(*[re.split('[ ,]+', i) for i in re.split('\[(.*?)\]', str)])]
+
+def expand(spec):
+    return list_merge(map(multiple_expand, spec.split()))
 
 def lp_exists(path, suffix=''):
     '''
@@ -340,12 +357,26 @@ def sh(cmd, cwd=None, exception_on_fail=False, timeout=-1):
     if err:
         if exception_on_fail:
             raise Fail('popen Fail', cmd)
-        print 'cmd fail:%s'% cmd
+        info('cmd fail:%s'% cmd)
     return err
+
+def sh_using_pipe(cmd, cwd=None, exception_on_fail=False, timeout=-1):
+    if gcfg.get('_dryrun_', False): return cmd
+    p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
+    output, errput = p.communicate()
+    info(output)
+    retcode = p.returncode
+    if retcode:
+       if exception_on_fail:
+           raise Fail('popen Fail', cmd)
+       info('cmd fail: %s' % cmd)
+       info('err msg: %s' % errput)
+    return retcode
 
 def timed_popen(cmd, timeout):
     p = Popen(cmd, shell=True, stdout=file('/dev/null'), stderr=STDOUT)
     start_time = time.time()
+    ret = None
     while p.returncode == None and time.time() < start_time + timeout:
         ret = p.poll()
         time.sleep(0.01)
@@ -359,7 +390,7 @@ def timed_popen(cmd, timeout):
 def make_non_block(fd):
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-    
+
 def mypopen(cmd, timeout=3):
     p = Popen(cmd, shell=True, stdout=PIPE, stderr=STDOUT)
     make_non_block(p.stdout.fileno())
@@ -389,7 +420,7 @@ def get_last_matching_file(dir, pat):
     matched_file_list = sorted(ls_re(dir, pat))
     if not matched_file_list: raise Fail('can not found even one matching file: dir=%s, pat=%s'%(dir, pat))
     return matched_file_list[-1]
-    
+
 def existed(**file_list):
     return filter(lambda f: os.path.exists(f), file_list)
 
@@ -420,7 +451,7 @@ def append(path, content):
     f.write(content)
     f.close
     return True
-    
+
 def load_dir_vars(path):
     if os.path.exists(path):
         return dict((i.replace('.', '_'), safe_read('%s/%s'%(path, i))) for i in os.listdir(path) if os.path.isfile('%s/%s'%(path, i)))
@@ -428,7 +459,10 @@ def load_dir_vars(path):
         return {}
 
 def simple_obj_repr(v):
-    return str(v)
+    if type(v) == int or type(v) == float or type(v) == str:
+        return str(v)
+    else:
+        return str(type(v))
 
 def dict_repr(d):
     return '\n'.join('%s = %s'%(k, simple_obj_repr(v)) for k,v in sorted(d.items(), key=lambda (k,v): k))
@@ -444,31 +478,35 @@ def obj_repr(o):
     else:
         return simple_obj_repr(o)
 
+def info(msg):
+    if not gcfg.get('_quiet_'):
+        force_info(msg)
+
+def force_info(msg):
+    print('%s INFO: %s' % (time.strftime('%Y-%m-%d %X', time.localtime(time.time())), msg))
+
 def call(d, method, *args, **kw):
     if kw.has_key('__parent__'): del kw['__parent__']
     if kw.has_key('__dynamic__'): del kw['__dynamic__']
     if gcfg.get('stop', False): raise Fail("request stop")
-    def info(msg):
-        sys.stdout.write('%s INFO: %s'%(time.strftime('%Y-%m-%d %X', time.localtime(time.time())), msg))
     def debug(msg, log_level='INFO'):
         if kw.get('_verbose_', d.get('_verbose_', 'False')) == 'True':
             sys.stdout.write('%s DEBUG: %s'%(time.strftime('%Y-%m-%d %X', time.localtime(time.time())), msg))
-    if not kw.get('_quiet_', False): info('%s%s\n'%(method, args))
+    info('%s%s'%(method, args))
     if type(d) != dict or type(method) != str or not method:
         raise Exception('call(type(d)=%s, type(method)=%s): invalid argument'% (type(d), type(method)))
     base_path = re.sub('[.][^.]+$', '', ('.' in method) and method or '.' + method)
     try:
-        debug('method:%s base_path:%s\n'%(method, base_path))
+        #debug('method:%s base_path:%s\n'%(method, base_path))
         env, _method = find_attr(d, base_path), find_attr(d, method)
-        debug('method eval to:%s\n'%(pprint.pformat(_method)))
-        #debug('env is:%s'%(pprint.pformat(env)))
+        #debug('method eval to:%s\n'%(pprint.pformat(_method)))
     except Exception,e:
         sys.stderr.write("method: `%s' not defined\n"% method)
         print e
         print traceback.format_exc()
     else:
         report = None
-        sh_prefix, popen_prefix, seq_prefix, call_prefix, all_prefix, par_prefix = 'sh:', 'popen:', 'seq:', 'call:', 'all:', 'par:'
+        sh_prefix, popen_prefix, seq_prefix, call_prefix, all_prefix, par_prefix, sup_prefix = 'sh:', 'popen:', 'seq:', 'call:', 'all:', 'par:', 'sup:'
         if callable(_method):
             debug('func: %s(%s)\n'%(_method.func_name, args))
             result = _method(*args, **dict_updated(env, __dynamic__=kw, **kw))
@@ -486,12 +524,12 @@ def call(d, method, *args, **kw):
                 debug('%s\n'% _method)
                 result = popen(_method[len(popen_prefix):], exception_on_fail=re.search('# ExceptionOnFail', _method)).strip()
             elif _method.startswith(seq_prefix):
-                info('%s\n'%_method)
+                info('%s'%_method)
                 base_prefix = base_path and base_path + '.' or ''
                 cmd_seq = [(cmd, arg and parse_cmd_args(arg.split(',')) or ([],{})) for cmd, arg in re.findall('([0-9a-zA-Z._]+)(?:\[(.*?)\])?', _method[len(seq_prefix):])]
                 result = [call(d, '%s%s'%(base_prefix, cmd), *(_args + list(args)), **dict_updated(_kw, **kw)) for cmd, (_args,_kw) in cmd_seq]
             elif _method.startswith(call_prefix):
-                info('%s\n'%_method)
+                info(_method)
                 base_prefix = base_path and base_path + '.' or ''
                 _args, _kw = parse_cmd_args(shlex.split(_method[len(call_prefix):]))
                 if _args:
@@ -499,7 +537,7 @@ def call(d, method, *args, **kw):
                 else:
                     result = None
             elif _method.startswith(all_prefix):
-                info('%s\n'%_method)
+                info(_method)
                 base_prefix = base_path and base_path + '.' or ''
                 _args, _kw = parse_cmd_args(shlex.split(_method[len(all_prefix):]))
                 if _args:
@@ -507,13 +545,16 @@ def call(d, method, *args, **kw):
                 else:
                     result = None
             elif _method.startswith(par_prefix):
-                info('%s\n'%_method)
+                info(_method)
                 base_prefix = base_path and base_path + '.' or ''
                 _args, _kw = parse_cmd_args(shlex.split(_method[len(par_prefix):]))
                 if _args:
                     result = par_do(env, _args[0], *(_args[1:]+list(args)), **dict_updated(_kw,**kw))
                 else:
                     result = None
+            elif _method.startswith(sup_prefix):
+                debug('%s\n'% _method)
+                result = sh_using_pipe(_method[len(sup_prefix):], exception_on_fail=re.search('# ExceptionOnFail', _method))
             else:
                 result = _method
 
@@ -545,11 +586,11 @@ def get_sorted_match_child(d, pat):
     return [k for k, v in sorted(get_match_child(d, pat).items(), key=lambda (k,v): v.get('idx', 0))]
 
 def all_do(d, pat, method, *args, **kw):
-    print 'all_do', pat, method
+    info('all_do %s %s' % (pat, method))
     return [('%s.%s'%(c, method), call_(d, '%s.%s'%(c, method), *args, **kw)) for c in get_sorted_match_child(d, pat)]
 
 def par_do(d, pat, method, *args, **kw):
-    matched_keys = get_sorted_match_child(d, pat) 
+    matched_keys = get_sorted_match_child(d, pat)
     results = async_get(async_map(lambda x: call_(d, '%s.%s'%(x, method), *args, **kw), matched_keys), kw.get('timeout', 1))
     return zip(['%s.%s'%(k, method) for k in matched_keys], results)
 

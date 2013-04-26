@@ -24,6 +24,16 @@ struct TableRowkeyComparor {
   }
 };
 
+struct MallocAllocator {
+  inline char* alloc(int64_t sz) {
+    return new(std::nothrow) char[sz];
+  }
+
+  inline void free(char *ptr) {
+    delete []ptr;
+  }
+};
+
 class DbThreadMgr : public CDefaultRunnable {
   public:
 
@@ -50,12 +60,12 @@ class DbThreadMgr : public CDefaultRunnable {
     }
 
 
-    int insert_key(const ObString& key, uint64_t table_id, int op, uint64_t timestamp, int64_t seq) {
+    int insert_key(const ObRowkey& key, uint64_t table_id, int op, uint64_t timestamp, int64_t seq) {
       int ret = OB_SUCCESS;
 
-      ObString new_key;
-      if (clone_rowkey(key, &new_key) != OB_SUCCESS) {
-        TBSYS_LOG(ERROR, "can't clone rowkey");
+      ObRowkey new_key;
+      if (clone_rowkey(key, new_key) != OB_SUCCESS) {
+        TBSYS_LOG(ERROR, "clone rowkey failed, ret = %d", ret);
         ret = OB_ERROR;
       } else {
         TableRowkey tab_key;
@@ -78,24 +88,16 @@ class DbThreadMgr : public CDefaultRunnable {
       return ret;
     }
 
-    int clone_rowkey(const ObString &rowkey, ObString *out)
+    int clone_rowkey(const ObRowkey &rowkey, ObRowkey &out)
     {
-      //char *ptr = allocater_.alloc(rowkey.length());
       int ret = OB_SUCCESS;
-      char *ptr = new(std::nothrow) char[rowkey.length()];
-      if (ptr == NULL) {
-        TBSYS_LOG(INFO, "Can't allocate more memory");
-        ret = OB_ERROR;
-      }
-
-      memcpy(ptr, rowkey.ptr(), rowkey.length());
-      out->assign_ptr(ptr, rowkey.length());
+      ret = rowkey.deep_copy(out, allocator_);
       return ret;
     }
 
-    void free_rowkey(ObString rowkey)
+    void free_rowkey(ObRowkey &rowkey)
     {
-      delete [] rowkey.ptr();
+      allocator_.free((char *)const_cast<ObObj *>(rowkey.ptr()));
     }
 
     void free_table_keys(TableRowkey *keys, int64_t key_nr) {
@@ -108,10 +110,10 @@ class DbThreadMgr : public CDefaultRunnable {
       static __thread char buffer[OB_MAX_ROW_KEY_LENGTH];
 
       for(int64_t i = 0;i < key_nr; i++) {
-        hex_to_str(keys[i].rowkey.ptr(), keys[i].rowkey.length(), buffer, OB_MAX_ROW_KEY_LENGTH);
+        int64_t sz = keys[i].rowkey.to_string(buffer, OB_MAX_ROW_KEY_LENGTH);
+        buffer[sz] = 0;
 
-        TBSYS_LOG(INFO, "[%s]:rowkey=%s, op=%d, table_id=%ld", msg, 
-                  buffer, keys[i].op, keys[i].table_id);
+        TBSYS_LOG(INFO, "[%s]:rowkey=%s, op=%d, table_id=%ld", msg, buffer, keys[i].op, keys[i].table_id);
       }
     }
 
@@ -155,18 +157,6 @@ class DbThreadMgr : public CDefaultRunnable {
           while (!all_keys_.empty() && muti_key_nr < muti_get_nr_) {
             key = all_keys_.front();
             all_keys_.pop_front();
-
-            /*
-            if (key.op == ObActionFlag::OP_DEL_ROW) {
-              if (dumper_->dump_del_key(key) != OB_SUCCESS) {
-                TBSYS_LOG(ERROR, "failed to dump deleted key");
-              }
-
-              free_rowkey(key.rowkey);
-              continue;
-            }
-            */
-
             muti_keys[muti_key_nr++] = key;
           }
 
@@ -286,6 +276,7 @@ class DbThreadMgr : public CDefaultRunnable {
     CThreadCond insert_cond_;
 
     int muti_get_nr_;
+    MallocAllocator allocator_;
 };
 
 #endif

@@ -54,7 +54,7 @@ int ObFakeUpsScan::close()
   return file_table_.close();
 }
 
-int ObFakeUpsScan::get_next_row(const ObString *&rowkey, const ObRow *&row)
+int ObFakeUpsScan::get_next_row(const ObRowkey *&rowkey, const ObRow *&row)
 {
   int ret = OB_SUCCESS;
   const ObObj *cell = NULL;
@@ -63,23 +63,8 @@ int ObFakeUpsScan::get_next_row(const ObString *&rowkey, const ObRow *&row)
 
   const ObRow *tmp_row = NULL;
 
-  ret = file_table_.get_next_row(tmp_row);
-  if(OB_SUCCESS == ret)
-  {
-    if(OB_SUCCESS != (ret = tmp_row->raw_get_cell(0, cell, table_id, column_id)))
-    {
-      TBSYS_LOG(WARN, "raw get cell fail:ret[%d]", ret);
-    }
-    else if(OB_SUCCESS != (ret = cell->get_varchar(cur_rowkey_)))
-    {
-      TBSYS_LOG(WARN, "get varchar fail:ret[%d]", ret);
-    }
-    else
-    {
-      rowkey = &cur_rowkey_;
-    }
-  }
-  else if(OB_ITER_END != ret)
+  ret = file_table_.get_next_row(rowkey, tmp_row);
+  if(OB_SUCCESS != ret && OB_ITER_END != ret)
   {
     TBSYS_LOG(WARN, "get next row fail");
   }
@@ -94,7 +79,7 @@ int ObFakeUpsScan::get_next_row(const ObString *&rowkey, const ObRow *&row)
     }
     else
     {
-      cur_ups_row_.set_delete_row(tmp_ups_row->is_delete_row());
+      cur_ups_row_.set_is_delete_row(tmp_ups_row->get_is_delete_row());
     }
   }
 
@@ -116,8 +101,6 @@ int ObFakeUpsScan::get_next_row(const ObString *&rowkey, const ObRow *&row)
       }
     }
   }
-
-  
 
   if(OB_SUCCESS == ret)
   {

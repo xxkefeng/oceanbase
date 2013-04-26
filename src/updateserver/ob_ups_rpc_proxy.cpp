@@ -37,10 +37,10 @@ namespace oceanbase
     {
     }
 
-    int ObUpsMergerRpcProxy::init(ObMergerRpcStub* rpc_stub, ObMergerSchemaManager* schema,
-        ObMergerTabletLocationCache* cache, ObMergerServiceMonitor* monitor)
+    int ObUpsMergerRpcProxy::init(ObMergerRpcStub* rpc_stub, common::ObMergerSchemaManager* schema,
+        ObMergerLocationCacheProxy* cache)
     {
-      return ObMergerRpcProxy::init(rpc_stub, schema, cache, monitor);
+      return ObMergerRpcProxy::init(rpc_stub, schema, cache);
     }
 
     int ObUpsMergerRpcProxy::cs_get(const ObGetParam& get_param,
@@ -85,7 +85,7 @@ namespace oceanbase
             result_cell.row_key_ = cell_info->row_key_;
             result_cell.column_id_ = cell_info->column_id_;
 
-            bool compare_row = (OB_MAX_COLUMN_ID == cell_info->column_id_);
+            bool compare_row = (OB_ALL_MAX_COLUMN_ID == cell_info->column_id_);
             if (compare_row)
             {
               if (ObExtendType != value.value.get_type())
@@ -163,12 +163,6 @@ namespace oceanbase
             TBSYS_LOG(WARN, "invalid version, start_version=%c%ld,%ld%c, err=%d",
                       version_range.border_flag_.inclusive_start() ? '[':'(', (int64_t)version_range.start_version_,
                       (int64_t)version_range.end_version_, version_range.border_flag_.inclusive_end() ? ']':')', err);
-            int err2 = set_item_invalid(cell->table_id_, cell->row_key_, addr);
-            if (OB_SUCCESS != err2)
-            {
-              // the cache item may be evicted by other thread
-              TBSYS_LOG(WARN, "set cache item invalid failed, may be evicted by other thread, err=%d", err2);
-            }
           }
         }
         else if (OB_SUCCESS != err)

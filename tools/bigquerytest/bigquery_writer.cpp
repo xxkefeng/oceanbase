@@ -15,52 +15,25 @@
  *
  */
 #include "bigquery_writer.h"
-#include "oceanbase.h"
 
 static const char* BIGQUERY_TABLE = "bigquery_table";
 static const char* COLUMN_PREFIX = "col";
 
 BigqueryWriter::BigqueryWriter()
 {
-  ob_ = NULL;
-  req_ = NULL;
+  mysql_client_ = NULL;
 }
 
 BigqueryWriter::~BigqueryWriter()
 {
-  if (NULL != ob_)
-  {
-    ob_close(ob_);
-    ob_api_destroy(ob_);
-    ob_ = NULL;
-  }
-  req_ = NULL;
+  mysql_client_ = NULL;
 }
 
-int BigqueryWriter::init(ObSqlClient& ob_client, PrefixInfo& prefix_info, const char* rs_ip, int32_t rs_port)
+int BigqueryWriter::init(MysqlClient& mysql_client, PrefixInfo& prefix_info)
 {
   int err = 0;
 
-  ob_ = ob_api_init();
-  if (NULL == ob_)
-  {
-    TBSYS_LOG(WARN, "failed to init ob api");
-    err = OB_ERROR;
-  }
-  else
-  {
-    ob_api_debug_log(ob_, "info", "log/log_obapi.log");
-  }
-
-  if (0 == err)
-  {
-    err = ob_connect(ob_, rs_ip, rs_port, NULL, NULL);
-    if (0 != err)
-    {
-      TBSYS_LOG(WARN, "failed to connect, rs_ip=%s, rs_port=%d, err=%d", rs_ip, rs_port, err);
-    }
-  }
-
+  mysql_client_ = &mysql_client;
   prefix_info_ = &prefix_info;
 
   return err;
@@ -113,64 +86,85 @@ int BigqueryWriter::write_data(uint64_t prefix)
 
   if (0 == err)
   {
-    req_ = ob_acquire_set_st(ob_);
-    if (NULL == req_)
+    const int64_t NUM_PER_MUTATION = 100;
+    //const int64_t NUM_PER_MUTATION = 1;
+    int64_t NUM_BATCH = (row_num + NUM_PER_MUTATION - 1) / NUM_PER_MUTATION;
+    for (int64_t batch = 0; batch < NUM_BATCH; ++batch)
     {
-      TBSYS_LOG(WARN, "failed to acquire set req, ob_=%p", ob_);
-      err = OB_ERROR;
-    }
-  }
-
-  int64_t num = 0;
-  static const int64_t NUM_PER_MUTATION = 10 * 1024;
-
-  for (uint64_t i = 0;  i < (uint64_t) row_num && 0 == err; ++i)
-  {
-    int64_t ret_size = 0;
-    rule.get_col_values(i, col_arr, sizeof(col_arr) / sizeof(col_arr[0]), ret_size);
-    err = write_data(prefix, i, col_arr, ret_size);
-    if (0 != err)
-    {
-      TBSYS_LOG(WARN, "failed to write data, prefix=%lu, suffix=%lu, err=%d",
-          prefix, i, err);
-    }
-    else
-    {
-      ++num;
-      if (num == NUM_PER_MUTATION)
+      int64_t batch_row_num = (batch == NUM_BATCH-1) ? row_num % NUM_PER_MUTATION : NUM_PER_MUTATION;
+      if (0 == batch_row_num)
       {
-        num = 0;
-        err = commit_set();;
+        batch_row_num = NUM_PER_MUTATION;
+      }
+      //TBSYS_LOG(INFO, "batch=%ld, batch_row_num=%ld, row_num=%ld", batch, batch_row_num, row_num);
+      char stmt_str[10240];
+      char tmp_str[10240];
+      MYSQL_BIND bind_ary[10240];
+      int64_t col_arr_store[10240];
+      int64_t bind_ary_size = 0;
+      memset(bind_ary, 0x00, sizeof(bind_ary));
+
+      snprintf(stmt_str, sizeof(stmt_str), "replace into %s(prefix, suffix", BIGQUERY_TABLE);
+      for (int64_t i = 0; i < rule.get_rule_num(); ++i)
+      {
+        snprintf(tmp_str, sizeof(tmp_str), ", %s%ld", COLUMN_PREFIX, i + 1);
+        strcat(stmt_str, tmp_str);
+      }
+      strcat(stmt_str, ") values");
+      for (int64_t i = 0; i < batch_row_num; ++i)
+      {
+        strcat(stmt_str, "(?,?");
+        for (int64_t j = 0; j < rule.get_rule_num(); ++j)
+        {
+          strcat(stmt_str, ",?");
+        }
+        strcat(stmt_str, ")");
+        if (i != batch_row_num - 1)
+        {
+          strcat(stmt_str, ",");
+        }
+      }
+
+      err = mysql_client_->stmt_prepare(stmt_str, strlen(stmt_str));
+      if (0 != err)
+      {
+        TBSYS_LOG(WARN, "failed to prepare, err=%d", err);
+      }
+
+      for (uint64_t i = batch * NUM_PER_MUTATION; i < (uint64_t) batch * NUM_PER_MUTATION + batch_row_num && 0 == err; ++i)
+      {
+        int64_t ret_size = 0;
+        rule.get_col_values(i, col_arr, sizeof(col_arr) / sizeof(col_arr[0]), ret_size);
+        err = write_data(prefix, i, col_arr, ret_size, bind_ary, bind_ary_size, col_arr_store);
         if (0 != err)
         {
-          TBSYS_LOG(WARN, "failed to commit set, num=%ld, i=%ld, err=%d", num, i, err);
+          TBSYS_LOG(WARN, "failed to write data, prefix=%lu, suffix=%lu, err=%d",
+              prefix, i, err);
         }
-        else
-        {
-          ob_release_set_st(ob_, req_);
+      }
 
-          req_ = ob_acquire_set_st(ob_);
-          assert(NULL != req_);
+      if (0 == err)
+      {
+        err = mysql_client_->stmt_bind_param(bind_ary, bind_ary_size);
+        if (0 != err)
+        {
+          TBSYS_LOG(WARN, "failed to bind param, bind=%p, len=%ld", bind_ary, bind_ary_size);
+        }
+      }
+
+      if (0 == err)
+      {
+        err = commit();
+        if (0 != err)
+        {
+          TBSYS_LOG(WARN, "failed to commit, err=%d", err);
         }
       }
     }
   }
 
-  if (0 == err && num > 0)
-  {
-    err = commit_set();
-    if (0 != err)
-    {
-      TBSYS_LOG(WARN, "failed to commit set, req_=%p, err=%d", req_, err);
-    }
-  }
-
-  if (NULL != req_)
-  {
-    ob_release_set_st(ob_, req_);
-    req_ = NULL;
-  }
-
+  TBSYS_LOG(INFO, "[write_data] rule=%s, err=%d", rule.to_string(), err);
+  
   if (0 == err)
   {
     err = prefix_info_->set_read_write_status(prefix, 0);
@@ -187,26 +181,46 @@ int BigqueryWriter::write_data(uint64_t prefix)
   return err;
 }
 
-int BigqueryWriter::write_data(uint64_t prefix, uint64_t suffix, int64_t* col_ary, int64_t arr_len)
+int BigqueryWriter::write_data(uint64_t prefix, uint64_t suffix, int64_t* col_ary, int64_t arr_len,
+    MYSQL_BIND* bind_ary, int64_t& bind_ary_size, int64_t* col_arr_store)
 {
   int err = 0;
   assert(col_ary != NULL && arr_len > 0);
-  char rowkey[32];
-  int64_t rowkey_len = 0;
-  translate_uint64(rowkey, prefix);
-  translate_uint64(rowkey + 8, suffix);
-  rowkey_len = 16;
-  char column[32];
+  assert(mysql_client_ != NULL);
+  //MYSQL_BIND bind[128];
 
+  MYSQL_BIND * bind = bind_ary + bind_ary_size;
+  int64_t* store = col_arr_store + bind_ary_size;
+  //memset(bind, 0x00, 128 * sizeof(bind[0]));
+  bind[0].buffer_type = MYSQL_TYPE_LONGLONG;
+  store[0] = prefix;
+  bind[0].buffer = (void*) (store);
+  bind[0].buffer_length = 8;
+  bind[1].buffer_type = MYSQL_TYPE_LONGLONG;
+  store[1] = suffix;
+  bind[1].buffer = (void*) (store + 1);
+  bind[1].buffer_length = 8;
   for (int64_t i = 0; 0 == err && i < arr_len; ++i)
   {
-    sprintf(column, "%s%ld", COLUMN_PREFIX, i+1);
-    err = ob_insert_int(req_, BIGQUERY_TABLE, rowkey, rowkey_len, column, col_ary[i]);
+    bind[i+2].buffer_type = MYSQL_TYPE_LONGLONG;
+    //bind[i+2].buffer = (void*) (col_ary+i);
+    store[i+2] = col_ary[i];
+    bind[i+2].buffer = (void*) (store + i + 2);
+    bind[i+2].buffer_length = 8;
+  }
+
+  bind_ary_size += (arr_len + 2);
+
+  /*
+  if (0 == err)
+  {
+    err = mysql_client_->stmt_bind_param(bind, arr_len + 2);
     if (0 != err)
     {
-      TBSYS_LOG(WARN, "failed to insert, i=%ld, err=%d", i, err);
+      TBSYS_LOG(WARN, "failed to bind param, bind=%p, len=%ld", bind, arr_len + 2);
     }
   }
+  */
 
   return err;
 }
@@ -221,39 +235,14 @@ void BigqueryWriter::translate_uint64(char* rowkey, uint64_t value)
   }
 }
 
-int BigqueryWriter::commit_set()
+int BigqueryWriter::commit()
 {
   int err = 0;
-  while (true)
+  assert(NULL != mysql_client_);
+  err = mysql_client_->stmt_execute();
+  if (0 != err)
   {
-    err = ob_exec_set(ob_, req_);
-    if (0 == err)
-    {
-      break;
-    }
-    else if (OB_ERR_MEM_NOT_ENOUGH == err)
-    {
-      TBSYS_LOG(WARN, "failed to exec set, MEM_NOT_ENOUGH");
-      sleep(1);
-      err = 0;
-    }
-    else if (OB_ERR_RESPONSE_TIMEOUT == err)
-    {
-      TBSYS_LOG(WARN, "failed to exec set, TIME_OUT");
-      sleep(1);
-      err = 0;
-    }
-    else if (OB_ERR_NOT_MASTER == err)
-    {
-      TBSYS_LOG(ERROR, "failed to exec set, NOT_MASTER");
-      sleep(1);
-      err = 0;
-    }
-    else
-    {
-      TBSYS_LOG(ERROR, "failed to exec set, err=%d", err);
-      break;
-    }
+    TBSYS_LOG(WARN, "failed to execute, err=%d", err);
   }
   return err;
 }

@@ -116,15 +116,18 @@ namespace oceanbase
       int32_t str_index_; //str data cursor
       int32_t char_index_; //char data cursor
 
-      common::ObRange range_;
+      common::ObNewRange range_;
       Args* arg_;
       const common::ObSchemaManagerV2 *schema_mgr_;
 
-      common::ObString curr_rowkey_;
-      common::ObString last_sstable_end_key_;//record last key of last sstable;
-      char last_key_buf_[MAX_KEY_LEN];
-      char rowkey_buf_[MAX_KEY_LEN];
-      char start_key_buf_[MAX_KEY_LEN];
+      common::ObRowkey curr_rowkey_;
+      common::ObRowkey last_sstable_end_key_;//record last key of last sstable;
+      common::CharArena rowkey_allocator_;
+      common::ObObj rowkey_object_array_[common::OB_MAX_ROWKEY_COLUMN_NUMBER];
+      common::ObObj start_key_object_array_[common::OB_MAX_ROWKEY_COLUMN_NUMBER];
+      //char last_key_buf_[MAX_KEY_LEN];
+      //char rowkey_buf_[MAX_KEY_LEN];
+      //char start_key_buf_[MAX_KEY_LEN];
 
       common::ObString compressor_name_;
       char compressor_buf_[MAX_KEY_LEN];

@@ -5,6 +5,11 @@
 
 namespace oceanbase
 {
+  namespace sql 
+  {
+    class ObSqlGetParam;
+    class ObSqlScanParam;
+  }
   namespace common
   {
     class ObServer;
@@ -19,6 +24,7 @@ namespace oceanbase
   {
     class ObMergerRpcEvent;
     class ObMsSqlRpcEvent;
+    class ObMsSqlGetRequest;
     class ObMergerAsyncRpcStub
     {
     public:
@@ -58,7 +64,10 @@ namespace oceanbase
 
       /// send sql scan request for collect result
       virtual int scan(const int64_t timeout, const common::ObServer & server,
-          const common::ObScanParam & scan_param, ObMsSqlRpcEvent & result) const;
+          const sql::ObSqlScanParam & scan_param, ObMsSqlRpcEvent & result) const;
+      
+      virtual int get(const int64_t timeout, const common::ObServer & server,
+          const sql::ObSqlGetParam & get_param, ObMsSqlRpcEvent & result) const;
 
       virtual int get_session_next(const int64_t timeout, const common::ObServer & server, 
         const int64_t session_id, const int32_t req_type, ObMsSqlRpcEvent & result)const;

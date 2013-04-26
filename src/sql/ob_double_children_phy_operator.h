@@ -29,6 +29,8 @@ namespace oceanbase
         virtual ~ObDoubleChildrenPhyOperator();
         /// Just two children are allowed to set
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
+        virtual ObPhyOperator *get_child(int32_t child_idx) const;
+        virtual int32_t get_child_num() const;
         /// open children operators
         virtual int open();
         /// close children operators

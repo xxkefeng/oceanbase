@@ -38,6 +38,7 @@ namespace oceanbase
 
     int ObSyscheckerMain::do_work()
     {
+      TBSYS_CONFIG.load(config_);
       return checker_.start();
     }
 

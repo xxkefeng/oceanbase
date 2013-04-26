@@ -39,13 +39,13 @@ void ObMigrateInfo::reset(common::CharArena &allocator)
   next_ = NULL;
   if (NULL != range_.start_key_.ptr())
   {
-    allocator.free(range_.start_key_.ptr());
-    range_.start_key_.assign_buffer(NULL, 0);
+    allocator.free((char*)range_.start_key_.ptr());
+    range_.start_key_.assign(NULL, 0);
   }
   if (NULL != range_.end_key_.ptr())
   {
-    allocator.free(range_.end_key_.ptr());
-    range_.end_key_.assign_buffer(NULL, 0);
+    allocator.free((char*)range_.end_key_.ptr());
+    range_.end_key_.assign(NULL, 0);
   }
 }
 
@@ -198,7 +198,7 @@ int32_t ObCsMigrateTo::count() const
   return count_;
 }
 
-int ObCsMigrateTo::add_migrate_info(const common::ObRange &range, int32_t dest_cs_idx, int8_t keep_src, ObMigrateInfos &infos)
+int ObCsMigrateTo::add_migrate_info(const common::ObNewRange &range, int32_t dest_cs_idx, int8_t keep_src, ObMigrateInfos &infos)
 {
   int ret = OB_SUCCESS;
   ObMigrateInfo* minfo = NULL;
@@ -216,15 +216,15 @@ int ObCsMigrateTo::add_migrate_info(const common::ObRange &range, int32_t dest_c
     TBSYS_LOG(ERROR, "BUG element is not init");
     ret = OB_ERROR;
   }
-  else if (OB_SUCCESS != (ret = clone_string(infos.get_allocator(), range.start_key_, minfo->range_.start_key_)))
+  else if (OB_SUCCESS != (ret = range.start_key_.deep_copy(minfo->range_.start_key_, infos.get_allocator())))
   {
     TBSYS_LOG(ERROR, "clone start key error");
   }
-  else if (OB_SUCCESS != (ret = clone_string(infos.get_allocator(), range.end_key_, minfo->range_.end_key_)))
+  else if (OB_SUCCESS != (ret = range.end_key_.deep_copy(minfo->range_.end_key_, infos.get_allocator())))
   {
     if (NULL != minfo->range_.start_key_.ptr())
     {
-      infos.get_allocator().free(minfo->range_.start_key_.ptr());
+      infos.get_allocator().free((char*)minfo->range_.start_key_.ptr());
       minfo->range_.start_key_.assign(NULL, 0);
     }
   }
@@ -269,7 +269,7 @@ int ObCsMigrateTo::clone_string(common::CharArena &allocator, const common::ObSt
   return ret;
 }
 
-int ObCsMigrateTo::set_migrate_done(const ObRange &range, int32_t dest_cs_idx)
+int ObCsMigrateTo::set_migrate_done(const ObNewRange &range, int32_t dest_cs_idx)
 {
   int ret = OB_ENTRY_NOT_EXIST;
 
@@ -288,12 +288,12 @@ int ObCsMigrateTo::set_migrate_done(const ObRange &range, int32_t dest_cs_idx)
   return ret;
 }
 
-int ObCsMigrateTo::add_migrate_info(const common::ObRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos)
+int ObCsMigrateTo::add_migrate_info(const common::ObNewRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos)
 {
   return add_migrate_info(range, dest_cs_idx, 0, infos);
 }
 
-int ObCsMigrateTo::add_copy_info(const common::ObRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos)
+int ObCsMigrateTo::add_copy_info(const common::ObNewRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos)
 {
   return add_migrate_info(range, dest_cs_idx, 1, infos);
 }

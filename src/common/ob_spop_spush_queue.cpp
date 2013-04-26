@@ -26,14 +26,23 @@ oceanbase::common::ObSPopSPushQueue::ObSPopSPushQueue()
   pop_idx_ = 0;
   queue_size_ = 0;
   queue_arr_ = NULL;
+  inited_ = false;
   waiter_exist_ = false;
   pthread_mutex_init(&mutex_,NULL);
   pthread_cond_init(&cond_, NULL) ;
 }
 
-
+void oceanbase::common::ObSPopSPushQueue::reset()
+{
+  waiter_exist_ = false;
+  push_count_ = 0;
+  pop_count_ = 0;
+  push_idx_ = 0;
+  pop_idx_ = 0;
+}
 oceanbase::common::ObSPopSPushQueue::~ObSPopSPushQueue()
 {
+  inited_ = false;
   waiter_exist_ = false;
   push_count_ = 0;
   pop_count_ = 0;
@@ -52,28 +61,35 @@ oceanbase::common::ObSPopSPushQueue::~ObSPopSPushQueue()
 int oceanbase::common::ObSPopSPushQueue::init(const int64_t queue_size, const int32_t mod_id)
 {
   int err = OB_SUCCESS;
-  if ((OB_SUCCESS == err) && (queue_size <= 0))
+  if (queue_size <= 0)
   {
     TBSYS_LOG(WARN,"arg error [queue_size:%ld]", queue_size);
     err = OB_INVALID_ARGUMENT;
   }
-  if ((OB_SUCCESS == err) && (NULL != queue_arr_))
-  {
-    TBSYS_LOG(WARN,"queue was already initialized");
-    err = OB_INIT_TWICE;
-  }
-  if ((OB_SUCCESS == err) && (NULL == (queue_arr_ = reinterpret_cast<void**>(ob_malloc(queue_size*sizeof(void*),mod_id)))))
-  {
-    TBSYS_LOG(WARN,"fail to allocate memory for queue array [errno:%d]", errno);
-    err = OB_ALLOCATE_MEMORY_FAILED;
-  }
-  if (OB_SUCCESS != err)
-  {
-    TBSYS_LOG(WARN,"[err:%d,queue_size:%ld]", err, queue_size);
-  }
   else
   {
-    queue_size_ = queue_size;
+    if (!inited_ || queue_size != queue_size_)
+    {
+      if (NULL != queue_arr_)
+      {
+        ob_free(queue_arr_);
+        queue_arr_ = NULL;
+      }
+      if ((NULL == (queue_arr_ = reinterpret_cast<void**>(ob_malloc(queue_size*sizeof(void*),mod_id)))))
+      {
+        TBSYS_LOG(WARN,"fail to allocate memory for queue array [errno:%d]", errno);
+        err = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      if (OB_SUCCESS != err)
+      {
+        TBSYS_LOG(WARN,"[err:%d,queue_size:%ld]", err, queue_size);
+      }
+      else
+      {
+        queue_size_ = queue_size;
+        inited_ = true;
+      }
+    }
   }
   return err;
 }
@@ -166,6 +182,10 @@ int oceanbase::common::ObSPopSPushQueue::pop(const int64_t timeout_us, void *&ms
     msg = NULL;
     TBSYS_LOG(WARN,"queue is empty");
     err = OB_ARRAY_OUT_OF_RANGE;
+  }
+  if (OB_SUCCESS != err)
+  {
+    TBSYS_LOG(WARN,"[err:%d]", err);
   }
   return err;
 }

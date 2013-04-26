@@ -5,11 +5,13 @@
 #include "common/ob_action_flag.h"
 #include "common/ob_common_param.h"
 #include "mergeserver/ob_cell_operator.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 
+static CharArena allocator_;
 TEST(TestObCellInfo, intTestApply)
 { 
   ObCellInfo del_cell;
@@ -27,7 +29,7 @@ TEST(TestObCellInfo, intTestApply)
   char rowkey[128] = "rowkey";
   ObString rowkey_str;
   rowkey_str.assign(rowkey,static_cast<int32_t>(strlen(rowkey)+1));
-  src_cell.row_key_ = rowkey_str;
+  src_cell.row_key_ = make_rowkey(rowkey, &allocator_);;
 
   char column_name[128] = "col";
   ObString column_name_str;
@@ -170,9 +172,7 @@ TEST(TestObCellInfo, stringTestApply)
   src_cell.table_name_ = table_name_str;
 
   char rowkey[128] = "rowkey";
-  ObString rowkey_str;
-  rowkey_str.assign(rowkey,static_cast<int32_t>(strlen(rowkey)+1));
-  src_cell.row_key_ = rowkey_str;
+  src_cell.row_key_ = make_rowkey(rowkey, &allocator_);;
 
   char column_name[128] = "col";
   ObString column_name_str;

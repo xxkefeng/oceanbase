@@ -26,6 +26,17 @@ ObFilter::~ObFilter()
 {
 }
 
+void ObFilter::reset()
+{
+  filters_.clear();
+}
+
+void ObFilter::clear()
+{
+  ObSingleChildPhyOperator::clear();
+  reset();
+}
+
 int ObFilter::add_filter(const ObSqlExpression& expr)
 {
   int ret = OB_SUCCESS;
@@ -79,7 +90,7 @@ int ObFilter::get_next_row(const common::ObRow *&row)
           && OB_SUCCESS == (ret = child_op_->get_next_row(input_row)))
     {
       did_output = true;
-      for (int64_t i = 0; i < filters_.count(); ++i)
+      for (int32_t i = 0; i < filters_.count(); ++i)
       {
         ObSqlExpression &expr = filters_.at(i);
         if (OB_SUCCESS != (ret = expr.calc(*input_row, result)))
@@ -87,13 +98,9 @@ int ObFilter::get_next_row(const common::ObRow *&row)
           TBSYS_LOG(WARN, "failed to calc expression, err=%d", ret);
           break;
         }
-        else if (OB_SUCCESS != (ret = result->get_bool(did_output)))
+        else if (!result->is_true())
         {
-          TBSYS_LOG(WARN, "failed to get expression result as a bool value, err=%d", ret);
-          break;
-        }
-        else if (false == did_output)
-        {
+          did_output = false;
           break;
         }
       } // end for
@@ -111,7 +118,7 @@ int64_t ObFilter::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
   databuff_printf(buf, buf_len, pos, "Filter(filters=[");
-  for (int64_t i = 0; i < filters_.count(); ++i)
+  for (int32_t i = 0; i < filters_.count(); ++i)
   {
     int64_t pos2 = filters_.at(i).to_string(buf+pos, buf_len-pos);
     pos += pos2;
@@ -212,8 +219,13 @@ DEFINE_DESERIALIZE(ObFilter)
   return ret;
 }
 
-
 void ObFilter::assign(const ObFilter &other)
 {
   filters_ = other.filters_;
 }
+
+ObPhyOperatorType ObFilter::get_type() const
+{
+  return PHY_FILTER;
+}
+

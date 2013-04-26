@@ -22,8 +22,7 @@
 #include "ob_string_buf.h"
 #include "ob_action_flag.h"
 #include "page_arena.h"
-#include "ob_update_condition.h"
-#include "ob_prefetch_data.h"
+#include "ob_schema.h"
 
 namespace oceanbase
 {
@@ -53,9 +52,11 @@ namespace oceanbase
     };
 
     // ObMutator represents a list of cell mutation.
+    // 使用mutator的请注意 从mutator中迭代数据 必须保证经过了反序列化才能正常获取is_row_changed和is_row_finished标记 否则会返回not support
     class ObMutator
     {
       friend class oceanbase::tests::common::TestMutatorHelper;
+      static const int64_t ALLOCATOR_PAGE_SIZE = 4L * 1024L * 1024L;
       public:
         enum
         {
@@ -83,9 +84,17 @@ namespace oceanbase
           FINISHED = 2,
         };
 
+        enum BarrierFlag
+        {
+          NO_BARRIER = 0,
+          ROWKEY_BARRIER = 1,
+        };
+
       public:
         ObMutator();
+        ObMutator(ModuleArena &arena);
         virtual ~ObMutator();
+        int clear();
         int reset();
       public:
         // Uses ob&db semantic, ob semantic is used by default.
@@ -97,36 +106,39 @@ namespace oceanbase
         ObMutator::MUTATOR_TYPE get_mutator_type(void) const;
 
         // Adds update mutation to list
-        int update(const ObString& table_name, const ObString& row_key,
+        int update(const ObString& table_name, const ObRowkey& row_key,
             const ObString& column_name, const ObObj& value, const int return_flag = RETURN_NO_RESULT);
-        int update(const uint64_t table_id, const ObString& row_key,
+        int update(const uint64_t table_id, const ObRowkey& row_key,
             const uint64_t column_id, const ObObj& value, const int return_flag = RETURN_NO_RESULT);
         // Adds insert mutation to list
-        int insert(const ObString& table_name, const ObString& row_key,
+        int insert(const ObString& table_name, const ObRowkey& row_key,
             const ObString& column_name, const ObObj& value, const int return_flag = RETURN_NO_RESULT);
-        int insert(const uint64_t table_id, const ObString& row_key,
+        int insert(const uint64_t table_id, const ObRowkey& row_key,
             const uint64_t column_id, const ObObj& value, const int return_flag = RETURN_NO_RESULT);
         // Adds add mutation to list
-        int add(const ObString& table_name, const ObString& row_key,
+        int add(const ObString& table_name, const ObRowkey& row_key,
             const ObString& column_name, const int64_t value, const int return_flag = RETURN_NO_RESULT);
-        int add_datetime(const ObString& table_name, const ObString& row_key,
+        int add(const ObString& table_name, const ObRowkey& row_key,
+            const ObString& column_name, const float value, const int return_flag = RETURN_NO_RESULT);
+        int add(const ObString& table_name, const ObRowkey& row_key,
+            const ObString& column_name, const double value, const int return_flag = RETURN_NO_RESULT);
+        int add_datetime(const ObString& table_name, const ObRowkey& row_key,
             const ObString& column_name, const ObDateTime& value, const int return_flag = RETURN_NO_RESULT);
-        int add_precise_datetime(const ObString& table_name, const ObString& row_key,
+        int add_precise_datetime(const ObString& table_name, const ObRowkey& row_key,
             const ObString& column_name, const ObPreciseDateTime& value, const int return_flag = RETURN_NO_RESULT);
         // Adds del_row mutation to list
-        int del_row(const ObString& table_name, const ObString& row_key);
+        int del_row(const ObString& table_name, const ObRowkey& row_key);
+        int del_row(const uint64_t table_id, const ObRowkey& row_key);
 
+        int add_row_barrier();
         int add_cell(const ObMutatorCellInfo& cell);
+        const ObString & get_first_table_name(void) const;
+        int64_t size(void) const;
+      public:
+        //inline void set_compatible_rowkey_info(const ObRowkeyInfo* rowkey_info) {rowkey_info_ = rowkey_info;};
+        inline void set_compatible_schema(const ObSchemaManagerV2* sm) {schema_manager_ = sm;}
 
       public:
-        // get update condition
-        const ObUpdateCondition& get_update_condition(void) const;
-        ObUpdateCondition& get_update_condition(void);
-
-        /// set and get prefetch data
-        const ObPrefetchData & get_prefetch_data(void) const;
-        ObPrefetchData & get_prefetch_data(void);
-
       public:
         virtual void reset_iter();
         virtual int next_cell();
@@ -134,22 +146,13 @@ namespace oceanbase
         virtual int get_cell(ObMutatorCellInfo** cell, bool* is_row_changed, bool* is_row_finished);
 
       public:
+        int pre_serialize();
         int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
         int deserialize(const char* buf, const int64_t buf_len, int64_t& pos);
         int64_t get_serialize_size(void) const;
 
       private:
-        // UPDATE_CONDITION_PARAM_FIELD
-        int serialize_condition_param(char * buf, const int64_t buf_len, int64_t & pos) const;
-        int deserialize_condition_param(const char * buf, const int64_t data_len, int64_t & pos);
-        int64_t get_condition_param_serialize_size(void) const;
-
-        // PREFETCH_PARAM_FIELD
-        int serialize_prefetch_param(char * buf, const int64_t buf_len, int64_t & pos) const;
-        int deserialize_prefetch_param(const char * buf, const int64_t data_len, int64_t & pos);
-        int64_t get_prefetch_param_serialize_size(void) const;
-
-        int add_cell(const ObMutatorCellInfo& cell, const RowChangedStat row_changed_stat);
+        int add_cell(const ObMutatorCellInfo& cell, const RowChangedStat row_changed_stat, const BarrierFlag barrier_flag = NO_BARRIER);
 
 
       private:
@@ -158,6 +161,7 @@ namespace oceanbase
           ObMutatorCellInfo cell;
           RowChangedStat row_changed_stat;
           RowFinishedStat row_finished_stat;
+          int32_t barrier_flag;
           CellInfoNode* next;
         };
 
@@ -177,25 +181,28 @@ namespace oceanbase
         int serialize_flag_(char* buf, const int64_t buf_len, int64_t& pos, const int64_t flag) const;
         int64_t get_obj_serialize_size_(const int64_t value, bool is_ext) const;
         int64_t get_obj_serialize_size_(const ObString& str) const;
+        int64_t get_obj_serialize_size_(const ObRowkey& rowkey) const;
 
       private:
         CellInfoNode* list_head_;
         CellInfoNode* list_tail_;
-        PageArena<CellInfoNode> page_arena_;
+        ModulePageAllocator mod_;
+        ModuleArena local_page_arena_;
         ObStringBuf str_buf_;
-        ObString last_row_key_;
+        ModuleArena &page_arena_;
+        int64_t cell_count_;
+        ObString first_table_name_;
+        ObRowkey last_row_key_;
         ObString last_table_name_;
         uint64_t last_table_id_;
         IdNameType id_name_type_;
         int64_t  cell_store_size_;
         CellInfoNode* cur_iter_node_;
-        /// update condition
-        ObUpdateCondition condition_;
-        /// prefetch data for temp result
-        ObPrefetchData prefetch_data_;
-        /// mutator type
         MUTATOR_TYPE type_;
         bool has_begin_;
+        ObRowkeyInfo rowkey_info_;
+        const ObSchemaManagerV2* schema_manager_;
+        char* mutator_buf_;
     };
   }
 }

@@ -35,6 +35,8 @@ class ObPhyOperatorStub : public ObPhyOperator
 
     int set_child(int32_t child_idx, ObPhyOperator &child_operator)
     {
+      UNUSED(child_idx);
+      UNUSED(child_operator);
       return OB_ERROR;
     }
 
@@ -67,6 +69,8 @@ class ObPhyOperatorStub : public ObPhyOperator
 
     int64_t to_string(char* buf, const int64_t buf_len) const
     {
+      UNUSED(buf);
+      UNUSED(buf_len);
       TBSYS_LOG(INFO, "ObPhyOperatorStub to string called");
       return OB_SUCCESS;
     }
@@ -253,7 +257,7 @@ TEST_F(ObProjectTest, serialize_test)
 int main(int argc, char **argv)
 {
 
-  TBSYS_LOGGER.setLogLevel("DEBUG");
+  TBSYS_LOGGER.setLogLevel("INFO");
   ob_init_memory_pool();
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();

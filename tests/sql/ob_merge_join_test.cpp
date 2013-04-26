@@ -28,8 +28,8 @@ class ObMergeJoinTest: public ::testing::Test
     virtual void TearDown();
   protected:
     void test_inner_join(int64_t left_row_count, int64_t right_row_count,
-                         int left_cid, int right_cid,
-                         int left_factor, int right_factor,
+                         int64_t left_cid, int64_t right_cid,
+                         int64_t left_factor, int64_t right_factor,
                          bool has_other_cond);
     void test_left_outer_join(int64_t left_row_count, int64_t right_row_count,
                               bool has_other_cond);
@@ -61,8 +61,8 @@ void ObMergeJoinTest::TearDown()
 }
 
 void ObMergeJoinTest::test_inner_join(int64_t left_row_count, int64_t right_row_count,
-                                      int left_cid, int right_cid,
-                                      int left_factor, int right_factor,
+                                      int64_t left_cid, int64_t right_cid,
+                                      int64_t left_factor, int64_t right_factor,
                                       bool has_other_cond)
 {
   const int64_t LEFT_ROW_COUNT = left_row_count;
@@ -132,9 +132,9 @@ void ObMergeJoinTest::test_inner_join(int64_t left_row_count, int64_t right_row_
   printf("%s\n", buff);
   // begin
   ASSERT_EQ(OB_SUCCESS, merge_join.open());
-  int g = 0;
-  int r = 0;
-  int f = 0;
+  int64_t g = 0;
+  int64_t r = 0;
+  int64_t f = 0;
   if (RIGHT_ROW_COUNT/right_factor < LEFT_ROW_COUNT/left_factor)
   {
     assert(LEFT_ROW_COUNT + left_factor > RIGHT_ROW_COUNT/right_factor*left_factor);
@@ -149,9 +149,9 @@ void ObMergeJoinTest::test_inner_join(int64_t left_row_count, int64_t right_row_
     r = LEFT_ROW_COUNT%left_factor;
     f = right_factor;
   }
-  printf("g=%d r=%d f=%d\n", g, r, f);
-  int result_row_count = 0;
-  int vg = g;
+  printf("g=%ld r=%ld f=%ld\n", g, r, f);
+  int64_t result_row_count = 0;
+  int64_t vg = g;
   if (has_other_cond)
   {
     if (g % 2 == 1) // whether qualified rows
@@ -164,7 +164,7 @@ void ObMergeJoinTest::test_inner_join(int64_t left_row_count, int64_t right_row_
     }
   }
   result_row_count = left_factor*right_factor*vg;
-  printf("vg=%d result_row_count=%d\n", vg, result_row_count);
+  printf("vg=%ld result_row_count=%ld\n", vg, result_row_count);
   if (r != 0)
   {
     if (has_other_cond)
@@ -179,11 +179,11 @@ void ObMergeJoinTest::test_inner_join(int64_t left_row_count, int64_t right_row_
       result_row_count += f * r;
     }
   }
-  printf("result_row_count=%d\n", result_row_count);
+  printf("result_row_count=%ld\n", result_row_count);
   const ObRow *row = NULL;
   const ObObj *cell = NULL;
   int64_t val = 0;
-  for (int i = 0; i < result_row_count; ++i)
+  for (int64_t i = 0; i < result_row_count; ++i)
   {
     ASSERT_EQ(OB_SUCCESS, merge_join.get_next_row(row));
     ASSERT_EQ(32, row->get_column_num());
@@ -216,7 +216,7 @@ void ObMergeJoinTest::test_inner_join(int64_t left_row_count, int64_t right_row_
 TEST_F(ObMergeJoinTest, inner_join)
 {
   bool has_other_cond = false;
-  for (int i = 0; i < 2; ++i)
+  for (int64_t i = 0; i < 2; ++i)
   {
     if (i == 0)
     {
@@ -231,7 +231,7 @@ TEST_F(ObMergeJoinTest, inner_join)
       ASSERT_TRUE(false);
     }
     // left.c4 = right.c5
-    for (int row_count = 99; row_count < 99+6; ++row_count)
+    for (int64_t row_count = 99; row_count < 99+6; ++row_count)
     {
       test_inner_join(row_count, row_count, 4, 5, 2, 3, has_other_cond);
     }
@@ -239,7 +239,7 @@ TEST_F(ObMergeJoinTest, inner_join)
     test_inner_join(0, 100, 4, 5, 2, 3, has_other_cond);
     test_inner_join(0, 0, 4, 5, 2, 3, has_other_cond);
     // left.c5 = right.c4
-    for (int row_count = 99; row_count < 99+6; ++row_count)
+    for (int64_t row_count = 99; row_count < 99+6; ++row_count)
     {
       test_inner_join(row_count, row_count, 5, 4, 3, 2, has_other_cond);
     }
@@ -271,8 +271,8 @@ void ObMergeJoinTest::test_left_outer_join(int64_t left_row_count, int64_t right
   ASSERT_EQ(OB_SUCCESS, merge_join.set_child(1, right_input));
   ASSERT_EQ(OB_SUCCESS, merge_join.set_join_type(ObJoin::LEFT_OUTER_JOIN));
   // equijoin: left.c5 = right.c9
-  // column 5 int, row_idx / 3, e.g. 0,0,0,1,1,1,2,2,2,...
-  // column 9 int, row_idx/2*2, e.g. 0,0,2,2,4,4,6,6,...
+  // column 5 int64_t, row_idx / 3, e.g. 0,0,0,1,1,1,2,2,2,...
+  // column 9 int64_t, row_idx/2*2, e.g. 0,0,2,2,4,4,6,6,...
   const uint64_t LEFT_COL = OB_APP_MIN_COLUMN_ID + 5;
   const uint64_t RIGHT_COL = OB_APP_MIN_COLUMN_ID + 9;
   {
@@ -293,7 +293,7 @@ void ObMergeJoinTest::test_left_outer_join(int64_t left_row_count, int64_t right
     ASSERT_EQ(OB_SUCCESS, merge_join.add_equijoin_condition(expr));
   }
   // other cond: left.c1 % 2 = 0
-  // column 1: int, row_idx
+  // column 1: int64_t, row_idx
   {
     ObSqlExpression expr;
     ExprItem item;
@@ -325,28 +325,28 @@ void ObMergeJoinTest::test_left_outer_join(int64_t left_row_count, int64_t right
   printf("%s\n", buff);
   // begin
   ASSERT_EQ(OB_SUCCESS, merge_join.open());
-  int result_row_count = 0;
-  int n1 = (RIGHT_ROW_COUNT / 2 * 9);
-  int n2 = (LEFT_ROW_COUNT - (RIGHT_ROW_COUNT * 3));
+  int64_t result_row_count = 0;
+  int64_t n1 = (RIGHT_ROW_COUNT / 2 * 9);
+  int64_t n2 = (LEFT_ROW_COUNT - (RIGHT_ROW_COUNT * 3));
   if (has_other_cond)
   {
     n1 = n1 * 5 / 9;            // 5/9 normal rows
     n2 = n2 * 3 / 6;                // 3/6 extra rows
   }
   result_row_count = n1 + n2;
-  printf("result_row_count=%d n1=%d n2=%d\n", result_row_count, n1, n2);
+  printf("result_row_count=%ld n1=%ld n2=%ld\n", result_row_count, n1, n2);
   const ObRow *row = NULL;
   const ObObj *cell = NULL;
   int64_t val = 0;
-  for (int i = 0; i < result_row_count; ++i)
+  for (int64_t i = 0; i < result_row_count; ++i)
   {
-    printf("row=%d\n", i);
+    printf("row=%ld\n", i);
     ASSERT_EQ(OB_SUCCESS, merge_join.get_next_row(row));
     ASSERT_EQ(32, row->get_column_num());
     ASSERT_EQ(OB_SUCCESS, row->get_cell(LEFT_TID, LEFT_COL, cell));
     // verify LEFT_COL
     ASSERT_EQ(OB_SUCCESS, cell->get_int(val));
-    int mod = 0;
+    int64_t mod = 0;
     if (!has_other_cond)
     {
       mod = i % 9;
@@ -382,8 +382,8 @@ void ObMergeJoinTest::test_left_outer_join(int64_t left_row_count, int64_t right
       }
       else
       {
-        printf("val=%ld r=%d i=%d n1=%d\n", val, RIGHT_ROW_COUNT, i, n1);
-        int m = (i-n1) % 3;
+        printf("val=%ld r=%ld i=%ld n1=%ld\n", val, RIGHT_ROW_COUNT, i, n1);
+        int64_t m = (i-n1) % 3;
         if (0 == m || 1 == m)
         {
           m = (i-n1)/3*2;
@@ -444,7 +444,7 @@ void ObMergeJoinTest::test_left_outer_join(int64_t left_row_count, int64_t right
 TEST_F(ObMergeJoinTest, left_outer_join)
 {
   bool has_other_cond = false;
-  for (int i = 0; i < 2; ++i)
+  for (int64_t i = 0; i < 2; ++i)
   {
     if (i == 0)
     {
@@ -487,8 +487,8 @@ void ObMergeJoinTest::test_right_outer_join(int64_t left_row_count, int64_t righ
   ASSERT_EQ(OB_SUCCESS, merge_join.set_child(1, right_input));
   ASSERT_EQ(OB_SUCCESS, merge_join.set_join_type(ObJoin::RIGHT_OUTER_JOIN));
   // equijoin: left.c9 = right.c5
-  // column 5 int, row_idx / 3, e.g. 0,0,0,1,1,1,2,2,2,...
-  // column 9 int, row_idx/2*2, e.g. 0,0,2,2,4,4,6,6,...
+  // column 5 int64_t, row_idx / 3, e.g. 0,0,0,1,1,1,2,2,2,...
+  // column 9 int64_t, row_idx/2*2, e.g. 0,0,2,2,4,4,6,6,...
   const uint64_t LEFT_COL = OB_APP_MIN_COLUMN_ID + 9;
   const uint64_t RIGHT_COL = OB_APP_MIN_COLUMN_ID + 5;
   {
@@ -509,7 +509,7 @@ void ObMergeJoinTest::test_right_outer_join(int64_t left_row_count, int64_t righ
     ASSERT_EQ(OB_SUCCESS, merge_join.add_equijoin_condition(expr));
   }
   // other cond: right.c1 % 2 = 0
-  // column 1: int, row_idx
+  // column 1: int64_t, row_idx
   {
     ObSqlExpression expr;
     ExprItem item;
@@ -541,28 +541,28 @@ void ObMergeJoinTest::test_right_outer_join(int64_t left_row_count, int64_t righ
   printf("%s\n", buff);
   // begin
   ASSERT_EQ(OB_SUCCESS, merge_join.open());
-  int result_row_count = 0;
-  int n1 = (LEFT_ROW_COUNT / 2 * 9);
-  int n2 = (RIGHT_ROW_COUNT - (LEFT_ROW_COUNT * 3));
+  int64_t result_row_count = 0;
+  int64_t n1 = (LEFT_ROW_COUNT / 2 * 9);
+  int64_t n2 = (RIGHT_ROW_COUNT - (LEFT_ROW_COUNT * 3));
   if (has_other_cond)
   {
     n1 = n1 * 5 / 9;            // 5/9 normal rows
     n2 = n2 * 3 / 6;                // 3/6 extra rows
   }
   result_row_count = n1 + n2;
-  printf("result_row_count=%d n1=%d n2=%d\n", result_row_count, n1, n2);
+  printf("result_row_count=%ld n1=%ld n2=%ld\n", result_row_count, n1, n2);
   const ObRow *row = NULL;
   const ObObj *cell = NULL;
   int64_t val = 0;
-  for (int i = 0; i < result_row_count; ++i)
+  for (int64_t i = 0; i < result_row_count; ++i)
   {
-    printf("row=%d\n", i);
+    printf("row=%ld\n", i);
     ASSERT_EQ(OB_SUCCESS, merge_join.get_next_row(row));
     ASSERT_EQ(32, row->get_column_num());
     ASSERT_EQ(OB_SUCCESS, row->get_cell(RIGHT_TID, RIGHT_COL, cell));
     // verify LEFT_COL
     ASSERT_EQ(OB_SUCCESS, cell->get_int(val));
-    int mod = 0;
+    int64_t mod = 0;
     if (!has_other_cond)
     {
       mod = i % 9;
@@ -598,8 +598,8 @@ void ObMergeJoinTest::test_right_outer_join(int64_t left_row_count, int64_t righ
       }
       else
       {
-        printf("val=%ld r=%d i=%d n1=%d\n", val, LEFT_ROW_COUNT, i, n1);
-        int m = (i-n1) % 3;
+        printf("val=%ld r=%ld i=%ld n1=%ld\n", val, LEFT_ROW_COUNT, i, n1);
+        int64_t m = (i-n1) % 3;
         if (0 == m || 1 == m)
         {
           m = (i-n1)/3*2;
@@ -660,7 +660,7 @@ void ObMergeJoinTest::test_right_outer_join(int64_t left_row_count, int64_t righ
 TEST_F(ObMergeJoinTest, right_outer_join)
 {
   bool has_other_cond = false;
-  for (int i = 0; i < 2; ++i)
+  for (int64_t i = 0; i < 2; ++i)
   {
     if (i == 0)
     {
@@ -702,8 +702,8 @@ void ObMergeJoinTest::test_full_outer_join(int64_t left_row_count, int64_t right
   ASSERT_EQ(OB_SUCCESS, merge_join.set_child(1, right_input));
   ASSERT_EQ(OB_SUCCESS, merge_join.set_join_type(ObJoin::FULL_OUTER_JOIN));
   // equijoin: left.c5 = right.c9
-  // column 9 int, row_idx/2*2, e.g. 0,0,2,2,4,4,6,6,...
-  // column 10 int, row_idx/3*3, e.g. 0,0,0,3,3,3,6,6,6,...
+  // column 9 int64_t, row_idx/2*2, e.g. 0,0,2,2,4,4,6,6,...
+  // column 10 int64_t, row_idx/3*3, e.g. 0,0,0,3,3,3,6,6,6,...
   const uint64_t LEFT_COL = OB_APP_MIN_COLUMN_ID + 9;
   const uint64_t RIGHT_COL = OB_APP_MIN_COLUMN_ID + 10;
   {
@@ -724,7 +724,7 @@ void ObMergeJoinTest::test_full_outer_join(int64_t left_row_count, int64_t right
     ASSERT_EQ(OB_SUCCESS, merge_join.add_equijoin_condition(expr));
   }
   // other cond: left.c1 % 2 = 0
-  // column 1: int, row_idx
+  // column 1: int64_t, row_idx
   {
     ObSqlExpression expr;
     ExprItem item;
@@ -756,8 +756,8 @@ void ObMergeJoinTest::test_full_outer_join(int64_t left_row_count, int64_t right
   printf("%s\n", buff);
   // begin
   ASSERT_EQ(OB_SUCCESS, merge_join.open());
-  int normal_row_count = 0;
-  int extra_row_count = 0;
+  int64_t normal_row_count = 0;
+  int64_t extra_row_count = 0;
   if (LEFT_ROW_COUNT < RIGHT_ROW_COUNT)
   {
     normal_row_count = LEFT_ROW_COUNT / 6 * 13;
@@ -778,16 +778,16 @@ void ObMergeJoinTest::test_full_outer_join(int64_t left_row_count, int64_t right
       extra_row_count = extra_row_count / 2;
     }
   }
-  int result_row_count = normal_row_count + extra_row_count;
-  printf("result_row_count=%d n1=%d n2=%d\n", result_row_count, normal_row_count, extra_row_count);
+  int64_t result_row_count = normal_row_count + extra_row_count;
+  printf("result_row_count=%ld n1=%ld n2=%ld\n", result_row_count, normal_row_count, extra_row_count);
   const ObRow *row = NULL;
   const ObObj *cell1 = NULL;
   const ObObj *cell2 = NULL;
   int64_t val1 = 0;
   int64_t val2 = 0;
-  for (int i = 0; i < result_row_count; ++i)
+  for (int64_t i = 0; i < result_row_count; ++i)
   {
-    printf("row=%d\n", i);
+    printf("row=%ld\n", i);
     ASSERT_EQ(OB_SUCCESS, merge_join.get_next_row(row));
     ASSERT_EQ(32, row->get_column_num());
     // verify LEFT_COL
@@ -815,7 +815,7 @@ void ObMergeJoinTest::test_full_outer_join(int64_t left_row_count, int64_t right
     {
       if (!has_other_cond)
       {
-        int mod = i % 13;
+        int64_t mod = i % 13;
 
         if (mod < 6)
         {
@@ -840,7 +840,7 @@ void ObMergeJoinTest::test_full_outer_join(int64_t left_row_count, int64_t right
       }
       else
       {
-        int mod = i % 5;
+        int64_t mod = i % 5;
         if (mod < 3)
         {
           ASSERT_EQ(i/5*6, val1);
@@ -867,7 +867,7 @@ void ObMergeJoinTest::test_full_outer_join(int64_t left_row_count, int64_t right
 TEST_F(ObMergeJoinTest, full_outer_join)
 {
   bool has_other_cond = false;
-  for (int i = 0; i < 2; ++i)
+  for (int64_t i = 0; i < 2; ++i)
   {
     if (i == 0)
     {

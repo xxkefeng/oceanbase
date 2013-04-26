@@ -135,8 +135,10 @@ class TestRowBuilder {
           EXPECT_STREQ(desc.name.c_str(), builder_->columns_desc_[desc.offset].schema->get_name());
       }
 
-      ret = builder_->set_rowkey_desc(tparam.rowkey_descs);
-      ASSERT_EQ(ret, 0);
+      /*
+         ret = builder_->set_rowkey_desc(tparam.rowkey_descs);
+         ASSERT_EQ(ret, 0);
+      */
 
       for(size_t i = 0;i < tparam.rowkey_descs.size(); i++) {
         RowkeyDesc desc = tparam.rowkey_descs[i];

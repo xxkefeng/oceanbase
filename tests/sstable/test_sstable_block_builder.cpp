@@ -15,6 +15,7 @@
 #include <tblog.h>
 #include <gtest/gtest.h>
 #include "common/ob_object.h"
+#include "common/utility.h"
 #include "sstable/ob_sstable_schema.h"
 #include "sstable/ob_sstable_row.h"
 #include "key.h"
@@ -99,6 +100,36 @@ namespace oceanbase
                   block_builder.get_block_data_size());
         EXPECT_EQ(0, block_builder.get_row_index_size());
       }
+      
+void build_rowkey_info(ObRowkeyInfo& rowkey_info)
+      {
+        ObRowkeyColumn split;
+        split.length_ = 8;
+        split.type_   = ObIntType;
+        rowkey_info.add_column(split);
+
+        split.length_ = 1;
+        split.type_   = ObVarcharType;
+        rowkey_info.add_column(split);
+
+        split.length_ = 8;
+        split.type_   = ObIntType;
+        rowkey_info.add_column(split);
+        
+        ASSERT_EQ(3, rowkey_info.get_size());
+        
+        rowkey_info.get_column(0, split);
+        ASSERT_EQ(8, split.length_);
+        ASSERT_EQ(ObIntType, split.type_);
+        
+        rowkey_info.get_column(1, split);
+        ASSERT_EQ(1, split.length_);
+        ASSERT_EQ(ObVarcharType, split.type_);
+        
+        rowkey_info.get_column(2, split);
+        ASSERT_EQ(8, split.length_);
+        ASSERT_EQ(ObIntType, split.type_);
+      }
 
       TEST_F(TestObSSTableBlockBuilder, test_add_one_row)
       {
@@ -107,7 +138,9 @@ namespace oceanbase
         block_builder.set_column_group_id(2);
         const char *block_buf = NULL;
         const char *index_buf = NULL;
-        ObSSTableRow row;
+        ObRowkeyInfo rowkey_info;
+        build_rowkey_info(rowkey_info);
+        ObSSTableRow row(NULL);
         ObObj tmp_obj;
         ObString row_key;
         char value_data[1024 + 1];
@@ -122,9 +155,10 @@ namespace oceanbase
         }
         ObString value_str(1025, 1025, value_data);
 
+        ObRowkey key;
         Key tmp_key(10, 0, 0);
-        ObString key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
-        row.set_row_key(key);
+        tmp_key.trans_to_rowkey(key);
+        row.set_rowkey(key);
         row.set_table_id(1000);
         row.set_column_group_id(2);
 
@@ -134,7 +168,7 @@ namespace oceanbase
         row.add_obj(tmp_obj);
         tmp_obj.set_varchar(value_str);
         row.add_obj(tmp_obj);
-        EXPECT_EQ(3, row.get_obj_count());
+        EXPECT_EQ(3+key.get_obj_cnt(), row.get_obj_count());
 
         ret = block_builder.init();
         EXPECT_TRUE(OB_SUCCESS == ret);
@@ -151,7 +185,7 @@ namespace oceanbase
         EXPECT_TRUE(block_builder.get_row_index_size() > 0);
 
         row.clear();
-        row.set_row_key(key);
+        row.set_rowkey(key);
         row.set_table_id(1000);
         row.set_column_group_id(3);
 
@@ -161,7 +195,7 @@ namespace oceanbase
         row.add_obj(tmp_obj);
         tmp_obj.set_varchar(value_str);
         row.add_obj(tmp_obj);
-        EXPECT_EQ(3, row.get_obj_count());
+        EXPECT_EQ(3+key.get_obj_cnt(), row.get_obj_count());
        
         ret = block_builder.add_row(row);
         EXPECT_TRUE(OB_ERROR == ret);
@@ -171,9 +205,10 @@ namespace oceanbase
       {
         ObObj tmp_obj;
 
+        ObRowkey key;
         Key tmp_key(index, 10, 1000);
-        ObString key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
-        row.set_row_key(key);
+        tmp_key.trans_to_rowkey(key);
+        row.set_rowkey(key);
         row.set_table_id(1000);
         row.set_column_group_id(2);
 
@@ -191,7 +226,9 @@ namespace oceanbase
         block_builder.set_column_group_id(2);
         const char *block_buf = NULL;
         const char *index_buf = NULL;
-        ObSSTableRow row;
+        ObRowkeyInfo rowkey_info;
+        build_rowkey_info(rowkey_info);
+        ObSSTableRow row(NULL);
         int i = 0;
         int ret;
 
@@ -231,7 +268,9 @@ namespace oceanbase
         ObSSTableBlockBuilder block_builder;
         block_builder.set_table_id(1000);
         block_builder.set_column_group_id(2);
-        ObSSTableRow row;
+        ObRowkeyInfo rowkey_info;
+        build_rowkey_info(rowkey_info);
+        ObSSTableRow row(NULL);
         int block_count = 0;
         int i = 0;
         int ret;
@@ -243,7 +282,7 @@ namespace oceanbase
         {
           build_row(i, row);
           ret = block_builder.add_row(row);
-          EXPECT_TRUE(ret == OB_SUCCESS);
+          ASSERT_EQ(ret , OB_SUCCESS);
 
           i++;
           EXPECT_EQ(i, block_builder.get_row_count());
@@ -269,7 +308,9 @@ namespace oceanbase
       TEST_F(TestObSSTableBlockBuilder, test_add_null_row)
       {
         ObSSTableBlockBuilder block_builder;
-        ObSSTableRow row;
+        ObRowkeyInfo rowkey_info;
+        build_rowkey_info(rowkey_info);
+        ObSSTableRow row(NULL);
         int ret;
 
         ret = block_builder.init();
@@ -293,9 +334,10 @@ namespace oceanbase
         }
         ObString value_str(static_cast<int32_t>(value_size), static_cast<int32_t>(value_size), value_data);
 
+        ObRowkey key;
         Key tmp_key(10, 10, 1000);
-        ObString key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
-        row.set_row_key(key);
+        tmp_key.trans_to_rowkey(key);
+        row.set_rowkey(key);
         row.set_table_id(1000);
         row.set_column_group_id(2);
 
@@ -311,7 +353,9 @@ namespace oceanbase
         ObSSTableBlockBuilder block_builder;
         block_builder.set_table_id(1000);
         block_builder.set_column_group_id(2);
-        ObSSTableRow row;
+        ObRowkeyInfo rowkey_info;
+        build_rowkey_info(rowkey_info);
+        ObSSTableRow row(NULL);
         int ret;
 
         ret = block_builder.init();
@@ -359,9 +403,11 @@ namespace oceanbase
         const char *block_buf = NULL;
         const char *index_buf = NULL;
         char *row_data = NULL;
-        ObSSTableRow row;
-        ObSSTableRow new_row;
-        ObString row_key;
+        ObRowkeyInfo rowkey_info;
+        build_rowkey_info(rowkey_info);
+        ObSSTableRow row(NULL);
+        ObSSTableRow new_row(NULL);
+        ObRowkey row_key(NULL, 3);
         ObObj tmp_obj;
         const ObObj *obj = NULL;
         int64_t row_data_len = 0;
@@ -372,6 +418,7 @@ namespace oceanbase
         int i = 0;
         int64_t pos = 0;
         int ret;
+        ObRowkey key;
 
         ret = block_builder.init();
         EXPECT_TRUE(OB_SUCCESS == ret);
@@ -379,12 +426,13 @@ namespace oceanbase
         while (true)
         {
           Key tmp_key(i, 10, 1000);
-          ObString key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
-          row.set_row_key(key);
+          tmp_key.trans_to_rowkey(key);
+          row.clear();
+          row.set_rowkey(key);
           row.set_table_id(1000);
           row.set_column_group_id(2);
 
-          for (int k = 0; k < OB_MAX_COLUMN_NUMBER; ++k)
+          for (int64_t k = row_key.get_obj_cnt(); k < OB_MAX_COLUMN_NUMBER; ++k)
           {
             tmp_obj.set_int(k);
             row.add_obj(tmp_obj);
@@ -394,7 +442,7 @@ namespace oceanbase
           EXPECT_TRUE(ret == OB_SUCCESS);
 
           i++;
-          EXPECT_EQ(i, block_builder.get_row_count());
+          ASSERT_EQ(i, block_builder.get_row_count());
 
           if (block_builder.get_block_size() >= sstable_size)
           {
@@ -431,22 +479,22 @@ namespace oceanbase
               new_row.set_obj_count(OB_MAX_COLUMN_NUMBER);
               ret = new_row.deserialize(row_data, row_data_len, pos);
               EXPECT_TRUE(OB_SUCCESS == ret);
-              row_key = new_row.get_row_key();
+              new_row.get_rowkey(row_key);
 
               Key tmp_key(j, 10, 1000);
-              ObString key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
+              tmp_key.trans_to_rowkey(key);
               EXPECT_EQ(tmp_key.key_len(), row_key.length());
-              EXPECT_TRUE(key == row_key);
+              ASSERT_EQ(key , row_key);
 
-              for (int k = 0; k < OB_MAX_COLUMN_NUMBER; ++k)
+              for (int64_t k = row_key.get_obj_cnt(); k < OB_MAX_COLUMN_NUMBER; ++k)
               {
                 EXPECT_EQ(OB_INVALID_ID, new_row.get_table_id());
                 EXPECT_EQ(OB_INVALID_ID, new_row.get_column_group_id());
-                obj = new_row.get_obj(k);
+                obj = new_row.get_obj((int32_t)k);
                 EXPECT_TRUE(NULL != obj);
                 int64_t val;
                 obj->get_int(val);
-                EXPECT_EQ(k, val);
+                ASSERT_EQ(k, val);
               }
             }
 

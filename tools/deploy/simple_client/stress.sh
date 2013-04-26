@@ -7,12 +7,22 @@ help()
     echo " ./stress.sh stop"
     echo " ./stress.sh check"
 }
+tail_()
+{
+    tail -f client.log
+}
+
+less_()
+{
+    less client.log
+}
 
 start()
 {
     type=$1
     shift
     if [ "$type" == all ]; then
+        echo "nohup $base_dir/client stress $rs $* >client.log 2>&1 &"
         nohup $base_dir/client stress $rs $* >client.log 2>&1 &
     else
         echo "operation[$type] not support!"
@@ -24,7 +34,7 @@ stop()
 {
     type=$1
     if [ "$type" == all ]; then
-        pkill -f ^$base_dir/client
+        pkill -9 -f ^$base_dir/client
     else
         echo "operation[$type] not support!"
         return 1
@@ -62,7 +72,6 @@ real_file=`readlink -f $0`
 cd `dirname $real_file`
 base_dir="`pwd`"
 ulimit -c unlimited
-ulimit -s unlimited
 method=${1:-help}
 shift
 $method $*

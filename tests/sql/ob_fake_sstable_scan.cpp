@@ -20,7 +20,7 @@ using namespace oceanbase;
 using namespace sql;
 using namespace test;
 
-int ObFakeSstableScan::set_scan_param(const sstable::ObSSTableScanParam &param)
+int ObFakeSSTableScan::set_scan_param(const sstable::ObSSTableScanParam &param)
 {
   int ret = OB_SUCCESS;
   scan_param_ = param;
@@ -49,12 +49,12 @@ int ObFakeSstableScan::set_scan_param(const sstable::ObSSTableScanParam &param)
   return ret;
 }
 
-ObFakeSstableScan::ObFakeSstableScan(const char *file_name)
+ObFakeSSTableScan::ObFakeSSTableScan(const char *file_name)
   :file_table_(file_name)
 {
 }
 
-int ObFakeSstableScan::set_child(int32_t child_idx, ObPhyOperator &child_operator)
+int ObFakeSSTableScan::set_child(int32_t child_idx, ObPhyOperator &child_operator)
 {
   int ret = OB_NOT_IMPLEMENT;
   UNUSED(child_idx);
@@ -63,17 +63,17 @@ int ObFakeSstableScan::set_child(int32_t child_idx, ObPhyOperator &child_operato
   return ret;
 }
 
-int ObFakeSstableScan::open()
+int ObFakeSSTableScan::open()
 {
   return file_table_.open();
 }
 
-int ObFakeSstableScan::close()
+int ObFakeSSTableScan::close()
 {
   return file_table_.close();
 }
 
-int ObFakeSstableScan::get_next_row(const ObString *&rowkey, const ObRow *&row)
+int ObFakeSSTableScan::get_next_row(const ObRowkey *&rowkey, const ObRow *&row)
 {
   int ret = OB_SUCCESS;
   const ObObj *cell = NULL;
@@ -82,23 +82,8 @@ int ObFakeSstableScan::get_next_row(const ObString *&rowkey, const ObRow *&row)
 
   const ObRow *tmp_row = NULL;
 
-  ret = file_table_.get_next_row(tmp_row);
-  if(OB_SUCCESS == ret)
-  {
-    if(OB_SUCCESS != (ret = tmp_row->raw_get_cell(0, cell, table_id, column_id)))
-    {
-      TBSYS_LOG(WARN, "raw get cell fail:ret[%d]", ret);
-    }
-    else if(OB_SUCCESS != (ret = cell->get_varchar(cur_rowkey_)))
-    {
-      TBSYS_LOG(WARN, "get varchar fail:ret[%d]", ret);
-    }
-    else
-    {
-      rowkey = &cur_rowkey_;
-    }
-  }
-  else if(OB_ITER_END != ret)
+  ret = file_table_.get_next_row(rowkey, tmp_row);
+  if(OB_SUCCESS != ret && OB_ITER_END != ret)
   {
     TBSYS_LOG(WARN, "get next row fail:ret[%d]", ret);
   }
@@ -136,8 +121,14 @@ int ObFakeSstableScan::get_next_row(const ObString *&rowkey, const ObRow *&row)
   return ret;
 }
 
-int64_t ObFakeSstableScan::to_string(char* buf, const int64_t buf_len) const
+int64_t ObFakeSSTableScan::to_string(char* buf, const int64_t buf_len) const
 {
   return file_table_.to_string(buf, buf_len);
 }
+
+int ObFakeSSTableScan::get_row_desc(const common::ObRowDesc *&row_desc) const
+{
+  return file_table_.get_row_desc(row_desc);
+}
+
 

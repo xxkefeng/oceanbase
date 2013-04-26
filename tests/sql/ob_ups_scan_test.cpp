@@ -18,12 +18,14 @@
 #include "common/ob_row.h"
 #include "common/ob_malloc.h"
 #include <gtest/gtest.h>
-#include "ob_fake_ups_rpc_stub.h"
 #include "sql/ob_ups_scan.h"
+#include "test_utility.h"
+#include "ob_fake_sql_ups_rpc_proxy2.h"
 
 using namespace oceanbase;
 using namespace common;
 using namespace sql;
+using namespace sql::test;
 
 #define OK(value) ASSERT_EQ(OB_SUCCESS, (value))
 
@@ -61,26 +63,26 @@ void ObUpsScanTest::TearDown()
 TEST_F(ObUpsScanTest, basic_test)
 {
   ObUpsScan ups_scan;
-  ObFakeUpsRpcStub fake_ups_rpc_stub;
+  ObFakeSqlUpsRpcProxy2 rpc_proxy;
+  CharArena arena;
 
-  OK(ups_scan.set_ups_rpc_stub(&fake_ups_rpc_stub));
+  rpc_proxy.set_mem_size_limit(1024);
+  OK(ups_scan.set_ups_rpc_proxy(&rpc_proxy));
 
   const ObRow *ups_row = NULL;
 
   int start = 12;
   int end = 1000;
-  char t1[100];
-  char t2[100];
-  sprintf(t1, "rowkey_%05d", start);
-  sprintf(t2, "rowkey_%05d", end);
-
-  ObRange range;
+  
+  ObNewRange range;
   range.table_id_ = TABLE_ID;
-  range.start_key_.assign_ptr(const_cast<char*>(t1), strlen(t1));
-  range.end_key_.assign_ptr(const_cast<char*>(t2), strlen(t2));
+
+  gen_new_range(start, end, arena, range);
+
   range.border_flag_.unset_inclusive_start();
   range.border_flag_.unset_inclusive_end();
 
+  ups_scan.set_network_timeout(1000 * 1000);
   ups_scan.set_range(range);
   for(uint64_t i = 0;i<COLUMN_NUMS;i++)
   {
@@ -93,12 +95,13 @@ TEST_F(ObUpsScanTest, basic_test)
   uint64_t table_id = OB_INVALID_ID;
   uint64_t column_id = OB_INVALID_ID;
   int64_t int_value = 0;
-  const ObString *rowkey = NULL;
+  const ObRowkey *rowkey = NULL;
 
-  //int err = 0;
+  int err = 0;
   for(int i=start + 1;i<=end - 1;i++)
   {
-    OK(ups_scan.get_next_row(rowkey, ups_row));
+    err = ups_scan.get_next_row(rowkey, ups_row);
+    OK(err);
     for(int j=0;j<COLUMN_NUMS;j++)
     {
       OK(ups_row->raw_get_cell(j, cell, table_id, column_id));

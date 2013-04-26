@@ -156,8 +156,7 @@ namespace oceanbase
       tablet_infos_.init(MAX_TABLET_COUNT, data_holder_);
     }
 
-    int ObTabletInfoManager::add_tablet_info(const common::ObTabletInfo& tablet_info, int32_t& out_index,
-        bool clone_start_key, bool clone_end_key )
+    int ObTabletInfoManager::add_tablet_info(const common::ObTabletInfo& tablet_info, int32_t& out_index)
     {
       out_index = OB_INVALID_INDEX;
       int32_t ret = OB_SUCCESS;
@@ -169,7 +168,7 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         ObTabletInfo tmp;
-        if (OB_SUCCESS != (ret = tmp.deep_copy(allocator_, tablet_info, clone_start_key, clone_end_key)))
+        if (OB_SUCCESS != (ret = tmp.deep_copy(allocator_, tablet_info)))
         {
           TBSYS_LOG(ERROR, "copy tablet error");
         }
@@ -185,31 +184,31 @@ namespace oceanbase
       }
       return ret;
     }
-    int32_t ObTabletInfoManager::get_index(common::ObTabletInfo* data_pointer) const
+    int32_t ObTabletInfoManager::get_index(const_iterator it) const
     {
-      return static_cast<int32_t>(data_pointer - begin());
+      return static_cast<int32_t>(it - begin());
     }
-    const ObTabletInfo* ObTabletInfoManager::get_tablet_info(const int32_t index) const
-    {
-      return tablet_infos_.at(index);
-    }
-    ObTabletInfo* ObTabletInfoManager::get_tablet_info(const int32_t index)
+    ObTabletInfoManager::const_iterator ObTabletInfoManager::get_tablet_info(const int32_t index) const
     {
       return tablet_infos_.at(index);
     }
-    const ObTabletInfo* ObTabletInfoManager::begin() const
+    ObTabletInfoManager::iterator ObTabletInfoManager::get_tablet_info(const int32_t index)
+    {
+      return tablet_infos_.at(index);
+    }
+    ObTabletInfoManager::const_iterator ObTabletInfoManager::begin() const
     {
       return data_holder_;
     }
-    ObTabletInfo* ObTabletInfoManager::begin()
+    ObTabletInfoManager::iterator ObTabletInfoManager::begin()
     {
       return data_holder_;
     }
-    const ObTabletInfo* ObTabletInfoManager::end() const
+    ObTabletInfoManager::const_iterator ObTabletInfoManager::end() const
     {
       return begin() + tablet_infos_.get_array_index();
     }
-    ObTabletInfo* ObTabletInfoManager::end() 
+    ObTabletInfoManager::iterator ObTabletInfoManager::end() 
     {
       return begin() + tablet_infos_.get_array_index();
     }
@@ -277,18 +276,15 @@ namespace oceanbase
 
         if (data_holder_[i].range_.start_key_.ptr() != NULL)
         {
-          common::hex_to_str(data_holder_[i].range_.start_key_.ptr(), data_holder_[i].range_.start_key_.length(),
-              start_key_buff, OB_MAX_ROW_KEY_LENGTH * 2);
+          data_holder_[i].range_.start_key_.to_string(start_key_buff, OB_MAX_ROW_KEY_LENGTH * 2);
         }
 
         if (data_holder_[i].range_.end_key_.ptr() != NULL)
         {
-          common::hex_to_str(data_holder_[i].range_.end_key_.ptr(), data_holder_[i].range_.end_key_.length(),
-              end_key_buff, OB_MAX_ROW_KEY_LENGTH * 2);
+          data_holder_[i].range_.start_key_.to_string(end_key_buff, OB_MAX_ROW_KEY_LENGTH * 2);
         }
 
-        fprintf(stream, "start_key %d %s\n end_key %d %s\n", data_holder_[i].range_.start_key_.length(), start_key_buff, 
-            data_holder_[i].range_.end_key_.length(), end_key_buff);
+        fprintf(stream, "start_key %s\n end_key %s\n", start_key_buff, end_key_buff);
       }
       return;
     }
@@ -327,7 +323,8 @@ namespace oceanbase
         fscanf(stream, "start_key %d", &len);
         if (len > 0)
         {
-          fscanf(stream, "%s", start_key_buff);
+          // @todo from text to rowkey
+          //fscanf(stream, "%s", start_key_buff);
         }
 
         len = 0;
@@ -335,15 +332,16 @@ namespace oceanbase
 
         if (len > 0)
         {
-          fscanf(stream, "%s", end_key_buff);
+          // @todo from text to rowkey
+          //fscanf(stream, "%s", end_key_buff);
         }
         fscanf(stream, "\n");
 
         str_to_hex(start_key_buff, static_cast<int32_t>(strlen(start_key_buff)), ob_start_key_buff, OB_MAX_ROW_KEY_LENGTH);
         str_to_hex(end_key_buff, static_cast<int32_t>(strlen(end_key_buff)), ob_end_key_buff, OB_MAX_ROW_KEY_LENGTH);
 
-        tablet_info.range_.start_key_.assign_ptr(ob_start_key_buff, static_cast<int32_t>(strlen(start_key_buff)/2 ));
-        tablet_info.range_.end_key_.assign_ptr(ob_end_key_buff, static_cast<int32_t>(strlen(end_key_buff)/2 ));
+        // tablet_info.range_.start_key_.assign_ptr(ob_start_key_buff, strlen(start_key_buff)/2 );
+        // tablet_info.range_.end_key_.assign_ptr(ob_end_key_buff, strlen(end_key_buff)/2 );
 
         add_tablet_info(tablet_info, out_index);
         if (out_index != index)
@@ -392,21 +390,35 @@ namespace oceanbase
       }
       if (OB_SUCCESS == ret)
       {
-        for (int64_t i = 0; i < total_size; i++)
+        ObObj rowkey_objs1[OB_MAX_ROWKEY_COLUMN_NUMBER];
+        ObObj rowkey_objs2[OB_MAX_ROWKEY_COLUMN_NUMBER];
+        ObTabletInfo tmp_tablet_info;
+        for (int64_t i = 0; OB_SUCCESS == ret && i < total_size; i++)
         {
-          ObTabletInfo tmp_tablet_info;
-          int32_t out_index;
+          int32_t out_index = -1;
+          tmp_tablet_info.range_.start_key_.assign(rowkey_objs1, OB_MAX_ROWKEY_COLUMN_NUMBER);
+          tmp_tablet_info.range_.end_key_.assign(rowkey_objs2, OB_MAX_ROWKEY_COLUMN_NUMBER);
           ret = tmp_tablet_info.deserialize(buf, data_len, tmp_pos);
-          add_tablet_info(tmp_tablet_info, out_index);
-          ret = crc_helper_[out_index].deserialize(buf, data_len, tmp_pos);
-          if (OB_SUCCESS != ret) {
-            break;
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "failed to deserialize tablet info, ret=%d, buf=%p, data_len=%ld, tmp_pos=%ld",
+                ret, buf, data_len, tmp_pos);
+          }
+          else
+          {
+            add_tablet_info(tmp_tablet_info, out_index);
+            ret = crc_helper_[out_index].deserialize(buf, data_len, tmp_pos);
+            if (OB_SUCCESS != ret)
+            {
+              TBSYS_LOG(WARN, "failed to deserialize crc info, out_index=%d, ret=%d, buf=%p, data_len=%ld, "
+                  "tmp_pos=%ld", out_index, ret, buf, data_len, tmp_pos);
+            }
           }
         }
       }
+
       if (OB_SUCCESS == ret)
       {
-
         pos = tmp_pos;
       }
       return ret;

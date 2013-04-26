@@ -19,6 +19,7 @@
 #include "common/ob_return_operator.h"
 #include "common/ob_compose_operator.h"
 #include "common/ob_cell_array.h"
+#include "sql/ob_sql_scan_param.h"
 #include "ob_merger_reverse_operator.h"
 #include "ob_ms_sql_sorted_operator.h"
 #include "ob_merger_groupby_operator.h"
@@ -34,13 +35,13 @@ namespace oceanbase
       ObMsSqlOperator();
       ~ObMsSqlOperator();
       /// initialize
-      int set_param(const common::ObScanParam & scan_param);
+      int set_param(const sql::ObSqlScanParam & scan_param);
       /// add a subscanrequest's result
-      int add_sharding_result(common::ObNewScanner & sharding_res, const common::ObRange & query_range, const int64_t limit_offset,
-        bool &is_finish, bool &can_free_res);
+      int add_sharding_result(common::ObNewScanner & sharding_res, const common::ObNewRange & query_range, const int64_t limit_offset,
+        bool &is_finish, bool &can_free_res, ObStringBuf &rowkey_buffer);
       /// finish processing result, like orderby grouped result
 
-      int get_mem_size_used()const;
+      int64_t get_mem_size_used()const;
 
       void reset();
 
@@ -56,13 +57,9 @@ namespace oceanbase
       {
         NOT_INIT,
         USE_SORTED_OPERATOR,
-        USE_REVERSE_OPERATOR,
-        USE_GROUPBY_OPERATOR
       };
       int status_;
-      common::ObCellArray cells_;
-      const common::ObScanParam *scan_param_;
-      common::ObReturnOperator  return_operator_;
+      const sql::ObSqlScanParam *scan_param_;
       ObMsSqlSortedOperator    sorted_operator_;
       common::ObNewScanner         *last_sharding_res_;
       int64_t                   sharding_res_count_;

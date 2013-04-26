@@ -43,6 +43,7 @@
 #include "ob_atomic.h"
 #include "ob_thread_objpool.h"
 #include "ob_trace_log.h"
+#include "ob_rowkey.h"
 
 namespace oceanbase
 {
@@ -52,6 +53,7 @@ namespace oceanbase
     {
       struct NotNeedDeepCopyTag {};
       struct ObStringDeepCopyTag {};
+      struct ObRowkeyDeepCopyTag {};
 
       template <class T>
       struct traits
@@ -63,6 +65,12 @@ namespace oceanbase
       struct traits<ObString>
       {
         typedef ObStringDeepCopyTag Tag;
+      };
+
+      template <>
+      struct traits<ObRowkey>
+      {
+        typedef ObRowkeyDeepCopyTag Tag;
       };
 
       template <class T>
@@ -129,6 +137,51 @@ namespace oceanbase
       inline void do_destroy(ObString *data, ObStringDeepCopyTag)
       {
         data->~ObString();
+      }
+
+      class BufferAllocator
+      {
+        public:
+          explicit BufferAllocator(char *buffer) : buffer_(buffer), pos_(0) {};
+          inline char *alloc(const int64_t size)
+          {
+            char *ret = NULL;
+            if (NULL != buffer_)
+            {
+              ret = buffer_ + pos_;
+              pos_ += size;
+            }
+            return ret;
+          };
+        private:
+          char *buffer_;
+          int64_t pos_;
+      };
+
+      inline ObRowkey *do_copy(const ObRowkey &other, char *buffer, ObRowkeyDeepCopyTag)
+      {
+        ObRowkey *ret = new(buffer) ObRowkey();
+        if (NULL != ret)
+        {
+          BufferAllocator allocator(buffer + sizeof(ObRowkey));
+          int tmp_ret = other.deep_copy(*ret, allocator);
+          if (OB_SUCCESS != tmp_ret)
+          {
+            TBSYS_LOG(WARN, "deep_copy rowkey fail ret=%d", tmp_ret);
+            ret = NULL;
+          }
+        }
+        return ret;
+      }
+
+      inline int32_t do_size(const ObRowkey &data, ObRowkeyDeepCopyTag)
+      {
+        return (static_cast<int32_t>(sizeof(ObRowkey)) + static_cast<int32_t>(data.get_deep_copy_size()));
+      }
+
+      inline void do_destroy(ObRowkey *data, ObRowkeyDeepCopyTag)
+      {
+        data->~ObRowkey();
       }
 
       struct DefaultAllocator
@@ -923,6 +976,7 @@ namespace oceanbase
         FreeList<void*>::type == KVStoreCacheComponent::MULTI> MemBlock;
       static const int64_t MEM_BLOCK_SIZE = MemBlock::MEM_BLOCK_SIZE;
       static const int64_t MAX_WASH_OUT_SIZE = 10 * MEM_BLOCK_SIZE;
+      static const int64_t MAX_MEMBLOCK_INFO_COUNT = 128 * 1024; //128K
       typedef FreeList<MemBlock> MemBlockFreeList;
       struct MemBlockInfo
       {
@@ -953,8 +1007,8 @@ namespace oceanbase
       };
       public:
         KVStoreCache() : inited_(false), adapter_(NULL), free_list_(), avg_get_cnt_(0),
-                         total_mb_num_(0), mb_infos_(NULL), not_revert_cnt_(0),
-                         cache_miss_cnt_(0), cache_hit_cnt_(0),
+                         max_mb_num_(MAX_MEMBLOCK_INFO_COUNT),total_mb_num_(0), mb_infos_(NULL), 
+                         not_revert_cnt_(0), cache_miss_cnt_(0), cache_hit_cnt_(0),
                          cur_memblock_(NULL)
         {
         };
@@ -977,7 +1031,9 @@ namespace oceanbase
           else
           {
             total_mb_num_ = total_size / MemBlock::MEM_BLOCK_SIZE + ((total_size >= MemBlock::MEM_BLOCK_SIZE) ? 0 : 1);
-            mb_infos_ = new(std::nothrow) MemBlockInfo[total_mb_num_];
+            max_mb_num_ = std::max(max_mb_num_, total_mb_num_);
+            //preallocate mem block info with max size 
+            mb_infos_ = new(std::nothrow) MemBlockInfo[max_mb_num_];
             if (NULL != mb_infos_)
             {
               memset(mb_infos_, 0, sizeof(MemBlockInfo) * total_mb_num_);
@@ -992,6 +1048,49 @@ namespace oceanbase
           }
           return ret;
         };
+        int enlarge_total_size(const int64_t total_size)
+        {
+          int ret = OB_SUCCESS;
+          if (!inited_)
+          {
+            ret = OB_NOT_INIT;
+          }
+          else if (0 >= total_size)
+          {
+            ret = OB_INVALID_ARGUMENT;
+          }
+          else
+          {
+            int64_t mb_num = total_size / MemBlock::MEM_BLOCK_SIZE + ((total_size >= MemBlock::MEM_BLOCK_SIZE) ? 0 : 1);
+            if (mb_num > total_mb_num_ && mb_num <= max_mb_num_)
+            {
+              TBSYS_LOG(INFO, "cache size enlarged, new_cache_size=%ld, old_cache_size=%ld", 
+                        total_size, total_mb_num_ * MemBlock::MEM_BLOCK_SIZE);
+              memset(mb_infos_ + total_mb_num_, 0, sizeof(MemBlockInfo) * (mb_num - total_mb_num_));
+              free_list_.set_max_alloc_size(mb_num * MemBlock::MEM_BLOCK_SIZE);
+              total_mb_num_ = mb_num; 
+            }
+            else if (mb_num < total_mb_num_)
+            {
+              TBSYS_LOG(WARN, "can't resize cache size with less total size, "
+                  "new_memblock_info_num=%ld, old_memblock_info_num=%ld",
+                  mb_num, total_mb_num_);
+              ret = OB_ERROR;
+            }
+            else if (mb_num == total_mb_num_)
+            {
+              TBSYS_LOG(INFO, "cache size doesn't change, old_cache_size=%ld, cache_size=%ld", 
+                  total_mb_num_ * MemBlock::MEM_BLOCK_SIZE, total_size);
+            }
+            else 
+            {
+              TBSYS_LOG(INFO, "cache size can not change, max_cache_size=%ld, cache_size=%ld", 
+                  max_mb_num_ * MemBlock::MEM_BLOCK_SIZE, total_size);
+              ret = OB_MEM_OVERFLOW;
+            }
+          }
+          return ret;
+        }
         int destroy()
         {
           int ret = OB_SUCCESS;
@@ -1584,6 +1683,7 @@ namespace oceanbase
         MemBlockFreeList free_list_;
 
         int64_t avg_get_cnt_;
+        int64_t max_mb_num_;
         int64_t total_mb_num_;
         MemBlockInfo *mb_infos_;
 
@@ -1656,6 +1756,20 @@ namespace oceanbase
           }
           return ret;
         };
+        int enlarge_total_size(const int64_t total_size)
+        {
+          int ret = OB_SUCCESS;
+          if (!inited_)
+          {
+            ret = OB_NOT_INIT;
+          }
+          else if (OB_SUCCESS != (ret = store_.enlarge_total_size(total_size)))
+          {
+            TBSYS_LOG(WARN, "enlarge total memory size of store cache fail, ret=%d, size=%ld", 
+                ret, total_size);
+          }
+          return ret;
+        }
         int destroy()
         {
           int ret = OB_SUCCESS;

@@ -1,12 +1,10 @@
-
-
 /**
  * (C) 2010-2011 Alibaba Group Holding Limited.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_ms_list.h
@@ -46,11 +44,13 @@ namespace oceanbase
       public:
         MsList();
         ~MsList();
-        int init(const ObServer &rs, ObClientManager *client);
+        int init(const ObServer &rs, const ObClientManager *client, bool do_update=true);
         void clear();
         int update();
         const ObServer get_one();
         virtual void runTimerTask();
+      public:
+        static const int64_t SCHEDULE_PERIOD = 10 * 1000L * 1000L;
       protected:
         bool list_equal_(const std::vector<ObServer> &list);
         void list_copy_(const std::vector<ObServer> &list);
@@ -59,7 +59,7 @@ namespace oceanbase
         std::vector<ObServer> ms_list_;
         uint64_t ms_iter_;
         uint64_t ms_iter_step_;
-        ObClientManager *client_;
+        const ObClientManager *client_;
         buffer buff_;
         tbsys::CRWSimpleLock rwlock_;
         tbutil::Mutex update_mutex_;

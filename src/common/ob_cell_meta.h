@@ -24,7 +24,7 @@ namespace oceanbase
 {
   namespace common
   {
-    struct ObCellMeta 
+    struct ObCellMeta
     {
       const static int64_t TP_NULL              = 0;   // 空类型
       const static int64_t TP_INT8              = 1;
@@ -41,6 +41,8 @@ namespace oceanbase
 
       const static int64_t TP_FLOAT             = 12; // 过期
       const static int64_t TP_DOUBLE            = 13; // 过期
+      const static int64_t TP_EXTEND            = 14;
+      const static int64_t TP_BOOL              = 15;
  
       const static int64_t TP_ESCAPE            = 0x1f;
 
@@ -54,6 +56,8 @@ namespace oceanbase
       const static int64_t ES_DEL_ROW           = 1;
       const static int64_t ES_NOP_ROW           = 2;
       const static int64_t ES_NOT_EXIST_ROW     = 3;
+      const static int64_t ES_NEW_ADD           = 4;
+      const static int64_t ES_VALID             = 5;
 
       uint8_t type_:5;
       uint8_t attr_:3;

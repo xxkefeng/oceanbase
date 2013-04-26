@@ -21,10 +21,9 @@
 #include "common/ob_range.h"
 #include "common/ob_common_param.h"
 #include "common/ob_string.h"
-#include "ob_ms_tablet_location_proxy.h"
-#include "ob_ms_tablet_location_item.h"
+#include "common/location/ob_tablet_location_list.h"
+#include "common/location/ob_tablet_location_cache_proxy.h"
 #include "ob_ms_server_counter.h"
-#include "ob_chunk_server.h"
 #include "ob_merge_server_main.h"
 
 namespace oceanbase
@@ -40,18 +39,17 @@ namespace oceanbase
       static ObChunkServerTaskDispatcher * get_instance();
 
     public:
-      void set_factor(const int32_t get, const int32_t scan);
+      void set_factor(const bool using_new_method);
       /// replicas_in_out available servers for current request
       /// last_query_idx_in last query used which chunkserver
       /// tablet_in this request will access which tablet
       /// return < 0 on error; >= 0 indicate to use which cs for current query
-      int select_cs(ObChunkServer * replicas_in_out, const int32_t replica_count_in,
-        const int32_t last_query_idx_in, const common::ObRange & tablet_in);
+      int select_cs(ObChunkServerItem * replicas_in_out, const int32_t replica_count_in,
+        const int32_t last_query_idx_in, const common::ObNewRange & tablet_in);
 
-      int select_cs(ObChunkServer * replicas_in_out, const int32_t replica_count_in,
+      int select_cs(ObChunkServerItem * replicas_in_out, const int32_t replica_count_in,
         const int32_t last_query_idx_in, const common::ObCellInfo & get_cell_in);
 
-      int32_t select_cs(ObMergerTabletLocationList & list);
     private:
       ObChunkServerTaskDispatcher();
       virtual ~ObChunkServerTaskDispatcher();
@@ -60,17 +58,15 @@ namespace oceanbase
       void set_local_ip(int32_t local_ip) { local_ip_ = local_ip; }
 
     private:
-      int select_cs(const int64_t factor, ObChunkServer * replicas_in_out, const int32_t replica_count_in,
-        const int32_t last_query_idx_in, const common::ObString & start_row_key);
+      int select_cs(ObChunkServerItem * replicas_in_out,
+        const int32_t replica_count_in, const int32_t last_query_idx_in);
 
-      int select_cs(const bool open, ObChunkServer * replicas_in_out,
+      int select_cs(const bool open, ObChunkServerItem * replicas_in_out,
         const int32_t replica_count_in, ObMergerServerCounter * counter);
 
     private:
       bool using_new_balance_;
       int32_t local_ip_;
-      int32_t get_factor_;
-      int32_t scan_factor_;
     };
   }
 }

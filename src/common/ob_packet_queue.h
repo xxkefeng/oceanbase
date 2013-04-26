@@ -1,7 +1,6 @@
 #ifndef OCEANBASE_COMMON_PACKET_QUEUE_
 #define OCEANBASE_COMMON_PACKET_QUEUE_
 
-#include <tbnet.h>
 
 #include "ob_packet.h"
 #include "ob_ring_buffer.h"
@@ -22,7 +21,7 @@ namespace oceanbase
       int init();
 
       ObPacket* pop();
-      int pop_packets(tbnet::Packet** packet_arr, const int64_t ary_size, int64_t& ret_size);
+      int pop_packets(ObPacket** packet_arr, const int64_t ary_size, int64_t& ret_size);
       void push(ObPacket* packet);
       void clear();
       void free(ObPacket* packet);

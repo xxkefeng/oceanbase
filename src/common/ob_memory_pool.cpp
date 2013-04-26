@@ -22,9 +22,9 @@
 #include "ob_link.h"
 #include "tbsys.h"
 #include "tblog.h"
-
+#include "ob_mod_define.h"
 using namespace oceanbase::common;
-namespace 
+namespace
 {
   /// @brief  如果设置该环境变量则直接调用系统malloc和free分配释放内存，
   ///         目的是便于内存bug调试因为对于内存池缓存的内存，valgrind没有办法检查
@@ -41,17 +41,17 @@ namespace
     /// @property magic number
     uint32_t  magic_;
     /// @property reference number
-    int32_t   ref_num_; 
+    int32_t   ref_num_;
     /// @property link all memblockinfo into list
     oceanbase::common::ObDLink     block_link_;
     /// @property size of block, include all memory allocated from system
-    int64_t   block_size_; 
+    int64_t   block_size_;
     /// @property buffer adress
     char      buf_[0];
   };
 
   /// @fn init MemBlockInfo
-  void init_mem_block_info(MemBlockInfo &info, 
+  void init_mem_block_info(MemBlockInfo &info,
                            const int64_t block_size, const int32_t ref_num)
   {
     oceanbase::common::ObDLink *link = NULL;
@@ -92,7 +92,7 @@ namespace
   /// @fn check if mem pool item info is correct, return true if check passed
   bool check_mem_pool_item_info(const MemPoolItemInfo &info)
   {
-    return(info.magic_ == OB_MEMPOOL_MAGIC 
+    return(info.magic_ == OB_MEMPOOL_MAGIC
            && info.mother_block_ != NULL
            && check_mem_block_info(*info.mother_block_));
   }
@@ -115,10 +115,10 @@ namespace
   }
 
   /// @brief minimum number of bytes allocated from system with each alloc, 64k
-  const int64_t OB_MINIMUM_MALLOC_MEM_SIZE = 64*1024 + sizeof(MemBlockInfo) 
+  const int64_t OB_MINIMUM_MALLOC_MEM_SIZE = 64*1024 + sizeof(MemBlockInfo)
                                              + sizeof(MemPoolItemInfo);
   /// @property default fixed item size
-  const int64_t OBFIXEDMEMPOOL_DEFAULT_ITEM_SIZE = OB_MINIMUM_MALLOC_MEM_SIZE - 
+  const int64_t OBFIXEDMEMPOOL_DEFAULT_ITEM_SIZE = OB_MINIMUM_MALLOC_MEM_SIZE -
                                                    sizeof(MemPoolItemInfo) - sizeof(MemBlockInfo);
 
   /// @property default item number each block of fixed memory pool
@@ -129,7 +129,7 @@ namespace
   bool malloc_directly()
   {
     return getenv(OB_MALLOC_DIRECT_ENV_NAME) != NULL;
-  }  
+  }
 }
 
 oceanbase::common::ObBaseMemPool::ObBaseMemPool()
@@ -172,8 +172,8 @@ int64_t oceanbase::common::ObBaseMemPool::get_mod_memory_usage(int32_t mod_id)
 
 void oceanbase::common::ObBaseMemPool::print_mod_memory_usage(bool print_to_std)
 {
-  TBSYS_LOG(INFO, "total_mem_size [%ld]", mem_size_handled_);
-  malloc_stats();
+  TBSYS_LOG(INFO, "[MEMORY] total=% 12ld direct_size=% 12ld direct_block=%ld",
+            mem_size_handled_, direct_allocated_mem_size_, direct_allocated_block_num_);
   if ((NULL == mod_set_)  || (NULL == mem_size_each_mod_))
   {
     TBSYS_LOG(INFO, "total used memory size:%ld", mem_size_default_mod_);
@@ -188,53 +188,47 @@ void oceanbase::common::ObBaseMemPool::print_mod_memory_usage(bool print_to_std)
     {
       if (mod_set_->get_mod_name(mod_idx) != NULL)
       {
-        TBSYS_LOG(INFO, "module size static [mod:%s,size:%ld]", mod_set_->get_mod_name(mod_idx),
-                  mem_size_each_mod_[mod_idx]);
-        if (print_to_std)
+        if (mem_size_each_mod_[mod_idx] > 0)
         {
-          fprintf(stderr, "module size static [mod:%s,size:%ld]\n", mod_set_->get_mod_name(mod_idx),
-                  static_cast<int64_t>(mem_size_each_mod_[mod_idx]));
+          TBSYS_LOG(INFO, "[MEMORY] size=% 12ld mod=%s",
+                    mem_size_each_mod_[mod_idx], mod_set_->get_mod_name(mod_idx));
+          if (print_to_std)
+          {
+            fprintf(stderr, "module size static [mod:%s,size:%ld]\n", mod_set_->get_mod_name(mod_idx),
+                static_cast<int64_t>(mem_size_each_mod_[mod_idx]));
+          }
         }
       }
     }
   }
-  TBSYS_LOG(INFO, "module size static [memory_size_handled:%ld,"
-            "direct_allocated_block_num_:%ld,direct_allocated_mem_size_:%ld]",  
-            mem_size_handled_,direct_allocated_block_num_,direct_allocated_mem_size_);
+  malloc_stats();
+}
+
+void oceanbase::common::ObBaseMemPool::mod_usage_update(const int64_t delta, const int32_t mod_id)
+{
+  int32_t real_mod_id = mod_id;
+  if ((NULL == mod_set_)  || (NULL == mem_size_each_mod_) )
+  {
+    __sync_fetch_and_add(&mem_size_default_mod_, delta);
+  }
+  else
+  {
+    if (mod_id <= 0 || mod_id >= mod_set_->get_max_mod_num())
+    {
+      real_mod_id = 0;
+    }
+    __sync_fetch_and_add(&mem_size_each_mod_[real_mod_id], delta);
+  }
 }
 
 void oceanbase::common::ObBaseMemPool::mod_malloc(const int64_t size, const int32_t mod_id)
 {
-  int32_t real_mod_id = mod_id;
-  if ((NULL == mod_set_)  || (NULL == mem_size_each_mod_) )
-  {
-    mem_size_default_mod_ += size;
-  }
-  else
-  {
-    if (mod_id <= 0 || mod_id >= mod_set_->get_max_mod_num())
-    {
-      real_mod_id = 0;
-    }
-    mem_size_each_mod_[real_mod_id] += size;
-  }
+  mod_usage_update(size, mod_id);
 }
 
 void oceanbase::common::ObBaseMemPool::mod_free(const int64_t size, const int32_t mod_id)
 {
-  int32_t real_mod_id = mod_id;
-  if ((NULL == mod_set_)  || (NULL == mem_size_each_mod_) )
-  {
-    mem_size_default_mod_ -= size;
-  }
-  else
-  {
-    if (mod_id <= 0 || mod_id >= mod_set_->get_max_mod_num())
-    {
-      real_mod_id = 0;
-    }
-    mem_size_each_mod_[real_mod_id] -= size;
-  }
+  mod_usage_update(-size, mod_id);
 }
 
 int oceanbase::common::ObBaseMemPool::init(const ObMemPoolModSet * mod_set)
@@ -303,7 +297,6 @@ void *oceanbase::common::ObBaseMemPool::malloc(const int64_t nbyte, int32_t mod_
   else
   {
     ret = malloc_(nbyte,mod_id, got_size);
-    //TBSYS_LOG(INFO, "ob_malloc ptr=%p size=%ld", ret, nbyte);
   }
   return ret;
 }
@@ -336,8 +329,8 @@ oceanbase::common::ObFixedMemPool::ObFixedMemPool()
 }
 
 
-int oceanbase::common::ObFixedMemPool::init(const int64_t fixed_item_size,  
-                                            const int64_t item_num_each_block, 
+int oceanbase::common::ObFixedMemPool::init(const int64_t fixed_item_size,
+                                            const int64_t item_num_each_block,
                                             const ObMemPoolModSet *mod_set/* = NULL*/)
 {
   int err = 0;
@@ -409,7 +402,7 @@ int64_t oceanbase::common::ObFixedMemPool::get_used_block_num() const
   }
   else
   {
-    result = used_mem_block_num_; 
+    result = used_mem_block_num_;
   }
   return  result;
 }
@@ -417,22 +410,21 @@ int64_t oceanbase::common::ObFixedMemPool::get_used_block_num() const
 
 void oceanbase::common::ObFixedMemPool::print_mod_memory_usage(bool print_to_std)
 {
-  ObBaseMemPool::print_mod_memory_usage(print_to_std);
-  TBSYS_LOG(INFO, "module size static [used_mem_block_num_:%ld,free_mem_block_num_:%ld,"
-            "mem_block_size_:%ld]", 
-            used_mem_block_num_, free_mem_block_num_, mem_block_size_); 
+  TBSYS_LOG(INFO, "[MEMORY] mem_block_size=%ld item_size=%ld used_block=%ld free_block=%ld",
+            mem_block_size_, mem_fixed_item_size_, used_mem_block_num_, free_mem_block_num_);
   if (print_to_std)
   {
     fprintf(stderr, "module size static [used_mem_block_num_:%ld,free_mem_block_num_:%ld,"
-            "mem_block_size_:%ld]\n", 
-            static_cast<int64_t>(used_mem_block_num_), 
-            static_cast<int64_t>(free_mem_block_num_), 
-            static_cast<int64_t>(mem_block_size_)); 
+            "mem_block_size_:%ld]\n",
+            static_cast<int64_t>(used_mem_block_num_),
+            static_cast<int64_t>(free_mem_block_num_),
+            static_cast<int64_t>(mem_block_size_));
   }
+  ObBaseMemPool::print_mod_memory_usage(print_to_std);
 }
 
 
-int64_t oceanbase::common::ObFixedMemPool::recycle_memory_block(ObDLink * &block_it, 
+int64_t oceanbase::common::ObFixedMemPool::recycle_memory_block(ObDLink * &block_it,
                                                                 bool check_unfreed_mem)
 {
   int64_t memory_freed = 0;
@@ -517,7 +509,8 @@ void * oceanbase::common::ObFixedMemPool::malloc_(const int64_t nbyte,const int3
     result_errno = EINVAL;
   }
   /// allocated from system
-  if (NULL == result && result_errno == 0 && nbyte > mem_fixed_item_size_)
+  if (NULL == result && result_errno == 0
+      && (nbyte > mem_fixed_item_size_ || ObModIds::OB_TSI_FACTORY == mod_id))
   {
     result =reinterpret_cast<char*>(allocate_new_block(block_info,item_info,block_size,mod_id));
     if (result == NULL)
@@ -526,9 +519,12 @@ void * oceanbase::common::ObFixedMemPool::malloc_(const int64_t nbyte,const int3
     }
     else
     {
+#ifdef __OB_MTRACE__
+      TBSYS_LOG(WARN, "ALLOC BIG, ptr=%p nbyte=%ld mod_id=%d", result, nbyte, mod_id);
+#endif
       tbsys::CThreadGuard guard(&pool_mutex_);
       used_mem_block_list_.insert_next(block_info->block_link_);
-      /// statistic 
+      /// statistic
       mem_size_handled_ += block_info->block_size_;
       used_mem_block_num_ ++;
       direct_allocated_block_num_ ++;
@@ -545,7 +541,7 @@ void * oceanbase::common::ObFixedMemPool::malloc_(const int64_t nbyte,const int3
   {
     tbsys::CThreadGuard guard(&pool_mutex_);
     /// allocate from free block list
-    if (result_errno == 0 
+    if (result_errno == 0
         && result == NULL
         && !free_mem_block_list_.is_empty())
     {
@@ -637,19 +633,22 @@ void  oceanbase::common::ObFixedMemPool::free_(const void *ptr)
                   "MemBlockInfo::magic_:%u,"
                   "correct magic number:%u]",ptr, item_info->magic_,
                   block_info,
-                  ((block_info != NULL) ? (block_info->magic_) : 0), 
+                  ((block_info != NULL) ? (block_info->magic_) : 0),
                   OB_MEMPOOL_MAGIC);
         result_errno = EINVAL;
       }
       else if (block_info->block_size_ != mem_block_size_)
       {
+#ifdef __OB_MTRACE__
+        TBSYS_LOG(WARN, "FREE BIG, ptr=%p size=%ld", ptr, block_info->block_size_);
+#endif
         mod_id = item_info->mod_id_;
         buf = reinterpret_cast<char*>(block_info);
         used_mem_block_num_ --;
         mem_size_handled_ -= block_info->block_size_;
         block_info->block_link_.remove();
         direct_allocated_block_num_ --;
-        direct_allocated_mem_size_ -= block_info->block_size_; 
+        direct_allocated_mem_size_ -= block_info->block_size_;
         size_free = block_info->block_size_;
         need_free = true;
       }
@@ -699,7 +698,7 @@ int64_t oceanbase::common::ObFixedMemPool::shrink(const int64_t remain_memory_si
   if (0 == result_errno)
   {
     ObDLink *block_it = free_mem_block_list_.next();
-    while (block_it != &free_mem_block_list_ 
+    while (block_it != &free_mem_block_list_
            && mem_size_handled_ > remain_memory_size)
     {
       memory_freed += recycle_memory_block(block_it);
@@ -719,8 +718,8 @@ oceanbase::common::ObVarMemPool::ObVarMemPool(const int64_t block_size)
   cur_block_info_ = NULL;
   direct_allocated_block_num_ = 0;
   direct_allocated_mem_size_ = 0;
-  if (block_size < OB_MINIMUM_MALLOC_MEM_SIZE - 
-      static_cast<int64_t>(sizeof(MemBlockInfo)) - 
+  if (block_size < OB_MINIMUM_MALLOC_MEM_SIZE -
+      static_cast<int64_t>(sizeof(MemBlockInfo)) -
       static_cast<int64_t>(sizeof(MemPoolItemInfo)))
   {
     mem_block_size_ = OB_MINIMUM_MALLOC_MEM_SIZE;
@@ -749,7 +748,7 @@ int64_t oceanbase::common::ObVarMemPool::get_used_block_num()const
   return used_mem_block_num_;
 }
 
-int64_t oceanbase::common::ObVarMemPool::recycle_memory_block(ObDLink * &block_it, 
+int64_t oceanbase::common::ObVarMemPool::recycle_memory_block(ObDLink * &block_it,
                                                               bool check_unfreed_mem)
 {
   int64_t memory_freed = 0;
@@ -788,7 +787,7 @@ int64_t oceanbase::common::ObVarMemPool::shrink(const int64_t remain_memory_size
   int64_t memory_freed = 0;
   tbsys::CThreadGuard guard(&pool_mutex_);
   ObDLink *block_it = free_mem_block_list_.next();
-  while (block_it != &free_mem_block_list_ 
+  while (block_it != &free_mem_block_list_
          && mem_size_handled_ > remain_memory_size)
   {
     memory_freed += recycle_memory_block(block_it);
@@ -859,7 +858,7 @@ void  oceanbase::common::ObVarMemPool::free_(const void *ptr)
                 "MemBlockInfo::magic_:%u,"
                 "correct magic number:%u]",ptr, item_info->magic_,
                 block_info,
-                ((block_info != NULL) ? (block_info->magic_) : 0), 
+                ((block_info != NULL) ? (block_info->magic_) : 0),
                 OB_MEMPOOL_MAGIC);
       result_errno = EINVAL;
     }
@@ -935,7 +934,7 @@ void * oceanbase::common::ObVarMemPool::malloc_(const int64_t nbyte,const int32_
     {
       tbsys::CThreadGuard guard(&pool_mutex_);
       used_mem_block_list_.insert_next(block_info->block_link_);
-      /// statistic 
+      /// statistic
       mem_size_handled_ += block_info->block_size_;
       used_mem_block_num_ ++;
       direct_allocated_block_num_ ++;
@@ -949,10 +948,10 @@ void * oceanbase::common::ObVarMemPool::malloc_(const int64_t nbyte,const int32_
     /// current block's left memory is enough
     if (result_errno == 0 && result == NULL && block_info != NULL)
     {
-      if (block_info->block_size_ - cur_block_used_nbyte_ >= 
+      if (block_info->block_size_ - cur_block_used_nbyte_ >=
           static_cast<int64_t>(sizeof(MemPoolItemInfo)) + nbyte)
       {
-        item_info = reinterpret_cast<MemPoolItemInfo*>(reinterpret_cast<char*>(block_info) 
+        item_info = reinterpret_cast<MemPoolItemInfo*>(reinterpret_cast<char*>(block_info)
                                                        + cur_block_used_nbyte_);
         init_mem_pool_item_info(*item_info,block_info);
         cur_block_used_nbyte_ += nbyte + sizeof(MemPoolItemInfo);
@@ -979,7 +978,7 @@ void * oceanbase::common::ObVarMemPool::malloc_(const int64_t nbyte,const int32_
     tbsys::CThreadGuard guard(&pool_mutex_);
     if (!free_mem_block_list_.is_empty())
     {
-      block_info = CONTAINING_RECORD(free_mem_block_list_.next(), 
+      block_info = CONTAINING_RECORD(free_mem_block_list_.next(),
                                      MemBlockInfo, block_link_);
       item_info = reinterpret_cast<MemPoolItemInfo*>(block_info->buf_);
       init_mem_pool_item_info(*item_info,block_info);

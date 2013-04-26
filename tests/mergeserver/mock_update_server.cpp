@@ -6,10 +6,12 @@
 #include "common/ob_mutator.h"
 #include "common/ob_tablet_info.h"
 #include "common/ob_read_common_data.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace oceanbase::mergeserver::test;
+static CharArena allocator_;
 
 int MockUpdateServer::initialize()
 {
@@ -109,7 +111,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
     // fake cell
     ObCellInfo cell;
     ObScanner scanner;
-    ObString row_key;
+    ObRowkey row_key;
     ObString column_name;
     cell.table_id_ = scan_param.get_table_id();
     if (mock::join_table_id == cell.table_id_)
@@ -118,7 +120,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
       {
         if (mock::join_column1_id == scan_param.get_column_id()[i])
         {
-          row_key.assign((char*)mock::join_rowkey,static_cast<int32_t>(strlen(mock::join_rowkey)));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column1_ups_value_1,true);
@@ -131,7 +133,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
         }
         else if (mock::join_column2_id == scan_param.get_column_id()[i])
         {
-          row_key.assign((char*)mock::join_rowkey,static_cast<int32_t>(strlen(mock::join_rowkey)));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column2_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column2_ups_value_1,true);
@@ -156,7 +158,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
       {
         if (mock::column1_id == scan_param.get_column_id()[i])
         {
-          row_key.assign((char*)mock::rowkey,static_cast<int32_t>(strlen(mock::rowkey)));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::column1_ups_value_1,true);
@@ -169,7 +171,7 @@ int MockUpdateServer::handle_mock_scan(ObPacket *ob_packet)
         }
         else if (mock::column2_id == scan_param.get_column_id()[i])
         {
-          row_key.assign((char*)mock::rowkey,static_cast<int32_t>(strlen(mock::rowkey)));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::column2_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::column2_ups_value_1,true);
@@ -268,7 +270,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
     // fake cell
     ObCellInfo cell;
     ObScanner scanner;
-    ObString row_key;
+    ObRowkey row_key;
     ObString column_name;
     for (int32_t i = 0; i < get_param.get_cell_size(); i ++)
     {
@@ -278,7 +280,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
       {
         if (mock::join_column1_id == cell.column_id_)
         {
-          row_key.assign((char*)mock::join_rowkey,static_cast<int32_t>(strlen(mock::join_rowkey)));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column1_ups_value_1,true);
@@ -291,7 +293,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
         }
         else if (mock::join_column2_id == cell.column_id_)
         {
-          row_key.assign((char*)mock::join_rowkey,static_cast<int32_t>(strlen(mock::join_rowkey)));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column2_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column2_ups_value_1,true);
@@ -304,7 +306,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
         }
         else if (0 == cell.column_id_)
         {
-          row_key.assign((char*)mock::join_rowkey,static_cast<int32_t>(strlen(mock::join_rowkey)));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::join_column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::join_column1_ups_value_1,true);
@@ -316,7 +318,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
           }
           if (OB_SUCCESS == ret)
           {
-            row_key.assign((char*)mock::join_rowkey,static_cast<int32_t>(strlen(mock::join_rowkey)));
+            row_key = make_rowkey(mock::join_rowkey, &allocator_);
             cell.column_id_ = mock::join_column2_id;
             cell.row_key_ = row_key;
             cell.value_.set_int(mock::join_column2_ups_value_1,true);
@@ -340,7 +342,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
       {
         if (mock::column1_id == cell.column_id_)
         {
-          row_key.assign((char*)mock::rowkey,static_cast<int32_t>(strlen(mock::rowkey)));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::column1_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::column1_ups_value_1,true);
@@ -353,7 +355,7 @@ int MockUpdateServer::handle_mock_get(ObPacket *ob_packet)
         }
         else if (mock::column2_id == cell.column_id_)
         {
-          row_key.assign((char*)mock::rowkey,static_cast<int32_t>(strlen(mock::rowkey)));
+          row_key = make_rowkey(mock::join_rowkey, &allocator_);
           cell.column_id_ = mock::column2_id;
           cell.row_key_ = row_key;
           cell.value_.set_int(mock::column2_ups_value_1,true);
@@ -439,7 +441,7 @@ int MockUpdateServer::handle_scan_table(ObPacket * ob_packet)
     // fake cell
     ObCellInfo cell;
     ObScanner scanner;
-    ObString row_key;
+    ObRowkey row_key;
     ObString column_name;
     char temp[256] = "";
     ObString table_name;
@@ -449,7 +451,7 @@ int MockUpdateServer::handle_scan_table(ObPacket * ob_packet)
     for (uint64_t i = 0; i < 10; ++i)
     {
       snprintf(temp, 256, "update_%lu_scan_row_key:%lu", i, i);
-      row_key.assign(temp, static_cast<int32_t>(strlen(temp)));
+      row_key = make_rowkey(temp, &allocator_);
       cell.row_key_ = row_key;
       column_name.assign(temp, static_cast<int32_t>(strlen(temp)));
       cell.column_name_ = column_name;
@@ -503,7 +505,7 @@ int MockUpdateServer::handle_get_table(ObPacket * ob_packet)
     // fake data cell
     ObCellInfo cell;
     ObScanner scanner;
-    ObString row_key;
+    ObRowkey row_key;
     ObString column_name;
     char temp[256] = "";
     ObString table_name;
@@ -513,7 +515,7 @@ int MockUpdateServer::handle_get_table(ObPacket * ob_packet)
     for (uint64_t i = 0; i < 10; ++i)
     {
       snprintf(temp, 256, "update_%lu_get_row_key:%lu", i, i);
-      row_key.assign(temp, static_cast<int32_t>(strlen(temp)));
+      row_key = make_rowkey(temp, &allocator_);
       cell.row_key_ = row_key;
       column_name.assign(temp, static_cast<int32_t>(strlen(temp)));
       cell.column_name_ = column_name;
@@ -567,13 +569,13 @@ int MockUpdateServer::handle_mutate_table(ObPacket * ob_packet)
     // fake data cell
     ObCellInfo cell;
     ObScanner scanner;
-    ObString row_key;
+    ObRowkey row_key;
     char temp[256] = "";
     cell.table_id_ = 100;
     for (uint64_t i = 0; i < 10; ++i)
     {
       snprintf(temp, 256, "update_%lu_get_row_key:%lu", i, i);
-      row_key.assign(temp, static_cast<int32_t>(strlen(temp)));
+      row_key = make_rowkey(temp, &allocator_);
       cell.row_key_ = row_key;
       cell.column_id_ = i + 1;
       cell.value_.set_int(2234 + i);

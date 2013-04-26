@@ -106,7 +106,7 @@ namespace oceanbase
     }
 
     int ObUpsCache::get(const uint64_t table_id,
-        const ObString& row_key,ObBufferHandle &buffer_handle,
+        const ObRowkey& row_key,ObBufferHandle &buffer_handle,
         const uint64_t column_id, ObUpsCacheValue& value)
     {
 
@@ -121,7 +121,7 @@ namespace oceanbase
         if(OB_INVALID_ID == table_id || OB_INVALID_ID == column_id 
             || NULL == row_key.ptr() || row_key.length() <= 0)
         {
-          TBSYS_LOG(WARN,"invalid param table_id=%lu,column_id=%lu,row_key_ptr=%p,row_key_length=%d",
+          TBSYS_LOG(WARN,"invalid param table_id=%lu,column_id=%lu,row_key_ptr=%p,row_key_length=%ld",
               table_id,column_id,row_key.ptr(),row_key.length());
           ret = OB_ERROR;
         }
@@ -129,9 +129,8 @@ namespace oceanbase
         {
           ObUpsCacheKey date_key;
           date_key.table_id = static_cast<uint16_t>(table_id);
-          date_key.nbyte = row_key.length();
+          date_key.row_key = row_key;
           date_key.column_id = static_cast<uint16_t>(column_id);
-          date_key.buffer = const_cast<char*>(row_key.ptr());
           //如果是查询行是否存在于缓存中
           if(0 == column_id)
           {
@@ -141,8 +140,8 @@ namespace oceanbase
           else  //在缓存中查询列的值
           { 
             ret = kv_cache_.get(date_key,value,buffer_handle.handle_);
-            TBSYS_LOG(DEBUG, "get from kv cache, table_id=%lu column_id=%lu, row_key=%.*s ret=%d version=%ld value=[%s]",
-                table_id, column_id, row_key.length(), row_key.ptr(), ret, value.version, print_obj(value.value));
+            TBSYS_LOG(DEBUG, "get from kv cache, table_id=%lu column_id=%lu, row_key=%s ret=%d version=%ld value=[%s]",
+                table_id, column_id, to_cstring(row_key), ret, value.version, print_obj(value.value));
             if (OB_ENTRY_NOT_EXIST != ret && OB_SUCCESS != ret)
             {
               TBSYS_LOG(WARN,"get kv_cache_ failed,ret=%d",ret);
@@ -171,7 +170,7 @@ namespace oceanbase
 
     // 加入缓存项
     int ObUpsCache::put(const uint64_t table_id,
-        const ObString& row_key,
+        const ObRowkey& row_key,
         const uint64_t column_id,
         const ObUpsCacheValue& value)
     {
@@ -186,7 +185,7 @@ namespace oceanbase
         if(OB_INVALID_ID == table_id || OB_INVALID_ID == column_id
             || NULL == row_key.ptr() || row_key.length() <= 0)
         {
-          TBSYS_LOG(ERROR,"invalid param table_id=%lu,column_id=%lu,row_key_ptr=%p,row_key_length=%d",table_id,column_id,row_key.ptr(),row_key.length());
+          TBSYS_LOG(ERROR,"invalid param table_id=%lu,column_id=%lu,row_key_ptr=%p,row_key_length=%ld",table_id,column_id,row_key.ptr(),row_key.length());
           ret = OB_ERROR;
         }
       }
@@ -197,11 +196,10 @@ namespace oceanbase
         ObUpsCacheKey cache_key;
         cache_key.table_id = static_cast<uint16_t>(table_id);
         cache_key.column_id = static_cast<uint16_t>(column_id);
-        cache_key.nbyte = row_key.length();
-        cache_key.buffer = const_cast<char*>(row_key.ptr());
+        cache_key.row_key = row_key;
         ret = kv_cache_.put(cache_key,value);
-        TBSYS_LOG(DEBUG, "put to kv cache, table_id=%lu column_id=%lu row_key=%.*s ret=%d",
-            table_id, column_id, row_key.length(), row_key.ptr(), ret);
+        TBSYS_LOG(DEBUG, "put to kv cache, table_id=%lu column_id=%lu row_key=%s ret=%d",
+            table_id, column_id, to_cstring(row_key), ret);
         if (OB_SUCCESS != ret)
         {
           TBSYS_LOG(WARN, "failed to add cache pair to kv cache, ret=%d", ret);
@@ -214,7 +212,7 @@ namespace oceanbase
     // 查询行是否存在
     // 如果缓存项存在，返回OB_SUCCESS; 如果缓存项不存在，返回OB_NOT_EXIST；否则，返回OB_ERROR；
     int ObUpsCache::is_row_exist(const uint64_t table_id,
-        const ObString& row_key,
+        const ObRowkey& row_key,
         bool& is_exist, 
         ObBufferHandle& buffer_handle)
     {
@@ -228,7 +226,7 @@ namespace oceanbase
       {
         if(OB_INVALID_ID == table_id || NULL == row_key.ptr() || row_key.length() <= 0)
         {
-          TBSYS_LOG(WARN,"invalid param table_id=%lu,row_key_ptr=%p,row_key_length=%d",table_id,row_key.ptr(),row_key.length());
+          TBSYS_LOG(WARN,"invalid param table_id=%lu,row_ke=%s",table_id, to_cstring(row_key));
           ret = OB_ERROR;
         }
         else
@@ -237,8 +235,7 @@ namespace oceanbase
           ObUpsCacheValue cache_value;
           cache_key.table_id = static_cast<uint16_t>(table_id);
           cache_key.column_id = 0;
-          cache_key.nbyte = row_key.length();
-          cache_key.buffer = const_cast<char*>(row_key.ptr());
+          cache_key.row_key = row_key;
           if(OB_SUCCESS == kv_cache_.get(cache_key, cache_value, buffer_handle.handle_) )
           {
             buffer_handle.ups_cache_ = this;
@@ -277,7 +274,7 @@ namespace oceanbase
     }
 
     // 设置行是否存在标志，行不存在也需要记录到缓存中 
-    int ObUpsCache::set_row_exist(const uint64_t table_id, const ObString& row_key, const bool is_exist)
+    int ObUpsCache::set_row_exist(const uint64_t table_id, const ObRowkey& row_key, const bool is_exist)
     {
       int ret = OB_SUCCESS;
       if(!inited_)
@@ -291,7 +288,7 @@ namespace oceanbase
             || NULL == row_key.ptr() 
             || row_key.length() <=0)
         {
-          TBSYS_LOG(WARN,"invalid param,table_id=%lu,row_key_ptr=%p,row_key_length=%d",
+          TBSYS_LOG(WARN,"invalid param,table_id=%lu,row_key_ptr=%p,row_key_length=%ld",
               table_id, row_key.ptr(), row_key.length());
           ret = OB_ERROR;
         }
@@ -300,8 +297,7 @@ namespace oceanbase
           ObUpsCacheKey cache_key;
           ObUpsCacheValue cache_value;
           cache_key.table_id = static_cast<uint16_t>(table_id);
-          cache_key.nbyte = row_key.length();
-          cache_key.buffer = const_cast<char*>(row_key.ptr());
+          cache_key.row_key = row_key;
           cache_key.column_id = 0;
 
           if(is_exist)

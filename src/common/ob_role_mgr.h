@@ -65,10 +65,11 @@ namespace oceanbase
       inline Role get_role() const {return role_;}
 
       /// @brief 修改Role
-      inline void set_role(const Role role) 
+      inline void set_role(const Role role)
       {
+        TBSYS_LOG(INFO, "before set_role=%s state=%s", get_role_str(), get_state_str());
         atomic_exchange(reinterpret_cast<uint32_t*>(&role_), role);
-        TBSYS_LOG(INFO, "set_role=%d state=%d", role_, state_);
+        TBSYS_LOG(INFO, "after set_role=%s state=%s", get_role_str(), get_state_str());
       }
 
       /// 获取State
@@ -77,8 +78,9 @@ namespace oceanbase
       /// 修改State
       inline void set_state(const State state)
       {
+        TBSYS_LOG(INFO, "before set_state=%s role=%s", get_state_str(), get_role_str());
         atomic_exchange(reinterpret_cast<uint32_t*>(&state_), state);
-        TBSYS_LOG(INFO, "set_state=%d role=%d", state_, role_);
+        TBSYS_LOG(INFO, "after set_state=%s role=%s", get_state_str(), get_role_str());
       }
 
       inline const char* get_role_str() const

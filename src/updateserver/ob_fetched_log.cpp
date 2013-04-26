@@ -92,6 +92,13 @@ namespace oceanbase
       return err;
     }
 
+    int64_t ObFetchLogReq::to_string(char* buf, const int64_t len) const
+    {
+      int64_t pos = 0;
+      databuff_printf(buf, len, pos, "FetchLogReq(start_id=%ld, max_data_len=%ld)", start_id_, max_data_len_);
+      return pos;
+    }
+
     int ObFetchedLog::set_buf(char* buf, int64_t len)
     {
       int err = OB_SUCCESS;
@@ -178,5 +185,14 @@ namespace oceanbase
       }
       return err;
     }
+
+    int64_t ObFetchedLog::to_string(char* buf, const int64_t len) const
+    {
+      int64_t pos = 0;
+      databuff_printf(buf, len, pos, "FetchedLog(id=[%ld,%ld], max_data_len=%ld, ret_data=%p[%ld], next_req=%s)",
+                      start_id_, end_id_, max_data_len_, log_data_, data_len_, to_cstring(next_req_));
+      return pos;
+    }
+
   }; // end namespace updateserver
 }; // end namespace oceanbase

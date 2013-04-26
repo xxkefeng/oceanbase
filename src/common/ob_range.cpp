@@ -26,6 +26,7 @@ namespace oceanbase
   namespace common 
   {
 
+#if 0
     // --------------------------------------------------------
     // class ObRange implements
     // --------------------------------------------------------
@@ -377,40 +378,37 @@ namespace oceanbase
     {
       int ret = OB_ERROR;
       ret = serialization::decode_vi64(buf, data_len, pos, (int64_t*)&table_id_);
-      if (ret == OB_SUCCESS)
+
+      if (OB_SUCCESS == ret)
       {
         int8_t flag = 0;
         ret = serialization::decode_i8(buf, data_len, pos, &flag);
-        if (ret == OB_SUCCESS)
+        if (OB_SUCCESS == ret)
         {
           border_flag_.set_data(flag);
         }
-        else
-        {
-          TBSYS_LOG(WARN, "deserialize flag failed:pos[%ld], ret[%d]", pos, ret);
-        }
       }
-      else
-      {
-        TBSYS_LOG(WARN, "deserialize table id failed:pos[%ld], ret[%d]", pos, ret);
-      }
-      //
-      if (ret == OB_SUCCESS)
+
+      if (OB_SUCCESS == ret)
       {
         ret = start_key_.deserialize(buf, data_len, pos);
-        if (ret != OB_SUCCESS)
+        if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "deserialize start_key failed:pos[%ld], ret[%d]", pos, ret);
-        }
-        else
-        {
-          ret = end_key_.deserialize(buf, data_len, pos);
-          if (ret != OB_SUCCESS)
-          {
-            TBSYS_LOG(WARN, "deserialize end_key failed:pos[%ld], ret[%d]", pos, ret);
-          }
+          TBSYS_LOG(WARN, "failed to deserialize start key, buf=%p, data_len=%ld, pos=%ld, ret=%d",
+              buf, data_len, pos, ret);
         }
       }
+
+      if (OB_SUCCESS == ret)
+      {
+        ret = end_key_.deserialize(buf, data_len, pos);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "failed to deserialize end key, buf=%p, data_len=%ld, pos=%ld, ret=%d",
+              buf, data_len, pos, ret);
+        }
+      }
+
       return ret;
     }
 
@@ -426,6 +424,8 @@ namespace oceanbase
 
       return total_size;
     }
+#endif
+
   } // end namespace common
 } // end namespace oceanbase
 

@@ -1,6 +1,5 @@
 #include "ob_delete_stmt.h"
 #include <stdio.h>
-#include "parse_tools.h"
 
 namespace oceanbase
 {
@@ -30,4 +29,3 @@ namespace oceanbase
 
   }
 }
-

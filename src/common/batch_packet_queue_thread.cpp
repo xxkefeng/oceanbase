@@ -16,13 +16,16 @@
  *
  */
 
-#include "tbnet.h"
+
 #include "batch_packet_queue_thread.h"
+#include "ob_trace_id.h"
+#include "ob_tsi_factory.h"
+#include "ob_profile_log.h"
+#include "ob_profile_type.h"
 
 namespace oceanbase {
 namespace common {
 
-using namespace tbnet;
 
 // 构造
 BatchPacketQueueThread::BatchPacketQueueThread() : tbsys::CDefaultRunnable() {
@@ -97,7 +100,7 @@ bool BatchPacketQueueThread::push(ObPacket *packet, int maxQueueLen, bool block)
             return false;
         }
         _pushcond.unlock();
-        
+
         if (_stop) {
             //delete packet;
             return true;
@@ -144,7 +147,7 @@ void BatchPacketQueueThread::pushQueue(ObPacketQueue &packetQueue, int maxQueueL
 void BatchPacketQueueThread::run(tbsys::CThread *, void *) {
     int err = OB_SUCCESS;
     int64_t wait_us = 10000;
-    tbnet::Packet* tmp_packet = NULL;
+    ObPacket* tmp_packet = NULL;
     while (!_stop) {
         _cond.lock();
         while (!_stop)
@@ -163,7 +166,7 @@ void BatchPacketQueueThread::run(tbsys::CThread *, void *) {
 
         // 限速
         if (_waitTime>0) checkSendSpeed();
-        tbnet::Packet* packets[MAX_BATCH_NUM];
+        ObPacket* packets[MAX_BATCH_NUM];
         int64_t batch_num = 0;
         // 取出packet
         /*
@@ -190,8 +193,14 @@ void BatchPacketQueueThread::run(tbsys::CThread *, void *) {
         }
 
         bool ret = true;
-        if (_handler && batch_num > 0) {
-            ret = _handler->handleBatchPacketQueue(batch_num, packets, _args);
+        if (_handler && batch_num > 0) 
+        {
+          for (int64_t i = 0;i < batch_num; ++i)
+          {
+            // 忽略log自带的trace id和chid字段
+            PROFILE_LOG(DEBUG, TRACE_ID CHANNEL_ID WAIT_TIME_US_IN_WRITE_QUEUE, packets[i]->get_trace_id(), packets[i]->get_channel_id(), tbsys::CTimeUtil::getTime() - packets[i]->get_receive_ts());
+          }
+          ret = _handler->handleBatchPacketQueue(batch_num, packets, _args);
         }
         // 如果返回false, 不删除
         // if (ret) {
@@ -209,6 +218,8 @@ void BatchPacketQueueThread::run(tbsys::CThread *, void *) {
             _cond.unlock();
 
             if (_handler) {
+              // 忽略log自带的trace id和chid字段
+              PROFILE_LOG(DEBUG, TRACE_ID CHANNEL_ID WAIT_TIME_US_IN_WRITE_QUEUE, tmp_packet->get_trace_id(), tmp_packet->get_channel_id(), tbsys::CTimeUtil::getTime() - tmp_packet->get_receive_ts());
                 ret = _handler->handleBatchPacketQueue(1, &tmp_packet, _args);
             }
             //if (ret) delete tmp_packet;

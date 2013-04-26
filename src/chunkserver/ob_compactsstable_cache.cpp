@@ -27,7 +27,6 @@ namespace oceanbase
     ObCompacSSTableMemGetter::ObCompacSSTableMemGetter(ObMergerRpcProxy& proxy):rpc_proxy_(proxy),
                                                                                 cell_stream_(&rpc_proxy_)
     {
-      memset(table_stat_, 0x00, sizeof(table_stat_));
     }
 
     ObCompacSSTableMemGetter::~ObCompacSSTableMemGetter()
@@ -47,23 +46,18 @@ namespace oceanbase
         TBSYS_LOG(WARN,"fill scan param failed,ret=%d",ret);
       }
 
-      if (OB_SUCCESS == ret) 
+      if (OB_SUCCESS == ret)
       {
         ret = cell_stream_.scan(scan_param_);
-        TBSYS_LOG(INFO,"start get compactsstable:[%p:%s], version[%s] ret[%d]",tablet,scan_range2str(tablet->get_range()),
-            range2str(scan_param_.get_version_range()), ret);
         if ((ret != OB_SUCCESS) && (ret != OB_ITER_END))
         {
           TBSYS_LOG(WARN,"scan from ups failed,ret=%d",ret);
         }
         else if (OB_SUCCESS == ret)
         {
-          //block size can reload
-          int64_t block_size = THE_CHUNK_SERVER.get_param().get_compactsstable_block_size();
-          ObCompactSSTableMemNode *cache = new(std::nothrow)ObCompactSSTableMemNode(block_size);
+          ObCompactSSTableMemNode *cache = new(std::nothrow)ObCompactSSTableMemNode();
           if (NULL == cache)
           {
-            TBSYS_LOG(WARN, "No enough memory to allocate cache node");
             ret = OB_ALLOCATE_MEMORY_FAILED;
           }
           else
@@ -93,16 +87,13 @@ namespace oceanbase
               cache = NULL;
             }
           }
-        
+
           if (OB_SUCCESS == ret)
           {
             ObVersion mv = cache->mem_.get_data_version();
-            TBSYS_LOG(INFO,"add compact cache to tablet,tablet:[%p,%s],"
-                      "cache:[%p,row_num:%ld,data_size:%ld,usage_size:%ld,index_size:%ld,version:%d-%hd-%hd]",
-                      tablet,scan_range2str(tablet->get_range()),cache,
-                      cache->mem_.get_row_count(),cache->mem_.get_data_size(),
-                      cache->mem_.get_usage_size(),cache->mem_.get_index_size(),mv.major_,mv.minor_,mv.is_final_minor_);
-            cacl_compactcache_stat(*tablet, *cache);
+            TBSYS_LOG(INFO,"add compact cache to tablet,tablet:[%p,%s],cache:[%p,row_num:%ld,version:%d-%hd-%hd]",
+                      tablet,scan_range2str(tablet->get_range()),
+                      cache,cache->mem_.get_row_count(),mv.major_,mv.minor_,mv.is_final_minor_);
             tablet->add_compactsstable(cache);
           }
         }
@@ -116,33 +107,17 @@ namespace oceanbase
       return ret;
     }
 
-    void ObCompacSSTableMemGetter::cacl_compactcache_stat(ObTablet& tablet, ObCompactSSTableMemNode& cache_node)
-    {
-      uint64_t table_id = tablet.get_range().table_id_;
-      if (table_id < static_cast<int64_t> (MAX_TABLE_ID))
-      {
-        table_stat_[table_id].tablet_num++;
-        table_stat_[table_id].row_num += cache_node.mem_.get_row_count();
-        table_stat_[table_id].data_size += cache_node.mem_.get_data_size();
-        table_stat_[table_id].usage_size += cache_node.mem_.get_usage_size();
-        TBSYS_LOG(INFO, "compactsstable_stat getter:%p, table_id:%lu, tablet_num:%ld, row_num:%ld, "
-            "data_size:%ld, usage_size:%ld",
-            this, table_id, table_stat_[table_id].tablet_num, table_stat_[table_id].row_num,
-            table_stat_[table_id].data_size, table_stat_[table_id].usage_size);
-      }
-    } 
-
-    int ObCompacSSTableMemGetter::fill_scan_param(ObTablet& tablet,int64_t data_version) 
+    int ObCompacSSTableMemGetter::fill_scan_param(ObTablet& tablet,int64_t data_version)
     {
       int ret = OB_SUCCESS;
       ObString table_name_string;
-      const ObRange& range = tablet.get_range();
+      const ObNewRange& range = tablet.get_range();
       uint64_t table_id = range.table_id_;
       ObVersionRange version_range;
 
       scan_param_.reset();
       scan_param_.set(table_id, table_name_string, range);
-      scan_param_.set_is_result_cached(false); 
+      scan_param_.set_is_result_cached(false);
       scan_param_.set_is_read_consistency(false);
       fill_version_range(tablet,data_version,version_range);
       scan_param_.set_version_range(version_range);
@@ -159,9 +134,9 @@ namespace oceanbase
     {
       int64_t                     cs_data_version = tablet.get_cache_data_version();
       int64_t                     cs_major        = ObVersion::get_major(cs_data_version);
-      int64_t                     ups_major       = ObVersion::get_major(ups_data_version);      
+      int64_t                     ups_major       = ObVersion::get_major(ups_data_version);
       int64_t                     ups_minor       = ObVersion::get_minor(ups_data_version);
-      int64_t                     cs_minor        = ObVersion::get_minor(cs_data_version);      
+      int64_t                     cs_minor        = ObVersion::get_minor(cs_data_version);
       bool                        is_final_minor  = ObVersion::is_final_minor(cs_data_version);
 
       version_range.start_version_ = cs_data_version;
@@ -173,12 +148,12 @@ namespace oceanbase
       {
         //minor is 0,there is no compactsstable
         version_range.start_version_ = cs_major + 1;
-        version_range.border_flag_.set_inclusive_start();        
+        version_range.border_flag_.set_inclusive_start();
 
         if (ups_major > (cs_major + 1))
         {
           version_range.end_version_ = cs_major + 2;
-          version_range.border_flag_.unset_inclusive_end();          
+          version_range.border_flag_.unset_inclusive_end();
         }
       }
       else
@@ -186,7 +161,7 @@ namespace oceanbase
         //cs has minor version
         if ((cs_major == ups_major) && ((ups_minor - cs_minor) > 1))
         {
-          
+
         }
         else if (ups_major > cs_major)
         {
@@ -219,20 +194,20 @@ namespace oceanbase
       bool is_row_changed  = false;
       ObCellInfo *cur_cell = NULL;
       int64_t usage_size   = 0;
-      int64_t compactsstable_cache_size = THE_CHUNK_SERVER.get_param().get_compactsstable_cache_size();      
+      int64_t compactsstable_cache_size = THE_CHUNK_SERVER.get_config().compactsstable_cache_size;
       ObObj rowkey_obj;
-      
+
       while((OB_SUCCESS == ret) && (OB_SUCCESS == (ret = cell_stream.next_cell())))
       {
-        usage_size  = ob_get_mod_memory_usage(ObModIds::OB_COMPACTSSTABLE_WRITER);        
+        usage_size  = ob_get_mod_memory_usage(ObModIds::OB_COMPACTSSTABLE_WRITER);
         if (usage_size > compactsstable_cache_size)
         {
           TBSYS_LOG(WARN,"compactsstable cache size overflow,usage:%ld,size limit:%ld",
                     usage_size,compactsstable_cache_size);
           ret = OB_SIZE_OVERFLOW;
         }
-        
-        if ((OB_SUCCESS == ret) && (OB_SUCCESS == (ret = cell_stream.get_cell(&cur_cell,&is_row_changed))))
+
+        if (OB_SUCCESS == (ret = cell_stream.get_cell(&cur_cell,&is_row_changed)))
         {
           if (is_row_changed && row_cell_num_ > 0)
           {
@@ -246,8 +221,8 @@ namespace oceanbase
           {
             if (0 == row_cell_num_)
             {
-              //add rowkey
-              rowkey_obj.set_varchar(cur_cell->row_key_);
+              //TODO add rowkey
+              //rowkey_obj.set_varchar(cur_cell->row_key_);
               if ((ret = row_.add_col(ObCompactRow::ROWKEY_COLUMN_ID,rowkey_obj)) != OB_SUCCESS)
               {
                 TBSYS_LOG(WARN,"add column to row failed,ret=%d",ret);
@@ -257,7 +232,7 @@ namespace oceanbase
                 ++row_cell_num_;
               }
             }
-            
+
             if (cur_cell->value_.get_type() == ObExtendType &&
                 cur_cell->value_.get_ext() == ObActionFlag::OP_NOP)
             {
@@ -308,10 +283,9 @@ namespace oceanbase
       return ret;
     }
 
-    
+
     ObCompactSSTableMemThread::ObCompactSSTableMemThread() : manager_(NULL),
                                                              inited_(false),
-                                                             full_(false),
                                                              read_idx_(0),
                                                              write_idx_(0),
                                                              tablets_num_(0),
@@ -326,7 +300,7 @@ namespace oceanbase
     int ObCompactSSTableMemThread::init(ObTabletManager* manager)
     {
       int ret = OB_SUCCESS;
-      int64_t thread_count = THE_CHUNK_SERVER.get_param().get_compactsstable_cache_thread_num();
+      int64_t thread_count = THE_CHUNK_SERVER.get_config().compactsstable_cache_thread_num;
       if ((NULL == manager))
       {
         TBSYS_LOG(WARN,"invalid argument,manager is null");
@@ -341,7 +315,7 @@ namespace oceanbase
       {
         thread_count = MAX_THREAD_COUNT;
       }
-      
+
       manager_ = manager;
       setThreadCount(static_cast<int32_t>(thread_count));
       start();
@@ -354,7 +328,6 @@ namespace oceanbase
       if (inited_)
       {
         inited_ = false;
-        full_ = false;
         //stop the thread
         stop();
         //signal
@@ -365,10 +338,7 @@ namespace oceanbase
         ObTablet* tablet = NULL;
         while(NULL != (tablet = pop()))
         {
-          if (!tablet->is_join_compactsstable_tablet())
-          {
-            manager_->get_serving_tablet_image().release_tablet(tablet);
-          }
+          manager_->get_serving_tablet_image().release_tablet(tablet);
         }
 
         manager_      = NULL;
@@ -395,12 +365,12 @@ namespace oceanbase
         {
           data_version_ = data_version;
         }
-        
+
         if (write_idx_ >= MAX_TABLETS_NUM)
         {
           write_idx_ = 0;
         }
-        
+
         if (tablets_num_ < MAX_TABLETS_NUM)
         {
           tablets_[write_idx_++] = tablet;
@@ -409,8 +379,7 @@ namespace oceanbase
         }
         else
         {
-          TBSYS_LOG(WARN,"Concurrently fetching tablets exceeds limit,tablets_num_:%d, limit:%d"
-              "read_idx_:%d, write_idx_:%d", tablets_num_, MAX_TABLETS_NUM, read_idx_, write_idx_);
+          TBSYS_LOG(WARN,"no left space to hold this tablet,read_idx_:%d,write_idx_:%d",read_idx_,write_idx_);
           ret = OB_SIZE_OVERFLOW;
         }
         mutex_.unlock();
@@ -418,18 +387,11 @@ namespace oceanbase
       return ret;
     }
 
-    void ObCompactSSTableMemThread::clear_full_flag()
-    {
-      TBSYS_LOG(INFO,"clear full flag");
-      full_ = false;
-    }    
-
     void ObCompactSSTableMemThread::run(CThread *thread, void *arg)
     {
       UNUSED(thread);
       UNUSED(arg);
       ObTablet* tablet = NULL;
-      int err = OB_SUCCESS;
       ObCompacSSTableMemGetter* getter = new(std::nothrow) ObCompacSSTableMemGetter(*THE_CHUNK_SERVER.get_rpc_proxy());
       if (NULL == getter)
       {
@@ -455,30 +417,16 @@ namespace oceanbase
           mutex_.unlock();
           if (NULL != tablet) //just in case
           {
-            if (full_)
+            if (getter->get(tablet,data_version_) != OB_SUCCESS)
             {
-              //
-            }
-            else
-            {
-              err = getter->get(tablet,data_version_);
-              if (OB_SIZE_OVERFLOW == err)
-              {
-                TBSYS_LOG(INFO,"compactsstable has fullfilled");
-                full_ = true;
-              }
-              else if (OB_SUCCESS != err)
-              {
-                TBSYS_LOG(WARN,"get data from ups failed,err=%d",err);
-              }
+              TBSYS_LOG(WARN,"get data from ups failed");
             }
             //whether success or not,always release it.
             tablet->clear_compactsstable_flag();
-            if (!tablet->is_join_compactsstable_tablet() &&
-                (manager_->get_serving_tablet_image().release_tablet(tablet) != OB_SUCCESS))
+            if (manager_->get_serving_tablet_image().release_tablet(tablet) != OB_SUCCESS)
             {
               TBSYS_LOG(WARN,"release tablet failed");
-            }            
+            }
           }
         } //end while
 
@@ -491,136 +439,24 @@ namespace oceanbase
     ObTablet* ObCompactSSTableMemThread::pop()
     {
       ObTablet* tablet = NULL;
-
-      if (read_idx_ >= MAX_TABLETS_NUM)
+      if ((write_idx_ == read_idx_))
       {
-        read_idx_ = 0;
-      }
-
-      if (tablets_num_ > 0)
-      {
-        tablet = tablets_[read_idx_++];
-        --tablets_num_;
-      }
-
-      return tablet;
-    }
-
-    /**
-     * impl of  ObJoinCompactSSTable
-     * 
-     */
-
-    ObJoinCompactSSTable::ObJoinCompactSSTable():join_table_nums_(0),
-                                                 join_table_loading_(0)
-    {
-    }
-
-    ObJoinCompactSSTable::~ObJoinCompactSSTable()
-    {
-      clear();
-    }
-
-    void ObJoinCompactSSTable::clear()
-    {
-      while(!compare_and_set_load_flag())
-      {
-        TBSYS_LOG(WARN,"wait for join_table_loading_ flag");
-        usleep(500000);
-      }
-
-      for(uint64_t i=0; i < join_table_nums_; ++i)
-      {
-        tablet_[i].release_compactsstable();
-      }
-
-      join_table_nums_ = 0;
-      clear_load_flag();
-    }
-
-    bool ObJoinCompactSSTable::compare_and_set_load_flag()
-    {
-      bool ret = false;
-      if (0 == atomic_compare_exchange(&join_table_loading_,1,0))
-      {
-        ret = true;
-      }
-      return ret;
-    }
-
-    void ObJoinCompactSSTable::clear_load_flag()
-    {
-      //atomic_dec(&join_table_loading_);
-      join_table_loading_ = 0;
-    }
-
-    /** 
-     * add a new join table,set load flag first
-     * 
-     * @param table_id 
-     * 
-     * @return 
-     */
-    int ObJoinCompactSSTable::add_join_table(const uint64_t table_id)
-    {
-      int ret = OB_SUCCESS;
-      bool found = false;
-      if (OB_INVALID_ID == table_id)
-      {
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else if (join_table_nums_ >= OB_MAX_JOIN_TABLE_NUM)
-      {
-        TBSYS_LOG(WARN,"size overflow,join_table_nums(%ld)",join_table_nums_);
-        ret = OB_SIZE_OVERFLOW;
+        // no tablet
       }
       else
       {
-        for(uint64_t i = 0; i < join_table_nums_; ++i)
+        if (read_idx_ >= MAX_TABLETS_NUM)
         {
-          if (tablet_[i].get_range().table_id_ == table_id)
-          {
-            found = true;
-          }
+          read_idx_ = 0;
         }
 
-        if (!found)
+        if ((tablets_num_ > 0) && (read_idx_ != write_idx_))
         {
-          ObRange range;
-          range.table_id_ = table_id;
-          range.border_flag_.set_min_value();
-          range.border_flag_.set_max_value();
-          tablet_[join_table_nums_].set_range(range);
-          tablet_[join_table_nums_].set_join_compactsstable_tablet(true);
-          tablet_[join_table_nums_].set_data_version(THE_CHUNK_SERVER.get_tablet_manager().get_serving_data_version());
-          ++join_table_nums_;
+          tablet = tablets_[read_idx_++];
+          --tablets_num_;
         }
       }
-      return ret;
+      return tablet;
     }
-
-    ObTablet* ObJoinCompactSSTable::get_join_tablet(const uint64_t table_id)
-    {
-      ObTablet* ret = NULL;
-      if (OB_INVALID_ID != table_id)
-      {
-        for(uint64_t i=0; i < join_table_nums_; ++i)
-        {
-          if (tablet_[i].get_range().table_id_ == table_id)
-          {
-            ret = &tablet_[i];
-            break;
-          }
-        }
-
-        if ((ret != NULL) &&
-            (ret->get_data_version() != THE_CHUNK_SERVER.get_tablet_manager().get_serving_data_version()))
-        {
-          ret = NULL;
-        }
-      }
-      return ret;
-    }
-
   } //end namespace chunkserver
 } //end namespace oceanbase

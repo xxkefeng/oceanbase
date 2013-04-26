@@ -20,7 +20,6 @@
 #include "key_generator.h"
 #include "value_generator.h"
 #include "prefix_info.h"
-#include "oceanbase.h"
 
 class BigqueryWriter
 {
@@ -28,21 +27,27 @@ class BigqueryWriter
     BigqueryWriter();
     ~BigqueryWriter();
 
-    int init(ObSqlClient& ob_client, PrefixInfo& prefix_info, const char* rs_ip, int32_t rs_port);
+    int init(MysqlClient& ob_client, PrefixInfo& prefix_info);
 
   public:
     int write_data(uint64_t prefix);
 
   private:
-    int write_data(uint64_t prefix, uint64_t suffix, int64_t* col_ary, int64_t arr_len);
+    int prepare();
+    int write_data(uint64_t prefix, uint64_t suffix, int64_t* col_ary, int64_t arr_len,
+        MYSQL_BIND* bind_ary, int64_t& bind_ary_size, int64_t* col_arr_store);
     void translate_uint64(char* rowkey, uint64_t value);
-    int commit_set();
+    int commit();
+
+  private:
+    static const int64_t NUM_PER_MUTATION = 1024;
 
   private:
     PrefixInfo* prefix_info_;
     ValueGenerator value_gen_;
-    OB* ob_;
-    OB_SET* req_;
+    //OB* ob_;
+    //OB_SET* req_;
+    MysqlClient* mysql_client_;
 };
 
 #endif //__BIGQUERY_WRITER_H__

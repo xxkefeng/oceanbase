@@ -106,6 +106,7 @@ namespace oceanbase
       common::ObVector<int64_t>   join_row_width_vec_;
       common::ObVector<int64_t>   join_offset_vec_;
       common::ObCellInfo          join_apply_cell_adjusted_;
+      common::ObStringBuf         rowkey_buffer_;
     };
   }
 }

@@ -17,13 +17,55 @@
 #include <getopt.h>
 #include "util.h"
 #include "key_generator.h"
-#include "bigquerytest_main.h"
+#include "bigquerytest.h"
+#include "mysql.h"
+
+char g_config[1024];
+
+void print_usage()
+{
+  fprintf(stderr, "./bigquery -f bigquery.conf\n");
+}
+
+void parse_cmd_line(const int argc,  char *const argv[])
+{
+  int opt = 0;
+  const char* opt_string = "f:h";
+  struct option longopts[] =
+  {
+    {"config", 1, NULL, 'f'},
+    {"help", 0, NULL, 'h'},
+    {0, 0, 0, 0}
+  };
+
+  while((opt = getopt_long(argc, argv, opt_string, longopts, NULL)) != -1) {
+    switch (opt) {
+      case 'f':
+        snprintf(g_config, sizeof (g_config), "%s", optarg);
+        break;
+      case 'h':
+        print_usage();
+        exit(1);
+      default:
+        break;
+    }
+  }
+}
 
 int main(int argc, char** argv)
 {
-  BigqueryTestMain* sm = BigqueryTestMain::get_instance();
+  int ret = EXIT_SUCCESS;
+  mysql_init(NULL);
+  parse_cmd_line(argc, argv);
+  TBSYS_CONFIG.load(g_config);
+  TBSYS_LOGGER.setFileName("bigquery.log");
+  TBSYS_LOGGER.setLogLevel("info");
+  TBSYS_LOGGER.setMaxFileSize(256 * 1024L * 1024L); /* 256M */
 
-  int ret = sm->start(argc, argv, "public");
+  BigqueryTest bigquery;
+  bigquery.start();
+  bigquery.wait();
+  bigquery.stop();
 
   return ret;
 }

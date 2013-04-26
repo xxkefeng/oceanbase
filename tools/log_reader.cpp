@@ -238,8 +238,10 @@ void print_ups_mutator_head(int64_t seq, int64_t len, const ObUpsMutator &mut, c
   ctime_r(&tm, time_buf);
   time_buf[strlen(time_buf) - 1] = '\0';
 
-  fprintf(Param::get_instance().get_out_stream(), "SEQ: %lu\tPayload Length: %ld\tTYPE: %s\tMutatorTime: %s\t%s\n",
-      seq, len, IDS::str_log_cmd(OB_LOG_UPS_MUTATOR), time_buf, op);
+  fprintf(Param::get_instance().get_out_stream(), "SEQ: %lu\tPayload Length: %ld\tTYPE: %s\tMutatorTime: %s\t%s %ld "
+          "ChecksumBefore=%lu ChecksumAfter=%lu\n",
+          seq, len, IDS::str_log_cmd(OB_LOG_UPS_MUTATOR), time_buf, op, mut.get_mutate_timestamp(),
+          mut.get_memtable_checksum_before_mutate(), mut.get_memtable_checksum_after_mutate());
 }
 
 void print_ups_mutator_body(int cell_idx, ObMutatorCellInfo* cell, const char* row_key_buf)
@@ -371,7 +373,6 @@ int print_ups_mutator(int64_t seq, const char* buf, int64_t len)
           }
         }
 
-        hex_to_str(cell->cell_info.row_key_.ptr(), cell->cell_info.row_key_.length(), row_key_buf, row_key_len);
         if (!Param::get_instance().has_sub_row_key() || strstr(row_key_buf, Param::get_instance().get_sub_row_key()) != NULL)
         {
           if (!print_flag)
@@ -379,14 +380,14 @@ int print_ups_mutator(int64_t seq, const char* buf, int64_t len)
             print_ups_mutator_head(seq, len, mut, mutator_op);
             print_flag = true;
           }
-          print_ups_mutator_body(cell_idx, cell, row_key_buf);
+          print_ups_mutator_body(cell_idx, cell, to_cstring(cell->cell_info.row_key_));
         }
       }
 
       ++cell_idx;
     }
   }
-  
+
   return ret;
 }
 

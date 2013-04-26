@@ -26,13 +26,15 @@
 #include "common/ob_scanner.h"
 #include "common/ob_read_common_data.h"
 #include "common/ob_string.h"
-#include "common/ob_malloc.h" 
+#include "common/ob_malloc.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 
 const int64_t TIMEOUT =  100000000L;
+static CharArena allocator_;
 
 struct CParam
 {
@@ -93,7 +95,7 @@ int parse_cmd_args(int argc, char **argv, CParam & param)
         param.server_addr_ = optarg;
         break;
       case 'b':
-        param.backward_ = true; 
+        param.backward_ = true;
         break;
       case 'p':
         param.server_port_ = atoi(optarg);
@@ -141,7 +143,7 @@ int parse_cmd_args(int argc, char **argv, CParam & param)
       err = OB_ALLOCATE_MEMORY_FAILED;
     }
   }
-  
+
   tbsys::CConfig config;
   if (OB_SUCCESS == err && !param.schema_mgr_->parse_from_file(param.schema_fname_,config))
   {
@@ -182,7 +184,7 @@ int check_result(const CParam & param, const bool backward, const int64_t count,
           || (cur_cell->table_name_ != table_name))
       {
         TBSYS_LOG(ERROR, "check table name rowkey or type failed");
-        hex_dump(cur_cell->row_key_.ptr(), cur_cell->row_key_.length());  
+        //hex_dump(cur_cell->row_key_.ptr(), cur_cell->row_key_.length());
         cur_cell->value_.dump();
         err = OB_ERROR;
         break;
@@ -198,7 +200,8 @@ int check_result(const CParam & param, const bool backward, const int64_t count,
         }
         column_id = column->get_id();
         int64_t pos = 0;
-        serialization::decode_i64(cur_cell->row_key_.ptr(), cur_cell->row_key_.length(), pos, &row_key);
+        ObString key = TestRowkeyHelper(cur_cell->row_key_, &allocator_);
+        serialization::decode_i64(key.ptr(), key.length(), pos, &row_key);
         if (row_change)
         {
           TBSYS_LOG(INFO, "test scan succ:table[%lu], rowkey[%ld]", column->get_table_id(), row_key);
@@ -218,7 +221,7 @@ int check_result(const CParam & param, const bool backward, const int64_t count,
   return err;
 }
 
-int get_first_row_key(ObScanner & scanner, ObString & rowkey)
+int get_first_row_key(ObScanner & scanner, ObRowkey & rowkey)
 {
   scanner.reset_iter();
   ObCellInfo * cell = NULL;
@@ -252,41 +255,41 @@ int scan(CParam &param, MockClient &client)
   }
   else
   {
-    ObString start_rowkey_str;
-    ObString end_rowkey_str;
+    ObRowkey start_rowkey_str;
+    ObRowkey end_rowkey_str;
     ObString column_str;
     ObObj value_obj;
     ObScanner scanner;
     char buffer[128];
     char buffer_end[128];
     ObScanParam scan_param;
-    ObRange range;
+    ObNewRange range;
     int64_t pos = 0;
     if (param.start_key_ > 0)
     {
       serialization::encode_i64(buffer, sizeof(buffer), pos, param.start_key_);
-      start_rowkey_str.assign(buffer, static_cast<int32_t>(pos));
+      start_rowkey_str = make_rowkey(buffer, pos, &allocator_);
       range.start_key_ = start_rowkey_str;
     }
     else
     {
-      range.border_flag_.set_min_value();
+      range.start_key_.set_min_row();
     }
 
     if (param.end_key_ > 0)
     {
       pos = 0;
       serialization::encode_i64(buffer_end, sizeof(buffer), pos, param.end_key_);
-      end_rowkey_str.assign(buffer_end, static_cast<int32_t>(pos));
+      end_rowkey_str = make_rowkey(buffer_end, pos, &allocator_);
       range.end_key_ = end_rowkey_str;
     }
     else
     {
-      range.border_flag_.set_max_value();
+      range.end_key_.set_max_row();
     }
 
     // set borderflag
-    if (!range.border_flag_.is_min_value())
+    if (!range.start_key_.is_min_row())
     {
       range.border_flag_.unset_inclusive_start();
     }
@@ -295,7 +298,7 @@ int scan(CParam &param, MockClient &client)
       range.border_flag_.set_inclusive_start();
     }
 
-    if (range.border_flag_.is_max_value())
+    if (range.end_key_.is_max_row())
     {
       range.border_flag_.unset_inclusive_end();
     }
@@ -303,18 +306,18 @@ int scan(CParam &param, MockClient &client)
     {
       range.border_flag_.set_inclusive_end();
     }
-    
+
     scan_param.set(OB_INVALID_ID, table_name, range);
     if (param.backward_)
     {
       scan_param.set_scan_direction(ObScanParam::BACKWARD);
     }
-    
+
     ObVersionRange version_range;
     version_range.border_flag_.set_min_value();
     version_range.border_flag_.set_max_value();
     scan_param.set_version_range(version_range);
-    
+
     int32_t size = 0;
     const ObColumnSchemaV2 * column_info = param.schema_mgr_->get_table_schema(schema->get_table_id(), size);
     for (int32_t j = 0; j < size; ++j)
@@ -338,9 +341,10 @@ int scan(CParam &param, MockClient &client)
       }
       ++column_info;
     }
-    
-    ObScanParam new_param = scan_param;
-    ObString max_key;
+
+    ObScanParam new_param;
+    new_param.safe_copy(scan_param);
+    ObRowkey max_key;
     while (err == OB_SUCCESS)
     {
       err = client.ups_scan(new_param, scanner, TIMEOUT);
@@ -360,7 +364,7 @@ int scan(CParam &param, MockClient &client)
           TBSYS_LOG(INFO, "check result succ:table[%lu]", schema->get_table_id());
         }
       }
-      
+
       if (OB_SUCCESS == err)
       {
         if (true == param.backward_)
@@ -380,25 +384,23 @@ int scan(CParam &param, MockClient &client)
           }
         }
       }
-      
+
       if (OB_SUCCESS == err)
       {
-        ObRange rang = *new_param.get_range();
+        ObNewRange rang = *new_param.get_range();
         if (true == param.backward_)
         {
-          range.border_flag_.unset_max_value();
           range.end_key_ = max_key;
           range.border_flag_.unset_inclusive_end();
         }
         else
         {
-          range.border_flag_.unset_min_value();
           range.start_key_ = max_key;
           range.border_flag_.unset_inclusive_start();
         }
         new_param.set(OB_INVALID_ID, table_name, range);
       }
-      
+
       if (OB_SUCCESS == err)
       {
         bool is_fullfill = false;
@@ -435,7 +437,7 @@ int main(int argc, char **argv)
   MockClient client;
   if (OB_SUCCESS == err)
   {
-    init_mock_client(param.server_addr_, param.server_port_, client);  
+    init_mock_client(param.server_addr_, param.server_port_, client);
     err = scan(param, client);
     if (err != OB_SUCCESS)
     {
@@ -446,4 +448,3 @@ int main(int argc, char **argv)
   delete param.schema_mgr_;
   return err;
 }
-

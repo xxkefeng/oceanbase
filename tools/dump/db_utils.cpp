@@ -36,22 +36,21 @@ void escape_varchar(char *p, int size)
   }
 }
 
-int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
+int append_obj(const ObObj &obj, ObDataBuffer &buff)
 {
   int64_t cap = buff.get_remain();
   int64_t len = -1;
-  int type = cell->value_.get_type();
+  int type = obj.get_type();
   char *data = buff.get_data();
   int64_t pos = buff.get_position();
 
   switch(type) {
    case ObNullType:
-     //     TBSYS_LOG(INFO, "Null Type");
      len = 0;
      break;
    case ObIntType:
      int64_t val;
-     if (cell->value_.get_int(val) != OB_SUCCESS) {
+     if (obj.get_int(val) != OB_SUCCESS) {
        TBSYS_LOG(ERROR, "get_int error");
        break;
      }
@@ -60,7 +59,7 @@ int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
    case ObVarcharType:
      {
        ObString str;
-       if (cell->value_.get_varchar(str) != OB_SUCCESS ||
+       if (obj.get_varchar(str) != OB_SUCCESS ||
            cap < str.length()) {
          TBSYS_LOG(ERROR, "get_varchar error");
          break;
@@ -74,7 +73,7 @@ int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
    case ObPreciseDateTimeType:
      {
        int64_t value;
-       if (cell->value_.get_precise_datetime(value) != OB_SUCCESS) {
+       if (obj.get_precise_datetime(value) != OB_SUCCESS) {
          TBSYS_LOG(ERROR, "get_precise_datetime error");
          break;
        }
@@ -84,8 +83,8 @@ int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
    case ObDateTimeType:
      {
        int64_t value;
-       if (cell->value_.get_datetime(value) != OB_SUCCESS) {
-         TBSYS_LOG(ERROR, "get_datetime error ");
+       if (obj.get_datetime(value) != OB_SUCCESS) {
+         TBSYS_LOG(ERROR, "get_datetime error");
          break;
        }
        len = ObDateTime2MySQLDate(value, type, data + pos, static_cast<int32_t>(cap));
@@ -94,7 +93,7 @@ int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
    case ObModifyTimeType:
      {
        int64_t value;
-       if (cell->value_.get_modifytime(value) != OB_SUCCESS) {
+       if (obj.get_modifytime(value) != OB_SUCCESS) {
          TBSYS_LOG(ERROR, "get_modifytime error ");
          break;
        }
@@ -104,7 +103,7 @@ int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
    case ObCreateTimeType:
      {
        int64_t value;
-       if (cell->value_.get_createtime(value) != OB_SUCCESS) {
+       if (obj.get_createtime(value) != OB_SUCCESS) {
          TBSYS_LOG(ERROR, "get_createtime error");
          break;
        }
@@ -114,7 +113,7 @@ int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
    case ObFloatType:
      {
        float value;
-       if (cell->value_.get_float(value) != OB_SUCCESS) {
+       if (obj.get_float(value) != OB_SUCCESS) {
          TBSYS_LOG(ERROR, "get_float error");
          break;
        }
@@ -124,7 +123,7 @@ int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
    case ObDoubleType:
      {
        double value;
-       if (cell->value_.get_double(value) != OB_SUCCESS) {
+       if (obj.get_double(value) != OB_SUCCESS) {
          TBSYS_LOG(ERROR, "get_double error");
          break;
        }
@@ -132,7 +131,7 @@ int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
      }
      break;
    default:
-     TBSYS_LOG(WARN, "Not Defined Type %d", cell->value_.get_type());
+     TBSYS_LOG(WARN, "Not Defined Type %d", obj.get_type());
      break;
   }
 
@@ -140,7 +139,12 @@ int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
     buff.get_position() += len;
   }
 
-  return static_cast<int32_t>(len);
+  return static_cast<int>(len);
+}
+
+int serialize_cell(ObCellInfo *cell, ObDataBuffer &buff)
+{
+  return append_obj(cell->value_, buff);
 }
 
 int append_delima(ObDataBuffer &buff)
@@ -261,6 +265,7 @@ int transform_date_to_time(const char *str, int len, ObDateTime &t)
   time_t tmp_time = 0;
   char back = str[len];
   const_cast<char*>(str)[len] = '\0';
+  //TBSYS_LOG(INFO, "input str = %s", str);
   if (NULL != str && *str != '\0')
   {
     if (strchr(str, '-') != NULL)

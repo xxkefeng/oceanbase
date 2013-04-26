@@ -311,7 +311,7 @@ TEST(ObRootServer2LogTest, us_schema_changing)
 
   ObServerStatus* us = wrapper.get_update_server();
   us->status_ = ObServerStatus::STATUS_SERVING;
-  
+
   wrapper.get_log_worker().do_us_mem_freezing(us->server_, 0);
 
   ASSERT_EQ(ObServerStatus::STATUS_REPORTING, us->status_);
@@ -327,7 +327,7 @@ TEST(ObRootServer2LogTest, us_schema_changed)
 
   ObServerStatus* us = wrapper.get_update_server();
   us->status_ = ObServerStatus::STATUS_REPORTING;
-  
+
   wrapper.get_log_worker().do_us_mem_frozen(us->server_, 0);
   ASSERT_EQ(ObServerStatus::STATUS_REPORTED, us->status_);
 }
@@ -389,7 +389,7 @@ TEST(ObRootServer2LogTest, us_unload_done)
 
   ObServerStatus* us = wrapper.get_update_server();
   us->status_ = ObServerStatus::STATUS_REPORTED;
-  
+
   wrapper.get_log_worker().do_us_unload_done(us->server_);
   ASSERT_EQ(ObServerStatus::STATUS_SERVING, us->status_);
 }
@@ -437,8 +437,7 @@ TEST(ObRootServer2LogTest, do_cs_migrate_done)
   info.range_.table_id_ = 10001;
   info.range_.border_flag_.set_inclusive_end();
   info.range_.border_flag_.unset_inclusive_start();
-  info.range_.border_flag_.set_min_value();
-  info.range_.border_flag_.unset_max_value();
+  info.range_.start_key_.set_min_row();
 
   info.range_.start_key_.assign_buffer(buf1[0], 30);
   info.range_.end_key_.assign_buffer(buf2[0], 30);
@@ -485,8 +484,7 @@ TEST(ObRootServer2LogTest, do_report_tablets)
   info.range_.table_id_ = 10001;
   info.range_.border_flag_.set_inclusive_end();
   info.range_.border_flag_.unset_inclusive_start();
-  info.range_.border_flag_.set_min_value();
-  info.range_.border_flag_.unset_max_value();
+  info.range_.start_key_.set_min_row();
 
   info.range_.start_key_.assign_buffer(buf1[0], 30);
   info.range_.end_key_.assign_buffer(buf2[0], 30);

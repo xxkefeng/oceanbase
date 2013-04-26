@@ -1,6 +1,6 @@
 /*
  *  (C) 2007-2010 Taobao Inc.
- *  
+ *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
  *  published by the Free Software Foundation.
@@ -20,6 +20,8 @@
 #include "common/ob_malloc.h"
 #include "common/ob_string.h"
 #include "common/utility.h"
+#include "common/ob_general_rpc_stub.h"
+#include "common/file_directory_utils.h"
 #include "chunkserver/ob_tablet_image.h"
 #include "chunkserver/ob_fileinfo_cache.h"
 #include "sstable/ob_sstable_reader.h"
@@ -71,7 +73,11 @@ void GFactory::init_cmd_map()
   cmd_map_["restart_server"] = CMD_RESTART_SERVER;
   cmd_map_["create_tablet"] = CMD_CREATE_TABLET;
   cmd_map_["delete_tablet"] = CMD_DELETE_TABLET;
+  cmd_map_["execute_sql"] = CMD_EXECUTE_SQL;
   cmd_map_["sync_images"] = CMD_SYNC_ALL_IMAGES;
+  cmd_map_["delete_table"] = CMD_DELETE_TABLE;
+  cmd_map_["load_sstables"] = CMD_LOAD_SSTABLES;
+  cmd_map_["dump_sstable_dist"] = CMD_DUMP_SSTABLE_DIST;
 }
 
 int GFactory::initialize(const ObServer& remote_server)
@@ -79,40 +85,28 @@ int GFactory::initialize(const ObServer& remote_server)
   common::ob_init_memory_pool();
   common::ob_init_crc64_table(OB_DEFAULT_CRC64_POLYNOM);
   init_cmd_map();
+  init_obj_type_map_();
 
-  int ret = client_.initialize();
-  if (OB_SUCCESS != ret) 
+  int ret = client_.initialize(remote_server);
+  if (OB_SUCCESS != ret)
   {
     TBSYS_LOG(ERROR, "initialize client object failed, ret:%d", ret);
     return ret;
   }
 
-  ret = rpc_stub_.initialize(remote_server, &client_.get_client_manager());
-  if (OB_SUCCESS != ret) 
+  ret = rpc_stub_.initialize(remote_server, &client_.get_client_mgr());
+  if (OB_SUCCESS != ret)
   {
     TBSYS_LOG(ERROR, "initialize rpc stub failed, ret:%d", ret);
   }
   return ret;
 }
 
-int GFactory::start()
-{
-  client_.start();
-  return OB_SUCCESS;
-}
-
 int GFactory::stop()
 {
-  client_.stop();
+  client_.destroy();
   return OB_SUCCESS;
 }
-
-int GFactory::wait()
-{
-  client_.wait();
-  return OB_SUCCESS;
-}
-
 
 int parse_command(const char *cmdlist, vector<string> &param)
 {
@@ -135,26 +129,31 @@ int parse_command(const char *cmdlist, vector<string> &param)
     }
     const map<string, int> & cmd_map = GFactory::get_instance().get_cmd_map();
     map<string, int>::const_iterator it = cmd_map.find(key);
-    if (it == cmd_map.end()) 
+    if (it == cmd_map.end())
     {
-        return CMD_MIN;    
-    } 
-    else 
+        return CMD_MIN;
+    }
+    else
     {
         cmd = it->second;
     }
 
-    if (token != NULL) 
+    if (token != NULL)
     {
         token ++;
         key = token;
-    } 
-    else 
+    }
+    else
     {
         key = NULL;
     }
     //·Ö½â
     param.clear();
+    if (key != NULL && CMD_EXECUTE_SQL == cmd)
+    {
+      param.push_back(key);
+      return cmd;
+    }
     while((token = strsep(&key, " ")) != NULL) {
         if (token[0] == '\0') continue;
         param.push_back(token);
@@ -165,14 +164,15 @@ int parse_command(const char *cmdlist, vector<string> &param)
 int get_tablet_info(const vector<string> &param)
 {
   int ret = 0;
-  if (param.size() <= 2) 
+  if (param.size() <= 2)
   {
     fprintf(stderr, "get_tablet_info: input param error\n");
     fprintf(stderr, "get_tablet_info table_id table_name range_str\n");
     return OB_ERROR;
   }
 
-  ObRange range;
+  /*
+  ObNewRange range;
 
   int64_t table_id = strtoll(param[0].c_str(), NULL, 10);
   const char* table_name = param[1].c_str();
@@ -191,69 +191,18 @@ int get_tablet_info(const vector<string> &param)
   for (int i = 0; i < safe_copy_num; ++i)
   {
     location[i].chunkserver_.to_string(host_string, 256);
-    fprintf(stderr, "location (%d), version = %ld , host = %s \n", 
+    fprintf(stderr, "location (%d), version = %ld , host = %s \n",
         i, location[i].tablet_version_, host_string);
   }
+  */
 
   return ret;
-}
-
-void dump_multi_version_tablet_image(ObMultiVersionTabletImage & image, bool load_sstable)
-{
-  ObTablet *tablet  = NULL;
-  uint64_t crcsum = 0;
-  int tablet_index = 0;
-  char range_bufstr[OB_MAX_FILE_NAME_LENGTH];
-
-  int ret = image.begin_scan_tablets();
-  while (OB_SUCCESS == ret)
-  {
-    ret = image.get_next_tablet(tablet);
-    if (OB_SUCCESS == ret)
-    {
-      tablet->get_range().to_string(range_bufstr, OB_MAX_FILE_NAME_LENGTH);
-      crcsum = tablet->get_checksum();
-      fprintf(stderr, "tablet(%d) : %s \n", tablet_index, range_bufstr);
-      fprintf(stderr, "\t info: data version = %ld , disk no = %d, "
-          "row count = %ld, occupy size = %ld , crc sum = %ld , merged= %d, removed= %d\n", 
-          tablet->get_data_version(), tablet->get_disk_no(), tablet->get_row_count(), 
-          tablet->get_occupy_size(), crcsum, tablet->is_merged(), tablet->is_removed());
-      // dump sstable content
-      const ObArrayHelper<ObSSTableId> & sstable_id_array = tablet->get_sstable_id_list();
-      const ObArrayHelper<ObSSTableReader*> & sstable_reader_array = tablet->get_sstable_reader_list();
-
-      if (!load_sstable)
-      {
-        for (int64_t idx = 0; idx < sstable_id_array.get_array_index(); ++idx)
-        {
-          ObSSTableId id = *sstable_id_array.at(idx);
-          fprintf(stderr, "\t sstable[%ld]:%ld\n", idx, id.sstable_file_id_);
-        }
-      }
-      else
-      {
-        for (int64_t idx = 0; idx < sstable_reader_array.get_array_index(); ++idx)
-        {
-          ObSSTableReader *reader = *sstable_reader_array.at(idx);
-          fprintf(stderr, "\t sstable[%ld]:%ld, size = %d, block count = %ld , row count = %ld\n", 
-              idx, sstable_id_array.at(idx)->sstable_file_id_,
-              reader->get_trailer().get_size(), 
-              reader->get_trailer().get_block_count(), 
-              reader->get_trailer().get_row_count() );
-        }
-      }
-
-      ++tablet_index;
-    }
-    if (NULL != tablet) image.release_tablet(tablet);
-  }
-  image.end_scan_tablets();
 }
 
 int dump_tablet_image(const vector<string> &param)
 {
   int ret = 0;
-  if (param.size() < 1) 
+  if (param.size() < 1)
   {
     fprintf(stderr, "dump_tablet_image: input param error\n");
     fprintf(stderr, "dump_tablet_image disk_no \n");
@@ -284,7 +233,7 @@ int dump_tablet_image(const vector<string> &param)
     {
       ObString image_buf;
       ret = GFactory::get_instance().get_rpc_stub().cs_dump_tablet_image(idx, disk_no_array[i], image_buf);
-      if (OB_SUCCESS != ret) 
+      if (OB_SUCCESS != ret)
       {
         //fprintf(stderr, "disk = %d has no tablets \n ", disk_no_array[i]);
       }
@@ -292,6 +241,14 @@ int dump_tablet_image(const vector<string> &param)
       {
         pos = 0;
         ret = image_obj.deserialize(disk_no_array[i], image_buf.ptr(), image_buf.length(), pos);
+        if (OB_SUCCESS != ret)
+        {
+          fprintf(stderr, "deserialize tablet image failed\n");
+        }
+        else
+        {
+          image_obj.upgrade_service();
+        }
       }
     }
   }
@@ -303,7 +260,7 @@ int dump_tablet_image(const vector<string> &param)
 int check_merge_process(const vector<string> &param)
 {
   int ret = 0;
-  if (param.size() < 1) 
+  if (param.size() < 1)
   {
     fprintf(stderr, "check_merge_process: input param error\n");
     fprintf(stderr, "check_merge_process disk_no \n");
@@ -332,7 +289,7 @@ int check_merge_process(const vector<string> &param)
     {
       ObString image_buf;
       ret = GFactory::get_instance().get_rpc_stub().cs_dump_tablet_image(idx, disk_no_array[i], image_buf);
-      if (OB_SUCCESS != ret) 
+      if (OB_SUCCESS != ret)
       {
         //fprintf(stderr, "disk = %d has no tablets \n ", disk_no_array[i]);
       }
@@ -416,7 +373,7 @@ int check_merge_process(const vector<string> &param)
   {
     if (high_count.merged != 0)
     {
-      fprintf(stderr, "exception, low version %ld (%d,%d) ,high version %ld (%d,%d)\n", 
+      fprintf(stderr, "exception, low version %ld (%d,%d) ,high version %ld (%d,%d)\n",
           low_version, low_count.merged, low_count.not_merged, high_version, high_count.merged, high_count.not_merged);
     }
     else
@@ -426,7 +383,7 @@ int check_merge_process(const vector<string> &param)
   }
   else
   {
-    fprintf(stderr, "in merge process, merge version %ld to %ld, merged count= %d, not merged count = %d\n", 
+    fprintf(stderr, "in merge process, merge version %ld to %ld, merged count= %d, not merged count = %d\n",
         low_version, high_version, low_count.merged, low_count.not_merged);
   }
 
@@ -436,7 +393,7 @@ int check_merge_process(const vector<string> &param)
 int migrate_tablet(const vector<string> &param)
 {
   int ret = 0;
-  if (param.size() < 5) 
+  if (param.size() < 5)
   {
     fprintf(stderr, "migrate_tablet: input param error\n");
     fprintf(stderr, "migrate_tablet table range range_format dest_server keep_src\n");
@@ -465,7 +422,7 @@ int migrate_tablet(const vector<string> &param)
     dest.set_ipv4_addr(ip.c_str(), atoi(port.c_str()));
   }
 
-  ObRange range;
+  ObNewRange range;
   range.table_id_ = table_id;
   ret = parse_range_str(range_str.c_str(), hex_format, range);
   if (ret)
@@ -474,19 +431,13 @@ int migrate_tablet(const vector<string> &param)
     return ret;
   }
 
-  char range_buffer[256];
-  char server_buffer[256];
-
-  range.to_string(range_buffer, 256);
-  dest.to_string(server_buffer, 256);
-
-
-  fprintf(stderr, "migrate tablet : %s to dest server : %s \n", range_buffer, server_buffer);
+  fprintf(stderr, "migrate tablet : %s to dest server : %s \n",
+      to_cstring(range), to_cstring(dest));
 
   ret = GFactory::get_instance().get_rpc_stub().migrate_tablet(dest, range, keep_src);
-  if (OB_SUCCESS != ret) 
+  if (OB_SUCCESS != ret)
   {
-    fprintf(stderr, "migrate range (%s) to server (%s) keep_src(%d) failed.\n", 
+    fprintf(stderr, "migrate range (%s) to server (%s) keep_src(%d) failed.\n",
         range_str.c_str(), dest_server.c_str(), keep_src);
   }
 
@@ -496,7 +447,7 @@ int migrate_tablet(const vector<string> &param)
 int create_tablet(const vector<string> &param)
 {
   int ret = 0;
-  if (param.size() < 4) 
+  if (param.size() < 4)
   {
     fprintf(stderr, "create_tablet: input param error\n");
     fprintf(stderr, "create_tablet table range range_format last_frozen_version\n");
@@ -508,7 +459,7 @@ int create_tablet(const vector<string> &param)
   const int hex_format = atoi(param[2].c_str());
   const int64_t last_frozen_version = strtoll(param[3].c_str(), NULL, 10);
 
-  ObRange range;
+  ObNewRange range;
   range.table_id_ = table_id;
   ret = parse_range_str(range_str.c_str(), hex_format, range);
   if (ret)
@@ -517,13 +468,10 @@ int create_tablet(const vector<string> &param)
     return ret;
   }
 
-  char range_buffer[1024];
-  range.to_string(range_buffer, 1024);
-
-  fprintf(stderr, "create tablet : %s\n", range_buffer);
+  fprintf(stderr, "create tablet : %s\n", to_cstring(range));
 
   ret = GFactory::get_instance().get_rpc_stub().create_tablet(range, last_frozen_version);
-  if (OB_SUCCESS != ret) 
+  if (OB_SUCCESS != ret)
   {
     fprintf(stderr, "create range (%s) failed.\n", range_str.c_str());
   }
@@ -534,7 +482,7 @@ int create_tablet(const vector<string> &param)
 int delete_tablet(const vector<string> &param)
 {
   int ret = 0;
-  if (param.size() < 5) 
+  if (param.size() < 5)
   {
     fprintf(stderr, "delete_tablet: input param error\n");
     fprintf(stderr, "delete_tablet table range range_format tablet_version is_force\n");
@@ -545,9 +493,9 @@ int delete_tablet(const vector<string> &param)
   const string &range_str = param[1];
   const int hex_format = atoi(param[2].c_str());
   const int64_t tablet_version = strtoll(param[3].c_str(), NULL, 10);
-  int is_force = atoi(param[4].c_str()); 
+  int is_force = atoi(param[4].c_str());
 
-  ObRange range;
+  ObNewRange range;
   range.table_id_ = table_id;
   ret = parse_range_str(range_str.c_str(), hex_format, range);
   if (ret)
@@ -570,10 +518,10 @@ int delete_tablet(const vector<string> &param)
     fprintf(stderr, "failed to add tablet info to delete tablet info list, range=%s\n",
       range_buffer);
   }
-  else 
+  else
   {
     ret = GFactory::get_instance().get_rpc_stub().delete_tablet(info_list, is_force);
-    if (OB_SUCCESS != ret) 
+    if (OB_SUCCESS != ret)
     {
       fprintf(stderr, "delete range (%s) failed.\n", range_str.c_str());
     }
@@ -581,13 +529,13 @@ int delete_tablet(const vector<string> &param)
 
   return ret;
 }
+typedef std::map<ObRowkey, map<string, int64_t> > SimpleRootTable;
 
-typedef std::map<ObString, map<string, int64_t> > SimpleRootTable;
-
-int store_root_table(ObScanner & scanner, SimpleRootTable & root_table, bool & end_of_table, ObString & end_row_key)
+int store_root_table(ObScanner & scanner, SimpleRootTable & root_table, bool & end_of_table,
+    ObRowkey& end_row_key, ObMemBufAllocatorWrapper& end_row_key_allocator)
 {
   int ret = OB_SUCCESS;
-  
+
   ObScannerIterator iter;
   int row_count = 0;
   int column_index = 0;
@@ -596,7 +544,7 @@ int store_root_table(ObScanner & scanner, SimpleRootTable & root_table, bool & e
   char column_strbuf[OB_MAX_ROW_KEY_LENGTH];
   map<string, int64_t> root_item;
   int64_t column_value = 0;
-  ObString last_row_key;
+  ObRowkey last_row_key;
 
   end_of_table = false;
   root_table.clear();
@@ -635,15 +583,13 @@ int store_root_table(ObScanner & scanner, SimpleRootTable & root_table, bool & e
       ++column_index;
     }
 
-
-
     if (cell_info->value_.get_type() == ObIntType)
     {
       cell_info->value_.get_int(column_value);
     }
 
     memset(column_strbuf, 0, OB_MAX_ROW_KEY_LENGTH);
-    strncpy(column_strbuf, cell_info->column_name_.ptr(), cell_info->column_name_.length());
+    memcpy(column_strbuf, cell_info->column_name_.ptr(), cell_info->column_name_.length());
     string column_name(column_strbuf);
     root_item.insert(make_pair(column_name, column_value));
     //fprintf(stderr, "column_name=%s, column_value=%ld\n", column_name.c_str(), column_value);
@@ -652,7 +598,7 @@ int store_root_table(ObScanner & scanner, SimpleRootTable & root_table, bool & e
     /*
     TBSYS_LOG(DEBUG, "---------------------%d----------------------\n", row_count);
     hex_dump(cell_info->row_key_.ptr(), cell_info->row_key_.length());
-    TBSYS_LOG(DEBUG,"table_id:%lu, table_name:%.*s, column_id:%ld, column_name:%.*s, is_row_changed:%d\n", 
+    TBSYS_LOG(DEBUG,"table_id:%lu, table_name:%.*s, column_id:%ld, column_name:%.*s, is_row_changed:%d\n",
         cell_info->table_id_, cell_info->table_name_.length(), cell_info->table_name_.ptr(),
         cell_info->column_id_, cell_info->column_name_.length(), cell_info->column_name_.ptr(), is_row_changed);
     cell_info->value_.dump();
@@ -665,14 +611,17 @@ int store_root_table(ObScanner & scanner, SimpleRootTable & root_table, bool & e
   if (OB_SUCCESS == ret && last_row_key.ptr())
   {
     root_table.insert(make_pair(last_row_key, root_item));
-    if (last_row_key.length() >= 1 && *(unsigned char*)(last_row_key.ptr()) == 0xff)
+    if (last_row_key.is_max_row())
     {
       end_of_table = true;
     }
-    end_row_key = last_row_key;
+
+    if (OB_SUCCESS != (ret = last_row_key.deep_copy(end_row_key, end_row_key_allocator)))
+    {
+      TBSYS_LOG(ERROR, "failed to copy last rowkey, ret=%d", ret);
+    }
     //hex_dump(last_row_key.ptr(), last_row_key.length());
   }
-
 
   //fprintf(stderr, "row_count=%d, size=%d\n", row_count,root_table.size());
   return ret;
@@ -703,7 +652,7 @@ int64_t sum_total_line(const SimpleRootTable & root_table)
 
     ++it;
   }
-  return total_line;  
+  return total_line;
 }
 
 int parse_rowkey_split(const char* split_str, RowkeySplit& rowkey_split)
@@ -719,7 +668,7 @@ int parse_rowkey_split(const char* split_str, RowkeySplit& rowkey_split)
     ret = OB_ERROR;
   }
 
-  while(OB_SUCCESS == ret && 
+  while(OB_SUCCESS == ret &&
         (token = strsep(&rowkey_split_desc, ",")) != NULL) {
     if (token[0] == '\0') continue;
 
@@ -730,7 +679,7 @@ int parse_rowkey_split(const char* split_str, RowkeySplit& rowkey_split)
       ret = OB_ERROR;
       break;
     }
-    ret = sscanf(token, "%d-%d", &rowkey_split.item_[cnt].item_type_, 
+    ret = sscanf(token, "%d-%d", &rowkey_split.item_[cnt].item_type_,
       &rowkey_split.item_[cnt].item_size_);
     if (2 != ret)
     {
@@ -738,7 +687,7 @@ int parse_rowkey_split(const char* split_str, RowkeySplit& rowkey_split)
       ret = OB_ERROR;
       break;
     }
-    else 
+    else
     {
       rowkey_size += rowkey_split.item_[cnt].item_size_;
       cnt++;
@@ -760,7 +709,7 @@ int parse_rowkey_split(const char* split_str, RowkeySplit& rowkey_split)
   return ret;
 }
 
-int build_split_rowkey(char* buf, const int64_t buf_len, 
+int build_split_rowkey(char* buf, const int64_t buf_len,
   int64_t& pos, const ObString& rowkey, const ScanRootTableArg& arg)
 {
   int ret = OB_SUCCESS;
@@ -776,7 +725,7 @@ int build_split_rowkey(char* buf, const int64_t buf_len,
   struct tm *tm_struct = NULL;
   int64_t varchar_len = 0;
 
-  if (NULL == buf || buf_len <= 0 || buf_len <= pos 
+  if (NULL == buf || buf_len <= 0 || buf_len <= pos
       || split.item_size_ <= 0 || NULL == cur_str || rowkey.length() <= 0)
   {
     fprintf(stderr, "invalid param buf=%p, buf_len=%ld, "
@@ -790,15 +739,15 @@ int build_split_rowkey(char* buf, const int64_t buf_len,
   {
     for (int i = 0; i < split.item_size_ && OB_SUCCESS == ret; ++i)
     {
-      if (split.rowkey_size_ == rowkey.length() 
+      if (split.rowkey_size_ == rowkey.length()
           && cur_str + split.item_[i].item_size_> end_str)
       {
         fprintf(stderr, "rowkey part is out of boundary\n");
         ret = OB_ERROR;
         break;
       }
-      else if (split.item_[i].item_size_ <= 0 
-               || (split.rowkey_size_ == rowkey.length() 
+      else if (split.item_[i].item_size_ <= 0
+               || (split.rowkey_size_ == rowkey.length()
                    && pos + split.item_[i].item_size_ + 1 > buf_len))
       {
         fprintf(stderr, "not enough space to store rowkey\n");
@@ -817,8 +766,8 @@ int build_split_rowkey(char* buf, const int64_t buf_len,
           if (split.rowkey_size_ > rowkey.length())
           {
             /**
-             * if there is variable char column in rowkey, the item_size_ is 
-             * 0, and the variable char end with \0 
+             * if there is variable char column in rowkey, the item_size_ is
+             * 0, and the variable char end with \0
              */
             varchar_len = static_cast<int64_t>(strlen(cur_str));
             memcpy(buf + pos, cur_str, varchar_len);
@@ -840,8 +789,7 @@ int build_split_rowkey(char* buf, const int64_t buf_len,
               split.item_[i].item_size_);
             ret = OB_ERROR;
           }
-          else 
-          {
+          else {
             ret = decode_i64(cur_str, split.item_[i].item_size_, tmp_pos, &val64);
             if (OB_SUCCESS == ret)
             {
@@ -923,7 +871,7 @@ int build_split_rowkey(char* buf, const int64_t buf_len,
               time_val = val32;
             }
           }
-          else 
+          else
           {
             fprintf(stderr, "DATETIME must be 4 or 8 bytes, item_size_=%d\n",
               split.item_[i].item_size_);
@@ -938,26 +886,26 @@ int build_split_rowkey(char* buf, const int64_t buf_len,
               {
               case DATETIME_1:
                 pos += snprintf(buf + pos, buf_len - pos, "%4d-%2d-%2d %2d:%2d:%2d",
-                    tm_struct->tm_year, tm_struct->tm_mon, tm_struct->tm_mday, 
+                    tm_struct->tm_year + 1900, tm_struct->tm_mon + 1, tm_struct->tm_mday,
                     tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec);
                 break;
               case DATETIME_2:
                 pos += snprintf(buf + pos, buf_len - pos, "%4d-%2d-%2d",
-                    tm_struct->tm_year, tm_struct->tm_mon, tm_struct->tm_mday);
+                    tm_struct->tm_year + 1900, tm_struct->tm_mon + 1, tm_struct->tm_mday);
                 break;
               case DATETIME_3:
                 pos += snprintf(buf + pos, buf_len - pos, "%4d%2d%2d %2d:%2d:%2d",
-                    tm_struct->tm_year, tm_struct->tm_mon, tm_struct->tm_mday, 
+                    tm_struct->tm_year + 1900, tm_struct->tm_mon + 1, tm_struct->tm_mday,
                     tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec);
                 break;
               case DATETIME_4:
                 pos += snprintf(buf + pos, buf_len - pos, "%4d%2d%2d%2d%2d%2d",
-                    tm_struct->tm_year, tm_struct->tm_mon, tm_struct->tm_mday, 
+                    tm_struct->tm_year + 1900, tm_struct->tm_mon + 1, tm_struct->tm_mday,
                     tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec);
                 break;
               case DATETIME_5:
                 pos += snprintf(buf + pos, buf_len - pos, "%4d%2d%2d",
-                    tm_struct->tm_year, tm_struct->tm_mon, tm_struct->tm_mday);
+                    tm_struct->tm_year + 1900, tm_struct->tm_mon + 1, tm_struct->tm_mday);
                 break;
               default:
                 fprintf(stderr, "upsupport datetime type, type=%d", split.item_[i].item_type_);
@@ -983,7 +931,7 @@ int build_split_rowkey(char* buf, const int64_t buf_len,
   return ret;
 }
 
-int write_root_table_file(FILE* fp, const ScanRootTableArg& arg, 
+int write_root_table_file(FILE* fp, const ScanRootTableArg& arg,
   const SimpleRootTable & root_table, int64_t& index)
 {
   int ret = OB_SUCCESS;
@@ -999,10 +947,10 @@ int write_root_table_file(FILE* fp, const ScanRootTableArg& arg,
 
   while (OB_SUCCESS == ret && it != root_table.end())
   {
-    const ObString& rowkey = it->first;
+    const ObRowkey& rowkey = it->first;
     const map<string, int64_t>& item = it->second;
 
-    ret = build_split_rowkey(line, MAX_LINE_LENGTH, pos, rowkey, arg);
+    //ret = build_split_rowkey(line, MAX_LINE_LENGTH, pos, rowkey, arg);
     if (OB_SUCCESS == ret)
     {
       copy_size = snprintf(line + pos, MAX_LINE_LENGTH - pos, " %lu-%06ld", arg.table_id_, index);
@@ -1011,7 +959,7 @@ int write_root_table_file(FILE* fp, const ScanRootTableArg& arg,
         pos += copy_size;
         index++;
       }
-      else 
+      else
       {
         fprintf(stderr, "line buffer is not enough to store table id\n");
         ret = OB_ERROR;
@@ -1020,15 +968,17 @@ int write_root_table_file(FILE* fp, const ScanRootTableArg& arg,
 
     if (OB_SUCCESS == ret)
     {
-      if (rowkey.length() * 2 + 1 > MAX_LINE_LENGTH - pos)
+      const char* rowkey_buf = to_cstring(rowkey);
+      int64_t rowkey_buf_len = strlen(rowkey_buf);
+      if (rowkey_buf_len + 1 > MAX_LINE_LENGTH - pos)
       {
         fprintf(stderr, "line buffer is not enough to store rowkey\n");
         ret = OB_ERROR;
       }
-      else 
+      else
       {
         pos += snprintf(line + pos, MAX_LINE_LENGTH - pos, "%c", arg.column_delim_);
-        copy_size = hex_to_str(rowkey.ptr(), rowkey.length(), 
+        copy_size = (int64_t)hex_to_str(rowkey.ptr(), static_cast<int32_t>(rowkey.length()),
           line + pos, static_cast<int32_t>(MAX_LINE_LENGTH - pos));
         pos += copy_size * 2;
       }
@@ -1151,7 +1101,7 @@ FILE* create_root_table_file(const ScanRootTableArg& arg)
 
   if (OB_SUCCESS == ret)
   {
-    ret = snprintf(file_name, 256, "%s/%s-%s-%lu-range.ini", 
+    ret = snprintf(file_name, 256, "%s/%s-%s-%lu-range.ini",
       arg.output_path_, arg.app_name_, arg.table_name_, arg.table_id_);
     if (ret < 0)
     {
@@ -1214,10 +1164,10 @@ int parse_scan_root_table_arg(const vector<string> &param, ScanRootTableArg& arg
         break ;
     }
   }
-  printf("table_name=%s, table_id=%lu, output_path=%s\n", 
+  printf("table_name=%s, table_id=%lu, output_path=%s\n",
     arg.table_name_, arg.table_id_, arg.output_path_);
-  
-  return ret;  
+
+  return ret;
 }
 
 int scan_root_table(const vector<string> &param)
@@ -1228,7 +1178,7 @@ int scan_root_table(const vector<string> &param)
   int64_t line_index = 0;
   int64_t param_size = param.size();
 
-  if (param_size < 1) 
+  if (param_size < 1)
   {
     fprintf(stderr, "scan_root_table: input param error\n");
     fprintf(stderr, "scan_root_table table_name\n");
@@ -1267,15 +1217,16 @@ int scan_root_table(const vector<string> &param)
   ObScanner scanner;
   ObString table_name(0, static_cast<int32_t>(strlen(input_table_name)), (char*)input_table_name);
 
-  ObRange query_range;
-  query_range.border_flag_.set_min_value();
-  query_range.border_flag_.set_max_value();
+  ObNewRange query_range;
+  query_range.set_whole_range();
 
   SimpleRootTable root_table;
 
   bool end_of_table = false;
-  ObString end_row_key;
-  
+  ObRowkey end_row_key;
+  ObMemBuf end_row_key_buf;
+  ObMemBufAllocatorWrapper end_row_key_allocator(end_row_key_buf);
+
   int64_t sum_line = 0;
   int64_t total_line = 0;
 
@@ -1304,7 +1255,7 @@ int scan_root_table(const vector<string> &param)
     }
     else
     {
-      store_root_table(scanner, root_table, end_of_table, end_row_key);
+      store_root_table(scanner, root_table, end_of_table, end_row_key, end_row_key_allocator);
       total_line = sum_total_line(root_table);
       sum_line  += total_line;
       if (param_size >= 4)
@@ -1333,8 +1284,7 @@ int scan_root_table(const vector<string> &param)
       scan_param.reset();
       scanner.reset();
 
-      query_range.border_flag_.unset_min_value();
-      query_range.border_flag_.set_max_value();
+      query_range.end_key_.set_max_row();
       query_range.start_key_ = end_row_key;
       scan_param.set(OB_INVALID_ID, table_name, query_range);
       scan_param.set_is_read_consistency(false);
@@ -1353,14 +1303,14 @@ int scan_root_table(const vector<string> &param)
 int manual_merge(const vector<string> &param)
 {
   int ret = 0;
-  if (param.size() < 1) 
+  if (param.size() < 1)
   {
     fprintf(stderr, "manual_merge: input param error\n");
     fprintf(stderr, "manual_merge memtable_frozen_version [init_flag=0]\n");
     return OB_ERROR;
   }
   int64_t memtable_frozen_version = strtoll(param[0].c_str(), NULL, 10);
-  int32_t init_flag = 0; 
+  int32_t init_flag = 0;
   if (param.size() > 1) init_flag = atoi(param[1].c_str());
   ret = GFactory::get_instance().get_rpc_stub().start_merge(memtable_frozen_version, init_flag);
   return ret;
@@ -1369,7 +1319,7 @@ int manual_merge(const vector<string> &param)
 int manual_drop_tablet(const vector<string> &param)
 {
   int ret = 0;
-  if (param.size() < 1) 
+  if (param.size() < 1)
   {
     fprintf(stderr, "manual_drop_tablet: input param error\n");
     fprintf(stderr, "manual_drop_tablet memtable_frozen_version \n");
@@ -1385,12 +1335,12 @@ int manual_gc(const vector<string>& param)
   int32_t copy = 3;
   if (param.size() < 1)
   {
-    fprintf(stderr, "reserve 3 copies");
+    fprintf(stderr, "reserve 3 copies\n");
   }
   else
   {
     copy = atoi(param[0].c_str());
-    fprintf(stderr,"reserve %d copy(s)",copy);
+    fprintf(stderr,"reserve %d copy(s)\n",copy);
   }
   int ret = GFactory::get_instance().get_rpc_stub().start_gc(copy);
   return ret;
@@ -1406,7 +1356,7 @@ enum StatsObjectType
 ObServerStats * create_stats_object(
     const StatsObjectType obj_type,
     ObClientRpcStub & rpc_stub,
-    const int32_t server_type,
+    const ObRole server_type,
     const int32_t show_header,
     const char* table_filter_string,
     const char* index_filter_string,
@@ -1438,7 +1388,7 @@ ObServerStats * create_stats_object(
   int32_t table_id_array[table_id_size];
   int32_t show_index_size = 128;
   int32_t show_index_array[show_index_size];
-  if (NULL != table_filter_string) 
+  if (NULL != table_filter_string)
   {
     ret = parse_number_range(table_filter_string, table_id_array, table_id_size);
     if (OB_SUCCESS == ret && table_id_size > 0)
@@ -1503,7 +1453,7 @@ int loop_dump(
   while (true)
   {
     ret = server_stats.summary(count, interval);
-    if (OB_SUCCESS != ret) 
+    if (OB_SUCCESS != ret)
     {
       fprintf(stderr, "summary error, ret=%d\n", ret);
       break;
@@ -1520,7 +1470,7 @@ int dump_stats_info(StatsObjectType objtype, const vector<string> &param)
   static const int32_t server_count = 6;
   static const char* server_name[server_count] = {"unknown", "rs", "cs", "ms", "ups", "dm"};
   int ret = 0;
-  if (param.size() < 1) 
+  if (param.size() < 1)
   {
     fprintf(stderr, "dump_stats_info: input param error\n");
     fprintf(stderr, "%s <server_type=rs/cs/ms/ups/dm> [interval=1] "
@@ -1542,7 +1492,7 @@ int dump_stats_info(StatsObjectType objtype, const vector<string> &param)
 
   //printf("str=%s,server_type=%d\n", server_type_str, server_type);
 
-  int32_t interval = 1; 
+  int32_t interval = 1;
   int32_t run_count = 0 ;
   int32_t show_header = 50;
 
@@ -1555,9 +1505,9 @@ int dump_stats_info(StatsObjectType objtype, const vector<string> &param)
   if (param.size() > 5) index_filter_string = param[5].c_str();
 
   ObClientRpcStub rpc_stub;
-  ret = rpc_stub.initialize( 
-      GFactory::get_instance().get_rpc_stub().get_remote_server(),    
-      &GFactory::get_instance().get_base_client().get_client_manager());
+  ret = rpc_stub.initialize(
+      GFactory::get_instance().get_rpc_stub().get_remote_server(),
+      &GFactory::get_instance().get_base_client().get_client_mgr());
   if (OB_SUCCESS != ret)
   {
     fprintf(stderr, "initialize rpc stub failed, ret = %d\n", ret);
@@ -1568,7 +1518,7 @@ int dump_stats_info(StatsObjectType objtype, const vector<string> &param)
   ObServerStats* server_stats = create_stats_object(
       objtype,
       rpc_stub,
-      server_type,
+      static_cast<ObRole>(server_type),
       show_header,
       table_filter_string,
       index_filter_string,
@@ -1624,6 +1574,748 @@ int change_log_level(const vector<string> &param)
     return OB_ERROR;
   }
   return GFactory::get_instance().get_rpc_stub().change_log_level(log_level);
+}
+
+int execute_sql(const vector<string> &param)
+{
+  int ret = 0;
+  char query_str[1024];
+  if (param.size() < 1)
+  {
+    strcpy(query_str, (const char*)"select * from sqltest_table");
+  }
+  else
+  {
+    strcpy(query_str, param[0].c_str());
+  }
+  ObString query;
+  query.assign(query_str, static_cast<ObString::obstr_size_t>(strlen(query_str)));
+  ret = GFactory::get_instance().get_rpc_stub().execute_sql(query);
+  return ret;
+}
+
+int SstableDistDumper::insert_range_to_sstable_dist(const uint64_t table_id,
+    const int64_t row_count, common::ObRowkey& prev_row_key,
+    common::ObRowkey& cur_row_key)
+{
+  int ret = OB_SUCCESS;
+  ObNewRange range;
+  range.reset();
+  range.table_id_ = table_id;
+  if (row_count == 1)
+  {
+    range.border_flag_.unset_inclusive_start();
+    range.start_key_.set_min_row();
+  }
+  else if (row_count > 1)
+  {
+    range.border_flag_.unset_min_value();
+    range.border_flag_.unset_inclusive_start();
+    range.start_key_ = prev_row_key;
+  }
+
+  if (row_count >= 1)
+  {
+    if (cur_row_key.is_max_row())
+    {
+      range.end_key_.set_max_row();
+      range.border_flag_.unset_inclusive_end();
+    }
+    else
+    {
+      range.border_flag_.set_inclusive_end();
+      range.end_key_ = cur_row_key;
+    }
+
+    ObNewRange new_range;
+    SstableInfo sstable_info;
+    ret = deep_copy_range(arena_, range, new_range);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(ERROR, "failed to copy range, ret=%d", ret);
+    }
+
+    sstable_dist_.insert(pair<ObNewRange, SstableInfo>(new_range, sstable_info));
+  }
+  return ret;
+}
+
+int SstableDistDumper::load_root_table(common::ObString& table_name, const uint64_t table_id)
+{
+  int ret = OB_SUCCESS;
+  ObScanParam scan_param;
+  ObScanner scanner;
+  ObNewRange query_range;
+
+  int row_count = 0;
+  int column_index = 0;
+  bool is_row_changed = false;
+  char column_strbuf[OB_MAX_COLUMN_NAME_LENGTH];
+  char column_str_expect_buf[OB_MAX_COLUMN_NAME_LENGTH];
+  map<string, int64_t> root_item;
+  int64_t column_value = 0;
+  ObRowkey cur_row_key;
+  ObRowkey prev_row_key;
+  ObMemBuf cur_row_key_buf;
+  ObMemBuf prev_row_key_buf;
+  ObMemBufAllocatorWrapper cur_row_key_allocator(cur_row_key_buf);
+  ObMemBufAllocatorWrapper prev_row_key_allocator(prev_row_key_buf);
+
+
+  cur_row_key.set_min_row();
+  query_range.set_whole_range();
+  scan_param.set(OB_INVALID_ID, table_name, query_range);
+
+  if (table_id < OB_APP_MIN_TABLE_ID)
+  {
+    TBSYS_LOG(INFO, "skip internal table %lu: %.*s",
+        table_id, table_name.length(), table_name.ptr());
+  }
+  else
+  {
+    while (OB_SUCCESS == ret)
+    {
+      ret = GFactory::get_instance().get_rpc_stub().cs_scan(scan_param, scanner);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(ERROR, "scan root server error, ret = %d", ret);
+        break;
+      }
+
+      int64_t ip = 0;
+      int64_t port = 0;
+      int64_t version = 0;
+      int64_t occupy_size = 0;
+      int64_t record_count = 0;
+      int32_t cs = 0;
+      for(ObScannerIterator it = scanner.begin();
+          it != scanner.end() && OB_SUCCESS == ret;  ++it)
+      {
+        ObCellInfo *cell_info = NULL;
+        it.get_cell(&cell_info, &is_row_changed);
+        if (NULL == cell_info)
+        {
+          TBSYS_LOG(ERROR, "get null cell info");
+          ret = OB_ERROR;
+          break;
+        }
+
+        if (is_row_changed)
+        {
+          if (OB_SUCCESS != (ret =
+                insert_range_to_sstable_dist(table_id, row_count, prev_row_key, cur_row_key)))
+          {
+            TBSYS_LOG(ERROR, "failed to insert range table_id %ld, row count %d,"
+                " prev_row_key %s, cur_row_key %s",
+                table_id, row_count, to_cstring(cur_row_key), to_cstring(prev_row_key));
+          }
+
+          column_index = 0;
+          ++row_count;
+
+          ip = 0;
+          port = 0;
+          version = 0;
+          occupy_size = 0;
+          record_count = 0;
+          cs = 0;
+        }
+
+        if(column_index == 0)
+        {
+          if (OB_SUCCESS !=
+              (cur_row_key.deep_copy(prev_row_key, prev_row_key_allocator)))
+          {
+            TBSYS_LOG(ERROR, "failed to copy rowkey, ret=%d", ret);
+          }
+          else if (OB_SUCCESS !=
+              (cell_info->row_key_.deep_copy(cur_row_key, cur_row_key_allocator)))
+          {
+            TBSYS_LOG(ERROR, "failed to copy rowkey, ret=%d", ret);
+          }
+        }
+
+        if (cell_info->value_.get_type() == ObIntType)
+        {
+          cell_info->value_.get_int(column_value);
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "column value type %d expected, not %d", ObIntType, cell_info->value_.get_type());
+        }
+
+        memset(column_strbuf, 0, sizeof(column_strbuf));
+        memcpy(column_strbuf, cell_info->column_name_.ptr(), cell_info->column_name_.length());
+        string column_name(column_strbuf);
+
+        // sample result for one row
+        //0       : column_name=occupy_size, column_value=43067
+        //1       : column_name=record_count, column_value=200
+        //2       : column_name=1_port, column_value=29082
+        //3       : column_name=1_ms_port, column_value=29092
+        //4       : column_name=1_ipv4, column_value=-1239095286
+        //5       : column_name=1_tablet_version, column_value=1
+        //6       : column_name=2_port, column_value=29082
+        //7       : column_name=2_ms_port, column_value=29092
+        //8       : column_name=2_ipv4, column_value=-1222318070
+        //9       : column_name=2_tablet_version, column_value=1
+        if (column_index == 0)
+        {
+          if (column_name.compare("occupy_size") == 0)
+          {
+            occupy_size = column_value;
+          }
+          else
+          {
+            TBSYS_LOG(ERROR, "column_index=0, column_name should not be %s", column_name.c_str());
+            ret = OB_INVALID_DATA;
+            break;
+          }
+        }
+        else if (column_index == 1)
+        {
+          if (column_name.compare("record_count") == 0)
+          {
+            record_count = column_value;
+          }
+          else
+          {
+            TBSYS_LOG(ERROR, "column_index=1, column_name should not be %s", column_name.c_str());
+            ret = OB_INVALID_DATA;
+            break;
+          }
+        }
+        else
+        {
+          static const char* cs_info_name[] = {"port", "ms_port", "ipv4", "tablet_version"};
+          int cs_info_id = (column_index - 2) % 4;
+          int n = snprintf(column_str_expect_buf, sizeof(column_str_expect_buf), "%d_%s", cs, cs_info_name[cs_info_id]);
+          if (n < 0 || static_cast<uint32_t>(n) >= sizeof(column_str_expect_buf))
+          {
+            TBSYS_LOG(ERROR, "column_str_expect_buf not enough");
+            ret = OB_BUF_NOT_ENOUGH;
+          }
+          else if (cs_info_id == 0)
+          {
+            port = column_value;
+          }
+          else if (cs_info_id == 1)
+          {
+            // skip ms port
+          }
+          else if (cs_info_id == 2)
+          {
+            ip = column_value;
+            ObServer server;
+            server.set_ipv4_addr(static_cast<int32_t>(ip), static_cast<int32_t>(port));
+            if (cs_list_.find(server) == cs_list_.end())
+            {
+              cs_list_.insert(server);
+              TBSYS_LOG(INFO, "add server %s to server list, ip %ld, port %ld", to_cstring(server), ip, port);
+            }
+          }
+          else if (cs_info_id == 3)
+          {
+            version = column_value;
+            if (table_version_ == -1)
+            {
+              table_version_ = version;
+            }
+            else if (table_version_ != version)
+            {
+              if (version < table_version_)
+              {
+                TBSYS_LOG(WARN, "a tablet version of %.*s:%lu in root table is %ld, but current table_version_ is %ld",
+                    table_name.length(), table_name.ptr(), table_id, version, table_version_);
+              }
+              else if (table_version_ < version)
+              {
+                TBSYS_LOG(INFO, "a tablet version of %.*s:%lu in root table is %ld, larger than current table_version_ %ld"
+                    " update table_version_", table_name.length(), table_name.ptr(), table_id, version, table_version_);
+                table_version_ = version;
+              }
+            }
+          }
+        }
+
+        ++column_index;
+      }
+
+      if (cur_row_key.is_max_row())
+      {
+        ret = insert_range_to_sstable_dist(table_id, row_count, prev_row_key, cur_row_key);
+        if (OB_SUCCESS !=  ret)
+        {
+          TBSYS_LOG(ERROR, "failed to insert range table_id %ld, row count %d,"
+              " prev_row_key %s, cur_row_key %s",
+              table_id, row_count, to_cstring(cur_row_key), to_cstring(prev_row_key));
+        }
+
+        column_index = 0;
+        ++row_count;
+        TBSYS_LOG(INFO, "dump root table finish, table id=%lu, table name=%.*s\n",
+            table_id, table_name.length(), table_name.ptr());
+        break;
+      }
+      else
+      {
+        scan_param.reset();
+        scanner.reset();
+
+        query_range.set_whole_range();
+        query_range.start_key_ = cur_row_key;
+        scan_param.set(OB_INVALID_ID, table_name, query_range);
+      }
+    }
+  }
+  return ret;
+}
+
+int SstableDistDumper::check_sstable_dist()
+{
+  int ret = OB_SUCCESS;
+  ObNewRange prev_range;
+  ObNewRange range;
+  SstableDist::iterator it = sstable_dist_.begin();
+
+  prev_range = (*it).first;
+  ret = check_sstable_info((*it).second);
+  if (OB_SUCCESS != ret)
+  {
+    TBSYS_LOG(ERROR, "failed to check sstable info of range: %s", to_cstring(prev_range));
+  }
+
+  ++it;
+  for(; OB_SUCCESS == ret && it != sstable_dist_.end(); ++it)
+  {
+    range = (*it).first;
+    ret = check_sstable_info((*it).second);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(ERROR, "failed to check sstable info of range: %s", to_cstring(range));
+      break;
+    }
+
+    if (range.table_id_ == prev_range.table_id_)
+    {
+      if (range.start_key_ != prev_range.end_key_)
+      {
+        TBSYS_LOG(ERROR, "sstable dist is not continuous, range: %s, prev range: %s",
+            to_cstring(range), to_cstring(prev_range));
+        ret = OB_ERROR;
+        break;
+      }
+    }
+    else if (range.table_id_ > prev_range.table_id_)
+    {
+      if (!range.start_key_.is_min_row() || !prev_range.end_key_.is_max_row())
+      {
+        TBSYS_LOG(ERROR, "sstable dist is not continuous, range: %s, prev range: %s",
+            to_cstring(range), to_cstring(prev_range));
+        ret = OB_ERROR;
+        break;
+      }
+    }
+    else
+    {
+      TBSYS_LOG(ERROR, "sstable dist is not continuous, range: %s, prev range: %s",
+          to_cstring(range), to_cstring(prev_range));
+      ret = OB_ERROR;
+      break;
+    }
+    prev_range = range;
+  }
+  if (OB_SUCCESS == ret && !range.end_key_.is_max_row())
+  {
+    TBSYS_LOG(ERROR, "sstable dist is not continuous, last range: %s", to_cstring(range));
+    ret = OB_ERROR;
+  }
+
+  return ret;
+}
+
+int SstableDistDumper::write_sstable_dist()
+{
+  int ret = OB_SUCCESS;
+
+  if (NULL == fp_)
+  {
+    TBSYS_LOG(ERROR, "fp_ should not be NULL");
+    ret = OB_ERR_UNEXPECTED;
+  }
+
+  uint64_t sstable_seq = 0;
+  char ip_buf[OB_IP_STR_BUFF];
+  char file_name_format[OB_MAX_FILE_NAME_LENGTH];
+  uint64_t total_sstable_count = sstable_dist_.size();
+  uint32_t digit_number = 0;
+  int n = -1;
+  do {
+    ++digit_number;
+    total_sstable_count /= 10;
+  } while (total_sstable_count > 0);
+  n = sprintf(file_name_format, "%%lu-%%0%ulu", digit_number);
+  if (n < 0)
+  {
+    ret = OB_IO_ERROR;
+    TBSYS_LOG(ERROR, "failed to generate file_name_format, errmsg %s",
+        strerror(errno));
+  }
+
+  for(SstableDist::iterator it = sstable_dist_.begin();
+      OB_SUCCESS == ret && it != sstable_dist_.end(); ++it)
+  {
+    SstableInfo& info = (*it).second;
+    const ObNewRange& range = (*it).first;
+    n = fprintf(fp_, file_name_format, range.table_id_, sstable_seq++);
+    if (n < 0)
+    {
+      ret = OB_IO_ERROR;
+      TBSYS_LOG(ERROR, "failed to append sstable info to %s, errmsg %s",
+          filename_, strerror(errno));
+      break;
+    }
+
+    if (!info.server_.ip_to_string(ip_buf, sizeof(ip_buf)))
+    {
+      ret = OB_ERR_UNEXPECTED;
+      TBSYS_LOG(ERROR, "failed to translate ip[%s] to string", to_cstring(info.server_));
+      break;
+    }
+
+    n = fprintf(fp_, " %s:%.*s", ip_buf, info.path_.length(), info.path_.ptr());
+    if (n < 0)
+    {
+      ret = OB_IO_ERROR;
+      TBSYS_LOG(ERROR, "failed to append sstable info to %s, errmsg %s",
+          filename_, strerror(errno));
+      break;
+    }
+
+    if (write_range_info_)
+    {
+      n = fprintf(fp_, " %lu,", range.table_id_);
+      if (n < 0)
+      {
+        ret = OB_IO_ERROR;
+        TBSYS_LOG(ERROR, "failed to append table id: %s", strerror(errno));
+      }
+      if (range.start_key_.is_min_row())
+      {
+        n = fprintf(fp_, " (MIN; ");
+      }
+      else
+      {
+        n = fprintf(fp_, " (%s; ", to_cstring(range.start_key_));
+      }
+      if (n < 0)
+      {
+        ret = OB_IO_ERROR;
+        TBSYS_LOG(ERROR, "failed to append sstable info to %s, errmsg %s",
+            filename_, strerror(errno));
+        break;
+      }
+
+      if (range.end_key_.is_max_row())
+      {
+        n = fprintf(fp_, "MAX)");
+      }
+      else
+      {
+        n = fprintf(fp_, "%s]", to_cstring(range.end_key_));
+      }
+      if (n < 0)
+      {
+        ret = OB_IO_ERROR;
+        TBSYS_LOG(ERROR, "failed to append sstable info to %s, errmsg %s",
+            filename_, strerror(errno));
+        break;
+      }
+    }
+
+    if (fprintf(fp_, "\n") < 0)
+    {
+      ret = OB_IO_ERROR;
+      TBSYS_LOG(ERROR, "failed to append \\n to %s, errmsg %s",
+          filename_, strerror(errno));
+      break;
+    }
+  }
+  return ret;
+}
+
+int SstableDistDumper::update_sstable_dist(const ObServer& server, std::list<pair<ObNewRange, ObString> >& sstable_list)
+{
+  int ret = OB_SUCCESS;
+  for(std::list<pair<ObNewRange, ObString> >::iterator sstable_it = sstable_list.begin();
+      OB_SUCCESS == ret && sstable_it != sstable_list.end(); ++sstable_it)
+  {
+    ObNewRange& range = (*sstable_it).first;
+    ObString& path = (*sstable_it).second;
+    SstableDist::iterator it = sstable_dist_.find(range);
+    if (it == sstable_dist_.end())
+    {
+      TBSYS_LOG(WARN, "can't find range %s in sstable dist", to_cstring(range));
+      continue;
+    }
+    if (NULL == (*it).second.path_.ptr() || static_cast<double>(random()) * 1.0 / RAND_MAX > REPLACE_RATE)
+    {
+      (*it).second.path_.assign_ptr(path.ptr(), path.length());
+      (*it).second.server_ = server;
+    }
+  }
+
+  return ret;
+}
+
+int SstableDistDumper::fetch_schema(common::ObSchemaManagerV2& schema)
+{
+  int ret = OB_SUCCESS;
+  const int64_t timeout = 1000*1000*10; //10s
+  const int64_t version = 0;
+  const bool only_core_table = false;
+  common::ObGeneralRpcStub rpc_stub;
+  if (OB_SUCCESS != (ret = (rpc_stub.init(&rpc_buffer_, client_))))
+  {
+    TBSYS_LOG(ERROR, "failed to init rpc stub, ret=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret =
+        (rpc_stub.fetch_schema(timeout, rs_server_, version, only_core_table, schema))))
+  {
+    TBSYS_LOG(ERROR, "failed to fetch schema, rs_server %s ret=%d", to_cstring(rs_server_), ret);
+  }
+  return ret;
+}
+
+int SstableDistDumper::dump()
+{
+  int ret = OB_SUCCESS;
+  if (NULL == filename_)
+  {
+    TBSYS_LOG(ERROR, "the file path should not be NULL");
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else if (common::FileDirectoryUtils::exists(filename_))
+  {
+    TBSYS_LOG(ERROR, "the file %s has been existed", filename_);
+    ret = OB_IO_ERROR;
+  }
+  else
+  {
+    fp_ = fopen(filename_, "w");
+    if (NULL == fp_)
+    {
+      ret = OB_IO_ERROR;
+      TBSYS_LOG(ERROR, "failed to open %s, err msg %s", filename_, strerror(errno));
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    sstable_dist_.clear();
+    cs_list_.clear();
+
+    common::ObSchemaManagerV2 schema;
+    if (OB_SUCCESS != (ret = fetch_schema(schema)))
+    {
+      TBSYS_LOG(ERROR, "failed to fetch schema, ret=%d", ret);
+    }
+    else
+    {
+      for (const ObTableSchema* table = schema.table_begin();
+          OB_SUCCESS == ret && table != schema.table_end(); ++table)
+      {
+        ObString table_name;
+        int64_t len = strlen(table->get_table_name());
+        uint64_t table_id = table->get_table_id();
+        char* buf = arena_.alloc(len);
+        if (NULL == buf)
+        {
+          TBSYS_LOG(ERROR, "Failed to alloc mem, len %ld", len);
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+        }
+        else
+        {
+          ::memcpy(buf, table->get_table_name(), len);
+          table_name.assign_ptr(buf, static_cast<int32_t>(len));
+          ret = load_root_table(table_name, table_id);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(ERROR, "failed to load root table %.*s, table id %ld",
+                table_name.length(), table_name.ptr(), table_id);
+          }
+        }
+      }
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    std::list<pair<ObNewRange, ObString> > sstable_list;
+    for(std::set<ObServer>::iterator cs_it = cs_list_.begin(); cs_it != cs_list_.end(); ++cs_it)
+    {
+      int err = GFactory::get_instance().get_rpc_stub().fetch_cs_sstable_dist(*cs_it, table_version_, sstable_list, arena_);
+      if (OB_SUCCESS != err)
+      {
+        TBSYS_LOG(WARN, "failed to load sstable list of cs %s, ret=%d",
+            to_cstring(*cs_it), err);
+      }
+      else if (OB_SUCCESS != (err = update_sstable_dist(*cs_it, sstable_list)))
+      {
+        TBSYS_LOG(WARN, "failed to update sstable dist for cs %s, ret=%d",
+            to_cstring(*cs_it), err);
+      }
+    }
+
+    ret = check_sstable_dist();
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "sstable dist is not correct, ret=%d", ret);
+    }
+    else
+    {
+      ret = write_sstable_dist();
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "failed to dump sstable dist, ret=%d", ret);
+      }
+    }
+  }
+
+  if (NULL != fp_)
+  {
+    int tmp_ret = fclose(fp_);
+    if (OB_SUCCESS != tmp_ret)
+    {
+      TBSYS_LOG(ERROR, "failed to close file %s, errmsg %s", filename_, strerror(errno));
+      if (OB_SUCCESS == ret)
+      {
+        ret = tmp_ret;
+      }
+    }
+  }
+
+
+  return ret;
+}
+
+int dump_sstable_dist(const vector<string> &param)
+{
+  int ret = OB_SUCCESS;
+  ObBaseClient& client = GFactory::get_instance().get_base_client();
+  const ObServer& rs_server = GFactory::get_instance().get_rpc_stub().get_remote_server();
+  const char* sstable_dist_file = NULL;
+  bool is_write_range = false;
+  if (param.size() != 1 && param.size() != 2)
+  {
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else
+  {
+    sstable_dist_file = param[0].c_str();
+    if (param.size() == 2)
+    {
+      if ( param[1].compare("write_range") == 0)
+      {
+        is_write_range = true;
+      }
+      else
+      {
+        ret = OB_INVALID_ARGUMENT;
+      }
+    }
+  }
+
+  if (OB_SUCCESS != ret)
+  {
+    fprintf(stderr, "dump_sstable_dist sstable_dist_file [write_range]\n");
+  }
+  else
+  {
+    SstableDistDumper dumper(&client.get_client_mgr(), rs_server, sstable_dist_file, is_write_range);
+    ret = dumper.dump();
+    if (OB_SUCCESS != ret)
+    {
+      fprintf(stderr, "dump_sstable_dist failed!");
+    }
+  }
+
+  return ret;
+}
+
+int delete_table(const vector<string> &param)
+{
+  int ret = 0;
+  if (param.size() < 1)
+  {
+    fprintf(stderr, "delete_table: input param error\n");
+    fprintf(stderr, "delete_table table_id \n");
+    return OB_ERROR;
+  }
+  uint64_t table_id = strtoull(param[0].c_str(), NULL, 10);
+  ret = GFactory::get_instance().get_rpc_stub().delete_table(table_id);
+  return ret;
+}
+
+int load_sstables(const vector<string> &param)
+{
+  int ret = 0;
+  if (param.size() < 2)
+  {
+    fprintf(stderr, "load_sstables: input param error\n");
+    fprintf(stderr, "load_sstables load_version [is_response_rootserver = 0/1] "
+                    "[table = 0/1001~1005/1001,1003] \n");
+    return OB_ERROR;
+  }
+
+  ObTableImportInfoList table_list;
+  const char* table_filter_string = NULL;
+  table_list.tablet_version_ = strtoll(param[0].c_str(), NULL, 10);
+  if (param.size() > 1)
+  {
+    table_list.response_rootserver_ = strtoll(param[1].c_str(), NULL, 10) > 0 ? true : false;
+  }
+  else
+  {
+    table_list.response_rootserver_ = false;
+  }
+  if (param.size() > 2)
+  {
+    table_filter_string = param[2].c_str();
+  }
+
+  if (NULL != table_filter_string)
+  {
+    int32_t table_id_size = 128;
+    int32_t table_id_array[table_id_size];
+    ret = parse_number_range(table_filter_string, table_id_array, table_id_size);
+    if (OB_SUCCESS == ret && table_id_size > 0)
+    {
+      if (table_id_size > 1 || table_id_array[0] != 0)
+      {
+        for (int32_t i = 0 ; i < table_id_size && OB_SUCCESS == ret; ++i)
+        {
+          ret = table_list.add_table(table_id_array[i]);
+        }
+        if (OB_SUCCESS == ret)
+        {
+          table_list.import_all_ = false;
+        }
+      }
+    }
+    else if (OB_SUCCESS != ret)
+    {
+      fprintf(stderr, "parse show table id(%s) failed\n", table_filter_string);
+      ret = OB_ERROR;
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    ret = GFactory::get_instance().get_rpc_stub().load_sstables(table_list);
+  }
+
+  return ret;
 }
 
 int do_work(const int cmd, const vector<string> &param)
@@ -1682,8 +2374,20 @@ int do_work(const int cmd, const vector<string> &param)
     case CMD_STOP_SERVER:
       ret = GFactory::get_instance().get_rpc_stub().stop_server();
       break;
+    case CMD_EXECUTE_SQL:
+      ret = execute_sql(param);
+      break;
     case CMD_SYNC_ALL_IMAGES:
       ret = sync_all_tablet_images(param);
+      break;
+    case CMD_DELETE_TABLE:
+      ret = delete_table(param);
+      break;
+    case CMD_LOAD_SSTABLES:
+      ret = load_sstables(param);
+      break;
+    case CMD_DUMP_SSTABLE_DIST:
+      ret = dump_sstable_dist(param);
       break;
     default:
       fprintf(stderr, "unsupported command : %d\n", cmd);
@@ -1699,7 +2403,7 @@ void usage()
           "command: \n\tdump_tablet_image dump_server_stats dump_cluster_stats dump_app_stats\n\t"
           "manual_merge manual_drop_tablet manual_gc get_tablet_info scan_root_table migrate_tablet\n\t"
           "check_merge_process change_log_level stop_server restart_server create_tablet delete_tablet\n\t"
-          "sync_images\n\n"
+          "sync_images delete_table load_sstables\n\n"
           "run command for detail.\n");
   fprintf(stderr, "    command args: \n");
   fprintf(stderr, "\tdump_tablet_image disk_no \n");
@@ -1713,6 +2417,7 @@ void usage()
                   "[table = 0/1001~1005/1001,1003] [show_index = 0/0~11/0,2,5]\n");
   fprintf(stderr, "\tmanual_merge memtable_frozen_version [init_flag=0]\n");
   fprintf(stderr, "\tmanual_drop_tablet memtable_frozen_version \n");
+  fprintf(stderr, "\tmanual_gc [copy_count] \n");
   fprintf(stderr, "\tget_tablet_info table_id table_name range_str\n");
   fprintf(stderr, "\tscan_root_table table_name\n");
   fprintf(stderr, "\tscan_root_table table_name table_id rowkey_split app_name "
@@ -1733,13 +2438,17 @@ void usage()
   fprintf(stderr, "\tcheck_merge_process disk_no \n");
   fprintf(stderr, "\tcheck_merge_process disk_no_1, disk_no_2, ... \n");
   fprintf(stderr, "\tcheck_merge_process disk_no_min~disk_no_max \n");
-  fprintf(stderr, "\tshow_param show chunkserver param\n");
-  fprintf(stderr, "\tsync_images sync all tablet images in chunkserver\n");
+  fprintf(stderr, "\tshow_param \n");
+  fprintf(stderr, "\tsync_images \n");
+  fprintf(stderr, "\texecute_sql sql_cmd\n");
+  fprintf(stderr, "\tdelete_table table_id\n");
+  fprintf(stderr, "\tload_sstables load_version [is_response_rootserver=0/1] "
+                  "[table = 0/1001~1005/1001,1003] \n");
+  fprintf(stderr, "\tdump_sstable_dist sstable_dist_file [write_range]\n");
 }
 
 int main(const int argc, char *argv[])
 {
-
   const char *addr = "127.0.0.1";
   const char *cmdstring = NULL;
   int32_t port = 2600;
@@ -1750,7 +2459,6 @@ int main(const int argc, char *argv[])
   ObServer chunk_server;
 
   memset(g_config_file_name, OB_MAX_FILE_NAME_LENGTH, 0);
-
 
   while((ret = getopt(argc,argv,"s:p:i:f:q")) != -1)
   {
@@ -1779,7 +2487,14 @@ int main(const int argc, char *argv[])
     };
   }
 
-  if (silent) TBSYS_LOGGER.setLogLevel("ERROR");
+  if (silent)
+  {
+    TBSYS_LOGGER.setLogLevel("ERROR");
+  }
+  else
+  {
+    TBSYS_LOGGER.setLogLevel("INFO");
+  }
 
   ret = chunk_server.set_ipv4_addr(addr, port);
   if (!ret && strlen(g_config_file_name) <= 0)
@@ -1793,12 +2508,6 @@ int main(const int argc, char *argv[])
   if (OB_SUCCESS != ret)
   {
     fprintf(stderr, "initialize GFactory error, ret=%d\n", ret);
-    return ret;
-  }
-  ret = GFactory::get_instance().start();
-  if (OB_SUCCESS != ret)
-  {
-    fprintf(stderr, "start GFactory error, ret=%d\n", ret);
     return ret;
   }
 
@@ -1815,8 +2524,6 @@ int main(const int argc, char *argv[])
   }
 
   GFactory::get_instance().stop();
-  GFactory::get_instance().wait();
 
   return ret == OB_SUCCESS ? 0 : -1;
 }
-

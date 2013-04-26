@@ -17,7 +17,7 @@
 #include "rootserver/ob_root_stat_key.h"
 #include <cstdlib>
 
-const char* oceanbase::rootserver::OB_RS_STAT_KEYSTR[]= 
+const char* oceanbase::rootserver::OB_RS_STAT_KEYSTR[]=
 {
   "reserve",                    // 0
   "common",                     // 1
@@ -54,6 +54,11 @@ const char* oceanbase::rootserver::OB_RS_STAT_KEYSTR[]=
   "merge",                      // 32
   "unusual_tablets_num",        // 33
   "shutdown_cs",                // 34
-  "all_server",                 // 35  
+  "all_server",                 // 35
+  "table_count",                // 36
+  "tablet_count",               // 37
+  "row_count",                  // 38
+  "data_size",                  // 39
   NULL
 };
+

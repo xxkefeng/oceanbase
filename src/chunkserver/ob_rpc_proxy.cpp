@@ -14,7 +14,7 @@
  *
  */
 #include "ob_rpc_proxy.h"
-#include "ob_rpc_stub.h"
+#include "common/ob_rpc_stub.h"
 
 #include "common/utility.h"
 #include "common/ob_schema.h"
@@ -22,7 +22,9 @@
 #include "common/ob_read_common_data.h"
 #include "common/ob_trace_log.h"
 #include "common/ob_crc64.h"
-#include "ob_schema_manager.h"
+#include "common/ob_schema_manager.h"
+#include "common/ob_statistics.h"
+#include "common/ob_common_stat.h"
 
 namespace oceanbase
 {
@@ -73,13 +75,13 @@ namespace oceanbase
     }
 
     int ObMergerRpcProxy::init(
-        ObMergerRpcStub * rpc_stub, ObMergerSchemaManager * schema)
+        common::ObGeneralRpcStub * rpc_stub, ObSqlRpcStub * sql_rpc_stub, ObMergerSchemaManager * schema)
     {
       int ret = OB_SUCCESS;
-      if ((NULL == rpc_stub) || (NULL == schema))
+      if ((NULL == rpc_stub) || (NULL == schema) || (NULL == sql_rpc_stub))
       {
         TBSYS_LOG(WARN, "check schema or tablet cache failed:"
-            "rpc[%p], schema[%p]", rpc_stub, schema);
+            "rpc[%p], schema[%p], sql_rpc_stub[%p]", rpc_stub, schema, sql_rpc_stub);
         ret = OB_INPUT_PARAM_ERROR;
       }
       else if (true == init_)
@@ -90,6 +92,7 @@ namespace oceanbase
       else
       {
         rpc_stub_ = rpc_stub;
+        sql_rpc_stub_ = sql_rpc_stub;
         schema_manager_ = schema;
         init_ = true;
       }
@@ -110,7 +113,8 @@ namespace oceanbase
         ret = rpc_stub_->fetch_server_list(rpc_timeout_, root_server_, list);
         if (ret != OB_SUCCESS)
         {
-          TBSYS_LOG(WARN, "fetch server list from root server failed:ret[%d]", ret);
+          TBSYS_LOG(WARN, "fetch server list from root server %s failed:ret[%d]",
+              to_cstring(root_server_), ret);
         }
         else
         {
@@ -180,7 +184,7 @@ namespace oceanbase
       }
       else
       {
-        ret = schema_manager_->release_schema(manager->get_version());
+        ret = schema_manager_->release_schema(manager);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(WARN, "release scheam failed:schema[%p], timestamp[%ld]",
@@ -190,14 +194,19 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMergerRpcProxy::get_schema(const int64_t timestamp,
-                                     const ObSchemaManagerV2 ** manager)
+    int ObMergerRpcProxy::get_schema(const uint64_t table_id,
+        const int64_t timestamp, const ObSchemaManagerV2 ** manager)
     {
       int ret = OB_SUCCESS;
       if (!check_inner_stat() || (NULL == manager))
       {
         TBSYS_LOG(WARN, "check inner stat failed");
         ret = OB_ERROR;
+      }
+      else if (table_id <= 0 || table_id == OB_INVALID_ID)
+      {
+        TBSYS_LOG(WARN, "get schema error table id =%lu", table_id);
+        ret = OB_INVALID_ARGUMENT;
       }
       else
       {
@@ -206,7 +215,12 @@ namespace oceanbase
         // local newest version
         case LOCAL_NEWEST:
           {
-            *manager = schema_manager_->get_schema(0);
+            *manager = schema_manager_->get_schema(table_id);
+            if (NULL == *manager)
+            {
+              ret = get_new_schema(timestamp, manager);
+              TBSYS_LOG(INFO, "force get user schema, ts=%ld err=%d manager=%p", timestamp, ret, *manager);
+            }
             break;
           }
         // get server new version with old timestamp
@@ -241,7 +255,7 @@ namespace oceanbase
         ret = rpc_stub_->fetch_schema_version(rpc_timeout_, root_server_, new_version);
         if (ret != OB_SUCCESS)
         {
-          TBSYS_LOG(WARN, "fetch schema version failed:ret[%d]", ret);
+          TBSYS_LOG(WARN, "fetch schema version from %s failed:ret[%d]", to_cstring(root_server_), ret);
         }
         else if (new_version <= timestamp)
         {
@@ -276,7 +290,7 @@ namespace oceanbase
         tbsys::CThreadGuard lock(&schema_lock_);
         if (schema_manager_->get_latest_version() >= timestamp)
         {
-          *manager = schema_manager_->get_schema(0);
+          *manager = schema_manager_->get_user_schema(0);
           if (NULL == *manager)
           {
             TBSYS_LOG(WARN, "get latest but local schema failed:schema[%p], latest[%ld]",
@@ -307,7 +321,7 @@ namespace oceanbase
             }
             else
             {
-              ret = rpc_stub_->fetch_schema(rpc_timeout_, root_server_, 0, *schema);
+              ret = rpc_stub_->fetch_schema(rpc_timeout_, root_server_, 0, false, *schema);
               if (ret != OB_SUCCESS)
               {
                 TBSYS_LOG(WARN, "rpc fetch schema failed:version[%ld], ret[%d]", timestamp, ret);
@@ -321,7 +335,7 @@ namespace oceanbase
                 {
                   TBSYS_LOG(WARN, "add new schema failed:version[%ld], ret[%d]", schema->get_version(), ret);
                   ret = OB_SUCCESS;
-                  *manager = schema_manager_->get_schema(0);
+                  *manager = schema_manager_->get_user_schema(0);
                   if (NULL == *manager)
                   {
                     TBSYS_LOG(WARN, "get latest schema failed:schema[%p], latest[%ld]",
@@ -424,7 +438,7 @@ namespace oceanbase
         else
         {
           ret = rpc_stub_->fetch_schema(rpc_timeout_, update_server,
-              frozen_version, schema);
+              frozen_version, false, schema);
           if (ret != OB_SUCCESS)
           {
             TBSYS_LOG(WARN, "fetch frozen schema failed:ret[%d]", ret);
@@ -440,17 +454,24 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMergerRpcProxy::get_update_server(const bool renew, ObServer & server)
+    int ObMergerRpcProxy::get_update_server(const bool renew,
+                                            ObServer & server,
+                                            bool need_master)
     {
       int ret = OB_SUCCESS;
-      if (true == renew)
+      bool is_master_addr_invalid = false;
+      {
+        tbsys::CRLockGuard lock(ups_list_lock_);
+        is_master_addr_invalid = (0 == update_server_.get_ipv4());
+      }
+      if (true == renew || is_master_addr_invalid)
       {
         int64_t timestamp = tbsys::CTimeUtil::getTime();
-        if (timestamp - fetch_ups_timestamp_ > min_fetch_interval_)
+        if (timestamp - fetch_ups_timestamp_ > min_fetch_interval_ || is_master_addr_invalid)
         {
           int32_t server_count = 0;
           tbsys::CThreadGuard lock(&update_lock_);
-          if (timestamp - fetch_ups_timestamp_ > min_fetch_interval_)
+          if (timestamp - fetch_ups_timestamp_ > min_fetch_interval_ || is_master_addr_invalid)
           {
             TBSYS_LOG(DEBUG, "renew fetch update server list");
             fetch_ups_timestamp_ = tbsys::CTimeUtil::getTime();
@@ -463,7 +484,7 @@ namespace oceanbase
             else if (server_count == 0)
             {
               TBSYS_LOG(DEBUG, "fetch update server list empty retry fetch vip update server");
-              // using old protocol get update server vip
+              // using old protocol get update server ip
               ret = rpc_stub_->fetch_update_server(rpc_timeout_, root_server_, server);
               if (ret != OB_SUCCESS)
               {
@@ -477,7 +498,7 @@ namespace oceanbase
 
               if (OB_SUCCESS == ret)
               {
-                // using old protocol get update server vip for daily merge
+                // using old protocol get update server ip for daily merge
                 ret = rpc_stub_->fetch_update_server(rpc_timeout_, root_server_,
                     server, true);
                 if (ret != OB_SUCCESS)
@@ -500,15 +521,15 @@ namespace oceanbase
       }
       // renew master update server addr
       tbsys::CWLockGuard lock(ups_list_lock_);
-      server = update_server_;
+      server = need_master ? update_server_ : inconsistency_update_server_;
       return ret;
     }
 
-    bool ObMergerRpcProxy::check_range_param(const ObRange & range_param)
+    bool ObMergerRpcProxy::check_range_param(const ObNewRange & range_param)
     {
       bool bret = true;
-      if (((!range_param.border_flag_.is_min_value()) && (0 == range_param.start_key_.length()))
-          || (!range_param.border_flag_.is_max_value() && (0 == range_param.end_key_.length())))
+      if (((!range_param.start_key_.is_min_row()) && (0 == range_param.start_key_.length()))
+          || (!range_param.end_key_.is_max_row() && (0 == range_param.end_key_.length())))
       {
         TBSYS_LOG(WARN, "check range param failed");
         bret = false;
@@ -519,7 +540,7 @@ namespace oceanbase
     bool ObMergerRpcProxy::check_scan_param(const ObScanParam & scan_param)
     {
       bool bret = true;
-      const ObRange * range = scan_param.get_range();
+      const ObNewRange * range = scan_param.get_range();
       // the min/max value length is zero
       if (NULL == range)// || (0 == range->start_key_.length()))
       {
@@ -602,7 +623,8 @@ namespace oceanbase
       }
     }
 
-    int ObMergerRpcProxy::master_ups_get(const ObGetParam & get_param, ObScanner & scanner,
+    template<class T, class RpcT>
+    int ObMergerRpcProxy::master_ups_get(RpcT *rpc_stub, const ObGetParam & get_param, T & scanner,
         const int64_t time_out)
     {
       int ret = OB_ERROR;
@@ -615,9 +637,10 @@ namespace oceanbase
           TBSYS_LOG(WARN, "get master update server failed:ret[%d]", ret);
           break;
         }
-        ret = rpc_stub_->get((time_out > 0) ? time_out : rpc_timeout_, update_server, get_param, scanner);
+        ret = rpc_stub->get((time_out > 0) ? time_out : rpc_timeout_, update_server, get_param, scanner);
         if (OB_INVALID_START_VERSION == ret)
         {
+          OB_STAT_INC(CHUNKSERVER, FAIL_CS_VERSION_COUNT);
           TBSYS_LOG(WARN, "check chunk server data version failed:ret[%d]", ret);
           break;
         }
@@ -631,7 +654,6 @@ namespace oceanbase
         }
         else
         {
-          TBSYS_LOG(DEBUG, "%s", "ups get data succ");
           break;
         }
         usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME * (i + 1)));
@@ -639,39 +661,63 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMergerRpcProxy::slave_ups_get(const ObGetParam & get_param,
-      ObScanner & scanner, const ObServerType server_type, const int64_t time_out)
+    template<class T, class RpcT>
+    int ObMergerRpcProxy::slave_ups_get(RpcT *rpc_stub, const ObGetParam & get_param,
+      T & scanner, const ObServerType server_type, const int64_t time_out)
     {
       int ret = OB_SUCCESS;
       int32_t retry_times = 0;
       int32_t cur_index = -1;
       int32_t max_count = 0;
+
       //LOCK BLOCK
       {
         tbsys::CRLockGuard lock(ups_list_lock_);
         int32_t server_count = max_count = update_server_list_.ups_count_;
-        cur_index = ObReadUpsBalance::select_server(update_server_list_, server_type);
-        if (cur_index < 0)
+        if (0 == server_count)
         {
-          TBSYS_LOG(WARN, "select server failed:count[%d], index[%d]", server_count, cur_index);
-          ret = OB_ERROR;
-        }
-        else
-        {
-          ObUpsBlackList& black_list =
-            (MERGE_SERVER == server_type) ? black_list_ : ups_black_list_for_merge_;
-          // bring back to alive no need write lock
-          if (black_list.get_valid_count() <= 0)
+          TBSYS_LOG(INFO, "no ups right now local, updating...");
+          if (OB_SUCCESS != (ret = fetch_update_server_list(server_count)))
           {
-            TBSYS_LOG(WARN, "check all the update server not invalid:count[%d]",
-                black_list.get_valid_count());
-            black_list.reset();
+            TBSYS_LOG(WARN, "fetch update server list fail, ret: [%d]", ret);
+          }
+          else if (0 == server_count)
+          {
+            ret = OB_UPS_NOT_EXIST;
+            TBSYS_LOG(WARN, "no update server available right now, ret: [%d]", ret);
+          }
+          else
+          {
+            TBSYS_LOG(INFO, "update local ups list"
+                      " info successfully! Got [%d] ups.", server_count);
+          }
+        }
+        if (OB_SUCCESS == ret)
+        {
+          max_count = server_count;
+          cur_index = ObReadUpsBalance::select_server(update_server_list_, server_type);
+          if (cur_index < 0)
+          {
+            TBSYS_LOG(WARN, "select server failed:count[%d], index[%d]", server_count, cur_index);
+            ret = OB_ENTRY_NOT_EXIST;
+          }
+          else
+          {
+            ObUpsBlackList& black_list =
+              (MERGE_SERVER == server_type) ? black_list_ : ups_black_list_for_merge_;
+            // bring back to alive no need write lock
+            if (black_list.get_valid_count() <= 0)
+            {
+              TBSYS_LOG(WARN, "check all the update server not invalid:count[%d]",
+                        black_list.get_valid_count());
+              black_list.reset();
+            }
           }
         }
       }
       if (OB_SUCCESS == ret)
       {
-        ret = OB_ERROR;
+        ret = OB_ENTRY_NOT_EXIST;
         ObServer update_server;
         for (int32_t i = cur_index; retry_times < max_count; ++i, ++retry_times)
         {
@@ -686,12 +732,12 @@ namespace oceanbase
             }
             update_server = update_server_list_.ups_array_[i%server_count].get_server(server_type);
           }
-
           TBSYS_LOG(DEBUG, "select slave update server for get:index[%d], ip[%d], port[%d]",
               i, update_server.get_ipv4(), update_server.get_port());
-          ret = rpc_stub_->get((time_out > 0) ? time_out : rpc_timeout_, update_server, get_param, scanner);
+          ret = rpc_stub->get((time_out > 0) ? time_out : rpc_timeout_, update_server, get_param, scanner);
           if (OB_INVALID_START_VERSION == ret)
           {
+            OB_STAT_INC(CHUNKSERVER, FAIL_CS_VERSION_COUNT);
             TBSYS_LOG(WARN, "check chunk server data version failed:ret[%d]", ret);
           }
           else if (ret != OB_SUCCESS)
@@ -710,7 +756,6 @@ namespace oceanbase
           }
           else
           {
-            TBSYS_LOG(DEBUG, "%s", "ups get data succ");
             break;
           }
         }
@@ -721,6 +766,13 @@ namespace oceanbase
     //
     int ObMergerRpcProxy::ups_get(const ObGetParam & get_param,
       ObScanner & scanner, const ObServerType server_type, const int64_t time_out)
+    {
+      return ups_get_(rpc_stub_, get_param, scanner, server_type, time_out);
+    }
+
+    template<class T, class RpcT>
+    int ObMergerRpcProxy::ups_get_(RpcT *rpc_stub, const ObGetParam & get_param,
+      T & scanner, const ObServerType server_type, const int64_t time_out)
     {
       int ret = OB_SUCCESS;
       if (!check_inner_stat())
@@ -735,7 +787,7 @@ namespace oceanbase
       }
       else if (true == get_param.get_is_read_consistency())
       {
-        ret = master_ups_get(get_param, scanner, time_out);
+        ret = master_ups_get(rpc_stub, get_param, scanner, time_out);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "get from master ups failed:ret[%d]", ret);
@@ -743,7 +795,7 @@ namespace oceanbase
       }
       else
       {
-        ret = slave_ups_get(get_param, scanner, server_type, time_out);
+        ret = slave_ups_get(rpc_stub, get_param, scanner, server_type, time_out);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "get from slave ups failed:ret[%d]", ret);
@@ -756,15 +808,11 @@ namespace oceanbase
         ret = OB_ERR_UNEXPECTED;
       }
 
-      if (OB_SUCCESS == ret && TBSYS_LOGGER._level >= TBSYS_LOG_LEVEL_DEBUG)
-      {
-        TBSYS_LOG(DEBUG, "ups_get");
-        output(scanner);
-      }
       return ret;
     }
 
-    int ObMergerRpcProxy::master_ups_scan(const ObScanParam & scan_param, ObScanner & scanner,
+    template<class T, class RpcT>
+    int ObMergerRpcProxy::master_ups_scan(RpcT *rpc_stub, const ObScanParam & scan_param, T & scanner,
         const int64_t time_out)
     {
       int ret = OB_ERROR;
@@ -777,23 +825,23 @@ namespace oceanbase
           TBSYS_LOG(WARN, "get master update server failed:ret[%d]", ret);
           break;
         }
-        ret = rpc_stub_->scan((time_out > 0) ? time_out : rpc_timeout_, update_server, scan_param, scanner);
+        ret = rpc_stub->scan((time_out > 0) ? time_out : rpc_timeout_, update_server, scan_param, scanner);
         if (OB_INVALID_START_VERSION == ret)
         {
-          TBSYS_LOG(WARN, "check chunk server data version failed:ret[%d]", ret);
+          OB_STAT_INC(CHUNKSERVER, FAIL_CS_VERSION_COUNT);
+          TBSYS_LOG(WARN, "check chunk server %s data version failed:ret[%d]", to_cstring(update_server), ret);
           break;
         }
         else if (OB_NOT_MASTER == ret)
         {
-          TBSYS_LOG(WARN, "get from update server check role failed:ret[%d]", ret);
+          TBSYS_LOG(WARN, "get from update server %s check role failed:ret[%d]", to_cstring(update_server), ret);
         }
         else if (ret != OB_SUCCESS)
         {
-          TBSYS_LOG(WARN, "get from update server failed:ret[%d]", ret);
+          TBSYS_LOG(WARN, "get from update server %s failed:ret[%d]", to_cstring(update_server), ret);
         }
         else
         {
-          TBSYS_LOG(DEBUG, "%s", "ups scan data succ");
           break;
         }
         usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME * (i + 1)));
@@ -852,40 +900,63 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMergerRpcProxy::slave_ups_scan(const ObScanParam & scan_param,
-      ObScanner & scanner, const ObServerType server_type, const int64_t time_out)
+    template<class T, class RpcT>
+    int ObMergerRpcProxy::slave_ups_scan(RpcT *rpc_stub, const ObScanParam & scan_param,
+      T & scanner, const ObServerType server_type, const int64_t time_out)
     {
       int ret = OB_SUCCESS;
-      int32_t retry_times = 0;
       int32_t cur_index = -1;
       int32_t max_count = 0;
+      int32_t retry_times = 0;
+
       //LOCK BLOCK
       {
         tbsys::CRLockGuard lock(ups_list_lock_);
         int32_t server_count = max_count = update_server_list_.ups_count_;
-        cur_index = ObReadUpsBalance::select_server(update_server_list_, server_type);
-        if (cur_index < 0)
+        if (0 == server_count)
         {
-          TBSYS_LOG(WARN, "select server failed:count[%d], index[%d]", server_count, cur_index);
-          ret = OB_ERROR;
-        }
-        else
-        {
-          ObUpsBlackList& black_list =
-            (MERGE_SERVER == server_type) ? black_list_ : ups_black_list_for_merge_;
-          // bring back to alive no need write lock
-          if (black_list.get_valid_count() <= 0)
+          TBSYS_LOG(INFO, "no ups right now local, updating...");
+          if (OB_SUCCESS != (ret = fetch_update_server_list(server_count)))
           {
-            TBSYS_LOG(WARN, "check all the update server not invalid:count[%d]",
-                black_list.get_valid_count());
-            black_list.reset();
+            TBSYS_LOG(WARN, "fetch update server list fail, ret: [%d]", ret);
+          }
+          else if (0 == server_count)
+          {
+            ret = OB_UPS_NOT_EXIST;
+            TBSYS_LOG(WARN, "no update server available right now, ret: [%d]", ret);
+          }
+          else
+          {
+            TBSYS_LOG(INFO, "update local ups list"
+                      " info successfully! Got [%d] ups.", server_count);
+          }
+        }
+        if (OB_SUCCESS == ret)
+        {
+          max_count = server_count;
+          cur_index = ObReadUpsBalance::select_server(update_server_list_, server_type);
+          if (cur_index < 0)
+          {
+            TBSYS_LOG(WARN, "select server failed:count[%d], index[%d]", server_count, cur_index);
+            ret = OB_ENTRY_NOT_EXIST;
+          }
+          else
+          {
+            ObUpsBlackList& black_list =
+              (MERGE_SERVER == server_type) ? black_list_ : ups_black_list_for_merge_;
+            // bring back to alive no need write lock
+            if (black_list.get_valid_count() <= 0)
+            {
+              TBSYS_LOG(WARN, "check all the update server not invalid:count[%d]",
+                        black_list.get_valid_count());
+              black_list.reset();
+            }
           }
         }
       }
-
       if (OB_SUCCESS == ret)
       {
-        ret = OB_ERROR;
+        ret = OB_ENTRY_NOT_EXIST;
         ObServer update_server;
         for (int32_t i = cur_index; retry_times < max_count; ++i, ++retry_times)
         {
@@ -902,9 +973,10 @@ namespace oceanbase
           }
           TBSYS_LOG(DEBUG, "select slave update server for scan:index[%d], ip[%d], port[%d]",
               i, update_server.get_ipv4(), update_server.get_port());
-          ret = rpc_stub_->scan((time_out > 0) ? time_out : rpc_timeout_, update_server, scan_param, scanner);
+          ret = rpc_stub->scan((time_out > 0) ? time_out : rpc_timeout_, update_server, scan_param, scanner);
           if (OB_INVALID_START_VERSION == ret)
           {
+            OB_STAT_INC(CHUNKSERVER, FAIL_CS_VERSION_COUNT);
             TBSYS_LOG(WARN, "check chunk server data version failed:ret[%d]", ret);
           }
           else if (ret != OB_SUCCESS)
@@ -917,8 +989,8 @@ namespace oceanbase
               ObUpsBlackList& black_list =
                 (MERGE_SERVER == server_type) ? black_list_ : ups_black_list_for_merge_;
               black_list.fail(i%server_count, update_server);
-              TBSYS_LOG(WARN, "scan from update server failed:ip[%d], port[%d], ret[%d]",
-                  update_server.get_ipv4(), update_server.get_port(), ret);
+              TBSYS_LOG(WARN, "get from update server failed:ups_ip[%s], port[%d], ret[%d]",
+                  to_cstring(update_server), update_server.get_port(), ret);
             }
           }
           else
@@ -934,6 +1006,13 @@ namespace oceanbase
     int ObMergerRpcProxy::ups_scan(const ObScanParam & scan_param,
       ObScanner & scanner, const ObServerType server_type, const int64_t time_out )
     {
+      return ups_scan_(rpc_stub_, scan_param, scanner, server_type, time_out);
+    }
+
+    template<class T, class RpcT>
+    int ObMergerRpcProxy::ups_scan_(RpcT *rpc_stub, const ObScanParam & scan_param,
+      T & scanner, const ObServerType server_type, const int64_t time_out )
+    {
       int ret = OB_SUCCESS;
       if (!check_inner_stat())
       {
@@ -947,7 +1026,7 @@ namespace oceanbase
       }
       else if (true == scan_param.get_is_read_consistency())
       {
-        ret = master_ups_scan(scan_param, scanner, time_out);
+        ret = master_ups_scan(rpc_stub, scan_param, scanner, time_out);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "scan from master ups failed:ret[%d]", ret);
@@ -955,56 +1034,29 @@ namespace oceanbase
       }
       else
       {
-        ret = slave_ups_scan(scan_param, scanner, server_type, time_out);
+        ret = slave_ups_scan(rpc_stub, scan_param, scanner, server_type, time_out);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "scan from slave ups failed:ret[%d]", ret);
         }
       }
 
-      if (OB_SUCCESS == ret && TBSYS_LOGGER._level >= TBSYS_LOG_LEVEL_DEBUG)
-      {
-        const ObRange * range = scan_param.get_range();
-        if (NULL == range)
-        {
-          TBSYS_LOG(ERROR, "check scan param range failed:table_id[%lu], range[%p]",
-            scan_param.get_table_id(), range);
-        }
-        else
-        {
-          range->to_string(max_range_, sizeof(max_range_));
-          TBSYS_LOG(DEBUG, "ups_scan:table_id[%lu], range[%s], direction[%s]",
-              scan_param.get_table_id(), max_range_,
-              (scan_param.get_scan_direction() == ObScanParam::FORWARD) ? "forward": "backward");
-          output(scanner);
-        }
-      }
       return ret;
     }
 
-    void ObMergerRpcProxy::output(common::ObScanner & result)
+    int ObMergerRpcProxy::sql_ups_get(const common::ObGetParam & get_param,
+                    common::ObNewScanner & scanner,
+                    const int64_t timeout /* = 0 */)
     {
-      int ret = OB_SUCCESS;
-      ObCellInfo *cur_cell = NULL;
-      while (result.next_cell() == OB_SUCCESS)
-      {
-        ret = result.get_cell(&cur_cell);
-        if (OB_SUCCESS == ret)
-        {
-          TBSYS_LOG(DEBUG, "tableid:%lu,rowkey:%.*s,column_id:%lu,ext:%ld,type:%d",
-              cur_cell->table_id_,
-              cur_cell->row_key_.length(), cur_cell->row_key_.ptr(), cur_cell->column_id_,
-              cur_cell->value_.get_ext(),cur_cell->value_.get_type());
-          cur_cell->value_.dump();
-          hex_dump(cur_cell->row_key_.ptr(), cur_cell->row_key_.length());
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "get cell failed:ret[%d]", ret);
-          break;
-        }
-      }
-      result.reset_iter();
+      return ups_get_(sql_rpc_stub_, get_param, scanner, common::MERGE_SERVER, timeout);
     }
+
+    int ObMergerRpcProxy::sql_ups_scan(const common::ObScanParam & scan_param,
+                     common::ObNewScanner & scanner,
+                     const int64_t timeout /* = 0 */)
+    {
+      return ups_scan_(sql_rpc_stub_, scan_param, scanner, common::MERGE_SERVER, timeout);
+    }
+
   } // end namespace chunkserver
 } // end namespace oceanbase

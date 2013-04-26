@@ -33,6 +33,9 @@ uint32_t g_file_num = 128;
 uint32_t g_file_block_num = 128;
 uint32_t g_thread_num = 10;
 uint32_t g_times_per_thread = 1024;
+static const int64_t block_cache_size = 64 * 1024 * 256;
+static const int64_t block_index_cache_size = 32 * 1024 * 1024;
+static const int64_t ficache_max_num = 1024;
 static FileInfoCache fic;
 static ObBlockCache bc(fic);
 
@@ -142,11 +145,8 @@ int main(int argc, char **argv)
       fprintf(stderr, "thread num and times per thread must be set\n");
       exit(-1);
     }
-    ObBlockCacheConf conf;
-    conf.block_cache_memsize_mb = 1024;
-    conf.ficache_max_num = 1024;
-    fic.init(conf.ficache_max_num);
-    bc.init(conf);
+    fic.init(ficache_max_num);
+    bc.init(block_cache_size);
     g_thread_num = atoi(argv[2]);
     g_times_per_thread = atoi(argv[3]);
     srand(static_cast<int32_t>(time(NULL)));

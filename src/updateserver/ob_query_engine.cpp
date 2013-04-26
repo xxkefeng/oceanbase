@@ -27,9 +27,12 @@ namespace oceanbase
   {
     using namespace common;
 
-    QueryEngine::QueryEngine() : inited_(false),
-                                 keybtree_(sizeof(TEKey), &btree_key_alloc_, &btree_node_alloc_),
-                                 keyhash_(hash_bucket_alloc_, hash_node_alloc_)
+    int64_t QueryEngine::HASH_SIZE = 50000000;
+    QueryEngine::QueryEngine(MemTank &allocer) : inited_(false),
+                                                 btree_alloc_(allocer),
+                                                 hash_alloc_(allocer),
+                                                 keybtree_(btree_alloc_),
+                                                 keyhash_(hash_alloc_, hash_alloc_)
     {
     }
 
@@ -41,7 +44,7 @@ namespace oceanbase
       }
     }
 
-    int QueryEngine::init(MemTank *allocer)
+    int QueryEngine::init(const int64_t hash_size)
     {
       int ret = OB_SUCCESS;
       if (inited_)
@@ -49,21 +52,15 @@ namespace oceanbase
         TBSYS_LOG(WARN, "have already inited");
         ret = OB_ERROR;
       }
-      else if (NULL == allocer)
-      {
-        TBSYS_LOG(WARN, "allocer null pointer");
-        ret = OB_ERROR;
-      }
       else
       {
-        btree_key_alloc_.set_mem_tank(allocer);
-        btree_node_alloc_.set_mem_tank(allocer);
-        hash_bucket_alloc_.set_mem_tank(allocer);
-        hash_node_alloc_.set_mem_tank(allocer);
-        if (g_conf.using_hash_index
-            && OB_SUCCESS != (ret = keyhash_.create(hash::cal_next_prime(HASH_SIZE))))
+        if (OB_SUCCESS != (ret = keyhash_.create(hash::cal_next_prime(hash_size?: HASH_SIZE))))
         {
           TBSYS_LOG(WARN, "keyhash create fail");
+        }
+        else if (ERROR_CODE_OK != (ret = keybtree_.init()))
+        {
+          TBSYS_LOG(WARN, "keybtree init fail");
         }
         else
         {
@@ -98,7 +95,7 @@ namespace oceanbase
       }
       else
       {
-        keybtree_.destroy();
+        keybtree_.clear();
         keyhash_.clear();
       }
       return ret;
@@ -111,7 +108,7 @@ namespace oceanbase
       int hash_ret = OB_SUCCESS;
       TEHashKey hash_key;
       hash_key.table_id = static_cast<uint32_t>(key.table_id);
-      hash_key.rk_length = key.row_key.length();
+      hash_key.rk_length = static_cast<int32_t>(key.row_key.length());
       hash_key.row_key = key.row_key.ptr();
       if (!inited_)
       {
@@ -123,22 +120,31 @@ namespace oceanbase
         TBSYS_LOG(INFO, "value null pointer");
         ret = OB_ERROR;
       }
-      else if (ERROR_CODE_OK != (btree_ret = keybtree_.put(key, value, true)))
+      else if (OB_SUCCESS != (hash_ret = keyhash_.insert(hash_key, value)))
       {
-        TBSYS_LOG(WARN, "put to keybtree fail btree_ret=%d [%s] [%s]",
-                  btree_ret, key.log_str(), value->log_str());
-        ret = (ERROR_CODE_ALLOC_FAIL == btree_ret) ? OB_MEM_OVERFLOW : OB_ERROR;
-      }
-      else if (g_conf.using_hash_index
-              && OB_SUCCESS != (hash_ret = keyhash_.insert(hash_key, value)))
-      {
-        TBSYS_LOG(WARN, "put to keyhash fail hash_ret=%d value=%p [%s] [%s]",
-                  hash_ret, value, key.log_str(), value->log_str());
+        if (OB_ENTRY_EXIST != hash_ret)
+        {
+          TBSYS_LOG(WARN, "put to keyhash fail hash_ret=%d value=%p [%s] [%s]",
+                    hash_ret, value, key.log_str(), value->log_str());
+        }
         ret = hash_ret;
       }
       else
       {
-        TBSYS_LOG(DEBUG, "insert to hash and btree succ %s %s", key.log_str(), value->log_str());
+        value->index_stat |= IST_HASH_INDEX;
+        if (ERROR_CODE_OK != (btree_ret = keybtree_.put(key, value, true)))
+        {
+          TBSYS_LOG(WARN, "put to keybtree fail btree_ret=%d [%s] [%s]",
+                    btree_ret, key.log_str(), value->log_str());
+          ret = (ERROR_CODE_ALLOC_FAIL == btree_ret) ? OB_MEM_OVERFLOW : OB_ERROR;
+          keyhash_.erase(hash_key);
+          value->index_stat = IST_NO_INDEX;
+        }
+        else
+        {
+          value->index_stat |= IST_BTREE_INDEX;
+          TBSYS_LOG(DEBUG, "insert to hash and btree succ %s %s", key.log_str(), value->log_str());
+        }
       }
       return ret;
     }
@@ -154,15 +160,30 @@ namespace oceanbase
       {
         TEHashKey hash_key;
         hash_key.table_id = static_cast<uint32_t>(key.table_id);
-        hash_key.rk_length = key.row_key.length();
+        hash_key.rk_length = static_cast<int32_t>(key.row_key.length());
         hash_key.row_key = key.row_key.ptr();
         int hash_ret = OB_SUCCESS;
-        if (OB_SUCCESS != (hash_ret = keyhash_.get(hash_key, ret))
-            || NULL == ret)
+        while (true)
         {
-          if (OB_ENTRY_NOT_EXIST != hash_ret)
+          if (OB_SUCCESS != (hash_ret = keyhash_.get(hash_key, ret))
+              || NULL == ret)
           {
-            TBSYS_LOG(WARN, "get from keyhash fail hash_ret=%d %s", hash_ret, key.log_str());
+            if (OB_ENTRY_NOT_EXIST != hash_ret)
+            {
+              TBSYS_LOG(WARN, "get from keyhash fail hash_ret=%d %s", hash_ret, key.log_str());
+            }
+            break;
+          }
+          else if ((ret->index_stat & IST_HASH_INDEX)
+                  && (ret->index_stat & IST_BTREE_INDEX))
+          {
+            break;
+          }
+          else
+          {
+            asm("pause");
+            ret = NULL;
+            continue;
           }
         }
       }
@@ -197,42 +218,78 @@ namespace oceanbase
         TBSYS_LOG(WARN, "have not inited");
         ret = OB_ERROR;
       }
-      else if (ERROR_CODE_OK != (btree_ret = keybtree_.get_read_handle(iter.get_read_handle_())))
+      else if (ERROR_CODE_OK != (btree_ret = keybtree_.get_scan_handle(iter.get_read_handle_())))
       {
-        TBSYS_LOG(WARN, "btree get read handle fail btree_ret=%d", btree_ret);
+        TBSYS_LOG(WARN, "btree get scan handle fail btree_ret=%d", btree_ret);
         ret = OB_ERROR;
       }
       else
       {
-        const TEKey *btree_start_key_ptr = NULL;
-        const TEKey *btree_end_key_ptr = NULL;
+        btree_ret = ERROR_CODE_OK;
+        const TEKey *scan_start_key_ptr = NULL;
+        const TEKey *scan_end_key_ptr = NULL;
         int start_exclude_ = start_exclude;
         int end_exclude_ = end_exclude;
+        TEKey btree_min_key;
+        TEKey btree_max_key;
         if (0 != min_key)
         {
-          btree_start_key_ptr = keybtree_.get_min_key();
+          btree_ret = keybtree_.get_min_key(btree_min_key);
+          if (ERROR_CODE_OK != btree_ret)
+          {
+            TBSYS_LOG(WARN, "get min key from btree fail btree_ret=%d", btree_ret);
+            ret = OB_ERR_UNEXPECTED;
+          }
+          else
+          {
+            scan_start_key_ptr = &btree_min_key;
+            start_exclude_ = 0;
+          }
         }
         else
         {
-          btree_start_key_ptr = &start_key;
+          scan_start_key_ptr = &start_key;
         }
         if (0 != max_key)
         {
-          btree_end_key_ptr = keybtree_.get_max_key();
+          btree_ret = keybtree_.get_max_key(btree_max_key);
+          if (ERROR_CODE_OK != btree_ret)
+          {
+            TBSYS_LOG(WARN, "get max key from btree fail btree_ret=%d", btree_ret);
+            ret = OB_ERR_UNEXPECTED;
+          }
+          else
+          {
+            scan_end_key_ptr = &btree_max_key;
+            end_exclude_ = 0;
+          }
         }
         else
         {
-          btree_end_key_ptr = &end_key;
+          scan_end_key_ptr = &end_key;
         }
         if (reverse)
         {
-          std::swap(btree_start_key_ptr, btree_end_key_ptr);
+          std::swap(scan_start_key_ptr, scan_end_key_ptr);
           std::swap(start_exclude_, end_exclude_);
         }
-        keybtree_.set_key_range(iter.get_read_handle_(),
-                                btree_start_key_ptr, start_exclude_,
-                                btree_end_key_ptr, end_exclude_);
-        iter.set_(&keybtree_);
+        if (OB_SUCCESS == ret)
+        {
+          btree_ret = keybtree_.set_key_range(iter.get_read_handle_(),
+                                              *scan_start_key_ptr, start_exclude_,
+                                              *scan_end_key_ptr, end_exclude_);
+          TBSYS_LOG(DEBUG, "[BTREE_SCAN_PARAM] [%s] %d [%s] %d",
+                    scan_start_key_ptr->log_str(), start_exclude_, scan_end_key_ptr->log_str(), end_exclude_);
+          if (ERROR_CODE_OK != btree_ret)
+          {
+            TBSYS_LOG(WARN, "set key range to btree scan handle fail btree_ret=%d", btree_ret);
+            ret = OB_ERR_UNEXPECTED;
+          }
+          else
+          {
+            iter.set_(&keybtree_);
+          }
+        }
       }
       return ret;
     }
@@ -245,10 +302,14 @@ namespace oceanbase
       FILE *fd = fopen(buffer, "w");
       if (NULL != fd)
       {
-        BtreeReadHandle handle;
-        if (ERROR_CODE_OK == keybtree_.get_read_handle(handle))
+        keybtree_t::TScanHandle handle;
+        TEKey btree_min_key;
+        TEKey btree_max_key;
+        if (ERROR_CODE_OK == keybtree_.get_scan_handle(handle)
+            && ERROR_CODE_OK == keybtree_.get_min_key(btree_min_key)
+            && ERROR_CODE_OK == keybtree_.get_max_key(btree_max_key))
         {
-          keybtree_.set_key_range(handle, keybtree_.get_min_key(), 0, keybtree_.get_max_key(), 0);
+          keybtree_.set_key_range(handle, btree_min_key, 0, btree_max_key, 0);
           TEKey key;
           TEValue *value = NULL;
           MemTableGetIter get_iter;
@@ -260,7 +321,7 @@ namespace oceanbase
                     num, key.log_str(), value->log_str(), value);
             int64_t pos = 0;
             ObCellInfo *ci = NULL;
-            get_iter.set_(key, value, NULL, NULL);
+            get_iter.set_(key, value, NULL, true, NULL);
             while (OB_SUCCESS == get_iter.next_cell()
                   && OB_SUCCESS == get_iter.get_cell(&ci))
             {
@@ -277,6 +338,21 @@ namespace oceanbase
     int64_t QueryEngine::btree_size()
     {
       return keybtree_.get_object_count();
+    }
+
+    int64_t QueryEngine::btree_alloc_memory()
+    {
+      return keybtree_.get_alloc_memory();
+    }
+
+    int64_t QueryEngine::btree_reserved_memory()
+    {
+      return keybtree_.get_reserved_memory();
+    }
+
+    void QueryEngine::btree_dump_mem_info()
+    {
+      keybtree_.dump_mem_info();
     }
 
     int64_t QueryEngine::hash_size() const
@@ -353,8 +429,7 @@ namespace oceanbase
     void QueryEngineIterator::reset()
     {
       keybtree_ = NULL;
-      read_handle_.clear();
-      new(&read_handle_) BtreeReadHandle;
+      read_handle_.reset();
       pvalue_ = NULL;
     }
 
@@ -364,7 +439,7 @@ namespace oceanbase
       pvalue_ = NULL;
     }
 
-    common::BtreeReadHandle &QueryEngineIterator::get_read_handle_()
+    QueryEngine::keybtree_t::TScanHandle &QueryEngineIterator::get_read_handle_()
     {
       return read_handle_;
     }

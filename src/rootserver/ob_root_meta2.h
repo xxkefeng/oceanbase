@@ -15,7 +15,7 @@
 #include "common/page_arena.h"
 #include "common/ob_tablet_info.h"
 #include "common/ob_define.h"
-
+#include "common/ob_range2.h"
 namespace oceanbase 
 { 
   namespace rootserver 
@@ -38,6 +38,7 @@ namespace oceanbase
       bool did_cs_have(const int32_t cs_idx) const;
       bool can_be_migrated_now(int64_t disabling_period_us) const;
       void has_been_migrated();
+      int64_t get_max_tablet_version() const;
       NEED_SERIALIZE_AND_DESERIALIZE;
     };
     
@@ -55,16 +56,46 @@ namespace oceanbase
       return ret;
     }
     
+    inline int64_t ObRootMeta2::get_max_tablet_version() const
+    {
+      int64_t max_tablet_version = 0;
+      for (int32_t i = 0 ; i < common::OB_SAFE_COPY_COUNT; i++)
+      {
+        if (this->tablet_version_[i] > max_tablet_version)
+        {
+          max_tablet_version = this->tablet_version_[i];
+        }
+      }
+      return max_tablet_version;
+    }
+    
     class ObRootMeta2CompareHelper
     {
       public:
         explicit ObRootMeta2CompareHelper(ObTabletInfoManager* otim);
-        int compare(const int32_t r1, const int32_t r2) const;
         bool operator () (const ObRootMeta2& r1, const ObRootMeta2& r2) const;
+        int compare(const int32_t r1, const int32_t r2) const;
       private:
         ObTabletInfoManager* tablet_info_manager_;
     };
 
+    struct ObRootMeta2RangeLessThan
+    {
+      public:
+        explicit ObRootMeta2RangeLessThan(ObTabletInfoManager *tim);
+        bool operator() (const ObRootMeta2& r1, const common::ObNewRange& r2) const;
+      private:
+        ObTabletInfoManager* tablet_info_manager_;
+    };
+
+    struct ObRootMeta2TableIdLessThan
+    {
+      public:
+        explicit ObRootMeta2TableIdLessThan(ObTabletInfoManager *tim);
+        bool operator() (const ObRootMeta2& r1, const common::ObNewRange& r2) const;
+      private:
+        ObTabletInfoManager* tablet_info_manager_;
+    };
 
   } // end namespace rootserver
 } // end namespace oceanbase

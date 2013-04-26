@@ -14,8 +14,10 @@
  *
  */
 #include "ob_merge_groupby.h"
+#include "common/utility.h"
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
+using namespace oceanbase::common::serialization;
 
 ObMergeGroupBy::ObMergeGroupBy()
   :last_input_row_(NULL)
@@ -24,6 +26,13 @@ ObMergeGroupBy::ObMergeGroupBy()
 
 ObMergeGroupBy::~ObMergeGroupBy()
 {
+  last_input_row_ = NULL;
+}
+
+void ObMergeGroupBy::reset()
+{
+  ObGroupBy::reset();
+  aggr_func_.reset();
   last_input_row_ = NULL;
 }
 
@@ -81,7 +90,7 @@ int ObMergeGroupBy::is_same_group(const ObRow &row1, const ObRow &row2, bool &re
   const ObObj *cell2 = NULL;
   for (int64_t i = 0; i < group_columns_.count(); ++i)
   {
-    const ObGroupColumn &group_col = group_columns_.at(i);
+    const ObGroupColumn &group_col = group_columns_.at(static_cast<int32_t>(i));
     if (OB_SUCCESS != (ret = row1.get_cell(group_col.table_id_, group_col.column_id_, cell1)))
     {
       TBSYS_LOG(WARN, "failed to get cell, err=%d tid=%lu cid=%lu",
@@ -172,8 +181,57 @@ int ObMergeGroupBy::get_next_row(const ObRow *&row)
       {
         TBSYS_LOG(WARN, "failed to calculate avg, err=%d", ret);
       }
-      ret = OB_SUCCESS;
     }
   }
   return ret;
 }
+
+void ObMergeGroupBy::assign(const ObMergeGroupBy& other)
+{
+  group_columns_ = other.group_columns_;
+  aggr_columns_ = other.aggr_columns_;
+  set_int_div_as_double(other.get_int_div_as_double());
+}
+
+DEFINE_SERIALIZE(ObMergeGroupBy)
+{
+  int ret = OB_SUCCESS;
+  if ((ret = ObGroupBy::serialize(buf, buf_len, pos)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "fail to serialize ObGroupBy, ret= %d", ret);
+  }
+  else if ((ret = encode_bool(buf, buf_len, pos, get_int_div_as_double())))
+  {
+    TBSYS_LOG(WARN, "serialize get_int_div_as_double fail. ret=%d", ret);
+  }
+  return ret;
+}
+
+DEFINE_DESERIALIZE(ObMergeGroupBy)
+{
+  int ret = OB_SUCCESS;
+  bool did_int_div_as_double = false;
+  if ((ret = ObGroupBy::deserialize(buf, data_len, pos)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "fail to deserialize ObGroupBy. ret=%d", ret);
+  }
+  else if ((ret = decode_bool(buf, data_len, pos, &did_int_div_as_double)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "fail to deserialize get_int_div_as_double. ret=%d", ret);
+  }
+  else
+  {
+    set_int_div_as_double(did_int_div_as_double);
+  }
+  return ret;
+}
+
+DEFINE_GET_SERIALIZE_SIZE(ObMergeGroupBy)
+{
+  int64_t size = 0;
+  size += ObGroupBy::get_serialize_size();
+  size += encoded_length_vi64(get_int_div_as_double());
+  return size;
+}
+
+

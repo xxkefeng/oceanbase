@@ -29,28 +29,36 @@ namespace oceanbase
   {
     namespace test
     {
-      class ObFakeSstableScan : public ObSstableScan
+      class ObFakeSSTableScan : public ObSSTableScan 
       {
         public:
-          ObFakeSstableScan(const char *file_name);
-          virtual ~ObFakeSstableScan() {};
+          ObFakeSSTableScan(const char *file_name);
+          virtual ~ObFakeSSTableScan() {};
 
-          virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
-          virtual int open();
-          virtual int close();
-          virtual int get_next_row(const ObString *&rowkey, const ObRow *&row);
-          virtual int64_t to_string(char* buf, const int64_t buf_len) const;
-          virtual int set_scan_param(const sstable::ObSSTableScanParam &param);
+          int set_child(int32_t child_idx, ObPhyOperator &child_operator);
+          int open();
+          int close();
+          int get_next_row(const ObRowkey *&rowkey, const ObRow *&row);
+          int64_t to_string(char* buf, const int64_t buf_len) const;
+          int set_scan_param(const sstable::ObSSTableScanParam &param);
+          int get_row_desc(const common::ObRowDesc *&row_desc) const;
+        
+          int get_tablet_data_version(int64_t &version)
+          {
+            version = 0;
+            return OB_SUCCESS;
+          }
 
         private:
           // disallow copy
-          ObFakeSstableScan(const ObFakeSstableScan &other);
-          ObFakeSstableScan& operator=(const ObFakeSstableScan &other);
+          ObFakeSSTableScan(const ObFakeSSTableScan &other);
+          ObFakeSSTableScan& operator=(const ObFakeSSTableScan &other);
 
         private:
           // data members
           ObFileTable file_table_;
-          ObString cur_rowkey_;
+          ObRowkey cur_rowkey_;
+          ObObj rowkey_obj_;
           sstable::ObSSTableScanParam scan_param_;
           ObRow curr_row_;
           ObRowDesc row_desc_;

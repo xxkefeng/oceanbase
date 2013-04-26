@@ -26,6 +26,7 @@
 #include "common/ob_row_store.h"
 #include "ob_ups_multi_get.h"
 #include "common/thread_buffer.h"
+#include "ob_tablet_fuse.h"
 
 namespace oceanbase
 {
@@ -41,8 +42,8 @@ namespace oceanbase
       class ObTabletJoinTest_get_right_table_rowkey_Test;
       class ObTabletJoinTest_fetch_fused_row_Test;
 
-      class ObTabletScanTest_create_plan_Test;
-      class ObTabletScanTest_create_plan2_Test;
+      class ObTabletScanTest_create_plan_join_Test;
+      class ObTabletScanTest_create_plan_not_join_Test;
     }
 
     class ObTabletJoin: public ObPhyOperator
@@ -50,7 +51,6 @@ namespace oceanbase
       public:
         struct JoinInfo
         {
-          uint64_t right_table_id_;
           uint64_t left_column_id_;
           uint64_t right_column_id_;
 
@@ -60,9 +60,10 @@ namespace oceanbase
         struct TableJoinInfo
         {
           uint64_t left_table_id_; //左表table_id
+          uint64_t right_table_id_;
 
           /* join条件信息，左表的column对应于右表的rowkey */
-          ObArray<JoinInfo> join_condition_;
+          ObArray<uint64_t> join_condition_;
 
           /* 指示左表哪些列是从右表取过来的 */
           ObArray<JoinInfo> join_column_;
@@ -78,60 +79,76 @@ namespace oceanbase
 
         int set_child(int32_t child_idx, ObPhyOperator &child_operator);
 
-        int open();
-        int close();
+        virtual int open();
+        virtual int close();
+        virtual void reset();
+
         int get_next_row(const ObRow *&row);
         int64_t to_string(char* buf, const int64_t buf_len) const;
-        int get_row_desc(const common::ObRowDesc *&row_desc) const {row_desc=NULL;return OB_NOT_IMPLEMENT;}
-        int add_column_id(uint64_t column_id);
+        int get_row_desc(const common::ObRowDesc *&row_desc) const; 
 
+        void set_network_timeout(int64_t network_timeout);
         inline void set_batch_count(const int64_t batch_count);
         inline void set_table_join_info(const TableJoinInfo &table_join_info);
-        inline void set_ups_multi_get(ObUpsMultiGet *ups_multi_get);
+        inline void set_is_read_consistency(bool is_read_consistency)
+        {
+          is_read_consistency_ = is_read_consistency;
+        }
 
-        static const int64_t KVCACHE_SIZE = 2*1024L*1024L*100L; //200M
-        static const int64_t KVCACHE_ITEM_SIZE = 128;
-        static const int64_t KVCACHE_BLOCK_SIZE = 1024L*1024L; //1M
+        inline int set_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy)
+        {
+          return ups_multi_get_.set_rpc_proxy(rpc_proxy);
+        }
 
-        friend class test::ObTabletScanTest_create_plan_Test;
-        friend class test::ObTabletScanTest_create_plan2_Test;
-        friend class test::ObTabletJoinTest_fetch_ups_row_Test;
+        inline void set_version_range(const ObVersionRange &version_range)
+        {
+          version_range_ = version_range;
+        }
+
+        friend class test::ObTabletScanTest_create_plan_join_Test;
+        friend class test::ObTabletScanTest_create_plan_not_join_Test;
         friend class test::ObTabletJoinTest_compose_get_param_Test;
         friend class test::ObTabletJoinTest_gen_ups_row_desc_Test;
         friend class test::ObTabletJoinTest_get_right_table_rowkey_Test;
         friend class test::ObTabletJoinTest_fetch_fused_row_Test;
-
-      private:
+        
+      protected:
         // disallow copy
         ObTabletJoin(const ObTabletJoin &other);
         ObTabletJoin& operator=(const ObTabletJoin &other);
 
-        int get_right_table_rowkey(const ObRow &row, uint64_t &right_table_id, ObString &rowkey) const;
-        int compose_get_param(uint64_t table_id, const ObString &rowkey, ObGetParam &get_param);
+        int get_right_table_rowkey(const ObRow &row, ObRowkey &rowkey, ObObj *rowkey_obj) const;
+        int compose_get_param(uint64_t table_id, const ObRowkey &rowkey, ObGetParam &get_param);
         bool check_inner_stat();
+
+        int fetch_next_batch_row(ObGetParam *get_param);
         int fetch_fused_row(ObGetParam *get_param);
-        int fetch_ups_row(ObGetParam *get_param);
+
         int gen_ups_row_desc();
 
-      private:
+        virtual int fetch_fused_row_prepare();
+        virtual int get_ups_row(const ObRowkey &rowkey, ObUpsRow &ups_row, const ObGetParam &get_param) = 0;
+        virtual int gen_get_param(ObGetParam &get_param, const ObRow &fused_row) = 0;
+
+      protected:
         // data members
         TableJoinInfo table_join_info_;
         int64_t batch_count_;
-        ObPhyOperator *fused_scan_;
-        common::KeyValueCache<ObString, ObString, KVCACHE_ITEM_SIZE, KVCACHE_BLOCK_SIZE> ups_row_cache_;
+        bool    fused_row_iter_end_;
+        ObTabletFuse *fused_scan_;
+        ObUpsMultiGet ups_multi_get_;
         ObRowStore fused_row_store_;
         ThreadSpecificBuffer thread_buffer_;
-        ObUpsMultiGet *ups_multi_get_;
-        ObRowDesc curr_row_desc_;
         ObRowDesc ups_row_desc_;
         ObRowDesc ups_row_desc_for_join_;
         ObRow curr_row_;
+        const ObRow *fused_row_;
+        ObArray<const ObRowStore::StoredRow *> fused_row_array_;
+        int64_t fused_row_idx_;
+        bool is_read_consistency_;
+        int64_t valid_fused_row_count_;
+        ObVersionRange version_range_;
     };
-
-    void ObTabletJoin::set_ups_multi_get(ObUpsMultiGet *ups_multi_get)
-    {
-      this->ups_multi_get_ = ups_multi_get;
-    }
 
     void ObTabletJoin::set_table_join_info(const TableJoinInfo &table_join_info)
     {

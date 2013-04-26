@@ -26,6 +26,7 @@
 #include <math.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include "ob_scan_param_loader.h"
 #include "common/ob_cell_array.h"
 #include "common/ob_define.h"
 #include "common/ob_cache.h"
@@ -37,21 +38,22 @@
 #include "mergeserver/ob_groupby_operator.h"
 #include "mergeserver/ob_read_param_decoder.h"
 #include "mergeserver/ob_ms_tsi.h"
-#include "mergeserver/ob_scan_param_loader.h"
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace testing;
 using namespace std;
+static CharArena allocator_;
 
-void init_decode_param(ObStringBuf buf,  ObScanParam &org_scan_param)
+void init_decode_param(ObStringBuf &buf,  ObScanParam &org_scan_param)
 {
   UNUSED(buf);
   const char *c_ptr;
   ObString str;
-  ObRange q_range;
-  q_range.border_flag_.set_min_value();
-  q_range.border_flag_.set_max_value();
+  ObRowkey key;
+  ObNewRange q_range;
+  q_range.set_whole_range();
   q_range.border_flag_.set_inclusive_start();
   q_range.border_flag_.set_inclusive_end();
   c_ptr = "collect_info";
@@ -124,7 +126,7 @@ TEST(ObSessionManager, basic)
   ObGetParam get_param(true);
   ObSessionManager mgr;
   ObCellInfo cell;
-  cell.row_key_.assign((char*)"rowkey", static_cast<int32_t>(strlen("rowkey")));
+  cell.row_key_ = make_rowkey("rowkey", &allocator_);
   cell.table_name_.assign((char*)"table", static_cast<int32_t>(strlen("table")));
   cell.column_name_.assign((char*)"column", static_cast<int32_t>(strlen("column")));
   EXPECT_EQ(get_param.add_cell(cell), OB_SUCCESS);
@@ -179,4 +181,3 @@ int main(int argc, char **argv)
   InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

@@ -1,12 +1,12 @@
 /**
  * (C) 2010-2011 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or 
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * ob_query_service.cpp for query(get or scan), do merge, join, 
- * group by, order by, limit, topn operation and so on. 
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * ob_query_service.cpp for query(get or scan), do merge, join,
+ * group by, order by, limit, topn operation and so on.
  *
  * Authors:
  *   huating <huating.zmq@taobao.com>
@@ -16,19 +16,18 @@
 #include "common/ob_trace_log.h"
 #include "ob_query_service.h"
 
-namespace oceanbase 
+namespace oceanbase
 {
-  namespace chunkserver 
+  namespace chunkserver
   {
     using namespace oceanbase::common;
 
     ObQueryService::ObQueryService(ObChunkServer& chunk_server)
-    : chunk_server_(chunk_server), 
+    : chunk_server_(chunk_server),
       get_scan_proxy_(chunk_server.get_tablet_manager()),
       rpc_proxy_(*chunk_server.get_rpc_proxy()),
       query_agent_(get_scan_proxy_),
       ups_get_cell_stream_(&rpc_proxy_, MERGE_SERVER),
-      join_get_cell_stream_(&rpc_proxy_,MERGE_SERVER),
       ups_scan_cell_stream_(&rpc_proxy_, MERGE_SERVER),
       schema_mgr_(NULL), row_cells_cnt_(0), got_rows_cnt_(0),
       max_scan_rows_(0)
@@ -56,7 +55,7 @@ namespace oceanbase
 
       if(0 >= get_param.get_cell_size() || NULL == row_index)
       {
-        TBSYS_LOG(WARN,"get param cell size error, cell_size=%ld, row_index=%p", 
+        TBSYS_LOG(WARN,"get param cell size error, cell_size=%ld, row_index=%p",
                   get_param.get_cell_size(), row_index);
         ret = OB_INVALID_ARGUMENT;
       }
@@ -64,7 +63,7 @@ namespace oceanbase
       //get local newest schema
       if (OB_SUCCESS == ret)
       {
-        ret = rpc_proxy_.get_schema(ObMergerRpcProxy::LOCAL_NEWEST, &schema_mgr_);
+        ret = rpc_proxy_.get_schema(get_param[0]->table_id_, ObMergerRpcProxy::LOCAL_NEWEST, &schema_mgr_);
         if (OB_SUCCESS != ret || NULL == schema_mgr_)
         {
           TBSYS_LOG(WARN, "fail to get the latest schema, unexpected error");
@@ -94,10 +93,10 @@ namespace oceanbase
           if (OB_SUCCESS == ret && i == row_count && !need_merge_dynamic_data)
           {
             /**
-             * if all the tables in get parameter needn't merge the dynamic 
-             * data from udpate server, modify the version range of scan 
-             * param, version range with 0 start version and end version, 
-             * chunkserver will not read dynamic data from udpateserver. 
+             * if all the tables in get parameter needn't merge the dynamic
+             * data from udpate server, modify the version range of scan
+             * param, version range with 0 start version and end version,
+             * chunkserver will not read dynamic data from udpateserver.
              */
             version_range.start_version_ = 0;
             version_range.end_version_ = 0;
@@ -111,10 +110,10 @@ namespace oceanbase
       // do request
       if (OB_SUCCESS == ret)
       {
-        mem_limit.max_merge_mem_size_ = chunk_server_.get_param().get_max_merge_mem_size();
+        mem_limit.max_merge_mem_size_ = chunk_server_.get_config().max_merge_mem_size;
         ret = query_agent_.start_agent(
               get_param, ups_get_cell_stream_,
-              join_get_cell_stream_, *schema_mgr_,
+              ups_get_cell_stream_, *schema_mgr_,
               mem_limit, timeout_time);
         if (OB_CS_TABLET_NOT_EXIST == ret)
         {
@@ -147,7 +146,7 @@ namespace oceanbase
       max_scan_rows_ = 0;
     }
 
-    int ObQueryService::fill_get_data(const ObGetParam& get_param, 
+    int ObQueryService::fill_get_data(const ObGetParam& get_param,
                                       ObScanner& scanner)
     {
       int ret = OB_SUCCESS;
@@ -160,7 +159,7 @@ namespace oceanbase
       {
         for (int64_t i = 0; i < row_cells_cnt_; ++i)
         {
-          //TODO: optimize it soon 
+          //TODO: optimize it soon
           temp_cell.table_id_ = (*row_cells_[i]).table_id_;
           temp_cell.column_id_ = (*row_cells_[i]).column_id_;
           temp_cell.row_key_ = (*row_cells_[i]).row_key_;
@@ -191,7 +190,7 @@ namespace oceanbase
           }
           {
             row_cells_[row_cells_cnt_++] = cur_cell;
-            //TODO: optimize it soon 
+            //TODO: optimize it soon
             temp_cell.table_id_ = cur_cell->table_id_;
             temp_cell.column_id_ = cur_cell->column_id_;
             temp_cell.row_key_ = cur_cell->row_key_;
@@ -201,9 +200,9 @@ namespace oceanbase
           if (OB_SIZE_OVERFLOW == ret)
           {
             int64_t roll_cell_idx = fullfilled_item_num - 1;
-            while ((get_param[roll_cell_idx]->table_id_ 
-                    == get_param[fullfilled_item_num - 1]->table_id_) 
-                   &&(get_param[roll_cell_idx]->row_key_ 
+            while ((get_param[roll_cell_idx]->table_id_
+                    == get_param[fullfilled_item_num - 1]->table_id_)
+                   &&(get_param[roll_cell_idx]->row_key_
                       == get_param[fullfilled_item_num - 1]->row_key_))
             {
               roll_cell_idx --;
@@ -242,13 +241,13 @@ namespace oceanbase
       }
 
       FILL_TRACE_LOG("ret=%d, size=%ld, cell_num=%ld, row_num=%ld, "
-                     "fullfilled_item_num=%ld,", 
+                     "fullfilled_item_num=%ld,",
         ret, scanner.get_size(), scanner.get_cell_num(), scanner.get_row_num(),
         fullfilled_item_num);
 
       return ret;
     }
-     
+
     int ObQueryService::scan(const ObScanParam& scan_param, ObScanner& scanner,
                              const int64_t timeout_time)
     {
@@ -260,7 +259,7 @@ namespace oceanbase
       ObVersionRange org_version_range;
 
       // get local newest schema
-      ret = rpc_proxy_.get_schema(ObMergerRpcProxy::LOCAL_NEWEST, &schema_mgr_);
+      ret = rpc_proxy_.get_schema(scan_param.get_table_id(), ObMergerRpcProxy::LOCAL_NEWEST, &schema_mgr_);
       if (OB_SUCCESS != ret || NULL == schema_mgr_)
       {
         TBSYS_LOG(WARN, "fail to get the latest schema, unexpected error");
@@ -272,16 +271,16 @@ namespace oceanbase
         if (NULL != table_schema)
         {
           /**
-           * if the table needn't merge the dynamic data from udpate 
-           * server and it isn't full dump, modify the version range of 
-           * scan param, version range with 0 start version and end 
-           * version, chunkserver will not read dynamic data from 
-           * udpateserver. 
+           * if the table needn't merge the dynamic data from udpate
+           * server and it isn't full dump, modify the version range of
+           * scan param, version range with 0 start version and end
+           * version, chunkserver will not read dynamic data from
+           * udpateserver.
            */
           if (!table_schema->is_merge_dynamic_data())
           {
             org_version_range = scan_param.get_version_range();
-            is_full_dump = 
+            is_full_dump =
               (!org_version_range.border_flag_.is_max_value()
               && !org_version_range.border_flag_.is_min_value()
               && ((org_version_range.start_version_ == org_version_range.end_version_
@@ -304,16 +303,16 @@ namespace oceanbase
           }
 
           /**
-           * if each scan operation of the table is too big, it consume 
-           * too much resource, we could limit the resource usage of the 
-           * table, so we limit the scan rows per tablet of the table, 
-           * maybe the result is not correctly, but it save some resource 
-           * for another necessary scan operation. this is a degradation 
-           * step for high load. here we use the scan_size_ member to 
-           * store the max scan rows per tablet temporarily. the scan size 
-           * is splited to 2 parts, the high 32 bits store 
-           * max_scan_rows_per_tabelt, the low 32 bits store 
-           * internal_ups_scan_size. 
+           * if each scan operation of the table is too big, it consume
+           * too much resource, we could limit the resource usage of the
+           * table, so we limit the scan rows per tablet of the table,
+           * maybe the result is not correctly, but it save some resource
+           * for another necessary scan operation. this is a degradation
+           * step for high load. here we use the scan_size_ member to
+           * store the max scan rows per tablet temporarily. the scan size
+           * is splited to 2 parts, the high 32 bits store
+           * max_scan_rows_per_tabelt, the low 32 bits store
+           * internal_ups_scan_size.
            */
           int64_t ups_scan_size = table_schema->get_internal_ups_scan_size();
           max_scan_rows_ = table_schema->get_max_scan_rows_per_tablet();
@@ -322,33 +321,33 @@ namespace oceanbase
             if (ups_scan_size > 0 && 0 == max_scan_rows_
                 && scan_param.get_is_result_cached())
             {
-              const_cast<ObScanParam&>(scan_param).set_read_mode(ObScanParam::SYNCREAD);
+              const_cast<ObScanParam&>(scan_param).set_read_mode(ScanFlag::SYNCREAD);
             }
             int64_t scan_size = MAKE_SCAN_SIZE(ups_scan_size,max_scan_rows_);
             const_cast<ObScanParam&>(scan_param).set_scan_size(scan_size);
           }
         }
-        else 
+        else
         {
-          TBSYS_LOG(WARN, "fail to get table schema, table_id=%lu", 
+          TBSYS_LOG(WARN, "fail to get table schema, table_id=%lu",
             scan_param.get_table_id());
           ret = OB_SCHEMA_ERROR;
         }
       }
-      
+
       // do request
       if (OB_SUCCESS == ret)
       {
-        mem_limit.merge_mem_size_ = chunk_server_.get_param().get_merge_mem_size();
-        mem_limit.max_merge_mem_size_ = chunk_server_.get_param().get_max_merge_mem_size();
-        mem_limit.groupby_mem_size_ = chunk_server_.get_param().get_groupby_mem_size();
-        mem_limit.max_groupby_mem_size_ = chunk_server_.get_param().get_max_groupby_mem_size();
+        mem_limit.merge_mem_size_ = chunk_server_.get_config().merge_mem_size;
+        mem_limit.max_merge_mem_size_ = chunk_server_.get_config().max_merge_mem_size;
+        mem_limit.groupby_mem_size_ = chunk_server_.get_config().groupby_mem_size;
+        mem_limit.max_groupby_mem_size_ = chunk_server_.get_config().max_groupby_mem_size;
         ret = query_agent_.start_agent(
               scan_param, ups_scan_cell_stream_,
-              join_get_cell_stream_, *schema_mgr_, 
+              ups_get_cell_stream_, *schema_mgr_,
               mem_limit, timeout_time);
       }
-      
+
       if (OB_SUCCESS == ret)
       {
         ret = fill_scan_data(scanner);
@@ -356,6 +355,9 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "failed to store cell array to scanner, ret=%d", ret);
         }
+        // dump scanner for debug only
+        // scan_param.dump();
+        // scanner.dump_all(TBSYS_LOG_LEVEL_DEBUG);
       }
 
       return ret;
@@ -386,7 +388,7 @@ namespace oceanbase
       {
         for (int64_t i = 0; i < row_cells_cnt_; ++i)
         {
-          //TODO: optimize it soon 
+          //TODO: optimize it soon
           temp_cell.table_id_ = (*row_cells_[i]).table_id_;
           temp_cell.column_id_ = (*row_cells_[i]).column_id_;
           temp_cell.row_key_ = (*row_cells_[i]).row_key_;
@@ -423,10 +425,10 @@ namespace oceanbase
             ret = OB_SIZE_OVERFLOW;
             break;
           }
-          else 
+          else
           {
             row_cells_[row_cells_cnt_++] = cur_cell;
-            //TODO: optimize it soon 
+            //TODO: optimize it soon
             temp_cell.table_id_ = cur_cell->table_id_;
             temp_cell.column_id_ = cur_cell->column_id_;
             temp_cell.row_key_ = cur_cell->row_key_;
@@ -455,7 +457,6 @@ namespace oceanbase
             if (OB_SUCCESS == ret)
             {
               scanner.set_whole_result_row_num(query_agent_.get_total_result_row_count());
-              scanner.set_is_result_precision(query_agent_.is_result_precision());
               ret = scanner.set_is_req_fullfilled(false, 1);
             }
             break;
@@ -466,13 +467,12 @@ namespace oceanbase
           }
         }
       }
-      
+
       if (OB_ITER_END == ret)
       {
-        row_cells_cnt_ = 0; 
+        row_cells_cnt_ = 0;
         scanner.set_whole_result_row_num(query_agent_.get_total_result_row_count());
         scanner.set_data_version(query_agent_.get_data_version());
-        scanner.set_is_result_precision(query_agent_.is_result_precision());
         is_fullfilled = query_agent_.is_request_fullfilled();
         ret = scanner.set_is_req_fullfilled(is_fullfilled, 1);
         if (OB_SUCCESS == ret)
@@ -487,9 +487,9 @@ namespace oceanbase
 
       FILL_TRACE_LOG("ret=%d, size=%ld, cell_num=%ld, row_num=%ld, "
                      "whole_row_num=%ld, got_rows=%ld, max_scan_rows=%ld, "
-                     "is_fullfilled=%d,", 
+                     "is_fullfilled=%d,",
         ret, scanner.get_size(), scanner.get_cell_num(), scanner.get_row_num(),
-        scanner.get_whole_result_row_num(), got_rows_cnt_, max_scan_rows_, 
+        scanner.get_whole_result_row_num(), got_rows_cnt_, max_scan_rows_,
         is_fullfilled);
 
       return ret;

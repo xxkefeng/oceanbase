@@ -16,7 +16,6 @@
 #ifndef OCEANBASE_CHUNKSERVER_SCAN_CELL_STREAM_H_
 #define OCEANBASE_CHUNKSERVER_SCAN_CELL_STREAM_H_
 
-#include "common/ob_range.h"
 #include "common/ob_read_common_data.h"
 #include "ob_cell_stream.h"
 

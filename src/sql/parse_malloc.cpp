@@ -9,101 +9,79 @@ using namespace oceanbase::common;
 /* get memory from the thread obStringBuf, and not release untill thread quits */
 void *parse_malloc(const size_t nbyte, void *malloc_pool)
 {
+  void *ptr = NULL;
+  size_t headlen = sizeof(int64_t);
   ObStringBuf* alloc_buf = static_cast<ObStringBuf*>(malloc_pool);
   if (alloc_buf == NULL)
   {
     TBSYS_LOG(ERROR, "parse_malloc gets string buffer error");
-    return NULL;
   }
-
-  /* ^_^ do not want to add any code to ob_string_buf */
-  /* max len of one allocation is 2M, which is same as DEF_MEM_BLOCK_SIZE*/
-  const size_t PARSER_MAX_MALLOC_SIZE = 2 * 1024L * 1024L;
-  size_t headlen = sizeof(int64_t);
-  // We leave 8 byte for malloc sizeo
-  if (nbyte > PARSER_MAX_MALLOC_SIZE - headlen)
+  else if (nbyte <= 0)
   {
-    TBSYS_LOG(ERROR, "parse_malloc exceeds the max size");
-    return NULL;
+    TBSYS_LOG(ERROR, "wrong size %ld of parse_malloc", nbyte);
   }
-  char str[PARSER_MAX_MALLOC_SIZE];
-  ObString tmp_string(PARSER_MAX_MALLOC_SIZE, static_cast<int32_t>(nbyte + headlen), str);
-  ObString res_string;
-  if (alloc_buf->write_string(tmp_string, &res_string) != OB_SUCCESS)
-    return NULL;
-  char *ptr = res_string.ptr();
-  *((int64_t *)ptr) = nbyte;
-  return (void *)(ptr + headlen);
+  else if (NULL == (ptr = alloc_buf->alloc(headlen + nbyte)))
+  {
+    TBSYS_LOG(ERROR, "alloc memory failed");
+  }
+  else
+  {
+    *((int64_t *)ptr) = nbyte;
+    ptr = (char*)ptr + headlen;
+  }
+  return ptr;
 }
 
+/* ptr must point to a memory allocated by parse_malloc.cpp */
 void *parse_realloc(void *ptr, size_t nbyte, void *malloc_pool)
 {
+  void *new_ptr = NULL;
   ObStringBuf* alloc_buf = static_cast<ObStringBuf*>(malloc_pool);
   if (alloc_buf == NULL)
   {
     TBSYS_LOG(ERROR, "parse_malloc gets string buffer error");
-    return NULL;
   }
-
-  /* ^_^ do not want to add any code to ob_string_buf */
-  /* max len of one allocation is 2M, which is same as DEF_MEM_BLOCK_SIZE*/
-  const size_t PARSER_MAX_MALLOC_SIZE = 2 * 1024L * 1024L;
-  size_t headlen = sizeof(int64_t);
-  // We leave 8 byte for malloc sizeo
-  if (nbyte + headlen > PARSER_MAX_MALLOC_SIZE)
+  else if (nbyte <= 0)
   {
-    TBSYS_LOG(ERROR, "parse_realloc exceeds the max size");
-    return NULL;
+    TBSYS_LOG(ERROR, "wrong size %ld of parse_malloc", nbyte);
   }
-
-  int64_t size = *(int64_t *)((char *)ptr - headlen);
-  char str[PARSER_MAX_MALLOC_SIZE];
-  char *newptr = str;
-  *((int64_t *)newptr) = nbyte;
-  memmove(newptr + headlen, ptr, size <= static_cast<int64_t>(nbyte) ? size : nbyte);
-  ObString tmp_string(PARSER_MAX_MALLOC_SIZE, static_cast<int32_t>(nbyte + sizeof(int64_t)), str);
-  ObString res_string;
-  if (alloc_buf->write_string(tmp_string, &res_string) != OB_SUCCESS)
-    return NULL;
-  parse_free((void *)((char *)ptr - headlen));
-  return (void *)(res_string.ptr() + headlen);
+  else if (ptr == NULL)
+  {
+    new_ptr = parse_malloc(nbyte, malloc_pool);
+  }
+  else
+  {
+    size_t headlen = sizeof(int64_t);
+    int64_t obyte = *(int64_t *)((char *)ptr - headlen);
+    if ((new_ptr = alloc_buf->realloc((char*)ptr - headlen, obyte + headlen, nbyte + headlen)) != NULL)
+    {
+      *((int64_t *)new_ptr) = nbyte;
+      new_ptr = (char*)new_ptr + headlen;
+    }
+    else
+    {
+      TBSYS_LOG(ERROR, "alloc memory failed");
+    }
+  }
+  return new_ptr;
 }
 
 char *parse_strdup(const char *str, void *malloc_pool)
 {
-  if (!str)
-    return NULL;
-
-  ObStringBuf* alloc_buf = static_cast<ObStringBuf*>(malloc_pool);
-  if (alloc_buf == NULL)
+  char *new_str = NULL;
+  if (str)
   {
-    TBSYS_LOG(ERROR, "parse_malloc gets string buffer error");
-    return NULL;
+    size_t len = strlen(str);
+    if ((new_str = (char *)parse_malloc(len + 1, malloc_pool)) != NULL)
+    {
+      memmove(new_str, str, len + 1);
+    }
+    else
+    {
+      TBSYS_LOG(ERROR, "parse_strdup gets string buffer error");
+    }
   }
-
-  /* ^_^ do not want to add any code to ob_string_buf */
-  /* max len of one allocation is 2M, which is same as DEF_MEM_BLOCK_SIZE*/
-  const size_t PARSER_MAX_MALLOC_SIZE = 2 * 1024L * 1024L;
-  size_t len = strlen(str);
-  size_t headlen = sizeof(int64_t);
-  if (len + headlen + 1 > PARSER_MAX_MALLOC_SIZE)
-  {
-    TBSYS_LOG(ERROR, "parse_strdup exceeds the max size");
-    return NULL;
-  }
-  char tmp_str[PARSER_MAX_MALLOC_SIZE];
-  char *ptr = tmp_str;
-  *((int64_t *)ptr) = len + 1;
-  memmove(ptr + headlen, str, len + 1);
-  int32_t old_str_len = static_cast<int32_t>(headlen + len + 1);
-  ObString old_str(old_str_len, old_str_len, ptr);
-  ObString new_str;
-  if (alloc_buf->write_string(old_str, &new_str) != OB_SUCCESS)
-    return NULL;
-
-  char *new_string = new_str.ptr();
-  *(new_string + headlen + len) = '\0';
-  return new_string + headlen;
+  return new_str;
 }
 
 void parse_free(void *ptr)

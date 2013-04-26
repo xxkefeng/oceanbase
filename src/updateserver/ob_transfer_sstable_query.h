@@ -15,6 +15,7 @@
 #ifndef OCEANBASE_UPDATESERVER_OB_TRANSFER_SSTABLE_QUERY_H_
 #define OCEANBASE_UPDATESERVER_OB_TRANSFER_SSTABLE_QUERY_H_
 
+#include "common/ob_rowkey.h"
 #include "common/thread_buffer.h"
 #include "common/ob_fileinfo_manager.h"
 #include "sstable/ob_blockcache.h"
@@ -33,9 +34,13 @@ namespace oceanbase
       ObTransferSSTableQuery(common::IFileInfoMgr &fileinfo_mgr);
       ~ObTransferSSTableQuery();
 
-      int init(const sstable::ObBlockCacheConf& bc_conf, 
-               const sstable::ObBlockIndexCacheConf& bic_conf,
+      int init(const int64_t block_cache_size, 
+               const int64_t block_index_cache_size,
                const int64_t sstable_row_cache_size = 0);
+
+      int enlarge_cache_size(const int64_t block_cache_size, 
+                             const int64_t block_index_cache_size,
+                             const int64_t sstable_row_cache_size = 0);
 
       int get(const common::ObGetParam& get_param, sstable::ObSSTableReader& reader, 
               common::ObIterator* iterator);
@@ -44,7 +49,7 @@ namespace oceanbase
                common::ObIterator* iterator);
 
       int get_sstable_end_key(const sstable::ObSSTableReader& reader,
-                              const uint64_t table_id, common::ObString& row_key);
+                              const uint64_t table_id, common::ObRowkey& row_key);
 
       sstable::ObBlockIndexCache &get_block_index_cache()
       {

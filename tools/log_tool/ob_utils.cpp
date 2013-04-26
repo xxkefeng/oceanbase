@@ -49,7 +49,7 @@ int to_obj(ObObj& obj, const char* v)
   obj.set_varchar(_v);
   return err;
 }
-    
+
 int alloc_str(char* buf, const int64_t len, int64_t& pos, ObString& str, const char* _str)
 {
   int err = OB_SUCCESS;
@@ -92,11 +92,92 @@ int rand_str(char* str, int64_t len)
 int rand_str(char* str, int64_t len, int64_t seed)
 {
   int err = OB_SUCCESS;
-  for(int64_t i = 0; i < len; i++)
+  static bool no_rand = _cfgi("no_randstr", "0");
+  if (no_rand)
   {
-    str[i] = static_cast<char> ('a' + (seed = rand2(seed))%26);
+    char hex[17];
+    snprintf(hex, sizeof(hex), "%.16lx", seed);
+    for(int64_t i = 0; i < len; i++)
+    {
+      str[i] = static_cast<char> (hex[i % 16]);
+    }
+  }
+  else
+  {
+    for(int64_t i = 0; i < len; i++)
+    {
+      str[i] = static_cast<char> ('a' + (seed = rand2(seed))%26);
+    }
   }
   str[len-1] = 0;
+  return err;
+}
+
+int rand_obj(ObDataBuffer& buf, ObObjType type, ObObj& value, int64_t seed)
+{
+  int err = OB_SUCCESS;
+  char _str[1<<4];
+  ObString str;
+  switch(type)
+  {
+    case ObIntType:
+      value.set_int(rand2(seed));
+      break;
+    case ObFloatType:
+      value.set_float(static_cast<float>(1.0) * static_cast<float>(rand2(seed))/static_cast<float>(RAND_MAX));
+      break;
+    case ObVarcharType:
+      if (OB_SUCCESS != (err = rand_str(_str, sizeof(_str), seed)))
+      {
+        TBSYS_LOG(ERROR, "rand_str(len=%ld)=>%d", sizeof(_str), err);
+      }
+      else if (OB_SUCCESS != (err = alloc_str(buf, str, _str)))
+      {
+        TBSYS_LOG(ERROR, "alloc_str(str=%s)=>%d", _str, err);
+      }
+      else
+      {
+        value.set_varchar(str);
+      }
+      break;
+    default:
+      break;
+  }
+  return err;
+}
+
+int rand_obj(ObDataBuffer& buf, ObObjType type, int64_t size, ObObj& value, int64_t seed)
+{
+  int err = OB_SUCCESS;
+  char _str[1<<18];
+  ObString str;
+  switch(type)
+  {
+    case ObIntType:
+      value.set_int(rand2(seed));
+      break;
+    case ObFloatType:
+      value.set_float(static_cast<float>(1.0) * static_cast<float>(rand2(seed))/static_cast<float>(RAND_MAX));
+      break;
+    case ObVarcharType:
+      if (OB_SUCCESS != (err = rand_str(_str, min(sizeof(_str), size), seed)))
+      {
+        TBSYS_LOG(ERROR, "rand_str(len=%ld)=>%d", sizeof(_str), err);
+      }
+      else if (OB_SUCCESS != (err = alloc_str(buf, str, _str)))
+      {
+        TBSYS_LOG(ERROR, "alloc_str(str=%s)=>%d", _str, err);
+      }
+      else
+      {
+        value.set_varchar(str);
+      }
+      break;
+    default:
+      err = OB_NOT_SUPPORTED;
+      TBSYS_LOG(ERROR, "not support type[%d]", type);
+      break;
+  }
   return err;
 }
 
@@ -123,7 +204,7 @@ int vstrformat(char* buf, const int64_t len, int64_t& pos, const char* format, v
                 buf, len, pos, format, count, err);
     }
   }
-  
+
   if (OB_SUCCESS == err)
   {
     pos += count;
@@ -369,6 +450,14 @@ int copy_str(char* buf, const int64_t len, int64_t& pos, char*& str, const char*
   return repr(buf, len, pos, _str);
 }
 
+int repr(char* buf, const int64_t len, int64_t& pos, const ObServer& server)
+{
+  int err = OB_SUCCESS;
+  server.to_string(buf + pos, (int32_t)(len - pos));
+  pos += strlen(buf + pos);
+  return err;
+}
+
 int repr(char* buf, const int64_t len, int64_t& pos, const ObString& _str)
 {
   int err = OB_SUCCESS;
@@ -379,12 +468,28 @@ int repr(char* buf, const int64_t len, int64_t& pos, const ObString& _str)
   return err;
 }
 
+#if ROWKEY_IS_OBJ
+int repr(char* buf, const int64_t len, int64_t& pos, const ObRowkey& rowkey)
+{
+  int err = OB_SUCCESS;
+  int64_t str_len = 0;
+  if ((str_len = rowkey.to_string(buf + pos, len - pos)) <= 0)
+  {
+    err = OB_BUF_NOT_ENOUGH;
+  }
+  else
+  {
+    pos += str_len;
+  }
+  return err;
+}
+#endif
+
 int repr(char* buf, const int64_t len, int64_t& pos, ObScanner& scanner, int64_t row_limit /*=-1*/)
 {
   int err = OB_SUCCESS;
   int64_t row_count = 0;
   ObCellInfo* cell_info;
-  ObString rowkey;
   bool is_row_changed = false;
 
   UNUSED(row_limit);
@@ -403,7 +508,7 @@ int repr(char* buf, const int64_t len, int64_t& pos, ObScanner& scanner, int64_t
     }
     else if (is_row_changed && ++row_count
              && !(OB_SUCCESS == (err = strformat(buf, len, pos, "\n"))
-                  && OB_SUCCESS == (err = bin2hex(buf, len, pos, rowkey, cell_info->row_key_.ptr(), cell_info->row_key_.length()))
+                  && OB_SUCCESS == (err = repr(buf, len, pos, cell_info->row_key_))
                   && OB_SUCCESS == (err = strformat(buf, len, pos, " "))))
     {}
     else if (OB_SUCCESS != (err = repr(buf, len, pos, cell_info->column_name_)))
@@ -450,7 +555,7 @@ int to_server(ObServer& server, const char* spec)
     err = OB_INVALID_ARGUMENT;
     TBSYS_LOG(ERROR, "strchr(spec='%s', ':')=>NULL", spec);
   }
-  else 
+  else
   {
     strncpy(ip, spec, min(p - spec, (int64_t)sizeof(ip)));
     port = atoi(p+1);
@@ -467,7 +572,14 @@ int to_server(ObServer& server, const char* spec)
     TBSYS_LOG(DEBUG, "to_server(ip=%s, port=%d)=>%d", ip, port, err);
     server.set_ipv4_addr(ip, port);
   }
-  
+
+  return err;
+}
+
+int to_server(ObServer& server, const ObServer server_spec)
+{
+  int err = OB_SUCCESS;
+  server = server_spec;
   return err;
 }
 
@@ -552,6 +664,116 @@ int parse_range(ObDataBuffer& buf, const char* _range, char*& start, char*& end)
   return parse_range(buf.get_data(), buf.get_capacity(), buf.get_position(), _range, start, end);
 }
 
+int parse_rowkey(ObDataBuffer& buf, ObRowkey& rowkey, const char* str, const int64_t len)
+{
+  int err = OB_SUCCESS;
+  err = OB_NOT_SUPPORTED;
+  UNUSED(buf);
+  UNUSED(rowkey);
+  UNUSED(str);
+  UNUSED(len);
+  return err;
+}
+
+int rand_rowkey_obj(ObDataBuffer& buf, ObObj& obj, const ObObjType type, const int64_t len, const int64_t seed)
+{
+  int err = OB_SUCCESS;
+  char* p = NULL;
+  switch(type)
+  {
+    case ObIntType:
+      obj.set_int(rand2(seed));
+      break;
+    case ObVarcharType:
+      if (buf.get_position() + len > buf.get_capacity())
+      {
+        err = OB_BUF_NOT_ENOUGH;
+        TBSYS_LOG(ERROR, "pos[%ld] + len[%ld] > limit[%ld]", buf.get_position(), len, buf.get_capacity());
+      }
+      else
+      {
+        p = buf.get_data() + buf.get_position();
+        buf.get_position() += len;
+      }
+      if (OB_SUCCESS != err)
+      {}
+      else if (OB_SUCCESS != (err = rand_str(p, len, seed)))
+      {
+        TBSYS_LOG(ERROR, "rand_str(len=%ld)=>%d", len, err);
+      }
+      else
+      {
+        ObString str(static_cast<int32_t>(len), static_cast<int32_t>(len), p);
+        obj.set_varchar(str);
+      }
+      break;
+    default:
+      err = OB_NOT_SUPPORTED;
+      TBSYS_LOG(WARN, "not supported type[%d]", type);
+  }
+  return err;
+}
+
+#if ROWKEY_IS_OBJ
+int rand_rowkey(ObDataBuffer& buf, ObRowkey& rowkey, const ObRowkeyInfo& rowkey_info, const int64_t seed)
+{
+  int err = OB_SUCCESS;
+  SimpleBufAllocator allocator(buf);
+  ObObj* obj_ptr = NULL;
+  int64_t obj_count = rowkey_info.get_size();
+  int64_t max_rowkey_len = 64;
+  if (NULL == (obj_ptr = (ObObj*)allocator.alloc(sizeof(ObObj) * obj_count)))
+  {
+    err = OB_MEM_OVERFLOW;
+    TBSYS_LOG(ERROR, "allocator.alloc(obj_count=%ld)=>%d", obj_count, err);
+  }
+  for(int64_t i = 0; OB_SUCCESS == err && i < obj_count; i++)
+  {
+    ObRowkeyColumn column;
+    if (OB_SUCCESS != (err = rowkey_info.get_column(i, column)))
+    {
+      TBSYS_LOG(ERROR, "rowkey_info.get_column(i=%ld)=>%d", i, err);
+    }
+    else if (OB_SUCCESS != (err = rand_rowkey_obj(buf, obj_ptr[i], column.type_, min(column.length_, max_rowkey_len), seed + i)))
+    {
+      TBSYS_LOG(ERROR, "rand_obj(len=%ld)=>%d", min(column.length_, max_rowkey_len), err);
+    }
+  }
+  if (OB_SUCCESS == err)
+  {
+    rowkey.assign(obj_ptr, obj_count);
+  }
+  return err;
+}
+#else
+int rand_rowkey(ObDataBuffer& buf, ObString& rowkey, const int64_t& rowkey_len, const int64_t seed)
+{
+  int err = OB_SUCCESS;
+  char* p = NULL;
+  if (buf.get_position() + rowkey_len > buf.get_capacity())
+  {
+    err = OB_BUF_NOT_ENOUGH;
+    TBSYS_LOG(ERROR, "pos[%ld] + len[%ld] > limit[%ld]", buf.get_position(), rowkey_len, buf.get_capacity());
+  }
+  else
+  {
+    p = buf.get_data() + buf.get_position();
+    buf.get_position() += rowkey_len;
+  }
+  if (OB_SUCCESS != err)
+  {}
+  else if (OB_SUCCESS != (err = rand_str(p, rowkey_len, seed)))
+  {
+    TBSYS_LOG(ERROR, "rand_str(len=%ld)=>%d", rowkey_len, err);
+  }
+  else
+  {
+    rowkey.assign_ptr(p, rowkey_len);
+  }
+  return err;
+}
+#endif
+
 int strformat(ObDataBuffer& buf, const char* format, ...)
 {
   int err = OB_SUCCESS;
@@ -606,6 +828,97 @@ int parse_servers(const char* tablet_servers, const int max_n_servers, int& n_se
   return err;
 }
 
+int expand(char* buf, int64_t len, int64_t& pos, const char* spec_)
+{
+  int err = OB_SUCCESS;
+  int64_t new_pos = pos;
+  char* tok = NULL;
+  char* savedptr = NULL;
+  char* spec = NULL;
+  if (NULL == buf || len < 0 || pos < 0 || NULL == spec_)
+  {
+    err = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(ERROR, "buf=%p[%ld:%ld], spec=%p", buf, pos, len, spec_);
+  }
+  else if (NULL == (spec = strdup(spec_)))
+  {
+    err = OB_MEM_OVERFLOW;
+  }
+  else if (NULL == (tok = strtok_r(spec, ",", &savedptr)))
+  {
+    err = OB_ERR_UNEXPECTED;
+  }
+  while(OB_SUCCESS == err && tok != NULL)
+  {
+    int64_t weight = 0;
+    char* value = spec;
+    char* comma_p = index(tok, ':');
+    int64_t value_len = 0;
+    if (NULL == comma_p)
+    {
+      weight = 1;
+    }
+    else
+    {
+      *comma_p++ = 0;
+      weight = atoll(comma_p);
+    }
+    value_len = strlen(value);
+    for(int64_t i = 0; OB_SUCCESS == err && i < weight; i++)
+    {
+      if (new_pos + value_len + 1 > len)
+      {
+        err = OB_BUF_NOT_ENOUGH;
+      }
+      else
+      {
+        strcpy(buf + new_pos, value);
+        new_pos += value_len + 1;
+      }
+    }
+    tok = strtok_r(NULL, ",", &savedptr);
+  }
+  if (OB_SUCCESS == err)
+  {
+    if (new_pos + 1 < len)
+    {
+      buf[new_pos++] = 0;
+    }
+    else
+    {
+      err = OB_BUF_NOT_ENOUGH;
+    }
+  }
+  if (OB_SUCCESS == err)
+  {
+    pos = new_pos;
+  }
+  if (NULL != spec)
+  {
+    free(spec);
+  }
+  return err;
+}
+
+const char* choose(const char* spec, int64_t seed)
+{
+  int64_t max_weight = -1;
+  const char* selected = NULL;
+  const char* cur = spec;
+  int64_t weight = rand2(seed);
+  if (NULL != spec && *cur)
+  {
+    weight = rand2(weight);
+    if (weight > max_weight)
+    {
+      selected = cur;
+      max_weight = weight;
+    }
+    cur += strlen(cur) + 1;
+  }
+  return selected;
+}
+
 int64_t rand2(int64_t h)
 {
   if (0 == h) return 1;
@@ -614,6 +927,7 @@ int64_t rand2(int64_t h)
   h ^= h >> 33;
   h *= 0xc4ceb9fe1a85ec53;
   h ^= h >> 33;
+  h &= ~(1ULL<<63);
   return h;
 }
 void init_rng64(rng_t* state, uint64_t x)
@@ -628,17 +942,17 @@ uint64_t rng64(rng_t *_s)
   uint64_t c = 7319936632422683419ULL;
   uint64_t* s = _s->s;
   uint64_t x = s[1];
-  
+
   /* Increment 128bit counter */
   s[0] += c;
   s[1] += c + (s[0] < c);
-  
+
   /* Two h iterations */
   x ^= (x >> 32) ^ s[2];
   x *= c;
   x ^= x >> 32;
   x *= c;
-  
+
   /* Perturb result */
   return x + s[0];
 }

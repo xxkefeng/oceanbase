@@ -4,14 +4,32 @@
 #include "common/ob_string.h"
 #include "common/ob_string_buf.h"
 #include "common/ob_vector.h"
+#include "sql/ob_basic_stmt.h"
 #include "parse_node.h"
 
 namespace oceanbase
 {
   namespace sql
   {
+    struct ObQueryHint
+    {
+      ObQueryHint()
+      {
+        read_static_ = false;
+      }
+
+      bool    read_static_;
+    };
+    
     struct TableItem
     {
+      TableItem()
+      {
+        table_id_ = common::OB_INVALID_ID;
+        ref_id_ = common::OB_INVALID_ID;
+        has_scan_columns_ = false;
+      }
+      
       enum TableType
     	{
     	  BASE_TABLE,
@@ -28,7 +46,8 @@ namespace oceanbase
       // type == BASE_TABLE? ref_id_ is the real Id of the schema
       // type == ALIAS_TABLE? ref_id_ is the real Id of the schema, while table_id_ new generated
       // type == GENERATED_TABLE? ref_id_ is the reference of the sub-query.
-      uint64_t     ref_id_;
+      uint64_t    ref_id_;
+      bool        has_scan_columns_;
     };
 
     struct ColumnItem
@@ -84,37 +103,15 @@ namespace oceanbase
   namespace sql
   {
     class ObLogicalPlan;
-    class ObStmt
+    class ObStmt : public ObBasicStmt
     {
     public:
-
-    	enum StmtType
-    	{
-    	  T_SELECT,
-        T_INSERT,
-        T_DELETE,
-        T_UPDATE,
-        // sub-qeury in from list, or in union/intersect/except sides
-        // T_TABLE_SUBSELECT,
-        // sub-query in expression
-        //T_EXPR_SUBSELECT,
-    	};
-
       ObStmt(common::ObStringBuf* name_pool, StmtType type);
       virtual ~ObStmt();
-
-      void set_stmt_type(StmtType stmt_type) { type_ = stmt_type; }
-      StmtType get_stmt_type() const { return type_; }
 
       int32_t get_table_size() const { return table_items_.size(); }
       int32_t get_column_size() const { return column_items_.size(); }
       int32_t get_condition_size() const { return where_expr_ids_.size(); }
-      uint64_t get_query_id() const { return query_id_; }
-      uint64_t set_query_id(uint64_t query_id)
-      {
-        query_id_ = query_id;
-        return query_id_;
-      }
       int check_table_column(
           ResultPlan& result_plan,
           const common::ObString& column_name, 
@@ -133,10 +130,7 @@ namespace oceanbase
           const oceanbase::common::ObString& column_name,
           const oceanbase::common::ObString* table_name = NULL,
           ColumnItem** col_item = NULL);
-      int add_column_item(const ColumnItem& column_item)
-      {
-        return column_items_.push_back(column_item);
-      }
+      int add_column_item(const ColumnItem& column_item);
       ColumnItem* get_column_item(
         const common::ObString* table_name,
         const common::ObString& column_name);
@@ -176,10 +170,12 @@ namespace oceanbase
         return name_pool_;
       }
 
-      virtual void print(FILE* fp, int32_t level, int32_t index = 0);
+      ObQueryHint& get_query_hint()
+      {
+        return query_hint_;
+      }
 
-    protected:
-      void print_indentation(FILE* fp, int32_t level);
+      virtual void print(FILE* fp, int32_t level, int32_t index = 0);
 
     protected:
       common::ObStringBuf* name_pool_;
@@ -187,10 +183,9 @@ namespace oceanbase
       common::ObVector<ColumnItem>   column_items_;
 
     private:
-      StmtType  type_;
-      uint64_t  query_id_;
       //uint64_t  where_expr_id_;
       common::ObVector<uint64_t>     where_expr_ids_;
+      ObQueryHint                    query_hint_;
 
       // it is only used to record the table_id--bit_index map
       // although it is a little weird, but it is high-performance than ObHashMap

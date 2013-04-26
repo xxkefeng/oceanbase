@@ -26,11 +26,13 @@ namespace oceanbase
       public:
         ObScalarAggregate();
         virtual ~ObScalarAggregate();
+        void reset();
 
         virtual int open();
         virtual int close();
         virtual int get_next_row(const ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
+        virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
         /**
          * 添加一个聚集表达式
          *
@@ -38,14 +40,19 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        virtual int add_aggr_column(ObSqlExpression& expr);
+        virtual int add_aggr_column(const ObSqlExpression& expr);
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+        void assign(const ObScalarAggregate &other);
+
+        NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy
         ObScalarAggregate(const ObScalarAggregate &other);
         ObScalarAggregate& operator=(const ObScalarAggregate &other);
       private:
         ObMergeGroupBy merge_groupby_; // use MergeGroupBy to implement this operator
+        bool is_first_row_;
+        bool is_input_empty_;
     };
   } // end namespace sql
 } // end namespace oceanbase

@@ -17,6 +17,7 @@
 #include "common/ob_define.h"
 #include "common/ob_string.h"
 #include "common/ob_file.h"
+#include "common/ob_rowkey.h"
 #include "common/bloom_filter.h"
 #include "common/ob_record_header.h"
 #include "common/compress/ob_compressor.h"
@@ -52,6 +53,8 @@ namespace oceanbase
      *              ----------------------------------
      *              |       ObTableSchem             |
      *              ----------------------------------
+     *              |          Range                 |
+     *              ----------------------------------
      *              |      ObSstableTrailer          |
      *              ----------------------------------
      *              |   ObSSTableTrailerOffset       |
@@ -75,7 +78,7 @@ namespace oceanbase
       static const int16_t BLOCK_INDEX_MAGIC;
       static const int16_t BLOOM_FILTER_MAGIC;
       static const int16_t SCHEMA_MAGIC;
-      static const int16_t KEY_STREAM_MAGIC;
+      static const int16_t RANGE_MAGIC;
       static const int16_t TRAILER_MAGIC;
 
     public:
@@ -170,6 +173,8 @@ namespace oceanbase
         dio_ = dio;
       }
 
+      int set_tablet_range(const common::ObNewRange& tablet_range);
+
       const ObSSTableTrailer& get_trailer() const
       {
         return trailer_;
@@ -192,7 +197,7 @@ namespace oceanbase
 
       bool is_invalid_row_key(const uint64_t table_id, 
                               const uint64_t column_group_id,
-                              const common::ObString row_key);
+                              const common::ObRowkey& row_key);
 
       bool need_switch_block(const uint64_t table_id, 
                              const uint64_t column_group_id, 
@@ -206,8 +211,11 @@ namespace oceanbase
 
       int update_bloom_filter(const uint64_t column_group_id,
                               const uint64_t table_id,
-                              const common::ObString& key); 
+                              const common::ObRowkey& key); 
 
+      int update_bloom_filter(const uint64_t column_group_id,
+                              const uint64_t table_id,
+                              const common::ObString& key); 
       /**
        * check whether write sstable with dense foramt 
        * 
@@ -276,6 +284,14 @@ namespace oceanbase
       int write_schema();
 
       /**
+       * write table range
+       * 
+       * @return int if success return OB_SUCCESS, else return 
+       *         OB_ERROR
+       */
+      int write_range();
+
+      /**
        * writer trailer 
        * 
        * @return int if success return OB_SUCCESS, else return 
@@ -292,6 +308,7 @@ namespace oceanbase
 
       bool inited_;                              //whether sstable writer is inited
       bool first_row_;                           //whether first row in sstable
+      bool use_binary_rowkey_;                   //whether use binary rowkey format?
       bool add_row_count_;                       //whether add row count
       bool dio_;                                 //whether write sstable using dio
       
@@ -301,7 +318,8 @@ namespace oceanbase
       uint64_t table_id_;                        //current table id of sstable
       uint64_t column_group_id_;                 //current column group id
 
-      common::ObString cur_key_;                 //current key
+      common::ObRowkey cur_key_;                 //current key
+      common::ObString cur_binary_key_;          //current binary key
       common::ObMemBuf cur_key_buf_;             //current key buffer
       common::ObMemBuf bf_key_buf_;              //bloom filter key buf
                                                 

@@ -24,10 +24,6 @@ int ObRootUtil::delete_tablets(ObRootRpcStub &rpc_stub, const ObChunkServerManag
   static common::ObTabletReportInfoList delete_msg;
   static tbsys::CThreadMutex delete_msg_lock;
   int ret = OB_SUCCESS;
-  char range_buf[OB_MAX_ROW_KEY_LENGTH * 2];
-  char server_str[OB_IP_STR_BUFF];
-  memset(range_buf, 0, OB_MAX_ROW_KEY_LENGTH * 2);
-  memset(server_str, 0, OB_IP_STR_BUFF);
 
   tbsys::CThreadGuard guard(&delete_msg_lock);
 
@@ -65,24 +61,23 @@ int ObRootUtil::delete_tablets(ObRootRpcStub &rpc_stub, const ObChunkServerManag
     } // end for
     if (0 < delete_msg.get_tablet_size())
     {
-      cs.to_string(server_str, OB_IP_STR_BUFF);
       const ObTabletReportInfo* del_tablets = delete_msg.get_tablet();
       for (int i = 0; i < delete_msg.get_tablet_size(); ++i)
       {
-        del_tablets[i].tablet_info_.range_.to_string(range_buf, OB_MAX_ROW_KEY_LENGTH * 2);
         TBSYS_LOG(INFO, "try to delete tablet replica, cs=%s tablet=%s version=%ld row_count=%ld size=%ld crc=%ld i=%d", 
-                  server_str, range_buf, del_tablets[i].tablet_location_.tablet_version_, 
+                  to_cstring(cs), to_cstring(del_tablets[i].tablet_info_.range_),
+                  del_tablets[i].tablet_location_.tablet_version_, 
                   del_tablets[i].tablet_info_.row_count_, del_tablets[i].tablet_info_.occupy_size_,
                   del_tablets[i].tablet_info_.crc_sum_, i);
       }
       if (OB_SUCCESS != (ret = rpc_stub.delete_tablets(cs, delete_msg, timeout)))
       {
-        TBSYS_LOG(WARN, "failed to send delete tablets msg, err=%d cs=%s", ret, server_str);
+        TBSYS_LOG(WARN, "failed to send delete tablets msg, err=%d cs=%s", ret, to_cstring(cs));
       }
       else
       {
         TBSYS_LOG(INFO, "delete tablet replicas from cs, count=%ld cs=%s", 
-                  delete_msg.get_tablet_size(), server_str);
+                  delete_msg.get_tablet_size(), to_cstring(cs));
       }
     }
   } while(-1 != server_idx && OB_SUCCESS == ret);

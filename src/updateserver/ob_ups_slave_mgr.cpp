@@ -22,6 +22,7 @@ static const int64_t DEFAULT_NETWORK_TIMEOUT = 1000 * 1000;
 ObUpsSlaveMgr::ObUpsSlaveMgr()
 {
   is_initialized_ = false;
+  n_slave_last_post_ = -1;
   slave_num_ = 0;
   rpc_stub_ = NULL;
   role_mgr_ = NULL;
@@ -59,14 +60,51 @@ int ObUpsSlaveMgr::init(ObUpsRoleMgr *role_mgr,
   return err;
 }
 
+int ObUpsSlaveMgr::set_log_sync_timeout_us(const int64_t timeout)
+{
+  return ObSlaveMgr::set_log_sync_timeout_us(timeout);
+}
+
 int ObUpsSlaveMgr::send_data(const char* data, const int64_t length)
 {
   int ret = check_inner_stat();
-  ObDataBuffer send_buf;
-
+  int tmp_ret = OB_SUCCESS;
   if (OB_SUCCESS == ret)
   {
-    if (NULL == data || length < 0)
+    if (OB_SUCCESS != (tmp_ret = post_log_to_slave(data, length)))
+    {
+      ret = tmp_ret;
+      TBSYS_LOG(ERROR, "post_log_to_slave(data=%p[%ld])=>%d", data, length, ret);
+    }
+    if (OB_SUCCESS != (tmp_ret = wait_post_log_to_slave(data, length)))
+    {
+      ret = tmp_ret;
+      TBSYS_LOG(ERROR, "wait_post_log_to_slave(data=%p[%ld])=>%d", data, length, ret);
+    }
+  }
+  return ret;
+}
+
+int ObUpsSlaveMgr::post_log_to_slave(const char* data, const int64_t length)
+{
+  int ret = check_inner_stat();
+  int send_err = OB_SUCCESS;
+  ObDataBuffer send_buf;
+  const ObClientManager* client_mgr = rpc_stub_->get_client_mgr();
+
+  if (0 <= n_slave_last_post_)
+  {
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(ERROR, "n_slave[%ld] >= 0, maybe you post_log but not wait", n_slave_last_post_);
+  }
+  if (OB_SUCCESS == ret)
+  {
+    if (NULL == client_mgr)
+    {
+      ret = OB_NOT_INIT;
+      TBSYS_LOG(ERROR, "client_mgr == NULL");
+    }
+    else if (NULL == data || length < 0)
     {
       TBSYS_LOG(ERROR, "parameters are invalid[data=%p length=%ld]", data, length);
       ret = OB_INVALID_ARGUMENT;
@@ -79,6 +117,7 @@ int ObUpsSlaveMgr::send_data(const char* data, const int64_t length)
   }
 
   slave_info_mutex_.lock();
+  n_slave_last_post_ = 0;
 
   if (OB_SUCCESS == ret)
   {
@@ -86,45 +125,24 @@ int ObUpsSlaveMgr::send_data(const char* data, const int64_t length)
     ObDLink* p = slave_head_.server_list_link.next();
     while (OB_SUCCESS == ret && p != NULL && p != &slave_head_.server_list_link)
     {
+      if (n_slave_last_post_ >= MAX_SLAVE_NUM)
+      {
+        TBSYS_LOG(ERROR, "too many slaves[%d], MAX_SLAVE_NUM=%ld", slave_num_, MAX_SLAVE_NUM);
+        break;
+      }
       slave_node = (ServerNode*)(p);
-      int err = 0;
-
-      err = rpc_stub_->send_log(slave_node->server, send_buf, log_sync_timeout_);
-      if (OB_SUCCESS != err)
+      reqs_[n_slave_last_post_].p_slave_node_ = p;
+      send_err = client_mgr->post_request(slave_node->server, OB_SEND_LOG, RPC_VERSION, log_sync_timeout_,
+                                           send_buf, ObClientWaitObj::on_receive_response, &reqs_[n_slave_last_post_].wait_obj_);
+      reqs_[n_slave_last_post_].wait_obj_.reset(send_err);
+      if (OB_SUCCESS != send_err)
       {
-        if (ObUpsRoleMgr::MASTER != role_mgr_->get_role())
-        {
-          // 先改角色为备，然后等待当前的写事务完成，所以这种情况不是错误
-          TBSYS_LOG(WARN, "no longer be master, maybe UPS are swithing to slave.");
-          p = p->next();
-        }
-        else
-        {
-          char addr_buf[BUFSIZ];
-          if (!slave_node->server.to_string(addr_buf, BUFSIZ))
-          {
-            strcpy(addr_buf, "Get Server IP failed");
-          }
-          TBSYS_LOG(WARN, "send_data to slave[%s] error[err=%d]", addr_buf, err);
-
-          //add: report to rootserver
-          err = rpc_stub_->ups_report_slave_failure(slave_node->server, DEFAULT_NETWORK_TIMEOUT);
-          if (OB_SUCCESS != err)
-          {
-            TBSYS_LOG(WARN, "fail to report slave failure. err = %d", err);
-          }
-          ObDLink *to_del = p;
-          p = p->next();
-          to_del->remove();
-          slave_num_ --;
-          ob_free(slave_node);
-        }
+        TBSYS_LOG(ERROR, "post_request to slave[%s] buf=%p[%ld], failed, err=%d",
+                  to_cstring(slave_node->server), data, length, send_err);
       }
-      else
-      {
-        p = p->next();
-      }
-    } // end of loop
+      p = p->next();
+      n_slave_last_post_++;
+    }
 
     if (NULL == p)
     {
@@ -132,8 +150,67 @@ int ObUpsSlaveMgr::send_data(const char* data, const int64_t length)
       ret = OB_ERROR;
     }
   }
+  return ret;
+}
+  
+int ObUpsSlaveMgr::wait_post_log_to_slave(const char* data, const int64_t length)
+{
+  int ret = OB_SUCCESS;
+  int send_err = OB_SUCCESS;
+  int64_t failed_count = 0;
+  int64_t timeout_delta_us = 10 * 1000;
+  ServerNode* slave_node = NULL;
+  if (0 > n_slave_last_post_)
+  {
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(ERROR, "n_slave[%ld] < 0, maybe not post data", n_slave_last_post_);
+  }
+  for(int64_t i = 0; OB_SUCCESS == ret && i < n_slave_last_post_; i++)
+  {
+    ObDataBuffer res;
+    if (OB_SUCCESS != (send_err = reqs_[i].wait_obj_.wait(res, log_sync_timeout_ + timeout_delta_us)))
+    {
+      TBSYS_LOG(WARN, "reqs[%ld].wait()=>%d", i, send_err );
+    }
+    else
+    {
+      ObResultCode result_code;
+      int64_t pos = 0;
+      if (OB_SUCCESS != (send_err = result_code.deserialize(res.get_data(), res.get_position(), pos)))
+      {
+        TBSYS_LOG(ERROR, "deserialize result_code failed:pos[%ld], err[%d].", pos, send_err);
+      }
+      else
+      {
+        send_err = result_code.result_code_;
+      }
+    }
 
+    if (OB_SUCCESS != send_err)
+    {
+      failed_count++;
+      slave_node = (ServerNode*)(reqs_[i].p_slave_node_);
+      TBSYS_LOG(WARN, "send_data to slave[%s], buf=%p[%ld], error[err=%d]", to_cstring(slave_node->server), data, length, send_err);
+
+      //add: report to rootserver
+      send_err = rpc_stub_->ups_report_slave_failure(slave_node->server, DEFAULT_NETWORK_TIMEOUT);
+      if (OB_SUCCESS != send_err)
+      {
+        TBSYS_LOG(WARN, "fail to report slave failure. err = %d", send_err);
+      }
+      ObDLink *to_del = (ObDLink*)slave_node;
+      to_del->remove();
+      slave_num_ --;
+      ob_free(slave_node);
+    }
+  } // end of loop
   slave_info_mutex_.unlock();
+  n_slave_last_post_ = -1;
+  if (OB_SUCCESS == ret && failed_count > 0)
+  {
+    ret = OB_PARTIAL_FAILED;
+    TBSYS_LOG(ERROR, "send log to %ld slave failed", failed_count);
+  }
   return ret;
 }
 

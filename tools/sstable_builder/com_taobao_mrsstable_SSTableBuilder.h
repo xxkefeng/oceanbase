@@ -10,18 +10,18 @@ extern "C" {
 /*
  * Class:     com_taobao_mrsstable_SSTableBuilder
  * Method:    init
- * Signature: (Ljava/lang/String;Ljava/lang/String;)I
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)I
  */
 JNIEXPORT jint JNICALL Java_com_taobao_mrsstable_SSTableBuilder_init
-  (JNIEnv *, jobject, jstring, jstring);
+  (JNIEnv *, jobject, jstring, jstring, jstring, jstring, jboolean);
 
 /*
  * Class:     com_taobao_mrsstable_SSTableBuilder
  * Method:    append
- * Signature: (Ljava/nio/ByteBuffer;ZZ)Ljava/nio/ByteBuffer;
+ * Signature: (Ljava/nio/ByteBuffer;ZZZZ)Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL Java_com_taobao_mrsstable_SSTableBuilder_append
-  (JNIEnv *, jobject, jobject, jboolean, jboolean);
+  (JNIEnv *, jobject, jobject, jboolean, jboolean, jboolean, jboolean);
 
 /*
  * Class:     com_taobao_mrsstable_SSTableBuilder

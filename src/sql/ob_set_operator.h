@@ -13,8 +13,8 @@
  *   TIAN GUAN <tianguan.dgb@taobao.com>
  *
  */
-#ifndef OCEANBASE_SQL_OB_INTERSECT_H_
-#define OCEANBASE_SQL_OB_INTERSECT_H_
+#ifndef OCEANBASE_SQL_OB_SET_OPERATOR_H_
+#define OCEANBASE_SQL_OB_SET_OPERATOR_H_
 
 #include "sql/ob_phy_operator.h"
 #include "sql/ob_double_children_phy_operator.h"
@@ -36,7 +36,8 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        int set_distinct(bool is_distinct);
+        virtual int set_distinct(bool is_distinct);
+        bool is_distinct() const;
         /**
          * 获得下一行的引用
          * @note 在下次调用get_next或者close前，返回的row有效
@@ -49,14 +50,18 @@ namespace oceanbase
       private:
         DISALLOW_COPY_AND_ASSIGN(ObSetOperator);
     
-      private:
+      protected:
         // 结果的RowDesc为第一个操作符的RowDesc
-        common::ObRowDesc *row_desc_;
+        const common::ObRowDesc *row_desc_;
         // Union ALL or Union DISTINCT
         bool distinct_;
     };
+    inline bool ObSetOperator::is_distinct() const
+    {
+      return distinct_;
+    }
   } // end namespace sql
 } // end namespace oceanbase
 
-#endif /* OCEANBASE_SQL_OB_UNION_H_ */
+#endif /* OCEANBASE_SQL_OB_SET_OPERATOR_H_ */
 

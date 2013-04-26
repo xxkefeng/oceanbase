@@ -31,6 +31,15 @@ namespace oceanbase
       memtable_checksum_after_mutate_ = 0;
     }
 
+    ObUpsMutator :: ObUpsMutator(ModuleArena &arena) : mutator_(arena)
+    {
+      version_ = 0;
+      flag_ = NORMAL_FLAG;
+      mutate_timestamp_ = 0;
+      memtable_checksum_before_mutate_ = 0;
+      memtable_checksum_after_mutate_ = 0;
+    }
+
     ObUpsMutator :: ~ObUpsMutator()
     {
       // empty
@@ -214,6 +223,35 @@ namespace oceanbase
       return mutator_.get_cell(cell, is_row_changed, NULL);
     }
 
+    int ObUpsMutator :: serialize_header(char* buf, const int64_t buf_len, int64_t& pos) const
+    {
+      int err = OB_SUCCESS;
+      if (NULL == buf || buf_len <= 0 || pos >= buf_len)
+      {
+        TBSYS_LOG(WARN, "invalid param, buf=%p, buf_len=%ld, pos=%ld", buf, buf_len, pos);
+        err = OB_INVALID_ARGUMENT;
+      }
+      else if ((pos + 2 * (int64_t) sizeof(int32_t) + 2 * (int64_t) sizeof(int64_t)) >= buf_len)
+      {
+        TBSYS_LOG(WARN, "buf is not enough, pos=%ld, buf_len=%ld", pos, buf_len);
+        err = OB_ERROR;
+      }
+      else
+      {
+        *(reinterpret_cast<int32_t*> (buf + pos)) = version_;
+        pos += sizeof(int32_t);
+        *(reinterpret_cast<int32_t*> (buf + pos)) = flag_;
+        pos += sizeof(int32_t);
+        *(reinterpret_cast<int64_t*> (buf + pos)) = mutate_timestamp_;
+        pos += sizeof(int64_t);
+        *(reinterpret_cast<int64_t*> (buf + pos)) = memtable_checksum_before_mutate_;
+        pos += sizeof(int64_t);
+        *(reinterpret_cast<int64_t*> (buf + pos)) = memtable_checksum_after_mutate_;
+        pos += sizeof(int64_t);
+      }
+      return err;
+    }
+
     int ObUpsMutator :: serialize(char* buf, const int64_t buf_len, int64_t& pos) const
     {
       int err = OB_SUCCESS;
@@ -223,41 +261,21 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid param, buf=%p, buf_len=%ld, pos=%ld", buf, buf_len, pos);
         err = OB_INVALID_ARGUMENT;
       }
-      else
+      else if (OB_SUCCESS != (err = serialize_header(buf, buf_len, pos)))
       {
-        if ((pos + 2 * (int64_t) sizeof(int32_t) + 2 * (int64_t) sizeof(int64_t)) >= buf_len)
-        {
-          TBSYS_LOG(WARN, "buf is not enough, pos=%ld, buf_len=%ld", pos, buf_len);
-          err = OB_ERROR;
-        }
-        else
-        {
-          *(reinterpret_cast<int32_t*> (buf + pos)) = version_;
-          pos += sizeof(int32_t);
-          *(reinterpret_cast<int32_t*> (buf + pos)) = flag_;
-          pos += sizeof(int32_t);
-          *(reinterpret_cast<int64_t*> (buf + pos)) = mutate_timestamp_;
-          pos += sizeof(int64_t);
-          *(reinterpret_cast<int64_t*> (buf + pos)) = memtable_checksum_before_mutate_;
-          pos += sizeof(int64_t);
-          *(reinterpret_cast<int64_t*> (buf + pos)) = memtable_checksum_after_mutate_;
-          pos += sizeof(int64_t);
-
-          err = mutator_.serialize(buf, buf_len, pos);
-          if (OB_SUCCESS != err)
-          {
-            TBSYS_LOG(WARN, "failed to serialize mutator, err=%d", err);
-          }
-        }
+        TBSYS_LOG(ERROR, "serialize_header(buf=%p[%ld], pos=%ld)=>%d", buf, buf_len, pos, err);
+      }
+      else if (OB_SUCCESS != (err = mutator_.serialize(buf, buf_len, pos)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize mutator, err=%d", err);
       }
 
       return err;
     }
 
-    int ObUpsMutator :: deserialize(const char* buf, const int64_t buf_len, int64_t& pos)
+    int ObUpsMutator :: deserialize_header(const char* buf, const int64_t buf_len, int64_t& pos)
     {
       int err = OB_SUCCESS;
-
       if (NULL == buf || buf_len <= 0 || pos >= buf_len)
       {
         TBSYS_LOG(WARN, "invalid param, buf=%p, buf_len=%ld, pos=%ld", buf, buf_len, pos);
@@ -275,12 +293,26 @@ namespace oceanbase
         pos += sizeof(int64_t);
         memtable_checksum_after_mutate_ = *(reinterpret_cast<const int64_t*> (buf + pos));
         pos += sizeof(int64_t);
+      }
+      return err;
+    }
 
-        err = mutator_.deserialize(buf, buf_len, pos);
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "failed to deserialize mutator, err=%d", err);
-        }
+    int ObUpsMutator :: deserialize(const char* buf, const int64_t buf_len, int64_t& pos)
+    {
+      int err = OB_SUCCESS;
+
+      if (NULL == buf || buf_len <= 0 || pos >= buf_len)
+      {
+        TBSYS_LOG(WARN, "invalid param, buf=%p, buf_len=%ld, pos=%ld", buf, buf_len, pos);
+        err = OB_INVALID_ARGUMENT;
+      }
+      else if (OB_SUCCESS != (err = deserialize_header(buf, buf_len, pos)))
+      {
+        TBSYS_LOG(ERROR, "deserialize_header(buf=%p[%ld], pos=%ld)=>%d", buf, buf_len, pos, err);
+      }
+      else if (OB_SUCCESS != (err = mutator_.deserialize(buf, buf_len, pos)))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize mutator, err=%d", err);
       }
 
       return err;
@@ -289,6 +321,26 @@ namespace oceanbase
     int64_t ObUpsMutator :: get_serialize_size(void) const
     {
       return mutator_.get_serialize_size() + 2 * sizeof(int32_t) + 3 * sizeof(int64_t);
+    }
+
+    void ObUpsMutator :: clear()
+    {
+      version_ = 0;
+      flag_ = NORMAL_FLAG;
+      mutate_timestamp_ = 0;
+      memtable_checksum_before_mutate_ = 0;
+      memtable_checksum_after_mutate_ = 0;
+      mutator_.clear();
+    }
+
+    void ObUpsMutator :: reset()
+    {
+      version_ = 0;
+      flag_ = NORMAL_FLAG;
+      mutate_timestamp_ = 0;
+      memtable_checksum_before_mutate_ = 0;
+      memtable_checksum_after_mutate_ = 0;
+      mutator_.reset();
     }
   }
 }

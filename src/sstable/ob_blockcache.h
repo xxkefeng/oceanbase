@@ -91,12 +91,6 @@ namespace oceanbase
   {
     class ObBufferHandle;
 
-    struct ObBlockCacheConf
-    {
-      int64_t block_cache_memsize_mb;   // ObMemBlockCache total memory size in MB
-      int64_t ficache_max_num;          // FileInfoCache max file descriptor
-    };
-
     class ObBlockCache
     {
       friend class ObBufferHandle;
@@ -114,7 +108,8 @@ namespace oceanbase
       explicit ObBlockCache(common::IFileInfoMgr& fileinfo_cache);
       ~ObBlockCache();
 
-      int init(const ObBlockCacheConf &conf);
+      int init(const int64_t cache_mem_size);
+      int enlarg_cache_size(const int64_t cache_mem_size);
       int destroy();
       const int64_t size() const;
       int clear();

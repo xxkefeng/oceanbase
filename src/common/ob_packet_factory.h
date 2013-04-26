@@ -1,8 +1,6 @@
 #ifndef OCEANBASE_COMMON_PACKET_FACTORY_H_
 #define OCEANBASE_COMMON_PACKET_FACTORY_H_
 
-#include <tbnet.h>
-
 #include "ob_define.h"
 #include "ob_packet.h"
 #include "thread_buffer.h"
@@ -11,7 +9,7 @@ namespace oceanbase
 {
   namespace common
   {
-    class ObPacketFactory : public tbnet::IPacketFactory
+    class ObPacketFactory
     {
       public:
         ObPacketFactory()
@@ -28,7 +26,8 @@ namespace oceanbase
           }
         }
 
-        tbnet::Packet* createPacket(int pcode)
+        //这里的pcode没有用， 有这个参数是为了兼容
+        ObPacket* createPacket(int pcode = 0)
         {
           UNUSED(pcode);
           ObPacket* packet = NULL;
@@ -47,11 +46,11 @@ namespace oceanbase
           }
           return packet;
         }
-
-        void destroyPacket(tbnet::Packet* packet)
+        
+        void destroyPacket(ObPacket* packet)
         {
           UNUSED(packet);
-          // does nothing
+          //do nothing
         }
 
       private:

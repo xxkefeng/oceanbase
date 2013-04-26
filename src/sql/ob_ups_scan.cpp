@@ -1,5 +1,7 @@
 
 #include "ob_ups_scan.h"
+#include "common/utility.h"
+#include "common/ob_profile_log.h"
 
 using namespace oceanbase;
 using namespace sql;
@@ -7,33 +9,38 @@ using namespace sql;
 int ObUpsScan::open()
 {
   int ret = OB_SUCCESS;
+  row_counter_ = 0;
   if(!check_inner_stat())
   {
     ret = OB_ERROR;
     TBSYS_LOG(WARN, "check inner stat fail");
   }
-  else if(OB_SUCCESS != (ret = fetch_next(true)))
-  {
-    TBSYS_LOG(WARN, "fetch row fail:ret[%d]", ret);
-  }
   else
   {
-    cur_ups_row_.set_row_desc(row_desc_);
+    cur_scan_param_.set_is_read_consistency(is_read_consistency_);
+
+    if(OB_SUCCESS != (ret = fetch_next(true)))
+    {
+      TBSYS_LOG(WARN, "fetch row fail:ret[%d]", ret);
+    }
+    else
+    {
+      cur_ups_row_.set_row_desc(row_desc_);
+    }
   }
   return ret;
 }
 
-int ObUpsScan::get_next_scan_param(const ObRange &last_range, ObScanParam &scan_param)
+int ObUpsScan::get_next_scan_param(const ObRowkey &last_rowkey, ObScanParam &scan_param)
 {
   int ret = OB_SUCCESS;
 
-  ObRange next_range = *(scan_param.get_range());
+  ObNewRange next_range = *(scan_param.get_range());
 
-  if(OB_SUCCESS != (ret = next_range.trim(last_range, range_str_buf_)))
-  {
-    TBSYS_LOG(WARN, "get next range fail:ret[%d]", ret);
-  }
-  else if(OB_SUCCESS != (ret = scan_param.set_range(next_range)))
+  next_range.start_key_ = last_rowkey;
+  next_range.border_flag_.unset_inclusive_start();
+
+  if(OB_SUCCESS != (ret = scan_param.set_range(next_range)))
   {
     TBSYS_LOG(WARN, "scan param set range fail:ret[%d]", ret);
   }
@@ -63,10 +70,11 @@ int ObUpsScan::add_column(const uint64_t &column_id)
 int ObUpsScan::close()
 {
   int ret = OB_SUCCESS;
+  TBSYS_LOG(DEBUG, "ups scan row count=%ld", row_counter_);
   return ret;
 }
 
-int ObUpsScan::get_next_row(const common::ObString *&rowkey, const ObRow *&row)
+int ObUpsScan::get_next_row(const common::ObRowkey *&rowkey, const ObRow *&row)
 {
   int ret = OB_SUCCESS;
   bool is_fullfilled = false;
@@ -86,9 +94,10 @@ int ObUpsScan::get_next_row(const common::ObString *&rowkey, const ObRow *&row)
     }
     else
     {
-      ret = cur_new_scanner_.get_next_row(cur_rowkey_, cur_ups_row_);
+      ret = cur_new_scanner_.get_next_row(rowkey, cur_ups_row_);
       if(OB_ITER_END == ret )
       {
+        TBSYS_LOG(DEBUG, "ups scanner is_fullfilled[%s]", is_fullfilled ? "TRUE" : "FALSE");
         if(is_fullfilled)
         {
           break;
@@ -103,6 +112,7 @@ int ObUpsScan::get_next_row(const common::ObString *&rowkey, const ObRow *&row)
       }
       else if(OB_SUCCESS == ret)
       {
+        ++row_counter_;
         break;
       }
       else
@@ -114,8 +124,8 @@ int ObUpsScan::get_next_row(const common::ObString *&rowkey, const ObRow *&row)
 
   if(OB_SUCCESS == ret)
   {
-    rowkey = &cur_rowkey_;
     row = &cur_ups_row_;
+    TBSYS_LOG(DEBUG, "ups scan row[%s]", to_cstring(cur_ups_row_));
   }
   return ret;
 }
@@ -123,32 +133,35 @@ int ObUpsScan::get_next_row(const common::ObString *&rowkey, const ObRow *&row)
 int ObUpsScan::fetch_next(bool first_scan)
 {
   int ret = OB_SUCCESS;
-  ObRange last_range;
+  ObRowkey last_rowkey;
+  INIT_PROFILE_LOG_TIMER();
 
   if(!first_scan)
-  { 
-    if(OB_SUCCESS != (ret = cur_new_scanner_.get_range(last_range)))
+  {
+    if(OB_SUCCESS != (ret = cur_new_scanner_.get_last_row_key(last_rowkey)))
     {
-      TBSYS_LOG(WARN, "new scanner get range fail:ret[%d]", ret);
+      TBSYS_LOG(WARN, "new scanner get rowkey fail:ret[%d]", ret);
     }
-    else if(OB_SUCCESS != (ret = get_next_scan_param(last_range, cur_scan_param_)))
+    else if(OB_SUCCESS != (ret = get_next_scan_param(last_rowkey, cur_scan_param_)))
     {
       TBSYS_LOG(WARN, "get scan param fail:ret[%d]", ret);
     }
   }
-  
+
   if(OB_SUCCESS == ret)
   {
-    if(OB_SUCCESS != (ret = rpc_stub_->scan(1000, ups_server, cur_scan_param_, cur_new_scanner_)))
+    if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_scan(cur_scan_param_, cur_new_scanner_, network_timeout_)))
     {
       TBSYS_LOG(WARN, "scan ups fail:ret[%d]", ret);
     }
   }
+  PROFILE_LOG_TIME(DEBUG, "ObUpsScan::fetch_next first_scan[%d] , range=%s",
+      first_scan, to_cstring(*cur_scan_param_.get_range()));
 
   return ret;
 }
 
-int ObUpsScan::set_range(const ObRange &range)
+int ObUpsScan::set_range(const ObNewRange &range)
 {
   int ret = OB_SUCCESS;
   ObString table_name; //设置一个空的table name
@@ -158,6 +171,11 @@ int ObUpsScan::set_range(const ObRange &range)
     TBSYS_LOG(WARN, "scan_param set range fail:ret[%d]", ret);
   }
   return ret;
+}
+
+void ObUpsScan::set_version_range(const ObVersionRange &version_range)
+{
+  cur_scan_param_.set_version_range(version_range);
 }
 
 int ObUpsScan::set_child(int32_t child_idx, ObPhyOperator &child_operator)
@@ -171,15 +189,16 @@ int ObUpsScan::set_child(int32_t child_idx, ObPhyOperator &child_operator)
 
 int64_t ObUpsScan::to_string(char* buf, const int64_t buf_len) const
 {
-  int ret = OB_SUCCESS;
-  UNUSED(buf);
-  UNUSED(buf_len);
-  TBSYS_LOG(WARN, "not implement");
-  return ret;
+  int64_t pos = 0;
+  databuff_printf(buf, buf_len, pos, "UpsScan()\n");
+  return pos;
 }
 
 ObUpsScan::ObUpsScan()
-  :rpc_stub_(NULL)
+  :rpc_proxy_(NULL),
+   network_timeout_(0),
+   row_counter_(0),
+   is_read_consistency_(true)
 {
 }
 
@@ -189,20 +208,20 @@ ObUpsScan::~ObUpsScan()
 
 bool ObUpsScan::check_inner_stat()
 {
-  return NULL != rpc_stub_;
+  return NULL != rpc_proxy_ && network_timeout_ > 0;
 }
 
-int ObUpsScan::set_ups_rpc_stub(ObUpsRpcStub *rpc_stub)
+int ObUpsScan::set_ups_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy)
 {
   int ret = OB_SUCCESS;
-  if(NULL == rpc_stub)
+  if(NULL == rpc_proxy)
   {
     ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "rpc_stub is null");
+    TBSYS_LOG(WARN, "rpc_proxy is null");
   }
   else
   {
-    rpc_stub_ = rpc_stub;
+    rpc_proxy_ = rpc_proxy;
   }
   return ret;
 }
@@ -213,4 +232,21 @@ void ObUpsScan::reset()
   row_desc_.reset();
 }
 
+int ObUpsScan::get_row_desc(const common::ObRowDesc *&row_desc) const
+{
+  int ret = OB_SUCCESS;
+  row_desc = &row_desc_;
+  return ret;
+}
 
+bool ObUpsScan::is_result_empty() const
+{
+  int err = OB_SUCCESS;
+  bool is_fullfilled = false;
+  int64_t fullfilled_row_num = 0;
+  if (OB_SUCCESS != (err = cur_new_scanner_.get_is_req_fullfilled(is_fullfilled, fullfilled_row_num) ))
+  {
+    TBSYS_LOG(WARN, "fail to get is fullfilled_item_num:err[%d]", err);
+  }
+  return (is_fullfilled && (fullfilled_row_num == 0));
+}

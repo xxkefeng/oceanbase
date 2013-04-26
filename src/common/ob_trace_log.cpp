@@ -4,7 +4,7 @@
  //
  // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2010-09-01 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2010-09-01 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -33,8 +33,8 @@ namespace oceanbase
   namespace common
   {
     const char *const TraceLog::LOG_LEVEL_ENV_KEY = "_OB_TRACE_LOG_LEVEL_";
-    const char *const TraceLog::level_strs_[] = {"ERROR", "USER_ERR", "WARN", "INFO", "TRACE", "DEBUG"};
-    volatile int TraceLog::log_level_ = TBSYS_LOG_LEVEL_DEBUG;
+    const char *const TraceLog::level_strs_[] = {"ERROR","USER_ERR", "WARN", "INFO", "TRACE", "DEBUG"};
+    volatile int TraceLog::log_level_ = TBSYS_LOG_LEVEL_TRACE;
     bool TraceLog::got_env_ = false;
 
     TraceLog::LogBuffer &TraceLog::get_logbuffer()
@@ -43,6 +43,7 @@ namespace oceanbase
       static __thread bool inited = false;
       if (!inited)
       {
+        TBSYS_LOG(INFO, "init trace log buffer tid=%ld buffer=%p", GETTID(), &log_buffer);
         memset(&log_buffer, 0, sizeof(log_buffer));
         inited = true;
       }
@@ -92,7 +93,7 @@ namespace oceanbase
       }
       return log_level_;
     }
-        
+
     int TraceLog::get_log_level()
     {
       if (!got_env_)
@@ -103,11 +104,10 @@ namespace oceanbase
       return log_level_;
     }
 
-    void TraceLog::fill_log(const char *fmt, ...)
+    void TraceLog::fill_log(LogBuffer &log_buffer, const char *fmt, ...)
     {
       if (get_log_level() > TBSYS_LOGGER._level)
       {
-        LogBuffer &log_buffer = get_logbuffer();
         if (0 == log_buffer.prev_timestamp)
         {
           log_buffer.start_timestamp = tbsys::CTimeUtil::getTime();
@@ -118,7 +118,6 @@ namespace oceanbase
       {
         va_list args;
         va_start(args, fmt);
-        LogBuffer &log_buffer = get_logbuffer();
         int64_t valid_buffer_size = LogBuffer::LOG_BUFFER_SIZE - log_buffer.cur_pos;
         if (0 < valid_buffer_size)
         {
@@ -152,11 +151,11 @@ namespace oceanbase
       }
     }
 
-    void TraceLog::clear_log()
+    void TraceLog::clear_log(LogBuffer &log_buffer)
     {
-      oceanbase::common::TraceLog::get_logbuffer().cur_pos = 0;
-      oceanbase::common::TraceLog::get_logbuffer().prev_timestamp = 0;
-      oceanbase::common::TraceLog::get_logbuffer().start_timestamp = 0;
+      log_buffer.cur_pos = 0;
+      log_buffer.prev_timestamp = 0;
+      log_buffer.start_timestamp = 0;
     }
   }
 }

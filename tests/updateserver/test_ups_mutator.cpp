@@ -19,12 +19,14 @@
 #include <algorithm>
 #include <tblog.h>
 #include <gtest/gtest.h>
+#include "../common/test_rowkey_helper.h"
 
 #include "updateserver/ob_ups_mutator.h"
 
 using namespace std;
 using namespace oceanbase::common;
 using namespace oceanbase::updateserver;
+static CharArena allocator_;
 
 int init_mem_pool()
 {
@@ -58,13 +60,13 @@ void check_cell(const ObCellInfo& expected, const ObCellInfo& real)
 {
   EXPECT_EQ(expected.column_id_, real.column_id_);
   EXPECT_EQ(expected.table_id_, real.table_id_);
-  check_string(expected.row_key_, real.row_key_);
+  EXPECT_EQ(expected.row_key_, real.row_key_);
 }
 
 void check_cell_with_name(const ObCellInfo& expected, const ObCellInfo& real)
 {
   check_string(expected.table_name_, real.table_name_);
-  check_string(expected.row_key_, real.row_key_);
+  EXPECT_EQ(expected.row_key_, real.row_key_);
   check_string(expected.column_name_, real.column_name_);
   check_obj(expected.value_, real.value_);
 }
@@ -99,8 +101,8 @@ TEST_F(TestUpsMutator, test_api_mutator)
   ObCellInfo cell_info;
   ObString table_name;
   table_name.assign((char*)"oceanbase_table", static_cast<int32_t>(strlen("oceanbase_table")));
-  ObString row_key;
-  row_key.assign((char*)"row_key", static_cast<int32_t>(strlen("row_key")));
+  ObRowkey row_key;
+  row_key = make_rowkey("row_key", &allocator_);
   ObString column_name;
   column_name.assign((char*)"column_name", static_cast<int32_t>(strlen("column_name")));
   int64_t table_id = 10;

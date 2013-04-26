@@ -12,6 +12,7 @@
  *
  */
 #include "common/ob_malloc.h"
+#include "common/ob_mutator.h"
 #include "ob_write_worker.h"
 
 namespace oceanbase
@@ -101,7 +102,7 @@ namespace oceanbase
     int ObWriteWorker::set_mutator_add(const ObOpParam& write_param,
                                        ObMutator& mutator,
                                        const ObOpCellParam& cell_param,
-                                       const ObString& row_key)
+                                       const ObRowkey& row_key)
     {
       int ret = OB_SUCCESS;
 
@@ -111,6 +112,16 @@ namespace oceanbase
         ret = mutator.add(write_param.table_name_, row_key,
                           cell_param.column_name_,
                           cell_param.value_.int_val_);
+        break;
+      case ObFloatType:
+        ret = mutator.add(write_param.table_name_, row_key, 
+                          cell_param.column_name_, 
+                          cell_param.value_.float_val_);
+        break;
+      case ObDoubleType:
+        ret = mutator.add(write_param.table_name_, row_key, 
+                          cell_param.column_name_, 
+                          cell_param.value_.double_val_);
         break;
       case ObDateTimeType:
         ret = mutator.add_datetime(write_param.table_name_, row_key,
@@ -172,7 +183,7 @@ namespace oceanbase
       const ObOpCellParam* cell_param = NULL;
       int64_t start_time = 0;
       int64_t consume_time = 0;
-      ObString row_key;
+      ObRowkey row_key;
       ObObj obj;
 
       mutator.reset();
@@ -181,8 +192,7 @@ namespace oceanbase
       for (int64_t i = 0; i < write_param.row_count_ && OB_SUCCESS == ret; ++i)
       {
         row_param = &write_param.row_[i];
-        row_key.assign(const_cast<char*>(row_param->rowkey_),
-                       row_param->rowkey_len_);
+        row_key.assign(const_cast<ObObj*>(row_param->rowkey_), row_param->rowkey_len_);
         if (OP_DELETE == row_param->op_type_)
         {
           delete_row_count++;

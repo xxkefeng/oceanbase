@@ -79,6 +79,17 @@ namespace oceanbase
     {
       return consistency_type_;
     }
+
+    const char* ObConsistencyType::get_type_str() const
+    {
+      switch (consistency_type_)
+      {
+        case STRONG_CONSISTENCY: return "STRONG_CONSISTENCY";
+        case NORMAL_CONSISTENCY: return "NORMAL_CONSISTENCY";
+        case WEAK_CONSISTENCY: return "WEAK_CONSISTENCY";
+        default: return "UNKNOWN";
+      }
+    }
   }
 }
 

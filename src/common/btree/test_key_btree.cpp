@@ -165,6 +165,11 @@ void test_search(int32_t cnt)
   {
     printf("test_search failure: %d <> %d\n", success, cnt);
   }
+  if (NULL != ids)
+  {
+    free(ids);
+    ids = NULL;
+  }
 }
 
 void test_insert_batch(int32_t cnt)
@@ -241,7 +246,11 @@ void test_range_search(int32_t cnt)
     printf("test_search success\n");
   else
     printf("test_search failure: %d <> %d\n", success, cnt);
-
+  if (NULL != ids)
+  {
+    free(ids);
+    ids = NULL;
+  }
 }
 
 int32_t main(int32_t argc, char *argv[])
@@ -314,4 +323,3 @@ int32_t main(int32_t argc, char *argv[])
 
   return 0;
 }
-

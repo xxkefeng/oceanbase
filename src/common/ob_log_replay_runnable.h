@@ -60,6 +60,7 @@ namespace oceanbase
       void get_cur_replay_point(int64_t& log_file_id, int64_t& log_seq_id);
 
       void get_cur_replay_point(int64_t& log_file_id, int64_t& log_seq_id, int64_t& log_offset);
+        int get_replayed_cursor(ObLogCursor& replayed_cursor);
     protected:
       virtual int replay(LogCommand cmd, uint64_t seq, const char* log_data, const int64_t data_len) = 0;
 

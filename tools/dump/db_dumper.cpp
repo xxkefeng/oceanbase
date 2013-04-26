@@ -26,7 +26,7 @@ int DbDumper::process_rowkey(const ObCellInfo &cell, int op, uint64_t timestamp,
 {
   int ret = OB_SUCCESS;
 
-  DbTableConfig *cfg = NULL;
+  const DbTableConfig *cfg = NULL;
 
   ret = DUMP_CONFIG->get_table_config(cell.table_id_, cfg);
   if (ret != OB_SUCCESS) {
@@ -58,7 +58,7 @@ int DbDumper::setup_dumpers()
 {
   int ret = OB_SUCCESS;
   std::vector<DbTableConfig> &cfgs = DUMP_CONFIG->get_configs();
-  std::string &output = DUMP_CONFIG->get_output_dir();
+  const std::string &output = DUMP_CONFIG->get_output_dir();
 
   for(size_t i = 0; i < cfgs.size(); i++) {
     DbTableDumpWriter writer;
@@ -69,7 +69,7 @@ int DbDumper::setup_dumpers()
     writer.table_id = cfgs[i].table_id();
     writer.dumper = new(std::nothrow) DbDumperWriter(writer.table_id, table_dir);
     if (writer.dumper == NULL) {
-      TBSYS_LOG(ERROR, "Can't create dumper");
+      TBSYS_LOG(ERROR, "Can't create dumper, allocate memory failed");
       ret = OB_ERROR;
       break;
     }
@@ -81,15 +81,11 @@ int DbDumper::setup_dumpers()
     for(size_t i = 0;i < dump_writers_.size(); i++) {
       ret = dump_writers_[i].dumper->start();
       if (ret != OB_SUCCESS) {
-        TBSYS_LOG(ERROR, "start up dumper error");
+        TBSYS_LOG(ERROR, "start up dumper error, ret=%d", ret);
         break;
       }
     }
-  } else {
-    //dumper_writer will be cleaned, when destructor is called
-    TBSYS_LOG(INFO, "clean dumper writers");
   }
-
   return ret;
 }
 
@@ -174,7 +170,7 @@ int DbDumper::db_dump_rowkey(const TableRowkey *rowkeys, const int64_t size, DbR
 {
 
   int ret = OB_SUCCESS;
-  DbTableConfig *cfg = NULL;
+  const DbTableConfig *cfg = NULL;
 
   std::vector<DbMutiGetRow> rows;
   TableRowkey merged_keys[kMutiGetKeyNr];
@@ -215,7 +211,7 @@ int DbDumper::db_dump_rowkey(const TableRowkey *rowkeys, const int64_t size, DbR
 int DbDumper::dump_del_key(const TableRowkey &key)
 {
   int ret = OB_SUCCESS;
-  DbTableConfig *cfg = NULL;
+  const DbTableConfig *cfg = NULL;
 
   ret = DUMP_CONFIG->get_table_config(key.table_id, cfg);
   if (ret != OB_SUCCESS) {
@@ -228,7 +224,7 @@ int DbDumper::dump_del_key(const TableRowkey &key)
   return ret;
 }
 
-int DbDumper::handle_del_row(DbTableConfig *cfg,const ObString &rowkey, int op, uint64_t timestamp, int64_t seq)
+int DbDumper::handle_del_row(const DbTableConfig *cfg,const ObRowkey &rowkey, int op, uint64_t timestamp, int64_t seq)
 {
   int ret = OB_SUCCESS;
   ThreadSpecificBuffer::Buffer *buffer = record_buffer_.get_buffer();
@@ -237,8 +233,7 @@ int DbDumper::handle_del_row(DbTableConfig *cfg,const ObString &rowkey, int op, 
 
   //deleted record,just append header
   UniqFormatorHeader header;
-  ret = header.append_header(rowkey, op, timestamp, seq, DUMP_CONFIG->app_name(), 
-                             cfg->table(), data_buff);
+  ret = header.append_header(rowkey, op, timestamp, seq, DUMP_CONFIG->app_name(), cfg->table(), data_buff);
   if (ret != OB_SUCCESS) {
     TBSYS_LOG(ERROR, "Unable seiralize header, due to [%d], skip this line", ret);
   } 
@@ -302,9 +297,9 @@ int DbDumper::pack_record(const TableRowkey *rowkeys, const int64_t size,
   buffer->reset();
   ObDataBuffer data_buff(buffer->current(), buffer->remain());
 
-  DbTableConfig *cfg = NULL;
+  const DbTableConfig *cfg = NULL;
   TableRowkey table_key;
-  ObString rowkey;
+  ObRowkey rowkey;
 
 #if 0
   dump_scanner(rs.get_scanner());
@@ -329,7 +324,6 @@ int DbDumper::pack_record(const TableRowkey *rowkeys, const int64_t size,
     }
 
     if (recp->empty()) {                      /* a deleted record call handle del */
-      //      TBSYS_LOG(INFO, "empty record meet");
       itr++;                                      /* step to next row */
       continue;
     }
@@ -360,8 +354,8 @@ int DbDumper::pack_record(const TableRowkey *rowkeys, const int64_t size,
 
     ret = DUMP_CONFIG->get_table_config(table_key.table_id, cfg);
     //1.filter useless column
-    if (ret == OB_SUCCESS && cfg->filter_) {
-      bool skip = (*cfg->filter_)(recp);
+    if (ret == OB_SUCCESS && cfg->filter()) {
+      bool skip = (*cfg->filter())(recp);
       if (skip) {
         itr++;                                      /* step to next row */
         continue;
@@ -430,7 +424,7 @@ int DbDumper::pack_record(const TableRowkey *rowkeys, const int64_t size,
 }
 
 int DbDumper::find_table_key(const TableRowkey *rowkeys, const int64_t size,
-                             const ObString &rowkey, TableRowkey &table_key)
+                             const ObRowkey &rowkey, TableRowkey &table_key)
 {
   int ret = OB_SUCCESS;
 

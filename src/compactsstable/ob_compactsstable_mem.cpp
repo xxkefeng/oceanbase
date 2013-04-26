@@ -37,12 +37,11 @@ namespace oceanbase
       return ret;
     }
 
-    ObCompactSSTableMem::ObCompactSSTableMem(int64_t block_size /*= OB_COMPACTSSTABLE_BLOCK_SIZE*/)
-      : table_id_(OB_INVALID_ID),
-        row_count_(0),
-        frozen_time_(0),
-        rows_(block_size,ObModIds::OB_COMPACTSSTABLE_WRITER),
-        inited_(false)
+    ObCompactSSTableMem::ObCompactSSTableMem() : table_id_(OB_INVALID_ID),
+                                                 row_count_(0),
+                                                 frozen_time_(0),
+                                                 rows_(OB_COMPACTSSTABLE_BLOCK_SIZE,ObModIds::OB_COMPACTSSTABLE_WRITER),
+                                                 inited_(false)
     {}
 
     ObCompactSSTableMem::~ObCompactSSTableMem()
@@ -114,15 +113,15 @@ namespace oceanbase
           }
           else if (ObCompactRow::compare(last_row,row,ObCompactRow::ROWKEY_COLUMN_NUM) >= 0)
           {
-            ObString last_row_p;
-            ObString cur_row_p;
-            last_row_p.assign_ptr(const_cast<char*>(last_row.get_key_buffer()),
-                                  static_cast<int32_t>(last_row.get_key_columns_len(ObCompactRow::ROWKEY_COLUMN_NUM)));
-            cur_row_p.assign_ptr(const_cast<char*>(row.get_key_buffer()),
-                     static_cast<int32_t>(row.get_key_columns_len(ObCompactRow::ROWKEY_COLUMN_NUM)));
-            TBSYS_LOG(WARN,"can not add current_row_,"
-                      "last row great than current row,row_count_:%ld,last:%s,cur:%s",
-                      row_count_,print_string(last_row_p),print_string(cur_row_p));            
+            TBSYS_LOG(WARN,"can not add current_row_ ,last row great than current row");
+            hex_dump(last_row.get_key_buffer(),
+                     static_cast<int32_t>(last_row.get_key_columns_len(ObCompactRow::ROWKEY_COLUMN_NUM)),
+                     true,
+                     TBSYS_LOG_LEVEL_WARN);
+            hex_dump(row.get_key_buffer(),
+                     static_cast<int32_t>(row.get_key_columns_len(ObCompactRow::ROWKEY_COLUMN_NUM)),
+                     true,
+                     TBSYS_LOG_LEVEL_WARN);
             ret = OB_ERROR;
           }          
         }
@@ -142,6 +141,7 @@ namespace oceanbase
 
     void ObCompactSSTableMem::clear()
     {
+      TBSYS_LOG(INFO,"clear compactsstable mem");
       rows_.clear();
       row_count_ = 0;
       frozen_time_ = 0;
@@ -162,28 +162,14 @@ namespace oceanbase
     }
 
 
-    int64_t ObCompactSSTableMem::get_data_size() const
-    {
-      return rows_.get_data_size() + (row_index_.max_index_entry_num_ * INDEX_ENTRY_SIZE);
-    }
-
-    int64_t ObCompactSSTableMem::get_usage_size() const
-    {
-      return rows_.get_usage_size() + (row_index_.max_index_entry_num_ * INDEX_ENTRY_SIZE);
-    }
-
-    int64_t ObCompactSSTableMem::get_index_size() const
-    {
-      return (row_index_.max_index_entry_num_ * INDEX_ENTRY_SIZE);
-    }
 
     ObCompactSSTableMem::Compare::Compare(ObCompactSSTableMem& mem) : mem_(mem)
     {}
 
-    bool ObCompactSSTableMem::Compare::operator()(const char* index,const common::ObString& rowkey)
+    bool ObCompactSSTableMem::Compare::operator()(const char* index,const common::ObRowkey& rowkey)
     {
       ObCompactRow row;
-      ObString left_rowkey;
+      ObRowkey left_rowkey;
       int  err = OB_SUCCESS;
       bool ret = false;
       if ((err = row.set_row(index,0)) != OB_SUCCESS)
@@ -202,10 +188,10 @@ namespace oceanbase
       return ret;
     }
 
-    int ObCompactSSTableMem::locate_start_pos(const ObRange& range,const char**& start_pos)
+    int ObCompactSSTableMem::locate_start_pos(const ObNewRange& range,const char**& start_pos)
     {
       int ret = OB_SUCCESS;
-      if (range.border_flag_.is_min_value())
+      if (range.start_key_.is_min_row())
       {
         start_pos = row_index_.start();
       }
@@ -216,7 +202,7 @@ namespace oceanbase
       else
       {
         ObCompactRow row;
-        ObString found_key;
+        ObRowkey found_key;
         if (row_index_.end() == start_pos)
         {
           ret = OB_BEYOND_THE_RANGE;
@@ -237,10 +223,10 @@ namespace oceanbase
       return ret;
     }
 
-    int ObCompactSSTableMem::locate_end_pos(const ObRange& range,const char**& end_pos)
+    int ObCompactSSTableMem::locate_end_pos(const ObNewRange& range,const char**& end_pos)
     {
       int ret = OB_SUCCESS;
-      if (range.border_flag_.is_max_value())
+      if (range.end_key_.is_max_row())
       {
         end_pos = (row_index_.end() - 1);
       }
@@ -253,7 +239,7 @@ namespace oceanbase
         else
         {
           ObCompactRow row;
-          ObString found_key;
+          ObRowkey found_key;
           if ((ret = row.set_row(*end_pos,0)) != OB_SUCCESS)
           {
             TBSYS_LOG(WARN,"set row failed,row:%p,ret=%d",*end_pos,ret);
@@ -287,12 +273,12 @@ namespace oceanbase
     }
 
 
-    const char** ObCompactSSTableMem::lower_bound(const char** start,const char** end,const ObString& rowkey)
+    const char** ObCompactSSTableMem::lower_bound(const char** start,const char** end,const ObRowkey& rowkey)
     {
       return std::lower_bound(start,end,rowkey,Compare(*this));
     }
 
-    int ObCompactSSTableMem::find(const ObString& rowkey,const char**& start_iterator)
+    int ObCompactSSTableMem::find(const ObRowkey& rowkey,const char**& start_iterator)
     {
       int ret = OB_SUCCESS;
       const char** pos = lower_bound(row_index_.start(),row_index_.end(),rowkey);
@@ -304,7 +290,7 @@ namespace oceanbase
       else
       {
         ObCompactRow row;
-        ObString found_key;
+        ObRowkey found_key;
         if ((ret = row.set_row(*pos,0)) != OB_SUCCESS)
         {
           TBSYS_LOG(WARN,"set row failed,row:%p,ret=%d",*pos,ret);
@@ -322,7 +308,7 @@ namespace oceanbase
       return ret;
     }
 
-    bool ObCompactSSTableMem::is_row_exist(const ObString& rowkey)
+    bool ObCompactSSTableMem::is_row_exist(const ObRowkey& rowkey)
     {
       bool ret = false;
       const char** pos = NULL;
@@ -349,12 +335,10 @@ namespace oceanbase
         char* tmp    = NULL;
         if (row_index_.max_index_entry_num_ <= row_index_.offset_)
         {
-          //x2
-          size = (row_index_.max_index_entry_num_ * INDEX_ENTRY_SIZE) * 2;
-          if (0 == size )
-          {
-            size = INDEX_BLOCK_SIZE; //first time
-          }
+          size = (row_index_.max_index_entry_num_ * INDEX_ENTRY_SIZE) + INDEX_BLOCK_SIZE;
+          // the number of tablets in cs maybe very large
+          // but a tablet,generally rather small,
+          // so we do not use x2
         }
 
         if (size > 0)
@@ -367,7 +351,6 @@ namespace oceanbase
           else if (row_index_.max_index_entry_num_ != 0)
           {
             memcpy(tmp,row_index_.row_index_,row_index_.offset_ * INDEX_ENTRY_SIZE);
-            ob_free(row_index_.row_index_);
           }
           row_index_.row_index_ = reinterpret_cast<const char**>(tmp);
           row_index_.max_index_entry_num_ = size / INDEX_ENTRY_SIZE;
@@ -429,7 +412,6 @@ namespace oceanbase
       }
       else
       {
-        reset();
         mem_ = mem;
         inited_ = true;
       }
@@ -455,7 +437,7 @@ namespace oceanbase
       }
     }
 
-    int ObCompactSSTableMemIterator::set_scan_param(const ObRange& range,const ColumnFilter* cf,const bool is_reverse_scan)
+    int ObCompactSSTableMemIterator::set_scan_param(const ObNewRange& range,const ColumnFilter* cf,const bool is_reverse_scan)
     {
       int ret         = OB_SUCCESS;
       start_iterator_ = NULL;
@@ -466,12 +448,6 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN,"have not init");
         ret = OB_NOT_INIT;
-      }
-      else if (range.table_id_ != mem_->get_table_id())
-      {
-        ret = OB_ERROR;
-        TBSYS_LOG(WARN,"invalid param,range.table_id_:%lu,mem_->get_table_id():%lu",range.table_id_,
-                  mem_->get_table_id());
       }
       else if ((ret = mem_->locate_start_pos(range,start_iterator_)) != OB_SUCCESS)
       {
@@ -518,7 +494,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObCompactSSTableMemIterator::set_get_param(const common::ObString& rowkey,const ColumnFilter* cf)
+    int ObCompactSSTableMemIterator::set_get_param(const common::ObRowkey& rowkey,const ColumnFilter* cf)
     {
       int ret = OB_SUCCESS;
       start_iterator_ = NULL;
@@ -646,7 +622,6 @@ namespace oceanbase
 
       if (row_cursor_ < start_iterator_ || row_cursor_ > end_iterator_)
       {
-        iterator_status_ = OB_ITER_END;
         ret = OB_ITER_END;
       }
       else

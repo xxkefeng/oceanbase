@@ -288,7 +288,7 @@ int64_t ObNumber::to_string(char* buf, const int64_t buf_len) const
       {
         memcpy(buf+pos, inner_buf+i, dec_digits_num);
         pos += dec_digits_num;
-        buf[pos++] = '\0';
+        buf[pos] = '\0';
       }
     }
     else
@@ -309,7 +309,7 @@ int64_t ObNumber::to_string(char* buf, const int64_t buf_len) const
       }
       if (NULL != buf && 0 <= pos && 0 < buf_len - pos)
       {
-        buf[pos++] = '\0';
+        buf[pos] = '\0';
       }
     }
   }
@@ -368,6 +368,10 @@ int ObNumber::from(const char* str, int64_t buf_len)
         TBSYS_LOG(WARN, "invalid numeric char=%c", *str);
         ret = OB_ERR_UNEXPECTED;
         break;
+    }
+    if (OB_SUCCESS != ret)
+    {
+      break;
     }
     ++str;
   }
@@ -456,6 +460,55 @@ int ObNumber::to_int64(int64_t &i64) const
     {
       i64 = -i64;
     }
+  }
+  return ret;
+}
+
+int ObNumber::cast_to_int64(int64_t &i64) const
+{
+  int ret = OB_SUCCESS;
+  i64 = 0;
+  bool is_neg = is_negative();
+  ObNumber pos_clone = *this;
+  if (is_neg)
+  {
+    negate(*this, pos_clone);
+  }
+
+  ObNumber remainder;
+  int vscale = vscale_;
+  int digits[DOUBLE_PRECISION_NDIGITS];
+  int digit_idx = DOUBLE_PRECISION_NDIGITS - 1;
+  while (!pos_clone.is_zero())
+  {
+    div_uint32(pos_clone, 10, pos_clone, remainder);
+    if (vscale > 0)
+    {
+      vscale--;
+    }
+    else
+    {
+      OB_ASSERT(digit_idx >= 0);
+      if (remainder.is_zero())
+      {
+        digits[digit_idx--] = 0;
+      }
+      else
+      {
+        OB_ASSERT(1 == remainder.nwords_);
+        OB_ASSERT(remainder.words_[0] < 10 && remainder.words_[0] > 0);
+        digits[digit_idx--] = remainder.words_[0];
+      }
+    } // end while
+  }
+  OB_ASSERT(digit_idx >= -1);
+  for (int i = digit_idx+1; i < DOUBLE_PRECISION_NDIGITS; ++i)
+  {
+    i64 = i64 * 10 + digits[i];
+  }
+  if (is_neg)
+  {
+    i64 = -i64;
   }
   return ret;
 }

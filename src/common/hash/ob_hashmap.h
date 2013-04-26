@@ -99,6 +99,10 @@ namespace oceanbase
         {
           return ht_.size();
         };
+        inline bool created()
+        {
+          return ht_.created();
+        }
         int create(int64_t bucket_num)
         {
           return ht_.create(cal_next_prime(bucket_num), &allocer_);
@@ -117,7 +121,7 @@ namespace oceanbase
         };
         // 返回  -1表示有错误发生
         // 返回  HASH_EXIST表示结点存在
-        // 返回  HASH_NOEXIST表示结点不存在
+        // 返回  HASH_NOT_EXIST表示结点不存在
         inline int get(const _key_type &key, _value_type &value, const int64_t timeout_us = 0) const
         {
           int ret = 0;
@@ -128,11 +132,22 @@ namespace oceanbase
           }
           return ret;
         };
+        inline const _value_type *get(const _key_type &key) const
+        {
+          const _value_type *ret = NULL;
+          const pair_type *pair = NULL;
+          if (HASH_EXIST == const_cast<hashtable&>(ht_).get(key, pair)
+              && NULL != pair)
+          {
+            ret = &(pair->second);
+          }
+          return ret;
+        };
         // flag默认为0表示不覆盖已有元素 非0表示覆盖已有元素
         // 返回  -1  表示set调用出错, (无法分配新结点等)
         // 其他均表示插入成功：插入成功分下面三个状态
-        // 返回  HASH_OVERWRITE  表示覆盖旧结点成功(在flag非0的时候返回）
-        // 返回  HASH_INSERT_SEC 表示插入新结点成功
+        // 返回  HASH_OVERWRITE_SUCC  表示覆盖旧结点成功(在flag非0的时候返回）
+        // 返回  HASH_INSERT_SUCC 表示插入新结点成功
         // 返回  HASH_EXIST  表示hash表结点存在（在flag为0的时候返回)
         inline int set(const _key_type &key, const _value_type &value, int flag = 0, 
                 int broadcast = 0, int overwrite_key = 0)
@@ -143,7 +158,7 @@ namespace oceanbase
         template <class _callback>
         // 返回  -1表示有错误发生
         // 返回  HASH_EXIST表示结点存在
-        // 返回  HASH_NOEXIST表示结点不存在
+        // 返回  HASH_NOT_EXIST表示结点不存在
         int atomic(const _key_type &key, _callback &callback)
         {
           //return ht_.atomic(key, callback, preproc_);
@@ -151,7 +166,7 @@ namespace oceanbase
         };
         // 返回  -1表示有错误发生
         // 返回  HASH_EXIST表示结点存在并删除成功
-        // 返回  HASH_NOEXIST表示结点不存在不用删除
+        // 返回  HASH_NOT_EXIST表示结点不存在不用删除
         // 如果value指针不为空并且删除成功则将值存入value指向的空间
         int erase(const _key_type &key, _value_type *value = NULL)
         {

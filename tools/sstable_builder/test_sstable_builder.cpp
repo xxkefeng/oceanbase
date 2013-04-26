@@ -14,7 +14,7 @@ int main(int argc, char **argv)
   (void)argc;
   (void)argv;
   
-  ret = init("schema.ini", "data_syntax.ini");
+  ret = init("schema.ini", "data_syntax.ini", 1007, "0-0-3,1-1-3,2-2-3", true);
   assert(ret == 0);
 
   buffer = (char*)malloc(2 * 1024 *1024);
@@ -28,7 +28,7 @@ int main(int argc, char **argv)
     pos += sprintf(buffer + pos, "%s %04d %s %d %d %d\n", 
       "Key:", i, "testtesttest", i, i, i);
   }
-  ret = append(buffer, pos, true, false, &output, &output_size);
+  ret = append(buffer, pos, true, false, true, true, &output, &output_size);
   assert(ret == 0);
   ret = static_cast<int32_t>(fwrite(output, 1, output_size, fp));
   assert(ret == output_size);
@@ -39,7 +39,7 @@ int main(int argc, char **argv)
     pos += sprintf(buffer + pos, "%s %04d %s %d %d %d\n",
       "Key:", i, "testtesttest", i, i, i);
   }
-  ret = append(buffer, pos, false, false, &output, &output_size);
+  ret = append(buffer, pos, false, false, false, false, &output, &output_size);
   assert(ret == 0);
   ret = static_cast<int32_t>(fwrite(output, 1, output_size, fp));
   assert(ret == output_size);
@@ -50,7 +50,7 @@ int main(int argc, char **argv)
     pos += sprintf(buffer + pos, "%s %04d %s %d %d %d\n",
       "Key:", i, "testtesttest", i, i, i);
   }
-  ret = append(buffer, pos, false, false, &output, &output_size);
+  ret = append(buffer, pos, false, false, false, false, &output, &output_size);
   assert(ret == 0);
   ret = static_cast<int32_t>(fwrite(output, 1, output_size, fp));
   assert(ret == output_size);
@@ -61,7 +61,7 @@ int main(int argc, char **argv)
     pos += sprintf(buffer + pos, "%s %04d %s %d %d %d\n",
       "Key:", i, "testtesttest", i, i, i);
   }
-  ret = append(buffer, pos, false, true, &output, &output_size);
+  ret = append(buffer, pos, false, true, false, false, &output, &output_size);
   assert(ret == 0);
   ret = static_cast<int32_t>(fwrite(output, 1, output_size, fp));
   assert(ret == output_size);

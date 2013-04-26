@@ -49,7 +49,7 @@ namespace oceanbase
         {
           ObString fname;
           fname.assign(const_cast<char*>(iter), static_cast<int32_t>(strlen(iter)));
-          ObFileAppender *file = file_alloc_.allocate();
+          ObIFileAppender *file = file_alloc_.allocate();
           if (NULL == file)
           {
             TBSYS_LOG(WARN, "allocate file appender fail [%s]", iter);
@@ -102,7 +102,7 @@ namespace oceanbase
         {
           ObString fname;
           fname.assign(const_cast<char*>(iter), static_cast<int32_t>(strlen(iter)));
-          ObFileAppender *file = file_alloc_.allocate();
+          ObIFileAppender *file = file_alloc_.allocate();
           if (NULL == file)
           {
             TBSYS_LOG(WARN, "allocate file appender fail [%s]", iter);
@@ -141,14 +141,14 @@ namespace oceanbase
 
     void MultiFileUtils::close()
     {
-      ObList<ObFileAppender*>::iterator iter;
+      ObList<ObIFileAppender*>::iterator iter;
       for (iter = flist_.begin(); iter != flist_.end(); iter++)
       {
-        ObFileAppender *file = *iter;
+        ObIFileAppender *file = *iter;
         if (NULL != file)
         {
           file->close();
-          file_alloc_.deallocate(file); 
+          file_alloc_.deallocate(dynamic_cast<FileAppenderImpl*>(file)); 
           file = NULL;
         }
       }
@@ -158,8 +158,8 @@ namespace oceanbase
     int64_t MultiFileUtils::get_file_pos() const
     {
       int64_t ret = -1;
-      ObList<ObFileAppender*>::const_iterator iter;
-      ObFileAppender *file = NULL;
+      ObList<ObIFileAppender*>::const_iterator iter;
+      ObIFileAppender *file = NULL;
       if (0 == flist_.size())
       {
         TBSYS_LOG(WARN, "no file open");
@@ -189,11 +189,11 @@ namespace oceanbase
       }
       else
       {
-        ObList<ObFileAppender*>::iterator iter;
+        ObList<ObIFileAppender*>::iterator iter;
         int64_t pos = 0;
         for (iter = flist_.begin(); iter != flist_.end(); iter++, pos++)
         {
-          ObFileAppender *file = *iter;
+          ObIFileAppender *file = *iter;
           if (NULL == file)
           {
             TBSYS_LOG(WARN, "invalid file pos=[%ld] buf=%p count=%ld", pos, buf, count);
@@ -222,11 +222,11 @@ namespace oceanbase
       }
       else
       {
-        ObList<ObFileAppender*>::iterator iter;
+        ObList<ObIFileAppender*>::iterator iter;
         int64_t pos = 0;
         for (iter = flist_.begin(); iter != flist_.end(); iter++, pos++)
         {
-          ObFileAppender *file = *iter;
+          ObIFileAppender *file = *iter;
           if (NULL == file)
           {
             TBSYS_LOG(WARN, "invalid file pos=[%ld]", pos);

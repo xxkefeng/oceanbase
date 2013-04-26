@@ -1,12 +1,23 @@
 #include "ob_scanner.h"
 #include "gtest/gtest.h"
 #include "common/ob_malloc.h"
+#include "common/utility.h"
 #include "common/ob_action_flag.h"
 #include <string>
 
 using namespace oceanbase;
 using namespace common;
 using namespace std;
+
+void print_cell_info(const ObCellInfo & ci)
+{
+  fprintf(stdout, "table_name=[%.*s] column_name=[%.*s] row_key=[%s] "
+      "table_id=[%lu] column_id=[%lu]  value=[%s] \n",
+      ci.table_name_.length(), ci.table_name_.ptr(),
+      ci.column_name_.length(),ci.column_name_.ptr(),
+      to_cstring(ci.row_key_),
+      ci.table_id_, ci.column_id_, to_cstring(ci.value_));
+}
 
 TEST(TestObScanner, add_cell)
 {
@@ -46,8 +57,11 @@ TEST(TestObScanner, add_cell)
 
   ObCellInfo oci;
 
+  ObObj rowkey_obj;
+  rowkey_obj.set_int(4);
+
   oci.table_name_.assign((char*)"table1", 6);
-  oci.row_key_.assign((char*)"row1", 4);
+  oci.row_key_.assign(&rowkey_obj, 1);
   oci.column_name_.assign((char*)"column1", 7);
   oci.value_.set_int(0xff);
 
@@ -65,7 +79,7 @@ TEST(TestObScanner, add_cell)
   ASSERT_EQ(OB_SUCCESS, iter.get_cell(tci));
 
   ASSERT_EQ(string("table1"), string(tci.table_name_.ptr(), tci.table_name_.length()));
-  ASSERT_EQ(string("row1"), string(tci.row_key_.ptr(), tci.row_key_.length()));
+  ASSERT_TRUE(rowkey_obj == tci.row_key_.get_obj_ptr()[0]);
   ASSERT_EQ(string("column1"), string(tci.column_name_.ptr(), tci.column_name_.length()));
   ASSERT_EQ(OB_SUCCESS, tci.value_.get_int(tmp));
   ASSERT_EQ(0xff, tmp);
@@ -74,7 +88,7 @@ TEST(TestObScanner, add_cell)
   ASSERT_EQ(OB_SUCCESS, iter.get_cell(tci));
 
   ASSERT_EQ(string("table1"), string(tci.table_name_.ptr(), tci.table_name_.length()));
-  ASSERT_EQ(string("row1"), string(tci.row_key_.ptr(), tci.row_key_.length()));
+  ASSERT_TRUE(rowkey_obj  == tci.row_key_.get_obj_ptr()[0]);
   ASSERT_EQ(string("column2"), string(tci.column_name_.ptr(), tci.column_name_.length()));
   ASSERT_EQ(OB_SUCCESS, tci.value_.get_int(tmp));
   ASSERT_EQ(0xfe, tmp);
@@ -88,7 +102,9 @@ TEST(TestObScanner, add_cell)
 
   oci.table_name_.assign((char*)"table1", 6);
   sprintf(row_key_buffer, "row1");
-  oci.row_key_.assign(row_key_buffer, 4);
+  ObString obstr(0, 4, row_key_buffer);
+  rowkey_obj.set_varchar(obstr);
+  oci.row_key_.assign(&rowkey_obj, 1);
   oci.column_name_.assign((char*)"column1", 7);
   oci.value_.set_int(0xff);
 
@@ -96,7 +112,9 @@ TEST(TestObScanner, add_cell)
 
   oci.table_name_.assign((char*)"table1", 6);
   sprintf(row_key_buffer, "row1");
-  oci.row_key_.assign(row_key_buffer, 4);
+  obstr.assign_ptr(row_key_buffer, static_cast<int32_t>(strlen(row_key_buffer)));
+  rowkey_obj.set_varchar(obstr);
+  oci.row_key_.assign(&rowkey_obj, 1);
   oci.column_name_.assign((char*)"column2", 7);
   oci.value_.set_int(0xee);
 
@@ -107,7 +125,9 @@ TEST(TestObScanner, add_cell)
 
   oci.table_name_.assign((char*)"table1", 6);
   sprintf(row_key_buffer, "row2");
-  oci.row_key_.assign(row_key_buffer, 4);
+  obstr.assign_ptr(row_key_buffer, static_cast<int32_t>(strlen(row_key_buffer)));
+  rowkey_obj.set_varchar(obstr);
+  oci.row_key_.assign(&rowkey_obj, 1);
   oci.column_name_.assign((char*)"column1", 7);
   oci.value_.set_int(0xdd);
 
@@ -115,7 +135,9 @@ TEST(TestObScanner, add_cell)
 
   oci.table_name_.assign((char*)"table2", 6);
   sprintf(row_key_buffer, "row2");
-  oci.row_key_.assign(row_key_buffer, 4);
+  obstr.assign_ptr(row_key_buffer, static_cast<int32_t>(strlen(row_key_buffer)));
+  rowkey_obj.set_varchar(obstr);
+  oci.row_key_.assign(&rowkey_obj, 1);
   oci.column_name_.assign((char*)"column1", 7);
   oci.value_.set_int(0xcc);
 
@@ -123,13 +145,14 @@ TEST(TestObScanner, add_cell)
 
   oci.table_name_.assign((char*)"table3", 6);
   sprintf(row_key_buffer, "row2");
-  oci.row_key_.assign(row_key_buffer, 4);
+  obstr.assign_ptr(row_key_buffer, static_cast<int32_t>(strlen(row_key_buffer)));
+  rowkey_obj.set_varchar(obstr);
+  oci.row_key_.assign(&rowkey_obj, 1);
   oci.column_name_.assign((char*)"column1", 7);
   oci.value_.set_int(0xbb);
 
   ASSERT_EQ(OB_SUCCESS, os.add_cell(oci));
 
-  fprintf(stdout, "size=%ld\n", os.get_serialize_size());
   char buffer[2048];
   int64_t pos = 0;
   ASSERT_EQ(OB_SUCCESS, os.serialize(buffer, 1024, pos));
@@ -142,23 +165,18 @@ TEST(TestObScanner, add_cell)
   {
     ObCellInfo ci;
     ASSERT_EQ(OB_SUCCESS, iter.get_cell(ci));
-    fprintf(stdout, "table_name=[%.*s] row_key=[%.*s] column_name=[%.*s]\n",
-        ci.table_name_.length(), ci.table_name_.ptr(),
-        ci.row_key_.length(), ci.row_key_.ptr(),
-        ci.column_name_.length(), ci.column_name_.ptr());
+    
+    print_cell_info(ci);
   }
   fprintf(stdout, "==============================\n");
+  os.reset_iter();
   while (OB_SUCCESS == os.next_cell())
   {
     ObCellInfo *ci = NULL;
     bool is_row_changed;
     ASSERT_EQ(OB_SUCCESS, os.get_cell(&ci, &is_row_changed));
-    fprintf(stdout, "table_name=[%.*s] row_key=[%.*s] column_name=[%.*s] "
-            "table_id=[%lu] column_id=[%lu] row_changed=[%d]\n",
-            ci->table_name_.length(), ci->table_name_.ptr(),
-            ci->row_key_.length(), ci->row_key_.ptr(),
-            ci->column_name_.length(),ci->column_name_.ptr(),
-            ci->table_id_, ci->column_id_, is_row_changed);
+
+    print_cell_info(*ci);
   }
   os.reset_iter();
   fprintf(stdout, "==============================\n");
@@ -177,35 +195,20 @@ TEST(TestObScanner, add_cell)
   {
     ObCellInfo ci;
     ASSERT_EQ(OB_SUCCESS, iter.get_cell(ci));
-    fprintf(stdout, "table_name=[%.*s] row_key=[%.*s] column_name=[%.*s]\n",
-        ci.table_name_.length(), ci.table_name_.ptr(),
-        ci.row_key_.length(), ci.row_key_.ptr(),
-        ci.column_name_.length(), ci.column_name_.ptr());
+    print_cell_info(ci);
     ASSERT_EQ(OB_SUCCESS, iter.get_cell(ci));
-    fprintf(stdout, "table_name=[%.*s] row_key=[%.*s] column_name=[%.*s]\n",
-        ci.table_name_.length(), ci.table_name_.ptr(),
-        ci.row_key_.length(), ci.row_key_.ptr(),
-        ci.column_name_.length(), ci.column_name_.ptr());
+    print_cell_info(ci);
   }
   fprintf(stdout, "==============================\n");
+  os.reset_iter();
   while (OB_SUCCESS == os.next_cell())
   {
     ObCellInfo *ci = NULL;
     bool is_row_changed;
     ASSERT_EQ(OB_SUCCESS, os.get_cell(&ci, &is_row_changed));
-    fprintf(stdout, "table_name=[%.*s] row_key=[%.*s] column_name=[%.*s] "
-            "table_id=[%lu] column_id=[%lu] row_changed=[%d]\n",
-            ci->table_name_.length(), ci->table_name_.ptr(),
-            ci->row_key_.length(), ci->row_key_.ptr(),
-            ci->column_name_.length(),ci->column_name_.ptr(),
-            ci->table_id_, ci->column_id_, is_row_changed);
+    print_cell_info(*ci);
     ASSERT_EQ(OB_SUCCESS, os.get_cell(&ci, &is_row_changed));
-    fprintf(stdout, "table_name=[%.*s] row_key=[%.*s] column_name=[%.*s] "
-            "table_id=[%lu] column_id=[%lu] row_changed=[%d]\n",
-            ci->table_name_.length(), ci->table_name_.ptr(),
-            ci->row_key_.length(), ci->row_key_.ptr(),
-            ci->column_name_.length(),ci->column_name_.ptr(),
-            ci->table_id_, ci->column_id_, is_row_changed);
+    print_cell_info(*ci);
   }
   os.reset_iter();
   fprintf(stdout, "==============================\n");
@@ -218,15 +221,9 @@ TEST(TestObScanner, add_cell)
   {
     ObCellInfo ci;
     ASSERT_EQ(OB_SUCCESS, iter.get_cell(ci));
-    fprintf(stdout, "table_name=[%.*s] row_key=[%.*s] column_name=[%.*s]\n",
-        ci.table_name_.length(), ci.table_name_.ptr(),
-        ci.row_key_.length(), ci.row_key_.ptr(),
-        ci.column_name_.length(), ci.column_name_.ptr());
+    print_cell_info(ci);
     ASSERT_EQ(OB_SUCCESS, iter.get_cell(ci));
-    fprintf(stdout, "table_name=[%.*s] row_key=[%.*s] column_name=[%.*s]\n",
-        ci.table_name_.length(), ci.table_name_.ptr(),
-        ci.row_key_.length(), ci.row_key_.ptr(),
-        ci.column_name_.length(), ci.column_name_.ptr());
+    print_cell_info(ci);
   }
   fprintf(stdout, "==============================\n");
   while (OB_SUCCESS == os.next_cell())
@@ -234,12 +231,7 @@ TEST(TestObScanner, add_cell)
     ObCellInfo *ci = NULL;
     bool is_row_changed;
     ASSERT_EQ(OB_SUCCESS, os.get_cell(&ci, &is_row_changed));
-    fprintf(stdout, "table_name=[%.*s] row_key=[%.*s] column_name=[%.*s] "
-            "table_id=[%lu] column_id=[%lu] row_changed=[%d]\n",
-            ci->table_name_.length(), ci->table_name_.ptr(),
-            ci->row_key_.length(), ci->row_key_.ptr(),
-            ci->column_name_.length(),ci->column_name_.ptr(),
-            ci->table_id_, ci->column_id_, is_row_changed);
+    print_cell_info(*ci);
   }
   os.reset_iter();
 
@@ -248,14 +240,17 @@ TEST(TestObScanner, add_cell)
 //  ASSERT_EQ(tmp_bool,is_fullfilled);
 //  ASSERT_EQ(tmp,fullfilled_item);
   {
-    ObRange range;
+    ObObj start_key_obj, end_key_obj;
+    start_key_obj.set_int(11111);
+    end_key_obj.set_int(22222);
+    ObNewRange range;
     range.border_flag_.set_inclusive_start();
-    range.start_key_.assign((char*)"11111", 5);
-    range.end_key_.assign((char*)"22222", 5);
-    ObRange range2;
+    range.start_key_.assign(&start_key_obj, 1);
+    range.end_key_.assign(&end_key_obj, 1);
+    ObNewRange range2;
     range2.border_flag_.set_inclusive_start();
-    range2.start_key_.assign((char*)"11111", 5);
-    range2.end_key_.assign((char*)"22222", 5);
+    range2.start_key_.assign(&start_key_obj, 1);
+    range2.end_key_.assign(&end_key_obj, 1);
 
     int64_t pos = 0;
     int64_t data_len = 0;
@@ -279,13 +274,11 @@ TEST(TestObScanner, add_cell)
     ASSERT_EQ(fullfilled_item, tmp);
     ASSERT_EQ(os1.get_data_version(),100);
 
-    ObRange range3;
+    ObNewRange range3;
     ASSERT_EQ(OB_SUCCESS, os2.get_range(range3));
     ASSERT_EQ(range2.border_flag_.get_data(), range3.border_flag_.get_data());
-    ASSERT_EQ(string(range3.start_key_.ptr(), range3.start_key_.length()),
-              string(range2.start_key_.ptr(), range2.start_key_.length()));
-    ASSERT_EQ(string(range3.end_key_.ptr(), range3.end_key_.length()),
-              string(range2.end_key_.ptr(), range2.end_key_.length()));
+    ASSERT_EQ(range3.start_key_, range2.start_key_);
+    ASSERT_EQ(range3.end_key_, range2.end_key_);
 
     const int times = 1000000;
     ObScanner os3;
@@ -308,8 +301,7 @@ TEST(TestObScanner, add_cell)
     const int64_t buf_len = 1 << 22;
     char* buff = (char*)ob_malloc(buf_len);
     int64_t ppos = 0;
-    int64_t len = os3.get_serialize_size();
-    ASSERT_EQ(OB_BUF_NOT_ENOUGH, os3.serialize(buff, len - 4, ppos));
+    ASSERT_NE(OB_SUCCESS, os3.serialize(buff, 10, ppos));
     ASSERT_EQ(OB_SUCCESS, os3.serialize(buff, buf_len, ppos));
 
     int64_t npos = 0;
@@ -317,6 +309,7 @@ TEST(TestObScanner, add_cell)
     ASSERT_EQ(OB_ERROR, os4.deserialize(buff, 10, npos));
     ASSERT_EQ(OB_SUCCESS, os4.deserialize(buff, ppos, npos));
     ASSERT_EQ(npos, ppos);
+
     int64_t otmp;
     oci.value_.get_int(otmp);
     ObCellInfo *oo;
@@ -341,7 +334,7 @@ TEST(TestObScanner, add_cell)
       t++;
 
       ASSERT_EQ(string(oci.table_name_.ptr(), oci.table_name_.length()), string(oo->table_name_.ptr(), oo->table_name_.length()));
-      ASSERT_EQ(string(oci.row_key_.ptr(), oci.row_key_.length()), string(oo->row_key_.ptr(), oo->row_key_.length()));
+      ASSERT_EQ(oci.row_key_, oo->row_key_);
       ASSERT_EQ(string(oci.column_name_.ptr(), oci.column_name_.length()), string(oo->column_name_.ptr(), oo->column_name_.length()));
       ASSERT_EQ(OB_SUCCESS, oo->value_.get_int(tmp));
       ASSERT_EQ(otmp, tmp);
@@ -353,9 +346,11 @@ TEST(TestObScanner, add_cell)
   }
 
   ObCellInfo st;
+  ObObj obj;
+  obj.set_int(10);
 
   st.table_name_.assign((char*)"table1", 6);
-  st.row_key_.assign((char*)"row1", 4);
+  st.row_key_.assign(&obj, 1);
   st.column_name_.assign((char*)"column1", 7);
   st.value_.set_int(0xff);
 
@@ -363,7 +358,7 @@ TEST(TestObScanner, add_cell)
   ss.add_cell(st);
 
   st.table_name_.assign((char*)"table2", 6);
-  st.row_key_.assign((char*)"row1", 4);
+  st.row_key_.assign(&obj, 1);
   st.column_name_.assign((char*)"column1", 7);
   st.value_.set_int(0xff);
 

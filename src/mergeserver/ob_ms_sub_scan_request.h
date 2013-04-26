@@ -3,18 +3,17 @@
 
 #include "common/ob_thread_objpool.h"
 #include "common/ob_malloc.h"
-#include "chunkserver/ob_chunk_server.h"
-#include "common/ob_range.h"
+#include "common/ob_range2.h"
 #include "common/ob_string_buf.h"
 #include "common/ob_server.h"
 #include "common/ob_scanner.h"
 #include "common/ob_get_param.h"
 #include "common/ob_scan_param.h"
+#include "common/ob_schema_manager.h"
 #include "ob_ms_rpc_event.h"
-#include "ob_ms_request_event.h"
-#include "ob_chunk_server.h"
+#include "ob_ms_request.h"
+#include "common/ob_chunk_server_item.h"
 #include "ob_chunk_server_task_dispatcher.h"
-#include "ob_ms_schema_manager.h"
 #include <algorithm>
 
 using namespace oceanbase::common;
@@ -23,9 +22,7 @@ namespace oceanbase
 {
   namespace mergeserver
   {
-
     class ObMergerRpcEvent;
-
     class ObMergerSubScanRequest
     {
     public:
@@ -34,39 +31,38 @@ namespace oceanbase
 
       ~ObMergerSubScanRequest();
 
-      int init(ObScanParam *scan_param, 
-        ObRange & query_range, 
-        const int64_t limit_offset, 
-        const int64_t limit_count, 
-        const ObChunkServer cs_replicas[], 
-        const int32_t replica_count, 
-        const bool scan_full_tablet, 
+      int init(ObScanParam *scan_param,
+        ObNewRange & query_range,
+        const int64_t limit_offset,
+        const int64_t limit_count,
+        const ObChunkServerItem cs_replicas[],
+        const int32_t replica_count,
+        const bool scan_full_tablet,
         ObStringBuf *buffer_pool);
 
       void reset();
 
 
-      int select_cs(ObChunkServer & selected_server);
+      int select_cs(ObChunkServerItem & selected_server);
 
 
       /// add a rpc event to this sub request
-      int add_event(ObMergerRpcEvent *rpc_event, 
-        ObMergerRequestEvent *client_request,
-        ObChunkServer & selected_server);
+      int add_event(ObMergerRpcEvent *rpc_event, ObMergerRequest *client_request,
+        ObChunkServerItem & selected_server);
 
       /// check if agent_event belong to this, and if agent_event is the first finished backup task
       /// if agent_event belong to this, set belong_to_this to true, and increment finished_backup_task_count_
-      int agent_event_finish(ObMergerRpcEvent * agent_event, bool &belong_to_this, bool &is_first); 
+      int agent_event_finish(ObMergerRpcEvent * agent_event, bool &belong_to_this, bool &is_first);
 
       /// called to check if this tablet has been scanned over or tablet has been divided
       /// if tablet has scanned over and tablet has not been divided, return OB_ITER_END
       /// int get_next_scan_param(ObScanParam & next_param);
-      /// int get_next_scan_range(ObRange & next_range);
+      /// int get_next_scan_range(ObNewRange & next_range);
 
-      const ObRange &get_query_range() const;  
-      bool scan_full_tablet() const;        
+      const ObNewRange &get_query_range() const;
+      bool scan_full_tablet() const;
 
-      /// check if this sub request finished, if finished 
+      /// check if this sub request finished, if finished
       bool finish() const;
 
       /// get the result of current sub request
@@ -77,23 +73,23 @@ namespace oceanbase
       inline int32_t finished_backup_task_count() const;
       inline int32_t total_replica_count() const;
       inline int32_t tried_replica_count() const;
-      inline int32_t last_tried_replica_idx() const;        
+      inline int32_t last_tried_replica_idx() const;
 
       /// result interface
       inline ObScanner *get_scanner() const;
       inline ObScanParam * get_scan_param() const;
       inline const int64_t get_limit_offset() const;
 
-      inline int reset_cs_replicas(const int32_t replica_cnt, const ObChunkServer *cs_vec);
+      inline int reset_cs_replicas(const int32_t replica_cnt, const ObChunkServerItem *cs_vec);
 
       inline ObServer get_session_server()const;
       inline int64_t get_session_id()const;
 
-      inline void get_cs_replicas(ObChunkServer * replica_buf, int64_t & replica_count)
+      inline void get_cs_replicas(ObChunkServerItem * replica_buf, int64_t & replica_count)
       {
         if ((NULL != replica_buf) && (replica_count > 0))
         {
-          memcpy(replica_buf, cs_replicas_, sizeof(ObChunkServer)*std::min<int64_t>(replica_count, total_replica_count_));
+          memcpy(replica_buf, cs_replicas_, sizeof(ObChunkServerItem)*std::min<int64_t>(replica_count, total_replica_count_));
         }
         else
         {
@@ -113,7 +109,7 @@ namespace oceanbase
       int32_t           triggered_backup_task_count_;
       int32_t           finished_backup_task_count_;
 
-      ObChunkServer     cs_replicas_[ObMergerTabletLocationList::MAX_REPLICA_COUNT];
+      ObChunkServerItem     cs_replicas_[ObTabletLocationList::MAX_REPLICA_COUNT];
       int32_t           total_replica_count_;
       int32_t           tried_replica_count_;
       int32_t           last_tried_replica_idx_;
@@ -124,19 +120,19 @@ namespace oceanbase
       int64_t           limit_count_;
 
       /// ThreadAllocator<ObMergerRpcEvent, MutilObjAllocator<ObMergerRpcEvent, 65536> > allocator_;
-      ObRange           query_range_;
+      ObNewRange           query_range_;
       ObMergerRpcEvent      *result_;
       ObScanParam       *scan_param_;
       ObStringBuf       *buffer_pool_;
 
-      /// session related, there should be only on session associated with a sub req, because backups tasks 
+      /// session related, there should be only on session associated with a sub req, because backups tasks
       /// can't use session stream, backup tasks must use totally new scan request
       int64_t           session_id_;
       ObServer          session_server_;
       uint64_t          session_rpc_event_id_;
     };
 
-    inline int ObMergerSubScanRequest::reset_cs_replicas(const int32_t replica_cnt, const ObChunkServer *cs_vec)
+    inline int ObMergerSubScanRequest::reset_cs_replicas(const int32_t replica_cnt, const ObChunkServerItem *cs_vec)
     {
       int err = oceanbase::common::OB_SUCCESS;
       if ((replica_cnt <= 0) || (NULL == cs_vec))
@@ -148,10 +144,10 @@ namespace oceanbase
         total_replica_count_ = 0;
         tried_replica_count_ = 0;
         last_tried_replica_idx_ = -1;
-        for (int32_t i = 0; (i < replica_cnt) && (i < ObMergerTabletLocationList::MAX_REPLICA_COUNT); i++)
+        for (int32_t i = 0; (i < replica_cnt) && (i < ObTabletLocationList::MAX_REPLICA_COUNT); i++)
         {
           cs_replicas_[i] = cs_vec[i];
-          cs_replicas_[i].status_ = oceanbase::mergeserver::ObChunkServer::UNREQUESTED;
+          cs_replicas_[i].status_ = oceanbase::common::ObChunkServerItem::UNREQUESTED;
           total_replica_count_ ++;
         }
       }
@@ -173,7 +169,7 @@ namespace oceanbase
       return ret;
     }
 
-    inline const ObRange &ObMergerSubScanRequest::get_query_range() const
+    inline const ObNewRange &ObMergerSubScanRequest::get_query_range() const
     {
       return query_range_;
     }
@@ -185,11 +181,12 @@ namespace oceanbase
 
       if (NULL != scan_param_)
       {
+
         if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = scan_param_->set_range(query_range_))))
         {
           TBSYS_LOG(WARN, "fail to set scan_param [err=%d]", err);
         }
-        if ((OB_SUCCESS == err) && 
+        if ((OB_SUCCESS == err) &&
           (OB_SUCCESS != (err = scan_param_->set_limit_info(limit_offset_, limit_count_))))
         {
           TBSYS_LOG(WARN, "fail to set scan limit [limit_offset_=%ld][err=%d]", limit_offset_, err);
@@ -237,7 +234,7 @@ namespace oceanbase
       return scan_full_tablet_;
     }
 
-    /// check if this sub request finished, if finished 
+    /// check if this sub request finished, if finished
     inline bool ObMergerSubScanRequest::finish() const
     {
       return(result_ != NULL);

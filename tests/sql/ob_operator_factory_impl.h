@@ -32,7 +32,7 @@ namespace oceanbase
         virtual ~ObOperatorFactoryImpl() {}
 
       public:
-        ObSstableScan *new_sstable_scan();
+        ObSSTableScanInterface *new_sstable_scan();
         ObUpsScan *new_ups_scan();
         ObUpsMultiGet *new_ups_multi_get();
     };

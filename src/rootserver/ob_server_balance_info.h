@@ -1,12 +1,12 @@
 /*===============================================================
 *   (C) 2007-2010 Taobao Inc.
-*   
-*   
+*
+*
 *   Version: 0.1 2010-09-08
-*   
+*
 *   Authors:
 *          daoan(daoan@taobao.com)
-*   
+*
 *
 ================================================================*/
 #ifndef OCEANBASE_ROOTSERVER_ROOT_SERVER_BALANCE_INFO_H
@@ -15,7 +15,7 @@
 #include "common/page_arena.h"
 #include "common/ob_range.h"
 #include "common/ob_server.h"
-#include "rootserver/ob_root_config.h"
+
 namespace oceanbase
 {
   namespace rootserver
@@ -39,4 +39,4 @@ namespace oceanbase
     };
   }
 }
-#endif 
+#endif

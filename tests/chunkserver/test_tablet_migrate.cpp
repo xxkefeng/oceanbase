@@ -18,7 +18,7 @@ namespace oceanbase
 {
   namespace tests
   {
-    namespace chunkserver 
+    namespace chunkserver
     {
       static const int64_t table_id = 100;
       static const int64_t sstable_file_id = 1001;
@@ -33,7 +33,7 @@ namespace oceanbase
       static const int MOCK_SERVER_LISTEN_PORT = 33248;
       int64_t num_file = 0 ;
       char path[ObTablet::MAX_SSTABLE_PER_TABLET][OB_MAX_FILE_NAME_LENGTH];
-   
+
       static char sstable_file_path[OB_MAX_FILE_NAME_LENGTH];
       static ObCellInfo** cell_infos;
       static char* row_key_strs[ROW_NUM + NON_EXISTENT_ROW_NUM][COL_NUM];
@@ -45,10 +45,10 @@ namespace oceanbase
 
       class TestObTabletMigrate : public ::testing::Test
       {
-        
+
       public:
 
-        static  int cs_migrate(const common::ObRange& range, 
+        static  int cs_migrate(const common::ObRange& range,
                                const common::ObServer& src_server, const common::ObServer& dest_server, bool keep_src)
           {
             static const int MY_VERSION = 1;
@@ -58,17 +58,17 @@ namespace oceanbase
             {
               my_buffer->reset();
               ObDataBuffer thread_buff(my_buffer->current(), my_buffer->remain());
-              ret = range.serialize(thread_buff.get_data(), 
+              ret = range.serialize(thread_buff.get_data(),
                                     thread_buff.get_capacity(), thread_buff.get_position());
 
               if (OB_SUCCESS == ret)
               {
-                ret = dest_server.serialize(thread_buff.get_data(), 
+                ret = dest_server.serialize(thread_buff.get_data(),
                                             thread_buff.get_capacity(), thread_buff.get_position());
               }
               if (OB_SUCCESS == ret)
               {
-                ret = common::serialization::encode_bool(thread_buff.get_data(), 
+                ret = common::serialization::encode_bool(thread_buff.get_data(),
                                                          thread_buff.get_capacity(), thread_buff.get_position(), keep_src);
               }
               if (OB_SUCCESS == ret)
@@ -76,14 +76,14 @@ namespace oceanbase
                 ret = chunk_server.get_client_manager().send_request(src_server, OB_CS_MIGRATE, MY_VERSION, 20000, thread_buff);
               }
               ObDataBuffer out_buffer(thread_buff.get_data(), thread_buff.get_position());
-              if (ret == OB_SUCCESS) 
+              if (ret == OB_SUCCESS)
               {
                 common::ObResultCode result_msg;
                 ret = result_msg.deserialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
                 if (ret == OB_SUCCESS)
                 {
                   ret = result_msg.result_code_;
-                  if (ret != OB_SUCCESS) 
+                  if (ret != OB_SUCCESS)
                   {
                     TBSYS_LOG(INFO, "rpc return error code is %d msg is %s", result_msg.result_code_, result_msg.message_.ptr());
                   }
@@ -97,7 +97,7 @@ namespace oceanbase
             }
             return ret;
           }
- 
+
 
         static void test_migrate_tablet()
           {
@@ -119,7 +119,7 @@ namespace oceanbase
             // ret = tablet_mgr.dest_load_tablet(ranges[0], path, num_file);
             ASSERT_EQ(OB_SUCCESS, ret);
           }
-        
+
         static void init_cell_infos()
           {
             //malloc
@@ -128,7 +128,7 @@ namespace oceanbase
             {
               cell_infos[i] = new ObCellInfo[COL_NUM];
             }
-      
+
             for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
             {
               for (int64_t j = 0; j < COL_NUM; ++j)
@@ -136,7 +136,7 @@ namespace oceanbase
                 row_key_strs[i][j] = new char[50];
               }
             }
-    
+
             // init cell infos
             for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
             {
@@ -180,32 +180,32 @@ namespace oceanbase
             }
           }
 
-        static int init_sstable(const ObCellInfo** cell_infos, const int64_t row_num, 
+        static int init_sstable(const ObCellInfo** cell_infos, const int64_t row_num,
                                 const int64_t col_num, const int64_t sst_id = 0L)
           {
             int err = OB_SUCCESS;
-  
+
             ObSSTableSchema sstable_schema;
             ObSSTableSchemaColumnDef column_def;
-  
+
             EXPECT_TRUE(NULL != cell_infos);
             EXPECT_TRUE(row_num > 0);
             EXPECT_TRUE(col_num > 0);
-  
+
             for (int64_t i = 0; i < col_num; ++i)
             {
               column_def.column_name_id_ = cell_infos[0][i].column_id_;
               column_def.column_value_type_ = cell_infos[0][i].value_.get_type();
               sstable_schema.add_column_def(column_def);
             }
-  
+
             uint64_t table_id = cell_infos[0][0].table_id_;
             ObString path;
             int64_t sstable_file_id = 0;
             ObString compress_name;
             char* path_str = sstable_file_path;
             int64_t path_len = OB_MAX_FILE_NAME_LENGTH;
-  
+
             if (0 == sst_id)
             {
               sstable_file_id = 100;
@@ -214,7 +214,7 @@ namespace oceanbase
             {
               sstable_file_id = sst_id;
             }
-  
+
             ObSSTableId sstable_id(sst_id);
             get_sstable_path(sstable_id, path_str, path_len);
             char cmd[256];
@@ -227,7 +227,7 @@ namespace oceanbase
             ObSSTableWriter writer;
             err = writer.create_sstable(sstable_schema, path, compress_name, table_id);
             EXPECT_EQ(OB_SUCCESS, err);
-  
+
             for (int64_t i = 0; i < row_num; ++i)
             {
               ObSSTableRow row;
@@ -238,16 +238,16 @@ namespace oceanbase
                 err = row.add_obj(cell_infos[i][j].value_);
                 EXPECT_EQ(OB_SUCCESS, err);
               }
-  
+
               int64_t space_usage = 0;
               err = writer.append_row(row, space_usage);
               EXPECT_EQ(OB_SUCCESS, err);
             }
-  
+
             int64_t offset = 0;
             err = writer.close_sstable(offset);
             EXPECT_EQ(OB_SUCCESS, err);
- 
+
             return err;
           }
 
@@ -299,13 +299,13 @@ namespace oceanbase
         static int create_and_load_tablets()
           {
             int ret = OB_SUCCESS;
-         
+
             for (int64_t i = 0; i < SSTABLE_NUM; ++i)
             {
               sst_ids[i].sstable_file_id_ = i % DISK_NUM + 256 * (i / DISK_NUM + 1);
               sst_ids[i].sstable_file_offset_ = 0;
 
-              ret = init_sstable((const ObCellInfo**)(&cell_infos[i * SSTABLE_ROW_NUM]), 
+              ret = init_sstable((const ObCellInfo**)(&cell_infos[i * SSTABLE_ROW_NUM]),
                                  SSTABLE_ROW_NUM, COL_NUM, sst_ids[i].sstable_file_id_);
               EXPECT_EQ(OB_SUCCESS, ret);
             }
@@ -320,8 +320,7 @@ namespace oceanbase
 
               if (0 == i)
               {
-                ranges[i].start_key_.assign(NULL, 0);
-                ranges[i].border_flag_.set_min_value();
+                ranges[i].start_key_.set_min_row();
               }
               else
               {
@@ -344,9 +343,9 @@ namespace oceanbase
           {
             int err = OB_SUCCESS;
 
-        
+
             chunk_server.initialize();
-  
+
             ObBlockCacheConf conf;
             conf.dicache_max_num = 1000;
             conf.dicache_min_timeo = 1000 * 1000;
@@ -356,22 +355,22 @@ namespace oceanbase
             conf.memblock_size = 1024 * 1024L;
             conf.ficache_max_num = 1024;
             conf.ficache_min_timeo = 100 * 1000 * 1000;
-  
+
             ObBlockIndexCacheConf bic_conf;
             bic_conf.cache_mem_size = 128 * 1024 * 1024;
             bic_conf.max_no_active_usec = -1;
             bic_conf.hash_slot_num = 1024;
-  
+
             err = chunk_server.get_tablet_manager().init(conf, bic_conf);
             EXPECT_EQ(OB_SUCCESS, err);
-           
+
             chunk_server.start_service();
             err = create_and_load_tablets();
             EXPECT_EQ(OB_SUCCESS, err);
 
             return err;
           }
- 
+
       public:
         static void SetUpTestCase()
           {
@@ -380,26 +379,26 @@ namespace oceanbase
             TBSYS_LOGGER.setLogLevel("ERROR");
             err = ob_init_memory_pool();
             ASSERT_EQ(OB_SUCCESS, err);
-      
+
             init_cell_infos();
-      
+
             err = init_mgr();
             ASSERT_EQ(OB_SUCCESS, err);
           }
-      
+
         static void TearDownTestCase()
           {
             //destroy_cell_infos();
           }
-      
+
         virtual void SetUp()
           {
-  
+
           }
-      
+
         virtual void TearDown()
           {
-      
+
           }
       };
 

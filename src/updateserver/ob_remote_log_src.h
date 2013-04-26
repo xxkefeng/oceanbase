@@ -51,7 +51,7 @@ namespace oceanbase
       private:
         bool registered_to_lsync_server_;
         ObFetchLogReq req_;
-        volatile int64_t req_seq_;
+        volatile uint64_t req_seq_;
         common::IObServerGetter* server_getter_;
         ObUpsRpcStub* rpc_stub_;
         int64_t fetch_timeout_;

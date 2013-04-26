@@ -27,7 +27,6 @@ namespace oceanbase
   {
     namespace serialization
     {
-
       const uint64_t OB_MAX_V1B = (__UINT64_C(1) << 7) - 1;
       const uint64_t OB_MAX_V2B = (__UINT64_C(1) << 14) - 1;
       const uint64_t OB_MAX_V3B = (__UINT64_C(1) << 21) - 1;
@@ -1402,7 +1401,7 @@ namespace oceanbase
         {
           for (int8_t i = 0; i < nwords; ++i)
           {
-            ret += encoded_length_vi32(words[i]);
+            ret += static_cast<int32_t>(encoded_length_vi32(words[i]));
           }
         }
         return ret;
@@ -1692,11 +1691,17 @@ namespace oceanbase
         if (NULL == buf || buf_len - pos <= 0 || val < 0)
         {
           ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fail to encode_createtime_type: buf[%p], buf_len[%ld], pos[%ld] val[%ld]",
+             buf, buf_len, pos, val);
         }
         else
         {
           int8_t first_byte = OB_CREATETIME_TYPE;
           ret = __encode_time_type(buf,buf_len,first_byte,pos,val);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "fail to __encode_time_type: ret = %d", ret);
+          }
         }
         return ret;
       }

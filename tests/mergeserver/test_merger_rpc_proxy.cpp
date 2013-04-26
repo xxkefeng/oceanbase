@@ -9,15 +9,16 @@
 #include "common/ob_scanner.h"
 #include "common/ob_tablet_info.h"
 #include "common/ob_read_common_data.h"
+#include "common/ob_schema_manager.h"
 #include "ob_ms_rpc_proxy.h"
 #include "ob_ms_tablet_location.h"
-#include "ob_ms_schema_manager.h"
 #include "ob_ms_rpc_stub.h"
 
 #include "mock_server.h"
 #include "mock_root_server.h"
 #include "mock_update_server.h"
 #include "mock_chunk_server.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
@@ -26,6 +27,7 @@ using namespace oceanbase::mergeserver::test;
 
 const int64_t timeout = 100000;
 const char * addr = "localhost";
+static CharArena allocator_;
 
 int main(int argc, char **argv)
 {
@@ -67,14 +69,15 @@ class TestRpcProxy: public ::testing::Test, public ObMergerRpcProxy
       ObMergerRpcProxy * proxy = (ObMergerRpcProxy *) argv;
       EXPECT_TRUE(NULL != proxy);
       int64_t timestamp = LOCAL_NEWEST;
+      ObString table_name(0, 4, (char*)"null");
       const ObSchemaManagerV2 * manager = NULL;
-      EXPECT_TRUE(OB_SUCCESS == proxy->get_schema(timestamp, &manager));
+      EXPECT_TRUE(OB_SUCCESS == proxy->get_schema(table_name, timestamp, &manager));
       EXPECT_TRUE(NULL != manager);
       EXPECT_TRUE(manager->get_version() == 1022);
 
       // get new schema
       timestamp = 1022;
-      EXPECT_TRUE(OB_SUCCESS == proxy->get_schema(timestamp, &manager));
+      EXPECT_TRUE(OB_SUCCESS == proxy->get_schema(table_name, timestamp, &manager));
       EXPECT_TRUE(NULL != manager);
       EXPECT_TRUE(manager->get_version() == 1025);
       return NULL;
@@ -88,7 +91,7 @@ TEST_F(TestRpcProxy, test_multi_schema)
   ThreadSpecificBuffer buffer;
   ObPacketFactory factory;
   tbnet::Transport transport;
-  tbnet::DefaultPacketStreamer streamer; 
+  tbnet::DefaultPacketStreamer streamer;
   streamer.setPacketFactory(&factory);
   transport.start();
   ObClientManager client_manager;
@@ -106,9 +109,9 @@ TEST_F(TestRpcProxy, test_multi_schema)
   ObMergerSchemaManager * schema = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != schema);
   ObSchemaManagerV2 sample(1022);
-  EXPECT_TRUE(OB_SUCCESS == schema->init(sample));
+  EXPECT_TRUE(OB_SUCCESS == schema->init(false, sample));
 
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
 
   // server not start
@@ -118,9 +121,9 @@ TEST_F(TestRpcProxy, test_multi_schema)
   MockRootServer server;
   MockServerRunner test_root_server(server);
   tbsys::CThread root_server_thread;
-  root_server_thread.start(&test_root_server, NULL); 
+  root_server_thread.start(&test_root_server, NULL);
   sleep(2);
-  
+
   const int MAX_THREAD_COUNT = 15;
   pthread_t threads[MAX_THREAD_COUNT];
   for (int i = 0; i < MAX_THREAD_COUNT; ++i)
@@ -136,7 +139,7 @@ TEST_F(TestRpcProxy, test_multi_schema)
   {
     pthread_join(threads[i], NULL);
   }
-  
+
   delete schema;
   schema = NULL;
   delete location;
@@ -172,9 +175,9 @@ TEST_F(TestRpcProxy, test_multi_master_ups)
   ObMergerSchemaManager * schema = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != schema);
   ObSchemaManagerV2 sample(1022);
-  EXPECT_TRUE(OB_SUCCESS == schema->init(sample));
+  EXPECT_TRUE(OB_SUCCESS == schema->init(false, sample));
 
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
 
   // server not start
@@ -217,7 +220,7 @@ TEST_F(TestRpcProxy, test_multi_master_ups)
   sleep(5);
 }
 
-#if true 
+#if true
 
 TEST_F(TestRpcProxy, test_init)
 {
@@ -235,7 +238,7 @@ TEST_F(TestRpcProxy, test_init)
   EXPECT_TRUE(NULL != schema);
   EXPECT_TRUE(OB_SUCCESS != proxy.init(&stub, schema, NULL));
 
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
 
   EXPECT_TRUE(OB_SUCCESS == proxy.init(&stub, schema, location));
@@ -257,7 +260,7 @@ TEST_F(TestRpcProxy, test_register)
   ThreadSpecificBuffer buffer;
   ObPacketFactory factory;
   tbnet::Transport transport;
-  tbnet::DefaultPacketStreamer streamer; 
+  tbnet::DefaultPacketStreamer streamer;
   streamer.setPacketFactory(&factory);
   transport.start();
   ObClientManager client_manager;
@@ -279,7 +282,7 @@ TEST_F(TestRpcProxy, test_register)
   ObMergerSchemaManager * schema = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != schema);
 
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
 
   // server not start
@@ -290,10 +293,10 @@ TEST_F(TestRpcProxy, test_register)
   MockRootServer server;
   MockServerRunner test_root_server(server);
   tbsys::CThread root_server_thread;
-  root_server_thread.start(&test_root_server, NULL); 
+  root_server_thread.start(&test_root_server, NULL);
   sleep(2);
 
-  // success 
+  // success
   EXPECT_TRUE(OB_SUCCESS == proxy.register_merger(merge_server));
 
   delete schema;
@@ -313,7 +316,7 @@ TEST_F(TestRpcProxy, test_schema)
   ThreadSpecificBuffer buffer;
   ObPacketFactory factory;
   tbnet::Transport transport;
-  tbnet::DefaultPacketStreamer streamer; 
+  tbnet::DefaultPacketStreamer streamer;
   streamer.setPacketFactory(&factory);
   transport.start();
   ObClientManager client_manager;
@@ -328,51 +331,52 @@ TEST_F(TestRpcProxy, test_schema)
   merge_server.set_ipv4_addr(addr, 10256);
   ObMergerRpcProxy proxy(0, timeout, root_server, merge_server);
 
+  ObString table_name(0, 4, (char*)"null");
   // not init
   int64_t timestamp = 1234;
-  EXPECT_TRUE(OB_SUCCESS != proxy.get_schema(timestamp, NULL));
+  EXPECT_TRUE(OB_SUCCESS != proxy.get_schema(table_name, timestamp, NULL));
 
   ObMergerSchemaManager * schema = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != schema);
   ObSchemaManagerV2 sample(1022);
-  EXPECT_TRUE(OB_SUCCESS == schema->init(sample));
+  EXPECT_TRUE(OB_SUCCESS == schema->init(false, sample));
 
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
 
   // server not start
   EXPECT_TRUE(OB_SUCCESS == proxy.init(&stub, schema, location));
-  EXPECT_TRUE(OB_SUCCESS != proxy.get_schema(timestamp, NULL));
+  EXPECT_TRUE(OB_SUCCESS != proxy.get_schema(table_name, timestamp, NULL));
 
   // start root server
   MockRootServer server;
   MockServerRunner test_root_server(server);
   tbsys::CThread root_server_thread;
-  root_server_thread.start(&test_root_server, NULL); 
+  root_server_thread.start(&test_root_server, NULL);
   sleep(2);
 
   // init schema manger
   timestamp = ObMergerRpcProxy::LOCAL_NEWEST;
   const ObSchemaManagerV2 * manager = NULL;
-  EXPECT_TRUE(OB_SUCCESS == proxy.get_schema(timestamp, &manager));
+  EXPECT_TRUE(OB_SUCCESS == proxy.get_schema(table_name, timestamp, &manager));
   EXPECT_TRUE(NULL != manager);
   EXPECT_TRUE(manager->get_version() == 1022);
 
   // not exist but server exist
   timestamp = 1024;
-  EXPECT_TRUE(OB_SUCCESS == proxy.get_schema(timestamp, &manager));
+  EXPECT_TRUE(OB_SUCCESS == proxy.get_schema(table_name, timestamp, &manager));
   EXPECT_TRUE(NULL != manager);
   // new schema finded
   EXPECT_TRUE(manager->get_version() == 1025);
-  
+
   // get server newest for init
   timestamp = 100;
   // add schema failed
-  EXPECT_TRUE(OB_SUCCESS != proxy.get_schema(timestamp, &manager));
-  
+  EXPECT_TRUE(OB_SUCCESS != proxy.get_schema(table_name, timestamp, &manager));
+
   // local version
   timestamp = ObMergerRpcProxy::LOCAL_NEWEST;
-  EXPECT_TRUE(OB_SUCCESS == proxy.get_schema(timestamp, &manager));
+  EXPECT_TRUE(OB_SUCCESS == proxy.get_schema(table_name, timestamp, &manager));
   EXPECT_TRUE(NULL != manager);
   EXPECT_TRUE(manager->get_version() == 1025);
 
@@ -393,7 +397,7 @@ TEST_F(TestRpcProxy, test_ups)
   ThreadSpecificBuffer buffer;
   ObPacketFactory factory;
   tbnet::Transport transport;
-  tbnet::DefaultPacketStreamer streamer; 
+  tbnet::DefaultPacketStreamer streamer;
   streamer.setPacketFactory(&factory);
   transport.start();
   ObClientManager client_manager;
@@ -411,9 +415,9 @@ TEST_F(TestRpcProxy, test_ups)
   // not init
   ObMergerTabletLocation cs_addr;
   ObGetParam get_param;
-  ObString row_key;
+  ObRowkey row_key;
   char * temp = (char*)"test";
-  row_key.assign(temp, static_cast<int32_t>(strlen(temp)));
+  row_key = make_rowkey(temp, &allocator_);
   ObCellInfo cell;
   cell.table_id_ = 234;
   cell.column_id_ = 111;
@@ -432,7 +436,7 @@ TEST_F(TestRpcProxy, test_ups)
   // init
   ObMergerSchemaManager * schema = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != schema);
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
 
   // server not start
@@ -445,7 +449,7 @@ TEST_F(TestRpcProxy, test_ups)
   MockUpdateServer server;
   MockServerRunner test_update_server(server);
   tbsys::CThread update_server_thread;
-  update_server_thread.start(&test_update_server, NULL); 
+  update_server_thread.start(&test_update_server, NULL);
   sleep(2);
   //
   EXPECT_TRUE(OB_SUCCESS == proxy.ups_get(cs_addr, get_param, scanner));
@@ -454,7 +458,7 @@ TEST_F(TestRpcProxy, test_ups)
   for (iter = scanner.begin(); iter != scanner.end(); ++iter)
   {
     EXPECT_TRUE(OB_SUCCESS == iter.get_cell(cell));
-    printf("client:%.*s\n", cell.row_key_.length(), cell.row_key_.ptr());
+    printf("client:%s\n", to_cstring(cell.row_key_));
     ++count;
   }
   // return 10 cells
@@ -462,10 +466,10 @@ TEST_F(TestRpcProxy, test_ups)
   scanner.clear();
 
   ObScanParam param;
-  ObRange range;
-  range.border_flag_.set_min_value();
-  ObString end_row;
-  end_row.assign(temp, static_cast<int32_t>(strlen(temp)));
+  ObNewRange range;
+  range.start_key_.set_min_row();
+  ObRowkey end_row;
+  end_row = make_rowkey(temp, &allocator_);
   //range.start_key_ = end_row;
   range.end_key_ = end_row;
 
@@ -478,7 +482,7 @@ TEST_F(TestRpcProxy, test_ups)
   for (iter = scanner.begin(); iter != scanner.end(); ++iter)
   {
     EXPECT_TRUE(OB_SUCCESS == iter.get_cell(cell));
-    printf("client:%.*s\n", cell.row_key_.length(), cell.row_key_.ptr());
+    printf("client:%s\n", to_cstring(cell.row_key_));
     ++count;
   }
   // return 10 cells
@@ -490,7 +494,7 @@ TEST_F(TestRpcProxy, test_ups)
   location = NULL;
 
   transport.stop();
- 
+
   server.stop();
   test_update_server.~MockServerRunner();
   update_server_thread.join();
@@ -503,7 +507,7 @@ TEST_F(TestRpcProxy, test_cs)
   ThreadSpecificBuffer buffer;
   ObPacketFactory factory;
   tbnet::Transport transport;
-  tbnet::DefaultPacketStreamer streamer; 
+  tbnet::DefaultPacketStreamer streamer;
   streamer.setPacketFactory(&factory);
   transport.start();
   ObClientManager client_manager;
@@ -522,15 +526,15 @@ TEST_F(TestRpcProxy, test_cs)
   ObMergerTabletLocation cs_addr;
   ObGetParam get_param;
   ObCellInfo cell;
-  ObString row_key;
+  ObRowkey row_key;
   char temp[256] = "";
   snprintf(temp, 100, "row_100");
-  row_key.assign(temp, static_cast<int32_t>(strlen(temp)));
+  row_key = make_rowkey(temp, &allocator_);
   cell.table_id_ = 234;
   cell.column_id_ = 111;
   cell.row_key_ = row_key;
   EXPECT_TRUE(OB_SUCCESS == get_param.add_cell(cell));
-  
+
   ObScanner scanner;
   EXPECT_TRUE(OB_SUCCESS != proxy.ups_get(cs_addr, get_param, scanner));
   ObScanParam scan_param;
@@ -539,11 +543,11 @@ TEST_F(TestRpcProxy, test_cs)
   // init
   ObMergerSchemaManager * schema = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != schema);
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
   EXPECT_TRUE(OB_SUCCESS == location->init(50000 * 5, 1000, 10000));
 
-  // init tablet cache 
+  // init tablet cache
   char temp_end[256] = "";
   ObServer server;
   const uint64_t START_ROW = 200L;
@@ -553,35 +557,33 @@ TEST_F(TestRpcProxy, test_cs)
     server.set_ipv4_addr(static_cast<int32_t>(i + 256), static_cast<int32_t>(1024 + i));
     ObTabletLocation addr(i, server);
 
-    ObMergerTabletLocationList list;
+    ObTabletLocationList list;
     EXPECT_TRUE(OB_SUCCESS == list.add(addr));
     EXPECT_TRUE(OB_SUCCESS == list.add(addr));
     EXPECT_TRUE(OB_SUCCESS == list.add(addr));
 
     snprintf(temp, 100, "row_%lu", i);
     snprintf(temp_end, 100, "row_%lu", i + 100);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
-    ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
 
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = 234;
-    range.start_key_ = start_key;
-    range.end_key_ = end_key;
-    list.set_timestamp(tbsys::CTimeUtil::getTime()); 
+    range.start_key_ = make_rowkey(temp, &allocator_);
+    range.end_key_ = make_rowkey(temp_end, &allocator_);
+    list.set_timestamp(tbsys::CTimeUtil::getTime());
     EXPECT_TRUE(OB_SUCCESS == location->set(range, list));
-    ObString rowkey;
+    ObRowkey rowkey;
     snprintf(temp, 100, "row_%lu", i + 40);
-    rowkey.assign(temp, static_cast<int32_t>(strlen(temp)));
+    rowkey = make_rowkey(temp, &allocator_);
     EXPECT_TRUE(OB_SUCCESS == location->get(234, rowkey, list));
-    
-    rowkey.assign(temp_end, static_cast<int32_t>(strlen(temp_end)));
+
+    rowkey = make_rowkey(temp_end, &allocator_);
     EXPECT_TRUE(OB_SUCCESS == location->get(234, rowkey, list));
   }
 
   // server not start
   ObIterator *it = NULL;
   ObMergerTabletLocation succ_addr;
-  ObMergerTabletLocationList list;
+  ObTabletLocationList list;
   EXPECT_TRUE(OB_SUCCESS == proxy.init(&stub, schema, location));
   EXPECT_TRUE(OB_SUCCESS != proxy.cs_get(get_param, succ_addr, scanner, it));
   EXPECT_TRUE(OB_SUCCESS != proxy.cs_scan(scan_param, succ_addr, scanner, it));
@@ -590,25 +592,25 @@ TEST_F(TestRpcProxy, test_cs)
   MockRootServer root;
   tbsys::CThread root_server_thread;
   MockServerRunner test_root_server(root);
-  root_server_thread.start(&test_root_server, NULL); 
+  root_server_thread.start(&test_root_server, NULL);
 
   // start chunk server
   MockChunkServer chunk;
   tbsys::CThread chunk_server_thread;
   MockServerRunner test_chunk_server(chunk);
-  chunk_server_thread.start(&test_chunk_server, NULL); 
+  chunk_server_thread.start(&test_chunk_server, NULL);
   sleep(2);
 
   // init get param
   snprintf(temp, 100, "row_105");
-  row_key.assign(temp, static_cast<int32_t>(strlen(temp)));
+  row_key = make_rowkey(temp, &allocator_);
   cell.table_id_ = 234;
   cell.column_id_ = 111;
   cell.row_key_ = row_key;
   get_param.add_cell(cell);
 
-  // cache server not exist so fetch from root server error 
-  ObMergerTabletLocationList addr_temp;
+  // cache server not exist so fetch from root server error
+  ObTabletLocationList addr_temp;
   EXPECT_TRUE(OB_SUCCESS != location->get(234, row_key, addr_temp));
 
   // scan from root server
@@ -618,11 +620,11 @@ TEST_F(TestRpcProxy, test_cs)
   EXPECT_TRUE(OB_SUCCESS == location->get(234, row_key, addr_temp));
 
   ObGetParam get_param2;
-  ObMergerTabletLocationList list2;
+  ObTabletLocationList list2;
   // cache not exist, get from root server
   snprintf(temp, 100, "row_998");
-  ObString row_key2;
-  row_key2.assign(temp, static_cast<int32_t>(strlen(temp)));
+  ObRowkey row_key2;
+  row_key2 = make_rowkey(temp, &allocator_);
   ObCellInfo cell2;
   cell2.table_id_ = 234;
   cell2.column_id_ = 111;
@@ -630,7 +632,7 @@ TEST_F(TestRpcProxy, test_cs)
   get_param2.add_cell(cell2);
   EXPECT_TRUE(OB_SUCCESS == proxy.cs_get(get_param2, succ_addr, scanner,it));
 
-  // not find the cs 
+  // not find the cs
   snprintf(temp, 100, "zzz_row_999");
   EXPECT_TRUE(OB_SUCCESS != proxy.cs_get(get_param2, succ_addr, scanner,it));
 
@@ -643,7 +645,7 @@ TEST_F(TestRpcProxy, test_cs)
   for (iter = scanner.begin(); iter != scanner.end(); ++iter)
   {
     EXPECT_TRUE(OB_SUCCESS == iter.get_cell(cell));
-    printf("client:%.*s\n", cell.row_key_.length(), cell.row_key_.ptr());
+    printf("client:%s\n", to_cstring(cell.row_key_));
     ++count;
   }
   scanner.clear();

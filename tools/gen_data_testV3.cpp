@@ -2,6 +2,7 @@
 #include "gen_data_testV3.h"
 #include "sstable/ob_disk_path.h"
 
+char* g_sstable_directory = NULL;
 
 //TODO 每次切换column group的时候 需要记住所有构成rowkey变量
 //TODO 把构造rowkow这个拿出来 range的start key设置一下
@@ -413,8 +414,7 @@ namespace oceanbase
            }
            else
            {
-             memcpy(last_key_buf_, curr_rowkey_.ptr(), curr_rowkey_.length());
-             last_sstable_end_key_.assign(last_key_buf_, curr_rowkey_.length());
+             curr_rowkey_.deep_copy(last_sstable_end_key_, rowkey_allocator_);
            }
          }
          range_.start_key_ = last_sstable_end_key_;
@@ -611,8 +611,6 @@ namespace oceanbase
 
       if (sstable_size > 0)
       {
-        range_.border_flag_.unset_min_value();
-        range_.border_flag_.unset_max_value();
         range_.border_flag_.unset_inclusive_start();
         range_.border_flag_.set_inclusive_end();
         range_.end_key_ = curr_rowkey_;
@@ -625,13 +623,13 @@ namespace oceanbase
 
         if (set_min)
         {
-          range_.border_flag_.set_min_value();
+          range_.start_key_.set_min_row();
           fprintf(stderr, "set min here\n");
         }
 
         if (set_max)
         {
-          range_.border_flag_.set_max_value();
+          range_.end_key_.set_max_row();
         }
         fprintf(stderr, "set_min=%s set_max=%s\n", set_min? "true": "false", set_max?"true":"false");
         ObTablet *tablet = NULL;
@@ -652,8 +650,7 @@ namespace oceanbase
         {
           TBSYS_LOG(ERROR, "add tablet failed, ret=%d", ret);
         }
-        memcpy(last_key_buf_, range_.end_key_.ptr(), range_.end_key_.length());
-        last_sstable_end_key_.assign_ptr(last_key_buf_, range_.end_key_.length());
+        range_.end_key_.deep_copy(last_sstable_end_key_, rowkey_allocator_);
       }
 
       return ret;
@@ -680,7 +677,7 @@ namespace oceanbase
         TBSYS_LOG(ERROR,"create rowkey failed: [%d]",ret);
       }
 
-      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_row_key(curr_rowkey_)) != OB_SUCCESS)
+      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_rowkey(curr_rowkey_)) != OB_SUCCESS)
       {
         TBSYS_LOG(ERROR,"set row key failed: [%d]",ret);
       }
@@ -793,7 +790,7 @@ namespace oceanbase
         TBSYS_LOG(ERROR,"create rowkey failed: [%d]",ret);
       }
 
-      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_row_key(curr_rowkey_)) != OB_SUCCESS)
+      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_rowkey(curr_rowkey_)) != OB_SUCCESS)
       {
         TBSYS_LOG(ERROR,"set row key failed: [%d]",ret);
       }
@@ -922,7 +919,7 @@ namespace oceanbase
         TBSYS_LOG(ERROR,"create rowkey failed: [%d]",ret);
       }
 
-      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_row_key(curr_rowkey_)) != OB_SUCCESS)
+      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_rowkey(curr_rowkey_)) != OB_SUCCESS)
       {
         TBSYS_LOG(ERROR,"set row key failed: [%d]",ret);
       }
@@ -1054,7 +1051,7 @@ namespace oceanbase
       return ret;
     }
 
-    
+
     int GenDataTestV3::fill_row_jdatetime(uint64_t group_id, int32_t index)
     {
       int ret = OB_SUCCESS;
@@ -1071,7 +1068,7 @@ namespace oceanbase
         TBSYS_LOG(ERROR,"create rowkey failed: [%d]",ret);
       }
 
-      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_row_key(curr_rowkey_)) != OB_SUCCESS)
+      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_rowkey(curr_rowkey_)) != OB_SUCCESS)
       {
         TBSYS_LOG(ERROR,"set row key failed: [%d]",ret);
       }
@@ -1158,7 +1155,7 @@ namespace oceanbase
         TBSYS_LOG(ERROR,"create rowkey failed: [%d]",ret);
       }
 
-      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_row_key(curr_rowkey_)) != OB_SUCCESS)
+      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_rowkey(curr_rowkey_)) != OB_SUCCESS)
       {
         TBSYS_LOG(ERROR,"set row key failed: [%d]",ret);
       }
@@ -1245,7 +1242,7 @@ namespace oceanbase
         TBSYS_LOG(ERROR,"create rowkey failed: [%d]",ret);
       }
 
-      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_row_key(curr_rowkey_)) != OB_SUCCESS)
+      if ((OB_SUCCESS == ret) && (ret = sstable_row_.set_rowkey(curr_rowkey_)) != OB_SUCCESS)
       {
         TBSYS_LOG(ERROR,"set row key failed: [%d]",ret);
       }
@@ -1318,18 +1315,11 @@ namespace oceanbase
     int GenDataTestV3::gen_rowkey_search()
     {
       int ret = OB_SUCCESS;
-      int64_t pos = 0;
-      if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, creativeid_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, creativeid_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, isshop_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, isshop_);
-      }
+      rowkey_object_array_[0].set_int(creativeid_);
+      rowkey_object_array_[1].set_int(isshop_);
       if (OB_SUCCESS == ret)
       {
-        curr_rowkey_.assign(rowkey_buf_, static_cast<int32_t>(pos));
+        curr_rowkey_.assign(rowkey_object_array_, 2);
       }
       return ret;
     }
@@ -1337,44 +1327,24 @@ namespace oceanbase
     int GenDataTestV3::gen_rowkey_campaign()
     {
       int ret = OB_SUCCESS;
-      int64_t pos = 0;
-      if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, thedate_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, thedate_=%ld", rowkey_buf_, pos, thedate_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, adgroupid_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, adgroupid_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, bidwordid_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, bidwordid_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, network_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, network_);
-      }
-      else
-      {
-        memcpy(rowkey_buf_ + pos, &matchscope_, 1);
-        pos += 1;
-        memcpy(rowkey_buf_ + pos, searchtype_, 10);
-        pos += 10;
-      }
 
-      if (OB_SUCCESS == ret &&
-          OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, creativeid_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, creativeid_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, isshop_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, isshop_);
-      }
+      ObString str4(0, 1, &matchscope_);
+      ObString str5(0, 10, searchtype_);
+
+
+      rowkey_object_array_[0].set_int(thedate_);
+      rowkey_object_array_[1].set_int(adgroupid_);
+      rowkey_object_array_[2].set_int(bidwordid_);
+      rowkey_object_array_[3].set_int(network_);
+      rowkey_object_array_[4].set_varchar(str4);
+      rowkey_object_array_[5].set_varchar(str5);
+      rowkey_object_array_[6].set_int(creativeid_);
+      rowkey_object_array_[7].set_int(isshop_);
+
 
       if (OB_SUCCESS == ret)
       {
-        curr_rowkey_.assign(rowkey_buf_, static_cast<int32_t>(pos));
+        curr_rowkey_.assign(rowkey_object_array_, 8);
       }
 
       return ret;
@@ -1383,70 +1353,17 @@ namespace oceanbase
     int GenDataTestV3::gen_rowkey_cust()
     {
       int ret = OB_SUCCESS;
-      int64_t pos = 0;
-      if (OB_SUCCESS == ret &&
-          (ret != common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, customid_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, customid_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, campaignid_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, campaignid_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, thedate_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, thedate_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, adgroupid_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, adgroupid_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, bidwordid_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, bidwordid_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, network_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, network_);
-      }
-      else
-      {
-        memcpy(rowkey_buf_ + pos, &matchscope_, 1);
-        pos += 1;
-        memcpy(rowkey_buf_ + pos, searchtype_, 10);
-        pos += 10;
-      }
-
-      if (OB_SUCCESS == ret &&
-          OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, creativeid_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, creativeid_);
-      }
-      else if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, isshop_)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, isshop_);
-      }
-      if (OB_SUCCESS == ret)
-      {
-        curr_rowkey_.assign(rowkey_buf_, static_cast<int32_t>(pos));
-      }
-      common::hex_dump(curr_rowkey_.ptr(), curr_rowkey_.length(), true, TBSYS_LOG_LEVEL_DEBUG);
+      ret = gen_rowkey_campaign();
       return ret;
     }
 
     int GenDataTestV3::gen_rowkey_join(int32_t index)
     {
       int ret = OB_SUCCESS;
-      int64_t pos = 0;
       int64_t num = (int64_t)index * 1000000;
-      if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, num)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%ld", rowkey_buf_, pos, num);
-      }
-      if (OB_SUCCESS == ret)
-      {
-        curr_rowkey_.assign(rowkey_buf_, static_cast<int32_t>(pos));
-      }
+      rowkey_object_array_[0].set_int(num);
+      curr_rowkey_.assign(rowkey_object_array_, 1);
+
       return ret;
     }
 
@@ -1454,15 +1371,8 @@ namespace oceanbase
     int GenDataTestV3::gen_rowkey_joinint(int32_t index)
     {
       int ret = OB_SUCCESS;
-      int64_t pos = 0;
-      if (OB_SUCCESS != (ret = common::serialization::encode_i64(rowkey_buf_, MAX_KEY_LEN, pos, index)))
-      {
-        TBSYS_LOG(ERROR, "serialize failed rowkey_buf_=%p, pos=%ld, creativeid=%d", rowkey_buf_, pos, index);
-      }
-      if (OB_SUCCESS == ret)
-      {
-        curr_rowkey_.assign(rowkey_buf_, static_cast<int32_t>(pos));
-      }
+      rowkey_object_array_[0].set_int(index);
+      curr_rowkey_.assign(rowkey_object_array_, 1);
       return ret;
     }
 

@@ -29,13 +29,20 @@ namespace oceanbase
       public:
         ObMergeGroupBy();
         virtual ~ObMergeGroupBy();
+        void reset();
 
         virtual void set_int_div_as_double(bool did);
+        virtual bool get_int_div_as_double() const;
 
         virtual int open();
         virtual int close();
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
+        // used by ScalarAggregate operator when there's no input rows
+        int get_row_for_empty_set(const ObRow *&row);
+        void assign(const ObMergeGroupBy& other);
+
+        NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         int is_same_group(const ObRow &row1, const ObRow &row2, bool &result);
         // disallow copy
@@ -54,6 +61,15 @@ namespace oceanbase
       aggr_func_.set_int_div_as_double(did);
     }
 
+    inline int ObMergeGroupBy::get_row_for_empty_set(const ObRow *&row)
+    {
+      return aggr_func_.get_result_for_empty_set(row);
+    }
+
+    inline bool ObMergeGroupBy::get_int_div_as_double() const
+    {
+      return aggr_func_.get_int_div_as_double();
+    }
   } // end namespace sql
 } // end namespace oceanbase
 

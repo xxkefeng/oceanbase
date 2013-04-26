@@ -36,6 +36,7 @@ class ObNumberTest: public ::testing::Test
     void test_mul(const char* n1, const char* n2, const char* res);
     void test_div(const char* n1, const char* n2, const char* res);
     void test_negate(const char* str_n1, const char* str_res);
+    void test_cast_to_int64(const char* str_n1, int64_t expected_i64);
 };
 
 ObNumberTest::ObNumberTest()
@@ -356,6 +357,27 @@ TEST_F(ObNumberTest, div_perf_test)
     int64_t finish_us = tv_finish.tv_sec * 1000000LL + tv_finish.tv_usec;
     printf("sim_res=%f elapsed=%ld count=%d\n", res, finish_us - begin_us, count);
   }
+}
+
+void ObNumberTest::test_cast_to_int64(const char* str_n1, int64_t expected_i64)
+{
+  ObNumber n1;
+  int64_t i64 = 0;
+  ASSERT_EQ(OB_SUCCESS, n1.from(str_n1));
+  ASSERT_EQ(OB_SUCCESS, n1.cast_to_int64(i64));
+  printf("int(%s)=%ld\n", str_n1, i64);
+  ASSERT_EQ(expected_i64, i64);
+}
+
+TEST_F(ObNumberTest, cast_to_int64)
+{
+  test_cast_to_int64("0", 0);
+  test_cast_to_int64("1230", 1230);
+  test_cast_to_int64("1230.0", 1230);
+  test_cast_to_int64("1230.456", 1230);
+  test_cast_to_int64("-1230", -1230);
+  test_cast_to_int64("-1230.0", -1230);
+  test_cast_to_int64("-1230.456", -1230);
 }
 
 int main(int argc, char **argv)

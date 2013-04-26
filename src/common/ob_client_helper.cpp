@@ -18,6 +18,7 @@
 #include "ob_client_manager.h"
 #include "ob_result.h"
 #include "utility.h"
+#include "ob_rowkey.h"
 #include "thread_buffer.h"
 
 namespace oceanbase
@@ -61,12 +62,10 @@ namespace oceanbase
         {
           if ((ret = scan(merge_server_[i],scan_param,scanner)) != OB_SUCCESS)
           {
-            char tmp_buf[32];
-            merge_server_[i].to_string(tmp_buf,sizeof(tmp_buf));
-            TBSYS_LOG(INFO,"scan from (%s)",tmp_buf);
+            TBSYS_LOG(INFO,"scan from (%s)", to_cstring(merge_server_[i]));
             if (OB_RESPONSE_TIME_OUT == ret || OB_PACKET_NOT_SENT == ret)
             {
-              TBSYS_LOG(WARN,"scan from (%s) error,ret = %d",tmp_buf,ret);
+              TBSYS_LOG(WARN,"scan from (%s) error,ret = %d", to_cstring(merge_server_[i]),ret);
               continue; //retry
             }
           }
@@ -95,15 +94,13 @@ namespace oceanbase
       {
         if ( 0 != merge_server_[i].get_ipv4() && 0 != merge_server_[i].get_port())
         {
-          char tmp_buf[32];
-          merge_server_[i].to_string(tmp_buf,sizeof(tmp_buf));
-          TBSYS_LOG(DEBUG,"get from (%s)",tmp_buf);
+          TBSYS_LOG(DEBUG,"get from (%s)", to_cstring(merge_server_[i]));
         
           if ((ret = get(merge_server_[i],get_param,scanner)) != OB_SUCCESS)
           {
             if (OB_RESPONSE_TIME_OUT == ret || OB_PACKET_NOT_SENT == ret)
             {
-              TBSYS_LOG(WARN,"get from (%s) error,ret = %d",tmp_buf,ret);
+              TBSYS_LOG(WARN,"get from (%s) error,ret = %d", to_cstring(merge_server_[i]), ret);
               continue; //retry
             }
           }
@@ -135,9 +132,7 @@ namespace oceanbase
           ret = client_manager_->send_request(server, OB_SCAN_REQUEST, MY_VERSION, timeout_, data_buff);
           if (OB_SUCCESS != ret)
           {
-            char tmp_buf[32];
-            server.to_string(tmp_buf,sizeof(tmp_buf));
-            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", tmp_buf,ret);
+            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", to_cstring(server),ret);
           }
         }
 
@@ -189,9 +184,7 @@ namespace oceanbase
           ret = client_manager_->send_request(server, OB_GET_REQUEST, MY_VERSION, timeout_, data_buff);
           if (OB_SUCCESS != ret)
           {
-            char tmp_buf[32];
-            server.to_string(tmp_buf,sizeof(tmp_buf));
-            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", tmp_buf,ret);
+            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", to_cstring(server),ret);
           }
         }
 
@@ -243,9 +236,7 @@ namespace oceanbase
           ret = client_manager_->send_request(update_server, OB_WRITE, MY_VERSION, timeout_, data_buff);
           if (OB_SUCCESS != ret)
           {
-            char tmp_buf[32];
-            update_server.to_string(tmp_buf,sizeof(tmp_buf));
-            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d",tmp_buf,ret);
+            TBSYS_LOG(WARN, "failed to send request to (%s), ret=%d", to_cstring(update_server),ret);
           }
         }
 
@@ -279,9 +270,7 @@ namespace oceanbase
 
       if ((ret = scan(root_server_,scan_param,scanner)) != OB_SUCCESS) 
       {
-        char tmp_buf[32];
-        root_server_.to_string(tmp_buf,sizeof(tmp_buf));
-        TBSYS_LOG(ERROR,"get tablet from rootserver(%s) failed:[%d]",tmp_buf,ret);
+        TBSYS_LOG(ERROR,"get tablet from rootserver(%s) failed:[%d]", to_cstring(root_server_),ret);
       }
 
       if (OB_SUCCESS == ret)
@@ -298,9 +287,7 @@ namespace oceanbase
 
       if ((ret = get(root_server_,param,scanner)) != OB_SUCCESS) 
       {
-        char tmp_buf[32];
-        root_server_.to_string(tmp_buf,sizeof(tmp_buf));
-        TBSYS_LOG(ERROR,"get tablet from rootserver(%s) failed:[%d]",tmp_buf,ret);
+        TBSYS_LOG(ERROR,"get tablet from rootserver(%s) failed:[%d]", to_cstring(root_server_), ret);
       }
 
       if (OB_SUCCESS == ret)
@@ -314,8 +301,8 @@ namespace oceanbase
     int ObClientHelper::parse_merge_server(ObScanner& scanner)
     {
       ObServer server;
-      ObString start_key;
-      ObString end_key; 
+      ObRowkey start_key;
+      ObRowkey end_key; 
       ObCellInfo * cell = NULL;
       ObScannerIterator iter; 
       bool row_change = false;
@@ -337,13 +324,12 @@ namespace oceanbase
         }
         else if (row_change && index > 0)
         {
-          TBSYS_LOG(DEBUG,"row changed,ignore"); 
-          hex_dump(cell->row_key_.ptr(),cell->row_key_.length(),false,TBSYS_LOG_LEVEL_DEBUG);
+          TBSYS_LOG(DEBUG,"row changed,ignore, %s", to_cstring(cell->row_key_)); 
           break; //just get one row        
         } 
         else if (cell != NULL)
         {
-          end_key.assign(cell->row_key_.ptr(), cell->row_key_.length());
+          end_key = cell->row_key_;
           if ((cell->column_name_.compare("1_ms_port") == 0) 
               || (cell->column_name_.compare("2_ms_port") == 0) 
               || (cell->column_name_.compare("3_ms_port") == 0))
@@ -363,8 +349,7 @@ namespace oceanbase
               cell->column_name_.compare("3_tablet_version") == 0)
           {
             ret = cell->value_.get_int(version);
-            hex_dump(cell->row_key_.ptr(),cell->row_key_.length(),false,TBSYS_LOG_LEVEL_DEBUG);
-            TBSYS_LOG(DEBUG,"tablet_version is %ld",version);
+            TBSYS_LOG(DEBUG,"tablet_version is %ld, rowkey=%s",version, to_cstring(cell->row_key_));
           }
 
           if (OB_SUCCESS == ret)

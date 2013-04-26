@@ -1,131 +1,87 @@
 #include "sql_parser.tab.h"
 #include "build_plan.h"
+#include "dml_build_plan.h"
+#include "priv_build_plan.h"
 #include "ob_raw_expr.h"
-#include "ob_bit_set.h"
-#include "ob_stmt.h"
+#include "common/ob_bit_set.h"
 #include "ob_select_stmt.h"
-#include "ob_multi_plan.h"
+#include "ob_multi_logic_plan.h"
 #include "ob_insert_stmt.h"
 #include "ob_delete_stmt.h"
 #include "ob_update_stmt.h"
 #include "ob_schema_checker.h"
-#include "parse_tools.h"
+#include "ob_explain_stmt.h"
+#include "ob_create_table_stmt.h"
+#include "ob_drop_table_stmt.h"
+#include "ob_show_stmt.h"
+#include "ob_create_user_stmt.h"
+#include "ob_prepare_stmt.h"
+#include "ob_variable_set_stmt.h"
+#include "ob_execute_stmt.h"
+#include "ob_deallocate_stmt.h"
+#include "ob_start_trans_stmt.h"
+#include "ob_end_trans_stmt.h"
+#include "ob_column_def.h"
+#include "ob_alter_table_stmt.h"
+#include "ob_alter_sys_cnf_stmt.h"
 #include "parse_malloc.h"
 #include "common/ob_define.h"
 #include "common/ob_array.h"
 #include "common/ob_string_buf.h"
 #include "common/utility.h"
-#include "ob_schema_checker.h"
+#include "common/ob_schema_service.h"
 #include <stdint.h>
 
 using namespace oceanbase::common;
 using namespace oceanbase::sql;
 
-/*
-  * Expressions from different scope have different limitations,
-  * we need a flage to distinguish where they are from.
-  */
-#define T_NONE_LIMIT      0
-#define T_WHERE_LIMIT     1
-#define T_GROUP_LIMIT     2
-#define T_HAVING_LIMIT    3
-#define T_INSERT_LIMIT    4
-#define T_UPDATE_LIMIT    5
-#define T_AGG_LIMIT       6
-
 int resolve_multi_stmt(ResultPlan* result_plan, ParseNode* node);
-int resolve_independ_expr(
-    ResultPlan * result_plan,
-    ObStmt* stmt,
-    ParseNode* node,
-    uint64_t& expr_id,
-    int32_t expr_scope_type = T_NONE_LIMIT);
-int resolve_and_exprs(
-    ResultPlan * result_plan,
-    ObStmt* stmt,
-    ParseNode* node,
-    ObVector<uint64_t>& and_exprs,
-    int32_t expr_scope_type = T_NONE_LIMIT);
-int resolve_expr(
-    ResultPlan * result_plan,
-    ObStmt* stmt,
-    ParseNode* node,
-    ObSqlRawExpr *sql_expr,
-    ObRawExpr*& expr,
-    int32_t expr_scope_type = T_NONE_LIMIT,
-    bool sub_query_results_scalar = true);
-int resolve_agg_func(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node,
-    ObSqlRawExpr*& ret_sql_expr);
-int resolve_joined_table(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node,
-    JoinedTable& joined_table);
-int resolve_table(
-    ResultPlan * result_plan,
-    ObStmt* stmt,
-    ParseNode* node,
-    uint64_t& table_id);
-int resolve_from_clause(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node);
-int resolve_table_columns(
-    ResultPlan * result_plan,
-    ObStmt* stmt,
-    TableItem& table_item);
-int resolve_star(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node);
-int resolve_select_clause(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node);
-int resolve_where_clause(
-    ResultPlan * result_plan,
-    ObStmt* stmt,
-    ParseNode* node);
-int resolve_group_clause(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node);
-int resolve_having_clause(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node);
-int resolve_order_clause(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node);
-int resolve_limit_clause(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node);
-int resolve_select_stmt(
+int resolve_explain_stmt(
     ResultPlan* result_plan,
     ParseNode* node,
     uint64_t& query_id);
-int resolve_delete_stmt(
+int resolve_const_value(
+    ResultPlan * result_plan,
+    ParseNode *def_node,
+    ObObj& default_value);
+int resolve_column_definition(
+    ResultPlan * result_plan,
+    ObColumnDef& col_def,
+    ParseNode* node,
+    bool *is_primary_key = NULL);
+int resolve_table_elements(
+    ResultPlan * result_plan,
+    ObCreateTableStmt& create_table_stmt,
+    ParseNode* node);
+int resolve_create_table_stmt(
     ResultPlan* result_plan,
     ParseNode* node,
     uint64_t& query_id);
-int resolve_insert_columns(
-    ResultPlan * result_plan,
-    ObInsertStmt* insert_stmt,
-    ParseNode* node);
-int resolve_insert_values(
-    ResultPlan * result_plan,
-    ObInsertStmt* insert_stmt,
-    ParseNode* node);
-int resolve_insert_stmt(
+int resolve_drop_table_stmt(
     ResultPlan* result_plan,
     ParseNode* node,
     uint64_t& query_id);
-int resolve_update_stmt(
+int resolve_show_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id);
+int resolve_prepare_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id);
+int resolve_variable_set_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id);
+int resolve_execute_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id);
+int resolve_deallocate_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id);
+int resolve_alter_sys_cnf_stmt(
     ResultPlan* result_plan,
     ParseNode* node,
     uint64_t& query_id);
@@ -133,7 +89,7 @@ int resolve_update_stmt(
 int resolve_multi_stmt(ResultPlan* result_plan, ParseNode* node)
 {
   int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  assert(node && node->type_ == T_STMT_LIST);
+  OB_ASSERT(node && node->type_ == T_STMT_LIST);
   if(node->num_child_ == 0)
   {
     ret = OB_ERROR;
@@ -141,10 +97,10 @@ int resolve_multi_stmt(ResultPlan* result_plan, ParseNode* node)
   else
   {
     result_plan->plan_tree_ = NULL;
-    ObMultiPlan* multi_plan = (ObMultiPlan*)parse_malloc(sizeof(ObMultiPlan), result_plan->name_pool_);
+    ObMultiLogicPlan* multi_plan = (ObMultiLogicPlan*)parse_malloc(sizeof(ObMultiLogicPlan), result_plan->name_pool_);
     if (multi_plan != NULL)
     {
-      multi_plan = new(multi_plan) ObMultiPlan;
+      multi_plan = new(multi_plan) ObMultiLogicPlan;
       for(int32_t i = 0; i < node->num_child_; ++i)
       {
         ParseNode* child_node = node->children_[i];
@@ -153,17 +109,18 @@ int resolve_multi_stmt(ResultPlan* result_plan, ParseNode* node)
 
         if ((ret = resolve(result_plan, child_node)) != OB_SUCCESS)
         {
-          multi_plan->~ObMultiPlan();
+          multi_plan->~ObMultiLogicPlan();
           parse_free(multi_plan);
+          multi_plan = NULL;
           break;
         }
-        if(result_plan->plan_tree_ == 0)
+        if(result_plan->plan_tree_ == NULL)
           continue;
 
         if ((ret = multi_plan->push_back((ObLogicalPlan*)(result_plan->plan_tree_))) != OB_SUCCESS)
         {
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Can not add logical plan to ObMultiPlan");
+          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+              "Can not add logical plan to ObMultiLogicPlan");
           break;
         }
         result_plan->plan_tree_ = NULL;
@@ -173,2106 +130,25 @@ int resolve_multi_stmt(ResultPlan* result_plan, ParseNode* node)
     else
     {
       ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not malloc space for ObMultiPlan");
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc space for ObMultiLogicPlan");
     }
   }
   return ret;
 }
 
-int resolve_independ_expr(
-  ResultPlan * result_plan,
-  ObStmt* stmt,
-  ParseNode* node,
-  uint64_t& expr_id,
-  int32_t expr_scope_type)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  if (node)
-  {
-    ObRawExpr* expr = NULL;
-    ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
-    ObSqlRawExpr* sql_expr = (ObSqlRawExpr*)parse_malloc(sizeof(ObSqlRawExpr), result_plan->name_pool_);
-    if (sql_expr == NULL)
-    {
-      ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-        "Can not malloc space for ObSqlRawExpr");
-    }
-    if (ret == OB_SUCCESS)
-    {
-      sql_expr = new(sql_expr) ObSqlRawExpr();
-      ret = logical_plan->add_expr(sql_expr);
-      if (ret != OB_SUCCESS)
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Add ObSqlRawExpr error");
-    }
-    if (ret == OB_SUCCESS)
-    {
-      expr_id = logical_plan->generate_expr_id();
-      sql_expr->set_expr_id(expr_id);
-      ret = resolve_expr(result_plan, stmt, node, sql_expr, expr, expr_scope_type);
-    }
-    if (ret == OB_SUCCESS)
-    {
-      if (expr->get_expr_type() == T_REF_COLUMN)
-      {
-        ObBinaryRefRawExpr *col_expr = dynamic_cast<ObBinaryRefRawExpr*>(expr);
-        sql_expr->set_table_id(col_expr->get_first_ref_id());
-        sql_expr->set_column_id(col_expr->get_second_ref_id());
-      }
-      else
-      {
-        sql_expr->set_table_id(OB_INVALID_ID);
-        sql_expr->set_column_id(logical_plan->generate_column_id());
-      }
-      sql_expr->set_expr(expr);
-    }
-  }
-  return ret;
-}
-
-int resolve_and_exprs(
-  ResultPlan * result_plan,
-  ObStmt* stmt,
-  ParseNode* node,
-  ObVector<uint64_t>& and_exprs,
-  int32_t expr_scope_type)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  if (node)
-  {
-    if (node->type_ != T_OP_AND)
-    {
-      uint64_t expr_id = OB_INVALID_ID;
-      ret = resolve_independ_expr(result_plan, stmt, node, expr_id, expr_scope_type);
-      if (ret == OB_SUCCESS)
-      {
-        ret = and_exprs.push_back(expr_id);
-        if (ret != OB_SUCCESS)
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Add 'AND' expression error");
-      }
-    }
-    else
-    {
-      ret = resolve_and_exprs(result_plan, stmt, node->children_[0], and_exprs, expr_scope_type);
-      if (ret == OB_SUCCESS)
-        ret = resolve_and_exprs(result_plan, stmt, node->children_[1], and_exprs, expr_scope_type);
-    }
-  }
-  return ret;
-}
-
-#define CREATE_RAW_EXPR(expr, type_name, logical_plan, malloc_pool)    \
-do {    \
-  expr = (type_name*)parse_malloc(sizeof(type_name), malloc_pool);   \
-  expr = new(expr) type_name();   \
-  logical_plan->add_raw_expr(expr);    \
-} while (0)
-
-int resolve_expr(
-  ResultPlan * result_plan,
-  ObStmt* stmt,
-  ParseNode* node,
-  ObSqlRawExpr *sql_expr,
-  ObRawExpr*& expr,
-  int32_t expr_scope_type,
-  bool sub_query_results_scalar)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  expr = NULL;
-  if (node == NULL)
-    return ret;
-
-  ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
-  ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
-
-  switch (node->type_)
-  {
-    case T_STRING:
-    case T_BINARY:
-    {
-      ObString str;
-      alloc_str_by_char(node->str_value_, str, name_pool);
-      ObObj val;
-      val.set_varchar(str);
-      ObConstRawExpr *c_expr = NULL;
-      CREATE_RAW_EXPR(c_expr, ObConstRawExpr, logical_plan, result_plan->name_pool_);
-      c_expr->set_expr_type(node->type_);
-      c_expr->set_result_type(ObVarcharType);
-      c_expr->set_value(val);
-      expr = c_expr;
-      break;
-    }
-    case T_FLOAT:
-    {
-      ObObj val;
-      val.set_float(static_cast<float>(atof(node->str_value_)));
-      ObConstRawExpr *c_expr = NULL;
-      CREATE_RAW_EXPR(c_expr, ObConstRawExpr, logical_plan, result_plan->name_pool_);
-      c_expr->set_expr_type(T_FLOAT);
-      c_expr->set_result_type(ObFloatType);
-      c_expr->set_value(val);
-      expr = c_expr;
-      break;
-    }
-    case T_DOUBLE:
-    {
-      ObObj val;
-      val.set_double(atof(node->str_value_));
-      ObConstRawExpr *c_expr = NULL;
-      CREATE_RAW_EXPR(c_expr, ObConstRawExpr, logical_plan, result_plan->name_pool_);
-      c_expr->set_expr_type(T_DOUBLE);
-      c_expr->set_result_type(ObDoubleType);
-      c_expr->set_value(val);
-      expr = c_expr;
-      break;
-    }
-    case T_DECIMAL: // set as string
-    {
-      ObString str;
-      alloc_str_by_char(node->str_value_, str, name_pool);
-      ObObj val;
-      val.set_varchar(str);
-      ObConstRawExpr *c_expr = NULL;
-      CREATE_RAW_EXPR(c_expr, ObConstRawExpr, logical_plan, result_plan->name_pool_);
-      c_expr->set_expr_type(T_DECIMAL);
-      c_expr->set_result_type(ObDecimalType);
-      c_expr->set_value(val);
-      expr = c_expr;
-      break;
-    }
-    case T_INT:
-    {
-      ObObj val;
-      val.set_int(node->value_);
-      ObConstRawExpr *c_expr = NULL;
-      CREATE_RAW_EXPR(c_expr, ObConstRawExpr, logical_plan, result_plan->name_pool_);
-      c_expr->set_expr_type(T_INT);
-      c_expr->set_result_type(ObIntType);
-      c_expr->set_value(val);
-      expr = c_expr;
-      break;
-    }
-    case T_BOOL:
-    {
-      ObObj val;
-      val.set_bool(node->value_ == 1 ? true : false);
-      ObConstRawExpr *c_expr = NULL;
-      CREATE_RAW_EXPR(c_expr, ObConstRawExpr, logical_plan, result_plan->name_pool_);
-      c_expr->set_expr_type(T_BOOL);
-      c_expr->set_result_type(ObBoolType);
-      c_expr->set_value(val);
-      expr = c_expr;
-      break;
-    }
-    case T_DATE:
-    {
-      ObObj val;
-      val.set_precise_datetime(node->value_);
-      ObConstRawExpr *c_expr = NULL;
-      CREATE_RAW_EXPR(c_expr, ObConstRawExpr, logical_plan, result_plan->name_pool_);
-      c_expr->set_expr_type(T_DATE);
-      c_expr->set_result_type(ObPreciseDateTimeType);
-      c_expr->set_value(val);
-      expr = c_expr;
-      break;
-    }
-    case T_NULL:
-    {
-      ObConstRawExpr *c_expr = NULL;
-      CREATE_RAW_EXPR(c_expr, ObConstRawExpr, logical_plan, result_plan->name_pool_);
-      c_expr->set_expr_type(T_NULL);
-      c_expr->set_result_type(ObNullType);
-      expr = c_expr;
-      break;
-    }
-    case T_OP_NAME_FIELD:
-    {
-      assert(node->children_[0]->type_ == T_IDENT);
-      // star has been expand before
-      // T_IDENT.* can't has alias name here, which is illeagal
-      if (node->children_[1]->type_ != T_IDENT)
-      {
-        ret = OB_ERR_PARSER_SYNTAX;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "%s.* is illeagal", node->children_[0]->str_value_);
-        break;
-      }
-
-      const char* table_str = node->children_[0]->str_value_;
-      const char* column_str = node->children_[1]->str_value_;
-      if (expr_scope_type == T_INSERT_LIMIT)
-      {
-        ret = OB_ERR_PARSER_SYNTAX;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Illegal usage %s.%s", table_str, column_str);
-        break;
-      }
-
-      ObString table_name;
-      ObString column_name;
-      table_name.assign_ptr((char*)table_str, static_cast<int32_t>(strlen(table_str)));
-      column_name.assign_ptr((char*)column_str, static_cast<int32_t>(strlen(column_str)));
-
-      // Column name with table name, it can't be alias name, so we don't need to check select item list
-      if (expr_scope_type == T_HAVING_LIMIT)
-      {
-        assert(stmt->get_stmt_type() == ObStmt::T_SELECT);
-        ObSelectStmt* select_stmt = static_cast<ObSelectStmt*>(stmt);
-        TableItem* table_item;
-        if ((select_stmt->get_table_item(table_name, &table_item)) == OB_INVALID_ID)
-        {
-          ret = OB_ERR_TABLE_UNKNOWN;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Unknown table %s in having clause", table_str);
-          break;
-        }
-        ret = select_stmt->check_having_ident(*result_plan, column_name, table_item, expr);
-        // table_set is of no use in having clause, because all tables have been joined to one table 
-        // when having condition is calculated
-        //sql_expr->get_tables_set().add_member(select_stmt->get_table_bit_index(table_item->table_id_));
-      }
-      else
-      {
-        ColumnItem *column_item = stmt->get_column_item(&table_name, column_name);
-        if (!column_item)
-        {
-          ret = stmt->add_column_item(*result_plan, column_name, &table_name, &column_item);
-          if (ret != OB_SUCCESS)
-          {
-            break;
-          }
-        }
-        ObBinaryRefRawExpr *b_expr = NULL;
-        CREATE_RAW_EXPR(b_expr, ObBinaryRefRawExpr, logical_plan, result_plan->name_pool_);
-        b_expr->set_expr_type(T_REF_COLUMN);
-        b_expr->set_result_type(column_item->data_type_);
-        b_expr->set_first_ref_id(column_item->table_id_);
-        b_expr->set_second_ref_id(column_item->column_id_);
-        expr = b_expr;
-        sql_expr->get_tables_set().add_member(stmt->get_table_bit_index(column_item->table_id_));
-      }
-      break;
-    }
-    case T_IDENT:
-    {
-      if (expr_scope_type == T_INSERT_LIMIT)
-      {
-        ret = OB_ERR_PARSER_SYNTAX;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Unknown value %s", node->str_value_);
-        break;
-      }
-
-      ObString column_name;
-      column_name.assign_ptr(
-          (char*)(node->str_value_), 
-          static_cast<int32_t>(strlen(node->str_value_))
-          );
-
-      if (expr_scope_type == T_HAVING_LIMIT)
-      {
-        assert(stmt->get_stmt_type() == ObStmt::T_SELECT);
-        ObSelectStmt* select_stmt = static_cast<ObSelectStmt*>(stmt);
-        ret = select_stmt->check_having_ident(*result_plan, column_name, NULL, expr);
-        // table_set is of no use in having clause, because all tables have been joined to one table 
-        // when having condition is calculated
-        // sql_expr->get_tables_set().add_member(select_stmt->get_table_bit_index(table_item->table_id_));
-      }
-      else
-      {
-        // the checking rule is follow mysql, although not reasonable
-        // 1. select user_id user_id, item_id user_id from order_list where user_id>0;
-        //     syntax correct, you can try
-        // 2. select item_id as user_id, user_id from order_list  where user_id>0;
-        //     real order_list.user_id is used, so real column first.
-        // 3. select item_id as user_id from order_list  where user_id>0;
-        //     real order_list.user_id is used, so real column first.
-        if (expr == NULL)
-        {
-          ColumnItem *column_item = stmt->get_column_item(NULL, column_name);
-          if (column_item)
-          {
-            ObBinaryRefRawExpr *b_expr = NULL;
-            CREATE_RAW_EXPR(b_expr, ObBinaryRefRawExpr, logical_plan, result_plan->name_pool_);
-            b_expr->set_expr_type(T_REF_COLUMN);
-            b_expr->set_result_type(column_item->data_type_);
-            b_expr->set_first_ref_id(column_item->table_id_);
-            b_expr->set_second_ref_id(column_item->column_id_);
-            expr = b_expr;
-            sql_expr->get_tables_set().add_member(stmt->get_table_bit_index(column_item->table_id_));
-          }
-        }
-        if (expr == NULL)
-        {
-          ColumnItem *column_item = NULL;
-          ret = stmt->add_column_item(*result_plan, column_name, NULL, &column_item);
-          if (ret == OB_SUCCESS)
-          {
-            ObBinaryRefRawExpr *b_expr = NULL;
-            CREATE_RAW_EXPR(b_expr, ObBinaryRefRawExpr, logical_plan, result_plan->name_pool_);
-            b_expr->set_expr_type(T_REF_COLUMN);
-            b_expr->set_result_type(column_item->data_type_);
-            b_expr->set_first_ref_id(column_item->table_id_);
-            b_expr->set_second_ref_id(column_item->column_id_);
-            expr = b_expr;
-            sql_expr->get_tables_set().add_member(stmt->get_table_bit_index(column_item->table_id_));
-          }
-          else if (ret == OB_ERR_COLUMN_UNKNOWN)
-          {
-            ret = OB_SUCCESS;
-          }
-          else
-          {
-            break;
-          }
-        }
-        if (!expr && stmt->get_stmt_type() == ObStmt::T_SELECT)
-        {
-          ObSelectStmt* select_stmt = static_cast<ObSelectStmt*>(stmt);
-          uint64_t expr_id = select_stmt->get_alias_expr_id(column_name);
-          if (expr_id != OB_INVALID_ID)
-          {
-            ObSqlRawExpr* alias_expr = logical_plan->get_expr(expr_id);
-            if (alias_expr == NULL)
-            {
-              ret = OB_ERR_ILLEGAL_ID;
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                  "Wrong expr_id %lu", expr_id);
-              break;
-            }
-            if (alias_expr->is_contain_aggr()
-              && (expr_scope_type == T_INSERT_LIMIT
-              || expr_scope_type == T_UPDATE_LIMIT
-              || expr_scope_type == T_AGG_LIMIT
-              || expr_scope_type == T_WHERE_LIMIT
-              || expr_scope_type == T_GROUP_LIMIT))
-            {
-              ret = OB_ERR_PARSER_SYNTAX;
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                  "Invalid use of alias which contains group function");
-              break;
-            }
-            else
-            {
-              ObBinaryRefRawExpr *b_expr = NULL;
-              CREATE_RAW_EXPR(b_expr, ObBinaryRefRawExpr, logical_plan, result_plan->name_pool_);
-              b_expr->set_expr_type(T_REF_COLUMN);
-              b_expr->set_result_type(alias_expr->get_result_type());
-              b_expr->set_first_ref_id(alias_expr->get_table_id());
-              b_expr->set_second_ref_id(alias_expr->get_column_id());
-              expr = b_expr;
-              sql_expr->get_tables_set().add_members(alias_expr->get_tables_set());
-            }
-          }
-        }
-        if (expr == NULL)
-        {
-          ret = OB_ERR_COLUMN_UNKNOWN;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Unkown column name %.*s", column_name.length(), column_name.ptr());
-        }
-      }
-      break;
-    }
-    case T_OP_EXISTS:
-      if (expr_scope_type == T_INSERT_LIMIT || expr_scope_type == T_UPDATE)
-      {
-        ret = OB_ERR_PARSER_SYNTAX;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "EXISTS expression can not appear in INSERT/UPDATE statement");
-        break;
-      }
-    case T_OP_POS:
-    case T_OP_NEG:
-    case T_OP_NOT:
-    {
-      ObRawExpr* sub_expr = NULL;
-      ret = resolve_expr(result_plan, stmt, node->children_[0], sql_expr, sub_expr, expr_scope_type, true);
-      if (ret != OB_SUCCESS)
-        break;
-      ObUnaryOpRawExpr *u_expr = NULL;
-      CREATE_RAW_EXPR(u_expr, ObUnaryOpRawExpr, logical_plan, result_plan->name_pool_);
-      u_expr->set_expr_type(node->type_);
-      if (node->type_ == T_OP_POS)
-      {
-        u_expr->set_result_type(sub_expr->get_result_type());
-      }
-      else if (node->type_ == T_OP_NEG)
-      {
-        ObObj in_type;
-        in_type.set_type(sub_expr->get_result_type());
-        u_expr->set_result_type(ObExprObj::type_negate(in_type).get_type());
-      }
-      else if (node->type_ == T_OP_EXISTS || node->type_ == T_OP_NOT)
-      {
-        u_expr->set_result_type(ObBoolType);
-      }
-      else
-      {
-        /* won't be here */
-        u_expr->set_result_type(ObMinType);
-      }
-      u_expr->set_op_expr(sub_expr);
-      expr = u_expr;
-      break;
-    }
-    case T_OP_ADD:
-    case T_OP_MINUS:
-    case T_OP_MUL:
-    case T_OP_DIV:
-    case T_OP_REM:
-    case T_OP_POW:
-    case T_OP_MOD:
-    case T_OP_LE:
-    case T_OP_LT:
-    case T_OP_EQ:
-    case T_OP_GE:
-    case T_OP_GT:
-    case T_OP_NE:
-    case T_OP_LIKE:
-    case T_OP_NOT_LIKE:
-    case T_OP_AND:
-    case T_OP_OR:
-    case T_OP_IS:
-    case T_OP_IS_NOT:
-    case T_OP_CNN:
-    {
-      ObRawExpr* sub_expr1 = NULL;
-      ret = resolve_expr(result_plan, stmt, node->children_[0], sql_expr, sub_expr1, expr_scope_type, true);
-      if (ret != OB_SUCCESS)
-        break;
-      ObRawExpr* sub_expr2 = NULL;
-      ret = resolve_expr(result_plan, stmt, node->children_[1], sql_expr, sub_expr2, expr_scope_type, true);
-      if (ret != OB_SUCCESS)
-        break;
-      ObBinaryOpRawExpr *b_expr = NULL;
-      CREATE_RAW_EXPR(b_expr, ObBinaryOpRawExpr, logical_plan, result_plan->name_pool_);
-      b_expr->set_expr_type(node->type_);
-      ObObj in_type1;
-      in_type1.set_type(sub_expr1->get_result_type());
-      ObObj in_type2;
-      in_type2.set_type(sub_expr2->get_result_type());
-      if (node->type_ == T_OP_ADD)
-      {
-        b_expr->set_result_type(ObExprObj::type_add(in_type1, in_type2).get_type());
-      }
-      else if (node->type_ == T_OP_MINUS)
-      {
-        b_expr->set_result_type(ObExprObj::type_sub(in_type1, in_type2).get_type());
-      }
-      else if (node->type_ == T_OP_MUL)
-      {
-        b_expr->set_result_type(ObExprObj::type_mul(in_type1, in_type2).get_type());
-      }
-      else if (node->type_ == T_OP_DIV)
-      {
-        if (in_type1.get_type() == ObDoubleType || in_type2.get_type() == ObDoubleType)
-          b_expr->set_result_type(ObExprObj::type_div(in_type1, in_type2, true).get_type());
-        else
-          b_expr->set_result_type(ObExprObj::type_div(in_type1, in_type2, false).get_type());
-      }
-      else if (node->type_ == T_OP_REM || node->type_ == T_OP_MOD)
-      {
-        b_expr->set_result_type(ObExprObj::type_mod(in_type1, in_type2).get_type());
-      }
-      else if (node->type_ == T_OP_POW)
-      {
-        b_expr->set_result_type(sub_expr1->get_result_type());
-      }
-      else if (node->type_ == T_OP_LE || node->type_ == T_OP_LT || node->type_ == T_OP_EQ
-        || node->type_ == T_OP_GE || node->type_ == T_OP_GT || node->type_ == T_OP_NE
-        || node->type_ == T_OP_LIKE || node->type_ == T_OP_NOT_LIKE || node->type_ == T_OP_AND
-        || node->type_ == T_OP_OR || node->type_ == T_OP_IS || node->type_ == T_OP_IS_NOT)
-      {
-        b_expr->set_result_type(ObBoolType);
-      }
-      else if (node->type_ == T_OP_CNN)
-      {
-        b_expr->set_result_type(ObVarcharType);
-      }
-      else
-      {
-        /* won't be here */
-        b_expr->set_result_type(ObMinType);
-      }
-      b_expr->set_first_op_expr(sub_expr1);
-      b_expr->set_second_op_expr(sub_expr2);
-      expr = b_expr;
-      break;
-    }
-    case T_OP_BTW:
-      /* pass through */
-    case T_OP_NOT_BTW:
-    {
-      ObRawExpr* sub_expr1 = NULL;
-      ObRawExpr* sub_expr2 = NULL;
-      ObRawExpr* sub_expr3 = NULL;
-      ret = resolve_expr(result_plan, stmt, node->children_[0], sql_expr, sub_expr1, expr_scope_type);
-      if (ret != OB_SUCCESS)
-        break;
-      ret = resolve_expr(result_plan, stmt, node->children_[1], sql_expr, sub_expr2, expr_scope_type);
-      if (ret != OB_SUCCESS)
-        break;
-      ret = resolve_expr(result_plan, stmt, node->children_[2], sql_expr, sub_expr3, expr_scope_type);
-      if (ret != OB_SUCCESS)
-        break;
-
-      ObTripleOpRawExpr *t_expr = NULL;
-      CREATE_RAW_EXPR(t_expr, ObTripleOpRawExpr, logical_plan, result_plan->name_pool_);
-      t_expr->set_expr_type(node->type_);
-      t_expr->set_result_type(ObBoolType);
-      t_expr->set_first_op_expr(sub_expr1);
-      t_expr->set_second_op_expr(sub_expr2);
-      t_expr->set_third_op_expr(sub_expr3);
-      expr = t_expr;
-      break;
-    }
-    case T_OP_IN:
-      // get through
-    case T_OP_NOT_IN:
-    {
-      ObRawExpr* sub_expr1 = NULL;
-      if (node->children_[0]->type_ == T_SELECT)
-        ret = resolve_expr(
-                  result_plan, 
-                  stmt, 
-                  node->children_[0], 
-                  sql_expr, sub_expr1, 
-                  expr_scope_type, 
-                  false
-                  );
-      else
-        ret = resolve_expr(
-                  result_plan, 
-                  stmt, 
-                  node->children_[0], 
-                  sql_expr, 
-                  sub_expr1, 
-                  expr_scope_type, 
-                  true);
-      if (ret != OB_SUCCESS)
-        break;
-      ObRawExpr* sub_expr2 = NULL;
-      ret = resolve_expr(
-               result_plan, 
-               stmt, 
-               node->children_[1], 
-               sql_expr, 
-               sub_expr2, 
-               expr_scope_type, 
-               false
-               );
-      if (ret != OB_SUCCESS)
-        break;
-      ObBinaryOpRawExpr *in_expr = NULL;
-      CREATE_RAW_EXPR(in_expr, ObBinaryOpRawExpr, logical_plan, result_plan->name_pool_);
-      if (node->type_ == T_OP_IN)
-      in_expr->set_expr_type(node->type_ == T_OP_IN ? T_OP_IN : T_OP_NOT_IN);
-      in_expr->set_result_type(ObBoolType);
-      in_expr->set_first_op_expr(sub_expr1);
-      in_expr->set_second_op_expr(sub_expr2);
-
-      /* 1. get the the column num of left operand */
-      int32_t num_left_param = 1;
-      switch (in_expr->get_first_op_expr()->get_expr_type())
-      {
-        case T_OP_ROW :
-        {
-          ObMultiOpRawExpr *left_expr = dynamic_cast<ObMultiOpRawExpr *>(in_expr->get_first_op_expr());
-          num_left_param = left_expr->get_expr_size();
-          break;
-        }
-        case T_REF_QUERY :
-        {
-          ObUnaryRefRawExpr *left_expr = dynamic_cast<ObUnaryRefRawExpr *>(in_expr->get_first_op_expr());
-          ObSelectStmt *sub_select = dynamic_cast<ObSelectStmt *>(logical_plan->get_query(left_expr->get_ref_id()));
-          if (!sub_select)
-          {
-            ret = OB_ERR_PARSER_SYNTAX;
-            snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Sub-query of In operator is not select statment");
-            break;
-          }
-          num_left_param = sub_select->get_select_item_size();
-          break;
-        }
-        default:
-          num_left_param = 1;
-          break;
-      }
-
-      /* 2. get the the column num of right operand(s) */
-      int32_t num_right_param = 0;
-      switch (in_expr->get_second_op_expr()->get_expr_type())
-      {
-        case T_OP_ROW:
-        {
-          ObMultiOpRawExpr *row_expr = dynamic_cast<ObMultiOpRawExpr *>(in_expr->get_second_op_expr());
-          int32_t num = row_expr->get_expr_size();
-          ObRawExpr *sub_expr = NULL;
-          for (int32_t i = 0; i < num; i++)
-          {
-            sub_expr = row_expr->get_op_expr(i);
-            switch (sub_expr->get_expr_type())
-            {
-              case T_OP_ROW:
-              {
-                num_right_param = (dynamic_cast<ObMultiOpRawExpr *>(sub_expr))->get_expr_size();
-                break;
-              }
-              case T_REF_QUERY:
-              {
-                uint64_t query_id = (dynamic_cast<ObUnaryRefRawExpr *>(sub_expr))->get_ref_id();
-                ObSelectStmt *sub_query = dynamic_cast<ObSelectStmt*>(logical_plan->get_query(query_id));
-                if (sub_query)
-                  num_right_param = sub_query->get_select_item_size();
-                else
-                  num_right_param = 0;
-                break;
-              }
-              default:
-                num_right_param = 1;
-                break;
-            }
-            if (num_left_param != num_right_param)
-            {
-              break;
-            }
-          }
-          break;
-        }
-        case T_REF_QUERY:
-        {
-          uint64_t query_id = (dynamic_cast<ObUnaryRefRawExpr *>(in_expr->get_second_op_expr()))->get_ref_id();
-          ObSelectStmt *sub_query = dynamic_cast<ObSelectStmt*>(logical_plan->get_query(query_id));
-          if (sub_query)
-            num_right_param = sub_query->get_select_item_size();
-          else
-            num_right_param = 0;
-          break;
-        }
-        default:
-          /* won't be here */
-          assert(0);
-          break;
-      }
-
-      /* 3. to check if the nums of two sides are equal */
-      if (num_left_param != num_right_param)
-      {
-        ret = OB_ERR_COLUMN_SIZE;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "In operands contain different column(s)");
-        break;
-      }
-
-      expr = in_expr;
-      break;
-    }
-    case T_CASE:
-    {
-      ObCaseOpRawExpr *case_expr = NULL;
-      ObObjType tmp_type = ObMinType;
-      CREATE_RAW_EXPR(case_expr, ObCaseOpRawExpr, logical_plan, result_plan->name_pool_);
-      if (node->children_[0])
-      {
-        ObRawExpr *arg_expr = NULL;
-        ret = resolve_expr(result_plan, stmt, node->children_[0], sql_expr, arg_expr, expr_scope_type);
-        if(ret != OB_SUCCESS)
-        {
-          break;
-        }
-        case_expr->set_arg_op_expr(arg_expr);
-        case_expr->set_expr_type(T_OP_ARG_CASE);
-      }
-      else
-      {
-        case_expr->set_expr_type(T_OP_CASE);
-      }
-
-      assert(node->children_[1]->type_ == T_WHEN_LIST);
-      ParseNode *when_node;
-      ObRawExpr   *when_expr = NULL;
-      ObRawExpr   *then_expr = NULL;
-      for (int32_t i = 0; ret == OB_SUCCESS && i < node->children_[1]->num_child_; i++)
-      {
-        when_node = node->children_[1]->children_[i];
-        ret = resolve_expr(result_plan, stmt, when_node->children_[0], sql_expr, when_expr, expr_scope_type);
-        if(ret != OB_SUCCESS)
-        {
-          break;
-        }
-        ret = resolve_expr(result_plan, stmt, when_node->children_[1], sql_expr, then_expr, expr_scope_type);
-        if(ret != OB_SUCCESS)
-        {
-          break;
-        }
-        case_expr->add_when_op_expr(when_expr);
-        case_expr->add_then_op_expr(then_expr);
-        const ObObjType then_type = then_expr->get_result_type();
-        if (then_type == ObNullType)
-        {
-          continue;
-        }
-        else if (then_type > ObMinType && then_type < ObMaxType
-          && (then_type == tmp_type || tmp_type == ObMinType))
-        {
-          tmp_type = then_type;
-        }
-        else
-        {
-          ret = OB_ERR_ILLEGAL_TYPE;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Return types of then clause are not compatible");
-          break;
-        }
-      }
-      if (ret != OB_SUCCESS)
-      {
-        break;
-      }
-      case_expr->set_result_type(tmp_type);
-      if (case_expr->get_when_expr_size() != case_expr->get_then_expr_size())
-      {
-        ret = OB_ERR_COLUMN_SIZE;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Error size of when expressions");
-        break;
-      }
-      if (node->children_[2])
-      {
-        ObRawExpr *default_expr = NULL;
-        ret = resolve_expr(result_plan, stmt, node->children_[2], sql_expr, default_expr, expr_scope_type);
-        if (ret != OB_SUCCESS)
-        {
-          break;
-        }
-        case_expr->set_default_op_expr(default_expr);
-      }
-      expr = case_expr;
-      break;
-    }
-    case T_EXPR_LIST:
-    {
-      ObMultiOpRawExpr *multi_expr = NULL;
-      CREATE_RAW_EXPR(multi_expr, ObMultiOpRawExpr, logical_plan, result_plan->name_pool_);
-      multi_expr->set_expr_type(T_OP_ROW);
-      // not mathematic expression, result type is of no use.
-      // should be ObRowType
-      multi_expr->set_result_type(ObMinType);
-
-      ObRawExpr *sub_query = NULL;
-      uint64_t num = node->num_child_;
-      for (uint64_t i = 0; ret == OB_SUCCESS && i < num; i++)
-      {
-        if (node->children_[i]->type_ == T_SELECT && !sub_query_results_scalar)
-          ret = resolve_expr(
-              result_plan,
-              stmt,
-              node->children_[i],
-              sql_expr,
-              sub_query,
-              expr_scope_type,
-              false);
-        else
-          ret = resolve_expr(
-              result_plan,
-              stmt,
-              node->children_[i],
-              sql_expr,
-              sub_query,
-              expr_scope_type,
-              true);
-        if (ret != OB_SUCCESS)
-        {
-          break;
-        }
-        multi_expr->add_op_expr(sub_query);
-      }
-      if (ret == OB_SUCCESS)
-        expr = multi_expr;
-      break;
-    }
-    case T_SELECT:
-    {
-      if (expr_scope_type == T_INSERT_LIMIT
-        || expr_scope_type == T_UPDATE_LIMIT
-        || expr_scope_type == T_AGG_LIMIT)
-      {
-        ret = OB_ERR_PARSER_SYNTAX;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Sub-query is illeagal in INSERT/UPDATE statement or AGGREGATION function");
-        break;
-      }
-
-      uint64_t query_id = OB_INVALID_ID;
-      if ((ret = resolve_select_stmt(result_plan, node, query_id)) != OB_SUCCESS)
-        break;
-      if (sub_query_results_scalar)
-      {
-        ObStmt *sub_stmt = logical_plan->get_query(query_id);
-        ObSelectStmt *sub_select = dynamic_cast<ObSelectStmt*>(sub_stmt);
-        if (sub_select->get_select_item_size() != 1)
-        {
-          ret = OB_ERR_COLUMN_SIZE;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Operand should contain 1 column(s)");
-          break;
-        }
-      }
-      ObUnaryRefRawExpr *sub_query_expr = NULL;
-      CREATE_RAW_EXPR(sub_query_expr, ObUnaryRefRawExpr, logical_plan, result_plan->name_pool_);
-      sub_query_expr->set_expr_type(T_REF_QUERY);
-      // not mathematic expression, result type is of no use.
-      // should be ObRowType
-      sub_query_expr->set_result_type(ObMinType);
-      sub_query_expr->set_ref_id(query_id);
-      expr = sub_query_expr;
-      break;
-    }
-    case T_FUN_COUNT:
-    case T_FUN_MAX:
-    case T_FUN_MIN:
-    case T_FUN_SUM:
-    case T_FUN_AVG:
-    {
-      if (expr_scope_type == T_INSERT_LIMIT
-        || expr_scope_type == T_UPDATE_LIMIT
-        || expr_scope_type == T_AGG_LIMIT
-        || expr_scope_type == T_WHERE_LIMIT
-        || expr_scope_type == T_GROUP_LIMIT)
-      {
-        ret = OB_ERR_PARSER_SYNTAX;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Invalid use of group function");
-        break;
-      }
-      ObSelectStmt* select_stmt = dynamic_cast<ObSelectStmt*>(stmt);
-      ObSqlRawExpr *ret_sql_expr = NULL;
-      if ((ret = resolve_agg_func(result_plan, select_stmt, node, ret_sql_expr)) != OB_SUCCESS)
-        break;
-      ObBinaryRefRawExpr *col_expr = NULL;
-      CREATE_RAW_EXPR(col_expr, ObBinaryRefRawExpr, logical_plan, result_plan->name_pool_);
-      col_expr->set_expr_type(T_REF_COLUMN);
-      col_expr->set_result_type(ret_sql_expr->get_result_type());
-      
-      col_expr->set_first_ref_id(OB_INVALID_ID);
-      col_expr->set_second_ref_id(ret_sql_expr->get_column_id());
-      // add invalid table bit index, avoid aggregate function expressions are used as filter
-      sql_expr->get_tables_set().add_member(0);
-      sql_expr->set_contain_aggr(true);
-      expr = col_expr;
-      break;
-    }
-    case T_FUN_SYS:
-    {
-      ObSysFunRawExpr *func_expr = NULL;
-      CREATE_RAW_EXPR(func_expr, ObSysFunRawExpr, logical_plan, result_plan->name_pool_);
-      func_expr->set_expr_type(T_FUN_SYS);
-      ObString func_name;
-      ret = alloc_str_by_char(node->children_[0]->str_value_, func_name, logical_plan->get_name_pool());
-      if (ret != OB_SUCCESS)
-      {
-        ret = OB_ERR_PARSER_MALLOC_FAILED;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Malloc function name failed");
-      }
-      func_expr->set_func_name(func_name);
-      if (node->num_child_ > 1)
-      {
-        assert(node->children_[1]->type_ == T_EXPR_LIST);
-        ObRawExpr *para_expr = NULL;
-        int32_t num = node->children_[1]->num_child_;
-        for (int32_t i = 0; ret == OB_SUCCESS && i < num; i++)
-        {
-          ret = resolve_expr(
-                    result_plan,
-                    stmt,
-                    node->children_[1]->children_[i],
-                    sql_expr,
-                    para_expr);
-          if (ret != OB_SUCCESS)
-            break;
-          func_expr->add_param_expr(para_expr);
-        }
-      }
-      if (ret == OB_SUCCESS)
-        expr = func_expr;
-      break;
-    }
-    default:
-      ret = OB_ERR_PARSER_SYNTAX;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Wrong type in expression");
-      break;
-  }
-
-  return ret;
-}
-
-int resolve_agg_func(
-    ResultPlan * result_plan,
-    ObSelectStmt* select_stmt,
-    ParseNode* node,
-    ObSqlRawExpr*& ret_sql_expr)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  uint64_t expr_id = OB_INVALID_ID;
-  uint64_t column_id = OB_INVALID_ID;
-  ObSqlRawExpr* sql_expr = NULL;
-  if (node != NULL)
-  {
-    ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
-    sql_expr = (ObSqlRawExpr*)parse_malloc(sizeof(ObSqlRawExpr), result_plan->name_pool_);
-    if (sql_expr == NULL)
-    {
-      ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-        "Can not malloc space for ObSqlRawExpr");
-    }
-    if (ret == OB_SUCCESS)
-    {
-      sql_expr = new(sql_expr) ObSqlRawExpr();
-      ret = logical_plan->add_expr(sql_expr);
-      if (ret != OB_SUCCESS)
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Add ObSqlRawExpr error");
-    }
-    if (ret == OB_SUCCESS)
-    {
-      expr_id = logical_plan->generate_expr_id();
-      sql_expr->set_expr_id(expr_id);
-      sql_expr->set_table_id(OB_INVALID_ID);
-      column_id = logical_plan->generate_column_id();
-      sql_expr->set_column_id(column_id);
-      ret = select_stmt->add_agg_func(expr_id);
-      if (ret != OB_SUCCESS)
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Add aggregate function error");
-    }
-
-    // When '*', do not set parameter
-    ObRawExpr* sub_expr = NULL;
-    if (ret == OB_SUCCESS)
-    {
-      if (node->type_ != T_FUN_COUNT || node->num_child_ > 1)
-        ret = resolve_expr(result_plan, select_stmt, node->children_[1], sql_expr, sub_expr, T_AGG_LIMIT);
-    }
-
-    if (ret == OB_SUCCESS)
-    {
-      ObAggFunRawExpr *agg_expr = NULL;
-      CREATE_RAW_EXPR(agg_expr, ObAggFunRawExpr, logical_plan, result_plan->name_pool_);
-      agg_expr->set_param_expr(sub_expr);
-      if (node->num_child_ > 1 && node->children_[0]->type_ == T_DISTINCT)
-        agg_expr->set_param_distinct();
-      agg_expr->set_expr_type(node->type_);
-      if (node->type_ == T_FUN_COUNT)
-        agg_expr->set_expr_type(T_FUN_COUNT);
-      else if (node->type_ == T_FUN_MAX)
-        agg_expr->set_expr_type(T_FUN_MAX);
-      else if (node->type_ == T_FUN_MIN)
-        agg_expr->set_expr_type(T_FUN_MIN);
-      else if (node->type_ == T_FUN_SUM)
-        agg_expr->set_expr_type(T_FUN_SUM);
-      else if (node->type_ == T_FUN_AVG)
-        agg_expr->set_expr_type(T_FUN_AVG);
-      else
-      {
-        /* Won't be here */
-        
-      }
-      if (node->type_ == T_FUN_COUNT)
-      {
-        agg_expr->set_result_type(ObIntType);
-      }
-      else if (node->type_ == T_FUN_MAX || node->type_ == T_FUN_MIN || node->type_ == T_FUN_SUM)
-      {
-        agg_expr->set_result_type(sub_expr->get_result_type());
-      }
-      else if (node->type_ == T_FUN_AVG)
-      {
-        ObObj in_type1;
-        ObObj in_type2;
-        in_type1.set_type(sub_expr->get_result_type());
-        in_type2.set_type(ObIntType);
-        if (in_type1.get_type() == ObDoubleType)
-          agg_expr->set_result_type(ObExprObj::type_div(in_type1, in_type2, true).get_type());
-        else
-          agg_expr->set_result_type(ObExprObj::type_div(in_type1, in_type2, false).get_type());
-      }
-      else
-      {
-        /* won't be here */
-        agg_expr->set_result_type(ObMinType);
-        OB_ASSERT(false);
-      }
-
-      sql_expr->set_expr(agg_expr);
-      sql_expr->set_contain_aggr(true);
-      // add invalid table bit index, avoid aggregate function expressions are used as filters
-      sql_expr->get_tables_set().add_member(0);
-    }
-  }
-  else
-  {
-    ret = OB_ERR_PARSER_SYNTAX;
-    snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-        "Wrong usage of aggregate function");
-  }
-
-  if (ret == OB_SUCCESS)
-    ret_sql_expr = sql_expr;
-  return ret;
-}
-
-int resolve_joined_table(
-  ResultPlan * result_plan,
-  ObSelectStmt* select_stmt,
-  ParseNode* node,
-  JoinedTable& joined_table)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  assert(node->type_ == T_JOINED_TABLE);
-
-  uint64_t tid = OB_INVALID_ID;
-  uint64_t expr_id = OB_INVALID_ID;
-  ParseNode* table_node = NULL;
-
-  /* resolve table */
-  for (uint64_t i = 1; ret == OB_SUCCESS && i < 3; i++)
-  {
-    table_node = node->children_[i];
-    switch (table_node->type_)
-    {
-      case T_IDENT:
-      case T_SELECT:
-      case T_ALIAS:
-        ret = resolve_table(result_plan, select_stmt, table_node, tid);
-        if (ret == OB_SUCCESS && (ret = joined_table.add_table_id(tid)) != OB_SUCCESS)
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Add table_id to outer joined table failed");
-        break;
-      case T_JOINED_TABLE:
-        ret = resolve_joined_table(result_plan, select_stmt, table_node, joined_table);
-        break;
-      default:
-        /* won't be here */
-        ret = OB_ERR_PARSER_MALLOC_FAILED;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Unknown table type in outer join");
-        break;
-    }
-  }
-
-  /* resolve join type */
-  if (ret == OB_SUCCESS)
-  {
-    switch (node->children_[0]->type_)
-    {
-      case T_JOIN_FULL:
-        joined_table.add_join_type(JoinedTable::T_FULL);
-        break;
-      case T_JOIN_LEFT:
-        joined_table.add_join_type(JoinedTable::T_LEFT);
-        break;
-      case T_JOIN_RIGHT:
-        joined_table.add_join_type(JoinedTable::T_RIGHT);
-        break;
-      case T_JOIN_INNER:
-        joined_table.add_join_type(JoinedTable::T_INNER);
-        break;
-      default:
-        /* won't be here */
-        ret = OB_ERR_PARSER_MALLOC_FAILED;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Unknown outer join type");
-        break;
-    }
-  }
-
-  /* resolve expression */
-  if (ret == OB_SUCCESS)
-  {
-    ret = resolve_independ_expr(result_plan, select_stmt, node->children_[3], expr_id);
-  }
-  if (ret == OB_SUCCESS)
-  {
-    if ((ret = joined_table.add_expr_id(expr_id)) != OB_SUCCESS)
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Add outer join condition error");
-  }
-
-  return ret;
-}
-
-int resolve_table(
-  ResultPlan * result_plan,
-  ObStmt* stmt,
-  ParseNode* node,
-  uint64_t& table_id)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  if (node)
-  {
-    table_id = OB_INVALID_ID;
-    ParseNode* table_node = node;
-    ParseNode* alias_node = NULL;
-    if (node->type_ == T_ALIAS)
-    {
-      assert(node->num_child_ == 2);
-      assert(node->children_[0]);
-      assert(node->children_[1]);
-
-      table_node = node->children_[0];
-      alias_node = node->children_[1];
-    }
-
-    switch (table_node->type_)
-    {
-      case T_IDENT:
-      {
-        ObString table_name;
-        ObString alias_name;
-        table_name.assign_ptr(
-            (char*)(table_node->str_value_), 
-            static_cast<int32_t>(strlen(table_node->str_value_))
-            );
-        if (alias_node)
-        {
-          alias_name.assign_ptr(
-              (char*)(alias_node->str_value_), 
-              static_cast<int32_t>(strlen(alias_node->str_value_))
-              );
-          ret = stmt->add_table_item(*result_plan, table_name, alias_name, table_id, TableItem::ALIAS_TABLE);
-        }
-        else
-          ret = stmt->add_table_item(*result_plan, table_name, alias_name, table_id, TableItem::BASE_TABLE);
-        break;
-      }
-      case T_SELECT:
-      {
-        /* It must be select statement.
-              * For other statements, if the target is a view, it need to be expanded before this step
-              */
-        assert(stmt->get_stmt_type() == ObStmt::T_SELECT);
-        ObSelectStmt* select_stmt = static_cast<ObSelectStmt*>(stmt);
-        if (alias_node == NULL)
-        {
-          ret = OB_ERR_PARSER_SYNTAX;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "generated table must have alias name");
-          break;
-        }
-
-        uint64_t query_id = OB_INVALID_ID;
-        ret = resolve_select_stmt(result_plan, table_node, query_id);
-        if (ret == OB_SUCCESS)
-        {
-          ObString table_name;
-          ObString alias_name;
-          table_name.assign_ptr(
-              (char*)(alias_node->str_value_), 
-              static_cast<int32_t>(strlen(alias_node->str_value_))
-              );
-          ret = select_stmt->add_table_item(
-                                *result_plan, 
-                                table_name, 
-                                alias_name, 
-                                table_id,
-                                TableItem::GENERATED_TABLE, 
-                                query_id
-                                );
-        }
-        break;
-      }
-      case T_JOINED_TABLE:
-      {
-        /* only select statement has this type */
-        assert(stmt->get_stmt_type() == ObStmt::T_SELECT);
-        ObSelectStmt* select_stmt = static_cast<ObSelectStmt*>(stmt);
-        table_id = select_stmt->generate_joined_tid();
-        JoinedTable* joined_table = (JoinedTable*)parse_malloc(sizeof(JoinedTable), result_plan->name_pool_);
-        if (joined_table == NULL)
-        {
-          ret = OB_ERR_PARSER_MALLOC_FAILED;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Can not malloc space for JoinedTable");
-          break;
-        }
-        joined_table = new(joined_table) JoinedTable;
-        joined_table->set_joined_tid(table_id);
-        ret = resolve_joined_table(result_plan, select_stmt, table_node, *joined_table);
-        if (ret != OB_SUCCESS)
-          break;
-        ret = select_stmt->add_joined_table(joined_table);
-        if (ret != OB_SUCCESS)
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Can not add JoinedTable");
-        break;
-      }
-      default:
-        /* won't be here */
-        ret = OB_ERR_PARSER_SYNTAX;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Unknown table type");
-        break;
-    }
-  }
-  else
-  {
-    ret = OB_ERR_PARSER_SYNTAX;
-    snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-        "No table in from clause");
-  }
-
-  return ret;
-}
-
-int resolve_from_clause(
-  ResultPlan * result_plan,
-  ObSelectStmt* select_stmt,
-  ParseNode* node)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  assert(node->type_ == T_FROM_LIST);
-  assert(node->num_child_ >= 1);
-
-  uint64_t tid = OB_INVALID_ID;
-  for(int32_t i = 0; ret == OB_SUCCESS && i < node->num_child_; i++)
-  {
-    ParseNode* child_node = node->children_[i];
-    ret = resolve_table(result_plan, select_stmt, child_node, tid);
-    if (ret != OB_SUCCESS)
-      break;
-    
-    if (child_node->type_ == T_JOINED_TABLE)
-      ret = select_stmt->add_from_item(tid, true);
-    else
-      ret = select_stmt->add_from_item(tid);
-    if (ret != OB_SUCCESS)
-    {
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Add from table failed");
-      break;
-    }
-  }
-
-  return ret;
-}
-
-int resolve_table_columns(
-  ResultPlan * result_plan,
-  ObStmt* stmt,
-  TableItem& table_item)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  ColumnItem *column_item = NULL;
-  ColumnItem new_column_item;
-  ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
-  if (logical_plan == NULL)
-  {
-    ret = OB_ERR_LOGICAL_PLAN_FAILD;
-    snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-        "Wrong invocation of ObStmt::add_table_item, logical_plan must exist!!!");
-  }
-
-  ObSchemaChecker* schema_checker = NULL;
-  if (ret == OB_SUCCESS)
-  {
-    schema_checker = static_cast<ObSchemaChecker*>(result_plan->schema_checker_);
-    if (schema_checker == NULL)
-    {
-      ret = OB_ERR_SCHEMA_UNSET;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Schema(s) are not set");
-    }
-  }
-
-  if (ret == OB_SUCCESS)
-  {
-    if (table_item.type_ == TableItem::GENERATED_TABLE)
-    {
-      ObSelectStmt* sub_select = static_cast<ObSelectStmt*>(logical_plan->get_query(table_item.ref_id_));
-      if (sub_select == NULL)
-      {
-        ret = OB_ERR_ILLEGAL_ID;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not get sub-query whose id = %lu", table_item.ref_id_);
-      }
-      else
-      {
-        int32_t num = sub_select->get_select_item_size();
-        for (int32_t i = 0; ret == OB_SUCCESS && i < num; i++)
-        {
-          const SelectItem& select_item = sub_select->get_select_item(i);
-          column_item = stmt->get_column_item_by_id(table_item.table_id_, i);
-          if (column_item == NULL)
-          {
-            new_column_item.column_id_ = i;
-            if ((ret = alloc_str_by_obstring(
-                          select_item.alias_name_,
-                          new_column_item.column_name_,
-                          stmt->get_name_pool())) != OB_SUCCESS)
-            {
-              ret = OB_ERR_PARSER_MALLOC_FAILED;
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Can not malloc space for column name");
-              break;
-            }
-            new_column_item.table_id_ = table_item.table_id_;
-            new_column_item.query_id_ = 0; // no use now, because we don't support correlated subquery
-            new_column_item.is_name_unique_ = false;
-            new_column_item.is_group_based_ = false;
-            new_column_item.data_type_ = select_item.type_;
-            ret = stmt->add_column_item(new_column_item);
-            if (ret != OB_SUCCESS)
-            {
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Add column error");
-              break;
-            }
-            column_item = &new_column_item;
-          }
-
-          if (stmt->get_stmt_type() == ObStmt::T_SELECT)
-          {
-            ObBinaryRefRawExpr* expr = NULL;
-            CREATE_RAW_EXPR(expr, ObBinaryRefRawExpr, logical_plan, result_plan->name_pool_);
-            expr->set_expr_type(T_REF_COLUMN);
-            expr->set_first_ref_id(column_item->table_id_);
-            expr->set_second_ref_id(column_item->column_id_);
-            ObSqlRawExpr* sql_expr = (ObSqlRawExpr*)parse_malloc(sizeof(ObSqlRawExpr), result_plan->name_pool_);
-            if (sql_expr == NULL)
-            {
-              ret = OB_ERR_PARSER_MALLOC_FAILED;
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Can not malloc space for ObSqlRawExpr");
-              break;
-            }
-            sql_expr = new(sql_expr) ObSqlRawExpr();
-            sql_expr->set_expr_id(logical_plan->generate_expr_id());
-            sql_expr->set_table_id(column_item->table_id_);
-            sql_expr->set_column_id(column_item->column_id_);
-            sql_expr->set_expr(expr);
-            ObBitSet tables_set;
-            tables_set.add_member(stmt->get_table_bit_index(table_item.table_id_));
-            sql_expr->set_tables_set(tables_set);
-            ret = logical_plan->add_expr(sql_expr);
-            if (ret != OB_SUCCESS)
-            {
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Can not add ObSqlRawExpr to logical plan");
-              break;
-            }
-
-            ObSelectStmt* select_stmt = static_cast<ObSelectStmt*>(stmt);
-            ret = select_stmt->add_select_item(
-                                  sql_expr->get_expr_id(), 
-                                  false, 
-                                  column_item->column_name_,
-                                  select_item.expr_name_,
-                                  select_item.type_);
-            if (ret != OB_SUCCESS)
-            {
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Can not add select item");
-              break;
-            }
-          }
-        }
-      }
-    }
-    else
-    {
-      const ObColumnSchemaV2* column = NULL;
-      int32_t column_size = 0;
-      column = schema_checker->get_table_columns(table_item.table_id_, column_size);
-      if (NULL != column && column_size > 0)
-      {
-        for (int32_t i = 0; ret == OB_SUCCESS && i < column_size; i++)
-        {
-          new_column_item.column_id_ = column[i].get_id();
-          column_item = stmt->get_column_item_by_id(table_item.table_id_, new_column_item.column_id_);
-          if (column_item == NULL)
-          {
-            ret = alloc_str_by_char(
-                      column[i].get_name(),
-                      new_column_item.column_name_,
-                      stmt->get_name_pool());
-            if (ret != OB_SUCCESS)
-            {
-              ret = OB_ERR_PARSER_MALLOC_FAILED;
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Can not malloc space for column name");
-              break;
-            }
-            new_column_item.table_id_ = table_item.table_id_;
-            new_column_item.query_id_ = 0; // no use now, because we don't support correlated subquery
-            new_column_item.is_name_unique_ = false;
-            new_column_item.is_group_based_ = false;
-            new_column_item.data_type_ = column[i].get_type();
-            ret = stmt->add_column_item(new_column_item);
-            if (ret != OB_SUCCESS)
-            {
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Add column error");
-              break;
-            }
-            column_item = &new_column_item;
-          }
-
-          if (stmt->get_stmt_type() == ObStmt::T_SELECT)
-          {
-            ObBinaryRefRawExpr* expr = NULL;
-            CREATE_RAW_EXPR(expr, ObBinaryRefRawExpr, logical_plan, result_plan->name_pool_);
-            expr->set_expr_type(T_REF_COLUMN);
-            expr->set_first_ref_id(column_item->table_id_);
-            expr->set_second_ref_id(column_item->column_id_);
-            ObSqlRawExpr* sql_expr = (ObSqlRawExpr*)parse_malloc(sizeof(ObSqlRawExpr), result_plan->name_pool_);
-            if (sql_expr == NULL)
-            {
-              ret = OB_ERR_PARSER_MALLOC_FAILED;
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Can not malloc space for ObSqlRawExpr");
-              break;
-            }
-            sql_expr = new(sql_expr) ObSqlRawExpr();
-            sql_expr->set_expr_id(logical_plan->generate_expr_id());
-            sql_expr->set_table_id(column_item->table_id_);
-            sql_expr->set_column_id(column_item->column_id_);
-            sql_expr->set_expr(expr);
-            ObBitSet tables_set;
-            tables_set.add_member(stmt->get_table_bit_index(table_item.table_id_));
-            sql_expr->set_tables_set(tables_set);
-            ret = logical_plan->add_expr(sql_expr);
-            if (ret != OB_SUCCESS)
-            {
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Can not add ObSqlRawExpr to logical plan");
-              break;
-            }
-
-            ObSelectStmt* select_stmt = static_cast<ObSelectStmt*>(stmt);
-            ret = select_stmt->add_select_item(
-                                  sql_expr->get_expr_id(), 
-                                  false, 
-                                  column_item->column_name_,
-                                  column_item->column_name_,
-                                  column_item->data_type_);
-            if (ret != OB_SUCCESS)
-            {
-              snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                "Can not add select item");
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
-  return ret;
-}
-
-int resolve_star(
-  ResultPlan * result_plan,
-  ObSelectStmt* select_stmt,
-  ParseNode* node)
-{
-  assert(result_plan);
-  assert(select_stmt);
-  assert(node);
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-
-  if (node->type_ == T_STAR)
-  {
-    int32_t num = select_stmt->get_table_size();
-    for (int32_t i = 0; ret == OB_SUCCESS && i < num; i++)
-    {
-      TableItem& table_item = select_stmt->get_table_item(i);
-      ret = resolve_table_columns(result_plan, select_stmt, table_item);
-    }
-  }
-  else if (node->type_ == T_OP_NAME_FIELD)
-  {
-    assert(node->children_[0]->type_ == T_IDENT);
-    assert(node->children_[1]->type_ == T_STAR);
-
-    TableItem* table_item;
-    ParseNode* table_node = node->children_[0];
-    ObString table_name;
-    table_name.assign_ptr(
-        (char*)(table_node->str_value_), 
-        static_cast<int32_t>(strlen(table_node->str_value_))
-        );
-    if ((select_stmt->get_table_item(table_name, &table_item)) == OB_INVALID_ID)
-    {
-      ret = OB_ERR_TABLE_UNKNOWN;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Unknown table %s", table_node->str_value_);
-    }
-    if (ret == OB_SUCCESS)
-      ret = resolve_table_columns(result_plan, select_stmt, *table_item);
-  }
-  else
-  {
-    /* won't be here */
-  }
-
-  return ret;
-}
-
-int resolve_select_clause(
-  ResultPlan * result_plan,
-  ObSelectStmt* select_stmt,
-  ParseNode* node)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  assert(node->type_ == T_PROJECT_LIST);
-  assert(node->num_child_ >= 1);
-
-  ParseNode* project_node;
-  ParseNode* alias_node = NULL;
-  ObString   alias_name;
-  ObString   expr_name;
-  bool       is_bald_star = false;
-  bool       is_real_alias;
-  for (int32_t i = 0; ret == OB_SUCCESS &&i < node->num_child_; i++)
-  {
-    is_real_alias = false;
-    expr_name.assign_ptr(
-        (char*)(node->children_[i]->str_value_), 
-        static_cast<int32_t>(strlen(node->children_[i]->str_value_))
-        );
-    project_node = node->children_[i]->children_[0];
-    if (project_node->type_ == T_STAR
-      || (project_node->type_ == T_OP_NAME_FIELD
-      && project_node->children_[1]->type_ == T_STAR))
-    {
-      if (project_node->type_ == T_STAR)
-      {
-        if (is_bald_star)
-        {
-          ret = OB_ERR_STAR_DUPLICATE;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Wrong usage of '*'");
-          break;
-        }
-        else
-          is_bald_star = true;
-      }
-
-      ret = resolve_star(result_plan, select_stmt, project_node);
-      continue;
-    }
-
-    if (project_node->type_ == T_ALIAS)
-    {
-      assert(project_node->num_child_ == 2);
-      alias_node = project_node->children_[1];
-      project_node = project_node->children_[0];
-      is_real_alias = true;
-
-      /* check if the alias name is legal */
-      assert(alias_node->type_ == T_IDENT);
-      alias_name.assign_ptr(
-          (char*)(alias_node->str_value_), 
-          static_cast<int32_t>(strlen(alias_node->str_value_))
-          );
-      // Same as mysql, we do not check alias name
-      // if (!(select_stmt->check_alias_name(logical_plan, sAlias)))
-      // {
-      //   TBSYS_LOG(ERROR, "alias name %.s is ambiguous", alias_node->str_value_);
-      //   return false;
-      // }
-    }
-    /* it is not real alias name, we just record them for convenience */
-    else
-    {
-      if (project_node->type_ == T_IDENT)
-        alias_node = project_node;
-      else if (project_node->type_ == T_OP_NAME_FIELD)
-      {
-        alias_node = project_node->children_[1];
-        assert(alias_node->type_ == T_IDENT);
-      }
-
-      /* original column name of based table, it has been checked in expression resolve */
-      if (alias_node)
-        alias_name.assign_ptr(
-            (char*)(alias_node->str_value_), 
-            static_cast<int32_t>(strlen(alias_node->str_value_))
-            );
-    }
-
-    uint64_t expr_id = OB_INVALID_ID;
-    if ((ret = resolve_independ_expr(result_plan, select_stmt, project_node, expr_id)) != OB_SUCCESS)
-      break;
-
-    ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
-    ObSqlRawExpr *select_expr = NULL;
-    if ((select_expr = logical_plan->get_expr(expr_id)) == NULL)
-    {
-      ret = OB_ERR_ILLEGAL_ID;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Wrong expr_id");
-      break;
-    }
-
-    /* if real alias IDENT, we need to assign new id for it to avoid same (table_id, column_id) in ObRowDesc */
-    if (is_real_alias && project_node->type_ == T_IDENT)
-    {
-      select_expr->set_table_id(OB_INVALID_ID);
-      select_expr->set_column_id(logical_plan->generate_column_id());
-    }
-
-    /* get table name and column name here*/
-    const ObObjType type = select_expr->get_result_type();
-    ret = select_stmt->add_select_item(expr_id, is_real_alias, alias_name, expr_name, type);
-    if (ret != OB_SUCCESS)
-    {
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Add select item error");
-      break;
-    }
-    
-    alias_node = NULL;
-    alias_name.assign_ptr(NULL, 0);
-  }
-
-  return ret;
-}
-
-int resolve_where_clause(
-  ResultPlan * result_plan,
-  ObStmt* stmt,
-  ParseNode* node)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  if (node)
-  {
-    ret = resolve_and_exprs(
-              result_plan, 
-              stmt, 
-              node, 
-              stmt->get_where_exprs(), 
-              T_WHERE_LIMIT
-              );
-  }
-  return ret;
-}
-
-int resolve_group_clause(
-  ResultPlan * result_plan,
-  ObSelectStmt* select_stmt,
-  ParseNode* node)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-
-  /*****************************************************************************
-   * The non-aggregate expression of select clause must be expression of group items,
-   * but we don't check it here, which is in accordance with mysql.
-   * Although there are different values of one group, but the executor only pick the first one
-   * E.g.
-   * select c1, c2, sum(c3)
-   * from tbl
-   * group by c1;
-   * c2 in select clause is leagal, which is not in standard.
-   *****************************************************************************/
-
-  if (ret == OB_SUCCESS && node != NULL)
-  {
-    assert(node->type_ == T_EXPR_LIST);
-    assert(node->num_child_ >= 1);
-    ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
-    uint64_t expr_id;
-    ParseNode* group_node;
-    for (int32_t i = 0; ret == OB_SUCCESS && i < node->num_child_; i++)
-    {
-      group_node = node->children_[i];
-      if (group_node->type_ == T_INT && group_node->value_ >= 0)
-      {
-        int32_t pos = static_cast<int32_t>(group_node->value_);
-        if (pos <= 0 || pos > select_stmt->get_select_item_size())
-        {
-          ret = OB_ERR_WRONG_POS;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Unknown column '%d' in 'group clause'", pos);
-          break;
-        }
-        expr_id = select_stmt->get_select_item(pos - 1).expr_id_;
-        ObSqlRawExpr *sql_expr = logical_plan->get_expr(expr_id);
-        if (!sql_expr)
-        {
-          ret = OB_ERR_ILLEGAL_ID;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Can not find expression, expr_id = %lu", expr_id);
-          break;
-        }
-        if (sql_expr->is_contain_aggr())
-        {
-          ret = OB_ERR_PARSER_SYNTAX;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Invalid use of expression which contains group function");
-          break;
-        }
-      }
-      else
-      {
-        ret = resolve_independ_expr(
-                  result_plan, 
-                  select_stmt, 
-                  group_node, 
-                  expr_id, 
-                  T_GROUP_LIMIT
-                  );
-      }
-      if (ret == OB_SUCCESS)
-      {
-        if ((ret = select_stmt->add_group_expr(expr_id)) != OB_SUCCESS)
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Add group expression error");
-      }
-    }
-  }
-  return ret;
-}
-
-int resolve_having_clause(
-  ResultPlan * result_plan,
-  ObSelectStmt* select_stmt,
-  ParseNode* node)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  if (node)
-  {
-
-    ret = resolve_and_exprs(
-              result_plan, 
-              select_stmt, 
-              node, 
-              select_stmt->get_having_exprs(), 
-              T_HAVING_LIMIT
-              );
-  }
-  return ret;
-}
-
-int resolve_order_clause(
-  ResultPlan * result_plan,
-  ObSelectStmt* select_stmt,
-  ParseNode* node)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  if (node)
-  {
-    assert(node->type_ == T_SORT_LIST);
-
-    for (int32_t i = 0; ret == OB_SUCCESS && i < node->num_child_; i++)
-    {
-      ParseNode* sort_node = node->children_[i];
-      assert(sort_node->type_ == T_SORT_KEY);
-
-      OrderItem order_item;
-      order_item.order_type_ = OrderItem::ASC;
-      if (sort_node->children_[1]->type_ == T_SORT_ASC)
-        order_item.order_type_ = OrderItem::ASC;
-      else if (sort_node->children_[1]->type_ == T_SORT_DESC)
-        order_item.order_type_ = OrderItem::DESC;
-      else
-      {
-        OB_ASSERT(false); /* Won't be here */
-      }
-
-      if (sort_node->children_[0]->type_ == T_INT && sort_node->children_[0]->value_ >= 0)
-      {
-        int32_t pos = static_cast<int32_t>(sort_node->children_[0]->value_);
-        if (pos <= 0 || pos > select_stmt->get_select_item_size())
-        {
-          ret = OB_ERR_WRONG_POS;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Unknown column '%d' in 'group clause'", pos);
-          break;
-        }
-        order_item.expr_id_ = select_stmt->get_select_item(pos - 1).expr_id_;
-      }
-      else
-      {
-        ret = resolve_independ_expr(result_plan, select_stmt, sort_node->children_[0], order_item.expr_id_);
-      }
-      if (ret == OB_SUCCESS)
-      {
-        if ((ret = select_stmt->add_order_item(order_item)) != OB_SUCCESS)
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Add order expression error");
-      }
-    }
-  }
-  return ret;
-}
-
-int resolve_limit_clause(
-  ResultPlan * result_plan,
-  ObSelectStmt* select_stmt,
-  ParseNode* node)
-{
-
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  if (node)
-  {
-    assert(result_plan != NULL);
-    assert(node->type_ == T_LIMIT_CLAUSE);
-
-    ParseNode* limit_node = node->children_[0];
-    ParseNode* offset_node = node->children_[1];
-    assert(limit_node != NULL || offset_node != NULL);
-
-    if (ret == OB_SUCCESS)
-    {
-      if (limit_node)
-      {
-        if (limit_node->value_ < 0)
-        {
-          ret = OB_ERR_ILLEGAL_VALUE;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Illegal Limit number: %ld", limit_node->value_);
-        }
-        else
-          select_stmt->set_limit(limit_node->value_);
-      }
-      else
-        select_stmt->set_limit(-1);
-    }
-
-    if (ret == OB_SUCCESS)
-    {
-      if (offset_node)
-      {
-        if (offset_node->value_ < 0)
-        {
-          ret = OB_ERR_ILLEGAL_VALUE;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Illegal Offset number: %ld", offset_node->value_);
-        }
-        else
-          select_stmt->set_offset(offset_node->value_);
-      }
-      else
-        select_stmt->set_offset(0);
-    }
-  }
-  return ret;
-}
-
-int resolve_select_stmt(
+int resolve_explain_stmt(
     ResultPlan* result_plan,
     ParseNode* node,
     uint64_t& query_id)
 {
   int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  assert(node && node->num_child_ >= 12);
+  OB_ASSERT(node && node->type_ == T_EXPLAIN && node->num_child_ == 1);
+  ObLogicalPlan* logical_plan = NULL;
+  ObExplainStmt* explain_stmt = NULL;
   query_id = OB_INVALID_ID;
 
-  ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
-  ObLogicalPlan* logical_plan = NULL;
-  if (result_plan->plan_tree_ == NULL)
-  {
-    logical_plan = (ObLogicalPlan*)parse_malloc(sizeof(ObLogicalPlan), result_plan->name_pool_);
-    if (logical_plan == NULL)
-    {
-      ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not malloc ObLogicalPlan");
-    }
-    else
-    {
-      logical_plan = new(logical_plan) ObLogicalPlan(name_pool);
-      result_plan->plan_tree_ = logical_plan;
-    }
-  }
-  else
-  {
-    logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
-  }
 
-  ObSelectStmt* select_stmt = NULL;
-  if (ret == OB_SUCCESS)
-  {
-    select_stmt = (ObSelectStmt*)parse_malloc(sizeof(ObSelectStmt), result_plan->name_pool_);
-    if (select_stmt == NULL)
-    {
-      ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not malloc ObSelectStmt");
-    }
-  }
-
-  if (ret == OB_SUCCESS)
-  {
-    select_stmt = new(select_stmt) ObSelectStmt(name_pool);
-    query_id = logical_plan->generate_query_id();
-    select_stmt->set_query_id(query_id);
-    ret = logical_plan->add_query(select_stmt);
-    if (ret != OB_SUCCESS)
-    {
-       snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not add ObSelectStmt to logical plan");
-    }
-  }
-
-  /* -----------------------------------------------------------------
-     * The later resolve may need some infomation resolved by the former one,
-     * so please follow the resolving orders:
-     *
-     * 1. set clause
-     * 2. from clause
-     * 3. select clause
-     * 4. where clause
-     * 5. group by clause
-     * 6. having clause
-     * 7. order by clause
-     * 8. limit clause
-     * -----------------------------------------------------------------
-     */
-
-  /* resolve set clause */
-  if (node->children_[6] != NULL)
-  {
-    assert(node->children_[8] != NULL);
-    assert(node->children_[9] != NULL);
-
-    // assign set type
-    if (ret == OB_SUCCESS)
-    {
-      switch (node->children_[6]->type_)
-      {
-        case T_SET_UNION:
-          select_stmt->assign_set_op(ObSelectStmt::UNION);
-          break;
-        case T_SET_INTERSECT:
-          select_stmt->assign_set_op(ObSelectStmt::INTERSECT);
-          break;
-        case T_SET_EXCEPT:
-          select_stmt->assign_set_op(ObSelectStmt::EXCEPT);
-          break;
-        default:
-          ret = OB_ERR_OPERATOR_UNKNOWN;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "unknown set operator of set clause");
-          break;
-      }
-    }
-
-    // assign first query
-    uint64_t sub_query_id = OB_INVALID_ID;
-    if (ret == OB_SUCCESS)
-    {
-      if (node->children_[7]->type_ == T_DISTINCT)
-      {
-        select_stmt->assign_set_distinct();
-      }
-      else
-      {
-        select_stmt->assign_set_all();
-      }
-      ret = resolve_select_stmt(result_plan, node->children_[8], sub_query_id);
-      if (ret == OB_SUCCESS)
-        select_stmt->assign_left_query_id(sub_query_id);
-    }
-    // assign second query
-    if (ret == OB_SUCCESS)
-    {
-      ret = resolve_select_stmt(result_plan, node->children_[9], sub_query_id);
-      if (ret == OB_SUCCESS)
-        select_stmt->assign_right_query_id(sub_query_id);
-    }
-
-    // check if columns number ars match
-    if (ret == OB_SUCCESS)
-    {
-      ObSelectStmt* left_select = logical_plan->get_select_query(select_stmt->get_left_query_id());
-      ObSelectStmt* right_select = logical_plan->get_select_query(select_stmt->get_right_query_id());
-      if (!left_select || !right_select)
-      {
-        ret = OB_ERR_ILLEGAL_ID;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "resolve set clause error");
-      }
-      else if(left_select->get_select_item_size() != right_select->get_select_item_size())
-      {
-        ret = OB_ERR_COLUMN_SIZE;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "The used SELECT statements have a different number of columns");
-      }
-      else
-        ret = select_stmt->copy_select_items(left_select);
-    }
-  }
-  else
-  {
-    /* normal select */
-    select_stmt->assign_set_op(ObSelectStmt::NONE);
-
-    if (node->children_[0]->type_ == T_DISTINCT)
-    {
-      select_stmt->assign_distinct();
-    }
-    else
-    {
-      select_stmt->assign_all();
-    }
-
-    /* resolve from clause */
-    /* resolve select clause */
-    /* resolve where clause */
-    /* resolve group by clause */
-    /* resolve having clause */
-    if (ret == OB_SUCCESS
-      && (ret = resolve_from_clause(result_plan, select_stmt, node->children_[2])) 
-          == OB_SUCCESS
-      && (ret = resolve_select_clause(result_plan, select_stmt, node->children_[1])) 
-          == OB_SUCCESS
-      && (ret = resolve_where_clause(result_plan, select_stmt, node->children_[3])) 
-          == OB_SUCCESS
-      && (ret = resolve_group_clause(result_plan, select_stmt, node->children_[4])) 
-          == OB_SUCCESS
-      && (ret = resolve_having_clause(result_plan, select_stmt, node->children_[5])) 
-          == OB_SUCCESS
-      )
-    {
-      ;
-    }
-  }
-
-  /* resolve order by clause */
-  /* resolve limit clause */
-  if (ret == OB_SUCCESS
-    && (ret = resolve_order_clause(result_plan, select_stmt, node->children_[10])) 
-        == OB_SUCCESS
-    && (ret = resolve_limit_clause(result_plan, select_stmt, node->children_[11])) 
-        == OB_SUCCESS
-    )
-  {
-    ;
-  }
-
-  return ret;
-}
-
-int resolve_delete_stmt(
-    ResultPlan* result_plan,
-    ParseNode* node,
-    uint64_t& query_id)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  uint64_t table_id = OB_INVALID_ID;
-  assert(node && node->type_ == T_DELETE && node->num_child_ >= 2);
-  query_id = OB_INVALID_ID;
-
-  ObLogicalPlan* logical_plan = NULL;
   ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
   if (result_plan->plan_tree_ == NULL)
   {
@@ -2280,7 +156,7 @@ int resolve_delete_stmt(
     if (logical_plan == NULL)
     {
       ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
           "Can not malloc ObLogicalPlan");
     }
     else
@@ -2296,39 +172,608 @@ int resolve_delete_stmt(
 
   if (ret == OB_SUCCESS)
   {
-    ObDeleteStmt* delete_stmt = (ObDeleteStmt*)parse_malloc(sizeof(ObDeleteStmt), result_plan->name_pool_);
-    if (delete_stmt == NULL)
+    explain_stmt = (ObExplainStmt*)parse_malloc(sizeof(ObExplainStmt), result_plan->name_pool_);
+    if (explain_stmt == NULL)
     {
       ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not malloc ObDeleteStmt");
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObExplainStmt");
     }
     else
     {
-      delete_stmt = new(delete_stmt) ObDeleteStmt(name_pool);
+      explain_stmt = new(explain_stmt) ObExplainStmt();
       query_id = logical_plan->generate_query_id();
-      delete_stmt->set_query_id(query_id);
-      ret = logical_plan->add_query(delete_stmt);
+      explain_stmt->set_query_id(query_id);
+      ret = logical_plan->add_query(explain_stmt);
       if (ret != OB_SUCCESS)
       {
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
           "Can not add ObDeleteStmt to logical plan");
       }
       else
       {
-        ParseNode* table_node = node->children_[0];
-        if (table_node->type_ != T_IDENT)
+        if (node->value_ > 0)
+          explain_stmt->set_verbose(true);
+        else
+          explain_stmt->set_verbose(false);
+
+        uint64_t sub_query_id = OB_INVALID_ID;
+        switch (node->children_[0]->type_)
         {
-          ret = OB_ERR_PARSER_SYNTAX;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Only single base table is supported for delete");
+          case T_SELECT:
+            ret = resolve_select_stmt(result_plan, node->children_[0], sub_query_id);
+            break;
+          case T_DELETE:
+            ret = resolve_delete_stmt(result_plan, node->children_[0], sub_query_id);
+            break;
+          case T_INSERT:
+            ret = resolve_insert_stmt(result_plan, node->children_[0], sub_query_id);
+            break;
+          case T_UPDATE:
+            ret = resolve_update_stmt(result_plan, node->children_[0], sub_query_id);
+            break;
+          default:
+            ret = OB_ERR_PARSER_SYNTAX;
+            snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+                "Wrong statement in explain statement");
+            break;
         }
         if (ret == OB_SUCCESS)
-          ret = resolve_table(result_plan, delete_stmt, table_node, table_id);
-        if (ret == OB_SUCCESS)
+          explain_stmt->set_explain_query_id(sub_query_id);
+      }
+    }
+  }
+  return ret;
+}
+
+int resolve_column_definition(
+    ResultPlan * result_plan,
+    ObColumnDef& col_def,
+    ParseNode* node,
+    bool *is_primary_key)
+{
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  OB_ASSERT(node->type_ == T_COLUMN_DEFINITION);
+  OB_ASSERT(node->num_child_ >= 3);
+  if (is_primary_key)
+    *is_primary_key = false;
+
+  col_def.action_ = ADD_ACTION;
+  OB_ASSERT(node->children_[0]->type_== T_IDENT);
+  col_def.column_name_.assign_ptr(
+      (char*)(node->children_[0]->str_value_),
+      static_cast<int32_t>(strlen(node->children_[0]->str_value_))
+      );
+
+  ParseNode *type_node = node->children_[1];
+  OB_ASSERT(type_node != NULL);
+  switch(type_node->type_)
+  {
+    case T_TYPE_INTEGER:
+      col_def.data_type_ = ObIntType;
+      break;
+    case T_TYPE_DECIMAL:
+      col_def.data_type_ = ObDecimalType;
+      if (type_node->num_child_ >= 1 && type_node->children_[0] != NULL)
+        col_def.precision_ = type_node->children_[0]->value_;
+      if (type_node->num_child_ >= 2 && type_node->children_[1] != NULL)
+        col_def.scale_ = type_node->children_[1]->value_;
+      break;
+    case T_TYPE_BOOLEAN:
+      col_def.data_type_ = ObBoolType;
+      break;
+    case T_TYPE_FLOAT:
+      col_def.data_type_ = ObFloatType;
+      if (type_node->num_child_ >= 1 && type_node->children_[0] != NULL)
+        col_def.precision_ = type_node->children_[0]->value_;
+      break;
+    case T_TYPE_DOUBLE:
+      col_def.data_type_ = ObDoubleType;
+      break;
+    case T_TYPE_DATE:
+      col_def.data_type_ = ObPreciseDateTimeType;
+      break;
+    case T_TYPE_TIME:
+      col_def.data_type_ = ObPreciseDateTimeType;
+      if (type_node->num_child_ >= 1 && type_node->children_[0] != NULL)
+        col_def.precision_ = type_node->children_[0]->value_;
+      break;
+    case T_TYPE_TIMESTAMP:
+      col_def.data_type_ = ObPreciseDateTimeType;
+      if (type_node->num_child_ >= 1 && type_node->children_[0] != NULL)
+        col_def.precision_ = type_node->children_[0]->value_;
+      break;
+    case T_TYPE_CHARACTER:
+      col_def.data_type_ = ObVarcharType;
+      if (type_node->num_child_ >= 1 && type_node->children_[0] != NULL)
+        col_def.type_length_= type_node->children_[0]->value_;
+      break;
+    case T_TYPE_VARCHAR:
+      col_def.data_type_ = ObVarcharType;
+      if (type_node->num_child_ >= 1 && type_node->children_[0] != NULL)
+        col_def.type_length_= type_node->children_[0]->value_;
+      break;
+    case T_TYPE_CREATETIME:
+      col_def.data_type_ = ObCreateTimeType;
+      break;
+    case T_TYPE_MODIFYTIME:
+      col_def.data_type_ = ObModifyTimeType;
+      break;
+    default:
+      ret = OB_ERR_ILLEGAL_TYPE;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Unsupport data type of column definiton, column name = %s", node->children_[0]->str_value_);
+      break;
+  }
+
+  ParseNode *attrs_node = node->children_[2];
+  for(int32_t i = 0; ret == OB_SUCCESS && attrs_node && i < attrs_node->num_child_; i++)
+  {
+    ParseNode* attr_node = attrs_node->children_[i];
+    switch(attr_node->type_)
+    {
+      case T_CONSTR_NOT_NULL:
+        col_def.not_null_ = true;
+        break;
+      case T_CONSTR_NULL:
+        col_def.not_null_ = false;
+        break;
+      case T_CONSTR_AUTO_INCREMENT:
+        if (col_def.data_type_ != ObIntType && col_def.data_type_ != ObFloatType
+          && col_def.data_type_ != ObDoubleType && col_def.data_type_ != ObDecimalType)
         {
-          delete_stmt->set_delete_table(table_id);
-          ret = resolve_where_clause(result_plan, delete_stmt, node->children_[1]);
+          ret = OB_ERR_PARSER_SYNTAX;
+          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+             "Incorrect column specifier for column '%s'", node->children_[0]->str_value_);
+          break;
+        }
+        col_def.atuo_increment_ = true;
+        break;
+      case T_CONSTR_PRIMARY_KEY:
+        if (is_primary_key != NULL)
+        {
+          *is_primary_key = true;
+        }
+        break;
+      case T_CONSTR_DEFAULT:
+        ret = resolve_const_value(result_plan, attr_node, col_def.default_value_);
+        break;
+      default:  // won't be here
+        ret = OB_ERR_PARSER_SYNTAX;
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+            "Wrong column constraint");
+        break;
+    }
+    if (ret == OB_SUCCESS && col_def.default_value_.get_type() == ObNullType
+      && (col_def.not_null_ || col_def.primary_key_id_ > 0))
+    {
+      ret = OB_ERR_ILLEGAL_VALUE;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Invalid default value for '%s'", node->children_[0]->str_value_);
+    }
+  }
+  return ret;
+}
+
+int resolve_const_value(
+    ResultPlan * result_plan,
+    ParseNode *def_node,
+    ObObj& default_value)
+{
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  if (def_node != NULL)
+  {
+    ParseNode *def_val = def_node;
+    if (def_node->type_ == T_CONSTR_DEFAULT)
+      def_val = def_node->children_[0];
+    ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+    ObString str;
+    ObObj val;
+    switch (def_val->type_)
+    {
+      case T_INT:
+        default_value.set_int(def_val->value_);
+        break;
+      case T_STRING:
+      case T_BINARY:
+        if ((ret = ob_write_string(*name_pool,
+                                    ObString::make_string(def_val->str_value_),
+                                    str)) != OB_SUCCESS)
+        {
+          PARSER_LOG("Can not malloc space for default value");
+          break;
+        }
+        default_value.set_varchar(str);
+        break;
+      case T_DATE:
+        default_value.set_precise_datetime(def_val->value_);
+        break;
+      case T_FLOAT:
+        default_value.set_float(static_cast<float>(atof(def_val->str_value_)));
+        break;
+      case T_DOUBLE:
+        default_value.set_double(atof(def_val->str_value_));
+        break;
+      case T_DECIMAL: // set as string
+        if ((ret = ob_write_string(*name_pool,
+                                    ObString::make_string(def_val->str_value_),
+                                    str)) != OB_SUCCESS)
+        {
+          PARSER_LOG("Can not malloc space for default value");
+          break;
+        }
+        default_value.set_varchar(str);
+        default_value.set_type(ObDecimalType);
+        break;
+      case T_BOOL:
+        default_value.set_bool(def_val->value_ == 1 ? true : false);
+        break;
+      case T_NULL:
+        default_value.set_type(ObNullType);
+        break;
+      default:
+        ret = OB_ERR_ILLEGAL_TYPE;
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+            "Illigeal type of default value");
+        break;
+    }
+  }
+  return ret;
+}
+
+int resolve_table_elements(
+    ResultPlan * result_plan,
+    ObCreateTableStmt& create_table_stmt,
+    ParseNode* node)
+{
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  OB_ASSERT(node->type_ == T_TABLE_ELEMENT_LIST);
+  OB_ASSERT(node->num_child_ >= 1);
+
+  ParseNode *primary_node = NULL;
+  for(int32_t i = 0; ret == OB_SUCCESS && i < node->num_child_; i++)
+  {
+    ParseNode* element = node->children_[i];
+    if (OB_LIKELY(element->type_ == T_COLUMN_DEFINITION))
+    {
+      ObColumnDef col_def;
+      bool is_primary_key = false;
+      col_def.column_id_ = create_table_stmt.gen_column_id();
+      if ((ret = resolve_column_definition(result_plan, col_def, element, &is_primary_key)) != OB_SUCCESS)
+      {
+        break;
+      }
+      else if (is_primary_key)
+      {
+        if (create_table_stmt.get_primary_key_size() > 0)
+        {
+          ret = OB_ERR_PRIMARY_KEY_DUPLICATE;
+          PARSER_LOG("Multiple primary key defined");
+          break;
+        }
+        else if ((ret = create_table_stmt.add_primary_key_part(col_def.column_id_)) != OB_SUCCESS)
+        {
+          PARSER_LOG("Add primary key failed");
+          break;
+        }
+        else
+        {
+          col_def.primary_key_id_ = create_table_stmt.get_primary_key_size();
+        }
+      }
+      ret = create_table_stmt.add_column_def(*result_plan, col_def);
+    }
+    else if (element->type_ == T_PRIMARY_KEY)
+    {
+      if (primary_node == NULL)
+      {
+        primary_node = element;
+      }
+      else
+      {
+        ret = OB_ERR_PRIMARY_KEY_DUPLICATE;
+        PARSER_LOG("Multiple primary key defined");
+      }
+    }
+    else
+    {
+      /* won't be here */
+      OB_ASSERT(0);
+    }
+  }
+
+  if (ret == OB_SUCCESS)
+  {
+    if (OB_UNLIKELY(create_table_stmt.get_primary_key_size() > 0 && primary_node != NULL))
+    {
+      ret = OB_ERR_PRIMARY_KEY_DUPLICATE;
+      PARSER_LOG("Multiple primary key defined");
+    }
+    else if (primary_node != NULL)
+    {
+      ParseNode *key_node = NULL;
+      for(int32_t i = 0; ret == OB_SUCCESS && i < primary_node->children_[0]->num_child_; i++)
+      {
+        key_node = primary_node->children_[0]->children_[i];
+        ObString key_name;
+        key_name.assign_ptr(
+            (char*)(key_node->str_value_),
+            static_cast<int32_t>(strlen(key_node->str_value_))
+            );
+        ret = create_table_stmt.add_primary_key_part(*result_plan, key_name);
+      }
+    }
+  }
+
+  return ret;
+}
+
+int resolve_create_table_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  OB_ASSERT(node && node->type_ == T_CREATE_TABLE && node->num_child_ == 4);
+  ObLogicalPlan* logical_plan = NULL;
+  ObCreateTableStmt* create_table_stmt = NULL;
+  query_id = OB_INVALID_ID;
+
+
+  ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+  if (result_plan->plan_tree_ == NULL)
+  {
+    logical_plan = (ObLogicalPlan*)parse_malloc(sizeof(ObLogicalPlan), result_plan->name_pool_);
+    if (logical_plan == NULL)
+    {
+      ret = OB_ERR_PARSER_MALLOC_FAILED;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObLogicalPlan");
+    }
+    else
+    {
+      logical_plan = new(logical_plan) ObLogicalPlan(name_pool);
+      result_plan->plan_tree_ = logical_plan;
+    }
+  }
+  else
+  {
+    logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
+  }
+
+  if (ret == OB_SUCCESS)
+  {
+    create_table_stmt = (ObCreateTableStmt*)parse_malloc(sizeof(ObCreateTableStmt), result_plan->name_pool_);
+    if (create_table_stmt == NULL)
+    {
+      ret = OB_ERR_PARSER_MALLOC_FAILED;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObExplainStmt");
+    }
+    else
+    {
+      create_table_stmt = new(create_table_stmt) ObCreateTableStmt(name_pool);
+      query_id = logical_plan->generate_query_id();
+      create_table_stmt->set_query_id(query_id);
+      ret = logical_plan->add_query(create_table_stmt);
+      if (ret != OB_SUCCESS)
+      {
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not add ObCreateTableStmt to logical plan");
+      }
+    }
+  }
+
+  if (ret == OB_SUCCESS)
+  {
+    if (node->children_[0] != NULL)
+    {
+      OB_ASSERT(node->children_[0]->type_ == T_IF_NOT_EXISTS);
+      create_table_stmt->set_if_not_exists(true);
+    }
+    OB_ASSERT(node->children_[1]->type_ == T_IDENT);
+    ObString table_name;
+    table_name.assign_ptr(
+        (char*)(node->children_[1]->str_value_),
+        static_cast<int32_t>(strlen(node->children_[1]->str_value_))
+        );
+    if ((ret = create_table_stmt->set_table_name(*result_plan, table_name)) != OB_SUCCESS)
+    {
+      //snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+      //    "Add table name to ObCreateTableStmt failed");
+    }
+  }
+
+  if (ret == OB_SUCCESS)
+  {
+    OB_ASSERT(node->children_[2]->type_ == T_TABLE_ELEMENT_LIST);
+    ret = resolve_table_elements(result_plan, *create_table_stmt, node->children_[2]);
+  }
+
+  if (ret == OB_SUCCESS && node->children_[3])
+  {
+    OB_ASSERT(node->children_[3]->type_ == T_TABLE_OPTION_LIST);
+    ObString str;
+    ParseNode *option_node = NULL;
+    int32_t num = node->children_[3]->num_child_;
+    for (int32_t i = 0; ret == OB_SUCCESS && i < num; i++)
+    {
+      option_node = node->children_[3]->children_[i];
+      switch (option_node->type_)
+      {
+        case T_EXPIRE_INFO:
+          str.assign_ptr(
+              (char*)(option_node->children_[0]->str_value_),
+              static_cast<int32_t>(strlen(option_node->children_[0]->str_value_))
+              );
+          if ((ret = create_table_stmt->set_expire_info(str)) != OB_SUCCESS)
+            snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+                "Set EXPIRE_INFO failed");
+          break;
+        case T_TABLET_MAX_SIZE:
+          create_table_stmt->set_tablet_max_size(option_node->children_[0]->value_);
+          break;
+        case T_TABLET_BLOCK_SIZE:
+          create_table_stmt->set_tablet_block_size(option_node->children_[0]->value_);
+          break;
+        case T_REPLICA_NUM:
+          create_table_stmt->set_replica_num(static_cast<int32_t>(option_node->children_[0]->value_));
+          break;
+        case T_COMPRESS_METHOD:
+          str.assign_ptr(
+              (char*)(option_node->children_[0]->str_value_),
+              static_cast<int32_t>(strlen(option_node->children_[0]->str_value_))
+              );
+          if ((ret = create_table_stmt->set_compress_method(str)) != OB_SUCCESS)
+            snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+                "Set EXPIRE_INFO failed");
+          break;
+        case T_USE_BLOOM_FILTER:
+          create_table_stmt->set_use_bloom_filter(option_node->children_[0]->value_ ? true : false);
+          break;
+        case T_CONSISTENT_MODE:
+          if (option_node->value_ == 1)
+            create_table_stmt->set_read_static(true);
+          break;
+        default:
+          /* won't be here */
+          OB_ASSERT(0);
+          break;
+      }
+    }
+  }
+  return ret;
+}
+
+int resolve_alter_table_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_ALTER_TABLE && node->num_child_ == 2);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObAlterTableStmt* alter_table_stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, alter_table_stmt)))
+  {
+  }
+  else
+  {
+    alter_table_stmt->set_name_pool(static_cast<ObStringBuf*>(result_plan->name_pool_));
+    OB_ASSERT(node->children_[0]);
+    OB_ASSERT(node->children_[1] && node->children_[1]->type_ == T_ALTER_ACTION_LIST);
+    int32_t name_len= static_cast<int32_t>(strlen(node->children_[0]->str_value_));
+    ObString table_name(name_len, name_len, node->children_[0]->str_value_);
+    if ((ret = alter_table_stmt->init()) != OB_SUCCESS)
+    {
+      PARSER_LOG("Init alter table stmt failed, ret=%d", ret);
+    }
+    else if ((ret = alter_table_stmt->set_table_name(*result_plan, table_name)) == OB_SUCCESS)
+    {
+      for (int32_t i = 0; ret == OB_SUCCESS && i < node->children_[1]->num_child_; i++)
+      {
+        ParseNode *action_node = node->children_[1]->children_[i];
+        if (action_node == NULL)
+          continue;
+        ObColumnDef col_def;
+        switch (action_node->type_)
+        {
+          case T_TABLE_RENAME:
+          {
+            int32_t len = static_cast<int32_t>(strlen(action_node->children_[0]->str_value_));
+            ObString new_name(len, len, action_node->children_[0]->str_value_);
+            ret = alter_table_stmt->set_new_table_name(*result_plan, new_name);
+            break;
+          }
+          case T_COLUMN_DEFINITION:
+          {
+            bool is_primary_key = false;
+            if ((ret = resolve_column_definition(
+                           result_plan,
+                           col_def,
+                           action_node,
+                           &is_primary_key)) != OB_SUCCESS)
+            {
+            }
+            else if (is_primary_key)
+            {
+              ret = OB_ERR_MODIFY_PRIMARY_KEY;
+              PARSER_LOG("New added column can not be primary key");
+            }
+            else
+            {
+              ret = alter_table_stmt->add_column(*result_plan, col_def);
+            }
+            break;
+          }
+          case T_COLUMN_DROP:
+          {
+            int32_t len = static_cast<int32_t>(strlen(action_node->children_[0]->str_value_));
+            ObString table_name(len, len, action_node->children_[0]->str_value_);
+            col_def.action_ = DROP_ACTION;
+            col_def.column_name_ = table_name;
+            switch (action_node->value_)
+            {
+              case 0:
+                col_def.drop_behavior_ = NONE_BEHAVIOR;
+                break;
+              case 1:
+                col_def.drop_behavior_ = RESTRICT_BEHAVIOR;
+                break;
+              case 2:
+                col_def.drop_behavior_ = CASCADE_BEHAVIOR;
+                break;
+              default:
+                break;
+            }
+            ret = alter_table_stmt->drop_column(*result_plan, col_def);
+            break;
+          }
+          case T_COLUMN_ALTER:
+          {
+            int32_t table_len = static_cast<int32_t>(strlen(action_node->children_[0]->str_value_));
+            ObString table_name(table_len, table_len, action_node->children_[0]->str_value_);
+            col_def.action_ = ALTER_ACTION;
+            col_def.column_name_ = table_name;
+            OB_ASSERT(action_node->children_[1]);
+            switch (action_node->children_[1]->type_)
+            {
+              case T_CONSTR_NOT_NULL:
+                col_def.not_null_ = true;
+                break;
+              case T_CONSTR_NULL:
+                col_def.not_null_ = false;
+                break;
+              case T_CONSTR_DEFAULT:
+                ret = resolve_const_value(result_plan, action_node->children_[1], col_def.default_value_);
+                break;
+              default:
+                /* won't be here */
+                ret = OB_ERR_RESOLVE_SQL;
+                PARSER_LOG("Unkown alter table alter column action type, type=%d",
+                    action_node->children_[1]->type_);
+                break;
+            }
+            ret = alter_table_stmt->alter_column(*result_plan, col_def);
+            break;
+          }
+          case T_COLUMN_RENAME:
+          {
+            int32_t table_len = static_cast<int32_t>(strlen(action_node->children_[0]->str_value_));
+            ObString table_name(table_len, table_len, action_node->children_[0]->str_value_);
+            int32_t new_len = static_cast<int32_t>(strlen(action_node->children_[1]->str_value_));
+            ObString new_name(new_len, new_len, action_node->children_[1]->str_value_);
+            col_def.action_ = RENAME_ACTION;
+            col_def.column_name_ = table_name;
+            col_def.new_column_name_ = new_name;
+            ret = alter_table_stmt->rename_column(*result_plan, col_def);
+            break;
+          }
+          default:
+            /* won't be here */
+            ret = OB_ERR_RESOLVE_SQL;
+            PARSER_LOG("Unkown alter table action type, type=%d", action_node->type_);
+            break;
         }
       }
     }
@@ -2336,116 +781,96 @@ int resolve_delete_stmt(
   return ret;
 }
 
-int resolve_insert_columns(
-  ResultPlan * result_plan,
-  ObInsertStmt* insert_stmt,
-  ParseNode* node)
+int resolve_drop_table_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
 {
   int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  if (node)
-  {
-    assert(node->type_ == T_COLUMN_LIST);
-    ColumnItem* column_item = NULL;
-    ParseNode* column_node = NULL;
-    for (int32_t i = 0; ret == OB_SUCCESS && i < node->num_child_; i++)
-    {
-      column_node = node->children_[i];
-      assert(column_node->type_ == T_IDENT);
+  OB_ASSERT(node && node->type_ == T_DROP_TABLE && node->num_child_ == 2);
+  ObLogicalPlan* logical_plan = NULL;
+  ObDropTableStmt* drp_tab_stmt = NULL;
+  query_id = OB_INVALID_ID;
 
-      ObString column_name;
-      column_name.assign_ptr(
-          (char*)(column_node->str_value_), 
-          static_cast<int32_t>(strlen(column_node->str_value_))
-          );
-      column_item = insert_stmt->get_column_item(NULL, column_name);
-      if (column_item == NULL)
+
+  ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+  if (result_plan->plan_tree_ == NULL)
+  {
+    logical_plan = (ObLogicalPlan*)parse_malloc(sizeof(ObLogicalPlan), result_plan->name_pool_);
+    if (logical_plan == NULL)
+    {
+      ret = OB_ERR_PARSER_MALLOC_FAILED;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObLogicalPlan");
+    }
+    else
+    {
+      logical_plan = new(logical_plan) ObLogicalPlan(name_pool);
+      result_plan->plan_tree_ = logical_plan;
+    }
+  }
+  else
+  {
+    logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
+  }
+
+  if (ret == OB_SUCCESS)
+  {
+    drp_tab_stmt = (ObDropTableStmt*)parse_malloc(sizeof(ObDropTableStmt), result_plan->name_pool_);
+    if (drp_tab_stmt == NULL)
+    {
+      ret = OB_ERR_PARSER_MALLOC_FAILED;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObDropTableStmt");
+    }
+    else
+    {
+      drp_tab_stmt = new(drp_tab_stmt) ObDropTableStmt(name_pool);
+      query_id = logical_plan->generate_query_id();
+      drp_tab_stmt->set_query_id(query_id);
+      if ((ret = logical_plan->add_query(drp_tab_stmt)) != OB_SUCCESS)
       {
-        if ((ret = insert_stmt->add_column_item(*result_plan, column_name)) != OB_SUCCESS)
-          break;
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not add ObDropTableStmt to logical plan");
       }
-      else
+    }
+  }
+
+  if (ret == OB_SUCCESS && node->children_[0])
+  {
+    drp_tab_stmt->set_if_exists(true);
+  }
+  if (ret == OB_SUCCESS)
+  {
+    OB_ASSERT(node->children_[1] && node->children_[1]->num_child_ > 0);
+    ParseNode *table_node = NULL;
+    ObString table_name;
+    for (int32_t i = 0; i < node->children_[1]->num_child_; i ++)
+    {
+      table_node = node->children_[1]->children_[i];
+      table_name.assign_ptr(
+          (char*)(table_node->str_value_),
+          static_cast<int32_t>(strlen(table_node->str_value_))
+          );
+      if (OB_SUCCESS != (ret = drp_tab_stmt->add_table_name_id(*result_plan, table_name)))
       {
-        ret = OB_ERR_COLUMN_DUPLICATE;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Column %s are duplicate", column_node->str_value_);
         break;
       }
     }
   }
-  else
-  {
-    if (insert_stmt->get_table_size() != 1)
-    {
-      ret = OB_ERR_PARSER_SYNTAX;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Insert statement only support one table");
-    }
-    if (ret == OB_SUCCESS)
-    {
-      TableItem& table_item = insert_stmt->get_table_item(0);
-      if (table_item.type_ != TableItem::BASE_TABLE)
-      {
-        ret = OB_ERR_PARSER_SYNTAX;
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Only base table can be inserted");
-      }
-      else
-        ret = resolve_table_columns(result_plan, insert_stmt, table_item);
-    }
-  }
   return ret;
 }
 
-int resolve_insert_values(
-  ResultPlan * result_plan,
-  ObInsertStmt* insert_stmt,
-  ParseNode* node)
-{
-  assert(node->type_ == T_VALUE_LIST);
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-
-  ObArray<uint64_t> value_row;
-  for (int32_t i = 0; ret == OB_SUCCESS && i < node->num_child_; i++)
-  {
-    ParseNode* vector_node = node->children_[i];
-    uint64_t expr_id;
-    for (int32_t j = 0; ret == OB_SUCCESS && j < vector_node->num_child_; j++)
-    {
-      ret = resolve_independ_expr(result_plan, insert_stmt, vector_node->children_[j], 
-                                  expr_id, T_INSERT_LIMIT);
-      if (ret == OB_SUCCESS && (ret = value_row.push_back(expr_id)) != OB_SUCCESS)
-      {
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-            "Can not add expr_id to ObArray");
-      }
-    }
-    if (ret == OB_SUCCESS &&
-      insert_stmt->get_column_size() != value_row.count())
-    {
-      ret = OB_ERR_COLUMN_SIZE;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Column count doesn't match value count");
-    }
-    if (ret == OB_SUCCESS)
-    {
-      if ((ret = insert_stmt->add_value_row(value_row)) != OB_SUCCESS)
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Add value-row to ObInsertStmt error");
-    }
-    value_row.clear();
-  }
-
-  return ret;
-}
-
-int resolve_insert_stmt(
+int resolve_show_stmt(
     ResultPlan* result_plan,
     ParseNode* node,
     uint64_t& query_id)
 {
   int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  uint64_t table_id = OB_INVALID_ID;
-  assert(node && node->type_ == T_INSERT && node->num_child_ >= 4);
+  uint64_t  sys_table_id = OB_INVALID_ID;
+  ParseNode *show_table_node = NULL;
+  ParseNode *condition_node = NULL;
+  OB_ASSERT(node && node->type_ >= T_SHOW_TABLES && node->type_ <= T_SHOW_GRANTS);
   query_id = OB_INVALID_ID;
 
   ObLogicalPlan* logical_plan = NULL;
@@ -2456,7 +881,7 @@ int resolve_insert_stmt(
     if (logical_plan == NULL)
     {
       ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
           "Can not malloc ObLogicalPlan");
     }
     else
@@ -2469,216 +894,600 @@ int resolve_insert_stmt(
   {
     logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
   }
-  
+
   if (ret == OB_SUCCESS)
   {
-
-    ObInsertStmt* insert_stmt = (ObInsertStmt*)parse_malloc(sizeof(ObInsertStmt), result_plan->name_pool_);
-    if (insert_stmt == NULL)
+    ObShowStmt* show_stmt = (ObShowStmt*)parse_malloc(sizeof(ObShowStmt), result_plan->name_pool_);
+    if (show_stmt == NULL)
     {
       ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not malloc ObInsertStmt");
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObShowStmt");
     }
     else
     {
-      insert_stmt = new(insert_stmt) ObInsertStmt(name_pool);
-      query_id = logical_plan->generate_query_id();
-      insert_stmt->set_query_id(query_id);
-      ret = logical_plan->add_query(insert_stmt);
-      if (ret != OB_SUCCESS)
+      ParseNode sys_table_name;
+      sys_table_name.type_ = T_IDENT;
+      switch (node->type_)
       {
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not add ObInsertStmt to logical plan");
+        case T_SHOW_TABLES:
+          OB_ASSERT(node->num_child_ == 1);
+          condition_node = node->children_[0];
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_TABLES);
+          sys_table_name.str_value_ = OB_TABLES_SHOW_TABLE_NAME;
+          break;
+        case T_SHOW_VARIABLES:
+          OB_ASSERT(node->num_child_ == 1);
+          condition_node = node->children_[0];
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_VARIABLES);
+          show_stmt->set_global_scope(node->value_ == 1 ? true : false);
+          sys_table_name.str_value_ = OB_VARIABLES_SHOW_TABLE_NAME;
+          break;
+        case T_SHOW_COLUMNS:
+          OB_ASSERT(node->num_child_ == 2);
+          show_table_node = node->children_[0];
+          condition_node = node->children_[1];
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_COLUMNS);
+          sys_table_name.str_value_ = OB_COLUMNS_SHOW_TABLE_NAME;
+          break;
+        case T_SHOW_SCHEMA:
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_SCHEMA);
+          sys_table_name.str_value_ = OB_SCHEMA_SHOW_TABLE_NAME;
+          break;
+        case T_SHOW_CREATE_TABLE:
+          OB_ASSERT(node->num_child_ == 1);
+          show_table_node = node->children_[0];
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_CREATE_TABLE);
+          sys_table_name.str_value_ = OB_CREATE_TABLE_SHOW_TABLE_NAME;
+          break;
+        case T_SHOW_TABLE_STATUS:
+          OB_ASSERT(node->num_child_ == 1);
+          condition_node = node->children_[0];
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_TABLE_STATUS);
+          sys_table_name.str_value_ = OB_TABLE_STATUS_SHOW_TABLE_NAME;
+          break;
+        case T_SHOW_SERVER_STATUS:
+          OB_ASSERT(node->num_child_ == 1);
+          condition_node = node->children_[0];
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_SERVER_STATUS);
+          sys_table_name.str_value_ = OB_SERVER_STATUS_SHOW_TABLE_NAME;
+          break;
+        case T_SHOW_WARNINGS:
+          OB_ASSERT(node->num_child_ == 0 || node->num_child_ == 1);
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_WARNINGS);
+          break;
+        case T_SHOW_GRANTS:
+          OB_ASSERT(node->num_child_ == 1);
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_GRANTS);
+          break;
+        case T_SHOW_PARAMETERS:
+          OB_ASSERT(node->num_child_ == 1);
+          condition_node = node->children_[0];
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_PARAMETERS);
+          sys_table_name.str_value_ = OB_PARAMETERS_SHOW_TABLE_NAME;
+          break;
+        default:
+          /* won't be here */
+          break;
+      }
+      if (node->type_ >= T_SHOW_TABLES && node->type_ <= T_SHOW_SERVER_STATUS
+        && (ret = resolve_table(result_plan, show_stmt, &sys_table_name, sys_table_id)) == OB_SUCCESS)
+      {
+        show_stmt->set_sys_table(sys_table_id);
+        query_id = logical_plan->generate_query_id();
+        show_stmt->set_query_id(query_id);
+      }
+      if (ret == OB_SUCCESS && (ret = logical_plan->add_query(show_stmt)) != OB_SUCCESS)
+      {
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not add ObShowStmt to logical plan");
+      }
+      if (ret != OB_SUCCESS && show_stmt != NULL)
+      {
+        show_stmt->~ObShowStmt();
+      }
+    }
+
+    if (ret == OB_SUCCESS && sys_table_id != OB_INVALID_ID)
+    {
+      TableItem *table_item = show_stmt->get_table_item_by_id(sys_table_id);
+      ret = resolve_table_columns(result_plan, show_stmt, *table_item);
+    }
+
+    if (ret == OB_SUCCESS && (node->type_ == T_SHOW_COLUMNS || node->type_ == T_SHOW_CREATE_TABLE))
+    {
+      OB_ASSERT(show_table_node);
+      ObSchemaChecker *schema_checker = static_cast<ObSchemaChecker*>(result_plan->schema_checker_);
+      if (schema_checker == NULL)
+      {
+        ret = OB_ERR_SCHEMA_UNSET;
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, "Schema(s) are not set");
+      }
+      int32_t len = static_cast<int32_t>(strlen(show_table_node->str_value_));
+      ObString table_name(len, len, show_table_node->str_value_);
+      uint64_t show_table_id = schema_checker->get_table_id(table_name);
+      if (show_table_id == OB_INVALID_ID)
+      {
+        ret = OB_ERR_TABLE_UNKNOWN;
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+            "Unknown table \"%s\"", show_table_node->str_value_);
       }
       else
       {
-        ParseNode* table_node = node->children_[0];
-        if (table_node->type_ != T_IDENT)
+        show_stmt->set_show_table(show_table_id);
+      }
+    }
+
+    if (ret == OB_SUCCESS && condition_node
+      && (node->type_ == T_SHOW_TABLES || node->type_ == T_SHOW_VARIABLES || node->type_ == T_SHOW_COLUMNS
+      || node->type_ == T_SHOW_TABLE_STATUS || node->type_ == T_SHOW_SERVER_STATUS
+      || node->type_ == T_SHOW_PARAMETERS))
+    {
+      if (condition_node->type_ == T_OP_LIKE && condition_node->num_child_ == 1)
+      {
+        OB_ASSERT(condition_node->children_[0]->type_ == T_STRING);
+        ObString  like_pattern;
+        like_pattern.assign_ptr(
+            (char*)(condition_node->children_[0]->str_value_),
+            static_cast<int32_t>(strlen(condition_node->children_[0]->str_value_))
+            );
+        ret = show_stmt->set_like_pattern(like_pattern);
+      }
+      else
+      {
+        ret = resolve_and_exprs(
+                  result_plan,
+                  show_stmt,
+                  condition_node->children_[0],
+                  show_stmt->get_where_exprs(),
+                  T_WHERE_LIMIT
+                  );
+      }
+    }
+
+    if (ret == OB_SUCCESS && node->type_ == T_SHOW_WARNINGS)
+    {
+      show_stmt->set_count_warnings(node->value_ == 1 ? true : false);
+      if (node->num_child_ == 1 && node->children_[0] != NULL)
+      {
+        ParseNode *limit = node->children_[0];
+        OB_ASSERT(limit->num_child_ == 2);
+        int64_t offset = limit->children_[0] == NULL ? 0 : limit->children_[0]->value_;
+        int64_t count = limit->children_[1] == NULL ? -1 : limit->children_[1]->value_;
+        show_stmt->set_warnings_limit(offset, count);
+      }
+    }
+
+    if (ret == OB_SUCCESS && node->type_ == T_SHOW_GRANTS)
+    {
+      if (node->children_[0] != NULL)
+      {
+        ObString name;
+        if ((ret = ob_write_string(*name_pool, ObString::make_string(node->children_[0]->str_value_), name)) != OB_SUCCESS)
         {
+          PARSER_LOG("Can not malloc space for user name");
+        }
+        else
+        {
+          show_stmt->set_user_name(name);
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+int resolve_prepare_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_PREPARE && node->num_child_ == 2);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObPrepareStmt *stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, stmt)))
+  {
+  }
+  else
+  {
+    ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+    if (ret == OB_SUCCESS)
+    {
+      OB_ASSERT(node->children_[0]);
+      ObString name;
+      if ((ret = ob_write_string(*name_pool, ObString::make_string(node->children_[0]->str_value_), name)) != OB_SUCCESS)
+      {
+        PARSER_LOG("Can not malloc space for stmt name");
+      }
+      else
+      {
+        stmt->set_stmt_name(name);
+      }
+    }
+    if (ret == OB_SUCCESS)
+    {
+      uint64_t sub_query_id = OB_INVALID_ID;
+      switch (node->children_[1]->type_)
+      {
+        case T_SELECT:
+          ret = resolve_select_stmt(result_plan, node->children_[1], sub_query_id);
+          break;
+        case T_DELETE:
+          ret = resolve_delete_stmt(result_plan, node->children_[1], sub_query_id);
+          break;
+        case T_INSERT:
+          ret = resolve_insert_stmt(result_plan, node->children_[1], sub_query_id);
+          break;
+        case T_UPDATE:
+          ret = resolve_update_stmt(result_plan, node->children_[1], sub_query_id);
+          break;
+        default:
           ret = OB_ERR_PARSER_SYNTAX;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Only single base table is supported for insert");
-        }
-        if (ret == OB_SUCCESS)
-          ret = resolve_table(result_plan, insert_stmt, table_node, table_id);
-        if (ret == OB_SUCCESS)
+          PARSER_LOG("Wrong statement type in prepare statement");
+          break;
+      }
+      if (ret == OB_SUCCESS)
+        stmt->set_prepare_query_id(sub_query_id);
+    }
+  }
+  return ret;
+}
+
+int resolve_variable_set_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_VARIABLE_SET);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObVariableSetStmt *stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, stmt)))
+  {
+  }
+  else
+  {
+    ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+    ParseNode* set_node = NULL;
+    ObVariableSetStmt::VariableSetNode var_node;
+    for (int32_t i = 0; ret == OB_SUCCESS && i < node->num_child_; i++)
+    {
+      set_node = node->children_[i];
+      OB_ASSERT(set_node->type_ == T_VAR_VAL);
+      switch (set_node->value_)
+      {
+        case 1:
+          var_node.scope_type_ = ObVariableSetStmt::GLOBAL;
+          break;
+        case 2:
+          var_node.scope_type_ = ObVariableSetStmt::SESSION;
+          break;
+        case 3:
+          var_node.scope_type_ = ObVariableSetStmt::LOCAL;
+          break;
+        default:
+          var_node.scope_type_ = ObVariableSetStmt::NONE_SCOPE;
+          break;
+      }
+
+      ParseNode* var = set_node->children_[0];
+      OB_ASSERT(var);
+      var_node.is_system_variable_ = (var->type_ == T_SYSTEM_VARIABLE) ? true : false;
+      if ((ret = ob_write_string(*name_pool, ObString::make_string(var->str_value_),
+                                  var_node.variable_name_)) != OB_SUCCESS)
+      {
+        PARSER_LOG("Can not malloc space for variable name");
+        break;
+      }
+
+      OB_ASSERT(node->children_[1]);
+      if ((ret = resolve_independ_expr(result_plan, NULL, set_node->children_[1], var_node.value_expr_id_,
+                                        T_VARIABLE_VALUE_LIMIT)) != OB_SUCCESS)
+      {
+        //PARSER_LOG("Resolve set value error");
+        break;
+      }
+
+      if ((ret = stmt->add_variable_node(var_node)) != OB_SUCCESS)
+      {
+        PARSER_LOG("Add set entry failed");
+        break;
+      }
+    }
+  }
+  return ret;
+}
+
+int resolve_execute_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_EXECUTE && node->num_child_ == 2);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObExecuteStmt *stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, stmt)))
+  {
+  }
+  else
+  {
+    ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+    if (ret == OB_SUCCESS)
+    {
+      OB_ASSERT(node->children_[0]);
+      ObString name;
+      if ((ret = ob_write_string(*name_pool, ObString::make_string(node->children_[0]->str_value_), name)) != OB_SUCCESS)
+      {
+        PARSER_LOG("Can not malloc space for stmt name");
+      }
+      else
+      {
+        stmt->set_stmt_name(name);
+      }
+    }
+    if (ret == OB_SUCCESS && NULL != node->children_[1])
+    {
+      OB_ASSERT(node->children_[1]->type_ == T_ARGUMENT_LIST);
+      ParseNode *arguments = node->children_[1];
+      for (int32_t i = 0; ret == OB_SUCCESS && i < arguments->num_child_; i++)
+      {
+        OB_ASSERT(arguments->children_[i] && arguments->children_[i]->type_ == T_TEMP_VARIABLE);
+        ObString name;
+        if ((ret = ob_write_string(*name_pool, ObString::make_string(arguments->children_[i]->str_value_), name)) != OB_SUCCESS)
         {
-          insert_stmt->set_insert_table(table_id);
-          ret = resolve_insert_columns(result_plan, insert_stmt, node->children_[1]);
+          PARSER_LOG("Resolve variable %s error", arguments->children_[i]->str_value_);
         }
-        if (ret == OB_SUCCESS)
+        else if ((ret = stmt->add_variable_name(name)) != OB_SUCCESS)
         {
-          if (node->children_[2])
+          PARSER_LOG("Add Using variable failed");
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+int resolve_deallocate_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_DEALLOCATE && node->num_child_ == 1);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObDeallocateStmt *stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, stmt)))
+  {
+    TBSYS_LOG(WARN, "fail to prepare resolve stmt. ret=%d", ret);
+  }
+  else
+  {
+    ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+    OB_ASSERT(node->children_[0]);
+    ObString name;
+    if ((ret = ob_write_string(*name_pool, ObString::make_string(node->children_[0]->str_value_), name)) != OB_SUCCESS)
+    {
+      PARSER_LOG("Can not malloc space for stmt name");
+    }
+    else
+    {
+      stmt->set_stmt_name(name);
+    }
+  }
+  return ret;
+}
+
+int resolve_start_trans_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_BEGIN && node->num_child_ == 0);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObStartTransStmt *stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, stmt)))
+  {
+  }
+  else
+  {
+    stmt->set_with_consistent_snapshot(0 != node->value_);
+  }
+  return ret;
+}
+
+int resolve_commit_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_COMMIT && node->num_child_ == 0);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObEndTransStmt *stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, stmt)))
+  {
+  }
+  else
+  {
+    stmt->set_is_rollback(false);
+  }
+  return ret;
+}
+
+int resolve_rollback_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_ROLLBACK && node->num_child_ == 0);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObEndTransStmt *stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, stmt)))
+  {
+  }
+  else
+  {
+    stmt->set_is_rollback(true);
+  }
+  return ret;
+}
+
+int resolve_alter_sys_cnf_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_ALTER_SYSTEM && node->num_child_ == 1);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObAlterSysCnfStmt* alter_sys_cnf_stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, alter_sys_cnf_stmt)))
+  {
+  }
+  else if ((ret = alter_sys_cnf_stmt->init()) != OB_SUCCESS)
+  {
+    PARSER_LOG("Init alter system stmt failed, ret=%d", ret);
+  }
+  else
+  {
+    OB_ASSERT(node->children_[0] && node->children_[0]->type_ == T_SYTEM_ACTION_LIST);
+    ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+    for (int32_t i = 0; ret == OB_SUCCESS && i < node->children_[0]->num_child_; i++)
+    {
+      ParseNode *action_node = node->children_[0]->children_[i];
+      if (action_node == NULL)
+        continue;
+      OB_ASSERT(action_node->type_ == T_SYSTEM_ACTION && action_node->num_child_ == 5);
+      ObSysCnfItem sys_cnf_item;
+      ObString param_name;
+      ObString comment;
+      ObString server_ip;
+      sys_cnf_item.config_type_ = static_cast<ObConfigType>(action_node->value_);
+      if ((ret = ob_write_string(
+                     *name_pool,
+                     ObString::make_string(action_node->children_[0]->str_value_),
+                     sys_cnf_item.param_name_)) != OB_SUCCESS)
+      {
+        PARSER_LOG("Can not malloc space for param name");
+        break;
+      }
+      else if (action_node->children_[2] != NULL
+        && (ret = ob_write_string(
+                      *name_pool,
+                      ObString::make_string(action_node->children_[2]->str_value_),
+                      sys_cnf_item.comment_)) != OB_SUCCESS)
+      {
+        PARSER_LOG("Can not malloc space for comment");
+        break;
+      }
+      else if ((ret = resolve_const_value(
+                          result_plan,
+                          action_node->children_[1],
+                          sys_cnf_item.param_value_)) != OB_SUCCESS)
+      {
+        break;
+      }
+      else if (action_node->children_[4] != NULL)
+      {
+        if (action_node->children_[4]->type_ == T_CLUSTER)
+        {
+          sys_cnf_item.cluster_id_ = action_node->children_[4]->children_[0]->value_;
+        }
+        else if (action_node->children_[4]->type_ == T_SERVER_ADDRESS)
+        {
+          if ((ret = ob_write_string(
+                         *name_pool,
+                         ObString::make_string(action_node->children_[4]->children_[0]->str_value_),
+                         sys_cnf_item.server_ip_)) != OB_SUCCESS)
           {
-            ret = resolve_insert_values(result_plan, insert_stmt, node->children_[2]);
+            PARSER_LOG("Can not malloc space for IP");
+            break;
           }
           else
           {
-            assert(node->children_[3] && node->children_[3]->type_ == T_SELECT);
-            uint64_t ref_id = OB_INVALID_ID;
-            ret = resolve_select_stmt(result_plan, node->children_[3], ref_id);
-            if (ret == OB_SUCCESS)
-            {
-              insert_stmt->set_insert_query(ref_id);
-              ObSelectStmt* select_stmt = static_cast<ObSelectStmt*>(logical_plan->get_query(ref_id));
-              if (select_stmt == NULL)
-              {
-                ret = OB_ERR_ILLEGAL_ID;
-                snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                    "Invalid query id of sub-query");
-              }
-              if (ret == OB_SUCCESS &&
-                insert_stmt->get_column_size() != select_stmt->get_select_item_size())
-              {
-                ret = OB_ERR_COLUMN_SIZE;
-                snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                    "select values are not match insert columns");
-              }
-            }
+            sys_cnf_item.server_port_ = action_node->children_[4]->children_[1]->value_;
           }
         }
+      }
+      OB_ASSERT(action_node->children_[3]);
+      switch (action_node->children_[3]->value_)
+      {
+        case 1:
+          sys_cnf_item.server_type_ = OB_ROOTSERVER;
+          break;
+        case 2:
+          sys_cnf_item.server_type_ = OB_CHUNKSERVER;
+          break;
+        case 3:
+          sys_cnf_item.server_type_ = OB_MERGESERVER;
+          break;
+        case 4:
+          sys_cnf_item.server_type_ = OB_UPDATESERVER;
+          break;
+        default:
+          /* won't be here */
+          ret = OB_ERR_RESOLVE_SQL;
+          PARSER_LOG("Unkown server type");
+          break;
+      }
+      if ((ret = alter_sys_cnf_stmt->add_sys_cnf_item(*result_plan, sys_cnf_item)) != OB_SUCCESS)
+      {
+        // PARSER_LOG("Add alter system config item failed");
+        break;
       }
     }
   }
   return ret;
 }
 
-int resolve_update_stmt(
-    ResultPlan* result_plan,
-    ParseNode* node,
-    uint64_t& query_id)
-{
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  uint64_t table_id = OB_INVALID_ID;
-  assert(node && node->type_ == T_UPDATE && node->num_child_ >= 3);
-  query_id = OB_INVALID_ID;
 
-  ObLogicalPlan* logical_plan = NULL;
-  ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
-  if (result_plan->plan_tree_ == NULL)
-  {
-    logical_plan = (ObLogicalPlan*)parse_malloc(sizeof(ObLogicalPlan), result_plan->name_pool_);
-    if (logical_plan == NULL)
-    {
-      ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not malloc ObLogicalPlan");
-    }
-    else
-    {
-      logical_plan = new(logical_plan) ObLogicalPlan(name_pool);
-      result_plan->plan_tree_ = logical_plan;
-    }
-  }
-  else
-  {
-    logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
-  }
-
-  if (ret == OB_SUCCESS)
-  {
-    ObUpdateStmt* update_stmt = (ObUpdateStmt*)parse_malloc(sizeof(ObUpdateStmt), result_plan->name_pool_);
-    if (update_stmt == NULL)
-    {
-      ret = OB_ERR_PARSER_MALLOC_FAILED;
-      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not malloc ObUpdateStmt");
-    }
-    else
-    {
-      update_stmt = new(update_stmt) ObUpdateStmt(name_pool);
-      query_id = logical_plan->generate_query_id();
-      update_stmt->set_query_id(query_id);
-      logical_plan->add_query(update_stmt);
-      if (ret != OB_SUCCESS)
-      {
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-          "Can not add ObUpdateStmt to logical plan");
-      }
-      else
-      {
-        ParseNode* table_node = node->children_[0];
-        if (table_node->type_ != T_IDENT)
-        {
-          ret = OB_ERR_PARSER_SYNTAX;
-          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-              "Only single base table is supported for Update");
-        }
-        if (ret == OB_SUCCESS)
-          ret = resolve_table(result_plan, update_stmt, table_node, table_id);
-        if (ret == OB_SUCCESS)
-        {
-          update_stmt->set_update_table(table_id);
-          ParseNode* assign_list = node->children_[1];
-          assert(assign_list && assign_list->type_ == T_ASSIGN_LIST);
-          uint64_t ref_id;
-          ColumnItem *column_item = NULL;
-          for (int32_t i = 0; ret == OB_SUCCESS && i < assign_list->num_child_; i++)
-          {
-            ParseNode* assgin_node = assign_list->children_[i];
-            assert(assgin_node && assgin_node->type_ == T_ASSIGN_ITEM && assgin_node->num_child_ >= 2);
-
-            /* resolve target column */
-            ParseNode* column_node = assgin_node->children_[0];
-            assert(column_node && column_node->type_ == T_IDENT);
-            ObString column_name;
-            column_name.assign_ptr(
-                (char*)(column_node->str_value_), 
-                static_cast<int32_t>(strlen(column_node->str_value_))
-                );
-            column_item = update_stmt->get_column_item(NULL, column_name);
-            if (column_item == NULL)
-            {
-              ret = update_stmt->add_column_item(*result_plan, column_name, NULL, &column_item);
-            }
-            if (ret == OB_SUCCESS)
-              ret = update_stmt->add_update_column(column_item->column_id_);
-
-            /* resolve new value expression */
-            if (ret == OB_SUCCESS)
-            {
-              ParseNode* expr = assgin_node->children_[1];
-              ret = resolve_independ_expr(result_plan, update_stmt, expr, ref_id, T_UPDATE_LIMIT);
-            }
-            if (ret == OB_SUCCESS)
-            {
-              if ((ret = update_stmt->add_update_expr(ref_id)) != OB_SUCCESS)
-              {
-                snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-                    "Add update value error");
-              }
-            }
-          }
-        }
-        if (ret == OB_SUCCESS)
-          ret = resolve_where_clause(result_plan, update_stmt, node->children_[2]);
-      }
-    }
-  }
-  return ret;
-}
-
+////////////////////////////////////////////////////////////////
 int resolve(ResultPlan* result_plan, ParseNode* node)
 {
-  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
   if (!result_plan)
   {
-    ret = OB_ERR_RESOLVE_SQL;
-    snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-        "Input ResultPlan error");
+    TBSYS_LOG(ERROR, "null result_plan");
+    return OB_ERR_RESOLVE_SQL;
   }
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
   if (ret == OB_SUCCESS && result_plan->name_pool_ == NULL)
   {
     ret = OB_ERR_RESOLVE_SQL;
-    snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-        "name_pool_ nust be set");
+    PARSER_LOG("name_pool_ nust be set");
   }
   if (ret == OB_SUCCESS && result_plan->schema_checker_ == NULL)
   {
     ret = OB_ERR_RESOLVE_SQL;
-    snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, 
-        "schema_checker_ must be set");
+    PARSER_LOG("schema_checker_ must be set");
+  }
+
+  if (OB_LIKELY(OB_SUCCESS == ret))
+  {
+    bool is_preparable = false;
+    switch (node->type_)
+    {
+      case T_STMT_LIST:
+      case T_SELECT:
+      case T_DELETE:
+      case T_INSERT:
+      case T_UPDATE:
+      case T_BEGIN:
+      case T_COMMIT:
+      case T_ROLLBACK:
+        is_preparable = true;
+        break;
+      default:
+        break;
+    }
+    if (result_plan->is_prepare_ && !is_preparable)
+    {
+      ret = OB_ERR_RESOLVE_SQL;
+      PARSER_LOG("the statement can not be prepared");
+    }
   }
 
   uint64_t query_id = OB_INVALID_ID;
@@ -2711,10 +1520,129 @@ int resolve(ResultPlan* result_plan, ParseNode* node)
         ret = resolve_update_stmt(result_plan, node, query_id);
         break;
       }
+      case T_EXPLAIN:
+      {
+        ret = resolve_explain_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_CREATE_TABLE:
+      {
+        ret = resolve_create_table_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_DROP_TABLE:
+      {
+        ret = resolve_drop_table_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_ALTER_TABLE:
+      {
+        ret = resolve_alter_table_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_SHOW_TABLES:
+      case T_SHOW_VARIABLES:
+      case T_SHOW_COLUMNS:
+      case T_SHOW_SCHEMA:
+      case T_SHOW_CREATE_TABLE:
+      case T_SHOW_TABLE_STATUS:
+      case T_SHOW_SERVER_STATUS:
+      case T_SHOW_WARNINGS:
+      case T_SHOW_GRANTS:
+      case T_SHOW_PARAMETERS:
+      {
+        ret = resolve_show_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_CREATE_USER:
+      {
+        ret = resolve_create_user_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_DROP_USER:
+      {
+        ret = resolve_drop_user_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_SET_PASSWORD:
+      {
+        ret = resolve_set_password_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_RENAME_USER:
+      {
+        ret = resolve_rename_user_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_LOCK_USER:
+      {
+        ret = resolve_lock_user_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_GRANT:
+      {
+        ret = resolve_grant_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_REVOKE:
+      {
+        ret = resolve_revoke_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_PREPARE:
+      {
+        ret = resolve_prepare_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_VARIABLE_SET:
+      {
+        ret = resolve_variable_set_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_EXECUTE:
+      {
+        ret = resolve_execute_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_DEALLOCATE:
+      {
+        ret = resolve_deallocate_stmt(result_plan, node, query_id);
+        break;
+      }
+      case T_BEGIN:
+        ret = resolve_start_trans_stmt(result_plan, node, query_id);
+        break;
+      case T_COMMIT:
+        ret = resolve_commit_stmt(result_plan, node, query_id);
+        break;
+      case T_ROLLBACK:
+        ret = resolve_rollback_stmt(result_plan, node, query_id);
+        break;
+      case T_ALTER_SYSTEM:
+        ret = resolve_alter_sys_cnf_stmt(result_plan, node, query_id);
+        break;
       default:
-        ret = OB_ERROR;
+        TBSYS_LOG(ERROR, "unknown top node type=%d", node->type_);
+        ret = OB_ERR_UNEXPECTED;
         break;
     };
+  }
+  if (ret == OB_SUCCESS && result_plan->is_prepare_ != 1
+    && node->type_ != T_STMT_LIST && node->type_ != T_PREPARE)
+  {
+    ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
+    if (logical_plan != NULL && logical_plan->get_question_mark_size() > 0)
+    {
+      ret = OB_ERR_PARSE_SQL;
+      PARSER_LOG("Uknown column '?'");
+    }
+  }
+  if (ret != OB_SUCCESS && result_plan->plan_tree_ != NULL)
+  {
+    ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
+    logical_plan->~ObLogicalPlan();
+    parse_free(result_plan->plan_tree_);
+    result_plan->plan_tree_ = NULL;
   }
   return ret;
 }
@@ -2728,4 +1656,6 @@ extern void destroy_plan(ResultPlan* result_plan)
   parse_free(result_plan->plan_tree_);
 
   result_plan->plan_tree_ = NULL;
+  result_plan->name_pool_ = NULL;
+  result_plan->schema_checker_ = NULL;
 }

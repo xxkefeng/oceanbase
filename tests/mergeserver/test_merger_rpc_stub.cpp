@@ -128,10 +128,10 @@ TEST_F(TestRpcStub, test_fetch_schema)
   ObSchemaManagerV2 manager;
   // wrong version
   int64_t timestamp = 1023;
-  EXPECT_TRUE(OB_SUCCESS != stub.fetch_schema(timeout, root_server, timestamp, manager));
+  EXPECT_TRUE(OB_SUCCESS != stub.fetch_schema(timeout, root_server, false, timestamp, manager));
 
   timestamp = 1024;
-  EXPECT_TRUE(OB_SUCCESS == stub.fetch_schema(timeout, root_server, timestamp, manager));
+  EXPECT_TRUE(OB_SUCCESS == stub.fetch_schema(timeout, root_server, false, timestamp, manager));
   EXPECT_TRUE(manager.get_version() == 1025);
   
   transport.stop();
@@ -314,7 +314,7 @@ TEST_F(TestRpcStub, test_get_servers)
   ObServer chunk_server;
   chunk_server.set_ipv4_addr(addr, MockChunkServer::CHUNK_SERVER_PORT);
 
-  ObMergerTabletLocationList list;
+  ObTabletLocationList list;
   ObTabletLocation addr;
   //addr.tablet_id_ = 100;
   addr.chunkserver_ = chunk_server;
@@ -382,7 +382,7 @@ TEST_F(TestRpcStub, test_scan_servers)
   EXPECT_TRUE(OB_SUCCESS == client_manager.initialize(&transport, &streamer));
   EXPECT_TRUE(OB_SUCCESS == stub.init(&buffer, &client_manager));
 
-  ObMergerTabletLocationList list;
+  ObTabletLocationList list;
   
 	ObServer chunk_server;
   chunk_server.set_ipv4_addr(addr, MockChunkServer::CHUNK_SERVER_PORT);

@@ -21,6 +21,10 @@
 
 namespace oceanbase 
 {
+  namespace common
+  {
+    class ObRowkey;
+  }
   namespace chunkserver 
   {
     class ObBlockCacheLoader
@@ -58,7 +62,7 @@ namespace oceanbase
                                 sstable::ObBlockCache& block_cache,
                                 const uint64_t table_id,
                                 const uint64_t column_group_id,
-                                const common::ObString& rowkey,
+                                const common::ObRowkey& rowkey,
                                 sstable::ObSSTableReader* sstable_reader = NULL);
 
       /**
@@ -133,7 +137,7 @@ namespace oceanbase
        *         rowkey belong to, if fail, return NULL.
        */
       sstable::ObSSTableReader* get_sstable_reader(uint64_t table_id, 
-                                                   const common::ObString& rowkey,
+                                                   const common::ObRowkey& rowkey,
                                                    ObTablet*& tablet);
 
     private:

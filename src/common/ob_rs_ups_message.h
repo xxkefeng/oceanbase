@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_rs_ups_message.h
@@ -25,10 +25,12 @@ namespace oceanbase
   {
     struct ObMsgUpsHeartbeat
     {
-      static const int MY_VERSION = 2;
+      static const int MY_VERSION = 4;
       ObServer ups_master_;
       int64_t self_lease_;
       ObiRole obi_role_;
+      int64_t schema_version_;
+      int64_t config_version_;
       int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
       int deserialize(const char* buf, const int64_t data_len, int64_t& pos);
     };
@@ -54,6 +56,7 @@ namespace oceanbase
       int32_t inner_port_;
       int64_t log_seq_num_;
       int64_t lease_;
+      char server_version_[OB_SERVER_VERSION_LENGTH];
       int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
       int deserialize(const char* buf, const int64_t data_len, int64_t& pos);
     };
@@ -71,7 +74,7 @@ namespace oceanbase
     {
       static const int MY_VERSION = 1;
       int64_t lease_;
-      ObServer ups_master_;      
+      ObServer ups_master_;
       int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
       int deserialize(const char* buf, const int64_t data_len, int64_t& pos);
     };

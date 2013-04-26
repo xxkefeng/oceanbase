@@ -7,12 +7,14 @@
 #include "common/ob_define.h"
 #include "common/ob_object.h"
 #include "common/ob_string.h"
-#include "sstable/ob_sstable_row.h"
-#include "sstable/ob_sstable_writer.h"
+#include "compactsstablev2/ob_sstable_schema.h"
+#include "compactsstablev2/ob_compact_sstable_writer.h"
 #include "chunkserver/ob_tablet.h"
 #include "chunkserver/ob_tablet_image.h"
 #include "common/ob_schema.h"
 #include "common/page_arena.h"
+#include "common/ob_row_desc.h"
+#include "common/ob_row.h"
 
 namespace oceanbase 
 {
@@ -58,7 +60,6 @@ namespace oceanbase
           const char *dest_dir_;
           const char *compressor_string_;
 
-          //const common::ObSchema *schema_;
           const common::ObSchemaManagerV2 *schema_;
         };
 
@@ -79,8 +80,8 @@ namespace oceanbase
 
       private:
         
-        int prepare_new_sstable();
-        int close_sstable();
+        int prepare_new_sstable_name();
+        int record_sstable_range();
         int write_idx_info();
 
         char *read_line(int &fields);
@@ -112,7 +113,6 @@ namespace oceanbase
 
         int64_t max_sstable_size_;
         uint64_t current_sstable_id_;
-        int64_t current_sstable_size_;
 
         int64_t current_line_;
         int64_t serialize_size_;
@@ -132,14 +132,14 @@ namespace oceanbase
         common::ObString row_key_;
         common::ObString last_key_;
         
-        sstable::ObSSTableRow sstable_row_;
-        uint64_t tmp_buf_2[16*1024];
-        sstable::ObSSTableWriter writer_;
-        uint64_t tmp_buf_[16*1024];
+      common::ObRow sstable_row_;
+      common::ObRowDesc* row_desc_;
+        compactsstablev2::ObCompactSSTableWriter writer_;
 
         const common::ObTableSchema *table_schema_;
         const common::ObSchemaManagerV2 *schema_;
-        sstable::ObSSTableSchema *sstable_schema_;
+        compactsstablev2::ObSSTableSchema *sstable_schema_;
+      ObRowDesc* desc_;
 
         common::CharArena arena_;
 

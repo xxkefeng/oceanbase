@@ -13,6 +13,7 @@
  */
 #include "ob_syschecker.h"
 #include "common/ob_malloc.h"
+#include "common/ob_mutator.h"
 #include "common/utility.h"
 
 namespace oceanbase 
@@ -79,29 +80,45 @@ namespace oceanbase
     int ObSyschecker::init_servers_manager()
     {
       int ret                       = OB_SUCCESS;
-      int64_t merge_server_count    = 0;
-      const ObServer* merge_server  = NULL;
+      int64_t server_count    = 0;
 
-      ret = servers_mgr_.init(param_.get_merge_server_count() + 2);
+      ObServer server;
       if (OB_SUCCESS == ret)
       {
-        ret = servers_mgr_.set_root_server(param_.get_root_server());
-      }
-
-      if (OB_SUCCESS == ret)
-      {
-        ret = servers_mgr_.set_update_server(param_.get_update_server());
-      }
-
-      if (OB_SUCCESS == ret)
-      {
-        merge_server_count = param_.get_merge_server_count();
-        merge_server = param_.get_merge_server();
-        for (int64_t i = 0; 
-             i < merge_server_count && NULL != merge_server && OB_SUCCESS == ret; 
-             ++i)
+        server = param_.get_update_server();
+        if (server.get_ipv4() == 0 || server.get_port() == 0)
         {
-          ret = servers_mgr_.add_merge_server(merge_server[i]);
+          ret = client_.set_ups_by_rs();
+        }
+        else
+        {
+          ret = servers_mgr_.set_update_server(param_.get_update_server());
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        server_count = param_.get_merge_servers().count();
+        if (server_count == 0)
+        {
+          ret = client_.set_ms_by_rs();
+        }
+        else
+        {
+          servers_mgr_.set_merge_servers(param_.get_merge_servers());
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        server_count = param_.get_chunk_servers().count();
+        if (server_count == 0)
+        {
+          ret = client_.set_cs_by_rs();
+        }
+        else
+        {
+          servers_mgr_.set_chunk_servers(param_.get_chunk_servers());
         }
       }
 
@@ -217,6 +234,30 @@ namespace oceanbase
       return ret;
     }
 
+    void dump_scanner(ObScanner &scanner)
+    {
+      ObScannerIterator iter;
+      int total_count = 0;
+      int row_count = 0;
+      bool is_row_changed = false;
+      ObNewRange range;
+      scanner.get_range(range);
+      fprintf(stderr, "scanner range:%s, size=%ld\n", to_cstring(range), scanner.get_size());
+      for (iter = scanner.begin(); iter != scanner.end(); iter++)
+      {
+        ObCellInfo *cell_info;
+        iter.get_cell(&cell_info, &is_row_changed);
+        if (is_row_changed) 
+        {
+          ++row_count;
+          fprintf(stderr,"table_id:%lu, rowkey:%s\n", cell_info->table_id_, to_cstring(cell_info->row_key_));
+        }
+        fprintf(stderr, "%s\n", to_cstring(cell_info->value_));
+        ++total_count;
+      }
+      fprintf(stderr, "row_count=%d,total_count=%d\n", row_count, total_count);
+    }
+
     int ObSyschecker::init_rowkey_range()
     {
       int ret                               = OB_SUCCESS;
@@ -224,17 +265,21 @@ namespace oceanbase
       const ObColumnSchemaV2* column_schema = NULL;
       const char* column_name               = NULL;
       int32_t column_size                   = 0 ;
+      int32_t query_size                    = 0 ;
       ObGetParam get_param;
       ObScanner scanner;
       ObCellInfo cell_info;
       ObString table_name;
-      char key_buf[MAX_SYSCHECKER_ROWKEY_LEN];
-      ObString row_key;
+      ObObj rowkey_obj_array[MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT];
+      ObRowkey row_key;
       ObVersionRange ver_range;
 
       //the row with key 0 in wide table stores row key range
-      memset(key_buf, 0, MAX_SYSCHECKER_ROWKEY_LEN);
-      row_key.assign (key_buf, MAX_SYSCHECKER_ROWKEY_LEN);
+      for (int i = 0; i < MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT; ++i)
+      {
+        rowkey_obj_array[i].set_int(0);
+      }
+      row_key.assign (rowkey_obj_array, MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT);
       table_name = syschecker_schema_.get_wt_name();
 
       //build get_param
@@ -244,8 +289,16 @@ namespace oceanbase
       {
         column_schema = syschecker_schema_.get_schema_manager().
           get_table_schema(wt_schema->get_table_id(), column_size);
-        for (int64_t i = 0; i < 2 && column_size >= 2 && OB_SUCCESS == ret; ++i)
+        const ObRowkeyInfo& rowkey_info = syschecker_schema_.get_schema_manager()
+          .get_table_schema(wt_schema->get_table_id())->get_rowkey_info();
+
+        for (int64_t i = 0; i < column_size && query_size < 2 && OB_SUCCESS == ret; ++i)
         {
+          if (rowkey_info.is_rowkey_column(column_schema[i].get_id()))
+          {
+            continue;
+          }
+
           cell_info.reset();
           cell_info.table_name_ = table_name;
           cell_info.row_key_ = row_key;
@@ -254,6 +307,7 @@ namespace oceanbase
             column_name = column_schema[i].get_name();
             cell_info.column_name_.assign(const_cast<char*>(column_name), 
                                          static_cast<int32_t>(strlen(column_name)));
+            query_size++;
             ret = get_param.add_cell(cell_info);
           }
           else
@@ -278,8 +332,8 @@ namespace oceanbase
         ret = client_.ms_get(get_param, scanner);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "failed to get cell from merge server, ret=%d, rowkey:", ret);
-          hex_dump(row_key.ptr(), row_key.length(), true, TBSYS_LOG_LEVEL_WARN);
+          TBSYS_LOG(WARN, "failed to get cell from merge server, ret=%d, rowkey:%s", 
+              ret, to_cstring(row_key));
         }
       }     
 
@@ -295,14 +349,26 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      ret = param_.load_from_config();
-      if (OB_SUCCESS == ret)
+      if (OB_SUCCESS != (ret = param_.load_from_config()))
       {
-        ret = init_servers_manager();
-        if (OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "failed to init servers manager");
-        }
+        TBSYS_LOG(WARN, "failed to load_from_config");
+      }
+      else if (param_.get_root_server().get_ipv4() == 0 || param_.get_root_server().get_port() == 0)
+      {
+        TBSYS_LOG(ERROR, "rootserver ip must define.");
+        ret = common::OB_INVALID_ARGUMENT;
+      }
+      else if (OB_SUCCESS != (ret = servers_mgr_.set_root_server(param_.get_root_server())))
+      {
+        TBSYS_LOG(WARN, "failed to set_root_server");
+      }
+      else if (OB_SUCCESS != (ret = client_.init(param_.get_network_time_out())))
+      {
+        TBSYS_LOG(WARN, "failed to init client");
+      }
+      else if (OB_SUCCESS != (ret = init_servers_manager()))
+      {
+        TBSYS_LOG(WARN, "failed to init servers manager");
       }
 
       //for debuging
@@ -311,24 +377,15 @@ namespace oceanbase
         param_.dump_param();
       }
 
+      ObSchemaManagerV2 schema_manager;
+      ObSchemaManagerV2& syschecker_schema_manager = syschecker_schema_.get_schema_manager();
       if (OB_SUCCESS == ret)
       {
-        ret = client_.init(param_.get_network_time_out());
-        if (OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "failed to init client");
-        }
-      }
-
-      if (OB_SUCCESS == ret)
-      {
-        ObSchemaManagerV2 schema_manager;
-        ObSchemaManagerV2& syschecker_schema_manager = syschecker_schema_.get_schema_manager();
         //ret = client_.fetch_schema(0, syschecker_schema_.get_schema_manager());
         ret = client_.fetch_schema(0, schema_manager);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "failed to featch schema from root server");
+          TBSYS_LOG(WARN, "failed to fetch schema from root server");
         }
         else
         {
@@ -446,8 +503,7 @@ namespace oceanbase
       {
         write_rowkey_range();
       }
-      client_.stop();
-      client_.wait();
+      client_.destroy();
 
       return OB_SUCCESS;
     }
@@ -515,15 +571,18 @@ namespace oceanbase
       ObMutator mutator;
       ObScanner scanner;
       ObString table_name;
-      char key_buf[MAX_SYSCHECKER_ROWKEY_LEN];
-      ObString row_key;
+      ObObj rowkey_obj_array[MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT];
+      ObRowkey row_key;
       ObString column_name;
       ObObj obj;
       char value_buf[32];
 
       //the row with key 0 in wide table stores row key range
-      memset(key_buf, 0, MAX_SYSCHECKER_ROWKEY_LEN);
-      row_key.assign (key_buf, MAX_SYSCHECKER_ROWKEY_LEN);
+      for (int i = 0; i < MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT; ++i)
+      {
+        rowkey_obj_array[i].set_int(0);
+      }
+      row_key.assign (rowkey_obj_array, MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT);
       table_name = syschecker_schema_.get_wt_name();
 
       //build mutator

@@ -55,6 +55,7 @@ namespace oceanbase
       public:
         ObGroupBy();
         virtual ~ObGroupBy();
+        void reset();
 
         virtual int get_next_row(const common::ObRow *&row) = 0;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
@@ -68,6 +69,9 @@ namespace oceanbase
         void set_mem_size_limit(const int64_t limit);
         /// whether integer division as double
         virtual void set_int_div_as_double(bool did) = 0;
+        virtual bool get_int_div_as_double() const = 0;
+
+        NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy
         ObGroupBy(const ObGroupBy &other);

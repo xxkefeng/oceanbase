@@ -14,478 +14,470 @@
  *
  */
 #include "ob_tablet_scan.h"
+#include "common/serialization.h"
+#include "common/utility.h"
+#include "common/ob_cur_time.h"
+#include "common/ob_profile_log.h"
 
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
-
+using namespace oceanbase::common::serialization;
 
 ObTabletScan::ObTabletScan()
-  :join_batch_count_(0),
-  op_root_(NULL),
-  op_sstable_scan_(NULL),
-  op_ups_scan_(NULL),
-  op_ups_multi_get_(NULL),
-  op_tablet_fuse_(NULL),
-  op_tablet_join_(NULL),
-  schema_mgr_(NULL),
-  op_factory_(NULL),
-  ups_rpc_stub_(NULL),
-  has_project_(false),
-  has_filter_(false),
-  has_limit_(false)
 {
 }
 
-int ObTabletScan::add_filter(const ObSqlExpression &expr)
+void ObTabletScan::reset(void)
 {
-  int ret = OB_SUCCESS;
-  if(OB_SUCCESS != (ret = filter_.add_filter(expr)))
-  {
-    TBSYS_LOG(WARN, "fail to add filter:ret[%d]", ret);
-  }
-  else
-  {
-    has_filter_ = true;
-  }
-  return ret;
-}
-
-int ObTabletScan::set_limit(const int64_t limit, const int64_t offset)
-{
-  int ret = OB_SUCCESS;
-  ret = limit_.set_limit(limit, offset);
-  if (OB_SUCCESS != ret)
-  {
-    TBSYS_LOG(WARN, "fail to set limit. ret=%d", ret);
-  }
-  else
-  {
-    has_limit_ = true;
-  }
-  return ret;
-}
-
-int ObTabletScan::add_output_column(const ObSqlExpression& expr)
-{
-  int ret = OB_SUCCESS;
-  if(OB_SUCCESS != (ret = out_columns_.push_back(expr)))
-  {
-    TBSYS_LOG(WARN, "add output column fail:ret[%d]", ret);
-  }
-  else if(OB_SUCCESS != (ret = project_.add_output_column(expr)))
-  {
-    TBSYS_LOG(WARN, "fail to add project:ret[%d]", ret);
-  }
-  else
-  {
-    has_project_ = true;
-  }
-  return ret;
+  op_root_ = NULL;
+  op_ups_scan_.reset();
+  op_tablet_join_.reset();
+  op_rename_.clear();
+  op_filter_.clear();
+  op_project_.clear();
+  op_scalar_agg_.reset();
+  op_group_columns_sort_.reset();
+  op_group_.reset();
+  op_limit_.clear();
 }
 
 ObTabletScan::~ObTabletScan()
 {
 }
 
-int ObTabletScan::set_operator_factory(ObOperatorFactory *op_factory)
-{
-  int ret = OB_SUCCESS;
-  if(NULL == op_factory)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "op_factory is null");
-  }
-  else
-  {
-    op_factory_ = op_factory;
-  }
-  return ret;
-}
-
-int ObTabletScan::set_schema_manager(ObSchemaManagerV2 *schema_mgr)
-{
-  int ret = OB_SUCCESS;
-  if(NULL == schema_mgr)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "schema mgr is null");
-  }
-  else
-  {
-    schema_mgr_ = schema_mgr;
-  }
-  return ret;
-}
-
-int ObTabletScan::set_ups_rpc_stub(ObUpsRpcStub *ups_rpc_stub)
-{
-  int ret = OB_SUCCESS;
-  if(NULL == ups_rpc_stub)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "ups rpc stub is null");
-  }
-  else
-  {
-    ups_rpc_stub_ = ups_rpc_stub;
-  }
-  return ret;
-}
-
-bool ObTabletScan::check_inner_stat()
+bool ObTabletScan::has_incremental_data() const
 {
   bool ret = false;
-  ret = join_batch_count_ > 0 && NULL != schema_mgr_ && OB_INVALID_ID != scan_range_.table_id_ && NULL != op_factory_ && NULL != ups_rpc_stub_;
-  if(!ret)
+  switch (plan_level_)
   {
-    TBSYS_LOG(WARN, "join_batch_count_[%ld], schema_mgr_[%p], scan_range_.table_id_[%lu], op_factory_[%p], ups_rpc_stub_[%p]", 
-      join_batch_count_, schema_mgr_, scan_range_.table_id_, op_factory_, ups_rpc_stub_);
+    case SSTABLE_DATA:
+      ret = false;
+      break;
+    case UPS_DATA:
+      ret = !op_ups_scan_.is_result_empty();
+      break;
+    case JOIN_DATA:
+      ret = true;
+      break;
   }
+  return ret;
+}
+
+int ObTabletScan::need_incremental_data(
+    ObArray<uint64_t> &basic_columns, 
+    ObTabletJoin::TableJoinInfo &table_join_info, 
+    int64_t start_data_version, 
+    int64_t end_data_version)
+
+{
+  int ret = OB_SUCCESS;
+  ObUpsScan *op_ups_scan = NULL;
+  ObTabletScanFuse *op_tablet_scan_fuse = NULL;
+  ObTabletJoin *op_tablet_join = NULL;
+  ObTableRename *op_rename = NULL;
+  uint64_t table_id = sql_scan_param_->get_table_id();
+  uint64_t renamed_table_id = sql_scan_param_->get_renamed_table_id();
+  ObVersionRange version_range;
+
+  if(OB_SUCCESS == ret)
+  {
+    op_ups_scan = &op_ups_scan_;
+    version_range.start_version_ = ObVersion(start_data_version + 1);
+    version_range.border_flag_.unset_min_value();
+    version_range.border_flag_.set_inclusive_start();
+
+    if (end_data_version == OB_NEWEST_DATA_VERSION)
+    {
+      version_range.border_flag_.set_max_value();
+    }
+    else
+    {
+      version_range.end_version_ = ObVersion(end_data_version);
+      version_range.border_flag_.unset_max_value();
+      version_range.border_flag_.set_inclusive_end();
+    }
+    op_ups_scan->set_version_range(version_range);
+  }
+
+  // init ups scan
+  if (OB_SUCCESS == ret)
+  {
+    if(OB_SUCCESS != (ret = op_ups_scan->set_ups_rpc_proxy(rpc_proxy_)))
+    {
+      TBSYS_LOG(WARN, "ups scan set ups rpc stub fail:ret[%d]", ret);
+    }
+    else if(OB_SUCCESS != (ret = op_ups_scan->set_network_timeout(network_timeout_)))
+    {
+      TBSYS_LOG(WARN, "set ups scan timeout fail:ret[%d]", ret);
+    }
+    else
+    {
+      op_ups_scan->set_is_read_consistency(sql_scan_param_->get_is_read_consistency());
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    op_ups_scan->set_range(*(sql_scan_param_->get_range()));
+    for (int64_t i=0;OB_SUCCESS == ret && i<basic_columns.count();i++)
+    {
+      if(OB_SUCCESS != (ret = op_ups_scan->add_column(basic_columns.at(i))))
+      {
+        TBSYS_LOG(WARN, "op ups scan add column fail:ret[%d]", ret);
+      }
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    op_tablet_scan_fuse = &op_tablet_scan_fuse_;
+    if (OB_SUCCESS == ret)
+    {
+      last_rowkey_op_ = op_tablet_scan_fuse;
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    if(OB_SUCCESS != (ret = op_tablet_scan_fuse->set_sstable_scan(&op_sstable_scan_)))
+    {
+      TBSYS_LOG(WARN, "set sstable scan fail:ret[%d]", ret);
+    }
+    else if(OB_SUCCESS != (ret = op_tablet_scan_fuse->set_incremental_scan(op_ups_scan)))
+    {
+      TBSYS_LOG(WARN, "set incremental scan fail:ret[%d]", ret);
+    }
+    else
+    {
+      plan_level_ = UPS_DATA;
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    if(table_join_info.join_column_.count() > 0)
+    {
+      op_tablet_join = &op_tablet_join_;
+      if (OB_SUCCESS == ret)
+      {
+        op_tablet_join->set_version_range(version_range);
+        op_tablet_join->set_table_join_info(table_join_info);
+        op_tablet_join->set_batch_count(join_batch_count_);
+        op_tablet_join->set_is_read_consistency(is_read_consistency_);
+        op_tablet_join->set_child(0, *op_tablet_scan_fuse);
+        op_tablet_join->set_network_timeout(network_timeout_);
+        if (OB_SUCCESS != (ret = op_tablet_join->set_rpc_proxy(rpc_proxy_) ))
+        {
+          TBSYS_LOG(WARN, "fail to set rpc proxy:ret[%d]", ret);
+        }
+        else
+        {
+          op_root_ = op_tablet_join;
+          plan_level_ = JOIN_DATA;
+        }
+      }
+    }
+    else
+    {
+      op_root_ = op_tablet_scan_fuse;
+    }
+  }
+
+  if(OB_SUCCESS == ret && renamed_table_id != table_id)
+  {
+    op_rename = &op_rename_;
+    if (OB_SUCCESS == ret)
+    {
+      if(OB_SUCCESS != (ret = op_rename->set_table(renamed_table_id, table_id)))
+      {
+        TBSYS_LOG(WARN, "op_rename set table fail:ret[%d]", ret);
+      }
+      else if(OB_SUCCESS != (ret = op_rename->set_child(0, *op_root_)))
+      {
+        TBSYS_LOG(WARN, "op_rename set child fail:ret[%d]", ret);
+      }
+      else
+      {
+        op_root_ = op_rename; 
+      }
+    }
+  }
+  return ret;
+}
+
+bool ObTabletScan::check_inner_stat() const
+{
+  bool ret = false;
+
+  ret = join_batch_count_ > 0 
+  && NULL != sql_scan_param_
+  && network_timeout_ > 0
+  && NULL != rpc_proxy_;
+ 
+  if (!ret)
+  {
+    TBSYS_LOG(WARN, "join_batch_count_[%ld], "
+    "sql_scan_param_[%p], "
+    "network_timeout_[%ld], "
+    "rpc_proxy_[%p]",
+    join_batch_count_, 
+    sql_scan_param_,
+    network_timeout_,
+    rpc_proxy_);
+  }
+
   return ret;
 }
 
 int64_t ObTabletScan::to_string(char* buf, const int64_t buf_len) const
 {
-  int ret = OB_NOT_IMPLEMENT;
-  UNUSED(buf);
-  UNUSED(buf_len);
-  TBSYS_LOG(WARN, "not implement");
-  return ret;
+  int64_t pos = 0;
+  if (NULL != op_root_)
+  {
+    op_root_->to_string(buf, buf_len);
+  }
+  return pos;
 }
 
-int ObTabletScan::set_child(int32_t child_idx, ObPhyOperator &child_operator)
-{
-  int ret = OB_NOT_IMPLEMENT;
-  UNUSED(child_idx);
-  UNUSED(child_operator);
-  TBSYS_LOG(WARN, "not implement");
-  return ret;
-}
-
-void ObTabletScan::set_range(const ObRange &scan_range)
-{
-  scan_range_ = scan_range;
-}
-
-int ObTabletScan::create_plan()
+int ObTabletScan::build_sstable_scan_param(ObArray<uint64_t> &basic_columns, 
+    const ObSqlScanParam &sql_scan_param, sstable::ObSSTableScanParam &sstable_scan_param) const
 {
   int ret = OB_SUCCESS;
-  ObSqlExpression expr;
-  uint64_t table_id = OB_INVALID_ID;
-  uint64_t column_id = OB_INVALID_ID;
-  const ObColumnSchemaV2 *column_schema = NULL;
-  const ObColumnSchemaV2::ObJoinInfo *join_info = NULL;
+
+  sstable_scan_param.set_range(*sql_scan_param.get_range());
+  sstable_scan_param.set_is_result_cached(sql_scan_param.get_is_result_cached());
+  sstable_scan_param.set_not_exit_col_ret_nop(false);
+  sstable_scan_param.set_scan_flag(sql_scan_param.get_scan_flag());
+
+  for (int64_t i=0; OB_SUCCESS == ret && i<basic_columns.count(); i++)
+  {
+    if(OB_SUCCESS != (ret = sstable_scan_param.add_column(basic_columns.at(i))))
+    {
+      TBSYS_LOG(WARN, "scan param add column fail:ret[%d]", ret);
+    }
+  }
+
+  return ret;
+}
+
+int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
+{
+  int ret = OB_SUCCESS;
+  sstable::ObSSTableScanParam sstable_scan_param;
   ObTabletJoin::TableJoinInfo table_join_info;
-  ObTabletJoin::JoinInfo join_info_item;
-  ObTabletJoin::JoinInfo join_cond_item;
-  std::set<uint64_t> column_ids;
-  std::set<uint64_t>::iterator iter;
-  ObScanParam scan_param;
-  bool is_cid = false;
-
-  if(!check_inner_stat())
+  ObArray<uint64_t> basic_columns;
+  uint64_t table_id = sql_scan_param_->get_table_id();
+  uint64_t renamed_table_id = sql_scan_param_->get_renamed_table_id();
+  ObProject *op_project = NULL;
+  ObLimit *op_limit = NULL;
+  ObFilter *op_filter = NULL;
+  int64_t data_version;
+  bool is_need_incremental_data = true;
+  INIT_PROFILE_LOG_TIMER();
+  
+  if (OB_SUCCESS != (ret = get_basic_column_and_join_info(
+                               sql_scan_param_->get_project(), 
+                               schema_mgr, 
+                               table_id, 
+                               renamed_table_id, 
+                               basic_columns, 
+                               table_join_info)))
   {
-    ret = OB_ERROR;
-    TBSYS_LOG(WARN, "check inner stat fail");
+    TBSYS_LOG(WARN, "fail to get basic column and join info:ret[%d]", ret);
   }
 
-  //找到所有的需要join的普通列
-  for(int32_t i=0;OB_SUCCESS == ret && i<out_columns_.count();i++)
-  {
-    if(OB_SUCCESS != (ret = out_columns_.at(i, expr)))
-    {
-      TBSYS_LOG(WARN, "get expression from out columns fail:ret[%d] i[%d]", ret, i);
-    }
-    if(OB_SUCCESS == ret)
-    {
-      table_id = expr.get_table_id();
-      column_id = expr.get_column_id();
-
-      //如果是普通列, 复合列不交给下层的物理操作符
-      if( (OB_SUCCESS == (ret = expr.get_decoded_expression().is_column_index_expr(is_cid))) && is_cid)
-      {
-        column_ids.insert(column_id);
-        if(NULL == (column_schema = schema_mgr_->get_column_schema(table_id, column_id)))
-        {
-          ret = OB_ERROR;
-          TBSYS_LOG(WARN, "get column schema fail:table_id[%lu] column_id[%lu]", table_id, column_id);
-        }
-        //构造对应的join_info信息
-        if(OB_SUCCESS == ret)
-        {
-          join_info = column_schema->get_join_info();
-          if(NULL != join_info)
-          {
-            if(OB_INVALID_ID == table_join_info.left_table_id_)
-            {
-              table_join_info.left_table_id_ = table_id;
-            }
-            else if(table_join_info.left_table_id_ != table_id)
-            {
-              ret = OB_ERROR;
-              TBSYS_LOG(WARN, "left table id cannot change:t1[%lu], t2[%lu]", table_join_info.left_table_id_, table_id);
-            }
-            
-            if(OB_SUCCESS == ret)
-            {
-              join_info_item.right_table_id_ = join_info->join_table_;
-              join_info_item.left_column_id_ = column_schema->get_id();
-              join_info_item.right_column_id_ = join_info->correlated_column_;
-              if(OB_SUCCESS != (ret = table_join_info.join_column_.push_back(join_info_item)))
-              {
-                TBSYS_LOG(WARN, "add join info item fail:ret[%d]", ret);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    //如果存在需要join的列
-    if(table_join_info.join_column_.count() > 0)
-    {
-      //取得构成join table rowkey的条件
-      if(OB_SUCCESS != (ret = get_join_cond(table_join_info)))
-      {
-        TBSYS_LOG(WARN, "get join condition fail:ret[%d]", ret);
-      }
-
-      //添加join需要的列id
-      if(OB_SUCCESS == ret)
-      {
-        for(int32_t i=0;OB_SUCCESS == ret && i<table_join_info.join_condition_.count();i++)
-        {
-          if(OB_SUCCESS != (ret = table_join_info.join_condition_.at(i, join_cond_item)))
-          {
-            TBSYS_LOG(WARN, "get join cond fail:ret[%d] i[%d]", ret, i);
-          }
-          column_ids.insert(join_cond_item.left_column_id_);
-        }
-      }
-
-      if(OB_SUCCESS == ret)
-      {
-        op_tablet_join_ = new(std::nothrow) ObTabletJoin();
-        if(NULL == op_tablet_join_)
-        {
-          ret = OB_ALLOCATE_MEMORY_FAILED;
-          TBSYS_LOG(WARN, "new ObTabletJoin fail");
-        }
-      }
-
-      if(OB_SUCCESS == ret)
-      {
-        op_ups_multi_get_ = new(std::nothrow) ObUpsMultiGet();
-        if(NULL == op_ups_multi_get_)
-        {
-          ret = OB_ALLOCATE_MEMORY_FAILED;
-          TBSYS_LOG(WARN, "new ups multi get fail");
-        }
-        else if( OB_SUCCESS != (ret = op_ups_multi_get_->set_rpc_stub(ups_rpc_stub_)) )
-        {
-          TBSYS_LOG(WARN, "ups multi get set rpc stub fail:ret[%d]", ret);
-        }
-        else if(OB_SUCCESS != (ret = op_ups_multi_get_->set_network_timeout(1000)))
-        {
-          TBSYS_LOG(WARN, "set network timeout fail:ret[%d]", ret);
-        }
-        else
-        {
-          op_tablet_join_->set_ups_multi_get(op_ups_multi_get_);
-        }
-      }
-
-      if(OB_SUCCESS == ret)
-      {
-        op_tablet_join_->set_table_join_info(table_join_info);
-        op_tablet_join_->set_batch_count(join_batch_count_);
-
-        for(iter = column_ids.begin();OB_SUCCESS == ret && iter != column_ids.end();iter ++)
-        {
-          if(OB_SUCCESS != (ret = op_tablet_join_->add_column_id(*iter)))
-          {
-            TBSYS_LOG(WARN, "tablet join operator add column id fail:ret[%d], column_id[%lu]", ret, *iter);
-          }
-        }
-      }
-    }
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    op_ups_scan_ = new(std::nothrow) ObUpsScan();
-    if(NULL == op_ups_scan_)
-    {
-      ret = OB_ALLOCATE_MEMORY_FAILED;
-      TBSYS_LOG(WARN, "new ups scan fail");
-    }
-    else if(OB_SUCCESS != (ret = op_ups_scan_->set_ups_rpc_stub(ups_rpc_stub_)))
-    {
-      TBSYS_LOG(WARN, "ups scan set ups rpc stub fail:ret[%d]", ret);
-    }
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    op_ups_scan_->set_range(scan_range_);
-
-    for(iter = column_ids.begin();OB_SUCCESS == ret && iter != column_ids.end();iter ++)
-    {
-      if(OB_SUCCESS != (ret = scan_param.add_column(*iter)))
-      {
-        TBSYS_LOG(WARN, "scan param add column fail:ret[%d]", ret);
-      }
-      else if(OB_SUCCESS != (ret = op_ups_scan_->add_column(*iter)))
-      {
-        TBSYS_LOG(WARN, "op ups scan add column fail:ret[%d]", ret);
-      }
-    }
-
-    op_sstable_scan_ = op_factory_->new_sstable_scan();
-    if(NULL == op_sstable_scan_)
-    {
-      ret = OB_ERROR;
-      TBSYS_LOG(WARN, "new sstable scan fail");
-    }
- }
-
- if(OB_SUCCESS == ret)
- {
-    scan_param.set_range(scan_range_);
-    sstable::ObSSTableScanParam sstable_scan_param;
-    sstable_scan_param.assign(scan_param);
-    sstable_scan_param.get_range().table_id_ = scan_range_.table_id_;
-
-    if(OB_SUCCESS != (ret = op_sstable_scan_->set_scan_param(sstable_scan_param)))
-    {
-      TBSYS_LOG(WARN, "set scan param fail:ret[%d]", ret);
-    }
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    if(NULL == (op_tablet_fuse_ = new(std::nothrow) ObTabletFuse()))
-    {
-      ret = OB_ALLOCATE_MEMORY_FAILED;
-      TBSYS_LOG(WARN, "new ObTabletFuse fail:ret[%d]", ret);
-    }
-    else if(OB_SUCCESS != (ret = op_tablet_fuse_->set_sstable_scan(op_sstable_scan_)))
-    {
-      TBSYS_LOG(WARN, "set sstable scan fail:ret[%d]", ret);
-    }
-    else if(OB_SUCCESS != (ret = op_tablet_fuse_->set_incremental_scan(op_ups_scan_)))
-    {
-      TBSYS_LOG(WARN, "set incremental scan fail:ret[%d]", ret);
-    }
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    if(NULL != op_tablet_join_)
-    {
-      op_tablet_join_->set_child(0, *op_tablet_fuse_);
-      op_root_ = op_tablet_join_;
-    }
-    else
-    {
-      op_root_ = op_tablet_fuse_;
-    }
-  }
-
-  return ret;
-}
-
-int ObTabletScan::open()
-{
-  int ret = OB_SUCCESS;
-  if(OB_SUCCESS != (ret = create_plan()))
-  {
-    TBSYS_LOG(WARN, "create plan fail:ret[%d]", ret);
-  }
-
-  if (OB_SUCCESS == ret && has_filter_)
-  {
-    if (OB_SUCCESS != (ret = filter_.set_child(0, *op_root_)))
-    {
-      TBSYS_LOG(WARN, "fail to set filter child. ret=%d", ret);
-    }
-    else
-    {
-      op_root_ = &filter_;
-    }
-  }
-  if (OB_SUCCESS == ret && has_project_)
-  {
-    if (OB_SUCCESS != (ret = project_.set_child(0, *op_root_)))
-    {
-      TBSYS_LOG(WARN, "fail to set project child. ret=%d", ret);
-    }
-    else
-    {
-      op_root_ = &project_;
-    }
-  }
-  if (OB_SUCCESS == ret && has_limit_)
-  {
-    if (OB_SUCCESS != (ret = limit_.set_child(0, *op_root_)))
-    {
-      TBSYS_LOG(WARN, "fail to set limit child. ret=%d", ret);
-    }
-    else
-    {
-      op_root_ = &limit_;
-    }
-  }
   if (OB_SUCCESS == ret)
   {
-    ret = op_root_->open();
-    if (OB_SUCCESS != ret)
+
+    if (OB_SUCCESS != (ret = build_sstable_scan_param(basic_columns, *sql_scan_param_, sstable_scan_param)))
     {
-      TBSYS_LOG(WARN, "open tablets scan child operator fail. ret=%d", ret);
+      TBSYS_LOG(WARN, "build_sstable_scan_param ret=%d", ret);
+    }
+    else if(OB_SUCCESS != (ret = op_sstable_scan_.open_scan_context(sstable_scan_param, scan_context_)))
+    {
+      TBSYS_LOG(WARN, "fail to open scan context:ret[%d]", ret);
+    }
+    else
+    {
+      plan_level_ = SSTABLE_DATA;
     }
   }
+
+  if (OB_SUCCESS == ret)
+  {
+    FILL_TRACE_LOG("read only static data[%s]", sql_scan_param_->get_is_only_static_data() ? "TRUE":"FALSE");
+    if (sql_scan_param_->get_is_only_static_data())
+    {
+      is_need_incremental_data = false;
+      last_rowkey_op_ = &op_sstable_scan_;
+    }
+    else
+    {
+      op_sstable_scan_.get_tablet_data_version(data_version);
+      FILL_TRACE_LOG("request data version[%ld], cs serving data version[%ld]", 
+        sql_scan_param_->get_data_version(), data_version);
+      PROFILE_LOG_TIME(DEBUG, "op_sstable_scan_ open context complete, data version[%ld] , range=%s", 
+          data_version, to_cstring(*sql_scan_param_->get_range()));
+      if (sql_scan_param_->get_data_version() != OB_NEWEST_DATA_VERSION)
+      {
+        if (sql_scan_param_->get_data_version() == OB_INVALID_VERSION)
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "invalid version");
+        }
+        else if (sql_scan_param_->get_data_version() < data_version)
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "The request version is not exist: request version[%ld], sstable version[%ld]", sql_scan_param_->get_data_version(), data_version);
+        }
+        else if (sql_scan_param_->get_data_version() == data_version)
+        {
+          last_rowkey_op_ = &op_sstable_scan_;
+          is_need_incremental_data = false;
+        }
+      }
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    if (is_need_incremental_data)
+    {
+      if (OB_SUCCESS != (ret = need_incremental_data(
+                             basic_columns, 
+                             table_join_info, 
+                             data_version, 
+                             sql_scan_param_->get_data_version())))
+      {
+        TBSYS_LOG(WARN, "fail to add ups operator:ret[%d]", ret);
+      }
+    }
+    else
+    {
+      op_root_ = &op_sstable_scan_;
+    }
+  }
+
+  if (OB_SUCCESS == ret && sql_scan_param_->has_filter())
+  {
+    op_filter = &op_filter_;
+    if (OB_SUCCESS == ret)
+    {
+      op_filter->assign(sql_scan_param_->get_filter());
+      if (OB_SUCCESS != (ret = op_filter->set_child(0, *op_root_)))
+      {
+        TBSYS_LOG(WARN, "fail to set filter child. ret=%d", ret);
+      }
+      else
+      {
+        op_root_ = op_filter;
+      }
+    }
+  }
+
+  // daily merge scan no need project operator, 
+  // there is no composite columns but plain column scan.
+  // ObProject is container of query columns and set 
+  // ObSSTableScanParam put into ObSSTableScan.
+  if (OB_SUCCESS == ret 
+      && basic_columns.count() != sql_scan_param_->get_project().get_output_columns().count() 
+      && sql_scan_param_->has_project())
+  {
+    op_project = &op_project_;
+    if (OB_SUCCESS == ret)
+    {
+      op_project->assign(sql_scan_param_->get_project());
+      if (OB_SUCCESS != (ret = op_project->set_child(0, *op_root_)))
+      {
+        TBSYS_LOG(WARN, "fail to set project child. ret=%d", ret);
+      }
+      else
+      {
+        op_root_ = op_project;
+      }
+    }
+  }
+  if (OB_SUCCESS == ret 
+    && (sql_scan_param_->has_scalar_agg() || sql_scan_param_->has_group()))
+  {
+    if (sql_scan_param_->has_scalar_agg() && sql_scan_param_->has_group())
+    {
+      ret = OB_ERR_GEN_PLAN;
+      TBSYS_LOG(WARN, "Group operator and scalar aggregate operator"
+        " can not appear in TabletScan at the same time. ret=%d", ret);
+    }
+    else if (sql_scan_param_->has_scalar_agg())
+    {
+      op_scalar_agg_.assign(sql_scan_param_->get_scalar_agg());
+      // add scalar aggregation
+      if (OB_SUCCESS != (ret = op_scalar_agg_.set_child(0, *op_root_)))
+      {
+        TBSYS_LOG(WARN, "Fail to set child of scalar aggregate operator. ret=%d", ret);
+      }
+      else
+      {
+        op_root_ = &op_scalar_agg_;
+      }
+    }
+    else if (sql_scan_param_->has_group())
+    {
+      // add group by
+      if (!sql_scan_param_->has_group_columns_sort())
+      {
+        ret = OB_ERR_GEN_PLAN;
+        TBSYS_LOG(WARN, "Physical plan error, group need a sort operator. ret=%d", ret);
+      }
+      else
+      {
+        op_group_columns_sort_.assign(sql_scan_param_->get_group_columns_sort());
+        op_group_.assign(sql_scan_param_->get_group());
+      }
+      if (OB_UNLIKELY(OB_SUCCESS != ret))
+      {
+      }
+      else if (OB_SUCCESS != (ret = op_group_columns_sort_.set_child(0, *op_root_)))
+      {
+        TBSYS_LOG(WARN, "Fail to set child of sort operator. ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = op_group_.set_child(0, op_group_columns_sort_)))
+      {
+        TBSYS_LOG(WARN, "Fail to set child of group operator. ret=%d", ret);
+      }
+      else
+      {
+        op_root_ = &op_group_;
+      }
+    }
+  }
+  if (OB_SUCCESS == ret && sql_scan_param_->has_limit())
+  {
+    op_limit = &op_limit_;
+    if (OB_SUCCESS == ret)
+    {
+      op_limit->assign(sql_scan_param_->get_limit());
+      if (OB_SUCCESS != (ret = op_limit->set_child(0, *op_root_)))
+      {
+        TBSYS_LOG(WARN, "fail to set limit child. ret=%d", ret);
+      }
+      else
+      {
+        op_root_ = op_limit;
+      }
+    }
+  }
+
+  //release tablet
+  if (OB_SUCCESS != ret)
+  {
+    int err = OB_SUCCESS;
+    if (OB_SUCCESS != (err = op_sstable_scan_.close()))
+    {
+      TBSYS_LOG(WARN, "fail to close op sstable scan:ret[%d]", err);
+    }
+  }
+
   return ret;
 }
 
-int ObTabletScan::close()
-{
-  op_root_->close();
-  //释放内存等;
 
-  if(NULL != op_sstable_scan_)
-  {
-    delete op_sstable_scan_;
-  }
-  if(NULL != op_ups_scan_)
-  {
-    delete op_ups_scan_;
-  }
-  if(NULL != op_ups_multi_get_)
-  {
-    delete op_ups_multi_get_;
-  }
-  if(NULL != op_tablet_fuse_)
-  {
-    delete op_tablet_fuse_;
-  }
-  if(NULL != op_tablet_join_)
-  {
-    delete op_tablet_join_;
-  }
-  return OB_SUCCESS;
-}
-
-int ObTabletScan::get_next_row(const ObRow *&row)
-{
-  int ret = OB_SUCCESS;
-  ret = op_root_->get_next_row(row);
-  if(OB_SUCCESS != ret && OB_ITER_END != ret)
-  {
-    TBSYS_LOG(WARN, "get next row fail:ret[%d]", ret);
-  }
-  return ret;
-}
 

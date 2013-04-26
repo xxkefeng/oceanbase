@@ -42,11 +42,10 @@ namespace oceanbase
           const int64_t serving_version);
         int acquire_tablets_and_readers(const common::ObTabletReportInfoList& tablet_list);
         int release_tablets();
-        int create_hard_link_sstable(int64_t& sstable_size);
         int get_new_sstable_path(common::ObString& sstable_path);
-        int do_merge_sstable();
-        int get_new_tablet_range(common::ObRange& new_range);
-        int create_new_tablet(ObTablet*& new_tablet);
+        int do_merge_sstable(const common::ObNewRange& new_range);
+        int get_new_tablet_range(common::ObNewRange& new_range);
+        int create_new_tablet(const common::ObNewRange& new_range, ObTablet*& new_tablet);
         int update_tablet_image(ObTablet* tablet);
         int fill_return_tablet_list(common::ObTabletReportInfoList& tablet_list, 
           const ObTablet& tablet);
@@ -66,7 +65,6 @@ namespace oceanbase
         common::ObArrayHelper<ObTablet*> tablet_array_;
         sstable::ObSSTableReader* sstable_readers_[MAX_MERGE_TABLET_NUM];
         common::ObArrayHelper<sstable::ObSSTableReader*> sstable_array_;
-        ObTablet* last_tablet_with_reader_;
         int64_t max_tablet_seq_;
 
         sstable::ObSSTableMerger sstable_merger_;

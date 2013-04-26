@@ -2,9 +2,9 @@
  //
  // ob_hashtable.cpp / hash / common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2010-07-23 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2010-07-23 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -222,9 +222,9 @@ namespace oceanbase
           int64_t bucket_pos_;
           hashnode *node_;
       };
-      
+
       template <class _value_type>
-      struct HashTableTypes 
+      struct HashTableTypes
       {
         typedef ObHashTableNode<_value_type> AllocType;
       };
@@ -275,6 +275,10 @@ namespace oceanbase
             }
           };
         public:
+          inline bool created()
+          {
+            return inited(buckets_);
+          }
           // 注意 向上取质数自己调用ob_hashutils.h中的cal_next_prime去算，这里不管
           int create(int64_t bucket_num, _allocer *allocer)
           {
@@ -312,7 +316,7 @@ namespace oceanbase
             //if (NULL == buckets_ || NULL == allocer_)
             if (!inited(buckets_) || NULL == allocer_)
             {
-              HASH_WRITE_LOG(HASH_WARNING, "hashtable is empty");
+              HASH_WRITE_LOG(HASH_DEBUG, "hashtable is empty");
             }
             else
             {
@@ -346,7 +350,6 @@ namespace oceanbase
             //if (NULL == buckets_ || NULL == allocer_)
             if (!inited(buckets_) || NULL == allocer_)
             {
-              HASH_WRITE_LOG(HASH_WARNING, "hashtable is empty");
               ret = -1;
             }
             else
@@ -423,18 +426,42 @@ namespace oceanbase
             return const_iterator(this, bucket_num_, NULL);
           };
         private:
-          inline int internal_get(const hashbucket &bucket, const _key_type &key, 
+          inline int internal_get(const hashbucket &bucket, const _key_type &key,
                            _value_type &value, bool &is_fake) const
           {
             int ret = HASH_NOT_EXIST;
             hashnode *node = bucket.node;
             is_fake = false;
-            
+
             while (NULL != node)
             {
               if (equal_(getkey_(node->data), key))
               {
                 value = node->data;
+                is_fake = node->is_fake;
+                ret = HASH_EXIST;
+                break;
+              }
+              else
+              {
+                node = node->next;
+              }
+            }
+
+            return ret;
+          }
+          inline int internal_get(const hashbucket &bucket, const _key_type &key,
+                           const _value_type *&value, bool &is_fake) const
+          {
+            int ret = HASH_NOT_EXIST;
+            hashnode *node = bucket.node;
+            is_fake = false;
+
+            while (NULL != node)
+            {
+              if (equal_(getkey_(node->data), key))
+              {
+                value = &(node->data);
                 is_fake = node->is_fake;
                 ret = HASH_EXIST;
                 break;
@@ -492,16 +519,18 @@ namespace oceanbase
               bool is_fake = false;
               readlocker locker(bucket.lock);
               ret = internal_get(bucket, key, value, is_fake);
-              
+
               if (timeout_us > 0)
               {
                 if (HASH_EXIST == ret && is_fake)
                 {
                   struct timespec ts;
-                  ts = microseconds_to_ts(get_cur_microseconds_time() + timeout_us);
+                  int64_t abs_timeout_us = get_cur_microseconds_time() + timeout_us;
+                  ts = microseconds_to_ts(abs_timeout_us);
                   do
                   {
-                    if (ETIMEDOUT == cond_waiter()(bucket.cond, bucket.lock, ts))
+                    if (get_cur_microseconds_time() > abs_timeout_us
+                        || ETIMEDOUT == cond_waiter()(bucket.cond, bucket.lock, ts))
                     {
                       HASH_WRITE_LOG(HASH_WARNING, "wait fake node become normal node timeout");
                       ret = HASH_GET_TIMEOUT;
@@ -510,7 +539,8 @@ namespace oceanbase
                     ret = internal_get(bucket, key, value, is_fake);
                     if (HASH_NOT_EXIST == ret)
                     {
-                      break;
+                      // maybe different keys hit the same bucket, wait the correct kv pair ready
+                      continue;
                     }
                   }
                   while (HASH_EXIST == ret && is_fake);
@@ -534,12 +564,74 @@ namespace oceanbase
             }
             return ret;
           };
+          int get(const _key_type &key, const _value_type *&value, const int64_t timeout_us = 0)
+          {
+            int ret = 0;
+            //if (NULL == buckets_ || NULL == allocer_)
+            if (!inited(buckets_) || NULL == allocer_)
+            {
+              HASH_WRITE_LOG(HASH_WARNING, "hashtable is empty");
+              ret = -1;
+            }
+            else
+            {
+              uint64_t hash_value = hashfunc_(key);
+              int64_t bucket_pos = hash_value % bucket_num_;
+              hashbucket &bucket = buckets_[bucket_pos];
+              bool is_fake = false;
+              readlocker locker(bucket.lock);
+              ret = internal_get(bucket, key, value, is_fake);
+
+              if (timeout_us > 0)
+              {
+                if (HASH_EXIST == ret && is_fake)
+                {
+                  struct timespec ts;
+                  int64_t abs_timeout_us = get_cur_microseconds_time() + timeout_us;
+                  ts = microseconds_to_ts(abs_timeout_us);
+                  do
+                  {
+                    if (get_cur_microseconds_time() > abs_timeout_us
+                        || ETIMEDOUT == cond_waiter()(bucket.cond, bucket.lock, ts))
+                    {
+                      HASH_WRITE_LOG(HASH_WARNING, "wait fake node become normal node timeout");
+                      ret = HASH_GET_TIMEOUT;
+                      break;
+                    }
+                    ret = internal_get(bucket, key, value, is_fake);
+                    if (HASH_NOT_EXIST == ret)
+                    {
+                      // maybe different keys hit the same bucket, wait the correct kv pair ready
+                      continue;
+                    }
+                  }
+                  while (HASH_EXIST == ret && is_fake);
+                }
+                if (HASH_NOT_EXIST == ret)
+                {
+                  //add a fake value
+                  if (HASH_INSERT_SUCC != internal_set(bucket, _value_type(), true))
+                  {
+                    ret = -1;
+                  }
+                }
+              }
+              else
+              {
+                if (HASH_EXIST == ret && is_fake)
+                {
+                  ret = HASH_NOT_EXIST;
+                }
+              }
+            }
+            return ret;
+          };
           // 返回  -1  表示set调用出错, (无法分配新结点等)
           // 其他均表示插入成功：插入成功分下面三个状态
-          // 返回  HASH_OVERWRITE  表示覆盖旧结点成功(在flag非0的时候返回）
+          // 返回  HASH_OVERWRITE_SUCC  表示覆盖旧结点成功(在flag非0的时候返回）
           // 返回  HASH_INSERT_SEC 表示插入新结点成功
           // 返回  HASH_EXIST  表示hash表结点存在（在flag为0的时候返回)
-          int set(const _key_type &key, const _value_type &value, int flag = 0, 
+          int set(const _key_type &key, const _value_type &value, int flag = 0,
                   int broadcast = 0, int overwrite_key = 0)
           {
             int ret = 0;
@@ -801,4 +893,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_HASH_HASHTABLE_H_
-

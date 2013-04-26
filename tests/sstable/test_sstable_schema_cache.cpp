@@ -25,7 +25,7 @@ namespace oceanbase
   {
     namespace sstable
     {
-      static const int64_t MAX_SCHEMA_VER_COUNT = OB_MAX_TABLE_NUMBER;
+      static const int64_t MAX_SCHEMA_VER_COUNT = 1024;
 
       class TestObSSTableSchemaCache: public ::testing::Test
       {

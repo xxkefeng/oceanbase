@@ -22,6 +22,8 @@
 #include "common/ob_mod_define.h"
 #include "sstable/ob_sstable_block_index_v2.h"
 #include "ob_tablet.h"
+#include "ob_disk_manager.h"
+#include "ob_fileinfo_cache.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::common::serialization;
@@ -175,26 +177,24 @@ namespace oceanbase
     {
     }
 
-    int ObTabletRowkeyBuilder::append_range(const common::ObRange& range)
+    int ObTabletRowkeyBuilder::append_range(const common::ObNewRange& range)
     {
       int ret = OB_SUCCESS;
       int64_t row_key_size = 
-        range.start_key_.length() + range.end_key_.length();
+        range.start_key_.get_serialize_objs_size() + range.end_key_.get_serialize_objs_size();
 
       if (OB_SUCCESS != (ret = ensure_space(row_key_size)))
       {
         TBSYS_LOG(ERROR, "rowkey size =%ld large than buf size(%ld,%ld)",
             row_key_size, data_size_, buf_size_);
       }
-      else
+      else if ( OB_SUCCESS != (ret = range.start_key_.serialize_objs(
+              buf_, buf_size_, data_size_)))
       {
-        // copy start_key & end_key to buf_;
-        memcpy(buf_ + data_size_, 
-            range.start_key_.ptr(), range.start_key_.length());
-        data_size_ += range.start_key_.length();
-        memcpy(buf_ + data_size_, 
-            range.end_key_.ptr(), range.end_key_.length());
-        data_size_ += range.end_key_.length();
+      }
+      else if ( OB_SUCCESS != (ret = range.end_key_.serialize_objs(
+              buf_, buf_size_, data_size_)))
+      {
       }
       return ret;
     }
@@ -229,13 +229,16 @@ namespace oceanbase
     //----------------------------------------
     ObTabletImage::ObTabletImage() 
       : tablet_list_(DEFAULT_TABLET_NUM), sstable_list_(DEFAULT_TABLET_NUM),
+      delete_table_tablet_list_(DEFAULT_TABLE_TABLET_NUM),
+      report_tablet_list_(DEFAULT_TABLET_NUM),
       hash_map_inited_(false), data_version_(0), 
       max_sstable_file_seq_(0), 
       ref_count_(0), cur_iter_idx_(INVALID_ITER_INDEX),
       merged_tablet_count_(0),
       mod_(ObModIds::OB_CS_TABLET_IMAGE), 
       allocator_(ModuleArena::DEFAULT_PAGE_SIZE, mod_),
-      fileinfo_cache_(NULL)
+      fileinfo_cache_(NULL),
+      disk_manager_(NULL)
     {
       // TODO reserve vector size.
     }
@@ -286,6 +289,8 @@ namespace oceanbase
       allocator_.free();
       tablet_list_.clear();
       sstable_list_.clear();
+      delete_table_tablet_list_.clear();
+      report_tablet_list_.clear();
       if (hash_map_inited_)
       {
         sstable_to_tablet_map_.clear();
@@ -300,30 +305,29 @@ namespace oceanbase
       return OB_SUCCESS;
     }
 
-    int ObTabletImage::find_sstable(const ObSSTableId& sstable_id, ObSSTableReader* &reader) const
+    int ObTabletImage::find_tablet(const ObSSTableId& sstable_id, 
+      ObTablet* &tablet) const
     {
-      int ret = OB_ERROR;
+      int ret = OB_SUCCESS;
       int hash_ret = 0;
+      tablet = NULL;
 
       if (hash_map_inited_)
       {
-        ObTablet* tablet = NULL;
         hash_ret = sstable_to_tablet_map_.get(sstable_id, tablet);
         if (hash::HASH_EXIST == hash_ret && NULL != tablet)
         {
-          ret = tablet->find_sstable(sstable_id, reader);
+          //do nothing
         }
         else if (-1 == hash_ret)
         {
           TBSYS_LOG(WARN, "failed to find sstable_id=%lu in hash map, hash_ret=%d",
             sstable_id.sstable_file_id_, hash_ret);
-          reader = NULL;
           ret = OB_ERROR;
         }
         else
         {
           ret = OB_ENTRY_NOT_EXIST;
-          reader = NULL;
         }
       }
       else
@@ -339,12 +343,11 @@ namespace oceanbase
 
         if (it != tablet_list_.end())
         {
-          ret = (*it)->find_sstable(sstable_id, reader);
+          tablet = *it;
         }
         else
         {
           ret = OB_ENTRY_NOT_EXIST;
-          reader = NULL;
         }
       }
       return ret;
@@ -394,42 +397,272 @@ namespace oceanbase
       return ret;
     }
 
+    int ObTabletImage::acquire_tablets(
+      const uint64_t table_id, ObVector<ObTablet*>& table_tablets)
+    {
+      int ret = OB_SUCCESS;
+
+      if (OB_INVALID_ID == table_id)
+      {
+        TBSYS_LOG(WARN, "tablet image acquire_tablets, invalid table_id=%lu", 
+          table_id);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        ObSortedVector<ObTablet*>::iterator it = tablet_list_.begin();
+        for (; it != tablet_list_.end(); ++it)
+        {
+          if (0 == table_id || (*it)->get_range().table_id_ == table_id) 
+          {
+            atomic_inc((atomic_t*) &ref_count_);
+            (*it)->inc_ref();
+            if (OB_SUCCESS != (ret = table_tablets.push_back(*it)))
+            {
+              TBSYS_LOG(WARN, "failed to push back tablet into "
+                              "tablet vector, range=%s",
+                to_cstring((*it)->get_range()));
+              break;
+            }
+          }
+        }
+      }
+
+      return ret;
+    }
+
+    int ObTabletImage::release_tablets(const ObVector<ObTablet*>& tablet_list)
+    {
+      int ret = OB_SUCCESS;
+      bool is_remove_sstable = false;
+      ObVector<ObTablet*>::iterator it = tablet_list.begin();
+      ObTablet* tablet = NULL;
+
+      for (; it != tablet_list.end(); ++it)
+      {
+        tablet = *it;
+        if (OB_SUCCESS != (ret = release_tablet(tablet, &is_remove_sstable)))
+        {
+          TBSYS_LOG(WARN, "failed to release tablet, range=%s",
+            to_cstring(tablet->get_range()));
+        }
+
+        if (OB_SUCCESS == ret && is_remove_sstable)
+        {
+          remove_sstable(tablet);
+          tablet->~ObTablet();
+        }
+      }
+
+      return ret;
+    }
+
+    int ObTabletImage::remove_table_tablets(const uint64_t table_id)
+    {
+      int ret = OB_SUCCESS;
+      int hash_ret = 0;
+      int64_t sstable_count = 0;
+      uint64_t prev_table_id = OB_INVALID_ID;
+      uint64_t cur_table_id = OB_INVALID_ID;
+
+      if (OB_INVALID_ID == table_id)
+      {
+        TBSYS_LOG(WARN, "tablet image delete table, invalid table_id=%lu", table_id);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        ObSortedVector<ObTablet*>::iterator start = tablet_list_.end();
+        ObSortedVector<ObTablet*>::iterator end = tablet_list_.end();
+        ObSortedVector<ObTablet*>::iterator it = tablet_list_.begin();
+        for (; it != tablet_list_.end(); ++it)
+        {
+          cur_table_id = (*it)->get_range().table_id_;
+          if (cur_table_id == table_id) 
+          {
+            (*it)->set_merged();
+            (*it)->set_removed();
+            if (hash_map_inited_)
+            {
+              sstable_count = (*it)->get_sstable_id_list().count();
+              for (int64_t i = 0; i < sstable_count; ++i)
+              {
+                hash_ret = sstable_to_tablet_map_.erase((*it)->get_sstable_id_list().at(i));
+                if (hash::HASH_EXIST != hash_ret)
+                {
+                  TBSYS_LOG(WARN, "failed to erase (sstabl_id, tablet) pair frome hash map, "
+                                  "sstable_id=%lu, tablet=%p, hash_ret=%d",
+                    (*it)->get_sstable_id_list().at(i).sstable_file_id_, (*it), hash_ret);
+                }
+              }
+            }
+          }
+
+          if (prev_table_id != cur_table_id && cur_table_id == table_id)
+          {
+            start = it;
+          }
+
+          if (prev_table_id == table_id && cur_table_id != table_id)
+          {
+            end = it;
+            break;
+          }
+          prev_table_id = cur_table_id;
+        }
+
+        if (OB_SUCCESS == ret && end - start > 0)
+        {
+          ret = tablet_list_.remove(start, end);
+        }
+      }
+
+      return ret;
+    }
+
+    int ObTabletImage::delete_table(const uint64_t table_id, tbsys::CRWLock& lock)
+    {
+      int ret = OB_SUCCESS;
+      delete_table_tablet_list_.reset();
+
+      //acquire table tablets
+      {
+        tbsys::CRLockGuard guard(lock);
+        if (OB_INVALID_ID == table_id)
+        {
+          TBSYS_LOG(WARN, "tablet image delete table, invalid table_id=%lu", table_id);
+          ret = OB_INVALID_ARGUMENT;
+        }
+        else if (NULL == disk_manager_)
+        {
+          TBSYS_LOG(WARN, "disk_manager member of tablet image isn't set, it's NULL");
+          ret = OB_INVALID_ARGUMENT;
+        }
+        else if (OB_SUCCESS != (ret = acquire_tablets(table_id, delete_table_tablet_list_)))
+        {
+          TBSYS_LOG(WARN, "failed to acquier table tablets from tablet image, table_id=%lu",
+            table_id);
+        }
+      }
+
+      //remove table tablets from tablet image
+      if (OB_SUCCESS == ret && delete_table_tablet_list_.size() > 0)
+      {
+        tbsys::CWLockGuard guard(lock);
+        if (OB_SUCCESS != (ret = remove_table_tablets(table_id)))
+        {
+          TBSYS_LOG(WARN, "failed to remove table tablets from table image, table_id=%lu", table_id);
+        }
+      }
+
+      //sync tablet image
+      if (OB_SUCCESS == ret && delete_table_tablet_list_.size() > 0)
+      {
+        char idx_path[OB_MAX_FILE_NAME_LENGTH];
+        int32_t disk_num = 0;
+        const int32_t* disk_no_array = disk_manager_->get_disk_no_array(disk_num);
+
+        if (disk_num > 0 && NULL != disk_no_array)
+        {
+          /**
+           * ignore the write fail status, we just ensure flush meta file 
+           * of each disk once 
+           */
+          for (int32_t i = 0; i < disk_num; ++i)
+          {
+            ret = get_meta_path(data_version_, disk_no_array[i], true, 
+              idx_path, OB_MAX_FILE_NAME_LENGTH);
+            if (OB_SUCCESS == ret)
+            {
+              {
+                tbsys::CRLockGuard guard(lock);
+                ret = prepare_write_meta(disk_no_array[i]);
+              }
+              if (OB_SUCCESS == ret)
+              {
+                ret = write_meta(idx_path, disk_no_array[i]);
+              }
+            }
+            else 
+            {
+              TBSYS_LOG(WARN, "failed to sync tablet image, disk_no=%d", disk_no_array[i]);
+            }
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "sync tablet images invalid argument, "
+              "disk_no_array=%p is NULL or size=%d < 0", disk_no_array, disk_num);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      }
+
+      //release table tablets and delete them
+      release_tablets(delete_table_tablet_list_);
+
+      return ret;
+    }
+
     void ObTabletImage::set_fileinfo_cache(common::IFileInfoMgr& fileinfo_cache)
     {
       fileinfo_cache_ = &fileinfo_cache;
     }
 
+    void ObTabletImage::set_disk_manger(ObDiskManager* disk_manager)
+    {
+      disk_manager_ = disk_manager;
+    }
+
     ObSSTableReader* ObTabletImage::alloc_sstable_object()
     {
-      alloc_sstable_mutex_.lock();
+      alloc_mutex_.lock();
       ObSSTableReader* reader = NULL;
       char* ptr = allocator_.alloc(sizeof(ObSSTableReader));
       if (ptr && NULL != fileinfo_cache_)
       {
-        reader = new (ptr) ObSSTableReader(allocator_, *fileinfo_cache_);
+        reader = new (ptr) ObSSTableReader(allocator_, *fileinfo_cache_, &alloc_mutex_);
       }
-      alloc_sstable_mutex_.unlock();
+      alloc_mutex_.unlock();
       return reader;
     }
 
-    int ObTabletImage::alloc_tablet_object(const ObRange& range, ObTablet* &tablet)
+    compactsstablev2::ObCompactSSTableReader* ObTabletImage::alloc_compact_sstable_object()
+    {
+      alloc_mutex_.lock();
+      compactsstablev2::ObCompactSSTableReader* reader = NULL;
+      char* ptr = allocator_.alloc(sizeof(compactsstablev2::ObCompactSSTableReader));
+      if (ptr && NULL != fileinfo_cache_)
+      {
+        reader = new (ptr) compactsstablev2::ObCompactSSTableReader(*fileinfo_cache_);
+      }
+      alloc_mutex_.unlock();
+      return reader;
+    }
+
+    int ObTabletImage::alloc_tablet_object(const ObNewRange& range, ObTablet* &tablet)
     {
       tablet = NULL;
-      ObRange copy_range;
+      ObNewRange copy_range;
+      alloc_mutex_.lock();
 
       int ret = OB_SUCCESS; 
       if ( OB_SUCCESS != (ret = deep_copy_range(allocator_, range, copy_range)) )
       {
         TBSYS_LOG(ERROR, "copy range failed.");
       }
-      else if ( NULL == (tablet = alloc_tablet_object()) )
+      alloc_mutex_.unlock();
+
+      if (OB_SUCCESS == ret)
       {
-        TBSYS_LOG(ERROR, "allocate tablet object failed.");
-        ret = OB_ALLOCATE_MEMORY_FAILED;
-      }
-      else
-      {
-        tablet->set_range(copy_range);
+        if ( NULL == (tablet = alloc_tablet_object()) )
+        {
+          TBSYS_LOG(ERROR, "allocate tablet object failed.");
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+        }
+        else
+        {
+          tablet->set_range(copy_range);
+        }
       }
 
       return ret;
@@ -438,11 +671,20 @@ namespace oceanbase
     ObTablet* ObTabletImage::alloc_tablet_object()
     {
       ObTablet* tablet = NULL;
+      alloc_mutex_.lock();
       char* ptr = allocator_.alloc(sizeof(ObTablet));
-      if (ptr)
+      int64_t max_rowkey_obj_arr_len = sizeof(ObObj) * OB_MAX_ROWKEY_COLUMN_NUMBER ;
+      if (NULL != ptr)
       {
         tablet = new (ptr) ObTablet(this);
+        ptr = allocator_.alloc(max_rowkey_obj_arr_len * 2);
+        if (NULL != ptr)
+        {
+          tablet->range_.start_key_.assign(reinterpret_cast<ObObj*>(ptr), OB_MAX_ROWKEY_COLUMN_NUMBER);
+          tablet->range_.end_key_.assign(reinterpret_cast<ObObj*>(ptr + max_rowkey_obj_arr_len), OB_MAX_ROWKEY_COLUMN_NUMBER);
+        }
       }
+      alloc_mutex_.unlock();
       return tablet;
     }
 
@@ -451,12 +693,12 @@ namespace oceanbase
       return lhs->get_range().compare_with_endkey(rhs->get_range()) < 0;
     }
 
-    bool compare_tablet_range(const ObTablet* lhs, const ObRange& rhs)
+    bool compare_tablet_range(const ObTablet* lhs, const ObNewRange& rhs)
     {
       return lhs->get_range().compare_with_endkey(rhs) < 0;
     }
 
-    bool equal_tablet_range(const ObTablet* lhs, const ObRange& rhs)
+    bool equal_tablet_range(const ObTablet* lhs, const ObNewRange& rhs)
     {
       return lhs->get_range().equal(rhs);
     }
@@ -502,21 +744,23 @@ namespace oceanbase
         // TODO fix bug when image corrupt
         if (tablet->get_range().equal((*it)->get_range()))
         {
+          tablet->set_merged();
+          tablet->set_removed();
           ret = OB_SUCCESS; // added by rizhao.ych
         }
       }
       else
       {
         // only after insert tablet into tablet list success, insert hash map
-        sstable_count = tablet->get_sstable_id_list().get_array_index();
+        sstable_count = tablet->get_sstable_id_list().count();
         for (int64_t i = 0; i < sstable_count; ++i)
         {
-          hash_ret = sstable_to_tablet_map_.set(*tablet->get_sstable_id_list().at(i), tablet);
+          hash_ret = sstable_to_tablet_map_.set(tablet->get_sstable_id_list().at(i), tablet);
           if (hash::HASH_INSERT_SUCC != hash_ret)
           {
             TBSYS_LOG(WARN, "failed to insert (sstabl_id, tablet) pair into hash map, "
                             "sstable_id=%lu, tablet=%p, hash_ret=%d",
-              tablet->get_sstable_id_list().at(i)->sstable_file_id_, tablet, hash_ret);
+              tablet->get_sstable_id_list().at(i).sstable_file_id_, tablet, hash_ret);
             ret = OB_ERROR;
           }
         }
@@ -524,268 +768,139 @@ namespace oceanbase
       return ret;
     }
 
-    bool check_forward_inclusive(const ObString& key, const ObBorderFlag& border_flag, 
-        const int32_t search_mode, const ObString& border_key, const ObBorderFlag& end_key_border_flag)
+    bool check_border_inclusive(const ObRowkey& key, const ObBorderFlag& border_flag, 
+        const int32_t scan_direction, const ObTablet& tablet)
     {
-      int cmp = 0;
-      bool ret = false;
-      if (border_flag.is_max_value())
+      // %tablet.range.end_key_ must >= %key
+      // just care about end_key_ == %key, like below:
+      //            start_key forward search
+      //                     |------------
+      //            end_key backward search
+      //         ------------|
+      // |--| |--| |---------| |---------|
+      bool ret = true;
+      int  cmp = key.compare(tablet.get_range().end_key_);
+      if (cmp < 0)
       {
-        if (end_key_border_flag.is_max_value()) 
+        ret = true;
+      }
+      else if (cmp == 0)
+      {
+        if (ObMultiVersionTabletImage::SCAN_FORWARD == scan_direction)
         {
-          ret = true;
-          cmp = 0;
+          ret = (tablet.get_range().border_flag_.inclusive_end()
+              && border_flag.inclusive_start());
         }
-        else cmp = 1;
-      }
-      else if (end_key_border_flag.is_max_value())
-      {
-        cmp = -1;
-      }
-      else
-      {
-        cmp = key.compare(border_key);
-      }
-
-      // not possible
-      if (border_flag.is_min_value()) cmp = -1;
-
-      if (!ret)
-      {
-        if (cmp < 0) 
-        { 
-          ret = true; 
-        }
-        else if (cmp == 0) 
-        { 
-          ret = (end_key_border_flag.inclusive_end() 
-              && (search_mode != OB_SEARCH_MODE_GREATER_THAN));
-        }
-        else 
-        { 
-          ret = false; 
+        else
+        {
+          ret = tablet.get_range().border_flag_.inclusive_end()
+              || (!border_flag.inclusive_end());
         }
       }
       return ret;
     }
 
-    int ObTabletImage::find_tablet(const common::ObRange& range, 
+    int ObTabletImage::find_tablet(const common::ObNewRange& range, 
         const int32_t scan_direction, ObTablet* &tablet) const
     {
       int ret = OB_SUCCESS;
       tablet = NULL;
-      int32_t search_mode = 0;
+      ObRowkey lookup_key = (ObMultiVersionTabletImage::SCAN_FORWARD == scan_direction) 
+        ? range.start_key_ : range.end_key_;
 
-      if (range.empty())
+      if (tablet_list_.size() <= 0)
       {
+        TBSYS_LOG(WARN, "chunkserver has no tablets, cannot find tablet.");
+        ret = OB_CS_TABLET_NOT_EXIST;
+      }
+      else if (range.empty() || NULL == lookup_key.ptr() || 0 >= lookup_key.length()) 
+      {
+        TBSYS_LOG(WARN, "find invalid range:%s", to_cstring(range));
         ret = OB_INVALID_ARGUMENT;
       }
-
-      ObString lookup_key;
-      ObBorderFlag border_flag = range.border_flag_;
-      if (OB_SUCCESS == ret)
+      else if (OB_SUCCESS != (ret = find_tablet(range.table_id_, 
+              lookup_key, range.get_rowkey_info(), range.border_flag_, scan_direction, tablet)))
       {
-        if (ObMultiVersionTabletImage::SCAN_FORWARD == scan_direction)
-        {
-          lookup_key = range.start_key_;
-          if (range.border_flag_.inclusive_start())
-            search_mode = OB_SEARCH_MODE_GREATER_EQUAL;
-          else
-            search_mode = OB_SEARCH_MODE_GREATER_THAN;
-
-          border_flag.unset_max_value();
-
-        }
-        else
-        {
-          lookup_key = range.end_key_;
-          if (range.border_flag_.inclusive_end())
-            search_mode = OB_SEARCH_MODE_LESS_EQUAL;
-          else
-            search_mode = OB_SEARCH_MODE_LESS_THAN;
-        }
-
-        if (range.is_whole_range())
-        {
-          if (ObMultiVersionTabletImage::SCAN_FORWARD == scan_direction) 
-          {
-            border_flag.unset_max_value();
-          }
-          else
-          {
-            border_flag.unset_min_value();
-          }
-        }
-        else
-        {
-          if (range.start_key_.compare(range.end_key_) == 0)
-            search_mode = OB_SEARCH_MODE_EQUAL;
-        }
+        TBSYS_LOG(WARN, "cannot find range :%s", to_cstring(range));
       }
-
-      if (OB_SUCCESS == ret)
-      {
-        ret = find_tablet(range.table_id_, border_flag,
-            lookup_key, search_mode, tablet);
-      }
-
-      if (OB_SUCCESS == ret && NULL != tablet)
+      else if (NULL != tablet && !range.intersect(tablet->get_range()))
       {
         // in the hole?
-        if (!range.intersect(tablet->get_range()))
-        {
-          ret = OB_CS_TABLET_NOT_EXIST;
-          tablet = NULL;
-        }
+        ret = OB_CS_TABLET_NOT_EXIST;
+        tablet = NULL;
       }
 
       return ret;
     }
 
     int ObTabletImage::find_tablet( const uint64_t table_id, 
-        const ObBorderFlag& border_flag, const common::ObString& key, 
-        const int32_t search_mode, ObTablet* &tablet) const
+        const common::ObRowkey& key, const ObRowkeyInfo* ri, 
+        const ObBorderFlag& border_flag, 
+        const int32_t scan_direction, ObTablet* &tablet) const
     {
       int ret = OB_SUCCESS;
-      if (search_mode < OB_SEARCH_MODE_EQUAL || search_mode > OB_SEARCH_MODE_LESS_EQUAL)
+
+      tablet = NULL;
+      ObSortedVector<ObTablet*>::iterator it = tablet_list_.end();
+
+      ObNewRange range;
+      range.table_id_ = table_id;
+      range.border_flag_ = border_flag;
+      range.end_key_ = key;
+      range.set_rowkey_info(ri);
+
+      it = tablet_list_.lower_bound(range, compare_tablet_range);
+      if (it == tablet_list_.end())
       {
-        ret = OB_INVALID_ARGUMENT;
+        //                       start_key
+        //                        |-------------- 
+        // |--| |--| |---------| 
+        
+        //                       end_key
+        //              ----------|
+        // |--| |--| |---------| 
+
+        if (ObMultiVersionTabletImage::SCAN_BACKWARD == scan_direction)
+        {
+          // check table id  in intersect range.
+          tablet = *tablet_list_.last();
+        }
       }
-      if (NULL == key.ptr() || 0 >= key.length()) 
+      else if (NULL != *it)
       {
-        if (search_mode == OB_SEARCH_MODE_EQUAL)
+        //            start_key forward search
+        //                |------------
+        //            end_key backward search
+        //    ------------|
+        // |--| |--| |---------| |---------|
+        tablet = *it;
+        ObSortedVector<ObTablet*>::const_iterator next_it = ++it;
+        if (!check_border_inclusive(key, border_flag, scan_direction, *tablet))
         {
-          ret = OB_INVALID_ARGUMENT;
-        }
-        else if (search_mode > OB_SEARCH_MODE_GREATER_THAN)
-        {
-          // less than max_value
-          if (!border_flag.is_max_value()) ret = OB_INVALID_ARGUMENT;
-        }
-        else if (search_mode <= OB_SEARCH_MODE_GREATER_THAN)
-        {
-          // greater than min_value
-          if (!border_flag.is_min_value()) ret = OB_INVALID_ARGUMENT;
+          tablet =(next_it != tablet_list_.end()) ? (*next_it) : NULL;
         }
       }
 
-      if (tablet_list_.size() <= 0)
+      // can not get any tablet satisfied.
+      if (NULL == tablet)
       {
         ret = OB_CS_TABLET_NOT_EXIST;
       }
 
-      ObSortedVector<ObTablet*>::iterator it = tablet_list_.end();
-      if (OB_SUCCESS == ret)
-      {
-        ObRange range;
-        range.table_id_ = table_id;
-        range.border_flag_ = border_flag;
-        range.end_key_ = key;
-        it = tablet_list_.lower_bound(range, compare_tablet_range);
-        if (it == tablet_list_.end())
-        {
-          // find less than (or less equal) range
-          if (search_mode > OB_SEARCH_MODE_GREATER_THAN)
-          {
-            ObTablet* last_tablet = *tablet_list_.last();
-            if (last_tablet->get_range().table_id_ == table_id)
-            {
-              tablet = last_tablet;
-            }
-            else
-            {
-              ret = OB_CS_TABLET_NOT_EXIST;
-            }
-          }
-          else
-          {
-            ret = OB_CS_TABLET_NOT_EXIST;
-          }
-        }
-      }
-
-      ObTablet *lookup_tablet = NULL;
-      if (OB_SUCCESS == ret && it != tablet_list_.end())
-      {
-        lookup_tablet = *it;
-        if (lookup_tablet->get_range().table_id_ != table_id)
-        {
-          ret = OB_CS_TABLET_NOT_EXIST;
-        }
-      }
-
-      if (OB_SUCCESS == ret && NULL != lookup_tablet)
-      {
-        // lookup backward
-        if (search_mode <= OB_SEARCH_MODE_GREATER_THAN)
-        {
-          bool inclusive = check_forward_inclusive(
-              key, border_flag, search_mode, 
-              lookup_tablet->get_range().end_key_, 
-              lookup_tablet->get_range().border_flag_);
-          if (inclusive)
-          {
-            tablet = lookup_tablet;
-          }
-          else
-          {
-            // search next tablet check if fufill
-            ObSortedVector<ObTablet*>::const_iterator next_it = ++it;
-            if (next_it < tablet_list_.end()
-                && (*next_it)->get_range().table_id_ == table_id)
-            {
-              // (*next_it)->range definitely >= key.
-              // cause every range not intersect & sorted & not empty.
-              tablet = *next_it;
-            }
-            else
-            {
-              ret = OB_CS_TABLET_NOT_EXIST;
-            }
-          }
-        }
-        else
-        {
-          // %search_mode request the %end_key of tablet, but 
-          // current tablet's range donot include it
-          if (search_mode == OB_SEARCH_MODE_LESS_EQUAL
-              && key.compare(lookup_tablet->get_range().end_key_) == 0
-              && (!lookup_tablet->get_range().border_flag_.inclusive_end()))
-          {
-            // search next tablet check if fulfil
-            ObSortedVector<ObTablet*>::const_iterator next_it = ++it;
-            if (next_it < tablet_list_.end()
-                && (*next_it)->get_range().table_id_ == table_id
-                && key.compare((*next_it)->get_range().start_key_) == 0
-                && (*next_it)->get_range().border_flag_.inclusive_start())
-            {
-              tablet = *next_it;
-            }
-            else
-            {
-              tablet = lookup_tablet;
-            }
-          }
-          else
-          {
-            tablet = lookup_tablet;
-          }
-        }
-      }
       return ret;
     }
 
-    int ObTabletImage::acquire_sstable(const ObSSTableId& sstable_id, 
-        ObSSTableReader* &reader) const
+    int ObTabletImage::acquire_tablet(const ObSSTableId& sstable_id, 
+        ObTablet* &tablet) const
     {
-      int ret =  find_sstable(sstable_id, reader);
+      int ret = find_tablet(sstable_id, tablet);
 
       if (OB_SUCCESS != ret)
       {
         TBSYS_LOG(INFO, "find sstable sstable_id=%ld failed, ret=%d", 
             sstable_id.sstable_file_id_, ret);
       }
-      else if (NULL == reader)
+      else if (NULL == tablet)
       {
         TBSYS_LOG(INFO, "reader is NULL");
         ret = OB_ERROR;
@@ -793,35 +908,79 @@ namespace oceanbase
       else
       {
         atomic_inc((atomic_t*) &ref_count_);
+        tablet->inc_ref();
       }
 
       return ret;
     }
 
-    int ObTabletImage::release_sstable(ObSSTableReader* reader) const
+    int ObTabletImage::remove_sstable(ObTablet* tablet) const
     {
-      //TODO same as release_tablet.
       int ret = OB_SUCCESS;
+      int64_t sstable_size = 0;
+      FileInfoCache* fileinfo_cache = dynamic_cast<FileInfoCache*>(fileinfo_cache_);
+      ObSSTableId sstable_id;
+      char sstable_path[OB_MAX_FILE_NAME_LENGTH];
 
-      if (NULL == reader)
+      if (NULL == tablet || NULL == fileinfo_cache)
       {
-        TBSYS_LOG(WARN, "invalid param, sstable=%p", reader);
+        TBSYS_LOG(WARN, "invalid param, tablet is NULL, tablet=%p, fileinfo_cache=%p",
+          tablet, fileinfo_cache);
         ret = OB_INVALID_ARGUMENT;
-      }
-      else if (ref_count_ <= 0)
-      {
-        TBSYS_LOG(WARN, "invalid status, ref_count_=%d", ref_count_);
-        ret = OB_ERROR;
       }
       else
       {
-        atomic_dec((atomic_t*) &ref_count_);
+        const ObArray<ObSSTableId>& sstable_id_list = tablet->get_sstable_id_list();
+        for (int64_t i = 0; i < sstable_id_list.count() && OB_SUCCESS == ret; ++i)
+        {
+          sstable_id = (tablet->get_sstable_id_list().at(i));
+          // destroy file info cache if exist.
+          const FileInfo * fileinfo = 
+            fileinfo_cache->get_cache_fileinfo(sstable_id.sstable_file_id_);
+          if (NULL != fileinfo) 
+          {
+            const_cast<FileInfo*>(fileinfo)->destroy();
+            fileinfo_cache->revert_fileinfo(fileinfo);
+          }
+
+          if (OB_SUCCESS != (ret = get_sstable_path(sstable_id, 
+            sstable_path, OB_MAX_FILE_NAME_LENGTH)))
+          {
+            TBSYS_LOG(WARN, "failed to get sstable path, sstable_id=%lu",
+              sstable_id.sstable_file_id_);
+          }
+          else if (!FileDirectoryUtils::exists(sstable_path))
+          {
+            TBSYS_LOG(INFO, "sstable file=%s not exist.", sstable_path);
+            ret = OB_ERROR;
+          }
+          else if ((sstable_size = get_file_size(sstable_path)) <= 0)
+          {
+            TBSYS_LOG(WARN, "sstable file=%s not exist or invalid, sstable_size=%ld",
+                  sstable_path, sstable_size);
+          }
+          else if (0 != ::unlink(sstable_path))
+          {
+            TBSYS_LOG(WARN, "failed to unlink sstable, sstable_file=%s, "
+                            "errno=%d, err=%s",
+              sstable_path, errno, strerror(errno));
+            ret = OB_IO_ERROR;
+          }
+          else if (NULL != disk_manager_)
+          {
+            disk_manager_->release_space(
+              static_cast<int32_t>(get_sstable_disk_no(sstable_id.sstable_file_id_)), sstable_size);
+            TBSYS_LOG(INFO, "recycle tablet version = %ld, recycle sstable file = %s", 
+              tablet->get_data_version(), sstable_path);
+          }
+          sstable_path[0] = '\0';
+        }
       }
 
       return ret;
     }
 
-    int ObTabletImage::remove_tablet(const common::ObRange& range, int32_t &disk_no)
+    int ObTabletImage::remove_tablet(const common::ObNewRange& range, int32_t &disk_no)
     {
       int ret = OB_SUCCESS;
       int hash_ret = 0;
@@ -839,20 +998,19 @@ namespace oceanbase
         {
           if (hash_map_inited_)
           {
-            int64_t sstable_count = tablet->get_sstable_id_list().get_array_index();
+            int64_t sstable_count = tablet->get_sstable_id_list().count();
             for (int64_t i = 0; i < sstable_count; ++i)
             {
-              hash_ret = sstable_to_tablet_map_.erase(*tablet->get_sstable_id_list().at(i));
+              hash_ret = sstable_to_tablet_map_.erase(tablet->get_sstable_id_list().at(i));
               if (hash::HASH_EXIST != hash_ret)
               {
                 TBSYS_LOG(WARN, "failed to erase (sstabl_id, tablet) pair frome hash map, "
                                 "sstable_id=%lu, tablet=%p, hash_ret=%d",
-                  tablet->get_sstable_id_list().at(i)->sstable_file_id_, tablet, hash_ret);
+                  tablet->get_sstable_id_list().at(i).sstable_file_id_, tablet, hash_ret);
               }
             }
           }
           disk_no = tablet->get_disk_no();
-          tablet->~ObTablet();
         }
         else
         {
@@ -864,7 +1022,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletImage::acquire_tablet(const common::ObRange& range, 
+    int ObTabletImage::acquire_tablet(const common::ObNewRange& range, 
         const int32_t scan_direction, ObTablet* &tablet) const
     {
       int ret =  find_tablet(range, scan_direction, tablet);
@@ -883,12 +1041,13 @@ namespace oceanbase
       else
       {
         atomic_inc((atomic_t*) &ref_count_);
+        tablet->inc_ref();
       }
 
       return ret;
     }
 
-    int ObTabletImage::release_tablet(ObTablet* tablet) const
+    int ObTabletImage::release_tablet(ObTablet* tablet, bool* is_remove_sstable) const
     {
       int ret = OB_SUCCESS;
 
@@ -905,6 +1064,14 @@ namespace oceanbase
       else
       {
         atomic_dec((atomic_t*) &ref_count_);
+        if (0 == tablet->dec_ref() && tablet->is_removed() && NULL != is_remove_sstable)
+        {
+          *is_remove_sstable = true;
+        }
+        else if (NULL != is_remove_sstable)
+        {
+          *is_remove_sstable = false;
+        }
       }
 
       return ret;
@@ -933,7 +1100,8 @@ namespace oceanbase
       ObSortedVector<ObTablet*>::iterator it = tablet_list_.begin();
       for (; it != tablet_list_.end(); ++it)
       {
-        if ((*it)->get_disk_no() == disk_no || 0 == disk_no)
+        if (((*it)->get_disk_no() == disk_no || 0 == disk_no)
+            && !(*it)->is_removed())
         {
           ObTabletRangeInfo info;
           (*it)->get_range_info(info);
@@ -1043,8 +1211,10 @@ namespace oceanbase
         {
           const char* row_key_stream_ptr = buf + origin_payload_pos
             + meta_header.row_key_stream_offset_;
+          alloc_mutex_.lock();
           row_key_buf = allocator_.alloc(
               meta_header.row_key_stream_size_);
+          alloc_mutex_.unlock();
           if (NULL == row_key_buf)
           {
             ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -1103,17 +1273,17 @@ namespace oceanbase
               row_key_cur_offset += info.start_key_size_ + info.end_key_size_;
             }
 
-            if (OB_SUCCESS == ret && load_sstable)
-            {
-              ret = tablet->load_sstable();
-            }
-
             // set extend info if extend info exist
             if (OB_SUCCESS == ret && NULL != tablet_extend_buf
                 && OB_SUCCESS == (ret = extend_info.deserialize(tablet_extend_buf, 
                   meta_header.tablet_extend_info_size_, tablet_extend_cur_pos)))
             {
               tablet->set_extend_info(extend_info);
+            }
+
+            if (OB_SUCCESS == ret && load_sstable)
+            {
+              ret = tablet->load_sstable();
             }
           }
           else
@@ -1529,6 +1699,10 @@ namespace oceanbase
             TBSYS_LOG(ERROR, "rename src meta = %s to dst meta =%s error.", tmp_idx_file, idx_path);
             ret = OB_IO_ERROR;
           }
+          else
+          {
+            TBSYS_LOG(INFO, "write tablet image file %s succ.", idx_path);
+          }
         }
       }
 
@@ -1631,6 +1805,7 @@ namespace oceanbase
         tablet = tablet_list_.at(cur_iter_idx_);
         atomic_inc((atomic_t*) &cur_iter_idx_);
         atomic_inc((atomic_t*) &ref_count_);
+        tablet->inc_ref();
       }
       return ret;
     }
@@ -1672,7 +1847,14 @@ namespace oceanbase
     // class ObMultiVersionTabletImage
     //----------------------------------------
     ObMultiVersionTabletImage::ObMultiVersionTabletImage(IFileInfoMgr& fileinfo_cache)
-      : newest_index_(0), service_index_(-1), iterator_(*this), fileinfo_cache_(fileinfo_cache)
+      : newest_index_(0), service_index_(-1), iterator_(*this), 
+      fileinfo_cache_(fileinfo_cache), disk_manager_(NULL)
+    {
+      memset(image_tracker_, 0, sizeof(image_tracker_));
+    }
+
+    ObMultiVersionTabletImage::ObMultiVersionTabletImage(IFileInfoMgr& fileinfo_cache, ObDiskManager& disk_manager)
+      : newest_index_(0), service_index_(-1), iterator_(*this), fileinfo_cache_(fileinfo_cache), disk_manager_(&disk_manager)
     {
       memset(image_tracker_, 0, sizeof(image_tracker_));
     }
@@ -1758,7 +1940,7 @@ namespace oceanbase
     }
 
     int ObMultiVersionTabletImage::acquire_tablet(
-        const common::ObRange &range, 
+        const common::ObNewRange &range, 
         const ScanDirection scan_direction, 
         const int64_t version, 
         ObTablet* &tablet) const
@@ -1768,7 +1950,7 @@ namespace oceanbase
     }
 
     int ObMultiVersionTabletImage::acquire_tablet_all_version(
-        const common::ObRange &range, 
+        const common::ObNewRange &range, 
         const ScanDirection scan_direction, 
         const ScanPosition from_index, 
         const int64_t version, 
@@ -1779,8 +1961,8 @@ namespace oceanbase
           || (from_index != FROM_SERVICE_INDEX && from_index != FROM_NEWEST_INDEX))
       {
         TBSYS_LOG(WARN, "acquire_tablet invalid argument, "
-            "range is emtpy or version=%ld < 0, or from_index =%d illegal", 
-            version, from_index);
+            "range(%s) is emtpy(%d) or version=%ld < 0, or from_index =%d illegal", 
+            to_cstring(range), range.empty(), version, from_index);
         ret = OB_INVALID_ARGUMENT;
       }
       else 
@@ -1792,6 +1974,13 @@ namespace oceanbase
         int64_t start_index = 
           (from_index == FROM_SERVICE_INDEX) ? service_index_ : newest_index_;
         int64_t index = start_index;
+        int64_t serving_version = 0;
+
+        if (service_index_ >= 0 && service_index_ < MAX_RESERVE_VERSION_COUNT 
+            && has_tablet(service_index_))
+        {
+          serving_version = image_tracker_[service_index_]->data_version_;
+        }
 
         do
         {
@@ -1800,15 +1989,28 @@ namespace oceanbase
             TBSYS_LOG(WARN, "image (index=%ld) not initialized, has no tablets", index);
             break;
           }
-          // version == 0 search from newest tablet
+          // version == 0 search from serving tablet
           if (version == 0 && has_tablet(index))
           {
             ret = image_tracker_[index]->acquire_tablet(range, scan_direction, tablet);
           }
           // version != 0 search from newest tablet which has version less or equal than %version
-          if (version != 0 && has_tablet(index) && image_tracker_[index]->data_version_ <= version)
+          if (version != 0 && has_tablet(index))
           {
-            ret = image_tracker_[index]->acquire_tablet(range, scan_direction, tablet);
+            if (version >= serving_version && image_tracker_[index]->data_version_ <= version)
+            {
+              // search from serving tablet
+              ret = image_tracker_[index]->acquire_tablet(range, scan_direction, tablet);
+            }
+            else if (version < serving_version && image_tracker_[index]->data_version_ == version)
+            {
+              // search from oldest tablet
+              ret = image_tracker_[index]->acquire_tablet(range, scan_direction, tablet);
+            }
+            else 
+            {
+              // query tablet version not exist
+            }
           }
 
           if (OB_SUCCESS == ret) break;
@@ -1823,40 +2025,50 @@ namespace oceanbase
     int ObMultiVersionTabletImage::release_tablet(ObTablet* tablet) const
     {
       int ret = OB_SUCCESS;
-      tbsys::CRLockGuard guard(lock_);
+      bool is_remove_sstable = false;
 
-      if (NULL == tablet)
       {
-        TBSYS_LOG(WARN, "release_tablet invalid argument tablet null");
-        ret = OB_INVALID_ARGUMENT;
+        tbsys::CRLockGuard guard(lock_);
+
+        if (NULL == tablet)
+        {
+          TBSYS_LOG(WARN, "release_tablet invalid argument tablet null");
+          ret = OB_INVALID_ARGUMENT;
+        }
+        else if (!has_match_version(tablet->get_data_version()))
+        {
+          TBSYS_LOG(WARN, "release_tablet version=%ld dont match", 
+              tablet->get_data_version());
+          ret = OB_INVALID_ARGUMENT;
+        }
+        else
+        {
+          ret = get_image(tablet->get_data_version()).release_tablet(tablet, &is_remove_sstable);
+        }
       }
-      else if (!has_match_version_tablet(tablet->get_data_version()))
+
+      if (OB_SUCCESS == ret && is_remove_sstable)
       {
-        TBSYS_LOG(WARN, "release_tablet version=%ld dont match", 
-            tablet->get_data_version());
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else
-      {
-        ret = get_image(tablet->get_data_version()).release_tablet(tablet);
+        get_image(tablet->get_data_version()).remove_sstable(tablet);
+        tablet->~ObTablet();
       }
       return ret;
     }
 
-    int ObMultiVersionTabletImage::acquire_sstable(
+    int ObMultiVersionTabletImage::acquire_tablet(
         const sstable::ObSSTableId& sstable_id, 
         const int64_t version, 
-        sstable::ObSSTableReader* &reader) const
+        ObTablet* &tablet) const
     {
-      return acquire_sstable_all_version(sstable_id, 
-          FROM_SERVICE_INDEX, version, reader);
+      return acquire_tablet_all_version(sstable_id, 
+          FROM_SERVICE_INDEX, version, tablet);
     }
 
-    int ObMultiVersionTabletImage::acquire_sstable_all_version(
+    int ObMultiVersionTabletImage::acquire_tablet_all_version(
         const sstable::ObSSTableId& sstable_id, 
         const ScanPosition from_index,
         const int64_t version, 
-        sstable::ObSSTableReader* &reader) const
+        ObTablet* &tablet) const
     {
       int ret = OB_SUCCESS;
 
@@ -1870,7 +2082,7 @@ namespace oceanbase
       else 
       {
         ret = OB_ENTRY_NOT_EXIST;
-        reader = NULL;
+        tablet = NULL;
 
         tbsys::CRLockGuard guard(lock_);
         int64_t start_index = 
@@ -1888,45 +2100,19 @@ namespace oceanbase
           // version == 0 search from newest tablet
           if (version == 0 && has_tablet(index))
           {
-            ret = image_tracker_[index]->acquire_sstable(sstable_id, reader);
+            ret = image_tracker_[index]->acquire_tablet(sstable_id, tablet);
           }
 
           // version != 0 search from newest tablet which has version less or equal than %version
           if (version != 0 && has_tablet(index) && image_tracker_[index]->data_version_ <= version)
           {
-            ret = image_tracker_[index]->acquire_sstable(sstable_id, reader);
+            ret = image_tracker_[index]->acquire_tablet(sstable_id, tablet);
           }
 
           if (OB_SUCCESS == ret) break;
           // if not found, search older version tablet until iterated every version of tablet.
           if (--index < 0) index = MAX_RESERVE_VERSION_COUNT - 1;
         } while (index != start_index);
-      }
-
-      return ret;
-    }
-
-    int ObMultiVersionTabletImage::release_sstable(const int64_t version,
-        sstable::ObSSTableReader* reader) const
-    {
-      int ret = OB_SUCCESS;
-
-      tbsys::CRLockGuard guard(lock_);
-
-      if (0 > version)
-      {
-        TBSYS_LOG(ERROR, "release_sstable invalid argument, "
-            "version=%ld < 0", version);
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else if (!has_match_version_tablet(version))
-      {
-        TBSYS_LOG(ERROR, "version = %ld not in tablet image.", version);
-        ret = OB_ERROR;
-      }
-      else
-      {
-        ret = get_image(version).release_sstable(reader);
       }
 
       return ret;
@@ -1973,26 +2159,35 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiVersionTabletImage::remove_tablet(const common::ObRange& range, 
-        const int64_t version, int32_t &disk_no)
+    int ObMultiVersionTabletImage::remove_tablet(const common::ObNewRange& range, 
+        const int64_t version, int32_t &disk_no, bool sync)
     {
       int ret = OB_SUCCESS;
-      tbsys::CWLockGuard guard(lock_);
 
-      if (range.empty() || 0 >= version)
       {
-        TBSYS_LOG(WARN, "remove_tablet invalid argument, "
-            "range is emtpy or version=%ld < 0", version);
-        ret = OB_INVALID_ARGUMENT;
+        tbsys::CWLockGuard guard(lock_);
+
+        if (range.empty() || 0 >= version)
+        {
+          TBSYS_LOG(WARN, "remove_tablet invalid argument, "
+              "range is emtpy or version=%ld < 0", version);
+          ret = OB_INVALID_ARGUMENT;
+        }
+        else if (!has_match_version_tablet(version))
+        {
+          TBSYS_LOG(WARN, "remove_tablet version=%ld dont match", version);
+          ret = OB_INVALID_ARGUMENT;
+        }
+        else
+        {
+          ret = get_image(version).remove_tablet(range, disk_no);
+        }
       }
-      else if (!has_match_version_tablet(version))
+
+      //sync index
+      if (OB_SUCCESS == ret && sync)
       {
-        TBSYS_LOG(WARN, "remove_tablet version=%ld dont match", version);
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else
-      {
-        ret = get_image(version).remove_tablet(range, disk_no);
+        ret = write(version, disk_no);
       }
       return ret;
     }
@@ -2170,7 +2365,7 @@ namespace oceanbase
       {
         for (int32_t i = 0; i < split_size && OB_SUCCESS == ret; ++i)
         {
-          if (NULL != new_tablets[i])
+          if (NULL != new_tablets[i] && !new_tablets[i]->is_removed())
           {
             ret = new_tablets[i]->load_sstable();
           }
@@ -2209,58 +2404,15 @@ namespace oceanbase
       {
         // TODO check service_version merged complete?
         TBSYS_LOG(INFO, "upgrade service version =%ld to new version =%ld", 
-                  service_version, new_version);
-        service_index_ = newest_index_;        
+            service_version, new_version);
+        service_index_ = newest_index_;
       }
 
-      return ret;
-    }
-
-    int ObMultiVersionTabletImage::drop_compactsstable()
-    {
-      int ret = OB_SUCCESS;
-
-      //release compactsstable
-      ObTabletImage& old_image = get_image(get_eldest_index());
-      while(old_image.get_ref_count() != 0)
-      {
-        TBSYS_LOG(WARN,"old tablet is still used,wait one minute");
-        ::usleep(60000000L); //1 minute
-      }
-      
-      ret = old_image.begin_scan_tablets();
-      if (OB_ITER_END == ret)
-      {
-        //empty
-      }
-      else if (OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(WARN,"scan failed,ret=%d",ret);
-      }
-      else 
-      {
-        TBSYS_LOG(INFO,"release compactsstable cache");
-        ObTablet* old_tablet = NULL;
-        while(OB_SUCCESS == (ret = old_image.get_next_tablet(old_tablet)))
-        {
-          if (old_tablet != NULL)
-          {
-            old_tablet->release_compactsstable();
-            old_image.release_tablet(old_tablet);
-          }
-        }
-      }
-      old_image.end_scan_tablets();
-        
-      if (OB_ITER_END == ret)
-      {
-        ret = OB_SUCCESS;
-      }
       return ret;
     }
 
     int ObMultiVersionTabletImage::alloc_tablet_object(
-        const common::ObRange& range, const int64_t version, ObTablet* &tablet)
+        const common::ObNewRange& range, const int64_t version, ObTablet* &tablet)
     {
       int ret = OB_SUCCESS;
 
@@ -2283,6 +2435,39 @@ namespace oceanbase
               get_image(version).alloc_tablet_object(range, tablet)) )
         {
           TBSYS_LOG(ERROR, "cannot alloc tablet object new version = %ld", version);
+        }
+        else if (NULL != tablet)
+        {
+          tablet->set_data_version(version);
+        }
+      }
+      return ret;
+    }
+
+    int ObMultiVersionTabletImage::alloc_tablet_object(
+        const int64_t version, ObTablet* &tablet)
+    {
+      int ret = OB_SUCCESS;
+
+      if (0 >= version)
+      {
+        TBSYS_LOG(WARN, "alloc_tablet_object invalid argument, version=%ld < 0", 
+          version);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        tablet = NULL;
+        tbsys::CWLockGuard guard(lock_);
+
+        if ( OB_SUCCESS != (ret = prepare_tablet_image(version, true)) )
+        {
+          TBSYS_LOG(ERROR, "prepare new version = %ld image error.", version);
+        }
+        else if (NULL == (tablet = get_image(version).alloc_tablet_object()) )
+        {
+          TBSYS_LOG(ERROR, "cannot alloc tablet object new version = %ld", version);
+          ret = OB_ALLOCATE_MEMORY_FAILED;
         }
         else if (NULL != tablet)
         {
@@ -2319,7 +2504,7 @@ namespace oceanbase
     }
 
     int ObMultiVersionTabletImage::get_tablets_for_merge(
-        const int64_t version, int32_t &size, ObTablet *tablets[]) const
+        const int64_t version, int64_t &size, ObTablet *tablets[]) const
     {
       int ret = OB_SUCCESS;
 
@@ -2327,7 +2512,7 @@ namespace oceanbase
 
       int64_t eldest_index = get_eldest_index();
       int64_t index = eldest_index;
-      int merge_count = 0;
+      int64_t merge_count = 0;
       do
       {
         if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
@@ -2347,6 +2532,7 @@ namespace oceanbase
               tablets[merge_count++] = *it;
               // add reference count
               image_tracker_[index]->acquire();
+              (*it)->inc_ref();
             }
           }
         }
@@ -2354,7 +2540,7 @@ namespace oceanbase
         index = (index + 1) % MAX_RESERVE_VERSION_COUNT;
       } while (index != eldest_index);
 
-      TBSYS_LOG(DEBUG, "for merge, version=%ld,size=%d,newest=%ld", version, size, newest_index_);
+      TBSYS_LOG(DEBUG, "for merge, version=%ld,size=%ld,newest=%ld", version, size, newest_index_);
 
       size = merge_count;
       return OB_SUCCESS;
@@ -2399,7 +2585,7 @@ namespace oceanbase
       }
       else if (NULL == image_tracker_[index])
       {
-        image_tracker_[index] = new ObTabletImage();
+        image_tracker_[index] = new (std::nothrow)ObTabletImage();
         if (NULL == image_tracker_[index])
         {
           TBSYS_LOG(ERROR, "cannot new ObTabletImage object, index=%ld", index);
@@ -2408,6 +2594,7 @@ namespace oceanbase
         else
         {
           image_tracker_[index]->set_fileinfo_cache(fileinfo_cache_);
+          image_tracker_[index]->set_disk_manger(disk_manager_);
         }
       }
       else if (version != image_tracker_[index]->data_version_)
@@ -2505,9 +2692,9 @@ namespace oceanbase
             "disk_no =%d <0 or version=%ld < 0", disk_no, version);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (!has_match_version_tablet(version))
+      else if (!has_match_version(version))
       {
-        TBSYS_LOG(WARN, "write image version=%ld dont match", version);
+        TBSYS_LOG(WARN, "write image version=%ld don't match", version);
         ret = OB_ERROR;
       }
       else
@@ -2539,9 +2726,9 @@ namespace oceanbase
             "disk_no =%d <0 or version=%ld < 0", disk_no, version);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (!has_match_version_tablet(version))
+      else if (!has_match_version(version))
       {
-        TBSYS_LOG(WARN, "write image version=%ld dont match", version);
+        TBSYS_LOG(WARN, "write image version=%ld don't match", version);
         ret = OB_ERROR;
       }
       else
@@ -2732,6 +2919,10 @@ namespace oceanbase
               "service_index_=%ld", service_index_);
           ret = OB_ERROR;
         }
+        else if (OB_SUCCESS != (ret = adjust_inconsistent_tablets()))
+        {
+          TBSYS_LOG(ERROR, "failed to adjust inconsistent tablets");
+        }
         else if (has_tablet(service_index_))
         {
           TBSYS_LOG(INFO, "current service tablet version=%ld", 
@@ -2769,6 +2960,52 @@ namespace oceanbase
       } while (index != eldest_index);
 
       return service_index_;
+    }
+
+    int ObMultiVersionTabletImage::adjust_inconsistent_tablets()
+    {
+      int ret = OB_SUCCESS;
+      ObTablet* tablet = NULL;
+
+      /**
+       * if chunkserver is killed in daily merge stage, maybe the two 
+       * version index file isn't consistent. for example, the 
+       * is_merged flag is true in eldest version index file, but 
+       * there is no new corresponding tablet in newest version index 
+       * file, this function will handle this case. 
+       */
+      if (service_index_ >= 0 && service_index_ < MAX_RESERVE_VERSION_COUNT
+          && service_index_ != newest_index_
+          && has_tablet(service_index_) && has_tablet(newest_index_))
+      {
+        ObSortedVector<ObTablet*> & tablet_list = image_tracker_[service_index_]->tablet_list_;
+        ObSortedVector<ObTablet*>::iterator it = tablet_list.begin();
+        for (; it != tablet_list.end(); ++it)
+        {
+          if ((*it)->is_merged() && !(*it)->is_removed())
+          {
+            ret = image_tracker_[newest_index_]->acquire_tablet(
+              (*it)->get_range(), SCAN_FORWARD, tablet);
+            if (OB_SUCCESS == ret && NULL != tablet)
+            {
+              image_tracker_[newest_index_]->release_tablet(tablet);
+            }
+            else 
+            {
+              (*it)->set_merged(0);
+              TBSYS_LOG(WARN, "maybe chunkserver is killed in daily merge stage, "
+                              "tablet in eldest image is merged, but no corresponding "
+                              "tablet in newest image, just change the is_merged flag "
+                              "to flase, range=%s",
+                to_cstring((*it)->get_range()));
+              ret = OB_SUCCESS;
+            }
+            tablet = NULL;
+          }
+        }
+      }
+
+      return ret;
     }
 
     int ObMultiVersionTabletImage::begin_scan_tablets()
@@ -2831,7 +3068,7 @@ namespace oceanbase
       }
       else
       {
-        iterator_.reset();
+        ret = iterator_.end();
       }
       return ret;
     }
@@ -2933,13 +3170,25 @@ namespace oceanbase
     int ObMultiVersionTabletImage::Iterator::start()
     {
       int ret = OB_SUCCESS;
-      cur_vi_ = image_.get_eldest_index();
+
+      tbsys::CRLockGuard guard(image_.lock_);
+      cur_vi_ = image_.service_index_;
       cur_ti_ = 0;
       start_vi_ = cur_vi_;
-      end_vi_ = image_.newest_index_;
-      if (!image_.has_tablet(cur_vi_))
+      end_vi_ = image_.service_index_;
+      if (cur_vi_ >= 0 && cur_vi_ < ObMultiVersionTabletImage::MAX_RESERVE_VERSION_COUNT
+          && image_.has_tablet(cur_vi_))
       {
-        ret = next();
+        ret = image_.image_tracker_[cur_vi_]->acquire_tablets(
+          0, image_.image_tracker_[cur_vi_]->report_tablet_list_);
+        if (OB_SUCCESS == ret && !image_.has_report_tablet(cur_vi_))
+        {
+          ret = OB_ITER_END;
+        }
+      }
+      else 
+      {
+        ret = OB_ITER_END;
       }
       return ret;
     }
@@ -2953,44 +3202,16 @@ namespace oceanbase
       }
       else
       {
-        if (cur_vi_ != end_vi_)
-        { 
-          // maybe there is newer version tablets
-          if (is_last_tablet())
-          {
-            // current version reach the end, find next not null
-            while (cur_vi_ != end_vi_)
-            {
-              cur_vi_ = (cur_vi_ + 1) % MAX_RESERVE_VERSION_COUNT;
-              if (image_.has_tablet(cur_vi_)) break;
-            }
-            if (cur_vi_ == end_vi_ && (!image_.has_tablet(cur_vi_)))
-            {
-              // cannot find it , scan is over.
-              ret = OB_ITER_END;
-            }
-            else
-            {
-              // newer version tablet be found, reset index.
-              cur_ti_ = 0;
-            }
-          }
-          else
-          {
-            // current version tablet has more, skip to next.
-            ++cur_ti_;
-          }
-        }
-        else if (is_last_tablet())
+        if (is_last_tablet())
         {
-          // reach last tablet of newest version  tablet image
+          // reach last tablet of service version  tablet image
           // set cur_ti_ to end position, for next() call lately.
           ++cur_ti_;
           ret = OB_ITER_END;
         }
         else
         {
-          // reach middle of tablet of newest version tablet image.
+          // reach middle of tablet of service version tablet image.
           ++cur_ti_;
         }
       }
@@ -3035,8 +3256,54 @@ namespace oceanbase
       return buf;
     }
 
+    void ObMultiVersionTabletImage::get_image_stat(ObTabletImageStat& stat)
+    {
+      int64_t eldest_index = get_eldest_index();
+
+      memset(&stat, 0, sizeof(ObTabletImageStat));
+      if (has_tablet(eldest_index))
+      {
+        stat.old_ver_tablets_num_ = image_tracker_[eldest_index]->get_tablets_num();
+        stat.old_ver_merged_tablets_num_ = image_tracker_[eldest_index]->get_merged_tablet_count();
+      }
+      if (eldest_index != newest_index_ && has_tablet(newest_index_))
+      {
+        stat.new_ver_tablets_num_ = image_tracker_[newest_index_]->get_tablets_num();
+      }
+    }
+
+    int ObMultiVersionTabletImage::delete_table(const uint64_t table_id)
+    {
+      int ret = OB_SUCCESS;
+      int64_t index = -1;
+
+      if (OB_INVALID_ID == table_id)
+      {
+        TBSYS_LOG(WARN, "delete_table invalid argument, table_id = %lu", 
+          table_id);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else 
+      {
+        {
+          tbsys::CRLockGuard guard(lock_);
+          index = service_index_;
+          if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT || !has_tablet(index)) 
+          {
+            TBSYS_LOG(WARN, "image (index=%ld) not initialized, has no tablets", index);
+            index = -1;
+          }
+        }
+
+        if (index >= 0)
+        {
+          ret = image_tracker_[index]->delete_table(table_id, lock_);
+        }
+      }
+
+      return ret;
+    }
+
   } // end namespace chunkserver
 } // end namespace oceanbase
-
-
 

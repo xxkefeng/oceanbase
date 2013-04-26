@@ -25,6 +25,7 @@ MutatorBuilder::~MutatorBuilder()
 
 void MutatorBuilder::destroy()
 {
+  client_.destroy();
   for (int64_t i = 0; i < table_num_; i++)
   {
     if (NULL != cb_array_[i])
@@ -154,9 +155,9 @@ int MutatorBuilder::build_total_scan_param(ObScanParam &scan_param, PageArena<ch
 
   int64_t cur_rowkey_info = get_cur_rowkey_info_(schema, using_id, rb_array_[table_pos]->get_prefix_start());
   std::pair<ObString,ObString> key_range = rb_array_[table_pos]->get_rowkey4total_scan(cur_rowkey_info, allocer);
-  ObRange range;
-  range.start_key_ = key_range.first;
-  range.end_key_ = key_range.second;
+  ObNewRange new_range;
+  new_range.start_key_ = TestRowkeyHelper(key_range.first, &allocer);
+  new_range.end_key_ = TestRowkeyHelper(key_range.second, &allocer);
 
   const ObColumnSchema *iter = NULL;
   for (iter = schema.column_begin(); iter != schema.column_end(); iter++)
@@ -175,13 +176,13 @@ int MutatorBuilder::build_total_scan_param(ObScanParam &scan_param, PageArena<ch
 
   if (using_id)
   {
-    scan_param.set(schema.get_table_id(), ObString(), range);
+    scan_param.set(schema.get_table_id(), ObString(), new_range);
   }
   else
   {
     ObString table_name;
     table_name.assign_ptr(const_cast<char*>(schema.get_table_name()), static_cast<int32_t>(strlen(schema.get_table_name())));
-    scan_param.set(OB_INVALID_ID, table_name, range);
+    scan_param.set(OB_INVALID_ID, table_name, new_range);
   }
 
   ObVersionRange version_range;
@@ -219,10 +220,10 @@ int MutatorBuilder::build_scan_param(ObScanParam &scan_param, PageArena<char> &a
   }
   else
   {
-    ObRange range;
     std::pair<ObString, ObString> key_range = rb_array_[table_pos]->get_rowkey4scan(row_info_array[table_pos], allocer, prefix);
-    range.start_key_ = key_range.first;
-    range.end_key_ = key_range.second;
+    ObNewRange new_range;
+    new_range.start_key_ = TestRowkeyHelper(key_range.first, &allocer);
+    new_range.end_key_ = TestRowkeyHelper(key_range.second, &allocer);
 
     if (using_id)
     {
@@ -260,20 +261,20 @@ int MutatorBuilder::build_scan_param(ObScanParam &scan_param, PageArena<char> &a
       else
       {
         ObString column_name;
-        column_name.assign_ptr(const_cast<char*>(column_schema.get_name()), static_cast<int32_t>(strlen(column_schema.get_name()))); 
+        column_name.assign_ptr(const_cast<char*>(column_schema.get_name()), static_cast<int32_t>(strlen(column_schema.get_name())));
         scan_param.add_column(column_name);
       }
     }
 
     if (using_id)
     {
-      scan_param.set(schema.get_table_id(), ObString(), range);
+      scan_param.set(schema.get_table_id(), ObString(), new_range);
     }
     else
     {
       ObString table_name;
       table_name.assign_ptr(const_cast<char*>(schema.get_table_name()), static_cast<int32_t>(strlen(schema.get_table_name())));
-      scan_param.set(OB_INVALID_ID, table_name, range);
+      scan_param.set(OB_INVALID_ID, table_name, new_range);
     }
 
     ObVersionRange version_range;
@@ -328,7 +329,7 @@ int MutatorBuilder::build_get_param(ObGetParam &get_param, PageArena<char> &allo
       break;
     }
     ObCellInfo ci;
-    ci.row_key_ = rb_array_[table_pos]->get_random_rowkey(row_info_array[table_pos], suffix_num_array[table_pos], allocer);
+    ci.row_key_ = TestRowkeyHelper(rb_array_[table_pos]->get_random_rowkey(row_info_array[table_pos], suffix_num_array[table_pos], allocer), &allocer);
     if (using_id)
     {
       ci.table_id_ = cur_schema.get_table_id();
@@ -377,7 +378,7 @@ int MutatorBuilder::build_get_param(ObGetParam &get_param, PageArena<char> &allo
       else
       {
         ci.column_id_ = OB_INVALID_ID;
-        ci.column_name_.assign_ptr(const_cast<char*>(column_schema.get_name()), static_cast<int32_t>(strlen(column_schema.get_name()))); 
+        ci.column_name_.assign_ptr(const_cast<char*>(column_schema.get_name()), static_cast<int32_t>(strlen(column_schema.get_name())));
       }
       get_param.add_cell(ci);
     }
@@ -414,7 +415,8 @@ int64_t MutatorBuilder::query_prefix_meta_(const ObSchema &schema, const bool us
   }
   char rowkey_info_buffer[1024];
   sprintf(rowkey_info_buffer, "%s%020ld", ROWKEY_INFO_ROWKEY, prefix_start);
-  cell_info.row_key_.assign_ptr(rowkey_info_buffer, static_cast<int32_t>(strlen(rowkey_info_buffer)));
+  CharArena allocer;
+  cell_info.row_key_ = make_rowkey(rowkey_info_buffer, &allocer);
   get_param.add_cell(cell_info);
   ObVersionRange version_range;
   version_range.start_version_ = table_start_version_;
@@ -449,10 +451,6 @@ int64_t MutatorBuilder::query_prefix_meta_(const ObSchema &schema, const bool us
         ret_ci->value_.get_int(ret);
       }
     }
-  }
-  else
-  {
-    abort();
   }
 
   return ret;
@@ -508,7 +506,8 @@ int MutatorBuilder::write_prefix_meta_(ClientWrapper &client, const ObSchema &sc
   rowkey_info_rowkey.assign_ptr(rowkey_info_buffer, static_cast<int32_t>(strlen(rowkey_info_buffer)));
   ObObj meta_obj;
   meta_obj.set_int(param);
-  if (OB_SUCCESS == (ret = mutator.update(table_name, rowkey_info_rowkey, meta_column_name, meta_obj)))
+  CharArena allocer;
+  if (OB_SUCCESS == (ret = mutator.update(table_name, TestRowkeyHelper(rowkey_info_rowkey, &allocer), meta_column_name, meta_obj)))
   {
     ret = client.apply(mutator);
   }
@@ -542,7 +541,7 @@ int MutatorBuilder::build_mutator(ObMutator &mutator, PageArena<char> &allocer, 
     }
     TEKey te_key;
     te_key.table_id = schema_array[table_pos].get_table_id();
-    te_key.row_key = row_key;
+    te_key.row_key = TestRowkeyHelper(row_key, &allocer);
     seed_map.set(te_key, cur_seed, 1);
 
     ObString table_name;
@@ -555,7 +554,7 @@ int MutatorBuilder::build_mutator(ObMutator &mutator, PageArena<char> &allocer, 
     rowkey_info_rowkey.assign_ptr(rowkey_info_buffer, static_cast<int32_t>(strlen(rowkey_info_buffer)));
     ObObj rowkey_info_obj;
     rowkey_info_obj.set_int(rb_array_[table_pos]->get_cur_prefix_end());
-    if (OB_SUCCESS != (ret = mutator.update(table_name, rowkey_info_rowkey, rowkey_info_column_name, rowkey_info_obj)))
+    if (OB_SUCCESS != (ret = mutator.update(table_name, TestRowkeyHelper(rowkey_info_rowkey, &allocer), rowkey_info_column_name, rowkey_info_obj)))
     {
       break;
     }
@@ -566,10 +565,11 @@ int MutatorBuilder::build_mutator(ObMutator &mutator, PageArena<char> &allocer, 
 int64_t MutatorBuilder::get_cur_seed_(const seed_map_t &seed_map, const ObSchema &schema, const ObString &row_key, const bool using_id)
 {
   int64_t cur_seed = 0;
-  
+
   TEKey te_key;
   te_key.table_id = schema.get_table_id();
-  te_key.row_key = row_key;
+  CharArena allocer;
+  te_key.row_key = TestRowkeyHelper(row_key, &allocer);
 
   int hash_ret = 0;
   if (HASH_EXIST != (hash_ret = seed_map.get(te_key, cur_seed)))
@@ -577,7 +577,7 @@ int64_t MutatorBuilder::get_cur_seed_(const seed_map_t &seed_map, const ObSchema
     ObGetParam get_param;
     ObScanner scanner;
     ObCellInfo cell_info;
-    cell_info.row_key_ = row_key;
+    cell_info.row_key_ = TestRowkeyHelper(row_key, &allocer);
     if (using_id)
     {
       cell_info.table_id_ = schema.get_table_id();
@@ -622,10 +622,6 @@ int64_t MutatorBuilder::get_cur_seed_(const seed_map_t &seed_map, const ObSchema
         }
         TBSYS_LOG(DEBUG, "seed get from oceanbase %s", print_cellinfo(ret_ci));
       }
-    }
-    else
-    {
-      abort();
     }
   }
   if (0 == cur_seed)

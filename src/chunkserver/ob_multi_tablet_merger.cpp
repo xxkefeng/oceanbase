@@ -17,6 +17,7 @@
 #include "ob_tablet_image.h"
 #include "ob_tablet_manager.h"
 #include "ob_multi_tablet_merger.h"
+#include "ob_chunk_server_main.h"
 
 namespace oceanbase 
 {
@@ -26,8 +27,7 @@ namespace oceanbase
     using namespace sstable;
 
     ObMultiTabletMerger::ObMultiTabletMerger()
-    : manager_(NULL), sstable_size_(0), last_tablet_with_reader_(NULL),
-      max_tablet_seq_(0)
+    : manager_(NULL), sstable_size_(0), max_tablet_seq_(0)
     {
       path_[0] = '\0';
       memset(merge_tablets_, 0, sizeof(merge_tablets_));
@@ -52,7 +52,6 @@ namespace oceanbase
       sstable_path_.assign_ptr(NULL, 0);
       tablet_array_.clear();
       sstable_array_.clear();
-      last_tablet_with_reader_ = NULL;
       max_tablet_seq_ = 0;
     }
 
@@ -69,6 +68,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       ObTablet* new_tablet = NULL;
+      ObNewRange new_range;
 
       reset();
       manager_ = &manager;
@@ -82,11 +82,15 @@ namespace oceanbase
         TBSYS_LOG(WARN, "failed to acquire tablets and readers, serving_version=%ld, ret=%d", 
           serving_version, ret);
       }
-      else if (OB_SUCCESS != (ret = do_merge_sstable()))
+      else if (OB_SUCCESS != (ret = get_new_tablet_range(new_range)))
+      {
+        TBSYS_LOG(WARN, "failed to get new tablet range");
+      }
+      else if (OB_SUCCESS != (ret = do_merge_sstable(new_range)))
       {
         TBSYS_LOG(WARN, "failed to merge sstable, ret=%d", ret);
       }
-      else if (OB_SUCCESS != (ret = create_new_tablet(new_tablet)) 
+      else if (OB_SUCCESS != (ret = create_new_tablet(new_range, new_tablet)) 
                || NULL == new_tablet)
       {
         TBSYS_LOG(WARN, "failed to create new tablet, new_tablet=%p, ret=%d", 
@@ -175,17 +179,16 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        char range_buf[OB_RANGE_STR_BUFSIZ];
         // dump merge tablets information.
         for (int64_t i = 0; i < tablet_list.get_tablet_size(); ++i)
         {
           const ObTabletReportInfo& info = tablet_list.get_tablet()[i];
-          info.tablet_info_.range_.to_string(range_buf, OB_RANGE_STR_BUFSIZ);
           TBSYS_LOG(INFO, "merge tablets[%ld]<%s>, "
-              "tablet occupy size:%ld, row count:%ld, checksum:%lu, version:%ld", 
-              i, range_buf, info.tablet_info_.occupy_size_, 
+              "tablet occupy size:%ld, row count:%ld, checksum:%lu, version:%ld, sequence_num=%ld", 
+              i, to_cstring(info.tablet_info_.range_), info.tablet_info_.occupy_size_, 
               info.tablet_info_.row_count_, info.tablet_info_.crc_sum_,
-              info.tablet_location_.tablet_version_);
+              info.tablet_location_.tablet_version_,
+              info.tablet_location_.tablet_seq_);
         }
       }
 
@@ -245,8 +248,8 @@ namespace oceanbase
           TBSYS_LOG(WARN, "failed to load sstable, index=%ld, range=%s", 
             i, range_buf);
         }
-        else if (tablet->get_sstable_reader_list().get_array_index() > 0
-                 && NULL == (reader = *tablet->get_sstable_reader_list().at(0)))
+        else if (tablet->get_sstable_reader_list().count() > 0
+                 && NULL == (reader = dynamic_cast<ObSSTableReader*>(tablet->get_sstable_reader_list().at(0))))
         {
           tablet_infos[i].tablet_info_.range_.to_string(range_buf, sizeof(range_buf));
           TBSYS_LOG(WARN, "tablet has NULL sstable reader, index=%ld, range=%s", 
@@ -259,13 +262,7 @@ namespace oceanbase
               sstable_array_.get_array_index());
           ret = OB_SIZE_OVERFLOW;
         }
-        else if (NULL != reader)
-        {
-          last_tablet_with_reader_ = tablet;
-        }
-
-        if (OB_SUCCESS == ret && NULL != tablet
-            && tablet->get_sequence_num() > max_tablet_seq_)
+        else if (NULL != tablet && tablet->get_sequence_num() > max_tablet_seq_)
         {
           max_tablet_seq_ = tablet->get_sequence_num(); 
         }
@@ -274,34 +271,33 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiTabletMerger::do_merge_sstable()
+    int ObMultiTabletMerger::do_merge_sstable(const ObNewRange& new_range)
     {
       int ret = OB_SUCCESS;
 
-      if (sstable_array_.get_array_index() > 1)
+      //init sstable_id_ and stable_path_ first, the disk_no is gotten from sstable_id_
+      if (OB_SUCCESS != (ret = get_new_sstable_path(sstable_path_)))
       {
-        if (OB_SUCCESS != (ret = get_new_sstable_path(sstable_path_)))
-        {
-          TBSYS_LOG(WARN, "failed to get sstable path for merged sstable");
-        }
-        else if (OB_SUCCESS != (ret = sstable_merger_.merge_sstables(sstable_path_, 
-                 manager_->get_serving_block_cache(), 
-                 manager_->get_serving_block_index_cache(),
-                 sstable_readers_, sstable_array_.get_array_index())))
-        {
-          TBSYS_LOG(WARN, "failed to merge sstable, ret=%d", ret);
-        }
-      }
-      else if (1 == sstable_array_.get_array_index())
-      {
-        if (OB_SUCCESS != (ret = create_hard_link_sstable(sstable_size_)))
-        {
-          TBSYS_LOG(WARN, "failed to create hard link sstable, ret=%d", ret);
-        }
+        TBSYS_LOG(WARN, "failed to get sstable path for merged sstable");
       }
       else 
       {
-        //do nothing, no sstable to merge
+        if (sstable_array_.get_array_index() > 0)
+        {
+          if (OB_SUCCESS != (ret = sstable_merger_.merge_sstables(sstable_path_, 
+              manager_->get_serving_block_cache(), 
+              manager_->get_serving_block_index_cache(),
+              sstable_readers_, sstable_array_.get_array_index(), new_range)))
+          {
+            TBSYS_LOG(WARN, "failed to merge sstable, ret=%d", ret);
+          }
+        }
+        else 
+        {
+          //do nothing, no sstable to merge
+          TBSYS_LOG(INFO, "all tablets to merge is empty, tablet_count=%ld",
+            tablet_array_.get_array_index());
+        }
       }
 
       return ret;
@@ -364,73 +360,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiTabletMerger::create_hard_link_sstable(int64_t& sstable_size)
-    {
-      int ret = OB_SUCCESS;
-      ObSSTableId old_sstable_id;
-      char old_path[OB_MAX_FILE_NAME_LENGTH];
-      sstable_size = 0;
-
-      if (sstable_array_.get_array_index() != 1)
-      {
-        TBSYS_LOG(WARN, "sstable to merge is greater than 1, can't create hard link");
-        ret = OB_ERROR;
-      }
-      else if (last_tablet_with_reader_->get_sstable_id_list().get_array_index() > 0)
-      {
-        int32_t disk_no = last_tablet_with_reader_->get_disk_no();
-
-        /**
-         * mustn't use the same sstable id in the the same disk, because 
-         * if tablet isn't changed, we just add a hard link pointer to 
-         * the old sstable file, so maybe different sstable file pointer 
-         * the same content in disk. if we cancle daily merge, maybe 
-         * some tablet meta isn't synced into index file, then we 
-         * restart chunkserver will do daily merge again, it may reuse 
-         * the same sstable id, if the sstable id is existent and it 
-         * pointer to a share disk content, the sstable will be 
-         * truncated if we create sstable with the sstable id. 
-         */
-        do
-        {
-          sstable_id_.sstable_file_id_ = manager_->allocate_sstable_file_seq();
-          sstable_id_.sstable_file_id_ = (sstable_id_.sstable_file_id_ << 8) | (disk_no & 0xff);
-
-          if (OB_SUCCESS != (ret = get_sstable_path(sstable_id_, path_, sizeof(path_))) )
-          {
-            TBSYS_LOG(ERROR, "create_hard_link_sstable: can't get the path "
-                             "of hard link sstable");
-            ret = OB_ERROR;
-          }
-        } while (OB_SUCCESS == ret && FileDirectoryUtils::exists(path_));
-
-        if (OB_SUCCESS == ret)
-        {
-          /**
-           * FIXME: current we just support one tablet with only one 
-           * sstable file 
-           */
-          sstable_size = (*sstable_array_.at(0))->get_sstable_size();
-          old_sstable_id = *last_tablet_with_reader_->get_sstable_id_list().at(0);
-          if ((ret = get_sstable_path(old_sstable_id, old_path, sizeof(old_path))) != OB_SUCCESS )
-          {
-            TBSYS_LOG(ERROR, "create_hard_link_sstable: can't get the path of old sstable");
-            ret = OB_ERROR;
-          }
-          else if (0 != ::link(old_path, path_))
-          {
-            TBSYS_LOG(ERROR, "failed create hard link for unchanged sstable, "
-                             "old_sstable=%s, new_sstable=%s",
-              old_path, path_);
-            ret = OB_ERROR;
-          }
-        }
-      }
-
-      return ret;
-    }
-
-    int ObMultiTabletMerger::create_new_tablet(ObTablet*& new_tablet)
+    int ObMultiTabletMerger::create_new_tablet(
+      const ObNewRange& new_range, ObTablet*& new_tablet)
     {
       int ret = OB_SUCCESS;
       ObMultiVersionTabletImage& tablet_image = manager_->get_serving_tablet_image();
@@ -439,17 +370,12 @@ namespace oceanbase
       ObTablet* first_tablet = *tablet_array_.at(0);
       int64_t sstable_size = 0;
       ObTabletExtendInfo extend_info;
-      ObRange new_range;
       new_tablet = NULL;
 
       if (NULL == first_tablet)
       {
         TBSYS_LOG(WARN, "the first tablet to merge is NULL");
         ret = OB_ERROR;
-      }
-      else if (OB_SUCCESS != (ret = get_new_tablet_range(new_range)))
-      {
-        TBSYS_LOG(WARN, "failed to get new tablet range");
       }
       else if (OB_SUCCESS != (ret = tablet_image.alloc_tablet_object(
         new_range, first_tablet->get_data_version(), tablet)))
@@ -458,12 +384,7 @@ namespace oceanbase
       }
       else
       {
-        if (1 == sstable_array_.get_array_index())
-        {
-          trailer = &(*sstable_array_.at(0))->get_trailer();
-          sstable_size = sstable_size_;
-        }
-        else if (sstable_array_.get_array_index() > 1)
+        if (sstable_array_.get_array_index() > 0)
         {
           trailer = &sstable_merger_.get_sstable_trailer();
           sstable_size = sstable_merger_.get_sstable_size();
@@ -498,13 +419,16 @@ namespace oceanbase
             int64_t checksum_len = sizeof(uint64_t);
             char checksum_buf[checksum_len];
 
-            extend_info.occupy_size_ = sstable_size;
-            extend_info.row_count_ = trailer->get_row_count();
-            ret = serialization::encode_i64(checksum_buf, 
-                checksum_len, pos, trailer->get_sstable_checksum());
-            if (OB_SUCCESS == ret)
+            if (trailer->get_row_count() > 0)
             {
-              extend_info.check_sum_ = ob_crc64(checksum_buf, checksum_len);
+              extend_info.occupy_size_ = sstable_size;
+              extend_info.row_count_ = trailer->get_row_count();
+              ret = serialization::encode_i64(checksum_buf, 
+                  checksum_len, pos, trailer->get_sstable_checksum());
+              if (OB_SUCCESS == ret)
+              {
+                extend_info.check_sum_ = ob_crc64(checksum_buf, checksum_len);
+              }
             }
           }
         }
@@ -540,7 +464,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiTabletMerger::get_new_tablet_range(ObRange& new_range)
+    int ObMultiTabletMerger::get_new_tablet_range(ObNewRange& new_range)
     {
       int ret = OB_SUCCESS;
       ObTablet* first_tablet = *tablet_array_.at(0);
@@ -557,10 +481,10 @@ namespace oceanbase
       {
         new_range = first_tablet->get_range();
         new_range.end_key_ = last_tablet->get_range().end_key_;
-        if (last_tablet->get_range().border_flag_.is_max_value())
+        if (last_tablet->get_range().end_key_.is_max_row())
         {
           TBSYS_LOG(INFO, "this last mrege tablet has max flag");
-          new_range.border_flag_.set_max_value();
+          new_range.end_key_.set_max_row();
           new_range.border_flag_.unset_inclusive_end();
         }
       }
@@ -573,7 +497,6 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       int32_t disk_no = 0;
       ObMultiVersionTabletImage& tablet_image = manager_->get_serving_tablet_image();
-      int64_t disk_tablet[OB_MAX_DISK_NUMBER];
 
       /**
        * FIXME: if remove some tablets from tablet image failed, it 
@@ -583,30 +506,33 @@ namespace oceanbase
        * different chunk servers loss at the same time, the tablet 
        * will be lost. 
        */
-
-      memset(disk_tablet, 0, sizeof(disk_tablet));
       for (int64_t i = 0; i < tablet_array_.get_array_index() && OB_SUCCESS == ret; ++i)
       {
         if (NULL != merge_tablets_[i])
         {
-          //release tablet first, then remove tablet
-          ret = tablet_image.release_tablet(merge_tablets_[i]);
+          //remove tablet from tablet image, then release tablet
+          ret = tablet_image.remove_tablet(merge_tablets_[i]->get_range(),
+            merge_tablets_[i]->get_data_version(), disk_no);
           if (OB_SUCCESS != ret)
           {
-            TBSYS_LOG(ERROR, "failed to release tablet, tablet=%p, err=%d", 
+            TBSYS_LOG(ERROR, "failed to remove tablet, tablet=%p, ret=%d", 
                       merge_tablets_[i], ret);
+            break;
           }
 
           if (OB_SUCCESS == ret)
           {
-            disk_tablet[merge_tablets_[i]->get_disk_no() - 1]++;
-            ret = tablet_image.remove_tablet(merge_tablets_[i]->get_range(),
-              merge_tablets_[i]->get_data_version(), disk_no);
+            /**
+             * set the removed flag, when release tablet, if the ref_count 
+             * is 0, the sstable resource of tablet will be released. 
+             */
+            merge_tablets_[i]->set_removed();
+            merge_tablets_[i]->set_merged();
+            ret = tablet_image.release_tablet(merge_tablets_[i]);
             if (OB_SUCCESS != ret)
             {
-              TBSYS_LOG(ERROR, "failed to remove tablet, tablet=%p, ret=%d", 
+              TBSYS_LOG(ERROR, "failed to release tablet, tablet=%p, err=%d", 
                         merge_tablets_[i], ret);
-              break;
             }
             else
             {
@@ -619,25 +545,14 @@ namespace oceanbase
       if (OB_SUCCESS == ret
           && OB_SUCCESS != (ret = tablet_image.add_tablet(tablet)))
       {
-        char range_buf[OB_RANGE_STR_BUFSIZ];
-        tablet->get_range().to_string(range_buf, sizeof(range_buf));
         TBSYS_LOG(ERROR, "add new merged tablet into tablet iamge failed, "
-                         "new_range=%s", range_buf);
+                         "new_range=%s", to_cstring(tablet->get_range()));
       }
-
-      if (OB_SUCCESS == ret)
+      else if (OB_SUCCESS != (ret = tablet_image.write(
+               tablet->get_data_version(), tablet->get_disk_no())))
       {
-        disk_tablet[tablet->get_disk_no() - 1]++;
-        for (int64_t i = 0; i < OB_MAX_DISK_NUMBER && OB_SUCCESS == ret; ++i)
-        {
-          if (OB_SUCCESS == ret && disk_tablet[i] > 0
-              && OB_SUCCESS != (ret = tablet_image.write(
-                                  tablet->get_data_version(), static_cast<int32_t>(i + 1))))
-          {
-            TBSYS_LOG(WARN, "write new meta failed version=%ld, disk_no=%ld",  
-                tablet->get_data_version(), i + 1);
-          }
-        }
+        TBSYS_LOG(WARN, "write new meta failed version=%ld, disk_no=%d",  
+            tablet->get_data_version(), tablet->get_disk_no());
       }
 
       return ret;
@@ -657,6 +572,7 @@ namespace oceanbase
       report_tablet_info.tablet_info_.crc_sum_ = tablet.get_checksum();
       report_tablet_info.tablet_location_.tablet_version_ = tablet.get_data_version();
       report_tablet_info.tablet_location_.tablet_seq_ = tablet.get_sequence_num();
+      report_tablet_info.tablet_location_.chunkserver_ = THE_CHUNK_SERVER.get_self();
 
       ret = tablet_list.add_tablet(report_tablet_info);
 

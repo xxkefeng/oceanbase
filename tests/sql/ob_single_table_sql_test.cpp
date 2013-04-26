@@ -53,12 +53,12 @@ TEST_F(ObSingleTableSQLTest, basic_test)
 {
   tbsys::CConfig::getCConfig().load("ob_single_table_sql_test_schema.ini");
   ObResultSet result_set;
-  ObSql obsql;
+  ObSqlContext context;
   const char* const stmt = "SELECT DISTINCT c1, max(c5), count(c2), sum(c2+c3) FROM fake_table "
     "WHERE c5 % 2 = 0 GROUP BY c5 HAVING sum(c4) % 2 = 0 ORDER BY c1 DESC LIMIT 20, 5;";
   ObString strstmt;
   strstmt.assign(const_cast<char*>(stmt), static_cast<int64_t>(strlen(stmt)));
-  ASSERT_EQ(OB_NOT_INIT, obsql.direct_execute(strstmt, result_set));
+  //ASSERT_EQ(OB_NOT_INIT, ObSql::direct_execute(strstmt, result_set, context));
 }
 
 int main(int argc, char **argv)

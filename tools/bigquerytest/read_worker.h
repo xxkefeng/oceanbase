@@ -27,7 +27,7 @@ class ReadWorker : public tbsys::CDefaultRunnable
     ReadWorker();
     ~ReadWorker();
 
-    int init(KeyGenerator& key_gen, ObSqlClient& ob_client, PrefixInfo& prefix_info);
+    int init(KeyGenerator& key_gen, MysqlClient& ob_client, PrefixInfo& prefix_info);
 
   public:
     virtual void run(tbsys::CThread* thread, void* arg);

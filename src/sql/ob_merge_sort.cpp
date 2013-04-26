@@ -62,9 +62,13 @@ void ObMergeSort::reset()
       TBSYS_LOG(WARN, "failed to close run file, err=%d", ret);
     }
   }
-  if (0 != unlink(run_filename_buf_))
+  struct stat stat_buf;
+  if (0 == stat(run_filename_buf_, &stat_buf))
   {
-    TBSYS_LOG(WARN, "failed to remove tmp run file, err=%s", strerror(errno));
+    if (0 != unlink(run_filename_buf_))
+    {
+      TBSYS_LOG(WARN, "failed to remove tmp run file, err=%s", strerror(errno));
+    }
   }
   dump_run_count_ = 0;
   row_desc_ = NULL;
@@ -139,7 +143,7 @@ struct ObMergeSort::HeapComparer
     bool ret = false;
     const ObObj *cell1 = NULL;
     const ObObj *cell2 = NULL;
-    for (int64_t i = 0; i < sort_columns_.count(); ++i)
+    for (int32_t i = 0; i < sort_columns_.count(); ++i)
     {
       if (OB_SUCCESS != (ret = r1.first.get_cell(sort_columns_.at(i).table_id_,
                                                  sort_columns_.at(i).column_id_, cell1)))
@@ -185,7 +189,7 @@ int ObMergeSort::build_merge_heap()
   else
   {
     heap_array_.clear();
-    heap_array_.reserve(dump_run_count_+1);
+    heap_array_.reserve(static_cast<int32_t>(dump_run_count_+1));
     for (int64_t i = 0; i < dump_run_count_; ++i)
     {
       if (OB_SUCCESS != (ret = run_file_.get_next_row(i, row)))
@@ -310,4 +314,3 @@ int ObMergeSort::get_next_row(const common::ObRow *&row)
   }
   return ret;
 }
-

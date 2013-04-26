@@ -54,6 +54,7 @@ namespace oceanbase
         bool parse_from_file(const char* file_name, tbsys::CConfig& config);
         const CommonSchemaManager *get_impl() const;
         int set_impl(const CommonSchemaManager &schema_impl) const;
+        void print_info() const;
         NEED_SERIALIZE_AND_DESERIALIZE;
       public:
         void *schema_mgr_buffer_;
@@ -107,6 +108,7 @@ namespace oceanbase
         int get_schema_handle(SchemaHandle &schema_handle) const;
         void revert_schema_handle(SchemaHandle &schema_handle) const;
 
+        int64_t get_version() const;
         uint64_t get_create_time_column_id(const uint64_t table_id) const;
         uint64_t get_modify_time_column_id(const uint64_t table_id) const;
         uint64_t get_create_time_column_id(const SchemaHandle &schema_handle, const uint64_t table_id) const;

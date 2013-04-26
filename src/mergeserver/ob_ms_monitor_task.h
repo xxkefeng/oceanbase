@@ -27,7 +27,6 @@ namespace oceanbase
   namespace mergeserver
   {
     class ObMergeServer;
-    class ObMergerLocationCacheProxy;
     class ObMergerMonitorTask : public common::ObTimerTask
     {
     public:
@@ -35,9 +34,7 @@ namespace oceanbase
       ~ObMergerMonitorTask();
 
     public:
-      int init(const ObMergeServer * server, const int64_t threshold);
-
-      void set_cache(const ObMergerLocationCacheProxy * proxy);
+      int init(const ObMergeServer * server);
 
       void runTimerTask(void);
 
@@ -45,10 +42,9 @@ namespace oceanbase
       bool check_inner_stat(void) const;
 
     private:
+      int64_t min_drop_error_count_; 
       uint64_t old_drop_counter_;
-      int64_t min_drop_value_;
       const ObMergeServer * server_;
-      const ObMergerLocationCacheProxy * location_proxy_;
     };
 
     inline bool ObMergerMonitorTask::check_inner_stat(void) const

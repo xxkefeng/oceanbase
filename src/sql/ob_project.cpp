@@ -19,7 +19,7 @@
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
-ObProject::ObProject()
+ObProject::ObProject() : rowkey_cell_count_(0)
 {
 }
 
@@ -27,13 +27,26 @@ ObProject::~ObProject()
 {
 }
 
+void ObProject::reset()
+{
+  columns_.clear();
+  row_desc_.reset();
+  rowkey_cell_count_ = 0;
+}
+
+void ObProject::clear()
+{
+  ObSingleChildPhyOperator::clear();
+  reset();
+}
+
 int ObProject::add_output_column(const ObSqlExpression& expr)
 {
   int ret = OB_SUCCESS;
+  // @todo deep copy
   if (OB_SUCCESS != (ret = columns_.push_back(expr)))
   {
-    // @todo to_cstring(expr)
-    TBSYS_LOG(WARN, "failed to add column, err=%d", ret);
+    //@todo TBSYS_LOG(WARN, "failed to add column, err=%d expr=%s", ret, to_cstring(expr));
   }
   return ret;
 }
@@ -41,7 +54,13 @@ int ObProject::add_output_column(const ObSqlExpression& expr)
 int ObProject::cons_row_desc()
 {
   int ret = OB_SUCCESS;
-  for (int64_t i = 0; i < columns_.count(); ++i)
+  if(0 != row_desc_.get_column_num())
+  {
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(WARN, "row desc should be empty");
+  }
+
+  for (int32_t i = 0; OB_SUCCESS == ret && i < columns_.count(); ++i)
   {
     const ObSqlExpression &expr = columns_.at(i);
     if (OB_SUCCESS != (ret = row_desc_.add_column_desc(expr.get_table_id(), expr.get_column_id())))
@@ -54,6 +73,10 @@ int ObProject::cons_row_desc()
   {
     ret = OB_INVALID_ARGUMENT;
     TBSYS_LOG(ERROR, "no column for output");
+  }
+  else
+  {
+    row_desc_.set_rowkey_cell_count(rowkey_cell_count_);
   }
   return ret;
 }
@@ -115,8 +138,10 @@ int ObProject::get_next_row(const common::ObRow *&row)
   }
   else
   {
+    TBSYS_LOG(DEBUG, "PROJECT ret=%d op=%p type=%d %s",
+              ret, child_op_, child_op_->get_type(), (NULL == input_row) ? "nil" : to_cstring(*input_row));
     const ObObj *result = NULL;
-    for (int64_t i = 0; i < columns_.count(); ++i)
+    for (int32_t i = 0; i < columns_.count(); ++i)
     {
       ObSqlExpression &expr = columns_.at(i);
       if (OB_SUCCESS != (ret = expr.calc(*input_row, result)))
@@ -142,7 +167,7 @@ int64_t ObProject::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
   databuff_printf(buf, buf_len, pos, "Project(columns=[");
-  for (int64_t i = 0; i < columns_.count(); ++i)
+  for (int32_t i = 0; i < columns_.count(); ++i)
   {
     int64_t pos2 = columns_.at(i).to_string(buf+pos, buf_len-pos);
     pos += pos2;
@@ -247,4 +272,11 @@ DEFINE_GET_SERIALIZE_SIZE(ObProject)
 void ObProject::assign(const ObProject &other)
 {
   columns_ = other.columns_;
+  rowkey_cell_count_ = other.rowkey_cell_count_;
 }
+
+ObPhyOperatorType ObProject::get_type() const
+{
+  return PHY_PROJECT;
+}
+

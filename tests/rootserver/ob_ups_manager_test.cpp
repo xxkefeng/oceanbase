@@ -15,7 +15,10 @@
  */
 #include "rootserver/ob_ups_manager.h"
 #include "rootserver/ob_root_rpc_stub.h"
+#include "rootserver/ob_root_server_config.h"
+#include "common/ob_config_manager.h"
 #include "mock_root_rpc_stub.h"
+#include "root_server_tester.h"
 #include <gtest/gtest.h>
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
@@ -29,6 +32,7 @@ using ::testing::DoAll;
 using ::testing::Return;
 using ::testing::SetArgReferee;
 
+common::ObMsgUpsHeartbeat msg;
 struct Argument
 {
   ObServer addr;
@@ -42,15 +46,15 @@ TEST(ObUpsManagerTest, test_basic)
   int64_t lease_duration = 5000*1000; // 3s
   int64_t lease_reserved_us = 1000*1000;     // 1s
   int64_t waiting_register_time = 5000*1000;   // 5s
+  int64_t config_version = 2;
 
-  ObRootConfig config;
-  config.flag_network_timeout_us_.set(timeout_us);
-  config.flag_ups_lease_us_.set(lease_duration);
-  config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
-  config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
   oceanbase::rootserver::testing::MockObRootRpcStub rpc_stub;
+  ObRootServerConfig rs_config;
+  ObConfigManager config_mgr(rs_config);
+  ObRootWorkerForTest root_worker(config_mgr, rs_config);
+  volatile int64_t schema_version = 0;
   ObiRole rs_obi_role;
-  ObUpsManager um(rpc_stub, config, rs_obi_role);
+  ObUpsManager um(rpc_stub, &root_worker, timeout_us, lease_duration, lease_reserved_us, waiting_register_time, rs_obi_role, schema_version, config_version);
   int32_t port_base = 1234;
   int64_t last_time = tbsys::CTimeUtil::getTime();
   int64_t start_time = last_time;
@@ -60,14 +64,20 @@ TEST(ObUpsManagerTest, test_basic)
     ObServer addr;
     addr.set_ipv4_addr("127.0.0.1", port_base+i);
     int64_t log_seq_num = 567890 + i;
-    ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0));
+    ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0, "0.4.1.2"));
   }
+  int64_t length = 1028;
+  int64_t pos = 0;
+  char buf[length];
+  um.print(buf, length, pos);
+  TBSYS_LOG(INFO, "um data =%s", buf);
   // send heartbeat without lease
   for (int i = 0; i < 3; ++i)
   {
     ObServer addr;
     addr.set_ipv4_addr("127.0.0.1", port_base+i);
-    EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _, _, _, _))
+    TBSYS_LOG(INFO, "server = %s", to_cstring(addr));
+    EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr,_))
       .Times(1);
   }
   int64_t interval = lease_duration-lease_reserved_us;
@@ -112,7 +122,7 @@ TEST(ObUpsManagerTest, test_basic)
   {
     ObServer addr;
     addr.set_ipv4_addr("127.0.0.1", port_base+i);
-    EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _, _, _, _))
+    EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _))
       .Times(1);
   }
   now = tbsys::CTimeUtil::getTime();
@@ -157,7 +167,7 @@ TEST(ObUpsManagerTest, test_basic)
   {
     ObServer addr;
     addr.set_ipv4_addr("127.0.0.1", port_base+i);
-    EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _, _, _, _))
+    EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _))
       .Times(1);
   }
   now = tbsys::CTimeUtil::getTime();
@@ -198,33 +208,33 @@ TEST(ObUpsManagerTest, test_register_lease)
   int64_t lease_reserved_us = 1000*1000;     // 1s
   int64_t waiting_register_time = 5000*1000;   // 5s
 
-  ObRootConfig config;
-  config.flag_network_timeout_us_.set(timeout_us);
-  config.flag_ups_lease_us_.set(lease_duration);
-  config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
-  config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
   oceanbase::rootserver::testing::MockObRootRpcStub rpc_stub;
+  ObRootServerConfig rs_config;
+  ObConfigManager config_mgr(rs_config);
+  ObRootWorkerForTest root_worker(config_mgr, rs_config);
+  int64_t config_version = 2;
   ObiRole rs_obi_role;
-  ObUpsManager um(rpc_stub, config, rs_obi_role);
+  volatile int64_t schema_version = 0;
+  ObUpsManager um(rpc_stub, &root_worker, timeout_us, lease_duration, lease_reserved_us, waiting_register_time, rs_obi_role, schema_version, config_version);
   int32_t port_base = 1234;
   // register 3 ups
   ObServer addr;
   addr.set_ipv4_addr("127.0.0.1", port_base+0);
   int64_t log_seq_num = 567890;
-  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0));
+  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0, "0.4.1.2"));
   ASSERT_TRUE(!um.has_master());
-  ASSERT_EQ(OB_ALREADY_REGISTERED, um.register_ups(addr, 5678, log_seq_num, 0));
+  ASSERT_EQ(OB_ALREADY_REGISTERED, um.register_ups(addr, 5678, log_seq_num, 0, "0.4.1.2"));
 
   addr.set_ipv4_addr("127.0.0.1", port_base+1);
-  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 1234));
+  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 1234, "0.4.1.2"));
   ASSERT_TRUE(!um.has_master());
 
   // send heartbeat without lease
   addr.set_ipv4_addr("127.0.0.1", port_base+0);
-  EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _, _, _, _))
+  EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _))
     .Times(1);
   addr.set_ipv4_addr("127.0.0.1", port_base+1);
-  EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _, _, _, _))
+  EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _))
     .Times(1);
   usleep(static_cast<useconds_t>(lease_duration-lease_reserved_us));
   ASSERT_EQ(OB_SUCCESS, um.grant_lease());
@@ -232,7 +242,7 @@ TEST(ObUpsManagerTest, test_register_lease)
   addr.set_ipv4_addr("127.0.0.1", port_base+2);
   int64_t now = tbsys::CTimeUtil::getTime();
   int64_t my_lease = now + 50*1000;
-  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, my_lease));
+  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, my_lease, "0.4.1.2"));
   ASSERT_TRUE(um.has_master());
   ASSERT_EQ(2, um.ups_master_idx_);
   for (int i = 0; i < 3; ++i)
@@ -250,13 +260,16 @@ TEST(ObUpsManagerTest, test_register_lease)
     addr.set_ipv4_addr("127.0.0.1", port_base+i);
     if (2 == i)
     {
-      EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _, _, _, _))
-        .With(Args<0,1>(Eq()))
+       EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _))
         .Times(1);
+
+     // EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _))
+     //   .With(Args<0,1>(Eq()))
+     //   .Times(1);
     }
     else
     {
-      EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _, _, _, _))
+      EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _))
         .Times(1);
     }
   }
@@ -271,31 +284,36 @@ TEST(ObUpsManagerTest, test_register_lease2)
   int64_t lease_reserved_us = 1000*1000;     // 1s
   int64_t waiting_register_time = 5000*1000;   // 5s
 
-  ObRootConfig config;
-  config.flag_network_timeout_us_.set(timeout_us);
-  config.flag_ups_lease_us_.set(lease_duration);
-  config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
-  config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
+  //ObRootConfig config;
+  //config.flag_network_timeout_us_.set(timeout_us);
+  //config.flag_ups_lease_us_.set(lease_duration);
+  //config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
+  //config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
 
   oceanbase::rootserver::testing::MockObRootRpcStub rpc_stub;
   ObiRole rs_obi_role;
-  ObUpsManager um(rpc_stub, config, rs_obi_role);
+  ObRootServerConfig rs_config;
+  ObConfigManager config_mgr(rs_config);
+  ObRootWorkerForTest root_worker(config_mgr, rs_config);
+  int64_t config_version = 2;
+  volatile int64_t schema_version = 0;
+  ObUpsManager um(rpc_stub, &root_worker, timeout_us, lease_duration, lease_reserved_us, waiting_register_time, rs_obi_role, schema_version, config_version);
   int32_t port_base = 1234;
   int64_t log_seq_num = 567890;
   // register 3 ups
   ObServer addr;
   addr.set_ipv4_addr("127.0.0.1", port_base+0);
-  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0));
+  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0, "0.4.1.2"));
   ASSERT_TRUE(!um.has_master());
 
   int64_t now = tbsys::CTimeUtil::getTime();
   addr.set_ipv4_addr("127.0.0.1", port_base+1);
-  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, now+50*1000));
+  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, now+50*1000, "0.4.1.2"));
   ASSERT_TRUE(um.has_master());
 
   addr.set_ipv4_addr("127.0.0.1", port_base+2);
-  ASSERT_EQ(OB_CONFLICT_VALUE, um.register_ups(addr, 5678, log_seq_num, now+50*1000));
-  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0));
+  ASSERT_EQ(OB_CONFLICT_VALUE, um.register_ups(addr, 5678, log_seq_num, now+50*1000, "0.4.1.2"));
+  ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0, "0.4.1.2"));
   ASSERT_EQ(1, um.ups_master_idx_);
 }
 void renew_lease(void *argument)
@@ -316,18 +334,24 @@ TEST(ObUpsManagerTest, test_read_percent2)
   int32_t master_read_percent = 30;
 
   int32_t port_base = 1234;
-  ObRootConfig config;
+  //ObRootConfig config;
   int32_t ups_count = 3;
-  config.flag_read_master_master_ups_percent_.set(-1);
-  config.flag_read_slave_master_ups_percent_.set(-1);
-  config.flag_network_timeout_us_.set(timeout_us);
-  config.flag_ups_lease_us_.set(lease_duration);
-  config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
-  config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
+  //config.flag_read_master_master_ups_percent_.set(-1);
+  //config.flag_read_slave_master_ups_percent_.set(-1);
+  //config.flag_network_timeout_us_.set(timeout_us);
+  //config.flag_ups_lease_us_.set(lease_duration);
+  //config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
+  //config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
 
   oceanbase::rootserver::testing::MockObRootRpcStub rpc_stub;
   ObiRole rs_obi_role;
-  ObUpsManager um(rpc_stub, config, rs_obi_role);
+  ObRootServerConfig rs_config;
+  ObConfigManager config_mgr(rs_config);
+  ObRootWorkerForTest root_worker(config_mgr, rs_config);
+  int64_t config_version = 2;
+
+  volatile int64_t schema_version = 0;
+  ObUpsManager um(rpc_stub, &root_worker, timeout_us, lease_duration, lease_reserved_us, waiting_register_time, rs_obi_role, schema_version, config_version);
   // register 3 ups
   for (int i = 0; i < 3; ++i)
   {
@@ -337,11 +361,11 @@ TEST(ObUpsManagerTest, test_read_percent2)
     if (0 == i)
     {
       int64_t now = tbsys::CTimeUtil::getTime();
-      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, now+50*1000));
+      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, now+50*1000, "0.4.1.2"));
     }
     else
     {
-      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0));
+      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0, "0.4.1.2"));
     }
   }
   ASSERT_EQ(ups_count, um.get_ups_count());
@@ -528,17 +552,23 @@ TEST(ObUpsManagerTest, test_read_percent)
   int32_t ups_read_percent = 20;
   int32_t master_read_percent = 30;
 
-  ObRootConfig config;
-  config.flag_read_master_master_ups_percent_.set(master_read_percent);
-  config.flag_read_slave_master_ups_percent_.set(ups_read_percent);
-  config.flag_network_timeout_us_.set(timeout_us);
-  config.flag_ups_lease_us_.set(lease_duration);
-  config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
-  config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
+  //ObRootConfig config;
+  //config.flag_read_master_master_ups_percent_.set(master_read_percent);
+  //config.flag_read_slave_master_ups_percent_.set(ups_read_percent);
+  //config.flag_network_timeout_us_.set(timeout_us);
+  //config.flag_ups_lease_us_.set(lease_duration);
+  //config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
+  //config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
 
   oceanbase::rootserver::testing::MockObRootRpcStub rpc_stub;
   ObiRole rs_obi_role;
-  ObUpsManager um(rpc_stub, config, rs_obi_role);
+  ObRootServerConfig rs_config;
+  ObConfigManager config_mgr(rs_config);
+  ObRootWorkerForTest root_worker(config_mgr, rs_config);
+  int64_t config_version = 2;
+
+  volatile int64_t schema_version = 0;
+  ObUpsManager um(rpc_stub, &root_worker, timeout_us, lease_duration, lease_reserved_us, waiting_register_time, rs_obi_role, schema_version, config_version);
   int32_t port_base = 1234;
   // register 3 ups
   for (int i = 0; i < 3; ++i)
@@ -549,11 +579,11 @@ TEST(ObUpsManagerTest, test_read_percent)
     if (0 == i)
     {
       int64_t now = tbsys::CTimeUtil::getTime();
-      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, now+50*1000));
+      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, now+50*1000, "0.4.1.2"));
     }
     else
     {
-      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0));
+      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0, "0.4.1.2"));
     }
   }
   um.set_ups_config(master_read_percent, ups_read_percent);
@@ -647,7 +677,7 @@ TEST(ObUpsManagerTest, test_read_percent)
     ObServer addr;
     addr.set_ipv4_addr("127.0.0.1", port_base + 0);
     int64_t log_seq_num = 567890;
-    ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0));
+    ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0, "0.4.1.2"));
     ObUpsStatus stat = UPS_STAT_SYNC;
     ObiRole obi_role;
     ASSERT_EQ(OB_SUCCESS, um.renew_lease(addr, stat, obi_role));
@@ -690,15 +720,20 @@ TEST(ObUpsManagerTest, test_offline)
   int64_t lease_reserved_us = 1000*1000;     // 1s
   int64_t waiting_register_time = 5000*1000;   // 5s
 
-  ObRootConfig config;
-  config.flag_network_timeout_us_.set(timeout_us);
-  config.flag_ups_lease_us_.set(lease_duration);
-  config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
-  config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
+  //ObRootConfig config;
+  //config.flag_network_timeout_us_.set(timeout_us);
+  //config.flag_ups_lease_us_.set(lease_duration);
+  //config.flag_ups_lease_reserved_us_.set(lease_reserved_us);
+  //config.flag_ups_waiting_register_duration_us_.set(waiting_register_time);
 
   oceanbase::rootserver::testing::MockObRootRpcStub rpc_stub;
   ObiRole rs_obi_role;
-  ObUpsManager um(rpc_stub, config, rs_obi_role);
+  ObRootServerConfig rs_config;
+  ObConfigManager config_mgr(rs_config);
+  ObRootWorkerForTest root_worker(config_mgr, rs_config);
+  int64_t config_version = 2;
+  volatile int64_t schema_version = 0;
+  ObUpsManager um(rpc_stub, &root_worker, timeout_us, lease_duration, lease_reserved_us, waiting_register_time, rs_obi_role, schema_version, config_version);
   int32_t port_base = 1234;
   // register 3 ups
   for (int i = 0; i < 3; ++i)
@@ -709,13 +744,13 @@ TEST(ObUpsManagerTest, test_offline)
     if (0 == i)
     {
       int64_t now = tbsys::CTimeUtil::getTime();
-      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, now+50*1000));
+      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, now+50*1000, "0.4.1.2"));
     }
     else
     {
-      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0));
+      ASSERT_EQ(OB_SUCCESS, um.register_ups(addr, 5678, log_seq_num, 0, "0.4.1.2"));
     }
-    EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _, _, _, _))
+    EXPECT_CALL(rpc_stub, grant_lease_to_ups(addr, _))
       .Times(AtLeast(1));
   }
   ASSERT_EQ(3, um.get_ups_count());

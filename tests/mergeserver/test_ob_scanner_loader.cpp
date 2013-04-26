@@ -1,10 +1,11 @@
-#include "mergeserver/ob_scanner_loader.h"
+#include "ob_scanner_loader.h"
 #include "gtest/gtest.h"
 #include <string>
 
 using namespace oceanbase;
 using namespace common;
 using namespace mergeserver;
+using namespace mergeserver::test;
 using namespace std;
 
 void dump_decoded_scanner(ObScanner &p)

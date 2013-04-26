@@ -120,7 +120,7 @@ TEST_F(ObPhyOperatorsTest, basic_test)
   ObSort sort1;
   char* sort1_run_fname_str = (char *)"sort1_run_file.tmp";
   ObString sort1_run_fname;
-  sort1_run_fname.assign_ptr(sort1_run_fname_str, strlen(sort1_run_fname_str));
+  sort1_run_fname.assign_ptr(sort1_run_fname_str, (int32_t)strlen(sort1_run_fname_str));
   ASSERT_EQ(OB_SUCCESS, sort1.add_sort_column(AS_TID, C5, true));
   sort1.set_mem_size_limit(200L*1024*1024);
   ASSERT_EQ(OB_SUCCESS, sort1.set_run_filename(sort1_run_fname));
@@ -217,7 +217,7 @@ TEST_F(ObPhyOperatorsTest, basic_test)
   ObSort sort2;
   char* sort2_run_fname_str = (char *)"sort2_run_file.tmp";
   ObString sort2_run_fname;
-  sort2_run_fname.assign_ptr(sort2_run_fname_str, strlen(sort2_run_fname_str));
+  sort2_run_fname.assign_ptr(sort2_run_fname_str, (int32_t)strlen(sort2_run_fname_str));
   ASSERT_EQ(OB_SUCCESS, sort2.add_sort_column(AS_TID, C1, true));
   ASSERT_EQ(OB_SUCCESS, sort2.add_sort_column(OB_INVALID_ID, MAX_C5_CID, true));
   ASSERT_EQ(OB_SUCCESS, sort2.add_sort_column(OB_INVALID_ID, COUNT_C2_CID, true));
@@ -239,7 +239,7 @@ TEST_F(ObPhyOperatorsTest, basic_test)
   root_op = &orderby;
   char* orderby_run_fname_str = (char *)"orderby_run_file.tmp";
   ObString orderby_run_fname;
-  orderby_run_fname.assign_ptr(orderby_run_fname_str, strlen(orderby_run_fname_str));
+  orderby_run_fname.assign_ptr(orderby_run_fname_str, (int32_t)strlen(orderby_run_fname_str));
   ASSERT_EQ(OB_SUCCESS, orderby.add_sort_column(AS_TID, C1, false));
   orderby.set_mem_size_limit(200L*1024*1024);
   ASSERT_EQ(OB_SUCCESS, orderby.set_run_filename(orderby_run_fname));
@@ -295,7 +295,18 @@ TEST_F(ObPhyOperatorsTest, basic_test)
   ObLimit limit;
   ASSERT_EQ(OB_SUCCESS, limit.set_child(0, *root_op));
   root_op = &limit;
-  limit.set_limit(LIMIT_COUNT, LIMIT_OFFSET);
+  ObSqlExpression limit_expr;
+  ObSqlExpression offset_expr;
+  ExprItem item;
+  item.type_ = T_INT;
+  item.data_type_ = ObIntType;
+  item.value_.int_ = LIMIT_COUNT;
+  ASSERT_EQ(OB_SUCCESS, limit_expr.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, limit_expr.add_expr_item_end());
+  item.value_.int_ = LIMIT_OFFSET;
+  ASSERT_EQ(OB_SUCCESS, offset_expr.add_expr_item(item));
+  ASSERT_EQ(OB_SUCCESS, offset_expr.add_expr_item_end());
+  ASSERT_EQ(OB_SUCCESS, limit.set_limit(limit_expr, offset_expr));
   // verify
   char buff[2048];
   root_op->to_string(buff, 2048);

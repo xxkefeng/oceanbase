@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include "common/ob_define.h"
 #include "common/ob_server.h"
+#include "common/ob_array.h"
 
 namespace oceanbase 
 { 
@@ -34,6 +35,7 @@ namespace oceanbase
       static const int64_t DEFAULT_SYSCHECKER_COUNT     = 1;
       static const int64_t DEFAULT_STAT_DUMP_INTERVAL   = 0;
       static const int64_t DEFAULT_PERF_TEST            = 0;
+      static const int64_t DEFAULT_SQL_READ             = 0;
       static const int64_t DEFAULT_READ_TABLE_TYPE      = 0;
       static const int64_t DEFAULT_WRITE_TABLE_TYPE     = 0;
       static const int64_t DEFAULT_GET_ROW_CNT          = 0;
@@ -58,15 +60,8 @@ namespace oceanbase
         return update_server_; 
       }
 
-      inline const int64_t get_merge_server_count()
-      {
-        return merge_server_count_;
-      }
-
-      inline const common::ObServer* get_merge_server() const 
-      {
-        return merge_server_; 
-      }
+      common::ObArray<common::ObServer> & get_chunk_servers() { return chunk_servers_; }
+      common::ObArray<common::ObServer> & get_merge_servers() { return merge_servers_; }
 
       inline const int64_t get_network_time_out() const 
       {
@@ -113,6 +108,11 @@ namespace oceanbase
         return (perf_test_ == 0) ? false : true;
       }
 
+      inline const bool is_sql_read() const
+      {
+        return is_sql_read_;
+      }
+
       inline const int64_t is_check_result() const
       {
         return (check_result_ == 0) ? false : true;
@@ -146,14 +146,14 @@ namespace oceanbase
     private:
       int load_string(char* dest, const int64_t size, 
                       const char* section, const char* name, bool not_null);
-      int parse_merge_server(char* str);
-      int load_merge_server();
+      int parse_server(char* str, common::ObArray<common::ObServer>& servers);
+      int load_server();
 
     private:
       common::ObServer root_server_;
       common::ObServer update_server_;
-      int64_t merge_server_count_;
-      common::ObServer* merge_server_;
+      common::ObArray<common::ObServer> merge_servers_;
+      common::ObArray<common::ObServer> chunk_servers_;
       int64_t network_time_out_;
       int64_t write_thread_count_;
       int64_t read_thread_count_;
@@ -165,6 +165,7 @@ namespace oceanbase
 
       // preformance test param
       int64_t perf_test_;
+      int64_t is_sql_read_;
       int64_t check_result_;
       int64_t read_table_type_;
       int64_t write_table_type_;

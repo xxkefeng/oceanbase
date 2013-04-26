@@ -1,15 +1,15 @@
 AM_CPPFLAGS = -I${TBLIB_ROOT}/include/tbsys \
-			  -I${TBLIB_ROOT}/include/tbnet \
+			  -I${EASY_ROOT}/include/easy \
 			  -I${top_srcdir}/include \
 			  -I${top_srcdir}/tools/syschecker \
-			  -I${top_srcdir}/src 
+			  -I${top_srcdir}/src
 
 LDADD = $(top_builddir)/src/chunkserver/libchunkserver.a \
 		$(top_builddir)/tools/syschecker/client/libclient.a \
 		$(top_builddir)/src/common/compress/libcomp.a \
 		$(top_builddir)/src/common/libcommon.a \
-		${TBLIB_ROOT}/lib/libtbnet.a \
-		${TBLIB_ROOT}/lib/libtbsys.a 
+		${EASY_LIB_PATH}/libeasy.a \
+		${TBLIB_ROOT}/lib/libtbsys.a
 
 AM_LDFLAGS = -lpthread -lc -lm -lrt -ldl ${GCOV_LIB}
 if COVERAGE
@@ -42,7 +42,7 @@ olapdrive_SOURCES = main.cpp \
 					ob_several_adgroup_effect.cpp \
 					ob_several_bidword_effect.cpp \
 					ob_several_creative_effect.cpp \
-					ob_lz_query.cpp 
+					ob_lz_query.cpp
 
 EXTRA_DIST = ob_olapdrive_main.h \
 			 ob_olapdrive.h \

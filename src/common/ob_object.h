@@ -5,7 +5,9 @@
 #include "ob_string.h"
 #include "tbsys.h"
 #include "ob_action_flag.h"
+#include "ob_obj_type.h"
 #include "ob_number.h"
+
 namespace oceanbase
 {
   namespace tests
@@ -17,35 +19,26 @@ namespace oceanbase
   }
   namespace common
   {
-    enum ObObjType
+    struct ObObjMeta
     {
-      ObMinType = -1,
-      ObNullType,   // 空类型
-      ObIntType,
-      ObFloatType,              // @deprecated
-      ObDoubleType,             // @deprecated
-      ObDateTimeType,           // @deprecated
-      ObPreciseDateTimeType,
-      ObVarcharType,
-      ObSeqType,
-      ObCreateTimeType,
-      ObModifyTimeType,
-      ObExtendType,
-      ObBoolType,
-      ObDecimalType,            // aka numeric
-      ObMaxType,
+      uint32_t type_:8;
+      uint32_t dec_vscale_:6;
+      uint32_t op_flag_:2;
+      uint32_t dec_precision_:7;
+      uint32_t dec_scale_:6;
+      uint32_t dec_nwords_:3; // the actual nwords is dec_nwords_ + 1, so the range of nwords is [1, 8]
     };
 
     union _ObjValue
     {
       int64_t int_val;
+      float float_val;
+      double double_val;
       ObDateTime second_val;
       ObPreciseDateTime microsecond_val;
       ObCreateTime      create_time_val;
       ObModifyTime      modify_time_val;
       bool bool_val;
-      float float_val;
-      double double_val;
     };
 
     class ObBatchChecksum;
@@ -53,11 +46,17 @@ namespace oceanbase
     class ObObj
     {
       public:
+        // min, max extend value
+        static const int64_t MIN_OBJECT_VALUE         = UINT64_MAX-2;
+        static const int64_t MAX_OBJECT_VALUE         = UINT64_MAX-1;
+      public:
         ObObj();
 
+        ObObj(const ObObjType type, const int8_t flag, const int32_t val_len, const int64_t value);
         /// set add flag
         int set_add(const bool is_add = false);
         bool get_add()const;
+        bool get_add_fast() const;
         /*
          *   设置类型
          */
@@ -85,6 +84,8 @@ namespace oceanbase
          */
         void set_null();
         bool is_null() const;
+        void set_min_value();
+        void set_max_value();
 
         /// @fn apply mutation to this obj
         int apply(const ObObj &mutation);
@@ -93,9 +94,12 @@ namespace oceanbase
         void reset();
         void reset_op_flag();
         bool is_valid_type() const;
+        bool is_min_value() const;
+        bool is_max_value() const;
 
         void dump(const int32_t log_level = TBSYS_LOG_LEVEL_DEBUG) const;
         void print_value(FILE* fd);
+        int64_t to_string(char* buffer, const int64_t length) const;
         //
         NEED_SERIALIZE_AND_DESERIALIZE;
         /*
@@ -134,8 +138,12 @@ namespace oceanbase
          *   获取数据类型
          */
         ObObjType get_type(void) const;
+
+        int32_t get_val_len() const;
+        void set_val_len(const int32_t val_len);
         bool need_deep_copy()const;
         bool is_true() const;
+        static const char* get_sql_type(ObObjType type);
         /*
          *   计算obj内数据的校验和
          */
@@ -151,7 +159,9 @@ namespace oceanbase
         bool operator>=(const ObObj &that_obj) const;
         bool operator==(const ObObj &that_obj) const;
         bool operator!=(const ObObj &that_obj) const;
+        int compare(const ObObj &other) const;
 
+        int get_timestamp(int64_t & timestamp) const;
       private:
         friend class tests::common::ObjTest;
         friend class ObCompactCellWriter;
@@ -159,11 +169,7 @@ namespace oceanbase
         friend class ObExprObj;
         bool is_datetime() const;
         bool can_compare(const ObObj & other) const;
-      public:
-        int get_timestamp(int64_t & timestamp) const;
-      private:
         int  compare_same_type(const ObObj &other) const;
-        int compare(const ObObj &other) const;
         void set_flag(bool is_add);
       private:
         static const uint8_t INVALID_OP_FLAG = 0x0;
@@ -173,16 +179,8 @@ namespace oceanbase
         static const uint8_t META_PREC_MASK = 0x7F;
         static const uint8_t META_SCALE_MASK = 0x3F;
         static const uint8_t META_NWORDS_MASK = 0x7;
-        struct ObObjMeta
-        {
-          uint32_t type_:8;
-          uint32_t dec_vscale_:6;
-          uint32_t op_flag_:2;
-          uint32_t dec_precision_:7;
-          uint32_t dec_scale_:6;
-          uint32_t dec_nwords_:3; // the actual nwords is dec_nwords_ + 1, so the range of nwords is [1, 8]
-        } meta_;
-      int32_t varchar_len_;
+        ObObjMeta meta_;
+      int32_t val_len_;
       union          // value实际内容
       {
         int64_t int_val;
@@ -201,26 +199,24 @@ namespace oceanbase
 
     inline ObObj::ObObj()
     {
-      meta_.type_ = ObNullType;
-      meta_.op_flag_ = INVALID_OP_FLAG;
+      reset();
+    }
+
+    inline ObObj::ObObj(const ObObjType type, const int8_t flag, const int32_t val_len, const int64_t value)
+    {
+      meta_.type_ = static_cast<int8_t>(type);
+      meta_.op_flag_ = flag & 0x3;
       meta_.dec_vscale_ = 0;
       meta_.dec_precision_ = 0;
       meta_.dec_nwords_ = 0;
       meta_.dec_scale_ = 0;
-      varchar_len_ = 0;
-      value_.int_val = 0;
+      val_len_ = val_len;
+      memcpy(&value_, &value, sizeof(value_));
     }
 
     inline void ObObj::reset()
     {
-      meta_.type_ = ObNullType;
-      meta_.op_flag_ = INVALID_OP_FLAG;
-      meta_.dec_vscale_ = 0;
-      meta_.dec_precision_ = 0;
-      meta_.dec_nwords_ = 0;
-      meta_.dec_scale_ = 0;
-      varchar_len_ = 0;
-      value_.int_val = 0;
+      memset(this, 0, sizeof(ObObj));
     }
 
     inline void ObObj::set_flag(bool is_add)
@@ -252,6 +248,11 @@ namespace oceanbase
           ;/// do nothing
       }
       return ret;
+    }
+
+    inline bool ObObj::get_add_fast() const
+    {
+      return (meta_.op_flag_ == ADD);
     }
 
     inline int ObObj::set_add(const bool is_add /*=false*/)
@@ -319,7 +320,7 @@ namespace oceanbase
       meta_.type_ = ObVarcharType;
       meta_.op_flag_ = INVALID_OP_FLAG;
       value_.varchar_val = value.ptr();
-      varchar_len_ = value.length();
+      val_len_ = value.length();
     }
 
     inline void ObObj::set_seq()
@@ -367,6 +368,16 @@ namespace oceanbase
       value_.ext_val = value;
     }
 
+    inline void ObObj::set_min_value()
+    {
+      set_ext(MIN_OBJECT_VALUE);
+    }
+
+    inline void ObObj::set_max_value()
+    {
+      set_ext(MAX_OBJECT_VALUE);
+    }
+
     inline bool ObObj::is_valid_type() const
     {
       ObObjType type = get_type();
@@ -376,6 +387,16 @@ namespace oceanbase
         ret = false;
       }
       return ret;
+    }
+
+    inline bool ObObj::is_min_value() const
+    {
+      return meta_.type_ == ObExtendType && value_.ext_val == MIN_OBJECT_VALUE;
+    }
+
+    inline bool ObObj::is_max_value() const
+    {
+      return meta_.type_ == ObExtendType && value_.ext_val == MAX_OBJECT_VALUE;
     }
 
     inline int ObObj::get_int(int64_t& value,bool& is_add) const
@@ -443,7 +464,7 @@ namespace oceanbase
       int res = OB_OBJ_TYPE_ERROR;
       if (meta_.type_ == ObVarcharType)
       {
-        value.assign_ptr(const_cast<char *>(value_.varchar_val), varchar_len_);
+        value.assign_ptr(const_cast<char *>(value_.varchar_val), val_len_);
         res = OB_SUCCESS;
       }
       return res;
@@ -492,6 +513,21 @@ namespace oceanbase
       return res;
     }
 
+    inline ObObjType ObObj::get_type(void) const
+    {
+      return static_cast<ObObjType>(meta_.type_);
+    }
+
+    inline int32_t ObObj::get_val_len() const
+    {
+      return val_len_;
+    }
+
+    inline void ObObj::set_val_len(const int32_t val_len)
+    {
+      val_len_ = val_len;
+    }
+
     inline int ObObj::get_float(float& value,bool& is_add) const
     {
       int res = OB_OBJ_TYPE_ERROR;
@@ -528,11 +564,6 @@ namespace oceanbase
       return get_double(value,add);
     }
 
-    inline ObObjType ObObj::get_type(void) const
-    {
-      return static_cast<ObObjType>(meta_.type_);
-    }
-
     inline int ObObj::get_bool(bool &value) const
     {
       int res = OB_OBJ_TYPE_ERROR;
@@ -549,6 +580,71 @@ namespace oceanbase
       return this->murmurhash2(0);
     }
 
+    inline bool ObObj::is_datetime() const
+    {
+      return ((meta_.type_ == ObDateTimeType)
+          || (meta_.type_ == ObPreciseDateTimeType)
+          || (meta_.type_ == ObCreateTimeType)
+          || (meta_.type_ == ObModifyTimeType));
+    }
+
+    inline bool ObObj::can_compare(const ObObj & other) const
+    {
+      bool ret = false;
+      if ((get_type() == ObNullType) || (other.get_type() == ObNullType)
+          || is_min_value() || is_max_value()
+          || other.is_min_value() || other.is_max_value()
+          || (get_type() == other.get_type()) || (is_datetime() && other.is_datetime()))
+      {
+        ret = true;
+      }
+      return ret;
+    }
+
+    inline int ObObj::get_timestamp(int64_t & timestamp) const
+    {
+      int ret = OB_SUCCESS;
+      switch(meta_.type_)
+      {
+        case ObDateTimeType:
+          timestamp = value_.time_val * 1000 * 1000L;
+          break;
+        case ObPreciseDateTimeType:
+          timestamp = value_.precisetime_val;
+          break;
+        case ObModifyTimeType:
+          timestamp = value_.modifytime_val;
+          break;
+        case ObCreateTimeType:
+          timestamp = value_.createtime_val;
+          break;
+        default:
+          TBSYS_LOG(ERROR, "unexpected branch");
+          ret = OB_OBJ_TYPE_ERROR;
+      }
+      return ret;
+    }
+
+    template <typename AllocatorT>
+    int ob_write_obj(AllocatorT &allocator, const ObObj &src, ObObj &dst)
+    {
+      int ret = OB_SUCCESS;
+      if (OB_UNLIKELY(ObVarcharType != src.get_type()))
+      {
+        dst = src;
+      }
+      else
+      {
+        ObString str;
+        ObString str_clone;
+        src.get_varchar(str);
+        if (OB_SUCCESS == (ret = ob_write_string(allocator, str, str_clone)))
+        {
+          dst.set_varchar(str_clone);
+        }
+      }
+      return ret;
+    }
   }
 }
 

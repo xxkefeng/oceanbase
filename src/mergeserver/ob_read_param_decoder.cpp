@@ -19,15 +19,16 @@
 #include "ob_ms_tsi.h"
 #include "common/ob_tsi_factory.h"
 #include "common/utility.h"
+#include "common/ob_range2.h"
 #include <vector>
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
-namespace 
+namespace
 {
   static const ObString OB_SCAN_PARAM_EMPTY_TABLE_NAME;
 
-  int ob_decode_scan_param_select_all_column(ObScanParam & org_param, 
+  int ob_decode_scan_param_select_all_column(ObScanParam & org_param,
     const ObTableSchema & table_schema,
     const ObSchemaManagerV2 & schema_mgr,
     ObScanParam &decoded_param,
@@ -45,7 +46,7 @@ namespace
     column_beg = schema_mgr.get_table_schema(table_id,column_size);
     if (NULL == column_beg || 0 >= column_size)
     {
-      TBSYS_LOG(WARN,"fail to get columns of table [table_name:%s,table_id:%lu,column_size:%d,column_beg:%p]", 
+      TBSYS_LOG(WARN,"fail to get columns of table [table_name:%s,table_id:%lu,column_size:%d,column_beg:%p]",
         table_schema.get_table_name(), table_id, column_size,column_beg);
       err = OB_SCHEMA_ERROR;
     }
@@ -61,8 +62,8 @@ namespace
       {
         cur_column = schema_mgr.get_column_schema(column_beg[i].get_table_id(), column_beg[i].get_id(),
           &column_idx_in_schema_mgr);
-        if (NULL == cur_column 
-          || 0 > column_idx_in_schema_mgr 
+        if (NULL == cur_column
+          || 0 > column_idx_in_schema_mgr
           || column_idx_in_schema_mgr >= OB_MAX_COLUMN_NUMBER)
         {
           TBSYS_LOG(ERROR, "unexpected error, fail to get column schema [table_id:%lu,column_id:%lu,idx:%d]",
@@ -72,7 +73,7 @@ namespace
         /// make sure every column should add only once
         if (OB_SUCCESS == err)
         {
-          column_name.assign_ptr(const_cast<char*>(column_beg[i].get_name()), 
+          column_name.assign_ptr(const_cast<char*>(column_beg[i].get_name()),
             static_cast<int32_t>(strlen(column_beg[i].get_name())));
           if (OB_SUCCESS != (err = schema_assis_out.add_column(column_name,got_cell_num, ObMSSchemaDecoderAssis::SELECT_COLUMN, overwrite_flag)))
           {
@@ -102,7 +103,7 @@ namespace
     return err;
   }
 
-  int ob_decode_scan_param_basic_info(const ObScanParam & org_param, 
+  int ob_decode_scan_param_basic_info(const ObScanParam & org_param,
     const ObTableSchema & table_schema,
     const ObSchemaManagerV2 & schema_mgr,
     ObScanParam &decoded_param,
@@ -112,7 +113,7 @@ namespace
     int err = OB_SUCCESS;
     uint64_t table_id = OB_INVALID_ID;
     const ObColumnSchemaV2 *column_info = NULL;
-    table_id = table_schema.get_table_id(); 
+    table_id = table_schema.get_table_id();
     ObString table_name;
     table_name.assign(const_cast<char*>(table_schema.get_table_name()), static_cast<int32_t>(strlen(table_schema.get_table_name())));
     if (OB_SUCCESS == err)
@@ -121,7 +122,7 @@ namespace
     }
     int32_t got_cell_num = 0;
     int32_t overwrite_flag = 1;
-    if ((OB_SUCCESS == err) 
+    if ((OB_SUCCESS == err)
       && (org_param.get_column_name_size()==1)
       &&(org_param.get_column_name()[0] == ObGroupByParam::COUNT_ROWS_COLUMN_NAME))
     {
@@ -131,11 +132,11 @@ namespace
       table_columns = schema_mgr.get_table_schema(table_schema.get_table_id(),column_count);
       if ((NULL != table_columns) && (0 < column_count))
       {
-        column_info = schema_mgr.get_column_schema(table_columns[0].get_table_id(), 
-          table_columns[0].get_id(), 
+        column_info = schema_mgr.get_column_schema(table_columns[0].get_table_id(),
+          table_columns[0].get_id(),
           &column_idx_in_schema_mgr);
-        if (NULL != column_info 
-          && 0 <= column_idx_in_schema_mgr 
+        if (NULL != column_info
+          && 0 <= column_idx_in_schema_mgr
           && column_idx_in_schema_mgr < OB_MAX_COLUMN_NUMBER)
         {
           got_cell_num ++;
@@ -156,7 +157,7 @@ namespace
       {
         err = OB_SCHEMA_ERROR;
         TBSYS_LOG(WARN,"fail to get column infos [table_name:%.*s, column_count:%d]",
-          org_param.get_table_name().length(), org_param.get_table_name().ptr(), 
+          org_param.get_table_name().length(), org_param.get_table_name().ptr(),
           column_count);
       }
     }
@@ -165,10 +166,10 @@ namespace
       int32_t column_idx_in_schema_mgr = 0;
       for (int64_t cell_idx = 0; OB_SUCCESS == err && cell_idx < org_param.get_column_name_size(); cell_idx ++)
       {
-        column_info = schema_mgr.get_column_schema(table_name, org_param.get_column_name()[cell_idx], 
+        column_info = schema_mgr.get_column_schema(table_name, org_param.get_column_name()[cell_idx],
           &column_idx_in_schema_mgr);
-        if (NULL == column_info 
-          || 0 > column_idx_in_schema_mgr 
+        if (NULL == column_info
+          || 0 > column_idx_in_schema_mgr
           || column_idx_in_schema_mgr >= OB_MAX_COLUMN_NUMBER)
         {
           TBSYS_LOG(WARN,"fail to decode column name to column id [table_name:%.*s,column_name:%.*s]",
@@ -176,7 +177,7 @@ namespace
             org_param.get_column_name()[cell_idx].length(), org_param.get_column_name()[cell_idx].ptr());
           if (NULL != rc)
           {
-            snprintf(rc->message_.ptr(), rc->message_.length(), "undecodable [table_name:%.*s,column_name:%.*s]", 
+            snprintf(rc->message_.ptr(), rc->message_.length(), "undecodable [table_name:%.*s,column_name:%.*s]",
               org_param.get_table_name().length(), org_param.get_table_name().ptr(),
               org_param.get_column_name()[cell_idx].length(), org_param.get_column_name()[cell_idx].ptr());
           }
@@ -194,7 +195,7 @@ namespace
           }
           got_cell_num ++;
           bool is_return = *org_param.get_return_infos().at(cell_idx);
-          if ((OB_SUCCESS == err) 
+          if ((OB_SUCCESS == err)
             && (OB_SUCCESS != (err = decoded_param.add_column(column_info->get_id(), is_return))))
           {
             TBSYS_LOG(WARN,"fail to add column to decoded param [err:%d]", err);
@@ -207,7 +208,7 @@ namespace
 
   static int add_extra_basic_column(
     const ObString& column_name,
-    ObScanParam& org_param, 
+    ObScanParam& org_param,
     const ObTableSchema& table_schema,
     const ObSchemaManagerV2& schema_mgr,
     ObScanParam& decoded_param,
@@ -225,9 +226,9 @@ namespace
         column_name.ptr(), column_name.length());
       ret = OB_ERROR;
     }
-    else 
+    else
     {
-      table_name.assign_ptr(const_cast<char*>(table_schema.get_table_name()), 
+      table_name.assign_ptr(const_cast<char*>(table_schema.get_table_name()),
         static_cast<int32_t>(strlen(table_schema.get_table_name())));
       column_schema = schema_mgr.get_column_schema(table_name, column_name);
       if (NULL == column_schema)
@@ -237,8 +238,8 @@ namespace
           table_schema.get_table_name(), column_name.length(), column_name.ptr());
         if (NULL != rc)
         {
-          snprintf(rc->message_.ptr(), rc->message_.length(), 
-            "expire condition includes invalid column name, [table_name:%s,column_name:%.*s]", 
+          snprintf(rc->message_.ptr(), rc->message_.length(),
+            "expire condition includes invalid column name, [table_name:%s,column_name:%.*s]",
             table_schema.get_table_name(), column_name.length(), column_name.ptr());
         }
         ret = OB_SCHEMA_ERROR;
@@ -248,11 +249,11 @@ namespace
     if (OB_SUCCESS == ret)
     {
       column_size = org_param.get_column_id_size();
-      if (OB_SUCCESS != (ret = schema_assis_in.add_column(column_name, column_size, 
+      if (OB_SUCCESS != (ret = schema_assis_in.add_column(column_name, column_size,
         ObMSSchemaDecoderAssis::SELECT_COLUMN, 1)))
       {
         TBSYS_LOG(WARN, "fail to add expire column <column_name, idx> pair "
-                        "ret=%d, column_name=%.*s, expire_column_idx=%ld", 
+                        "ret=%d, column_name=%.*s, expire_column_idx=%ld",
           ret, column_name.length(), column_name.ptr(), column_size);
         ret = OB_ERROR;
       }
@@ -268,7 +269,7 @@ namespace
                         "column_id=%lu, ret=%d",
           column_schema->get_id(), ret);
       }
-      else 
+      else
       {
         // do nothing
       }
@@ -279,7 +280,7 @@ namespace
 
   static int add_extra_expire_dependent_columns(
     const ObString& expr,
-    ObScanParam& org_param, 
+    ObScanParam& org_param,
     const ObTableSchema& table_schema,
     const ObSchemaManagerV2& schema_mgr,
     ObScanParam& decoded_param,
@@ -295,10 +296,10 @@ namespace
     ObString key_col_name;
     ObArrayHelper<ObObj> expr_array;
     ObObj post_expr[OB_MAX_COMPOSITE_SYMBOL_COUNT];
-    ObExpressionParser& post_expression_parser = 
+    ObExpressionParser& post_expression_parser =
       schema_assis_in.get_post_expression_parser();
-    const hash::ObHashMap<common::ObString, int64_t, 
-      hash::NoPthreadDefendMode>& cname_to_idx_map = 
+    const hash::ObHashMap<common::ObString, int64_t,
+      hash::NoPthreadDefendMode>& cname_to_idx_map =
       schema_assis_in.get_select_cname_to_idx_map();
 
     expr_array.init(OB_MAX_COMPOSITE_SYMBOL_COUNT, post_expr);
@@ -325,7 +326,7 @@ namespace
       {
         if (OB_SUCCESS != expr_array.at(i)->get_int(type))
         {
-          TBSYS_LOG(WARN, "unexpected data type. int expected, but actual type is %d", 
+          TBSYS_LOG(WARN, "unexpected data type. int expected, but actual type is %d",
               expr_array.at(i)->get_type());
           ret = OB_ERR_UNEXPECTED;
           break;
@@ -334,10 +335,10 @@ namespace
         {
           if (ObExpression::COLUMN_IDX == type)
           {
-            if (OB_SUCCESS != expr_array.at(i+1)->get_varchar(key_col_name))  
+            if (OB_SUCCESS != expr_array.at(i+1)->get_varchar(key_col_name))
             {
               TBSYS_LOG(WARN, "unexpected data type. varchar expected, "
-                              "but actual type is %d", 
+                              "but actual type is %d",
                   expr_array.at(i+1)->get_type());
               ret = OB_ERR_UNEXPECTED;
               break;
@@ -352,7 +353,7 @@ namespace
                 if (OB_SUCCESS != ret || val_index < 0)
                 {
                   TBSYS_LOG(WARN, "failed add extra column into scan param, "
-                                  "column_name=%.*s, val_index=%ld", 
+                                  "column_name=%.*s, val_index=%ld",
                     key_col_name.length(), key_col_name.ptr(), val_index);
                   break;
                 }
@@ -367,7 +368,7 @@ namespace
     return ret;
   }
 
-  static int replace_system_variable(char* expire_condition, 
+  static int replace_system_variable(char* expire_condition,
     const int64_t buf_size)
   {
     int ret = OB_SUCCESS;
@@ -383,7 +384,7 @@ namespace
         expire_condition, buf_size);
       ret = OB_ERROR;
     }
-    else 
+    else
     {
       // use the 00:00:00 of day as system date
       sys_date = static_cast<time_t>(cur_time - (cur_time % day_second));
@@ -394,9 +395,9 @@ namespace
           sys_date);
         ret = OB_ERROR;
       }
-      else 
+      else
       {
-        strftime(replace_str_buf, sizeof(replace_str_buf), 
+        strftime(replace_str_buf, sizeof(replace_str_buf),
           "#%Y-%m-%d %H:%M:%S#", tm);
         ret = replace_str(expire_condition, buf_size, SYS_DATE, replace_str_buf);
         if (OB_SUCCESS != ret)
@@ -410,7 +411,7 @@ namespace
   }
 
   static int ob_decode_scan_param_add_expire_condition(
-    ObScanParam& org_param, 
+    ObScanParam& org_param,
     const ObTableSchema& table_schema,
     const ObSchemaManagerV2& schema_mgr,
     ObScanParam& decoded_param,
@@ -437,18 +438,18 @@ namespace
       else
       {
         strcpy(infix_condition_expr, expire_condition);
-        ret = replace_system_variable(infix_condition_expr, 
+        ret = replace_system_variable(infix_condition_expr,
           OB_MAX_EXPIRE_CONDITION_LENGTH);
         if (OB_SUCCESS == ret)
         {
-          cond_expr.assign_ptr(infix_condition_expr, 
+          cond_expr.assign_ptr(infix_condition_expr,
             static_cast<int32_t>(strlen(infix_condition_expr)));
-          ret = add_extra_expire_dependent_columns(cond_expr, org_param, 
+          ret = add_extra_expire_dependent_columns(cond_expr, org_param,
             table_schema, schema_mgr, decoded_param, schema_assis_in, rc);
           if (OB_SUCCESS != ret)
           {
             TBSYS_LOG(WARN, "failed to transfer infix expression to postfix "
-                            "expression, infix_expr=%s", 
+                            "expression, infix_expr=%s",
               infix_condition_expr);
           }
         }
@@ -464,7 +465,7 @@ namespace
     return ret;
   }
 
-  int ob_decode_scan_param_select_composite_columns(const ObScanParam & org_param, 
+  int ob_decode_scan_param_select_composite_columns(const ObScanParam & org_param,
     ObScanParam &decoded_param,
     ObMSSchemaDecoderAssis &schema_assis_in,
     ObResultCode *rc)
@@ -475,19 +476,18 @@ namespace
     int64_t cur_column_idx = decoded_param.get_column_id_size();
     ObString infix_expr;
     ObString as_name;
-    TBSYS_LOG(DEBUG, "composite column total: %ld", org_param.get_composite_columns().get_array_index());
-    for (int64_t i = 0; 
-      (i < org_param.get_composite_columns().get_array_index()) && (OB_SUCCESS == err); 
+    for (int64_t i = 0;
+      (i < org_param.get_composite_columns().get_array_index()) && (OB_SUCCESS == err);
       i++, cur_column_idx ++, return_info_column_idx++)
     {
       TBSYS_LOG(DEBUG, "composite column: %ld", i);
       infix_expr = org_param.get_composite_columns().at(i)->get_infix_expr();
       as_name = org_param.get_composite_columns().at(i)->get_as_column_name();
-      if ((OB_SUCCESS == err) 
-        && (OB_SUCCESS != (err = post_expr.set_expression(infix_expr,schema_assis_in.get_select_cname_to_idx_map(), 
+      if ((OB_SUCCESS == err)
+        && (OB_SUCCESS != (err = post_expr.set_expression(infix_expr,schema_assis_in.get_select_cname_to_idx_map(),
         schema_assis_in.get_post_expression_parser(),rc))))
       {
-        TBSYS_LOG(WARN,"fail to set infix expression [err:%d, expr:%.*s, as_name:%.*s, comp_column_idx:%ld]", 
+        TBSYS_LOG(WARN,"fail to set infix expression [err:%d, expr:%.*s, as_name:%.*s, comp_column_idx:%ld]",
           err, infix_expr.length(), infix_expr.ptr(), as_name.length(), as_name.ptr(), i);
       }
       bool is_return = *org_param.get_return_infos().at(return_info_column_idx);
@@ -504,7 +504,7 @@ namespace
     return err;
   }
 
-  int ob_decode_scan_param_select_where_conditions(const ObScanParam & org_param, 
+  int ob_decode_scan_param_select_where_conditions(const ObScanParam & org_param,
     const ObTableSchema &table_schema,
     ObScanParam &decoded_param,
     const ObMSSchemaDecoderAssis &schema_assis_in,
@@ -523,7 +523,7 @@ namespace
       cond = org_filter[i];
       if (NULL == cond)
       {
-        TBSYS_LOG(ERROR,"unexpected error [org_filter.get_count():%ld,idx:%ld,cond:%p]", cond_count, 
+        TBSYS_LOG(ERROR,"unexpected error [org_filter.get_count():%ld,idx:%ld,cond:%p]", cond_count,
           i, cond);
         err = OB_ERR_UNEXPECTED;
       }
@@ -553,7 +553,7 @@ namespace
         }
         else
         {
-          TBSYS_LOG(WARN,"fail to find condition column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]", 
+          TBSYS_LOG(WARN,"fail to find condition column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]",
             cond->get_column_name().length(), cond->get_column_name().ptr(), i);
           if (NULL != rc)
           {
@@ -567,7 +567,7 @@ namespace
     return err;
   }
 
-  int ob_decode_scan_param_groupby_info_groupby_columns(const ObScanParam & org_param, 
+  int ob_decode_scan_param_groupby_info_groupby_columns(const ObScanParam & org_param,
     const ObTableSchema &table_schema,
     ObScanParam &decoded_param,
     const ObMSSchemaDecoderAssis &schema_assis_in,
@@ -584,11 +584,11 @@ namespace
     {
       int64_t column_idx_in_scan_param = -1;
       int hash_err = 0;
-      if (hash::HASH_EXIST == 
+      if (hash::HASH_EXIST ==
         (hash_err = schema_assis_in.get_select_cname_to_idx_map().get(groupby_columns.at(i)->column_name_,column_idx_in_scan_param)))
       {
-        int64_t select_clause_table_row_width = decoded_param.get_column_id_size()  + 
-          decoded_param.get_composite_columns().get_array_index(); 
+        int64_t select_clause_table_row_width = decoded_param.get_column_id_size()  +
+          decoded_param.get_composite_columns().get_array_index();
         if (column_idx_in_scan_param >= select_clause_table_row_width
           || column_idx_in_scan_param < 0)
         {
@@ -608,11 +608,11 @@ namespace
       }
       else
       {
-        TBSYS_LOG(WARN,"fail to find groupby column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]", 
+        TBSYS_LOG(WARN,"fail to find groupby column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]",
           groupby_columns.at(i)->column_name_.length(), groupby_columns.at(i)->column_name_.ptr(), i);
         if (NULL != rc)
         {
-          snprintf(rc->message_.ptr(), rc->message_.length(), "groupby column not declared [column_name:%.*s]", 
+          snprintf(rc->message_.ptr(), rc->message_.length(), "groupby column not declared [column_name:%.*s]",
             groupby_columns.at(i)->column_name_.length(), groupby_columns.at(i)->column_name_.ptr());
         }
         err = OB_INVALID_ARGUMENT;
@@ -621,12 +621,12 @@ namespace
     return err;
   }
 
-  int ob_decode_scan_param_groupby_having_conditions(const ObGroupByParam & org_param, 
+  int ob_decode_scan_param_groupby_having_conditions(const ObGroupByParam & org_param,
     ObGroupByParam &decoded_param,
     const ObMSSchemaDecoderAssis &schema_assis_in,
     ObResultCode *rc)
   {
-    int err = OB_SUCCESS; 
+    int err = OB_SUCCESS;
     const ObSimpleFilter & org_filter  = org_param.get_having_condition();
     ObSimpleFilter & decoded_filter = decoded_param.get_having_condition();
     int64_t cond_count = org_filter.get_count();
@@ -636,7 +636,7 @@ namespace
       cond = org_filter[i];
       if (NULL == cond)
       {
-        TBSYS_LOG(ERROR,"unexpected error [org_filter.get_count():%ld,idx:%ld,cond:%p]", cond_count, 
+        TBSYS_LOG(ERROR,"unexpected error [org_filter.get_count():%ld,idx:%ld,cond:%p]", cond_count,
           i, cond);
         err = OB_ERR_UNEXPECTED;
       }
@@ -647,7 +647,7 @@ namespace
         int hash_err = 0;
         int64_t groupby_row_width = org_param.get_groupby_columns().get_array_index() +
           org_param.get_return_columns().get_array_index() + org_param.get_aggregate_columns().get_array_index() +
-          org_param.get_composite_columns().get_array_index(); 
+          org_param.get_composite_columns().get_array_index();
         if (hash::HASH_EXIST == (hash_err = schema_assis_in.get_groupby_cname_to_idx_map().get(cond->get_column_name(),column_idx_in_scan_param)))
         {
           if (column_idx_in_scan_param >=  groupby_row_width
@@ -669,7 +669,7 @@ namespace
         }
         else
         {
-          TBSYS_LOG(WARN,"fail to find condition column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]", 
+          TBSYS_LOG(WARN,"fail to find condition column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]",
             cond->get_column_name().length(), cond->get_column_name().ptr(), i);
           if (NULL != rc)
           {
@@ -683,7 +683,7 @@ namespace
     return err;
   }
 
-  int ob_decode_scan_param_groupby_info_return_columns(const ObScanParam & org_param, 
+  int ob_decode_scan_param_groupby_info_return_columns(const ObScanParam & org_param,
     const ObTableSchema &table_schema,
     ObScanParam &decoded_param,
     const ObMSSchemaDecoderAssis &schema_assis_in,
@@ -701,11 +701,11 @@ namespace
     {
       int64_t column_idx_in_scan_param = -1;
       int hash_err = 0;
-      if (hash::HASH_EXIST == 
+      if (hash::HASH_EXIST ==
         (hash_err = schema_assis_in.get_select_cname_to_idx_map().get(return_columns.at(i)->column_name_,column_idx_in_scan_param)))
       {
-        int64_t select_clause_table_row_width = decoded_param.get_column_id_size() + 
-          decoded_param.get_composite_columns().get_array_index(); 
+        int64_t select_clause_table_row_width = decoded_param.get_column_id_size() +
+          decoded_param.get_composite_columns().get_array_index();
         if (column_idx_in_scan_param >= select_clause_table_row_width
           || column_idx_in_scan_param < 0)
         {
@@ -725,11 +725,11 @@ namespace
       }
       else
       {
-        TBSYS_LOG(WARN,"fail to find return column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]", 
+        TBSYS_LOG(WARN,"fail to find return column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]",
           return_columns.at(i)->column_name_.length(), return_columns.at(i)->column_name_.ptr(), i);
         if (NULL != rc)
         {
-          snprintf(rc->message_.ptr(), rc->message_.length(), "return column not declared [column_name:%.*s]", 
+          snprintf(rc->message_.ptr(), rc->message_.length(), "return column not declared [column_name:%.*s]",
             return_columns.at(i)->column_name_.length(), return_columns.at(i)->column_name_.ptr());
         }
         err = OB_INVALID_ARGUMENT;
@@ -738,7 +738,7 @@ namespace
     return err;
   }
 
-  int ob_decode_scan_param_groupby_info_aggregate_columns(const ObScanParam & org_param, 
+  int ob_decode_scan_param_groupby_info_aggregate_columns(const ObScanParam & org_param,
     const ObTableSchema &table_schema,
     ObScanParam &decoded_param,
     const ObMSSchemaDecoderAssis &schema_assis_in,
@@ -750,7 +750,7 @@ namespace
     ObString table_name;
     table_name.assign(const_cast<char*>(table_schema.get_table_name()), static_cast<int32_t>(strlen(table_schema.get_table_name())));
     const ObArrayHelper<ObAggregateColumn>          & aggregate_columns = org_groupby_param.get_aggregate_columns();
-    int64_t return_info_idx = org_groupby_param.get_groupby_columns().get_array_index() 
+    int64_t return_info_idx = org_groupby_param.get_groupby_columns().get_array_index()
     + org_groupby_param.get_return_columns().get_array_index();
 
     for (int64_t i = 0; OB_SUCCESS == err && i < aggregate_columns.get_array_index(); i++, return_info_idx ++)
@@ -763,29 +763,29 @@ namespace
       }
       else
       {
-        if (hash::HASH_EXIST  != 
+        if (hash::HASH_EXIST  !=
           schema_assis_in.get_select_cname_to_idx_map().get(aggregate_columns.at(i)->get_org_column_name(),column_idx_in_scan_param))
         {
-          TBSYS_LOG(WARN,"fail to find aggregate column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]", 
-            aggregate_columns.at(i)->get_org_column_name().length(), 
+          TBSYS_LOG(WARN,"fail to find aggregate column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]",
+            aggregate_columns.at(i)->get_org_column_name().length(),
             aggregate_columns.at(i)->get_org_column_name().ptr(), i);
           err = OB_INVALID_ARGUMENT;
           if (NULL != rc)
           {
-            snprintf(rc->message_.ptr(), rc->message_.length(), "aggregate column not declared [column_name:%.*s]", 
-              aggregate_columns.at(i)->get_org_column_name().length(), 
+            snprintf(rc->message_.ptr(), rc->message_.length(), "aggregate column not declared [column_name:%.*s]",
+              aggregate_columns.at(i)->get_org_column_name().length(),
               aggregate_columns.at(i)->get_org_column_name().ptr());
           }
         }
       }
       if (OB_SUCCESS == err)
       {
-        int64_t select_clause_table_row_width = decoded_param.get_column_id_size() + 
-          decoded_param.get_composite_columns().get_array_index(); 
+        int64_t select_clause_table_row_width = decoded_param.get_column_id_size() +
+          decoded_param.get_composite_columns().get_array_index();
         if (column_idx_in_scan_param >= select_clause_table_row_width
           || column_idx_in_scan_param < 0)
         {
-          TBSYS_LOG(WARN,"aggregate column not in basic info [column_name:%.*s]", 
+          TBSYS_LOG(WARN,"aggregate column not in basic info [column_name:%.*s]",
             aggregate_columns.at(i)->get_org_column_name().length(),
             aggregate_columns.at(i)->get_org_column_name().ptr());
           err = OB_INVALID_ARGUMENT;
@@ -805,7 +805,7 @@ namespace
     return err;
   }
 
-  int ob_decode_scan_param_groupby_composite_columns(const ObGroupByParam & org_param, 
+  int ob_decode_scan_param_groupby_composite_columns(const ObGroupByParam & org_param,
     ObGroupByParam &decoded_param,
     ObMSSchemaDecoderAssis &schema_assis_in,
     ObResultCode *rc)
@@ -814,21 +814,21 @@ namespace
     ObPostfixExpression post_expr;
     int64_t return_info_column_idx = org_param.get_groupby_columns().get_array_index()
     + org_param.get_return_columns().get_array_index() + org_param.get_aggregate_columns().get_array_index();
-    int64_t cur_column_idx = decoded_param.get_groupby_columns().get_array_index() 
+    int64_t cur_column_idx = decoded_param.get_groupby_columns().get_array_index()
     + decoded_param.get_return_columns().get_array_index() + decoded_param.get_aggregate_columns().get_array_index();
     ObString infix_expr;
     ObString as_name;
-    for (int64_t i = 0; 
-      (i < org_param.get_composite_columns().get_array_index()) && (OB_SUCCESS == err); 
+    for (int64_t i = 0;
+      (i < org_param.get_composite_columns().get_array_index()) && (OB_SUCCESS == err);
       i++, cur_column_idx ++, return_info_column_idx++)
     {
       infix_expr = org_param.get_composite_columns().at(i)->get_infix_expr();
       as_name = org_param.get_composite_columns().at(i)->get_as_column_name();
-      if ((OB_SUCCESS == err) 
-        && (OB_SUCCESS != (err = post_expr.set_expression(infix_expr,schema_assis_in.get_groupby_cname_to_idx_map(), 
+      if ((OB_SUCCESS == err)
+        && (OB_SUCCESS != (err = post_expr.set_expression(infix_expr,schema_assis_in.get_groupby_cname_to_idx_map(),
         schema_assis_in.get_post_expression_parser(), rc))))
       {
-        TBSYS_LOG(WARN,"fail to set infix expression [err:%d, expr:%.*s, as_name:%.*s, comp_column_idx:%ld]", 
+        TBSYS_LOG(WARN,"fail to set infix expression [err:%d, expr:%.*s, as_name:%.*s, comp_column_idx:%ld]",
           err, infix_expr.length(), infix_expr.ptr(), as_name.length(), as_name.ptr(), i);
       }
       bool is_return = *org_param.get_return_infos().at(return_info_column_idx);
@@ -845,7 +845,7 @@ namespace
     return err;
   }
 
-  int ob_decode_scan_param_groupby_info(const ObScanParam & org_param, 
+  int ob_decode_scan_param_groupby_info(const ObScanParam & org_param,
     const ObTableSchema &table_schema,
     ObScanParam &decoded_param,
     ObMSSchemaDecoderAssis &schema_assis_in,
@@ -861,20 +861,20 @@ namespace
     if (org_groupby_param.get_groupby_columns().get_array_index() +
       org_groupby_param.get_aggregate_columns().get_array_index() > 0)
     {
-      if ((OB_SUCCESS == err) 
-        && (OB_SUCCESS != 
+      if ((OB_SUCCESS == err)
+        && (OB_SUCCESS !=
         (err = ob_decode_scan_param_groupby_info_groupby_columns(org_param,table_schema,decoded_param,schema_assis_in, rc))))
       {
         TBSYS_LOG(WARN,"fail to decode groupby columns [err:%d]", err);
       }
-      if ((OB_SUCCESS == err) 
-        && (OB_SUCCESS != 
+      if ((OB_SUCCESS == err)
+        && (OB_SUCCESS !=
         (err = ob_decode_scan_param_groupby_info_return_columns(org_param,table_schema,decoded_param,schema_assis_in,rc))))
       {
         TBSYS_LOG(WARN,"fail to decode groupby columns [err:%d]", err);
       }
-      if ((OB_SUCCESS == err) 
-        && (OB_SUCCESS != 
+      if ((OB_SUCCESS == err)
+        && (OB_SUCCESS !=
         (err = ob_decode_scan_param_groupby_info_aggregate_columns(org_param,table_schema,decoded_param,schema_assis_in, rc))))
       {
         TBSYS_LOG(WARN,"fail to decode groupby columns [err:%d]", err);
@@ -884,7 +884,7 @@ namespace
       int32_t cur_column_idx = 0;
       for (int32_t idx = 0; (idx < groupby_columns.get_array_index()) && (OB_SUCCESS == err); idx++, cur_column_idx  ++)
       {
-        if ((OB_SUCCESS == err) 
+        if ((OB_SUCCESS == err)
           && (OB_SUCCESS != schema_assis_in.add_column(groupby_columns.at(idx)->column_name_, cur_column_idx, ObMSSchemaDecoderAssis::GROUPBY_COLUMN)))
         {
           TBSYS_LOG(WARN,"fail to add column name to idx map [err:%d, column_idx:%d]", err, cur_column_idx);
@@ -893,7 +893,7 @@ namespace
 
       for (int32_t idx = 0; (idx < return_columns.get_array_index()) && (OB_SUCCESS == err); idx++, cur_column_idx  ++)
       {
-        if ((OB_SUCCESS == err) 
+        if ((OB_SUCCESS == err)
           && (OB_SUCCESS != schema_assis_in.add_column(return_columns.at(idx)->column_name_, cur_column_idx, ObMSSchemaDecoderAssis::GROUPBY_COLUMN)))
         {
           TBSYS_LOG(WARN,"fail to add column name to idx map [err:%d, column_idx:%d]", err, cur_column_idx);
@@ -902,21 +902,21 @@ namespace
 
       for (int32_t idx = 0; (idx < aggregate_columns.get_array_index()) && (OB_SUCCESS == err); idx++, cur_column_idx  ++)
       {
-        if ((OB_SUCCESS == err) 
+        if ((OB_SUCCESS == err)
           && (OB_SUCCESS != schema_assis_in.add_column(aggregate_columns.at(idx)->get_as_column_name(), cur_column_idx, ObMSSchemaDecoderAssis::GROUPBY_COLUMN)))
         {
           TBSYS_LOG(WARN,"fail to add column name to idx map [err:%d, column_idx:%d]", err, cur_column_idx);
         }
       }
 
-      if ((OB_SUCCESS == err) 
-        && (OB_SUCCESS != 
+      if ((OB_SUCCESS == err)
+        && (OB_SUCCESS !=
         (err = ob_decode_scan_param_groupby_composite_columns(org_groupby_param,decoded_groupby_param,schema_assis_in,rc))))
       {
         TBSYS_LOG(WARN,"fail to decode groupby composite columns [err:%d]", err);
       }
       if ((OB_SUCCESS == err)
-        && (OB_SUCCESS != 
+        && (OB_SUCCESS !=
         (err = ob_decode_scan_param_groupby_having_conditions(org_groupby_param,decoded_groupby_param,schema_assis_in, rc))))
       {
         TBSYS_LOG(WARN,"fail to decode having conditions [err:%d]", err);
@@ -925,7 +925,7 @@ namespace
     return err;
   }
 
-  int ob_decode_scan_param_orderby_info(const ObScanParam & org_param, 
+  int ob_decode_scan_param_orderby_info(const ObScanParam & org_param,
     const ObTableSchema &table_schema,
     ObScanParam &decoded_param,
     const ObMSSchemaDecoderAssis &schema_assis_in,
@@ -945,7 +945,7 @@ namespace
         int64_t column_idx_in_groupby_result = org_param.get_group_by_param().find_column(orderby_columns[i]);
         if (column_idx_in_groupby_result < 0)
         {
-          TBSYS_LOG(WARN,"order by column was not in groupby columns [column_name:%.*s]", 
+          TBSYS_LOG(WARN,"order by column was not in groupby columns [column_name:%.*s]",
             orderby_columns[i].length(), orderby_columns[i].ptr());
           if (NULL != rc)
           {
@@ -973,14 +973,14 @@ namespace
             || column_idx_in_scan_param < 0)
           {
             TBSYS_LOG(WARN,"orderby column index outof range [column_name:%.*s, column_idx_in_scan_param:%ld, "
-              "select_row_width:%ld]", 
+              "select_row_width:%ld]",
               orderby_columns[i].length(), orderby_columns[i].ptr(), column_idx_in_scan_param,
               decoded_param.get_column_id_size() + decoded_param.get_composite_columns().get_array_index());
             err = OB_INVALID_ARGUMENT;
           }
           else
           {
-            err = decoded_param.add_orderby_column(column_idx_in_scan_param, 
+            err = decoded_param.add_orderby_column(column_idx_in_scan_param,
               static_cast<ObScanParam::Order>(order_desc[i]));
             if (OB_SUCCESS != err)
             {
@@ -990,7 +990,7 @@ namespace
         }
         else
         {
-          TBSYS_LOG(WARN,"fail to find orderby column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]", 
+          TBSYS_LOG(WARN,"fail to find orderby column name in cname to idx hash map [column_name:%.*s,condition_idx:%ld]",
             orderby_columns[i].length(), orderby_columns[i].ptr(), i);
           if (NULL != rc)
           {
@@ -1017,7 +1017,7 @@ namespace
   bool check_scan_param_compatibility(const ObScanParam & scan_param_in , common::ObResultCode *rc)
   {
     bool result = true;
-    if (ObScanParam::BACKWARD == scan_param_in.get_scan_direction())
+    if (ScanFlag::BACKWARD == scan_param_in.get_scan_direction())
     {
       if (scan_param_in.get_orderby_column_size() > 0)
       {
@@ -1042,8 +1042,8 @@ namespace
   }
 }
 
-int oceanbase::mergeserver::ob_decode_get_param(const oceanbase::common::ObGetParam & org_param, 
-  const oceanbase::common::ObSchemaManagerV2 & schema_mgr, 
+int oceanbase::mergeserver::ob_decode_get_param(const oceanbase::common::ObGetParam & org_param,
+  const oceanbase::common::ObSchemaManagerV2 & schema_mgr,
   oceanbase::common::ObGetParam &decoded_param,
   oceanbase::common::ObGetParam &org_param_with_name,
   common::ObResultCode *rc)
@@ -1062,7 +1062,7 @@ int oceanbase::mergeserver::ob_decode_get_param(const oceanbase::common::ObGetPa
     cur_cell = org_param[i];
     if (NULL == cur_cell)
     {
-      TBSYS_LOG(WARN,"unexpected error [idx:%ld,org_param.get_cell_size():%ld,cur_cell:%p]", 
+      TBSYS_LOG(WARN,"unexpected error [idx:%ld,org_param.get_cell_size():%ld,cur_cell:%p]",
         i, org_param.get_cell_size(), cur_cell);
       err = OB_INVALID_ARGUMENT;
     }
@@ -1077,18 +1077,18 @@ int oceanbase::mergeserver::ob_decode_get_param(const oceanbase::common::ObGetPa
         err = OB_SCHEMA_ERROR;
         if (NULL != rc)
         {
-          snprintf(rc->message_.ptr(),rc->message_.length(), "undecodable [table_name:%.*s]", 
+          snprintf(rc->message_.ptr(),rc->message_.length(), "undecodable [table_name:%.*s]",
             cur_cell->table_name_.length(), cur_cell->table_name_.ptr());
         }
       }
-      if ((OB_SUCCESS == err) 
+      if ((OB_SUCCESS == err)
         && ((NULL == (column_beg = schema_mgr.get_table_schema(table_schema->get_table_id(),column_size))) || (column_size <= 0)))
       {
         TBSYS_LOG(WARN,"fail to get schema of table [table_name:%.*s]", cur_cell->table_name_.length(), cur_cell->table_name_.ptr());
         err = OB_SCHEMA_ERROR;
         if (NULL != rc)
         {
-          snprintf(rc->message_.ptr(),rc->message_.length(), "undecodable [table_name:%.*s]", 
+          snprintf(rc->message_.ptr(),rc->message_.length(), "undecodable [table_name:%.*s]",
             cur_cell->table_name_.length(), cur_cell->table_name_.ptr());
         }
       }
@@ -1123,13 +1123,13 @@ int oceanbase::mergeserver::ob_decode_get_param(const oceanbase::common::ObGetPa
       column_schema = schema_mgr.get_column_schema(cur_cell->table_name_, cur_cell->column_name_);
       if (NULL == column_schema)
       {
-        TBSYS_LOG(WARN,"fail to decode column [table_name:%.*s,column_name:%.*s]", 
+        TBSYS_LOG(WARN,"fail to decode column [table_name:%.*s,column_name:%.*s]",
           cur_cell->table_name_.length(), cur_cell->table_name_.ptr(),
           cur_cell->column_name_.length(), cur_cell->column_name_.ptr()
           );
         if (NULL != rc)
         {
-          snprintf(rc->message_.ptr(),rc->message_.length(), "undecodable [table_name:%.*s,column_name:%.*s]", 
+          snprintf(rc->message_.ptr(),rc->message_.length(), "undecodable [table_name:%.*s,column_name:%.*s]",
             cur_cell->table_name_.length(), cur_cell->table_name_.ptr(),
             cur_cell->column_name_.length(), cur_cell->column_name_.ptr());
         }
@@ -1163,35 +1163,34 @@ int oceanbase::mergeserver::ob_decode_get_param(const oceanbase::common::ObGetPa
   return err;
 }
 
-int oceanbase::mergeserver::ob_decode_scan_param(ObScanParam & org_param, 
+int oceanbase::mergeserver::ob_decode_scan_param(ObScanParam & org_param,
   const ObSchemaManagerV2 & schema_mgr,
   ObScanParam &decoded_param,
   common::ObResultCode *rc)
 {
   UNUSED(rc);
-  TBSYS_LOG(DEBUG, "%s", "begin...");
   int err = OB_SUCCESS;
   decoded_param.reset();
   ObReadParam &read_param = decoded_param;
   const ObTableSchema *table_schema = NULL;
-  read_param = org_param; 
+  read_param = org_param;
   const ObString & table_name = org_param.get_table_name();
   table_schema = schema_mgr.get_table_schema(table_name);
   ObMSSchemaDecoderAssis *schema_assis = GET_TSI_MULT(ObMSSchemaDecoderAssis, TSI_MS_SCHEMA_DECODER_ASSIS_1);
   if (NULL == table_schema)
   {
-    TBSYS_LOG(WARN,"fail to decode table name to table id [table_name:%.*s]", 
+    TBSYS_LOG(WARN,"fail to decode table name to table id [table_name:%.*s]",
       org_param.get_table_name().length(), org_param.get_table_name().ptr());
     if (NULL != rc)
     {
-      snprintf(rc->message_.ptr(), rc->message_.length(), "undecodable [table_name:%.*s]", 
+      snprintf(rc->message_.ptr(), rc->message_.length(), "undecodable [table_name:%.*s]",
         org_param.get_table_name().length(), org_param.get_table_name().ptr());
     }
     err = OB_SCHEMA_ERROR;
   }
   if (OB_SUCCESS == err)
   {
-    const ObRange * range = org_param.get_range();
+    const ObNewRange * range = org_param.get_range();
     if (NULL == range)
     {
       err = OB_ERR_UNEXPECTED;
@@ -1203,7 +1202,7 @@ int oceanbase::mergeserver::ob_decode_scan_param(ObScanParam & org_param,
       TBSYS_LOG(WARN, "%s", "check param range rowkey and border flag failed");
       if (NULL != rc)
       {
-        snprintf(rc->message_.ptr(), rc->message_.length(), "scan range check error"); 
+        snprintf(rc->message_.ptr(), rc->message_.length(), "scan range check error");
       }
     }
   }
@@ -1233,7 +1232,7 @@ int oceanbase::mergeserver::ob_decode_scan_param(ObScanParam & org_param,
   {
     if (org_param.get_column_name_size() == 0)
     {/// select *
-      err = ob_decode_scan_param_select_all_column(org_param,*table_schema,schema_mgr, 
+      err = ob_decode_scan_param_select_all_column(org_param,*table_schema,schema_mgr,
         decoded_param, *schema_assis, rc);
     }
     else
@@ -1250,7 +1249,7 @@ int oceanbase::mergeserver::ob_decode_scan_param(ObScanParam & org_param,
         decoded_param, *schema_assis, rc);
   }
 
-  /// decode select composite columns 
+  /// decode select composite columns
   if (OB_SUCCESS == err)
   {
     err = ob_decode_scan_param_select_composite_columns(org_param,decoded_param,*schema_assis, rc);
@@ -1286,7 +1285,7 @@ int oceanbase::mergeserver::ob_decode_scan_param(ObScanParam & org_param,
     }
     if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = decoded_param.set_topk_precision(sharding_minimum,precision))))
     {
-      TBSYS_LOG(WARN,"fail to set topk precision [err:%d, sharding_minimum:%ld, precision:%f]", err, sharding_minimum, 
+      TBSYS_LOG(WARN,"fail to set topk precision [err:%d, sharding_minimum:%ld, precision:%f]", err, sharding_minimum,
         precision);
     }
   }
@@ -1294,8 +1293,8 @@ int oceanbase::mergeserver::ob_decode_scan_param(ObScanParam & org_param,
   if (OB_SUCCESS == err)
   {
     decoded_param.set_scan_flag(org_param.get_scan_flag());
-    if ((ObScanParam::PREREAD != org_param.get_read_mode())
-      &&(ObScanParam::SYNCREAD != org_param.get_read_mode()))
+    if ((ScanFlag::ASYNCREAD != org_param.get_read_mode())
+      &&(ScanFlag::SYNCREAD != org_param.get_read_mode()))
     {
       TBSYS_LOG(WARN,"unrecogonized read_mode [org_param.get_scan_flag().read_mode_:%ld]",
         org_param.get_scan_flag().read_mode_);
@@ -1306,14 +1305,14 @@ int oceanbase::mergeserver::ob_decode_scan_param(ObScanParam & org_param,
       }
     }
     if ((OB_SUCCESS == err)
-      && (ObScanParam::FORWARD != org_param.get_scan_direction())
-      && (ObScanParam::BACKWARD != org_param.get_scan_direction()))
+      && (ScanFlag::FORWARD != org_param.get_scan_direction())
+      && (ScanFlag::BACKWARD != org_param.get_scan_direction()))
     {
       TBSYS_LOG(WARN,"unrecogonized scan_direction [org_param.get_scan_direction():%d]",
         org_param.get_scan_direction());
       if (NULL != rc)
       {
-        snprintf(rc->message_.ptr(), rc->message_.length(), "unrecogonized [read_mode:%d]", 
+        snprintf(rc->message_.ptr(), rc->message_.length(), "unrecogonized [read_mode:%d]",
           static_cast<int32_t>(org_param.get_scan_direction()));
       }
       err = OB_INVALID_ARGUMENT;

@@ -61,20 +61,23 @@ int64_t ObLogEntry::calc_data_checksum(const char* log_data, const int64_t data_
   return static_cast<int64_t>(data_checksum);
 }
 
-int ObLogEntry::check_header_integrity() const
+int ObLogEntry::check_header_integrity(bool dump_content) const
 {
   int ret = OB_SUCCESS;
   if (OB_SUCCESS != (ret = header_.check_header_checksum())
       || OB_SUCCESS != (ret = header_.check_magic_num(MAGIC_NUMER)))
   {
     TBSYS_LOG(WARN, "check_header_integrity error: ");
-    hex_dump(&header_, sizeof(header_), true, TBSYS_LOG_LEVEL_WARN);
+    if (dump_content)
+    {
+      hex_dump(&header_, sizeof(header_), true, TBSYS_LOG_LEVEL_WARN);
+    }
   }
 
   return ret;
 }
 
-int ObLogEntry::check_data_integrity(const char* log_data) const
+int ObLogEntry::check_data_integrity(const char* log_data, bool dump_content) const
 {
   int ret = OB_SUCCESS;
 
@@ -93,10 +96,13 @@ int ObLogEntry::check_data_integrity(const char* log_data) const
     }
     else
     {
-      TBSYS_LOG(WARN, "Header: ");
-      hex_dump(&header_, sizeof(header_), true, TBSYS_LOG_LEVEL_WARN);
-      TBSYS_LOG(WARN, "Body: ");
-      hex_dump(log_data - sizeof(uint64_t) - sizeof(LogCommand), header_.data_length_, true, TBSYS_LOG_LEVEL_WARN);
+      if (dump_content)
+      {
+        TBSYS_LOG(WARN, "Header: ");
+        hex_dump(&header_, sizeof(header_), true, TBSYS_LOG_LEVEL_WARN);
+        TBSYS_LOG(WARN, "Body: ");
+        hex_dump(log_data - sizeof(uint64_t) - sizeof(LogCommand), header_.data_length_, true, TBSYS_LOG_LEVEL_WARN);
+      }
       ret = OB_ERROR;
     }
   }

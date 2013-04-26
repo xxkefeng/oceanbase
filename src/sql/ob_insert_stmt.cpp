@@ -1,5 +1,4 @@
 #include "ob_insert_stmt.h"
-#include "parse_tools.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -10,6 +9,7 @@ ObInsertStmt::ObInsertStmt(oceanbase::common::ObStringBuf* name_pool)
 : ObStmt(name_pool, T_INSERT)
 {
   sub_query_id_ = OB_INVALID_ID;
+  is_replace_ = false;
 }
 
 ObInsertStmt::~ObInsertStmt()
@@ -24,7 +24,7 @@ ObInsertStmt::~ObInsertStmt()
 void ObInsertStmt::print(FILE* fp, int32_t level, int32_t index)
 {
   print_indentation(fp, level);
-  fprintf(fp, "ObInsertStmt %d Begin\n", index);
+  fprintf(fp, "<ObInsertStmt %d Begin>\n", index);
   ObStmt::print(fp, level + 1);
   print_indentation(fp, level + 1);
   fprintf(fp, "INTO ::= <%ld>\n", table_id_);
@@ -56,7 +56,5 @@ void ObInsertStmt::print(FILE* fp, int32_t level, int32_t index)
     fprintf(fp, "SUBQUERY ::= <%ld>\n", sub_query_id_);
   }
   print_indentation(fp, level);
-  fprintf(fp, "ObInsertStmt %d End\n", index);
+  fprintf(fp, "<ObInsertStmt %d End>\n", index);
 }
-
-

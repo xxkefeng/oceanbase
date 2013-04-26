@@ -56,7 +56,7 @@ TEST(TestServerExt, deserialize)
   serverExt_to.deserialize(buf, buf_len, pos);
 
   EXPECT_EQ(0, strcmp((char*)"hostname", serverExt_to.get_hostname()));
-  int32_t ip_int = server.convert_ipv4_addr(ip);
+  uint32_t ip_int = server.convert_ipv4_addr(ip);
   EXPECT_EQ(ip_int, serverExt_to.get_server().get_ipv4());
   EXPECT_EQ(2700, serverExt_to.get_server().get_port());
   delete [] buf;

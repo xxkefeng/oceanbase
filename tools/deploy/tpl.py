@@ -9,7 +9,7 @@ config_template = '''## Config File for 'deploy.py', this file is just a valid P
 # load_file('monitor.py', 'fault_test.py')
 data_dir = '/data/'         # $data_dir/{1..10} should exist
 ## comment line below if you want to provide custom schema and server conf template(see ob5's definition for another way)
-## run: './deploy.py tpl.gensvrcfg' to generate a 'tpl' dir, edit tpl/rootserver.template... as you wish 
+## run: './deploy.py tpl.gensvrcfg' to generate a 'tpl' dir, edit tpl/rootserver.template... as you wish
 # tpl = load_dir_vars('tpl')  # template of config file such as rootserver.conf/updateserver.conf...
 
 # list ip of test machines
@@ -77,6 +77,124 @@ schema_template = '''
 name=${app_name}
 max_table_id=1999
 
+[__first_tablet_entry]
+table_id=1
+max_column_id=11
+table_type=1
+compress_func_name=none
+rowkey_is_fixed_length=0 #rowkey is table name
+column_info=1,2,gm_created,create_time
+column_info=1,3,gm_modified,modify_time
+column_info=1,4,table_name,varchar,128
+column_info=1,5,table_id,int
+column_info=1,6,table_type,int
+column_info=1,7,rowkey_len,int
+column_info=1,8,rowkey_is_fixed_len,int
+column_info=1,9,rowkey_split,int
+column_info=1,10,compressor,varchar,128
+column_info=1,11,max_column_id,int
+
+rowkey_max_length=128
+rowkey_split=0
+
+[__all_all_column]
+table_id=2
+table_type=1
+max_column_id=10
+rowkey_is_fixed_length=1 //rowkey is (table_id(uint64_t), column_id(uint64_t))
+compress_func_name=none
+column_info=1,2,gm_created,create_time
+column_info=1,3,gm_modified,modify_time
+column_info=1,4,table_name,varchar,128
+column_info=1,5,table_id,int
+column_info=1,6,column_name,varchar,128
+column_info=1,7,column_id,int
+column_info=1,8,data_type,int
+column_info=1,9,data_length,int
+column_info=1,10,column_group_id,int
+rowkey_max_length=16
+rowkey_split=0
+
+[__all_join_info]
+table_id=3
+table_type=1
+max_column_id=13
+rowkey_is_fixed_length=1 //rowkey is (left_table_id(uint64_t), left_column_id(uint64_t))
+compress_func_name=none
+column_info=1,2,gm_created,create_time
+column_info=1,3,gm_modified,modify_time
+column_info=1,4,left_table_name,varchar,128
+column_info=1,5,left_table_id,int
+column_info=1,6,left_column_name,varchar,128
+column_info=1,7,left_column_id,int
+column_info=1,8,start_pos,int
+column_info=1,9,end_pos,int
+column_info=1,10,right_table_name,varchar,128
+column_info=1,11,right_table_id,int
+column_info=1,12,right_column_name,varchar,128
+column_info=1,13,right_column_id,int
+rowkey_max_length=16
+rowkey_split=0
+
+[__all_sys_param]
+table_id=4
+table_type=1
+max_column_id=15
+rowkey_is_fixed_length=0
+compress_func_name=none
+column_info=1,2,gm_created,create_time
+column_info=1,3,gm_modified,modify_time
+column_info=1,4,name,varchar,128
+column_info=1,5,cluster_role,int
+column_info=1,6,cluster_id,int
+column_info=1,7,server_type,int
+column_info=1,8,server_role,int
+column_info=1,9,server_ipv4,int
+column_info=1,10,server_ipv6_high,int
+column_info=1,11,server_ipv6_low,int
+column_info=1,12,server_ip_port,int
+column_info=1,13,data_type,int
+column_info=1,14,value,varchar,512
+column_info=1,15,info,varchar,512
+rowkey_max_length=192
+rowkey_split=0
+
+[__perm_info]
+table_id=100
+table_type=1
+max_column_id=4
+rowkey_is_fixed_length=0
+compress_func_name=none
+column_info=1,2,gm_created,create_time
+column_info=1,3,gm_modified,modify_time
+column_info=1,4,perm_desc,int
+rowkey_max_length=48
+rowkey_split=0
+
+[__user_info]
+table_id=101
+table_type=1
+max_column_id=4
+rowkey_is_fixed_length=0
+compress_func_name=none
+column_info=1,2,gm_created,create_time
+column_info=1,3,gm_modified,modify_time
+column_info=1,4,password,varchar,128
+rowkey_max_length=32
+rowkey_split=0
+
+[__skey_info]
+table_id=102
+table_type=1
+max_column_id=4
+rowkey_is_fixed_length=0
+compress_func_name=none
+column_info=1,2,gm_created,create_time
+column_info=1,3,gm_modified,modify_time
+column_info=1,4,secure_key,varchar,128
+rowkey_max_length=32
+rowkey_split=0
+
 [table1]
 table_id=1001
 table_type=1
@@ -131,6 +249,7 @@ pid_file=log/rootserver.pid.$ip:$port
 log_file=log/rootserver.log.$ip:$port
 data_dir=data/rs
 log_level=$log_level
+trace_log_level=$trace_log_level
 dev_name=$dev
 vip=${rs0.ip}
 port=${rs0.port}
@@ -141,7 +260,7 @@ write_queue_size=50
 
 log_queue_size=50
 network_timeout=1000000
-migrate_wait_seconds=90
+migrate_wait_seconds=1
 
 log_dir_path=data/rs_commitlog
 log_size=64
@@ -156,7 +275,7 @@ register_timeout_us=2000000
 lease_on=1
 lease_interval_us=15000000
 lease_reserved_time_us=10000000
-cs_command_interval_us=60000000
+cs_command_interval_us=1000000
 __create_table_in_init=1
 __safe_copy_count_in_init=1
 
@@ -182,6 +301,7 @@ safe_lost_one_duration=28800
 wait_init_duration=1
 max_merge_duration=14400
 cs_probation_period=1
+max_concurrent_migrate_per_cs=2
 '''
 
 updateserver_template = '''
@@ -212,7 +332,7 @@ log_sync_type = $log_sync_type
 lsync_fetch_timeout = 1000000
 lsync_fetch_timeout_us = 1000000
 read_thread_count = 14
-store_thread_count = 3
+store_thread_count = 4
 read_task_queue_size = 1000
 write_task_queue_size = 1000
 log_task_queue_size = 1000
@@ -229,8 +349,11 @@ log_sync_delay_warn_time_report_interval_us=10000000
 replay_wait_time_us = 50000
 fetch_log_wait_time_us=500000
 
-total_memory_limit = 10
-table_memory_limit = 4
+using_hash_index=1
+#total_memory_limit = 9
+total_memory_limit = ${total_memory_limit}
+#table_memory_limit = 4
+table_memory_limit = ${table_memory_limit}
 lease_interval_us = 15000000
 lease_reserved_time_us = 10000000
 lease_on = 1
@@ -243,16 +366,24 @@ store_root = data/ups_data
 raid_regex = ^raid[0-9]+$
 dir_regex = ^store[0-9]+$
 
-blockcache_size_mb = 2048
-blockindex_cache_size_mb = 1024
+warm_up_time_s = ${warm_up_time_s}
 
-active_mem_limit_gb = 3
-frozen_mem_limit_gb = 3
+#blockcache_size_mb = 512
+blockcache_size_mb = ${blockcache_size_mb}
+blockindex_cache_size_mb = ${blockindex_cache_size_mb}
+
+#active_mem_limit_gb = 1
+active_mem_limit_gb = ${active_mem_limit_gb}
+minor_num_limit = ${minor_num_limit}
+#frozen_mem_limit_gb = 1
+#frozen_mem_limit_gb = ${frozen_mem_limit_gb}
+table_available_warn_size_gb = 3
+table_available_error_size_gb = 2
 sstable_time_limit_s = 604800
-major_freeze_duty_time = 01:00
+major_freeze_duty_time = -1
 min_major_freeze_interval_s = 1
 
-sstable_compressor_name = lzo_1.0
+sstable_compressor_name = none
 sstable_block_size = 4096
 
 [root_server]
@@ -272,11 +403,15 @@ location_cache_timeout_us=600000000
 log_file=log/mergeserver.log.$ip:$port
 pid_file=log/mergeserver.pid.$ip:$port
 log_level=$log_level
+trace_log_level=$trace_log_level
 max_log_file_size=1024
 intermediate_buffer_size_mbyte=8
 memory_size_limit_percent=15
 upslist_interval_us=1000000
 max_req_process_time_us = 10000000
+
+[obmysql]
+obmysql_port=$mysql_port
 
 [root_server]
 vip=${rs0.ip}
@@ -288,30 +423,34 @@ chunkserver_template = '''
 pid_file = log/chunkserver.pid.$ip:$port
 log_file = log/chunkserver.log.$ip:$port
 log_level = $log_level
+trace_log_level=$trace_log_level
 
 [chunk_server]
 dev_name = $dev
 port = $port
 task_queue_size = 1000
 task_thread_count = 50
-max_migrate_task_count=1
-max_sstable_size = 268435456
+max_migrate_task_count=4
+max_sstable_size = $max_sstable_size
 
 datadir_path = $dir/data/cs
 application_name = $app_name
 network_timeout= 1000000
-merge_timeout=3000000
+merge_timeout=10000000
 
 lease_check_interval=5000000
-retry_times=10000
+retry_times=5
 migrate_band_limit_kbps=51200
 
 merge_mem_limit=67108864
-#merge_thread_per_disk=1
+merge_thread_per_disk=$merge_thread_per_disk
 #reserve_sstable_copy=2
-merge_load_threshold_high=16
+merge_load_threshold_high=20
 merge_threshold_request_high=3000
 max_merge_thread_num=10
+
+max_version_gap = 100
+#max_version_gap = 3
 
 write_sstable_io_type = 1
 merge_delay_interval_minutes = 0
@@ -321,12 +460,17 @@ min_drop_cache_wait_second = 10
 
 upslist_interval_us=1000000
 
+each_tablet_sync_meta = 0
+lazy_load_sstable = 1
+unmerge_if_unchanged = 1
+join_batch_count = 3000
+
 [memory_cache]
-block_cache_memsize_mb = 2048
+block_cache_memsize_mb = 512
 file_info_cache_max_cache_num = 8192
 block_index_cache_memsize_mb = 1024
-join_cache_memsize_mb=5120
-sstable_row_cache_memsize_mb = 1024
+join_cache_memsize_mb=4096
+sstable_row_cache_memsize_mb = 512
 
 [root_server]
 vip = ${rs0.ip}
@@ -349,20 +493,12 @@ timeout=1000
 lsync_retry_wait_time_us=${lsync_retry_wait_time_us}
 '''
 proxyserver_template = '''
-[public]
-log_file = ./log/proxyserver.log.$ip:$port
-pid_file = ./log/proxyserver.pid.$ip:$port
-log_level = $log_level
-
-[oceanbase]
-vip = ${rs0.ip}
-port = ${rs0.port}
-
-[obconnector]
-workernum=100
-port=$port
 '''
-
+monitorserver_template = '''
+ip=$ip
+port=$port
+log_file=$role.log.$ip.$port
+'''
 new_table_template = '''
 [table$table_id]
 table_id=$table_id
@@ -405,4 +541,3 @@ def gencfg(path=None, detail=False, **kw):
         print template
         print '#---------------------end config template---------------------'
     return path
-

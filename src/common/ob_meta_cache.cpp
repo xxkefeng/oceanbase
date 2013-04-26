@@ -56,7 +56,8 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       ObCellInfo cell_info;
-      ObString rowkey;
+      ObRowkey rowkey;
+      ObObj rowkey_obj;
       ObVersionRange ver_range;
       int64_t pos = 0;
       if (NULL == buffer_)
@@ -76,7 +77,9 @@ namespace oceanbase
         {
           memcpy(buffer_ + encode_pos, user_name_, length_);
           encode_pos += length_;
-          rowkey.assign(buffer_ + pos, static_cast<int32_t>(encode_pos - pos));
+          rowkey_obj.set_varchar(
+              ObString(0, static_cast<int32_t>(encode_pos - pos), buffer_ + pos));
+          rowkey.assign(&rowkey_obj, 1);
           get_param.set_is_result_cached(true);
           cell_info.table_id_  = PERM_TABLE_ID;
           cell_info.row_key_   = rowkey;
@@ -227,7 +230,8 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       ObCellInfo cell_info;
-      ObString rowkey;
+      ObRowkey rowkey;
+      ObObj rowkey_obj;
       ObVersionRange ver_range;
       if (NULL == buffer_)
       {
@@ -237,7 +241,8 @@ namespace oceanbase
       if (NULL != buffer_)
       {
         memcpy(buffer_, user_name_, length_);
-        rowkey.assign(buffer_, static_cast<int32_t>(length_));
+        rowkey_obj.set_varchar(ObString(0, static_cast<int32_t>(length_), buffer_));
+        rowkey.assign(&rowkey_obj, 1);
 
         get_param.set_is_result_cached(true);
         cell_info.table_id_  = USER_TABLE_ID;
@@ -365,7 +370,8 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       ObCellInfo cell_info;
-      ObString rowkey;
+      ObRowkey rowkey;
+      ObObj rowkey_obj;
       ObVersionRange ver_range;
       int64_t pos = 0;
       if (NULL == buffer_)
@@ -380,7 +386,8 @@ namespace oceanbase
       }
       else
       {
-        rowkey.assign(buffer_, static_cast<int32_t>(pos));
+        rowkey_obj.set_varchar(ObString(0, static_cast<int32_t>(pos), buffer_));
+        rowkey.assign(&rowkey_obj, 1);
         get_param.reset();
         get_param.set_is_result_cached(true);
         cell_info.table_id_  = SKEY_TABLE_ID;

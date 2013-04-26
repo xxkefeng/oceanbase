@@ -29,7 +29,7 @@ int nodeTreeCompare(ParseNode* pNode1, ParseNode* pNode2)
     return pNode1->type_ - pNode2->type_;
 
   if (pNode1->value_ != pNode2->value_)
-    return pNode1->value_ - pNode2->value_;
+    return (int)(pNode1->value_ - pNode2->value_);
 
   switch (pNode1->type_)
   {
@@ -75,7 +75,7 @@ void *singThreadWork(void* arg)
   SqlsAndResultsNode* pSqlsAndResults = static_cast<SqlsAndResultsNode*>(arg);
   int index;
 
-  srand(time(NULL));
+  srand((uint32_t)time(NULL));
 
   oceanbase::common::ObStringBuf str_buf; 
   ParseResult result;

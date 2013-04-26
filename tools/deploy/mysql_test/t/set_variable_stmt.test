@@ -1,0 +1,5 @@
+set @@global.autocommit=1;
+--error 5003
+set @@global.autocommit='1';
+--error 5003
+set @@session.autocommit='1';

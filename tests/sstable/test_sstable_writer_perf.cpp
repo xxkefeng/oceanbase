@@ -52,11 +52,13 @@ namespace oceanbase
         int64_t disk_usage = 0;
         int64_t trailer_offset = 0;
         ObObj obj;
+        ObObj key_obj;
         uint64_t table_id = 0;
         uint64_t column_group_id = 0;
         char value_data[1024 + 1];
         char rowkey_str[32];
         ObString row_key;
+        ObRowkey key;
         char *ptr;
         int ret;
       
@@ -64,19 +66,30 @@ namespace oceanbase
         for (int64_t i = 0; i < 5; ++i)
         {
           column_def.table_id_ = static_cast<uint32_t>(1025 + i);
+
+          // add rowkey column
+          column_def.column_group_id_ = 0;
+          column_def.column_name_id_ = 1;
+          column_def.column_value_type_ = ObVarcharType;
+          column_def.rowkey_seq_ = 1;
+          schema.add_column_def(column_def);
+
           for ( int j = 0; j < 10 ; ++j)
           {
             column_def.column_group_id_ = static_cast<uint16_t>(j);
             column_def.column_name_id_ = 2;
             column_def.column_value_type_ = ObDoubleType;
+            column_def.rowkey_seq_ = 0;
             schema.add_column_def(column_def);
       
             column_def.column_name_id_ = 3;
             column_def.column_value_type_ = ObIntType;
+            column_def.rowkey_seq_ = 0;
             schema.add_column_def(column_def);
       
             column_def.column_name_id_ = 4;
             column_def.column_value_type_ = ObVarcharType;
+            column_def.rowkey_seq_ = 0;
             schema.add_column_def(column_def);
           }
         }
@@ -107,7 +120,9 @@ namespace oceanbase
           row.set_column_group_id(column_group_id);
           sprintf(rowkey_str, "row_key_%08ld", i);
           row_key.assign(rowkey_str, 16);
-          row.set_row_key(row_key);
+          key_obj.set_varchar(row_key);
+          key.assign(&key_obj, 1);
+          row.set_rowkey(key);
       
           obj.set_double((double)i);
           row.add_obj(obj);
@@ -147,34 +162,45 @@ namespace oceanbase
         int64_t sstable_size = 0;
         uint64_t table_id = 0;
         uint64_t column_group_id = 0;
-        ObObj tmp_obj;
-        ObString row_key;
-        ObString key;
+        ObObj key_obj;
         ObObj obj;
+        ObString row_key;
+        ObRowkey key;
         char value_data[1024 + 1];
         char rowkey_str[32];
         char *ptr;
         file_name.assign(sstable_path, static_cast<int32_t>(strlen(sstable_path)));
         char *compressor_name = (char*)COMPRESSOR_NAME;
         compressor.assign(compressor_name, static_cast<int32_t>(strlen(compressor_name) + 1));
-      
-        //init schema
+
+        // init schema
         for (int64_t i = 0; i < 5; ++i)
         {
           column_def.table_id_ = static_cast<uint32_t>(1025 + i);
+
+          // add rowkey column
+          column_def.column_group_id_ = 0;
+          column_def.column_name_id_ = 1;
+          column_def.column_value_type_ = ObVarcharType;
+          column_def.rowkey_seq_ = 1;
+          schema.add_column_def(column_def);
+
           for ( int j = 0; j < 10 ; ++j)
           {
             column_def.column_group_id_ = static_cast<uint16_t>(j);
             column_def.column_name_id_ = 2;
             column_def.column_value_type_ = ObDoubleType;
+            column_def.rowkey_seq_ = 0;
             schema.add_column_def(column_def);
-            
+      
             column_def.column_name_id_ = 3;
             column_def.column_value_type_ = ObIntType;
+            column_def.rowkey_seq_ = 0;
             schema.add_column_def(column_def);
       
             column_def.column_name_id_ = 4;
             column_def.column_value_type_ = ObVarcharType;
+            column_def.rowkey_seq_ = 0;
             schema.add_column_def(column_def);
           }
         }
@@ -200,7 +226,9 @@ namespace oceanbase
           row.set_column_group_id(column_group_id);
           sprintf(rowkey_str, "row_key_%08ld", i);
           row_key.assign(rowkey_str, 16);          
-          row.set_row_key(row_key);
+          key_obj.set_varchar(row_key);
+          key.assign(&key_obj, 1);
+          row.set_rowkey(key);
       
           obj.set_double((double)i);
           row.add_obj(obj);

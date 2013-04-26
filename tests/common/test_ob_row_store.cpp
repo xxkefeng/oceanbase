@@ -19,6 +19,7 @@
 #include "common/ob_compact_cell_iterator.h"
 #include "common/ob_row_store.h"
 #include "common/ob_malloc.h"
+#include "common/ob_action_flag.h"
 #include <gtest/gtest.h>
 
 using namespace oceanbase;
@@ -70,8 +71,11 @@ TEST_F(ObRowStoreTest, rowkey)
 {
   ObRowStore row_store;
 
-  char rowkey_buf[100];
-  ObString rowkey;
+  ObRowkey rowkey;
+  ObObj rowkey_obj[OB_MAX_ROWKEY_COLUMN_NUMBER];
+
+  ObRowkey rk;
+  ObObj rk_obj[OB_MAX_ROWKEY_COLUMN_NUMBER];
 
   ObRowDesc row_desc;
   for(int64_t i=0;i<10;i++)
@@ -94,8 +98,10 @@ TEST_F(ObRowStoreTest, rowkey)
 
   for(int64_t j=0;j<9;j++)
   {
-    sprintf(rowkey_buf, "rowkey_%05ld", j);
-    rowkey.assign_ptr(rowkey_buf, (int32_t)strlen(rowkey_buf));
+    rowkey_obj[0].set_int(j);
+    rowkey_obj[1].set_int(j * 10);
+    rowkey.assign(rowkey_obj, 2);
+
     for(int64_t i=0;i<10;i++)
     {
       cell.set_int(j * 1000 + i);
@@ -105,10 +111,18 @@ TEST_F(ObRowStoreTest, rowkey)
 
     OK(cell_reader.init(stored_row->get_compact_row(), DENSE_SPARSE));
 
+    for(int64_t i=0;i<2;i++)
+    {
+      OK(cell_reader.next_cell());
+      OK(cell_reader.get_cell(value));
+
+      rk_obj[i] = *value;
+    }
+
+    rk.assign(rk_obj, 2);
+    ASSERT_TRUE( rowkey == rk );
+
     OK(cell_reader.next_cell());
-    OK(cell_reader.get_cell(value));
-    value->get_varchar(rowkey);
-    ASSERT_EQ(0, strncmp(rowkey_buf, rowkey.ptr(), rowkey.length()));
 
     for(int64_t i=0;i<10;i++)
     {
@@ -120,11 +134,16 @@ TEST_F(ObRowStoreTest, rowkey)
   }
 
   
+  const ObRowkey *rk_ptr = NULL;
   for(int64_t j=0;j<9;j++)
   {
-    OK(row_store.get_next_row(&rowkey, row));
-    sprintf(rowkey_buf, "rowkey_%05ld", j);
-    ASSERT_EQ(0, strncmp(rowkey_buf, rowkey.ptr(), rowkey.length()));
+    OK(row_store.get_next_row(rk_ptr, row));
+
+    rowkey_obj[0].set_int(j);
+    rowkey_obj[1].set_int(j * 10);
+    rowkey.assign(rowkey_obj, 2);
+
+    ASSERT_TRUE( rowkey == *rk_ptr );
 
     for(int64_t i=0;i<10;i++)
     {
@@ -133,6 +152,50 @@ TEST_F(ObRowStoreTest, rowkey)
       ASSERT_EQ( j * 1000 + i, int_value);
     }
   }
+}
+
+TEST_F(ObRowStoreTest, op_nop)
+{
+  ObRowStore row_store;
+
+  ObUpsRow ups_row;
+
+  ObRowDesc row_desc;
+  for(uint64_t i=1;i<=8;i++)
+  {
+    OK(row_desc.add_column_desc(TABLE_ID, i));
+  }
+
+  ups_row.set_row_desc(row_desc);
+  OK(ups_row.reset());
+
+  const ObRowStore::StoredRow *stored_row = NULL;
+  OK(row_store.add_ups_row(ups_row, stored_row));
+
+  ObUpsRow got_ups_row;
+  got_ups_row.set_row_desc(row_desc);
+
+  ObObj value;
+  value.set_int(1);
+
+  for(int64_t i=0;i<8;i++)
+  {
+    got_ups_row.raw_set_cell(0, value);
+  }
+
+  row_store.get_next_ups_row(got_ups_row);
+
+  const ObObj *cell = NULL;
+  uint64_t table_id = OB_INVALID_ID;
+  uint64_t column_id = OB_INVALID_ID;
+
+  for(int64_t i=0;i<8;i++)
+  {
+    got_ups_row.raw_get_cell(i, cell, table_id, column_id);
+    ASSERT_EQ(ObExtendType, cell->get_type());
+    ASSERT_TRUE( ObActionFlag::OP_NOP == cell->get_ext() );
+  }
+
 }
 
 TEST_F(ObRowStoreTest, ups_row_test)
@@ -151,7 +214,7 @@ TEST_F(ObRowStoreTest, ups_row_test)
   row.set_row_desc(row_desc);
 
   #define ADD_ROW(is_delete, num1, num2, num3, num4, num5) \
-  row.set_delete_row(is_delete); \
+  row.set_is_delete_row(is_delete); \
   row.set_cell(TABLE_ID, 1, gen_int_obj(num1, false)); \
   row.set_cell(TABLE_ID, 2, gen_int_obj(num2, false)); \
   row.set_cell(TABLE_ID, 3, gen_int_obj(num3, false)); \
@@ -174,7 +237,7 @@ TEST_F(ObRowStoreTest, ups_row_test)
 
   #define CHECK_ROW(is_delete, num1, num2, num3, num4, num5) \
   row_store.get_next_row(get_row); \
-  ASSERT_TRUE( get_row.is_delete_row() == is_delete ); \
+  ASSERT_TRUE( get_row.get_is_delete_row() == is_delete ); \
   CHECK_CELL(1, num1); \
   CHECK_CELL(2, num2); \
   CHECK_CELL(3, num3); \
@@ -252,6 +315,74 @@ TEST_F(ObRowStoreTest, basic_test)
   CHECK_ROW(1, 2, 4, 5, 3);
   CHECK_ROW(1, 2, 4, 5, 3);
   CHECK_ROW(1, 2, 4, 5, 3);
+}
+
+
+TEST_F(ObRowStoreTest, row_store_reset_test)
+{
+  ObRowStore row_store;
+  int ret = OB_SUCCESS;
+
+  const int64_t COLUMN_NUM = 8;
+  int64_t row_num = 1000;
+
+  ObRow row;
+  ObRow got_row;
+  ObRowDesc row_desc;
+  ObObj cell;
+  const ObObj *got_cell = NULL;
+  int64_t int_value = 0;
+  const ObRowStore::StoredRow *stored_row = NULL;
+  int64_t used_mem_size = 0;
+  int64_t got_row_count = 0;
+
+  for (int i=0;i<COLUMN_NUM;i++)
+  {
+    row_desc.add_column_desc(TABLE_ID, i + OB_APP_MIN_COLUMN_ID);
+  }
+  row.set_row_desc(row_desc);
+
+  
+  for (int i=0;i<COLUMN_NUM;i++)
+  {
+    cell.set_int(i);
+    row.set_cell(TABLE_ID, i + OB_APP_MIN_COLUMN_ID, cell);
+  }
+
+  for (int k=0; k<3; k++)
+  {
+    for (int i=0; i<row_num; i++)
+    {
+      row_store.add_row(row, stored_row);
+    }
+
+    got_row.set_row_desc(row_desc);
+    got_row_count = 0;
+    while (true)
+    {
+      ret = row_store.get_next_row(got_row);
+      if (OB_ITER_END == ret)
+      {
+        break;
+      }
+      ASSERT_EQ(OB_SUCCESS, ret) << "time " << k << std::endl;
+      for (int i=0; i<COLUMN_NUM; i++)
+      {
+        ret = got_row.get_cell(TABLE_ID, i + OB_APP_MIN_COLUMN_ID, got_cell);
+        got_cell->get_int(int_value);
+        ASSERT_EQ(i, int_value);
+      }
+      got_row_count ++;
+    }
+    ASSERT_EQ(row_num, got_row_count);
+
+    if (0 == used_mem_size)
+    {
+      used_mem_size = row_store.get_used_mem_size();
+    }
+    row_store.reuse();
+    ASSERT_EQ(used_mem_size, row_store.get_used_mem_size());
+  }
 }
 
 int main(int argc, char **argv)

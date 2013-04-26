@@ -4,6 +4,7 @@
 #include "common/ob_result.h"
 #include "common/ob_define.h"
 #include "common/ob_new_scanner.h"
+#include "sql/ob_sql_scan_param.h"
 #include "common/ob_tablet_info.h"
 #include "common/ob_read_common_data.h"
 #include "common/ob_row.h"
@@ -72,7 +73,7 @@ int MockChunkServer::handle_scan_table(ObPacket * ob_packet)
     ret = OB_ERROR;
   }
 
-  ObScanParam param;
+  ObSqlScanParam param;
   if (OB_SUCCESS == ret)
   {
     ret = param.deserialize(data->get_data(), data->get_capacity(), data->get_position());
@@ -113,7 +114,7 @@ int MockChunkServer::handle_scan_table(ObPacket * ob_packet)
     //row_desc_.add_column_desc(test::ObFakeTable::TABLE_ID, OB_APP_MIN_COLUMN_ID + 3);
     obj_a.set_int(19);
     obj_b.set_int(2);
-    var_str.assign("hello", 5);
+    var_str.assign((char*)"hello", 5);
     str_c.set_varchar(var_str);
     obj_d.set_int(3);
     row_.set_row_desc(row_desc_);
@@ -132,20 +133,13 @@ int MockChunkServer::handle_scan_table(ObPacket * ob_packet)
     }
     /* begin add by xiaochu */
     //Scanner Range must be set other wise the ms client will report error
-    ObRange range;
-    ObString start_key;
-    ObString end_key;
-    /*
-    /// This will cause rowkey mismatch
-    //char *start= "chunk_0_scan_row_key:0";
-    //char *end  = "chunk_9_scan_row_key:9";
-    */
-    char *start= (char*)"row_100";
-    char *end  = (char*)"row_200";
-    start_key.assign(start, static_cast<int32_t>(strlen(start)));
-    end_key.assign(end, static_cast<int32_t>(strlen(end)));
-    range.start_key_ = start_key;
-    range.end_key_ = end_key;
+    ObNewRange range;
+    ObObj start_key;
+    ObObj end_key;
+    start_key.set_int(100);
+    end_key.set_int(200);
+    range.start_key_.assign(&start_key, 1);
+    range.end_key_.assign(&end_key, 1);
     range.table_id_ = test::ObFakeTable::TABLE_ID;
     scanner.set_range(range);
     scanner.set_is_req_fullfilled(true, 10);
@@ -394,7 +388,7 @@ int MockChunkServer::handle_mock_scan(ObPacket * ob_packet)
     ObString range_str;
     if (OB_SUCCESS == ret)
     {
-      ObRange range;
+      ObNewRange range;
       range.border_flag_.set_min_value();
       range.border_flag_.set_max_value();
       ret = range.serialize(range_buf,sizeof(range_buf),pos);

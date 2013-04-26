@@ -24,6 +24,201 @@ ObCompactCellWriter::ObCompactCellWriter()
 {
 }
 
+int ObCompactCellWriter::append_row(const ObRowkey& rowkey, const ObRow& row)
+{
+  int ret = OB_SUCCESS;
+
+  if (OB_SUCCESS != (ret = append_rowkey(rowkey)))
+  {
+    TBSYS_LOG(WARN, "append rowkey error:ret=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = append_rowvalue(row)))
+  {
+    TBSYS_LOG(WARN, "append rowvalue error:ret=%d", ret);
+  }
+  else
+  {
+    //do nothing
+  }
+
+  return ret;
+}
+
+int ObCompactCellWriter::append_row(const ObRow& row)
+{
+  int ret = OB_SUCCESS;
+
+  //row obj array
+  int64_t obj_array_cnt = 0;
+  const ObObj* obj_array_ptr = row.get_obj_array(obj_array_cnt);
+
+  //row desc array
+  const ObRowDesc* row_desc = row.get_row_desc();
+  int64_t desc_array_cnt = 0;
+  const ObRowDesc::Desc* desc_array_ptr = NULL;
+
+  //rowkey
+  int64_t rowkey_column_num = 0;
+
+  if (0 == obj_array_cnt || obj_array_cnt > OB_ROW_MAX_COLUMNS_COUNT)
+  {
+    TBSYS_LOG(WARN, "invalid row column count: obj_array_cnt=[%ld]", obj_array_cnt);
+    ret = OB_ERROR;
+  }
+  else if (NULL == obj_array_ptr)
+  {
+    TBSYS_LOG(WARN, "obj array ptr is NULL");
+    ret = OB_ERROR;
+  }
+  else if (NULL == row_desc)
+  {
+    TBSYS_LOG(WARN, "row desc is NULL");
+    ret = OB_ERROR;
+  }
+  else if (NULL == (desc_array_ptr = row_desc->get_cells_desc_array(desc_array_cnt)))
+  {
+    TBSYS_LOG(WARN, "desc array ptr is NULL");
+    ret = OB_ERROR;
+  }
+  else if (0 == desc_array_cnt && desc_array_cnt > OB_ROW_MAX_COLUMNS_COUNT)
+  {
+    TBSYS_LOG(WARN, "invalid desc array cnt: desc_array_cnt=[%ld]", desc_array_cnt);
+    ret = OB_ERROR;
+  }
+  else
+  {
+    rowkey_column_num = row_desc->get_rowkey_cell_count();
+    if (0 == rowkey_column_num || rowkey_column_num > OB_MAX_ROWKEY_COLUMN_NUMBER)
+    {
+      TBSYS_LOG(WARN, "invalid rowkey column num: rowkey_column_num=[%ld]", rowkey_column_num);
+      ret = OB_ERROR;
+    }
+  }
+
+  //rowkey
+  for (int64_t i = 0; OB_SUCCESS == ret && i < rowkey_column_num; i ++)
+  {
+    if (OB_SUCCESS != (ret = append(obj_array_ptr[i])))
+    {
+      TBSYS_LOG(WARN, "append rowkey faile: ret=[%d], obj=[%s]", ret, to_cstring(obj_array_ptr[i]));
+      break;
+    }
+  }
+
+  if (OB_SUCCESS == ret && OB_SUCCESS != (ret = rowkey_finish()))
+  {
+    TBSYS_LOG(WARN, "add rowkey finish flag fail: ret=[%d]", ret);
+  }
+
+  //row value
+  for(int64_t i = rowkey_column_num; OB_SUCCESS == ret && i < obj_array_cnt; i ++)
+  {
+    if (DENSE_SPARSE == store_type_)
+    {
+      if (OB_SUCCESS != (ret = append(desc_array_ptr[i].column_id_, obj_array_ptr[i])))
+      {
+        TBSYS_LOG(WARN, "append fail: i=[%ld], ret=[%d], column_id=[%lu], obj=[%s]",
+            i, ret, desc_array_ptr[i].column_id_, to_cstring(obj_array_ptr[i]));
+      }
+    }
+    else if (DENSE_DENSE == store_type_)
+    {
+      if (OB_SUCCESS != (ret = append(obj_array_ptr[i])))
+      {
+        TBSYS_LOG(WARN, "append fail: i=[%ld], ret=[%d], obj=[%s]", i, ret, to_cstring(obj_array_ptr[i]));
+      }
+    }
+    else
+    {
+      TBSYS_LOG(WARN, "unsupport store type: i=[%ld], store_type_=[%d]", i, store_type_);
+    }
+  }
+
+  if (OB_SUCCESS == ret && OB_SUCCESS != (ret = row_finish()))
+  {
+    TBSYS_LOG(WARN, "row finish error: ret=[%d]", ret);
+  }
+
+  return ret;
+}
+
+int ObCompactCellWriter::append_rowkey(const ObRowkey &rowkey)
+{
+  int ret = OB_SUCCESS;
+  for(int64_t i=0;OB_SUCCESS == ret && i<rowkey.get_obj_cnt();i++)
+  {
+    const ObObj &rowkey_obj = rowkey.get_obj_ptr()[i];
+    if(OB_SUCCESS != (ret = append(rowkey_obj)))
+    {
+      TBSYS_LOG(WARN, "append rowkey fail:ret[%d]", ret);
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    if(OB_SUCCESS != (ret = rowkey_finish()))
+    {
+      TBSYS_LOG(WARN, "add rowkey finish flag fail:ret[%d]", ret);
+    }
+  }
+  return ret;
+}
+
+int ObCompactCellWriter::append_rowvalue(const ObRow& row)
+{
+  int ret = OB_SUCCESS;
+
+  uint64_t table_id = 0;
+  uint64_t column_id = 0;
+  const ObObj* obj = NULL;
+  int64_t column_num = row.get_column_num();
+
+  for (int64_t i = 0; i < column_num; i ++)
+  {
+    if (OB_SUCCESS != (ret = row.raw_get_cell(i, obj, table_id, column_id)))
+    {
+      TBSYS_LOG(WARN, "raw get cell fail:ret=%d", ret);
+      break;
+    }
+    else
+    {
+      if (DENSE_SPARSE == store_type_)
+      {
+        if (OB_SUCCESS != (ret = append(column_id, *obj)))
+        {
+          TBSYS_LOG(WARN, "append fail:ret=%d", ret);
+          break;
+        }
+      }
+      else if (DENSE_DENSE == store_type_)
+      {
+        if (OB_SUCCESS != (ret = append(*obj)))
+        {
+          TBSYS_LOG(WARN, "append fail:ret=%d", ret);
+          break;
+        }
+      }
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    if (0 == column_num)
+    {
+      //do nothing
+    }
+    else if (OB_SUCCESS != (ret = row_finish()))
+    {
+      TBSYS_LOG(WARN, "finish row error:ret=%d", ret);
+    }
+    else
+    {
+      //do nothing
+    }
+  }
+
+  return ret;
+}
 int ObCompactCellWriter::init(char *buf, int64_t size, enum ObCompactStoreType store_type)
 {
   int ret = OB_SUCCESS;
@@ -67,7 +262,7 @@ int ObCompactCellWriter::write_decimal(const ObObj &decimal)
   {
     if(nwords <= 3)
     {
-      words = reinterpret_cast<const uint32_t*>(&(decimal.varchar_len_));
+      words = reinterpret_cast<const uint32_t*>(&(decimal.val_len_));
     }
     else
     {
@@ -93,14 +288,14 @@ int ObCompactCellWriter::write_varchar(const ObObj &value, ObObj *clone_value)
   ObString varchar_written;
 
   value.get_varchar(varchar_value);
-  if(varchar_value.length() > UINT16_MAX)
+  if(varchar_value.length() > INT32_MAX)
   {
     ret = OB_SIZE_OVERFLOW;
     TBSYS_LOG(WARN, "varchar is too long:[%d]", varchar_value.length());
   }
   if(OB_SUCCESS == ret)
   {
-    ret = buf_writer_.write<uint16_t>((uint16_t)(varchar_value.length()));
+    ret = buf_writer_.write<int32_t>((int32_t)(varchar_value.length()));
   }
   if(OB_SUCCESS == ret)
   {
@@ -114,145 +309,191 @@ int ObCompactCellWriter::write_varchar(const ObObj &value, ObObj *clone_value)
   return ret;
 }
 
-int ObCompactCellWriter::append(const ObObj &value, ObObj *clone_value /* = NULL */)
-{
-  int ret = OB_SUCCESS;
-  if(OB_SUCCESS != (ret = append(OB_INVALID_ID, value, clone_value)))
-  {
-    TBSYS_LOG(WARN, "append value fail:ret[%d]", ret);
-  }
-  return ret;
-}
-
 int ObCompactCellWriter::append(uint64_t column_id, const ObObj &value, ObObj *clone_value)
 {
   int ret = OB_SUCCESS;
   ObCellMeta cell_meta;
+  cell_meta.attr_ = ObCellMeta::AR_NORMAL;
   int64_t int_value = 0;
+  float float_value = 0.0f;
+  double double_value = 0.0;
+  bool bool_value = false;
   ObDateTime datetime_value = 0;
   ObPreciseDateTime precise_datetime_value = 0;
   ObCreateTime createtime_value = 0;
   ObModifyTime modifytime_value = 0;
-  ObNumber decimal_value;
 
   if(NULL != clone_value)
   {
     *clone_value = value;
   }
 
-  if(value.get_add())
-  {
-    cell_meta.attr_ = ObCellMeta::AR_ADD;
-  }
-  else
-  {
-    cell_meta.attr_ = ObCellMeta::AR_NORMAL;
-  }
+  int64_t tmp_value = 0;
 
+  //cell_meta.type_
   if(OB_SUCCESS == ret)
   {
     switch(value.get_type())
     {
     case ObNullType:
       cell_meta.type_ = ObCellMeta::TP_NULL;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
       break;
     case ObIntType:
       value.get_int(int_value);
+      if (value.get_add_fast())
+      {
+        cell_meta.attr_ = ObCellMeta::AR_ADD;
+      }
       switch(get_int_byte(int_value))
       {
       case 1:
         cell_meta.type_ = ObCellMeta::TP_INT8;
+        ret = buf_writer_.write<ObCellMeta>(cell_meta);
+        if (OB_SUCCESS == ret)
+        {
+          ret = buf_writer_.write<int8_t>((int8_t)int_value);
+        }
         break;
       case 2:
         cell_meta.type_ = ObCellMeta::TP_INT16;
+        ret = buf_writer_.write<ObCellMeta>(cell_meta);
+        if (OB_SUCCESS == ret)
+        {
+          ret = buf_writer_.write<int16_t>((int16_t)int_value);
+        }
         break;
       case 4:
         cell_meta.type_ = ObCellMeta::TP_INT32;
+        ret = buf_writer_.write<ObCellMeta>(cell_meta);
+        if (OB_SUCCESS == ret)
+        {
+          ret = buf_writer_.write<int32_t>((int32_t)int_value);
+        }
         break;
       case 8:
         cell_meta.type_ = ObCellMeta::TP_INT64;
+        ret = buf_writer_.write<ObCellMeta>(cell_meta);
+        if (OB_SUCCESS == ret)
+        {
+          ret = buf_writer_.write<int64_t>((int64_t)int_value);
+        }
         break;
       }
       break;
     case ObDecimalType:
       cell_meta.type_ = ObCellMeta::TP_DECIMAL;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      if (OB_SUCCESS == ret)
+      {
+        ret = write_decimal(value);
+      }
       break;
     case ObFloatType:
       cell_meta.type_ = ObCellMeta::TP_FLOAT;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      if (OB_SUCCESS == ret)
+      {
+        value.get_float(float_value);
+        ret = buf_writer_.write<float>(float_value);
+      }
       break;
     case ObDoubleType:
       cell_meta.type_ = ObCellMeta::TP_DOUBLE;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      if (OB_SUCCESS == ret)
+      {
+        value.get_double(double_value);
+        ret = buf_writer_.write<double>(double_value);
+      }
+      break;
+    case ObBoolType:
+      cell_meta.type_ = ObCellMeta::TP_BOOL;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      if (OB_SUCCESS == ret)
+      {
+        value.get_bool(bool_value);
+        ret = buf_writer_.write<bool>(bool_value);
+      }
       break;
     case ObDateTimeType:
+      if (value.get_add_fast())
+      {
+        cell_meta.attr_ = ObCellMeta::AR_ADD;
+      }
       cell_meta.type_ = ObCellMeta::TP_TIME;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      if (OB_SUCCESS == ret)
+      {
+        value.get_datetime(datetime_value);
+        ret = buf_writer_.write<ObDateTime>(datetime_value);
+      }
       break;
     case ObPreciseDateTimeType:
+      if (value.get_add_fast())
+      {
+        cell_meta.attr_ = ObCellMeta::AR_ADD;
+      }
       cell_meta.type_ = ObCellMeta::TP_PRECISE_TIME;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      if (OB_SUCCESS == ret)
+      {
+        value.get_precise_datetime(precise_datetime_value);
+        ret = buf_writer_.write<ObPreciseDateTime>(precise_datetime_value);
+      }
       break;
     case ObVarcharType:
       cell_meta.type_ = ObCellMeta::TP_VARCHAR;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      if (OB_SUCCESS == ret)
+      {
+        ret = write_varchar(value, clone_value);
+      }
       break;
     case ObCreateTimeType:
       cell_meta.type_ = ObCellMeta::TP_CREATE_TIME;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      if (OB_SUCCESS == ret)
+      {
+        value.get_createtime(createtime_value);
+        ret = buf_writer_.write<ObCreateTime>(createtime_value);
+      }
       break;
     case ObModifyTimeType:
       cell_meta.type_ = ObCellMeta::TP_MODIFY_TIME;
+      ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      if (OB_SUCCESS == ret)
+      {
+        value.get_modifytime(modifytime_value);
+        ret = buf_writer_.write<ObModifyTime>(modifytime_value);
+      }
       break;
-    default:
-      TBSYS_LOG(WARN, "unsupported type:type[%d]", value.get_type());
-      ret = OB_NOT_SUPPORTED;
-      break;
-    }
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    ret = buf_writer_.write<ObCellMeta>(cell_meta);
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    switch(cell_meta.type_)
-    {
-    case ObCellMeta::TP_NULL:
-      break;
-    case ObCellMeta::TP_INT8:
-      value.get_int(int_value);
-      ret = buf_writer_.write<int8_t>((int8_t)int_value);
-      break;
-    case ObCellMeta::TP_INT16:
-      value.get_int(int_value);
-      ret = buf_writer_.write<int16_t>((int16_t)int_value);
-      break;
-    case ObCellMeta::TP_INT32:
-      value.get_int(int_value);
-      ret = buf_writer_.write<int32_t>((int32_t)int_value);
-      break;
-    case ObCellMeta::TP_INT64:
-      value.get_int(int_value);
-      ret = buf_writer_.write<int64_t>(int_value);
-      break;
-    case ObCellMeta::TP_DECIMAL:
-      ret = write_decimal(value);
-      break;
-    case ObCellMeta::TP_TIME:
-      value.get_datetime(datetime_value);
-      ret = buf_writer_.write<ObDateTime>(datetime_value);
-      break;
-    case ObCellMeta::TP_PRECISE_TIME:
-      value.get_precise_datetime(precise_datetime_value);
-      ret = buf_writer_.write<ObPreciseDateTime>(precise_datetime_value);
-      break;
-    case ObCellMeta::TP_VARCHAR:
-      ret = write_varchar(value, clone_value);
-      break;
-    case ObCellMeta::TP_CREATE_TIME:
-      value.get_createtime(createtime_value);
-      ret = buf_writer_.write<ObCreateTime>(createtime_value);
-      break;
-    case ObCellMeta::TP_MODIFY_TIME:
-      value.get_modifytime(modifytime_value);
-      ret = buf_writer_.write<ObModifyTime>(modifytime_value);
+    case ObExtendType:
+      cell_meta.type_ = ObCellMeta::TP_EXTEND;
+      if (OB_SUCCESS == value.get_ext(tmp_value))
+      {
+        if (ObObj::MIN_OBJECT_VALUE == tmp_value)
+        {
+          cell_meta.attr_ = ObCellMeta::AR_MIN;
+        }
+        else if (ObObj::MAX_OBJECT_VALUE == tmp_value)
+        {
+          cell_meta.attr_ = ObCellMeta::AR_MAX;
+        }
+        else if (ObActionFlag::OP_DEL_ROW == tmp_value)
+        {
+          cell_meta.attr_ = ObCellMeta::ES_DEL_ROW;
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "extend type error:tmp_value=%ld", tmp_value);
+          ret = OB_ERROR;
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = buf_writer_.write<ObCellMeta>(cell_meta);
+      }
       break;
     default:
       TBSYS_LOG(WARN, "unsupported type:type[%d]", value.get_type());
@@ -271,14 +512,14 @@ int ObCompactCellWriter::append(uint64_t column_id, const ObObj &value, ObObj *c
         TBSYS_LOG(WARN, "cannot append column_id OB_INVALID_ID");
       }
     }
-    else if(column_id > UINT16_MAX)
+    else if(column_id > UINT32_MAX)
     {
       ret = OB_SIZE_OVERFLOW;
-      TBSYS_LOG(WARN, "column_id is too long:%ld", column_id);
+      TBSYS_LOG(WARN, "column_id is too long:%lu", column_id);
     }
     else
     {
-      ret = buf_writer_.write<uint16_t>((uint16_t)column_id);
+      ret = buf_writer_.write<uint32_t>((uint32_t)column_id);
     }
   }
   return ret;

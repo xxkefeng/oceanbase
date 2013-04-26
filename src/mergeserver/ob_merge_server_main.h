@@ -2,11 +2,11 @@
 #define OCEANBASE_MERGESERVER_MERGESERVERMAIN_H_
 
 #include "common/base_main.h"
+#include "common/ob_config_manager.h"
+#include "common/ob_version.h"
 #include "ob_merge_server.h"
-
-extern const char* svn_version();
-extern const char* build_date();
-extern const char* build_time();
+#include "obmysql/ob_mysql_server.h"
+#include "ob_merge_server_config.h"
 
 namespace oceanbase
 {
@@ -21,13 +21,18 @@ namespace oceanbase
 
       public:
         const ObMergeServer& get_merge_server() const { return server_; }
-
+        const obmysql::ObMySQLServer& get_mysql_server() const { return sql_server_; }
       protected:
         virtual void print_version();
       private:
         ObMergeServerMain();
+        int init_sql_server();
       private:
+        /* ObMergeServerParams ms_params_; */
+        ObMergeServerConfig ms_config_;
+        ObConfigManager config_mgr_;
         ObMergeServer server_;
+        obmysql::ObMySQLServer sql_server_;
     };
   } /* mergeserver */
 } /* oceanbase */

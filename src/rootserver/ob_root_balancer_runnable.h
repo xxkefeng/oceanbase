@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_root_balancer_runnable.h
@@ -16,7 +16,7 @@
 #ifndef _OB_ROOT_BALANCER_RUNNABLE_H
 #define _OB_ROOT_BALANCER_RUNNABLE_H 1
 #include "ob_root_balancer.h"
-#include "ob_root_config.h"
+#include "ob_root_server_config.h"
 #include "common/ob_role_mgr.h"
 namespace oceanbase
 {
@@ -25,7 +25,9 @@ namespace oceanbase
     class ObRootBalancerRunnable : public tbsys::CDefaultRunnable
     {
       public:
-        ObRootBalancerRunnable(ObRootConfig &config, ObRootBalancer &balancer, common::ObRoleMgr &role_mgr);
+        ObRootBalancerRunnable(ObRootServerConfig &config,
+                               ObRootBalancer &balancer,
+                               common::ObRoleMgr &role_mgr);
         virtual ~ObRootBalancerRunnable();
         void run(tbsys::CThread *thread, void *arg);
         void wakeup();
@@ -37,7 +39,7 @@ namespace oceanbase
       private:
         static const int64_t MIN_BALANCE_WORKER_SLEEP_US = 1000LL*1000; // 1s
         // data members
-        ObRootConfig &config_;
+        ObRootServerConfig &config_;
         ObRootBalancer &balancer_;
         common::ObRoleMgr &role_mgr_;
         tbsys::CThreadCond balance_worker_sleep_cond_;

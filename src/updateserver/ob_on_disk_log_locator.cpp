@@ -303,6 +303,11 @@ namespace oceanbase
         else if ((int64_t)log_seq + 1 == log_id)
         {
           offset = log_reader.get_last_log_offset();
+          if (cmd == OB_LOG_SWITCH_LOG)
+          {
+            err = OB_ENTRY_NOT_EXIST;
+            TBSYS_LOG(WARN, "find log[%ld] in file %ld, but is SWITCH_LOG", log_seq, file_id);
+          }
           break;
         }
         else if ((int64_t)log_seq == log_id) // 第一条日志

@@ -36,29 +36,6 @@ int ObRepeatedLogReader::read_log(LogCommand &cmd, uint64_t &log_seq, char *&log
   }
   else
   {
-    // ret = entry.deserialize(log_buffer_.get_data(), log_buffer_.get_limit(), log_buffer_.get_position());
-    // if (OB_SUCCESS != ret)
-    // {
-    //   if (OB_SUCCESS != (ret = read_log_()))
-    //   {
-    //     TBSYS_LOG(ERROR, "read_log_()=>%d", err);
-    //   }
-    //   if (OB_READ_NOTHING == ret)
-    //   {
-    //     // comment this log due to too frequent invoke by replay thread
-    //     //TBSYS_LOG(DEBUG, "do not get a full entry, when reading ObLogEntry");
-    //   }
-    //   else if (OB_SUCCESS == ret)
-    //   {
-    //     ret = entry.deserialize(log_buffer_.get_data(), log_buffer_.get_limit(), log_buffer_.get_position());
-    //     if (OB_SUCCESS != ret)
-    //     {
-    //       TBSYS_LOG(DEBUG, "do not get a full entry, when reading ObLogEntry");
-    //       ret = OB_READ_NOTHING;
-    //     }
-    //   }
-    // }
-
     if (OB_SUCCESS == ret
         && OB_SUCCESS != (ret = read_header(entry)) && OB_READ_NOTHING != ret && OB_LAST_LOG_RUINNED != ret)
     {
@@ -79,15 +56,15 @@ int ObRepeatedLogReader::read_log(LogCommand &cmd, uint64_t &log_seq, char *&log
         if (all_zero(log_buffer_.get_data() + log_buffer_.get_position(), log_buffer_.get_remain_data_len()))
         {
           ret = OB_READ_ZERO_LOG;
-          TBSYS_LOG(ERROR, "read an invalid log_entry, data are allzero");
+          TBSYS_LOG(WARN, "read an invalid log_entry, data are allzero");
         }
         else
         {
           ret = OB_INVALID_LOG;
           //hex_dump(log_buffer_.get_data() + log_buffer_.get_position(), log_buffer_.get_remain_data_len(), false, TBSYS_LOG_LEVEL_WARN);
-          TBSYS_LOG(ERROR, "Log entry header is corrupted, file_id_=%lu pread_pos_=%ld pos=%ld last_log_seq_=%lu",
+          TBSYS_LOG(WARN, "Log entry header is corrupted, file_id_=%lu pread_pos_=%ld pos=%ld last_log_seq_=%lu",
                     file_id_, pread_pos_, pos, last_log_seq_);
-          TBSYS_LOG(ERROR, "log_buffer_ position_=%ld limit_=%ld capacity_=%ld",
+          TBSYS_LOG(WARN, "log_buffer_ position_=%ld limit_=%ld capacity_=%ld",
                     log_buffer_.get_position(), log_buffer_.get_limit(), log_buffer_.get_capacity());
         }
         log_buffer_.get_limit() = log_buffer_.get_position();
@@ -137,14 +114,14 @@ int ObRepeatedLogReader::read_log(LogCommand &cmd, uint64_t &log_seq, char *&log
         if (all_zero(log_buffer_.get_data() + log_buffer_.get_position(), log_buffer_.get_remain_data_len()))
         {
           ret = OB_READ_ZERO_LOG;
-          TBSYS_LOG(ERROR, "read an invalid log_entry, data are allzero");
+          TBSYS_LOG(WARN, "read an invalid log_entry, data are allzero");
         }
         else
         {
           ret = OB_INVALID_LOG;
-          TBSYS_LOG(ERROR, "data corrupt, when check_data_integrity, file_id_=%lu pread_pos_=%ld pos=%ld last_log_seq_=%lu",
+          TBSYS_LOG(WARN, "data corrupt, when check_data_integrity, file_id_=%lu pread_pos_=%ld pos=%ld last_log_seq_=%lu",
               file_id_, pread_pos_, pos, last_log_seq_);
-          TBSYS_LOG(ERROR, "log_buffer_ position_=%ld limit_=%ld capacity_=%ld",
+          TBSYS_LOG(WARN, "log_buffer_ position_=%ld limit_=%ld capacity_=%ld",
               log_buffer_.get_position(), log_buffer_.get_limit(), log_buffer_.get_capacity());
           hex_dump(log_buffer_.get_data(), static_cast<int32_t>(log_buffer_.get_limit()), true, TBSYS_LOG_LEVEL_ERROR);
         }

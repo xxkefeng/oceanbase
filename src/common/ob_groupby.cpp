@@ -343,7 +343,7 @@ bool oceanbase::common::ObGroupKey::equal_to(const ObGroupKey &other) const
         /**
          * WARNING: maybe cell_array_ and other.cell_array_ are the same 
          * cell array, the member method operator[] return a const 
-         * internal ObCellInfo instance, if we want to do *+-/ < > == >= 
+         * internal ObCellInfo instance, if we want to do *+-/ < > == >=
          * <= !=, we need use a copy of the returned instance. 
          */
         this_obj = (*cell_array_)[this_idx].value_;
@@ -373,6 +373,40 @@ bool oceanbase::common::ObGroupKey::operator ==(const ObGroupKey &other)const
     return ObGroupByParam::is_equal(*this,other);
   }
 
+}
+
+int64_t oceanbase::common::ObGroupKey::to_string(char* buffer, const int64_t length) const
+{
+  int64_t pos = 0;
+  int64_t max_idx = row_end_ - row_beg_;
+  const ObArrayHelper<ObGroupByParam::ColumnInfo>& group_by_columns 
+    = group_by_param_->get_groupby_columns();
+  const ObGroupByParam::ColumnInfo* groupby_col = NULL;
+
+  pos += snprintf(buffer + pos, length - pos, "hash_val_=%u, key_type_=%d, group_by_param_=%p ",
+    hash_val_, key_type_, group_by_param_);
+  for (int64_t i = 0; i < group_by_columns.get_array_index(); i++)
+  {
+    groupby_col = group_by_columns.at(i);
+    if (groupby_col->as_column_idx_ > max_idx || groupby_col->as_column_idx_ < 0)
+    {
+      TBSYS_LOG(WARN,"param error [max_idx:%ld,groupby_column_idx:%ld,as_column_idx:%ld]", max_idx, i,
+        groupby_col->as_column_idx_);
+    }
+    else
+    {
+      if (key_type_ == ObGroupKey::AGG_KEY)
+      {
+        pos += (*cell_array_)[row_beg_ + groupby_col->as_column_idx_].value_.to_string(buffer + pos, length - pos);
+      }
+      else if (key_type_ == ObGroupKey::ORG_KEY)
+      {
+        pos += (*cell_array_)[row_beg_ + groupby_col->org_column_idx_].value_.to_string(buffer + pos, length - pos);
+      }
+    }
+  }
+
+  return pos;
 }
 
 oceanbase::common::ObGroupByParam::ObGroupByParam(bool deep_copy_args):
@@ -654,8 +688,7 @@ int oceanbase::common::ObGroupByParam::add_aggregate_column(const int64_t org_co
 int oceanbase::common::ObGroupByParam::malloc_composite_columns()
 {
   int err = OB_SUCCESS;
-  groupby_comp_columns_buf_ = reinterpret_cast<ObCompositeColumn*>(
-      ob_malloc(sizeof(ObCompositeColumn)*OB_MAX_COLUMN_NUMBER, ObModIds::OB_SCAN_PARAM));
+  groupby_comp_columns_buf_ = reinterpret_cast<ObCompositeColumn*>(ob_malloc(sizeof(ObCompositeColumn)*OB_MAX_COLUMN_NUMBER));
   if (NULL == groupby_comp_columns_buf_)
   {
     TBSYS_LOG(WARN,"fail to allocate memory");
@@ -1053,9 +1086,7 @@ int oceanbase::common::ObGroupByParam::aggregate(const ObCellArray & org_cells, 
   if (OB_SUCCESS == err && first_row_of_group) /// append groupby return and aggregate columns
   {
     ObCellInfo first_agg_cell;
-    uint32_t cell_count = static_cast<uint32_t>(aggregate_cells.get_cell_size());
-    ObString fake_agg_rowkey;
-    fake_agg_rowkey.assign((char*)&cell_count, sizeof(cell_count));
+    ObRowkey fake_agg_rowkey;
     for (int64_t i = 0;  OB_SUCCESS == err && i < group_by_columns_.get_array_index(); i++)
     {
       if (group_by_columns_.at(i)->org_column_idx_ > max_org_idx)

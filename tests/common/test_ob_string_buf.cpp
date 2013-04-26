@@ -297,7 +297,8 @@ TEST_F(TestObStringBuf, test_set_string_buf_size_overflow)
     EXPECT_EQ(OB_SUCCESS, err);
     EXPECT_EQ(val, str);
   }
-  EXPECT_EQ(2 * 1024L * 1024L, string_buf.total());
+  // 128KB
+  EXPECT_EQ(24+cstr_len+64 * 1024L, string_buf.total());
   ob_free(cstr);
 }
 
@@ -359,6 +360,3 @@ int main(int argc, char** argv)
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
-
-

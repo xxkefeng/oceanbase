@@ -16,18 +16,19 @@
 #include "ob_row_desc.h"
 #include "common/murmur_hash.h"
 #include "common/ob_atomic.h"
+#include "common/utility.h"
+#include "common/serialization.h"
+#include "common/ob_common_stat.h"
 #include <tbsys.h>
 
 using namespace oceanbase::common;
+using namespace oceanbase::common::serialization;
 
-volatile uint64_t ObRowDesc::HASH_COLLISIONS_COUNT = 0;
+uint64_t ObRowDesc::HASH_COLLISIONS_COUNT = 0;
 
 ObRowDesc::ObRowDesc()
-  :cells_desc_count_(0), overflow_backets_count_(0)
+  :cells_desc_count_(0), rowkey_cell_count_(0)
 {
-  memset(cells_desc_, 0, sizeof(cells_desc_));
-  memset(hash_backets_, 0, sizeof(hash_backets_));
-  memset(overflow_backets_, 0, sizeof(overflow_backets_));
 }
 
 ObRowDesc::~ObRowDesc()
@@ -39,30 +40,14 @@ int64_t ObRowDesc::get_idx(const uint64_t table_id, const uint64_t column_id) co
   int64_t ret = OB_INVALID_INDEX;
   if (0 != table_id && 0 != column_id)
   {
-    const DescIndex *desc_index = NULL;
-    if (OB_SUCCESS == hash_find(table_id, column_id, desc_index))
+    int64_t index = 0;
+    if (OB_SUCCESS == hash_find(table_id, column_id, index))
     {
-      if (desc_index->idx_ < cells_desc_count_)
+      if (index < cells_desc_count_)
       {
-        ret = desc_index->idx_;
+        ret = index;
       }
     }
-  }
-  return ret;
-}
-
-int ObRowDesc::get_tid_cid(const int64_t idx, uint64_t &table_id, uint64_t &column_id) const
-{
-  int ret = OB_SUCCESS;
-  if (idx < 0
-      || idx >= cells_desc_count_)
-  {
-    ret = OB_INVALID_ARGUMENT;
-  }
-  else
-  {
-    table_id = cells_desc_[idx].table_id_;
-    column_id = cells_desc_[idx].column_id_;
   }
   return ret;
 }
@@ -92,14 +77,23 @@ int ObRowDesc::add_column_desc(const uint64_t table_id, const uint64_t column_id
   return ret;
 }
 
-
 void ObRowDesc::reset()
 {
   cells_desc_count_ = 0;
-  overflow_backets_count_ = 0;
-  memset(cells_desc_, 0, sizeof(cells_desc_));
-  memset(hash_backets_, 0, sizeof(hash_backets_));
-  memset(overflow_backets_, 0, sizeof(overflow_backets_));
+  rowkey_cell_count_ = 0;
+  hash_map_.clear();
+}
+
+int64_t ObRowDesc::to_string(char* buf, const int64_t buf_len) const
+{
+  int64_t pos = 0;
+  databuff_printf(buf, buf_len, pos, "rowkey_cell_count[%ld],", rowkey_cell_count_);
+  for (int64_t i = 0; i < cells_desc_count_; ++i)
+  {
+    databuff_printf(buf, buf_len, pos, "<%lu,%lu>,",
+        cells_desc_[i].table_id_, cells_desc_[i].column_id_);
+  }
+  return pos;
 }
 
 inline bool ObRowDesc::Desc::is_invalid() const
@@ -112,26 +106,13 @@ inline bool ObRowDesc::Desc::operator== (const Desc &other) const
   return table_id_ == other.table_id_ && column_id_ == other.column_id_;
 }
 
-int ObRowDesc::hash_find(const uint64_t table_id, const uint64_t column_id, const DescIndex *&desc_idx) const
+int ObRowDesc::hash_find(const uint64_t table_id, const uint64_t column_id, int64_t & index) const
 {
   int ret = OB_SUCCESS;
   Desc desc;
   desc.table_id_ = table_id;
   desc.column_id_ = column_id;
-  uint32_t pos = murmurhash2(&desc, sizeof(desc), 0);
-  pos %= HASH_BACKETS_COUNT;
-  if (desc == hash_backets_[pos].desc_)
-  {
-    desc_idx = &hash_backets_[pos];
-  }
-  else if (hash_backets_[pos].desc_.is_invalid())
-  {
-    ret = OB_ENTRY_NOT_EXIST;
-  }
-  else
-  {
-    ret = slow_find(table_id, column_id, desc_idx);
-  }
+  ret = hash_map_.find(desc, index);
   return ret;
 }
 
@@ -141,65 +122,126 @@ int ObRowDesc::hash_insert(const uint64_t table_id, const uint64_t column_id, co
   Desc desc;
   desc.table_id_ = table_id;
   desc.column_id_ = column_id;
-  uint32_t pos = murmurhash2(&desc, sizeof(desc), 0);
-  pos %= HASH_BACKETS_COUNT;
-  if (hash_backets_[pos].desc_.is_invalid())
+  ret = hash_map_.insert(desc, index);
+  if (OB_DUPLICATE_COLUMN == ret)
   {
-    hash_backets_[pos].desc_ = desc;
-    hash_backets_[pos].idx_ = index;
-  }
-  else if (desc == hash_backets_[pos].desc_)
-  {
-    // already exists
-    if (index == hash_backets_[pos].idx_)
-    {
-      ret = OB_ENTRY_EXIST;
-    }
-    else
-    {
-      ret = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(ERROR, "duplicated cell desc, tid=%lu cid=%lu old_idx=%ld new_idx=%ld",
-                table_id, column_id, hash_backets_[pos].idx_, index);
-    }
-  }
-  else
-  {
-    // hash collision
-    atomic_inc(&HASH_COLLISIONS_COUNT);
-    ret = slow_insert(table_id, column_id, index);
+    TBSYS_LOG(ERROR, "duplicated cell desc, tid=%lu cid=%lu new_idx=%ld",
+              table_id, column_id, index);
   }
   return ret;
 }
 
-int ObRowDesc::slow_find(const uint64_t table_id, const uint64_t column_id, const DescIndex *&desc_idx) const
+/* int ObRowDesc::serialize(char *buf, const int64_t buf_len, int64_t &pos) const */
+DEFINE_SERIALIZE(ObRowDesc)
 {
-  int ret = OB_ENTRY_NOT_EXIST;
-  for (int64_t i = 0; i < overflow_backets_count_; ++i)
+  int ret = OB_SUCCESS;
+  const int64_t column_cnt = get_column_num();
+  const int64_t pos_bk = pos;
+  uint64_t tid = 0;
+  uint64_t cid = 0;
+
+  ret = encode_vi64(buf, buf_len, pos, column_cnt);
+  for (int64_t i = 0; i < column_cnt && OB_SUCCESS == ret; i++)
   {
-    if (overflow_backets_[i].desc_.table_id_ == table_id
-        && overflow_backets_[i].desc_.column_id_ == column_id)
+    if (OB_SUCCESS != (ret = get_tid_cid(i, tid, cid)))
     {
-      desc_idx = &overflow_backets_[i];
-      ret = OB_SUCCESS;
+      TBSYS_LOG(ERROR, "get tid cid error, ret: %d", ret);
+      break;
+    }
+    else if (OB_SUCCESS != (ret = encode_vi64(buf, buf_len, pos, static_cast<int64_t>(tid))))
+    {
+      TBSYS_LOG(ERROR, "encode tid error, ret: %d", ret);
+      break;
+    }
+    else if (OB_SUCCESS != (ret = encode_vi64(buf, buf_len, pos, static_cast<int64_t>(cid))))
+    {
+      TBSYS_LOG(ERROR, "encode cid error, ret: %d", ret);
       break;
     }
   }
+
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = encode_vi64(buf, buf_len, pos, rowkey_cell_count_)))
+    {
+      TBSYS_LOG(WARN, "fail to encode rowkey cell count[%ld] :ret[%d]", rowkey_cell_count_, ret);
+    }
+  }
+
+  if (OB_SUCCESS != ret)
+  {
+    pos = pos_bk;
+  }
   return ret;
 }
 
-int ObRowDesc::slow_insert(const uint64_t table_id, const uint64_t column_id, const int64_t index)
+/* int ObRowDesc::deserialize(const char *buf, const int64_t data_len, int64_t &pos) */
+DEFINE_DESERIALIZE(ObRowDesc)
 {
   int ret = OB_SUCCESS;
-  if (overflow_backets_count_ >= MAX_COLUMNS_COUNT)
+  int64_t column_cnt = 0;
+  int64_t tid = 0;
+  int64_t cid = 0;
+  int64_t pos_bk = pos;
+
+  ret = decode_vi64(buf, data_len, pos, &column_cnt);
+  while (column_cnt-- && OB_SUCCESS == ret)
   {
-    ret = OB_BUF_NOT_ENOUGH;
+    if (OB_SUCCESS != (ret = decode_vi64(buf, data_len, pos, &tid)))
+    {
+      TBSYS_LOG(ERROR, "decode tid error, ret: %d", ret);
+      break;
+    }
+    if (OB_SUCCESS != (ret = decode_vi64(buf, data_len, pos, &cid)))
+    {
+      TBSYS_LOG(ERROR, "decode cid error, ret: %d", ret);
+      break;
+    }
+    if (OB_SUCCESS != (ret = add_column_desc(tid, cid)))
+    {
+      TBSYS_LOG(ERROR, "add column desc error, ret: %d", ret);
+      break;
+    }
+    TBSYS_LOG(DEBUG, "tid %lu, cid %lu", tid, cid);
   }
-  else
+
+  if (OB_SUCCESS == ret)
   {
-    overflow_backets_[overflow_backets_count_].desc_.table_id_ = table_id;
-    overflow_backets_[overflow_backets_count_].desc_.column_id_ = column_id;
-    overflow_backets_[overflow_backets_count_].idx_ = index;
-    ++overflow_backets_count_;
+    if (OB_SUCCESS != (ret = decode_vi64(buf, data_len, pos, &rowkey_cell_count_)))
+    {
+      TBSYS_LOG(WARN, "fail to decode rowkey_cell_count_:ret[%d]", ret);
+    }
+  }
+
+  if (OB_SUCCESS != ret)
+  {
+    pos = pos_bk;
   }
   return ret;
 }
+
+DEFINE_GET_SERIALIZE_SIZE(ObRowDesc)
+{
+  int err = OB_SUCCESS;
+  int64_t size = 0;
+  const int64_t column_cnt = get_column_num();
+  uint64_t tid = 0;
+  uint64_t cid = 0;
+
+  size += encoded_length_vi64(column_cnt);
+  for (int64_t i = 0; i < column_cnt; i++)
+  {
+    if (OB_SUCCESS != (err = get_tid_cid(i, tid, cid)))
+    {
+      TBSYS_LOG(ERROR, "get tid cid error, err: %d", err);
+      break;
+    }
+    size += encoded_length_vi64(static_cast<int64_t>(tid));
+    size += encoded_length_vi64(static_cast<int64_t>(cid));
+  }
+  size += encoded_length_vi64(rowkey_cell_count_);
+  return size;
+}
+
+
+

@@ -121,11 +121,9 @@ namespace oceanbase
     int ObCellStream::rpc_scan_row_data(const ObScanParam & param)
     {
       int ret = OB_SUCCESS;
-
       int64_t timeout = 
         timeout_time_ > 0 ? (timeout_time_ - tbsys::CTimeUtil::getTime()) : time_out_;
       ret = rpc_proxy_->ups_scan(param, cur_result_, server_type_, timeout);
-
       if (ret != OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "scan server data failed:ret[%d]", ret);

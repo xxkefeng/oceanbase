@@ -26,6 +26,11 @@ ObSingleChildPhyOperator::~ObSingleChildPhyOperator()
 {
 }
 
+void ObSingleChildPhyOperator::clear()
+{
+  child_op_ = NULL;
+}
+
 int ObSingleChildPhyOperator::set_child(int32_t child_idx, ObPhyOperator &child_operator)
 {
   int ret = OB_SUCCESS;
@@ -46,6 +51,16 @@ int ObSingleChildPhyOperator::set_child(int32_t child_idx, ObPhyOperator &child_
   return ret;
 }
 
+ObPhyOperator *ObSingleChildPhyOperator::get_child(int32_t child_idx) const
+{
+  ObPhyOperator *ret = NULL;
+  if (0 == child_idx)
+  {
+    ret = child_op_;
+  }
+  return ret;
+}
+
 int ObSingleChildPhyOperator::open()
 {
   int ret = OB_SUCCESS;
@@ -54,9 +69,12 @@ int ObSingleChildPhyOperator::open()
     ret = OB_NOT_INIT;
     TBSYS_LOG(ERROR, "child_op_ is NULL");
   }
-  else if (OB_SUCCESS != (ret = child_op_->open()))
+  else
   {
-    TBSYS_LOG(WARN, "failed to open child_op, err=%d", ret);
+    if (OB_SUCCESS != (ret = child_op_->open()))
+    {
+      TBSYS_LOG(WARN, "failed to open child_op, err=%d", ret);
+    }
   }
   return ret;
 }
@@ -72,4 +90,9 @@ int ObSingleChildPhyOperator::close()
     }
   }
   return ret;
+}
+
+int32_t ObSingleChildPhyOperator::get_child_num() const
+{
+  return 1;
 }

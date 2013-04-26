@@ -35,7 +35,7 @@ namespace oceanbase
 
     }
     
-    ObJoinGetCellStream *ObGetCellStreamWrapper::get_ups_get_cell_stream()
+    ObGetCellStream *ObGetCellStreamWrapper::get_ups_get_cell_stream()
     {
       return &get_cell_stream_;
     }

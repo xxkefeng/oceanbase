@@ -5,9 +5,34 @@
 #include "common/ob_tablet_info.h"
 #include "rootserver/ob_root_meta2.h"
 #include "rootserver/ob_root_table2.h"
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
+static CharArena allocator_;
+class WorkerForTest: public ObRootWorkerForTest
+{
+  public:
+    WorkerForTest() : ObRootWorkerForTest(config_mgr_, rs_config_), config_mgr_(rs_config_)
+  {
+  }
+  public:
+    ObRootServerConfig rs_config_;
+    common::ObConfigManager config_mgr_;
+};
+
+void init_work(WorkerForTest &worker)
+{
+  common::ObSystemConfig sys_config;
+  sys_config.init();
+  worker.rs_config_.init(sys_config);
+  worker.rs_config_.port = 1110;
+  worker.rs_config_.io_thread_count = 2;
+  worker.rs_config_.read_queue_size = 2;
+  worker.create_eio();
+  worker.rs_config_.root_server_ip.set_value("10.232.35.40");
+  worker.rs_config_.schema_filename.set_value("ob_new_balance_test_schema.ini");
+}
 void print(const ObString& p)
 {
   char str[1024];
@@ -54,12 +79,11 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.set_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[0], 30);
-  info1.range_.end_key_.assign_buffer(buf2[0], 30);
-  info1.range_.start_key_.write("aa1", 3);
-  info1.range_.end_key_.write("ba1", 3);
+  info1.range_.start_key_.set_min_row();
+  info1.range_.start_key_ = make_rowkey(buf1[0], 30, &allocator_);
+  info1.range_.end_key_ = make_rowkey(buf2[0], 30, &allocator_);
+  info1.range_.start_key_ = make_rowkey("aa1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ba1", &allocator_);
   location.chunkserver_ = server1;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -67,12 +91,6 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[1], 30);
-  info1.range_.end_key_.assign_buffer(buf2[1], 30);
-  info1.range_.start_key_.write("ba1", 3);
-  info1.range_.end_key_.write("ca1", 3);
   location.chunkserver_ = server1;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -80,12 +98,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[2], 30);
-  info1.range_.end_key_.assign_buffer(buf2[2], 30);
-  info1.range_.start_key_.write("da1", 3);
-  info1.range_.end_key_.write("ea1", 3);
+  info1.range_.start_key_ = make_rowkey("da1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ea1", &allocator_);
   location.chunkserver_ = server1;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -93,12 +107,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[3], 30);
-  info1.range_.end_key_.assign_buffer(buf2[3], 30);
-  info1.range_.start_key_.write("ea1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.start_key_ = make_rowkey("ea1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1", &allocator_);
   location.chunkserver_ = server1;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -108,12 +118,8 @@ void create_root_table(ObRootServer2* root_server)
   //    2: ba1-ca1 ca1-da1 ea1-fa1 fa1-
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[0], 30);
-  info1.range_.end_key_.assign_buffer(buf2[0], 30);
-  info1.range_.start_key_.write("ba1", 3);
-  info1.range_.end_key_.write("ca1", 3);
+  info1.range_.start_key_ = make_rowkey("ba1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ca1", &allocator_);
   location.chunkserver_ = server2;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -121,12 +127,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[1], 30);
-  info1.range_.end_key_.assign_buffer(buf2[1], 30);
-  info1.range_.start_key_.write("ca1", 3);
-  info1.range_.end_key_.write("da1", 3);
+  info1.range_.start_key_ = make_rowkey("ca1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("da1", &allocator_);
   location.chunkserver_ = server2;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -134,12 +136,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[2], 30);
-  info1.range_.end_key_.assign_buffer(buf2[2], 30);
-  info1.range_.start_key_.write("ea1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.start_key_  = make_rowkey("ea1",&allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1",&allocator_);
   location.chunkserver_ = server2;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -147,12 +145,9 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.set_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[3], 30);
-  info1.range_.end_key_.assign_buffer(buf2[3], 30);
-  info1.range_.start_key_.write("fa1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.end_key_.set_max_row();
+  info1.range_.start_key_ = make_rowkey("fa1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1", &allocator_);
   location.chunkserver_ = server2;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -164,12 +159,9 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.set_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[0], 30);
-  info1.range_.end_key_.assign_buffer(buf2[0], 30);
-  info1.range_.start_key_.write("aa1", 3);
-  info1.range_.end_key_.write("ba1", 3);
+  info1.range_.start_key_.set_min_row();
+  info1.range_.start_key_ = make_rowkey("aa1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ba1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -177,12 +169,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[1], 30);
-  info1.range_.end_key_.assign_buffer(buf2[1], 30);
-  info1.range_.start_key_.write("ba1", 3);
-  info1.range_.end_key_.write("ca1", 3);
+  info1.range_.start_key_ = make_rowkey("ba1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ca1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -190,12 +178,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[2], 30);
-  info1.range_.end_key_.assign_buffer(buf2[2], 30);
-  info1.range_.start_key_.write("ca1", 3);
-  info1.range_.end_key_.write("da1", 3);
+  info1.range_.start_key_ = make_rowkey("ca1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("da1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -203,12 +187,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[3], 30);
-  info1.range_.end_key_.assign_buffer(buf2[3], 30);
-  info1.range_.start_key_.write("da1", 3);
-  info1.range_.end_key_.write("ea1", 3);
+  info1.range_.start_key_ = make_rowkey("da1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ea1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -216,12 +196,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[4], 30);
-  info1.range_.end_key_.assign_buffer(buf2[4], 30);
-  info1.range_.start_key_.write("ea1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.start_key_ = make_rowkey("ea1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -229,12 +205,9 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.set_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[5], 30);
-  info1.range_.end_key_.assign_buffer(buf2[5], 30);
-  info1.range_.start_key_.write("fa1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.end_key_.set_max_row();
+  info1.range_.start_key_ = make_rowkey("fa1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -245,12 +218,9 @@ void create_root_table(ObRootServer2* root_server)
   //    4: aa1-ba1 ca1-da1 da1-ea1 fa1-
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.set_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[0], 30);
-  info1.range_.end_key_.assign_buffer(buf2[0], 30);
-  info1.range_.start_key_.write("aa1", 3);
-  info1.range_.end_key_.write("ba1", 3);
+  info1.range_.start_key_.set_min_row();
+  info1.range_.start_key_ = make_rowkey("aa1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ba1", &allocator_);
   location.chunkserver_ = server4;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -258,12 +228,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[1], 30);
-  info1.range_.end_key_.assign_buffer(buf2[1], 30);
-  info1.range_.start_key_.write("ca1", 3);
-  info1.range_.end_key_.write("da1", 3);
+  info1.range_.start_key_ = make_rowkey("ca1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("da1", &allocator_);
   location.chunkserver_ = server4;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -271,12 +237,8 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[2], 30);
-  info1.range_.end_key_.assign_buffer(buf2[2], 30);
-  info1.range_.start_key_.write("da1", 3);
-  info1.range_.end_key_.write("ea1", 3);
+  info1.range_.start_key_ = make_rowkey("da1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ea1", &allocator_);
   location.chunkserver_ = server4;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -284,12 +246,9 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.set_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[3], 30);
-  info1.range_.end_key_.assign_buffer(buf2[3], 30);
-  info1.range_.start_key_.write("fa1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.end_key_.set_max_row();
+  info1.range_.start_key_ = make_rowkey("fa1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1", &allocator_);
   location.chunkserver_ = server4;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -303,21 +262,20 @@ TEST(ObRootServer2Test2, regist_server)
 {
   ObRootServer2* root_server = NULL;
   ObServer server(ObServer::IPV4, "10.10.10.1", 1001);
-  ObRootWorkerForTest worker;
-  worker.set_config_file_name("./root_server.conf");
+  WorkerForTest worker;
+  init_work(worker);
   ASSERT_EQ(OB_SUCCESS, worker.initialize());
-  //ASSERT_TRUE(root_server.init(100, &worker));
+
   root_server = worker.get_root_server();
 
   ObRootServerTester tester(root_server);
-  tester.get_wait_init_time() = 2 * 1000000;
   root_server->start_threads();
   int status;
   sleep(3);
-  
-  int ret = root_server->regist_server(server,false, status);
+
+  int ret = root_server->regist_server(server, false, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
-  
+
   ObChunkServerManager& server_manager = tester.get_server_manager();
   ObChunkServerManager::iterator it = server_manager.find_by_ip(server);
   ASSERT_TRUE(it != server_manager.end());
@@ -327,13 +285,12 @@ TEST(ObRootServer2Test2, regist_server)
 TEST(ObRootServer2Test2, init_report)
 {
   ObRootServer2* root_server;
-  ObRootWorkerForTest worker;
-  worker.set_config_file_name("./root_server.conf");
+  WorkerForTest worker;
+  init_work(worker);
   ASSERT_EQ(OB_SUCCESS, worker.initialize());
   root_server = worker.get_root_server();
-  //ASSERT_TRUE(root_server->init(100, &worker));
+  root_server->get_boot()->set_boot_ok();
   ObRootServerTester tester(root_server);
-  tester.get_wait_init_time() = 3 * 1000000;
   ObServer server(ObServer::IPV4, "10.10.10.1", 1001);
   ObServer server2(ObServer::IPV4, "10.10.10.2", 1001);
   ASSERT_TRUE(!(server == server2));
@@ -341,13 +298,12 @@ TEST(ObRootServer2Test2, init_report)
   root_server->start_threads();
   int status;
   sleep(3);
-  int ret = root_server->regist_server(server, false, status);
+  int ret = root_server->regist_server(server, false, "0.4.1.2", status);
   ASSERT_EQ(ret, OB_SUCCESS);
-  ret = root_server->regist_server(server2, false, status);
+  ret = root_server->regist_server(server2, false, "0.4.1.2", status);
   ASSERT_EQ(ret, OB_SUCCESS);
-  // now we have two cs 
+  // now we have two cs
 
-  tester.get_lease_duration() = 100 * 1000 * 1000;
   TBSYS_LOG(INFO, "will start test");
   //tester.init_root_table_by_report();
 
@@ -357,10 +313,8 @@ TEST(ObRootServer2Test2, init_report)
   //  sleep(1);
   //}
   TBSYS_LOG(INFO, "over send start_new_schema now %d have sended",worker.start_new_send_times);
-  //all commond sended.
-  //mimic report 
-  char buf1[10][30];
-  char buf2[10][30];
+  //allocator_ commond sended.
+  //mimic report
   //const common::ObTabletInfo& tablet, const common::ObTabletLocation& location)
   ObTabletReportInfoList report_list1;
   ObTabletReportInfoList report_list2;
@@ -371,13 +325,10 @@ TEST(ObRootServer2Test2, init_report)
   info1.range_.table_id_ = 10001;
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.set_min_value();
-  info1.range_.border_flag_.unset_max_value();
+  info1.range_.start_key_.set_min_row();
 
-  info1.range_.start_key_.assign_buffer(buf1[0], 30);
-  info1.range_.end_key_.assign_buffer(buf2[0], 30);
-  info1.range_.start_key_.write("aa1", 3);
-  info1.range_.end_key_.write("ba1", 3);
+  info1.range_.start_key_ = make_rowkey("aa1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ba1", &allocator_);
 
   location.chunkserver_ = server;
 
@@ -387,11 +338,8 @@ TEST(ObRootServer2Test2, init_report)
 
   //ASSERT_EQ(0,root_server.got_reported(info1, location));  //(,"ba1"]  server
 
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.start_key_.assign_buffer(buf1[1], 30);
-  info1.range_.end_key_.assign_buffer(buf2[1], 30);
-  info1.range_.start_key_.write("ba1", 3);
-  info1.range_.end_key_.write("ca1", 3);
+  info1.range_.start_key_ = make_rowkey("ba1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ca1", &allocator_);
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -399,22 +347,18 @@ TEST(ObRootServer2Test2, init_report)
 
   ret = root_server->report_tablets(server, report_list1,time_stamp);
   ASSERT_EQ(OB_SUCCESS, ret);
-  
+
   location.chunkserver_ = server2;
 
-  info1.range_.start_key_.assign_buffer(buf1[3], 30);
-  info1.range_.end_key_.assign_buffer(buf2[3], 30);
-  info1.range_.start_key_.write("da1", 3);
-  info1.range_.end_key_.write("ea1", 3);
+  info1.range_.start_key_ = make_rowkey("da1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ea1", &allocator_);
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
   report_list2.add_tablet(report_info);
 
-  info1.range_.start_key_.assign_buffer(buf1[2], 30);
-  info1.range_.end_key_.assign_buffer(buf2[2], 30);
-  info1.range_.start_key_.write("ca1", 3);
-  info1.range_.end_key_.write("da1", 3);
+  info1.range_.start_key_ = make_rowkey("ca1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("da1", &allocator_);
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -422,19 +366,15 @@ TEST(ObRootServer2Test2, init_report)
 
 
 
-  info1.range_.start_key_.assign_buffer(buf1[4], 30);
-  info1.range_.end_key_.assign_buffer(buf2[4], 30);
-  info1.range_.start_key_.write("ea1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.start_key_ = make_rowkey("ea1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1", &allocator_);
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
   report_list2.add_tablet(report_info);
 
-  info1.range_.start_key_.assign_buffer(buf1[5], 30);
-  info1.range_.end_key_.assign_buffer(buf2[5], 30);
-  info1.range_.start_key_.write("fa1", 3);
-  info1.range_.border_flag_.set_max_value();
+  info1.range_.start_key_ = make_rowkey("fa1", &allocator_);
+  info1.range_.end_key_.set_max_row();
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -459,9 +399,8 @@ TEST(ObRootServer2Test2, init_report)
     ObRootTable2::const_iterator end;
     ObRootTable2::const_iterator ptr;
 
-    ObString key;
-    key.assign_buffer(buf1[0], 30);
-    key.write("cb",2);
+    ObRowkey key;
+    key = make_rowkey("cb", &allocator_);
     //TBSYS_LOG(DEBUG,"key");
     //print(key);
     //t_tb->dump();
@@ -469,20 +408,14 @@ TEST(ObRootServer2Test2, init_report)
     t_tb->find_key(10001,key, 1, start, end, ptr);  // sholud hit ("ca1", "da1"] server2, so start will be the previous one
     {
       //should be ("ba1","ca1"]  server
-      char buf5[30];
-      ObString test;
-      test.assign_buffer(buf5, 30);
-      test.write("ba1",3);
-      info1.range_.start_key_.assign_buffer(buf1[0], 30);
-      info1.range_.end_key_.assign_buffer(buf2[0], 30);
-      info1.range_.start_key_.write("ca1", 3);
-      info1.range_.end_key_.write("da1", 3);
+      ObRowkey test;
+      test = make_rowkey("ba1",&allocator_);
+      info1.range_.start_key_ = make_rowkey("ca1", &allocator_);
+      info1.range_.end_key_ = make_rowkey("da1", &allocator_);
       info1.range_.border_flag_.set_inclusive_end();
       info1.range_.border_flag_.unset_inclusive_start();
-      info1.range_.border_flag_.unset_max_value();
-      info1.range_.border_flag_.unset_min_value();
       start++;
-      const common::ObTabletInfo* tablet_info = NULL;        
+      const common::ObTabletInfo* tablet_info = NULL;
       tablet_info = ((const ObRootTable2*)t_tb)->get_tablet_info(start);
       ASSERT_TRUE(tablet_info != NULL);
       tablet_info->range_.hex_dump();
@@ -496,26 +429,24 @@ TEST(ObRootServer2Test2, init_report)
 TEST(ObRootServer2Test2, update_capacity_info)
 {
   ObRootServer2* root_server;
-  ObRootWorkerForTest worker;
+  WorkerForTest worker;
+  init_work(worker);
   root_server = worker.get_root_server();
-  worker.set_config_file_name("./root_server.conf");
   ASSERT_EQ(OB_SUCCESS, worker.initialize());
-  //ASSERT_TRUE(root_server->init(100, &worker));
   ObRootServerTester tester(root_server);
   ObServer server(ObServer::IPV4, "10.10.10.1", 1001);
   ObServer server2(ObServer::IPV4, "10.10.10.2", 1001);
   ASSERT_TRUE(!(server == server2));
-  tester.get_wait_init_time() = 2 * 1000000;
   root_server->start_threads();
+  root_server->get_boot()->set_boot_ok();
   int status;
   sleep(3);
-  int ret = root_server->regist_server(server, false, status);
+  int ret = root_server->regist_server(server, false, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
-  root_server->regist_server(server2, false, status);
+  root_server->regist_server(server2, false, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
-  // now we have two cs 
+  // now we have two cs
 
-  tester.get_lease_duration() = 100 * 1000 * 1000;
   ASSERT_EQ(OB_SUCCESS,root_server->update_capacity_info(server, 50, 10));
   ObChunkServerManager& server_manager = tester.get_server_manager();
   ObServerStatus* it = server_manager.find_by_ip(server);
@@ -523,15 +454,15 @@ TEST(ObRootServer2Test2, update_capacity_info)
   ASSERT_EQ(20, it->disk_info_.get_percent());
   root_server->stop_threads();
 }
-//migrate_over
+////migrate_over
 TEST(ObRootServer2Test2, migrate_over)
 {
   // init make a root table
   ObRootServer2* root_server;
-  ObRootWorkerForTest worker;
+  WorkerForTest worker;
+  init_work(worker);
   root_server = worker.get_root_server();
   int64_t now = tbsys::CTimeUtil::getTime();
-  worker.set_config_file_name("./root_server.conf");
   ASSERT_EQ(OB_SUCCESS, worker.initialize());
   //ASSERT_TRUE(root_server->init(100, &worker));
   ObRootServerTester tester(root_server);
@@ -542,26 +473,22 @@ TEST(ObRootServer2Test2, migrate_over)
   ASSERT_TRUE(!(server == server2));
   int64_t time_stamp = now;
   root_server->start_threads();
-  
+  root_server->get_boot()->set_boot_ok();
   int status;
-  tester.get_wait_init_time() = 2 * 1000000;
   sleep(2);
-  int ret = root_server->regist_server(server, false, status);
+  int ret = root_server->regist_server(server, false, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
-  ret = root_server->regist_server(server2, false, status);
+  ret = root_server->regist_server(server2, false, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
-  // now we have two cs 
+  // now we have two cs
 
-  tester.get_lease_duration() = 100 * 1000 * 1000;
   TBSYS_LOG(INFO, "will start test");
   //tester.init_root_table_by_report();
 
   TBSYS_LOG(INFO, "over send start_new_schema now %d have sended",worker.start_new_send_times);
   time_stamp = 0;
-  //all commond sended.
-  //mimic report 
-  char buf1[10][30];
-  char buf2[10][30];
+  //allocator_ commond sended.
+  //mimic report
   //const common::ObTabletInfo& tablet, const common::ObTabletLocation& location)
   ObTabletReportInfoList report_list1;
   ObTabletReportInfoList report_list2;
@@ -572,13 +499,10 @@ TEST(ObRootServer2Test2, migrate_over)
   info1.range_.table_id_ = 10001;
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.set_min_value();
-  info1.range_.border_flag_.unset_max_value();
+  info1.range_.start_key_.set_min_row();
 
-  info1.range_.start_key_.assign_buffer(buf1[0], 30);
-  info1.range_.end_key_.assign_buffer(buf2[0], 30);
-  info1.range_.start_key_.write("aa1", 3);
-  info1.range_.end_key_.write("ba1", 3);
+  info1.range_.start_key_ = make_rowkey("aa1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ba1", &allocator_);
 
   location.chunkserver_ = server;
 
@@ -588,11 +512,8 @@ TEST(ObRootServer2Test2, migrate_over)
 
   //ASSERT_EQ(0,root_server.got_reported(info1, location));  //(,"ba1"]  server
 
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.start_key_.assign_buffer(buf1[1], 30);
-  info1.range_.end_key_.assign_buffer(buf2[1], 30);
-  info1.range_.start_key_.write("ba1", 3);
-  info1.range_.end_key_.write("ca1", 3);
+  info1.range_.start_key_ = make_rowkey("ba1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ca1", &allocator_);
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -600,22 +521,18 @@ TEST(ObRootServer2Test2, migrate_over)
 
   ret = root_server->report_tablets(server, report_list1,time_stamp);
   ASSERT_EQ(OB_SUCCESS, ret);
-  
+
   location.chunkserver_ = server2;
 
-  info1.range_.start_key_.assign_buffer(buf1[3], 30);
-  info1.range_.end_key_.assign_buffer(buf2[3], 30);
-  info1.range_.start_key_.write("da1", 3);
-  info1.range_.end_key_.write("ea1", 3);
+  info1.range_.start_key_ = make_rowkey("da1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ea1", &allocator_);
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
   report_list2.add_tablet(report_info);
 
-  info1.range_.start_key_.assign_buffer(buf1[2], 30);
-  info1.range_.end_key_.assign_buffer(buf2[2], 30);
-  info1.range_.start_key_.write("ca1", 3);
-  info1.range_.end_key_.write("da1", 3);
+  info1.range_.start_key_ = make_rowkey("ca1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("da1", &allocator_);
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -623,19 +540,15 @@ TEST(ObRootServer2Test2, migrate_over)
 
 
 
-  info1.range_.start_key_.assign_buffer(buf1[4], 30);
-  info1.range_.end_key_.assign_buffer(buf2[4], 30);
-  info1.range_.start_key_.write("ea1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.start_key_ = make_rowkey("ea1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1", &allocator_);
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
   report_list2.add_tablet(report_info);
 
-  info1.range_.start_key_.assign_buffer(buf1[5], 30);
-  info1.range_.end_key_.assign_buffer(buf2[5], 30);
-  info1.range_.start_key_.write("fa1", 3);
-  info1.range_.border_flag_.set_max_value();
+  info1.range_.start_key_ = make_rowkey("fa1", &allocator_);
+  info1.range_.end_key_.set_max_row();
 
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -656,9 +569,8 @@ TEST(ObRootServer2Test2, migrate_over)
   sleep(3);
   {
 
-    ObString key;
-    key.assign_buffer(buf1[0], 30);
-    key.write("cb",2);
+    ObRowkey key;
+    key = make_rowkey("cb", &allocator_);
     //TBSYS_LOG(DEBUG,"key");
     //print(key);
     //t_tb->dump();
@@ -666,20 +578,14 @@ TEST(ObRootServer2Test2, migrate_over)
     t_tb->find_key(10001,key, 1, start, end, ptr);  // sholud hit ("ca1", "da1"] server2, so start will be the previous one
     {
       //should be ("ba1","ca1"]  server
-      char buf5[30];
-      ObString test;
-      test.assign_buffer(buf5, 30);
-      test.write("ba1",3);
-      info1.range_.start_key_.assign_buffer(buf1[0], 30);
-      info1.range_.end_key_.assign_buffer(buf2[0], 30);
-      info1.range_.start_key_.write("ca1", 3);
-      info1.range_.end_key_.write("da1", 3);
+      ObRowkey test;
+      test = make_rowkey("ba1",&allocator_);
+      info1.range_.start_key_ = make_rowkey("ca1", &allocator_);
+      info1.range_.end_key_ = make_rowkey("da1", &allocator_);
       info1.range_.border_flag_.set_inclusive_end();
       info1.range_.border_flag_.unset_inclusive_start();
-      info1.range_.border_flag_.unset_max_value();
-      info1.range_.border_flag_.unset_min_value();
       start++;
-      const common::ObTabletInfo* tablet_info = NULL;        
+      const common::ObTabletInfo* tablet_info = NULL;
       tablet_info = ((const ObRootTable2*)t_tb)->get_tablet_info(start);
       ASSERT_TRUE(tablet_info != NULL);
       tablet_info->range_.hex_dump();
@@ -688,17 +594,13 @@ TEST(ObRootServer2Test2, migrate_over)
 
     }
   }
-  root_server->regist_server(server3, false, status);
+  root_server->regist_server(server3, false, "0.4.1.2", status);
   info1.range_.table_id_ = 10001;
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
 
-  info1.range_.start_key_.assign_buffer(buf1[2], 30);
-  info1.range_.end_key_.assign_buffer(buf2[2], 30);
-  info1.range_.start_key_.write("ca1", 3);
-  info1.range_.end_key_.write("da1", 3);
+  info1.range_.start_key_ = make_rowkey("ca1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("da1", &allocator_);
 
   ObChunkServerManager& server_manager = tester.get_server_manager();
   ObChunkServerManager::iterator  pos = server_manager.find_by_ip(server3);
@@ -726,7 +628,7 @@ TEST(ObRootServer2Test2, migrate_over)
   }
   ASSERT_TRUE(found_server2);
   ASSERT_TRUE(found_server3);
-  root_server->regist_server(server4, false, status);
+  root_server->regist_server(server4, false, "0.4.1.2", status);
   pos = server_manager.find_by_ip(server4);
   int server4_index = static_cast<int32_t>(pos - server_manager.begin());
   root_server->migrate_over(info1.range_, server2, server4, false, 1);
@@ -759,9 +661,9 @@ TEST(ObRootServer2Test2, migrate_over)
 TEST(ObRootServer2Test2, cs_stop_start_data_keep)
 {
   ObRootServer2* root_server;
-  ObRootWorkerForTest worker;
+  WorkerForTest worker;
+  init_work(worker);
   root_server = worker.get_root_server();
-  worker.set_config_file_name("./root_server.conf");
   ASSERT_EQ(OB_SUCCESS, worker.initialize());
   //ASSERT_TRUE(root_server->init(100, &worker));
   ObRootServerTester tester(root_server);
@@ -771,20 +673,19 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
   ObServer server4(ObServer::IPV4, "10.10.10.4", 1001);
 
   int status;
-  tester.get_wait_init_time() = 2 * 1000000;
   sleep(1);
-  root_server->regist_server(server1, false, status);
-  root_server->regist_server(server2, false, status);
-  root_server->regist_server(server3, false, status);
-  root_server->regist_server(server4, false, status);
-  // now we have two cs 
+  root_server->regist_server(server1, false, "0.4.1.2", status);
+  root_server->regist_server(server2, false, "0.4.1.2", status);
+  root_server->regist_server(server3, false, "0.4.1.2", status);
+  root_server->regist_server(server4, false, "0.4.1.2", status);
+  // now we have two cs
 
-  tester.get_lease_duration() = 100 * 1000 * 1000;
+root_server->get_boot()->set_boot_ok();
   TBSYS_LOG(INFO, "will start test");
   //tester.init_root_table_by_report();
 
   //all commond sended.
-  //mimic report 
+  //mimic report
   create_root_table(root_server);
   //mimic schema_changed
   sleep(2);
@@ -794,9 +695,7 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
   rt_q->dump();
   //cs start again
   TBSYS_LOG(INFO," ------------------- server start again -------------------");
-  root_server->regist_server(server3, false, status);
-  char buf1[10][30];
-  char buf2[10][30];
+  root_server->regist_server(server3, false, "0.4.1.2", status);
   ObTabletReportInfoList report_list1;
   ObTabletReportInfoList report_list2;
   ObTabletReportInfoList report_list3;
@@ -810,12 +709,9 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
   //    3: aa1-ba1 ba1-ca1 ca1-da1 da1-ea1 ea1-fa1 fa1-
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.set_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[0], 30);
-  info1.range_.end_key_.assign_buffer(buf2[0], 30);
-  info1.range_.start_key_.write("aa1", 3);
-  info1.range_.end_key_.write("ba1", 3);
+  info1.range_.start_key_.set_min_row();
+  info1.range_.start_key_ = make_rowkey("aa1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ba1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -823,12 +719,8 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[1], 30);
-  info1.range_.end_key_.assign_buffer(buf2[1], 30);
-  info1.range_.start_key_.write("ba1", 3);
-  info1.range_.end_key_.write("ca1", 3);
+  info1.range_.start_key_ = make_rowkey("ba1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ca1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -836,12 +728,8 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[2], 30);
-  info1.range_.end_key_.assign_buffer(buf2[2], 30);
-  info1.range_.start_key_.write("ca1", 3);
-  info1.range_.end_key_.write("da1", 3);
+  info1.range_.start_key_ = make_rowkey("ca1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("da1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -849,12 +737,8 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[3], 30);
-  info1.range_.end_key_.assign_buffer(buf2[3], 30);
-  info1.range_.start_key_.write("da1", 3);
-  info1.range_.end_key_.write("ea1", 3);
+  info1.range_.start_key_ = make_rowkey("da1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("ea1", &allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -862,12 +746,8 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.unset_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[4], 30);
-  info1.range_.end_key_.assign_buffer(buf2[4], 30);
-  info1.range_.start_key_.write("ea1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.start_key_ = make_rowkey("ea1", &allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1",&allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -875,12 +755,9 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.border_flag_.unset_min_value();
-  info1.range_.border_flag_.set_max_value();
-  info1.range_.start_key_.assign_buffer(buf1[5], 30);
-  info1.range_.end_key_.assign_buffer(buf2[5], 30);
-  info1.range_.start_key_.write("fa1", 3);
-  info1.range_.end_key_.write("fa1", 3);
+  info1.range_.end_key_.set_max_row();
+  info1.range_.start_key_ = make_rowkey("fa1",&allocator_);
+  info1.range_.end_key_ = make_rowkey("fa1",&allocator_);
   location.chunkserver_ = server3;
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
@@ -894,7 +771,7 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
 // bugfix http://bugfree.corp.taobao.com/Bug.php?BugID=113521
 struct MigrateTestEnv
 {
-  ObRootWorkerForTest worker_;
+  WorkerForTest worker_;
   ObServer cs1_;
   ObServer cs2_;
   ObTabletInfo info1_;
@@ -916,18 +793,19 @@ void MigrateTestEnv::setup()
 {
   // 1. init
   ObRootServer2* rs = worker_.get_root_server();
-  worker_.set_config_file_name("./root_server.conf");
+  init_work(worker_);
   ASSERT_EQ(OB_SUCCESS, worker_.initialize());
   //ASSERT_TRUE(rs->init(100, &worker_));
 
   rs->start_threads();
   sleep(1);
-  
+
   // 2. cs register
   int status;
-  ASSERT_EQ(OB_SUCCESS, rs->regist_server(cs1_, false, status));
-  ASSERT_EQ(OB_SUCCESS, rs->regist_server(cs2_, false, status));
+  ASSERT_EQ(OB_SUCCESS, rs->regist_server(cs1_, false, "0.4.1.2", status));
+  ASSERT_EQ(OB_SUCCESS, rs->regist_server(cs2_, false, "0.4.1.2", status));
 
+  rs->get_boot()->set_boot_ok();
   // 3. cs1 report tablets replicas
   ObTabletReportInfoList report_list1;
   ObTabletReportInfoList report_list2;
@@ -937,13 +815,10 @@ void MigrateTestEnv::setup()
   info1_.range_.table_id_ = 10001;
   info1_.range_.border_flag_.set_inclusive_end();
   info1_.range_.border_flag_.unset_inclusive_start();
-  info1_.range_.border_flag_.set_min_value();
-  info1_.range_.border_flag_.unset_max_value();
+  info1_.range_.start_key_.set_min_row();
 
-  info1_.range_.start_key_.assign_buffer(buf1[0], 30);
-  info1_.range_.end_key_.assign_buffer(buf2[0], 30);
-  info1_.range_.start_key_.write("aa1", 3);
-  info1_.range_.end_key_.write("ba1", 3);
+  info1_.range_.start_key_ = make_rowkey("aa1", &allocator_);
+  info1_.range_.end_key_ = make_rowkey("ba1", &allocator_);
 
   location.chunkserver_ = cs1_;
 
@@ -951,12 +826,9 @@ void MigrateTestEnv::setup()
   report_info.tablet_location_ = location;
   report_list1.add_tablet(report_info);
 
-  info1_.range_.border_flag_.unset_min_value();
-  info1_.range_.border_flag_.set_max_value();
-  info1_.range_.start_key_.assign_buffer(buf1[1], 30);
-  info1_.range_.end_key_.assign_buffer(buf2[1], 30);
-  info1_.range_.start_key_.write("ba1", 3);
-  info1_.range_.end_key_.write("ca1", 3);
+  info1_.range_.end_key_.set_max_row();
+  info1_.range_.start_key_ = make_rowkey("ba1", &allocator_);
+  info1_.range_.end_key_ = make_rowkey("ca1", &allocator_);
 
   report_info.tablet_info_ = info1_;
   report_info.tablet_location_ = location;
@@ -974,21 +846,21 @@ TEST(ObRootServer2Test2, migrate_over2_1)
 {
   MigrateTestEnv env;
   env.setup();
-  
+
   ObRootServer2* rs = env.worker_.get_root_server();
   ObRootServerTester tester(rs);
   ObChunkServerManager& csmgr = tester.get_server_manager();
   ObRootTable2* roottable = tester.get_root_table_for_query();
 
   /// case 1
-  // 4. target cs2 down  
+  // 4. target cs2 down
   ObChunkServerManager::iterator it = csmgr.find_by_ip(env.cs2_);
   ASSERT_TRUE(csmgr.end() != it);
   csmgr.set_server_down(it);
   int64_t now = tbsys::CTimeUtil::getTime();
   roottable->server_off_line(static_cast<int32_t>(it - csmgr.begin()), now);
-  
-  // 5. report migrate over 
+
+  // 5. report migrate over
   rs->migrate_over(env.info1_.range_, env.cs1_, env.cs2_, true, env.tablet_version_);
 
   // 6. verify
@@ -1005,25 +877,25 @@ TEST(ObRootServer2Test2, migrate_over2_2)
 {
   MigrateTestEnv env;
   env.setup();
-  
+
   ObRootServer2* rs = env.worker_.get_root_server();
   ObRootServerTester tester(rs);
   ObChunkServerManager& csmgr = tester.get_server_manager();
   ObRootTable2* roottable = tester.get_root_table_for_query();
 
   /// case 2
-  // 4. target cs2 down  
+  // 4. target cs2 down
   ObChunkServerManager::iterator it = csmgr.find_by_ip(env.cs2_);
   ASSERT_TRUE(csmgr.end() != it);
   csmgr.set_server_down(it);
   int64_t now = tbsys::CTimeUtil::getTime();
   roottable->server_off_line(static_cast<int32_t>(it - csmgr.begin()), now);
-  
-  // 5. report migrate over 
+
+  // 5. report migrate over
   rs->migrate_over(env.info1_.range_, env.cs1_, env.cs2_, false, env.tablet_version_);
   ObRootTable2::const_iterator it1, it2;
   ASSERT_EQ(OB_SUCCESS, roottable->find_range(env.info1_.range_, it1, it2));
-  ASSERT_EQ(it1, it2);  
+  ASSERT_EQ(it1, it2);
   ASSERT_EQ(OB_INVALID_INDEX, it1->server_info_indexes_[0]);
   ASSERT_EQ(OB_INVALID_INDEX, it1->server_info_indexes_[1]);
   ASSERT_EQ(OB_INVALID_INDEX, it1->server_info_indexes_[2]);
@@ -1034,25 +906,25 @@ TEST(ObRootServer2Test2, migrate_over2_3)
 {
   MigrateTestEnv env;
   env.setup();
-  
+
   ObRootServer2* rs = env.worker_.get_root_server();
   ObRootServerTester tester(rs);
   ObChunkServerManager& csmgr = tester.get_server_manager();
   ObRootTable2* roottable = tester.get_root_table_for_query();
 
   /// case 3
-  // 4. source cs1 down  
+  // 4. source cs1 down
   ObChunkServerManager::iterator it = csmgr.find_by_ip(env.cs1_);
   ASSERT_TRUE(csmgr.end() != it);
   csmgr.set_server_down(it);
   int64_t now = tbsys::CTimeUtil::getTime();
   roottable->server_off_line(static_cast<int32_t>(it - csmgr.begin()), now);
-  
-  // 5. report migrate over 
+
+  // 5. report migrate over
   rs->migrate_over(env.info1_.range_, env.cs1_, env.cs2_, true, env.tablet_version_);
   ObRootTable2::const_iterator it1, it2;
   ASSERT_EQ(OB_SUCCESS, roottable->find_range(env.info1_.range_, it1, it2));
-  ASSERT_EQ(it1, it2);  
+  ASSERT_EQ(it1, it2);
   ASSERT_EQ(1, it1->server_info_indexes_[0]);
   ASSERT_EQ(OB_INVALID_INDEX, it1->server_info_indexes_[1]);
   ASSERT_EQ(OB_INVALID_INDEX, it1->server_info_indexes_[2]);
@@ -1063,25 +935,25 @@ TEST(ObRootServer2Test2, migrate_over2_4)
 {
   MigrateTestEnv env;
   env.setup();
-  
+
   ObRootServer2* rs = env.worker_.get_root_server();
   ObRootServerTester tester(rs);
   ObChunkServerManager& csmgr = tester.get_server_manager();
   ObRootTable2* roottable = tester.get_root_table_for_query();
 
   /// case 3
-  // 4. source cs1 down  
+  // 4. source cs1 down
   ObChunkServerManager::iterator it = csmgr.find_by_ip(env.cs1_);
   ASSERT_TRUE(csmgr.end() != it);
   csmgr.set_server_down(it);
   int64_t now = tbsys::CTimeUtil::getTime();
   roottable->server_off_line(static_cast<int32_t>(it - csmgr.begin()), now);
-  
-  // 5. report migrate over 
+
+  // 5. report migrate over
   rs->migrate_over(env.info1_.range_, env.cs1_, env.cs2_, false, env.tablet_version_);
   ObRootTable2::const_iterator it1, it2;
   ASSERT_EQ(OB_SUCCESS, roottable->find_range(env.info1_.range_, it1, it2));
-  ASSERT_EQ(it1, it2);  
+  ASSERT_EQ(it1, it2);
   ASSERT_EQ(1, it1->server_info_indexes_[0]);
   ASSERT_EQ(OB_INVALID_INDEX, it1->server_info_indexes_[1]);
   ASSERT_EQ(OB_INVALID_INDEX, it1->server_info_indexes_[2]);
@@ -1091,6 +963,7 @@ TEST(ObRootServer2Test2, migrate_over2_4)
 int main(int argc, char **argv)
 {
   ob_init_memory_pool();
+  //TBSYS_LOGGER.setFileName("b.log");
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }

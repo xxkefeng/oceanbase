@@ -8,10 +8,10 @@
 #include "common/ob_malloc.h"
 #include "common/ob_scanner.h"
 #include "common/ob_tablet_info.h"
+#include "common/ob_schema_manager.h"
 #include "ob_rs_rpc_proxy.h"
 #include "ob_ms_tablet_location.h"
 #include "ob_ms_schema_proxy.h"
-#include "ob_ms_schema_manager.h"
 #include "ob_ms_rpc_stub.h"
 
 #include "mock_server.h"
@@ -24,7 +24,7 @@ using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace oceanbase::mergeserver::test;
 
-const uint64_t timeout = 100000;
+const uint64_t timeout = 5000000;
 const char * addr = "localhost";
 
 int main(int argc, char **argv)
@@ -53,9 +53,9 @@ class TestRootRpcProxy: public ::testing::Test
       ObMergerRootRpcProxy * proxy = (ObMergerRootRpcProxy *) argv;
       EXPECT_TRUE(NULL != proxy);
       const ObSchemaManagerV2 * schema = NULL;
-      EXPECT_TRUE(OB_SUCCESS == proxy->fetch_newest_schema(manager, &schema));
+      EXPECT_EQ(OB_SUCCESS , proxy->fetch_newest_schema(manager, &schema));
       EXPECT_TRUE(NULL != schema);
-      EXPECT_TRUE(schema->get_version() == 1025);
+      if (NULL != schema) EXPECT_TRUE(schema->get_version() == 1025);
       return NULL;
     }
 };
@@ -89,7 +89,7 @@ TEST_F(TestRootRpcProxy, test_multi_schema)
   manager = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != manager);
   ObSchemaManagerV2 sample(1022);
-  EXPECT_TRUE(OB_SUCCESS == manager->init(sample));
+  EXPECT_TRUE(OB_SUCCESS == manager->init(false, sample));
   
   // start root server
   MockRootServer server;
@@ -294,7 +294,7 @@ TEST_F(TestRootRpcProxy, test_schema)
   EXPECT_TRUE(OB_SUCCESS != proxy.fetch_newest_schema(manager, &schema));
 
   ObSchemaManagerV2 sample(1022);
-  EXPECT_TRUE(OB_SUCCESS == manager->init(sample));
+  EXPECT_TRUE(OB_SUCCESS == manager->init(false, sample));
 
   // server not start
   EXPECT_TRUE(OB_SUCCESS == proxy.init(&stub));

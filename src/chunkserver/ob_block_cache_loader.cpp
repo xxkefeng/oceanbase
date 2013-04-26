@@ -12,6 +12,7 @@
  *
  */
 #include "common/utility.h"
+#include "common/ob_range2.h"
 #include "sstable/ob_blockcache.h"
 #include "sstable/ob_block_index_cache.h"
 #include "sstable/ob_sstable_block_index_v2.h"
@@ -27,13 +28,13 @@ namespace oceanbase
     using namespace sstable;
 
     ObSSTableReader *ObBlockCacheLoader::get_sstable_reader(uint64_t table_id, 
-                                                            const ObString& rowkey,
+                                                            const ObRowkey& rowkey,
                                                             ObTablet*& tablet)
     {
       int status;
       ObSSTableReader* reader = NULL;
       int32_t size            = 1;
-      ObRange range;
+      ObNewRange range;
 
       range.table_id_ = table_id;
       range.start_key_ = rowkey;
@@ -64,9 +65,8 @@ namespace oceanbase
       }
       else
       {
-        TBSYS_LOG(WARN, "failed to acquire tablet, table_id=%lu, row_key: ",
-                  table_id);
-        hex_dump(rowkey.ptr(), rowkey.length(), true, TBSYS_LOG_LEVEL_WARN);
+        TBSYS_LOG(WARN, "failed to acquire tablet, table_id=%lu, row_key: %s",
+            table_id, to_cstring(rowkey));
       }
 
       return reader;
@@ -76,7 +76,7 @@ namespace oceanbase
                                                   ObBlockCache& block_cache,
                                                   const uint64_t table_id,
                                                   const uint64_t column_group_id,
-                                                  const ObString& rowkey,
+                                                  const ObRowkey& rowkey,
                                                   ObSSTableReader* sstable_reader)
     {
       int ret                 = OB_SUCCESS;
@@ -98,8 +98,7 @@ namespace oceanbase
       if (NULL == reader)
       {
         TBSYS_LOG(INFO, "start rowkey of old block in old tablet image "
-                        "is non-existent in new tablet image, rowkey: ");
-        hex_dump(rowkey.ptr(), rowkey.length(), true, TBSYS_LOG_LEVEL_INFO);
+                        "is non-existent in new tablet image, rowkey: %s", to_cstring(rowkey));
         ret = OB_ERROR;
       }
 
@@ -113,13 +112,12 @@ namespace oceanbase
   
         //load block index into cache
         ret = index_cache.get_single_block_pos_info(info, table_id, column_group_id, rowkey, 
-                                                    OB_SEARCH_MODE_GREATER_EQUAL, 
-                                                    pos_info);
+                                                    OB_SEARCH_MODE_GREATER_EQUAL, pos_info);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(DEBUG, "failed to get block position info, table_id=%lu, ret=%d, row_key: ",
-                    table_id, ret);
-          hex_dump(rowkey.ptr(), rowkey.length(), true);
+          TBSYS_LOG(DEBUG, "failed to get block position info, table_id=%lu, ret=%d, row_key: %s",
+                    table_id, ret, to_cstring(rowkey));
+          
         }
       }
 

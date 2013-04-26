@@ -47,6 +47,7 @@ namespace oceanbase
 
       public:
         int init(const int64_t max_cache_num);
+        int enlarg_cache_num(const int64_t max_cache_num);
         int destroy();
 
       public:

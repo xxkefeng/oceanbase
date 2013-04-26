@@ -1,107 +1,419 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2012 Alibaba Group Holding Limited.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
- * Version: $Id$
  *
- * ob_config.h
+ * Time-stamp: <2013-03-13 20:39:59 fufeng.syd>
+ * Version: $Id$
+ * Filename: Config.h
  *
  * Authors:
- *   Junquan Chen <jianming.cjq@taobao.com>
+ *   Yudi Shi <fufeng.syd@alipay.com>
  *
  */
 
-#ifndef _OB_CONFIG_H
-#define _OB_CONFIG_H
+#ifndef _OB_CONFIG_H_
+#define _OB_CONFIG_H_
 
-#include "common/ob_flag.h"
-#include "common/ob_define.h"
-#include "common/ob_array.h"
+#include "common/ob_config_helper.h"
 
 namespace oceanbase
 {
   namespace common
   {
-    class ObConfig
+    enum ObConfigItemType
     {
-    public:
-      ObConfig();
-      virtual ~ObConfig();
-    public:
-      int load(const char* filename);
-      int reload();
-      const char* get_config_filename() const;
-      virtual void print() const;
-          
-    protected:
-      virtual int load_flags(tbsys::CConfig & cconf);
-      virtual int add_flags() = 0;
+      OB_CONFIG_DYNAMIC = 1,   /* for which works immediately */
+      OB_CONFIG_MANUAL,        /* for which should work manually */
+      OB_CONFIG_STATIC,        /* for which won't work until restart server */
+    };
 
-      template<typename T>
-      inline int add_flag(ObFlag<T>& flag, ObArray<ObFlag<T>*>& flag_array_, const char* section_str, const char* flag_str, T default_value)
-      {
-        int ret = OB_SUCCESS;
-        ret = flag.set_flag(section_str, flag_str, default_value);
-        if(OB_SUCCESS != ret)
+    class ObConfigItem
+    {
+      public:
+        ObConfigItem()
+          : ck_(NULL), type_(OB_CONFIG_DYNAMIC)
         {
-          TBSYS_LOG(WARN, "set flag fail:ret[%d]", ret);
+          memset(value_str_, sizeof (value_str_), 0);
+          memset(name_str_, sizeof (name_str_), 0);
+          memset(info_str_, sizeof (info_str_), 0);
         }
-        if(OB_SUCCESS == ret)
+        virtual ~ObConfigItem()
         {
-          ret = flag_array_.push_back(&flag);
-          if(OB_SUCCESS != ret)
+          if (NULL != ck_)
+            delete ck_;
+        }
+
+        void init(const char* name, const char* def,
+                  ObConfigItemType type, const char* info)
+        {
+          if (NULL == name || NULL == def || NULL == info)
           {
-            TBSYS_LOG(WARN, "push back flag to flag array fail:ret[%d]", ret);
+            TBSYS_LOG(ERROR, "Null pointer!");
+          }
+          else
+          {
+            set_name(name);
+            if (!set_value(def))
+            {
+              TBSYS_LOG(ERROR, "Set config item value fail! name: [%s], value: [%s]", name, def);
+            }
+            set_type(type);
+            set_info(info);
           }
         }
-        return ret;
-      }
 
-      inline int add_flag(ObFlag<int>& flag, const char* section_str, const char* flag_str, int default_value)
-      {
-        return add_flag<int>(flag, int_flag_array_, section_str, flag_str, default_value);
-      }
+        void add_checker(const ObConfigChecker *new_ck)
+        { ck_ = new (std::nothrow) ObConfigConsChecker(ck_, new_ck);}
+        bool check() const
+        { return ck_ == NULL ? true : ck_->check(*this); }
 
-      inline int add_flag(ObFlag<int64_t>& flag, const char* section_str, const char* flag_str, int64_t default_value)
-      {
-        return add_flag<int64_t>(flag, int64_flag_array_, section_str, flag_str, default_value);
-      }
+        ObConfigItemType set_type(ObConfigItemType type)
+        { return type_ = type; }
+        ObConfigItemType type() const
+        { return type_; }
 
-      inline int add_flag(ObFlag<const char*>& flag, const char* section_str, const char* flag_str, const char* default_value)
-      {
-        return add_flag<const char*>(flag, const_char_flag_array_, section_str, flag_str, default_value);
-      }
+        bool set_value(const char* str)
+        {
+          snprintf(value_str_, sizeof (value_str_), "%s", str);
+          return set(str);
+        }
+        void set_name(const char* name)
+        {
+          snprintf(name_str_, sizeof (name_str_), "%s", name);
+        }
+        void set_info(const char* info)
+        {
+          snprintf(info_str_, sizeof (info_str_), "%s", info);
+        }
 
-    protected:
-      char config_filename_[common::OB_MAX_FILE_NAME_LENGTH];
-      ObArray<ObFlag<int>*> int_flag_array_;
-      ObArray<ObFlag<int64_t>*> int64_flag_array_;
-      ObArray<ObFlag<const char*>*> const_char_flag_array_;
-      static const char* SECTION_STR_RS;
-      static const char* SECTION_STR_UPS;
-      static const char* SECTION_STR_SCHEMA;
-      static const char* SECTION_STR_CS;
-      static const char* SECTION_STR_MS;
-      static const char* SECTION_STR_CLIENT;
-      static const char* SECTION_STR_OBI;
-      static const char* SECTION_STR_OBCONNECTOR;
+        const char* str() const
+        { return value_str_; }
+        const char* name() const
+        { return name_str_; }
+        const char* info() const
+        { return info_str_; }
+      protected:
+        virtual bool set(const char* str) = 0;
+
+      protected:
+        const ObConfigChecker *ck_;
+        ObConfigItemType type_;
+        char value_str_[OB_MAX_CONFIG_VALUE_LEN];
+        char name_str_[OB_MAX_CONFIG_NAME_LEN];
+        char info_str_[OB_MAX_CONFIG_INFO_LEN];
     };
-  }
-}
 
-#define ADD_FLAG(flag, section_str, flag_str, default_value) \
-  if(OB_SUCCESS == ret) \
-  { \
-    ret = add_flag(flag, section_str, flag_str, default_value); \
-    if(OB_SUCCESS != ret) \
-    { \
-      TBSYS_LOG(WARN, "add flag fail:ret[%d]", ret); \
-    } \
-  }
+    class ObConfigIntegralItem
+      : public ObConfigItem
+    {
+      public:
+        ObConfigIntegralItem()
+          : value_(0)
+        {}
+        void init(const char* name, const char* def,
+                        const char* range, ObConfigItemType type,
+                        const char* info)
+        {
+          ObConfigItem::init(name, def, type, info);
+          if (NULL == range)
+          {
+            TBSYS_LOG(ERROR, "Range is NULL");
+          }
+          else if (!parse_range(range))
+          {
+            TBSYS_LOG(ERROR, "Parse check range fail! range: [%s]", range);
+          }
+        }
 
-#endif /* _OB_CONFIG_H */
+        bool operator >(const char* str) const
+        { bool valid = true; return get() > get(str, valid) && valid; }
+        bool operator >=(const char* str) const
+        { bool valid = true; return get() >= get(str, valid) && valid; }
+        bool operator <(const char* str) const
+        { bool valid = true; return get() < get(str, valid) && valid; }
+        bool operator <=(const char* str) const
+        { bool valid = true; return get() <= get(str, valid) && valid; }
 
+        bool parse_range(const char* range);
+        int64_t get() const { return value_; }
+        operator const int64_t& () const { return value_; }
+
+      protected:
+        bool set(const char* str)
+        { bool valid = true; value_ = get(str, valid); return valid; }
+
+        virtual int64_t get(const char* str, bool &valid) const = 0;
+
+      private:
+        int64_t value_;
+    };
+
+    class ObConfigCapacityItem
+      : public ObConfigIntegralItem
+    {
+      private:
+        enum CAP_UNIT {
+          /* shift bits between unit of byte and that */
+          CAP_B = 0,
+          CAP_KB = 10,
+          CAP_MB = 20,
+          CAP_GB = 30,
+          CAP_TB = 40,
+          CAP_PB = 50,
+        };
+      public:
+        ObConfigCapacityItem(ObConfigContainer *container,
+                         const char* name, const char* def,
+                         const char* range, ObConfigItemType type, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, range, type, info);
+        }
+
+        ObConfigCapacityItem(ObConfigContainer *container,
+                         const char* name, const char* def,
+                         const char* range, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, range, OB_CONFIG_DYNAMIC, info);
+        }
+
+        ObConfigCapacityItem(ObConfigContainer *container,
+                         const char* name, const char* def, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, "", OB_CONFIG_DYNAMIC, info);
+        }
+
+        ObConfigCapacityItem& operator = (int64_t value)
+        {
+          char buf[OB_MAX_CONFIG_VALUE_LEN];
+          snprintf(buf, sizeof (buf), "%ldB", value);
+          set_value(buf);
+          return *this;
+        }
+
+      protected:
+        int64_t get(const char* str, bool &valid) const;
+    };
+
+    class ObConfigTimeItem
+      : public ObConfigIntegralItem
+    {
+      public:
+        ObConfigTimeItem(ObConfigContainer *container,
+                        const char* name, const char* def,
+                        const char* range, ObConfigItemType type, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, range, type, info);
+        }
+
+        ObConfigTimeItem(ObConfigContainer *container,
+                        const char* name, const char* def,
+                        const char* range, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, range, OB_CONFIG_DYNAMIC, info);
+        }
+
+        ObConfigTimeItem(ObConfigContainer *container,
+                        const char* name, const char* def, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, "", OB_CONFIG_DYNAMIC, info);
+        }
+
+        ObConfigTimeItem& operator = (int64_t value)
+        {
+          char buf[OB_MAX_CONFIG_VALUE_LEN];
+          snprintf(buf, sizeof (buf), "%ldus", value);
+          set_value(buf);
+          return *this;
+        }
+
+      protected:
+        int64_t get(const char* str, bool &valid) const;
+
+      private:
+        const static int64_t TIME_MICROSECOND = 1UL;
+        const static int64_t TIME_MILLISECOND = 1000UL;
+        const static int64_t TIME_SECOND = 1000 * 1000UL;
+        const static int64_t TIME_MINUTE = 60 * 1000 * 1000UL;
+        const static int64_t TIME_HOUR = 60 * 60 * 1000 * 1000UL;
+        const static int64_t TIME_DAY = 24 * 60 * 60 * 1000 * 1000UL;
+    };
+
+    class ObConfigIntItem
+      : public ObConfigIntegralItem
+    {
+      public:
+        ObConfigIntItem(ObConfigContainer *container,
+                        const char* name, const char* def,
+                        const char* range, ObConfigItemType type, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, range, type, info);
+        }
+
+        ObConfigIntItem(ObConfigContainer *container,
+                        const char* name, const char* def,
+                        const char* range, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, range, OB_CONFIG_DYNAMIC, info);
+        }
+
+        ObConfigIntItem(ObConfigContainer *container,
+                        const char* name, const char* def, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, "", OB_CONFIG_DYNAMIC, info);
+        }
+
+        ObConfigIntItem& operator = (int64_t value)
+        {
+          char buf[OB_MAX_CONFIG_VALUE_LEN];
+          snprintf(buf, sizeof (buf), "%ld", value);
+          set_value(buf);
+          return *this;
+        }
+
+      protected:
+        int64_t get(const char* str, bool &valid) const;
+    };
+
+    class ObConfigMomentItem
+      : public ObConfigItem
+    {
+      public:
+        ObConfigMomentItem(ObConfigContainer *container,
+                           const char* name, const char* def,
+                           ObConfigItemType type, const char* info)
+          : disable_(true), hour_(-1), minute_(-1)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, type, info);
+        }
+        bool set(const char* str);
+        bool disable() const
+        { return disable_; }
+        int hour() const
+        { return hour_; }
+        int minute() const
+        { return minute_; }
+      private:
+        bool disable_;
+        int hour_;
+        int minute_;
+    };
+
+    class ObConfigBoolItem
+      : public ObConfigItem
+    {
+      public:
+        ObConfigBoolItem(ObConfigContainer *container,
+                         const char* name, const char* def,
+                         ObConfigItemType type, const char* info)
+          : value_(false)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, type, info);
+        }
+
+        ObConfigBoolItem(ObConfigContainer *container,
+                         const char* name, const char* def, const char* info)
+          : value_(false)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, OB_CONFIG_DYNAMIC, info);
+        }
+
+        operator bool() const { return value_; }
+        ObConfigBoolItem& operator = (bool value)
+        { set_value(value ? "True" : "False"); return *this; }
+
+      protected:
+        bool set(const char* str)
+        { bool valid = true; value_ = get(str, valid); return valid; }
+        bool get(const char* str, bool &valid) const;
+
+      private:
+        bool value_;
+    };
+
+    class ObConfigStringItem
+      : public ObConfigItem
+    {
+      public:
+        ObConfigStringItem(ObConfigContainer *container,
+                           const char* name, const char* def,
+                           ObConfigItemType type, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, type, info);
+        }
+
+        ObConfigStringItem(ObConfigContainer *container,
+                           const char* name, const char* def, const char* info)
+        {
+          if (NULL != container)
+          {
+            container->set(name, this);
+          }
+          init(name, def, OB_CONFIG_DYNAMIC, info);
+        }
+
+        operator const char*() const { return value_str_; }
+
+      protected:
+        bool set(const char* str)
+        { UNUSED(str); return true; }
+    };
+  } /* namespace common */
+} /* namesapce oceanbase */
+
+#endif /* _OB_CONFIG_H_ */
 

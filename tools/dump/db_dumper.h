@@ -46,7 +46,7 @@ const int kRowkeyPerThd = 5000;
 class DbDumperWriteHandler;
 
 struct TableRowkey {
-  ObString rowkey;
+  ObRowkey rowkey;
   uint64_t table_id;
   uint64_t timestamp;
   int64_t seq;
@@ -89,11 +89,11 @@ class DbDumper : public RowkeyHandler {
     int dump_del_key(const TableRowkey &key);
 
   private:
-    int handle_del_row(DbTableConfig *cfg,const ObString &rowkey, int op, uint64_t timestamp, int64_t seq);
+    int handle_del_row(const DbTableConfig *cfg,const ObRowkey &rowkey, int op, uint64_t timestamp, int64_t seq);
     int push_record(uint64_t table_id, const char *rec, int len);
 
     int find_table_key(const TableRowkey *rowkeys, const int64_t size,
-                       const ObString &rowkey, TableRowkey &table_key);
+                       const ObRowkey&rowkey, TableRowkey &table_key);
 
     int append_del_keys(const TableRowkey *req_keys, const int64_t req_key_size,
                         const TableRowkey *res_keys, const int64_t res_key_size);

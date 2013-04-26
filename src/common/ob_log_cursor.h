@@ -37,6 +37,7 @@ namespace oceanbase
       int serialize(char* buf, int64_t len, int64_t& pos) const;
       int deserialize(const char* buf, int64_t len, int64_t& pos) const;
       char* to_str() const;
+      int64_t to_string(char* buf, const int64_t len) const;
       int this_entry(ObLogEntry& entry, const LogCommand cmd, const char* log_data, const int64_t data_len) const;
       int next_entry(ObLogEntry& entry, const LogCommand cmd, const char* log_data, const int64_t data_len) const;
       int advance(const ObLogEntry& entry);

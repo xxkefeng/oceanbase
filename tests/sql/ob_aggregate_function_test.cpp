@@ -117,10 +117,10 @@ void ObAggregateFunctionTest::test(ObItemType func, int64_t expect_res, bool is_
   ASSERT_EQ(OB_SUCCESS, row->get_cell(OB_INVALID_ID, AGGR1_CID, cell));
   if (T_FUN_AVG == func)
   {
-    ObNumber result;
-    ASSERT_EQ(OB_SUCCESS, cell->get_decimal(result));
+    double result = 0.0;
+    ASSERT_EQ(OB_SUCCESS, cell->get_double(result));
     char buff[ObNumber::MAX_PRINTABLE_SIZE];
-    result.to_string(buff, ObNumber::MAX_PRINTABLE_SIZE);
+    snprintf(buff, ObNumber::MAX_PRINTABLE_SIZE, "%ld", static_cast<int64_t>(result));// truncate to int64
     char buff2[ObNumber::MAX_PRINTABLE_SIZE];
     snprintf(buff2, ObNumber::MAX_PRINTABLE_SIZE, "%ld", expect_res);
     ASSERT_STREQ(buff, buff2);
@@ -134,10 +134,10 @@ void ObAggregateFunctionTest::test(ObItemType func, int64_t expect_res, bool is_
   ASSERT_EQ(OB_SUCCESS, row->get_cell(OB_INVALID_ID, AGGR2_CID, cell));
   if (T_FUN_AVG == func)
   {
-    ObNumber result;
-    ASSERT_EQ(OB_SUCCESS, cell->get_decimal(result));
+    double result = 0.0;
+    ASSERT_EQ(OB_SUCCESS, cell->get_double(result));
     char buff[ObNumber::MAX_PRINTABLE_SIZE];
-    result.to_string(buff, ObNumber::MAX_PRINTABLE_SIZE);
+    snprintf(buff, ObNumber::MAX_PRINTABLE_SIZE, "%ld", static_cast<int64_t>(result)); // truncate to int64
     char buff2[ObNumber::MAX_PRINTABLE_SIZE];
     snprintf(buff2, ObNumber::MAX_PRINTABLE_SIZE, "%ld", expect_res2);
     ASSERT_STREQ(buff, buff2);
@@ -191,7 +191,7 @@ TEST_F(ObAggregateFunctionTest, count_star)
     ObSqlExpression sexpr1;
     sexpr1.set_aggr_func(T_FUN_COUNT, false);
     sexpr1.set_tid_cid(OB_INVALID_ID, AGGR2_CID);
-    // aggr(c2+c3)
+    // aggr(c8)
     ExprItem expr_item;
     expr_item.type_ = T_REF_COLUMN;
     expr_item.value_.cell_.tid = test::ObFakeTable::TABLE_ID;
@@ -231,6 +231,79 @@ TEST_F(ObAggregateFunctionTest, count_star)
   ASSERT_EQ(OB_SUCCESS, row->get_cell(OB_INVALID_ID, AGGR2_CID, cell));
   ASSERT_EQ(OB_SUCCESS, cell->get_int(result));
   ASSERT_EQ(ROW_COUNT/2, result); // count(c8) == 50
+  // destroy
+  ASSERT_EQ(OB_SUCCESS, input.close());
+}
+
+TEST_F(ObAggregateFunctionTest, empty_set)
+{
+  // count(*) and count(c8) and avg(c1)
+  ObArray<ObSqlExpression> exprs;
+  static const int64_t AGGR1_CID = 9999;
+  static const int64_t AGGR2_CID = 9998;
+  static const int64_t AGGR3_CID = 9997;
+  {
+    ObSqlExpression sexpr1;
+    sexpr1.set_aggr_func(T_FUN_COUNT, false);
+    sexpr1.set_tid_cid(OB_INVALID_ID, AGGR1_CID);
+    // count(*)
+    sexpr1.add_expr_item_end();
+    ASSERT_EQ(OB_SUCCESS, exprs.push_back(sexpr1));
+  }
+  {
+    ObSqlExpression sexpr1;
+    sexpr1.set_aggr_func(T_FUN_COUNT, false);
+    sexpr1.set_tid_cid(OB_INVALID_ID, AGGR2_CID);
+    // aggr(c8)
+    ExprItem expr_item;
+    expr_item.type_ = T_REF_COLUMN;
+    expr_item.value_.cell_.tid = test::ObFakeTable::TABLE_ID;
+    expr_item.value_.cell_.cid = OB_APP_MIN_COLUMN_ID+8;
+    sexpr1.add_expr_item(expr_item); // c8
+    sexpr1.add_expr_item_end();
+    ASSERT_EQ(OB_SUCCESS, exprs.push_back(sexpr1));
+  }
+  {
+    ObSqlExpression sexpr1;
+    sexpr1.set_aggr_func(T_FUN_AVG, false);
+    sexpr1.set_tid_cid(OB_INVALID_ID, AGGR3_CID);
+    // aggr(c8)
+    ExprItem expr_item;
+    expr_item.type_ = T_REF_COLUMN;
+    expr_item.value_.cell_.tid = test::ObFakeTable::TABLE_ID;
+    expr_item.value_.cell_.cid = OB_APP_MIN_COLUMN_ID+1;
+    sexpr1.add_expr_item(expr_item); // c1
+    sexpr1.add_expr_item_end();
+    ASSERT_EQ(OB_SUCCESS, exprs.push_back(sexpr1));
+  }
+  // init
+  static const int64_t ROW_COUNT = 1;
+  test::ObFakeTable input;
+  input.set_row_count(ROW_COUNT);
+  ASSERT_EQ(OB_SUCCESS, input.open());
+  ObAggregateFunction aggr_func;
+  ASSERT_EQ(OB_SUCCESS, aggr_func.init(input.get_row_desc(), exprs));
+  // verify
+  const ObRow *row = NULL;
+  ASSERT_EQ(OB_SUCCESS, aggr_func.get_result_for_empty_set(row));
+  ASSERT_EQ(input.get_row_desc().get_column_num() + 3, row->get_column_num());
+  const ObObj *cell = NULL;
+  ASSERT_EQ(OB_SUCCESS, row->get_cell(OB_INVALID_ID, AGGR1_CID, cell));
+  int64_t i64 = 0;
+  ASSERT_EQ(OB_SUCCESS, cell->get_int(i64)); // COUNT(*)
+  ASSERT_EQ(0, i64);
+  ASSERT_EQ(OB_SUCCESS, row->get_cell(OB_INVALID_ID, AGGR2_CID, cell));
+  ASSERT_EQ(OB_SUCCESS, cell->get_int(i64)); // COUNT(c8)
+  ASSERT_EQ(0, i64);
+  ASSERT_EQ(OB_SUCCESS, row->get_cell(OB_INVALID_ID, AGGR3_CID, cell));
+  ASSERT_TRUE(cell->is_null()); // AVG(c1)
+  uint64_t tid = OB_INVALID_ID;
+  uint64_t cid = OB_INVALID_ID;
+  for (int64_t i = 0; i < row->get_column_num()-3; ++i)
+  {
+    ASSERT_EQ(OB_SUCCESS, row->raw_get_cell(i, cell, tid, cid));
+    ASSERT_TRUE(cell->is_null());
+  } // end for
   // destroy
   ASSERT_EQ(OB_SUCCESS, input.close());
 }

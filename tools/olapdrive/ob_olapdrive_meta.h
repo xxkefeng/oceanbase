@@ -26,7 +26,7 @@ namespace oceanbase
     static const int64_t KEY_META_ROWKEY_SIZE = 8;
     static const int64_t CAMPAIGN_ROWKEY_SIZE = 16;
     static const int64_t ADGROUP_ROWKEY_SIZE = 24;
-    static const int64_t LZ_ROWKEY_SIZE = sizeof(int64_t) * 5 + 1;
+    static const int64_t MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT = 6;
     
     struct ObKeyMeta
     {

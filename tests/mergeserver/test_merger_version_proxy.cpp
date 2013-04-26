@@ -8,9 +8,9 @@
 #include "common/ob_malloc.h"
 #include "common/ob_scanner.h"
 #include "common/ob_tablet_info.h"
+#include "common/ob_schema_manager.h"
 #include "ob_ms_rpc_proxy.h"
 #include "ob_ms_tablet_location.h"
-#include "ob_ms_schema_manager.h"
 #include "ob_ms_rpc_stub.h"
 #include "ob_ms_version_proxy.h"
 
@@ -74,9 +74,9 @@ TEST_F(TestMergerVersionProxy, test_version)
   ObMergerSchemaManager * schema = new ObMergerSchemaManager;
   EXPECT_TRUE(NULL != schema);
   ObSchemaManagerV2 temp(200);
-  EXPECT_TRUE(OB_SUCCESS == schema->init(temp));
+  EXPECT_TRUE(OB_SUCCESS == schema->init(false, temp));
 
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
   EXPECT_TRUE(OB_SUCCESS == proxy.init(&stub, schema, location));
 

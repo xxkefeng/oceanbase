@@ -21,6 +21,7 @@ typedef struct
   void* name_pool_; // ObStringBuf
   void* schema_checker_; // ObSchemaChecker
   ErrStat err_stat_;
+  int   is_prepare_;
 } ResultPlan;
 
 struct _ParseNode;
@@ -63,7 +64,7 @@ extern int parse_init(ParseResult* p);
 
 extern int parse_terminate(ParseResult* p);
 
-extern void parse_sql(ParseResult *p, const char* pszSql, size_t iLen);
+extern int parse_sql(ParseResult *p, const char* pszSql, size_t iLen);
 
 extern void print_tree(ParseNode* pRoot, int level);
 

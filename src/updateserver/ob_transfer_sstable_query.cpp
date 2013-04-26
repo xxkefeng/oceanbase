@@ -44,8 +44,8 @@ namespace oceanbase
       }
     }
 
-    int ObTransferSSTableQuery::init(const ObBlockCacheConf& bc_conf, 
-                                     const ObBlockIndexCacheConf& bic_conf,
+    int ObTransferSSTableQuery::init(const int64_t block_cache_size,
+                                     const int64_t block_index_cache_size,
                                      const int64_t sstable_row_cache_size)
     {
       int ret = OB_SUCCESS;
@@ -53,12 +53,12 @@ namespace oceanbase
       //ret = fileinfo_cache_.init(bc_conf.ficache_max_num);
       if (OB_SUCCESS == ret)
       {
-        ret = block_cache_.init(bc_conf);
+        ret = block_cache_.init(block_cache_size);
       }
 
       if (OB_SUCCESS == ret)
       {
-        ret = block_index_cache_.init(bic_conf);
+        ret = block_index_cache_.init(block_index_cache_size);
       }
 
       if (OB_SUCCESS == ret)
@@ -89,6 +89,29 @@ namespace oceanbase
       return ret;
     }
 
+    int ObTransferSSTableQuery::enlarge_cache_size(
+       const int64_t block_cache_size, 
+       const int64_t block_index_cache_size,
+       const int64_t sstable_row_cache_size)
+    {
+      int ret = OB_SUCCESS;
+      if (!inited_)
+      {
+        TBSYS_LOG(INFO, "not inited");
+        ret = OB_NOT_INIT;
+      }
+      else
+      {
+        block_cache_.enlarg_cache_size(block_cache_size);
+        block_index_cache_.enlarg_cache_size(block_index_cache_size);
+        if (NULL != sstable_row_cache_ && sstable_row_cache_size > 0)
+        {
+          sstable_row_cache_->enlarg_cache_size(sstable_row_cache_size);
+        }
+      }
+      return ret;
+    }
+
     int ObTransferSSTableQuery::get(const ObGetParam& get_param, 
                                     ObSSTableReader& reader,
                                     ObIterator* iterator)
@@ -99,7 +122,6 @@ namespace oceanbase
       ObSSTableGetter* sstable_getter = dynamic_cast<ObSSTableGetter*>(iterator);
       const ObGetParam::ObRowIndex* row_index = get_param.get_row_index();
       static __thread const ObSSTableReader* sstable_reader = NULL;
-      sstable_reader = &reader;
 
       if (!inited_)
       {
@@ -121,6 +143,15 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
+        if (!reader.empty())
+        {
+          sstable_reader = &reader;
+        }
+        else
+        {
+          sstable_reader = NULL;
+        }
+
         ret = sstable_getter->init(block_cache_, block_index_cache_, 
                                    get_param, &sstable_reader, 1, true,
                                    sstable_row_cache_);
@@ -156,14 +187,21 @@ namespace oceanbase
       }
       else
       {
+        if (!reader.empty())
+        {
         ret = sstable_scanner->set_scan_param(scan_param, &reader, block_cache_, block_index_cache_, true);
+        }
+        else 
+        {
+          ret = sstable_scanner->set_scan_param(scan_param, NULL, block_cache_, block_index_cache_, true);
+      }
       }
 
       return ret;
     }
 
     int ObTransferSSTableQuery::get_sstable_end_key(
-      const ObSSTableReader& reader, const uint64_t table_id, ObString& row_key)
+      const ObSSTableReader& reader, const uint64_t table_id, ObRowkey& row_key)
     {
       int ret = OB_SUCCESS;
       ObBlockIndexPositionInfo info;

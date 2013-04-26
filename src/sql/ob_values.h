@@ -16,13 +16,13 @@
 #ifndef _OB_VALUES_H
 #define _OB_VALUES_H 1
 
-#include "sql/ob_no_children_phy_operator.h"
+#include "sql/ob_single_child_phy_operator.h"
 #include "common/ob_row_store.h"
 namespace oceanbase
 {
   namespace sql
   {
-    class ObValues: public ObNoChildrenPhyOperator
+    class ObValues: public ObSingleChildPhyOperator
     {
       public:
         ObValues();
@@ -30,14 +30,18 @@ namespace oceanbase
 
         int set_row_desc(const common::ObRowDesc &row_desc);
         int add_values(const common::ObRow &value);
+        const common::ObRowStore &get_row_store() {return row_store_;};
 
         virtual int open();
         virtual int close();
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+        enum ObPhyOperatorType get_type() const{return PHY_VALUES;}
+        NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // types and constants
+        int load_data();
       private:
         // disallow copy
         ObValues(const ObValues &other);

@@ -1,6 +1,7 @@
 #include "ob_action_flag.h"
 #include "ob_malloc.h"
 #include "ob_scan_param.h"
+#include "ob_rowkey_helper.h"
 #include "utility.h"
 
 namespace oceanbase
@@ -12,8 +13,7 @@ namespace oceanbase
     void ObScanParam::reset(void)
     {
       table_id_ = OB_INVALID_ID;
-      scan_flag_.scan_direction_ = FORWARD;
-      scan_flag_.read_mode_ = PREREAD;
+      scan_flag_.flag_ = 0;
       scan_size_ = 0;
       ObReadParam::reset();
       table_name_.assign(NULL, 0);
@@ -40,11 +40,12 @@ namespace oceanbase
       topk_precision_  = 0;
       sharding_minimum_row_count_ = 0;
       buffer_pool_.reset();
+      is_binary_rowkey_format_ = false;
     }
 
     // ObScanParam
     ObScanParam::ObScanParam() : table_id_(OB_INVALID_ID),
-      table_name_(), range_(), scan_size_(0), scan_flag_()
+    table_name_(), range_(), scan_size_(0), scan_flag_(), schema_manager_(NULL), is_binary_rowkey_format_(false)
     {
       limit_offset_ = 0;
       limit_count_ = 0;
@@ -118,7 +119,7 @@ namespace oceanbase
         err = OB_INVALID_ARGUMENT;
       }
       int64_t used_len = 0;
-      if ((OB_SUCCESS == err) && (pos < buf_size) && ((used_len = snprintf(buf,(buf_size-pos>0)?(buf_size-pos):0,"SELECT ")) > 0))
+      if ((OB_SUCCESS == err) && (pos < buf_size) && ((used_len = snprintf(buf+pos,(buf_size-pos>0)?(buf_size-pos):0,"SELECT ")) > 0))
       {
         pos += used_len;
       }
@@ -199,28 +200,22 @@ namespace oceanbase
           }
         }
       }
-      if ((OB_SUCCESS == err) && (pos < buf_size ) && (!range_.border_flag_.is_min_value() || !range_.border_flag_.is_max_value()))
+      if ((OB_SUCCESS == err) && (pos < buf_size ) && (!range_.start_key_.is_min_row() || !range_.end_key_.is_max_row()))
       {
         if ((used_len = snprintf(buf+pos, (buf_size-pos>0)?(buf_size-pos):0, " WHERE ")) > 0)
         {
           pos += used_len;
         }
-        if (!range_.border_flag_.is_min_value())
+        if (!range_.start_key_.is_min_row())
         {
-          if ((used_len = snprintf(buf+pos, (buf_size-pos>0)?(buf_size-pos):0, " __ROWKEY %s 0x", range_.border_flag_.inclusive_start()?">=":">")) > 0)
-          {
-            pos += used_len;
-          }
-          pos += hex_to_str(range_.start_key_.ptr(), range_.start_key_.length(), buf+pos, static_cast<int32_t>((buf_size-pos>0)?(buf_size-pos):0))*2;
+          used_len = range_.start_key_.to_string(buf + pos, buf_size - pos);
+          pos += used_len;
         }
 
-        if (!range_.border_flag_.is_max_value())
+        if (!range_.end_key_.is_max_row())
         {
-          if ((used_len = snprintf(buf+pos, (buf_size-pos>0)?(buf_size-pos):0, " AND  __ROWKEY %s 0x", range_.border_flag_.inclusive_end()?"<=":"<")) > 0 )
-          {
-            pos += used_len;
-          }
-          pos += hex_to_str(range_.end_key_.ptr(), range_.end_key_.length(), buf+pos, static_cast<int32_t>((buf_size-pos>0)?(buf_size-pos):0))*2;
+          used_len = range_.end_key_.to_string(buf + pos, buf_size - pos);
+          pos += used_len;
         }
       }
       if ((group_by_param_.get_aggregate_row_width() > 0) &&(OB_SUCCESS == err) && (pos < buf_size))
@@ -322,6 +317,9 @@ namespace oceanbase
       memcpy(basic_column_names_, other.basic_column_names_, sizeof(basic_column_names_));
       basic_column_list_.init(OB_MAX_COLUMN_NUMBER, basic_column_names_, other.basic_column_list_.get_array_index());
 
+      is_binary_rowkey_format_ = other.is_binary_rowkey_format_;
+      schema_manager_ = other.schema_manager_;
+
       memcpy(basic_column_ids_, other.basic_column_ids_, sizeof(basic_column_ids_));
       basic_column_id_list_.init(OB_MAX_COLUMN_NUMBER, basic_column_ids_, other.basic_column_id_list_.get_array_index());
 
@@ -378,11 +376,11 @@ namespace oceanbase
     }
 
 
-    int ObScanParam::set_range(const ObRange& range)
+    int ObScanParam::set_range(const ObNewRange& range)
     {
       int err = OB_SUCCESS;
       range_ = range;
-      range_.table_id_ = table_id_;
+      table_id_ = range_.table_id_;
       if (deep_copy_args_)
       {
         if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = buffer_pool_.write_string(range.start_key_,&(range_.start_key_)))))
@@ -397,24 +395,26 @@ namespace oceanbase
       return err;
     }
 
-    int ObScanParam::set(const uint64_t& table_id, const ObString& table_name, const ObRange& range, bool deep_copy_args)
+    int ObScanParam::set(const uint64_t& table_id, const ObString& table_name, const ObNewRange& range, bool deep_copy_args)
     {
       int err = OB_SUCCESS;
-      table_id_ = table_id;
-      table_name_ = table_name;
       deep_copy_args_ = deep_copy_args;
+      table_name_ = table_name;
       group_by_param_.reset(deep_copy_args_);
-      if (deep_copy_args_)
+      if (OB_SUCCESS != (err = set_range(range)))
       {
-        if ((OB_SUCCESS == err ) && (OB_SUCCESS != (err = buffer_pool_.write_string(table_name,&table_name_))))
+        TBSYS_LOG(WARN,"fail to set range [err:%d]", err);
+      }
+      else if (deep_copy_args_)
+      {
+        if (OB_SUCCESS != (err = buffer_pool_.write_string(table_name, &table_name_)))
         {
           TBSYS_LOG(WARN,"fail to copy table name to local buffer [err:%d]", err);
         }
       }
-      if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = set_range(range))))
-      {
-        TBSYS_LOG(WARN,"fail to set range [err:%d]", err);
-      }
+
+      range_.table_id_ = table_id;
+      table_id_ = table_id;
       return err;
     }
 
@@ -780,6 +780,20 @@ namespace oceanbase
       return group_by_param_;
     }
 
+
+
+    ObScanner* ObScanParam::get_location_info() const
+    {
+      return tablet_location_scanner_;
+    }
+
+    int ObScanParam::set_location_info(const ObScanner &obscanner)
+    {
+      int ret = OB_SUCCESS;
+      tablet_location_scanner_ = const_cast<ObScanner*>(&obscanner);
+      return ret;
+    }
+    
     // BASIC_PARAM_FIELD
     int ObScanParam::serialize_basic_param(char * buf, const int64_t buf_len, int64_t & pos) const
     {
@@ -835,13 +849,13 @@ namespace oceanbase
         ret = obj.serialize(buf, buf_len, pos);
         if (OB_SUCCESS == ret)
         {
-          obj.set_varchar(range_.start_key_);
-          ret = obj.serialize(buf, buf_len, pos);
+          ret = set_rowkey_obj_array(buf, buf_len, pos, 
+              range_.start_key_.get_obj_ptr(), range_.start_key_.get_obj_cnt());
         }
         if (OB_SUCCESS == ret)
         {
-          obj.set_varchar(range_.end_key_);
-          ret = obj.serialize(buf, buf_len, pos);
+          ret = set_rowkey_obj_array(buf, buf_len, pos, 
+              range_.end_key_.get_obj_ptr(), range_.end_key_.get_obj_cnt());
         }
       }
 
@@ -863,6 +877,8 @@ namespace oceanbase
     int ObScanParam::deserialize_basic_param(const char * buf, const int64_t data_len, int64_t & pos)
     {
       int64_t int_value = 0;
+      int8_t border_flag = 0;
+      ObRowkeyInfo rowkey_info;
       int ret = ObReadParam::deserialize(buf, data_len, pos);
       // table name or table id
       ObObj obj;
@@ -893,6 +909,11 @@ namespace oceanbase
         }
       }
 
+      if (OB_SUCCESS == ret && NULL != schema_manager_)
+      {
+        get_rowkey_info_from_sm(schema_manager_, range_.table_id_, table_name_, rowkey_info);
+      }
+
       // scan range
       if (OB_SUCCESS == ret)
       {
@@ -905,6 +926,7 @@ namespace oceanbase
             ret = obj.get_int(int_value);
             if (OB_SUCCESS == ret)
             {
+              border_flag = static_cast<int8_t>(int_value);
               range_.border_flag_.set_data(static_cast<int8_t>(int_value));
             }
           }
@@ -913,28 +935,37 @@ namespace oceanbase
         // start key
         if (OB_SUCCESS == ret)
         {
-          ret = obj.deserialize(buf, data_len, pos);
+          int_value = OB_MAX_COLUMN_NUMBER;
+          ret = get_rowkey_compatible(buf, data_len, pos,
+              rowkey_info, start_rowkey_obj_array_, int_value, is_binary_rowkey_format_);
           if (OB_SUCCESS == ret)
           {
-            ret = obj.get_varchar(str_value);
-            if (OB_SUCCESS == ret)
-            {
-              range_.start_key_ = str_value;
-            }
+            range_.start_key_.assign(start_rowkey_obj_array_, int_value);
           }
         }
 
         // end key
         if (OB_SUCCESS == ret)
         {
-          ret = obj.deserialize(buf, data_len, pos);
+          int_value = OB_MAX_COLUMN_NUMBER;
+          ret = get_rowkey_compatible(buf, data_len, pos,
+              rowkey_info, end_rowkey_obj_array_, int_value, is_binary_rowkey_format_);
           if (OB_SUCCESS == ret)
           {
-            ret = obj.get_varchar(str_value);
-            if (OB_SUCCESS == ret)
-            {
-              range_.end_key_ = str_value;
-            }
+            range_.end_key_.assign(end_rowkey_obj_array_, int_value);
+          }
+        }
+        
+        // compatible: old client may send request with min/max borderflag info.
+        if (OB_SUCCESS == ret)
+        {
+          if (ObBorderFlag::MIN_VALUE & border_flag)
+          {
+            range_.start_key_.set_min_row();
+          }
+          if (ObBorderFlag::MAX_VALUE& border_flag)
+          {
+            range_.end_key_.set_max_row();
           }
         }
       }
@@ -945,13 +976,6 @@ namespace oceanbase
         if (OB_SUCCESS == ret)
         {
           ret = obj.get_int(scan_flag_.flag_);
-          /*
-          ret = obj.get_int(int_value);
-          if (OB_SUCCESS == ret)
-          {
-            scan_direction_ = (Direction)int_value;
-          }
-          */
         }
       }
       // scan size
@@ -995,10 +1019,14 @@ namespace oceanbase
       // scan range
       obj.set_int(range_.border_flag_.get_data());
       total_size += obj.get_serialize_size();
-      obj.set_varchar(range_.start_key_);
-      total_size += obj.get_serialize_size();
-      obj.set_varchar(range_.end_key_);
-      total_size += obj.get_serialize_size();
+
+      // start_key_
+      total_size += get_rowkey_obj_array_size(
+          range_.start_key_.get_obj_ptr(), range_.start_key_.get_obj_cnt());
+
+      // end_key_
+      total_size += get_rowkey_obj_array_size(
+          range_.end_key_.get_obj_ptr(), range_.end_key_.get_obj_cnt());
 
       // scan sequence
       obj.set_int(scan_flag_.flag_);
@@ -1491,8 +1519,7 @@ namespace oceanbase
     int ObScanParam::malloc_composite_columns()
     {
       int err = OB_SUCCESS;
-      select_comp_columns_ = reinterpret_cast<ObCompositeColumn*>(
-          ob_malloc(sizeof(ObCompositeColumn)*OB_MAX_COLUMN_NUMBER, ObModIds::OB_SCAN_PARAM));
+      select_comp_columns_ = reinterpret_cast<ObCompositeColumn*>(ob_malloc(sizeof(ObCompositeColumn)*OB_MAX_COLUMN_NUMBER));
       if (NULL == select_comp_columns_)
       {
         TBSYS_LOG(WARN,"fail to allocate memory");
@@ -1989,9 +2016,8 @@ namespace oceanbase
     void ObScanParam::dump_basic_param() const
     {
       TBSYS_LOG(INFO, "[dump] [table_name_=%.*s][table_id_=%lu]", table_name_.length(), table_name_.ptr(), table_id_);
-      TBSYS_LOG(INFO, "[dump] scan range info:");
-      range_.dump();
-      TBSYS_LOG(INFO, "[dump] [scan_direction=%s]", scan_flag_.scan_direction_ == 0? "FORWARD" : "BACKWARD");
+      TBSYS_LOG(INFO, "[dump] scan range info: %s", to_cstring(range_));
+      TBSYS_LOG(INFO, "[dump] [scan_direction=%s]", scan_flag_.direction_ == 0? "FORWARD" : "BACKWARD");
     }
 
 

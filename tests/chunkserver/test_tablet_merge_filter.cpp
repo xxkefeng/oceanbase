@@ -2,11 +2,11 @@
  * (C) 2010-2012 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
  * test_tablet_manager_get.cpp for test get interface of tablet
- * manager, it also test the switch cache feature. 
+ * manager, it also test the switch cache feature.
  *
  * Authors:
  *   huating <huating.zmq@taobao.com>
@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 #include "common/ob_schema.h"
 #include "ob_tablet_merge_filter.h"
+#include "chunkserver/ob_tablet_image.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::chunkserver;
@@ -26,11 +27,11 @@ namespace oceanbase
 {
   namespace tests
   {
-    namespace chunkserver 
+    namespace chunkserver
     {
+      static ObTabletImage g_image;
+
       const char* SCHEMA_WITHOUT_EXPIRE = "./schema/schema_without_expire.ini";
-      const char* SCHEMA_WITH_OLD_INVALID_EXPIRE = "./schema/schema_with_old_invalid_expire.ini";
-      const char* SCHEMA_WITH_OLD_VALID_EXPIRE = "./schema/schema_with_old_valid_expire.ini";
       const char* SCHEMA_WITH_INVALID_EXPIRE = "./schema/schema_with_invalid_expire.ini";
       const char* SCHEMA_WITH_VALID_EXPIRE = "./schema/schema_with_valid_expire.ini";
       const char* SCHEMA_WITH_EXPIRE = "./schema/schema_with_expire.ini";
@@ -45,7 +46,7 @@ namespace oceanbase
         static void SetUpTestCase()
         {
         }
-      
+
         static void TearDownTestCase()
         {
         }
@@ -66,7 +67,7 @@ namespace oceanbase
 
         void init_tablet(ObTablet& tablet)
         {
-          ObRange range;
+          ObNewRange range;
           range.table_id_ = 1001;
           tablet.set_range(range);
           tablet.set_last_do_expire_version(LAST_DO_EXPIRE_VERSION);
@@ -77,7 +78,7 @@ namespace oceanbase
           int ret = OB_SUCCESS;
           ObObj obj;
           ObString str;
-          
+
           row.clear();
           str.assign_ptr((char*)"info_user_nick", (int32_t)strlen("info_user_nick"));
           obj.set_varchar(str);
@@ -150,59 +151,59 @@ namespace oceanbase
       TEST_F(TestTabletMergerFilter, test_init_fail)
       {
         int ret = OB_SUCCESS;
-        ObTablet tablet(NULL);
+        ObTablet tablet(&g_image);
         ObSchemaManagerV2 schema;
         ObTabletMergerFilter merge_filter;
 
-        ret = merge_filter.init(schema, NULL, 0, 0);
+        ret = merge_filter.init(schema, 1, NULL, 0, 0);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, NULL, 1, 0);
+        ret = merge_filter.init(schema, 1, NULL, 1, 0);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, NULL, 1, 0);
+        ret = merge_filter.init(schema, 1, NULL, 1, 0);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, NULL, -1, 0);
-        ASSERT_TRUE(OB_SUCCESS != ret);
-        ASSERT_FALSE(merge_filter.need_filter());
-
-        ret = merge_filter.init(schema, &tablet, 0, 0);
-        ASSERT_TRUE(OB_SUCCESS != ret);
-        ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, &tablet, 1, 0);
-        ASSERT_TRUE(OB_SUCCESS != ret);
-        ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, &tablet, 1, 0);
-        ASSERT_TRUE(OB_SUCCESS != ret);
-        ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, &tablet, -1, 0);
+        ret = merge_filter.init(schema, 1, NULL, -1, 0);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
 
-        ret = merge_filter.init(schema, NULL, 0, 0);
+        ret = merge_filter.init(schema, 1, &tablet, 0, 0);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, NULL, 1, -1);
+        ret = merge_filter.init(schema, 1, &tablet, 1, 0);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, NULL, 1, 10);
+        ret = merge_filter.init(schema, 1, &tablet, 1, 0);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, NULL, -1, 100);
+        ret = merge_filter.init(schema, 1, &tablet, -1, 0);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
 
-        ret = merge_filter.init(schema, &tablet, 0, 0);
+        ret = merge_filter.init(schema, 1, NULL, 0, 0);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, &tablet, 1, -1);
+        ret = merge_filter.init(schema, 1, NULL, 1, -1);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, &tablet, 1, 10);
+        ret = merge_filter.init(schema, 1, NULL, 1, 10);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
-        ret = merge_filter.init(schema, &tablet, -1, 100);
+        ret = merge_filter.init(schema, 1, NULL, -1, 100);
+        ASSERT_TRUE(OB_SUCCESS != ret);
+        ASSERT_FALSE(merge_filter.need_filter());
+
+        ret = merge_filter.init(schema, 1, &tablet, 0, 0);
+        ASSERT_TRUE(OB_SUCCESS != ret);
+        ASSERT_FALSE(merge_filter.need_filter());
+        ret = merge_filter.init(schema, 1, &tablet, 1, -1);
+        ASSERT_TRUE(OB_SUCCESS != ret);
+        ASSERT_FALSE(merge_filter.need_filter());
+        ret = merge_filter.init(schema, 1, &tablet, 1, 10);
+        ASSERT_TRUE(OB_SUCCESS != ret);
+        ASSERT_FALSE(merge_filter.need_filter());
+        ret = merge_filter.init(schema, 1, &tablet, -1, 100);
         ASSERT_TRUE(OB_SUCCESS != ret);
         ASSERT_FALSE(merge_filter.need_filter());
       }
@@ -210,135 +211,29 @@ namespace oceanbase
       TEST_F(TestTabletMergerFilter, test_without_expire)
       {
         int ret = OB_SUCCESS;
-        ObTablet tablet(NULL);
+        ObTablet tablet(&g_image);
         ObSchemaManagerV2 schema;
         ObTabletMergerFilter merge_filter;
 
         init_tablet(tablet);
         load_schema(schema, SCHEMA_WITHOUT_EXPIRE);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
+        ret = merge_filter.init(schema, 1, &tablet, FROZEN_VERSION,
           tbsys::CTimeUtil::getTime());
         ASSERT_TRUE(OB_SUCCESS == ret);
         ASSERT_FALSE(merge_filter.need_filter());
 
         merge_filter.reset();
         tablet.set_last_do_expire_version(0);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
+        ret = merge_filter.init(schema, 1, &tablet, FROZEN_VERSION,
           tbsys::CTimeUtil::getTime());
         ASSERT_TRUE(OB_SUCCESS == ret);
         ASSERT_FALSE(merge_filter.need_filter());
-      }
-
-      TEST_F(TestTabletMergerFilter, test_with_old_invalid_expire)
-      {
-        int ret = OB_SUCCESS;
-        ObTablet tablet(NULL);
-        ObSchemaManagerV2 schema;
-        ObTabletMergerFilter merge_filter;
-        ObScanParam scan_param;
-
-        init_tablet(tablet);
-        load_schema(schema, SCHEMA_WITH_OLD_INVALID_EXPIRE);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
-          tbsys::CTimeUtil::getTime());
-        ASSERT_TRUE(OB_SUCCESS == ret);
-        ASSERT_TRUE(merge_filter.need_filter());
-        ret = merge_filter.adjust_scan_param(0, 0, scan_param);
-        ASSERT_TRUE(OB_SUCCESS != ret);
-        ret = scan_param.add_column(2);
-        ASSERT_TRUE(OB_SUCCESS == ret);
-        ret = merge_filter.adjust_scan_param(0, 0, scan_param);
-        ASSERT_TRUE(OB_SUCCESS != ret);
-
-        merge_filter.reset();
-        tablet.set_last_do_expire_version(0);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
-          tbsys::CTimeUtil::getTime());
-        ASSERT_TRUE(OB_SUCCESS == ret);
-        ASSERT_TRUE(merge_filter.need_filter());
-        ret = merge_filter.adjust_scan_param(0, 0, scan_param);
-        ASSERT_TRUE(OB_SUCCESS != ret);
-        ret = scan_param.add_column(2);
-        ASSERT_TRUE(OB_SUCCESS == ret);
-        ret = merge_filter.adjust_scan_param(0, 0, scan_param);
-        ASSERT_TRUE(OB_SUCCESS != ret);
-      }
-
-      TEST_F(TestTabletMergerFilter, test_with_old_valid_expire)
-      {
-        int ret = OB_SUCCESS;
-        ObTablet tablet(NULL);
-        ObSchemaManagerV2 schema;
-        ObTabletMergerFilter merge_filter;
-        ObScanParam scan_param;
-        ObSSTableRow row;
-        bool is_expired = false;
-
-        init_tablet(tablet);
-        load_schema(schema, SCHEMA_WITH_OLD_VALID_EXPIRE);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
-          tbsys::CTimeUtil::getTime());
-        ASSERT_TRUE(OB_SUCCESS == ret);
-        ASSERT_TRUE(merge_filter.need_filter());
-        ret = merge_filter.adjust_scan_param(0, 0, scan_param);
-        ASSERT_TRUE(OB_SUCCESS != ret);
-        ASSERT_EQ(0, scan_param.get_column_id_size());
-        ASSERT_EQ(0, scan_param.get_composite_columns_size());
-        for (int64_t i = 0; i < 10; ++i)
-        {
-          ret = merge_filter.check_and_trim_row(0, i, row, is_expired);
-          ASSERT_TRUE(OB_SUCCESS != ret);
-          ASSERT_FALSE(is_expired);
-        }
-        init_scan_param(scan_param);
-        ASSERT_EQ(COLUMN_COUNT, scan_param.get_column_id_size());
-        init_sstable_row(row);
-        for (int64_t i = 0; i < 10; ++i)
-        {
-          ret = merge_filter.check_and_trim_row(0, i, row, is_expired);
-          ASSERT_TRUE(OB_SUCCESS == ret);
-          ASSERT_FALSE(is_expired);
-        }
-        ASSERT_EQ(COLUMN_COUNT, row.get_obj_count());
-
-        merge_filter.reset();
-        tablet.set_last_do_expire_version(0);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
-          tbsys::CTimeUtil::getTime() + 10 * 1000 * 1000);
-        ASSERT_TRUE(OB_SUCCESS == ret);
-        ASSERT_TRUE(merge_filter.need_filter());
-        ret = merge_filter.adjust_scan_param(0, 0, scan_param);
-        ASSERT_TRUE(OB_SUCCESS == ret);
-        ASSERT_EQ(COLUMN_COUNT, scan_param.get_column_id_size());
-        ASSERT_EQ(0, scan_param.get_composite_columns_size());
-        row.clear();
-        scan_param.reset();
-        for (int64_t i = 0; i < 10; ++i)
-        {
-          ret = merge_filter.check_and_trim_row(0, i, row, is_expired);
-          ASSERT_TRUE(OB_SUCCESS != ret);
-          ASSERT_FALSE(is_expired);
-        }
-        init_scan_param(scan_param);
-        ASSERT_EQ(COLUMN_COUNT, scan_param.get_column_id_size());
-        ret = merge_filter.adjust_scan_param(0, 0, scan_param);
-        ASSERT_TRUE(OB_SUCCESS == ret);
-        ASSERT_EQ(COLUMN_COUNT, scan_param.get_column_id_size());
-        ASSERT_EQ(0, scan_param.get_composite_columns_size());
-        init_sstable_row(row);
-        for (int64_t i = 0; i < 10; ++i)
-        {
-          ret = merge_filter.check_and_trim_row(0, i, row, is_expired);
-          ASSERT_TRUE(OB_SUCCESS == ret);
-          ASSERT_TRUE(is_expired);
-        }
-        ASSERT_EQ(COLUMN_COUNT, row.get_obj_count());
       }
 
       TEST_F(TestTabletMergerFilter, test_with_invalid_expire)
       {
         int ret = OB_SUCCESS;
-        ObTablet tablet(NULL);
+        ObTablet tablet(&g_image);
         ObSchemaManagerV2 schema;
         ObTabletMergerFilter merge_filter;
         ObScanParam scan_param;
@@ -351,7 +246,7 @@ namespace oceanbase
         return;
 
         load_schema(schema, SCHEMA_WITH_INVALID_EXPIRE);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
+        ret = merge_filter.init(schema, 1, &tablet, FROZEN_VERSION,
           tbsys::CTimeUtil::getTime());
         ASSERT_TRUE(OB_SUCCESS == ret);
         ASSERT_TRUE(merge_filter.need_filter());
@@ -382,7 +277,7 @@ namespace oceanbase
 
         merge_filter.reset();
         tablet.set_last_do_expire_version(0);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
+        ret = merge_filter.init(schema, 1, &tablet, FROZEN_VERSION,
           tbsys::CTimeUtil::getTime() + 10 * 1000 * 1000);
         ASSERT_TRUE(OB_SUCCESS == ret);
         ASSERT_TRUE(merge_filter.need_filter());
@@ -417,7 +312,7 @@ namespace oceanbase
       TEST_F(TestTabletMergerFilter, test_with_valid_expire)
       {
         int ret = OB_SUCCESS;
-        ObTablet tablet(NULL);
+        ObTablet tablet(&g_image);
         ObSchemaManagerV2 schema;
         ObTabletMergerFilter merge_filter;
         ObScanParam scan_param;
@@ -427,7 +322,7 @@ namespace oceanbase
 
         init_tablet(tablet);
         load_schema(schema, SCHEMA_WITH_VALID_EXPIRE);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
+        ret = merge_filter.init(schema, 1, &tablet, FROZEN_VERSION,
           tbsys::CTimeUtil::getTime());
         ASSERT_TRUE(OB_SUCCESS == ret);
         ASSERT_FALSE(merge_filter.need_filter());
@@ -448,7 +343,7 @@ namespace oceanbase
 
         merge_filter.reset();
         tablet.set_last_do_expire_version(LAST_DO_EXPIRE_VERSION - 1);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
+        ret = merge_filter.init(schema, 1, &tablet, FROZEN_VERSION,
           tbsys::CTimeUtil::getTime() + 10 * 1000 * 1000);
         ASSERT_TRUE(OB_SUCCESS == ret);
         ASSERT_TRUE(merge_filter.need_filter());
@@ -482,7 +377,7 @@ namespace oceanbase
       TEST_F(TestTabletMergerFilter, test_mult_group_with_valid_expire)
       {
         int ret = OB_SUCCESS;
-        ObTablet tablet(NULL);
+        ObTablet tablet(&g_image);
         ObSchemaManagerV2 schema;
         ObTabletMergerFilter merge_filter;
         ObScanParam scan_param;
@@ -492,7 +387,7 @@ namespace oceanbase
 
         init_tablet(tablet);
         load_schema(schema, SCHEMA_WITH_EXPIRE);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
+        ret = merge_filter.init(schema, 4, &tablet, FROZEN_VERSION,
           tbsys::CTimeUtil::getTime());
         ASSERT_TRUE(OB_SUCCESS == ret);
         ASSERT_FALSE(merge_filter.need_filter());
@@ -508,7 +403,7 @@ namespace oceanbase
           for (int64_t i = 0; i < 10; ++i)
           {
             ret = merge_filter.check_and_trim_row(j, i, row, is_expired);
-            ASSERT_TRUE(OB_SUCCESS == ret);
+            ASSERT_TRUE(OB_SUCCESS == ret) << "i:" << i << ",j:" << j;
             ASSERT_FALSE(is_expired);
           }
         }
@@ -516,7 +411,7 @@ namespace oceanbase
 
         merge_filter.reset();
         tablet.set_last_do_expire_version(LAST_DO_EXPIRE_VERSION - 1);
-        ret = merge_filter.init(schema, &tablet, FROZEN_VERSION, 
+        ret = merge_filter.init(schema, 4, &tablet, FROZEN_VERSION,
           tbsys::CTimeUtil::getTime() + 10 * 1000 * 1000);
         ASSERT_TRUE(OB_SUCCESS == ret);
         ASSERT_TRUE(merge_filter.need_filter());
@@ -528,13 +423,13 @@ namespace oceanbase
           init_scan_param(scan_param);
           ASSERT_EQ(COLUMN_COUNT, scan_param.get_column_id_size());
           ret = merge_filter.adjust_scan_param(j, j, scan_param);
-          ASSERT_TRUE(OB_SUCCESS == ret);
+          ASSERT_TRUE(OB_SUCCESS == ret) << "j:" << j;
           if (j > 0)
           {
             ASSERT_EQ(COLUMN_COUNT, scan_param.get_column_id_size());
             ASSERT_EQ(0, scan_param.get_composite_columns_size());
           }
-          else 
+          else
           {
             ASSERT_EQ(COLUMN_COUNT + 1, scan_param.get_column_id_size());
             ASSERT_EQ(1, scan_param.get_composite_columns_size());

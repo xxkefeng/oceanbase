@@ -90,6 +90,9 @@ def print_table(file_name, table, typelist):
   line.strip()
   print >>f, line
 
+  print >>f, column_ids.split()[0]
+  print >>f, string.join(column_ids.split()[0:], " ")
+
 
   for i in range(0, row_num):
     line = ""
@@ -240,6 +243,7 @@ def gen_ups(file_name, ups_data_file_name, result_file_name, ups_table_id, for_j
   print >>result_file, table_id
   print >>ups_data_file, ups_table_id
 
+  #line = f.readline() #jump rowkey define
   line = f.readline()
   tmp = line.strip().split(" ")
   row_count = int(tmp[0])
@@ -253,6 +257,9 @@ def gen_ups(file_name, ups_data_file_name, result_file_name, ups_table_id, for_j
   line = f.readline()
   type_line = line.strip()
   types = line.strip().split(" ");
+
+  f.readline() # skip line
+  f.readline() # skip line
 
   ups_data_lines = []
   result_lines = []
@@ -288,12 +295,21 @@ def gen_ups(file_name, ups_data_file_name, result_file_name, ups_table_id, for_j
   print >>result_file, len(result_lines), column_count
   print >>result_file, column_ids_line
   print >>result_file, type_line
+
+  print >>result_file, column_ids_line.split()[0]
+  print >>result_file, string.join(column_ids_line.split()[0:], " ")
+
+
   for i in result_lines:
     print >>result_file, i
 
   print >>ups_data_file, len(ups_data_lines), len(ups_column_ids) + 1
   print >>ups_data_file, "1 %s" % (string.join(map(lambda x:str(x), ups_column_ids), " ")) 
   print >>ups_data_file, "1 %s" % (string.join(get_types(types, ups_column_ids))) 
+
+  print >>ups_data_file, 1
+  print >>ups_data_file, "1 %s" % (string.join(map(lambda x:str(x), ups_column_ids), " ")) 
+
   for i in ups_data_lines:
     print >>ups_data_file, i
 

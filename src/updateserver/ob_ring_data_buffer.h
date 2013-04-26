@@ -58,8 +58,8 @@ namespace oceanbase
         int64_t block_size_shift_;
         int64_t n_blocks_;
         ObDataBlock blocks_[MAX_N_BLOCKS];
-        int64_t start_pos_;
-        int64_t end_pos_;
+        volatile int64_t start_pos_;
+        volatile int64_t end_pos_;
     };
   }; // end namespace updateserver
 }; // end namespace oceanbase

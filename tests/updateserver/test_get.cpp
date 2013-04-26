@@ -25,11 +25,13 @@
 #include "updateserver/ob_ups_table_mgr.h"
 #include "updateserver/ob_update_server_main.h"
 #include "test_ups_table_mgr_helper.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
 using namespace oceanbase::updateserver;
 
+static CharArena allocator_;
 
 namespace oceanbase
 {
@@ -88,7 +90,7 @@ TEST_F(TestGet, test_get_one_row)
     for (int64_t j = 0; j < COL_NUM; ++j)
     {
       cell_infos[i][j].table_id_ = table_id;
-      cell_infos[i][j].row_key_.assign(row_key_strs[i], static_cast<int32_t>(strlen(row_key_strs[i])));
+      cell_infos[i][j].row_key_ = make_rowkey(row_key_strs[i], &allocator_);
 
       cell_infos[i][j].column_id_ = j + 10;
 

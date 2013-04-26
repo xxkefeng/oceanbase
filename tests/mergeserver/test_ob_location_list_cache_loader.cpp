@@ -1,13 +1,14 @@
-#include "mergeserver/ob_location_list_cache_loader.h"
+#include "ob_location_list_cache_loader.h"
 #include "gtest/gtest.h"
 #include <string>
 
 using namespace oceanbase;
 using namespace common;
 using namespace mergeserver;
+using namespace mergeserver::test;
 using namespace std;
 
-void dump_decoded_location_list_cache(ObMergerTabletLocationCache &p)
+void dump_decoded_location_list_cache(ObTabletLocationCache &p)
 {
   UNUSED(p);
   /*
@@ -39,7 +40,7 @@ int main()
   {
     loader->dump_config();
     /* read from SQL file */
-    ObMergerTabletLocationCache cache;
+    ObTabletLocationCache cache;
     loader->get_decoded_location_list_cache(cache);
     dump_decoded_location_list_cache(cache);
     TBSYS_LOG(INFO, "end");

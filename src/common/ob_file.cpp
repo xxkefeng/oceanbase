@@ -32,7 +32,7 @@ namespace oceanbase
     namespace FileComponent
     {
       template <class T>
-      int open(const ObString &fname, T &file, int &fd)
+      int open(const ObString &fname, const T &file, int &fd)
       {
         int ret = OB_SUCCESS;
         if (-1 != fd)
@@ -359,12 +359,19 @@ namespace oceanbase
         int ret = OB_SUCCESS;
         this->add_create_flags_();
         this->add_excl_flags_();
-        ret = FileComponent::open(fname, *this, fd_);
-        this->set_normal_flags_();
-        this->set_file_pos_(0);
-        if (OB_SUCCESS != (ret = this->prepare_buffer_()))
+        if (OB_SUCCESS != (ret = FileComponent::open(fname, *this, fd_)))
         {
-          this->close();
+          TBSYS_LOG(WARN, "open file error:ret=%d,fname=%s,fd_=%d", 
+              ret, fname.ptr(), fd_);
+        }
+        else
+        {
+          this->set_normal_flags_();
+          this->set_file_pos_(0);
+          if (OB_SUCCESS != (ret = this->prepare_buffer_()))
+          {
+            this->close();
+          }
         }
         return ret;
       }
@@ -899,13 +906,13 @@ namespace oceanbase
       {
         for (int64_t retry = 0; retry < 3;)
         {
-        write_ret = ::pwrite(fd, (char*)buf + offset2write, length2write, offset + offset2write);
-        if (0 >= write_ret)
-        {
-          if (errno == EINTR) // 阻塞IO不需要判断EAGAIN
+          write_ret = ::pwrite(fd, (char*)buf + offset2write, length2write, offset + offset2write);
+          if (0 >= write_ret)
           {
-            continue;
-          }
+            if (errno == EINTR) // 阻塞IO不需要判断EAGAIN
+            {
+              continue;
+            }
             TBSYS_LOG(ERROR, "pwrite fail ret=%ld errno=%u fd=%d buf=%p size2write=%ld offset2write=%ld retry_num=%ld",
                       write_ret, errno, fd, (char*)buf + offset2write, length2write, offset + offset2write, retry);
             retry++;
@@ -939,7 +946,7 @@ namespace oceanbase
       {
         for (int64_t retry = 0; retry < 3;)
         {
-        read_ret = ::pread(fd, (char*)buf + offset2read, length2read, offset + offset2read);
+          read_ret = ::pread(fd, (char*)buf + offset2read, length2read, offset + offset2read);
           if (0 > read_ret)
           {
             if (errno == EINTR) // 阻塞IO不需要判断EAGAIN
@@ -1540,6 +1547,302 @@ namespace oceanbase
       }
       return ret;
     }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef __USE_AIO_FILE
+    ObFileAsyncAppender::ObFileAsyncAppender() : pool_(),
+                                                 fd_(-1),
+                                                 file_pos_(0),
+                                                 align_size_(0),
+                                                 cur_iocb_(NULL)
+    {
+      memset(&ctx_, 0, sizeof(ctx_));
+      int tmp_ret = 0;
+      if (0 != (tmp_ret = io_setup(AIO_MAXEVENTS, &ctx_)))
+      {
+        TBSYS_LOG(ERROR, "io_setup fail ret=%d", tmp_ret);
+      }
+    }
+
+    ObFileAsyncAppender::~ObFileAsyncAppender()
+    {
+      io_destroy(ctx_);
+      if (-1 != fd_)
+      {
+        close();
+      }
+    }
+
+    int ObFileAsyncAppender::open(const ObString &fname,
+        const bool dio,
+        const bool is_create,
+        const bool is_trunc,
+        const int64_t align_size)
+    {
+      int ret = OB_SUCCESS;
+      const bool is_excl = false;
+      OpenParam op(dio, is_create, is_trunc, is_excl);
+      if (-1 != fd_)
+      {
+        ret = OB_INIT_TWICE;
+      }
+      else if (!dio
+              || !is2n(align_size))
+      {
+        TBSYS_LOG(WARN, "invalid param dio=%s align_size=%ld", STR_BOOL(dio), align_size);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (OB_SUCCESS != (ret = FileComponent::open(fname, op, fd_)))
+      {
+        TBSYS_LOG(WARN, "open file fail, ret=%d dio=%s is_create=%s is_trunc=%s is_excl=%s fname=[%.*s]",
+                  ret, STR_BOOL(dio), STR_BOOL(is_create), STR_BOOL(is_trunc), STR_BOOL(is_excl), fname.length(), fname.ptr());
+      }
+      else
+      {
+        file_pos_ = get_file_size(fd_);
+        if (0 != (file_pos_ % align_size))
+        {
+          TBSYS_LOG(WARN, "file_size=%ld do not align, align_size=%ld fd=%d", file_pos_, align_size, fd_);
+          close();
+        }
+        else
+        {
+          align_size_ = align_size;
+        }
+      }
+      return ret;
+    }
+
+    int ObFileAsyncAppender::create(const ObString &fname,
+        const bool dio,
+        const int64_t align_size)
+    {
+      int ret = OB_SUCCESS;
+      const bool is_create = true;
+      const bool is_trunc = false;
+      const bool is_excl = true;
+      OpenParam op(dio, is_create, is_trunc, is_excl);
+      if (-1 != fd_)
+      {
+        ret = OB_INIT_TWICE;
+      }
+      else if (!dio
+              || !is2n(align_size))
+      {
+        TBSYS_LOG(WARN, "invalid param dio=%s align_size=%ld", STR_BOOL(dio), align_size);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (OB_SUCCESS != (ret = FileComponent::open(fname, op, fd_)))
+      {
+        TBSYS_LOG(WARN, "open file fail, ret=%d dio=%s is_create=%s is_trunc=%s is_excl=%s fname=[%.*s]",
+                  ret, STR_BOOL(dio), STR_BOOL(is_create), STR_BOOL(is_trunc), STR_BOOL(is_excl), fname.length(), fname.ptr());
+      }
+      else
+      {
+        file_pos_ = 0;
+        align_size_ = align_size;
+      }
+      return ret;
+    }
+
+    void ObFileAsyncAppender::close()
+    {
+      if (-1 != fd_)
+      {
+        if (OB_SUCCESS != fsync())
+        {
+          // Fatal error
+          TBSYS_LOG(ERROR, "fsync fail fd=%d, will set fd=-1, and the fd will leek", fd_);
+        }
+        else
+        {
+          ftruncate(fd_, file_pos_);
+          ::close(fd_);
+        }
+        fd_ = -1;
+        cur_iocb_ = NULL;
+      }
+    }
+
+    int64_t ObFileAsyncAppender::get_file_pos() const
+    {
+      return file_pos_;
+    }
+
+    int ObFileAsyncAppender::append(const void *buf,
+        const int64_t count,
+        const bool is_fsync)
+    {
+      int ret = OB_SUCCESS;
+      UNUSED(buf);
+      UNUSED(count);
+      UNUSED(is_fsync);
+      AIOCB *iocb = NULL;
+      if (-1 == fd_)
+      {
+        ret = OB_NOT_INIT;
+      }
+      else if (NULL == buf
+              || 0 >= count)
+      {
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        int64_t size2append = count;
+        while (0 < size2append)
+        {
+          if (NULL == (iocb = get_iocb_()))
+          {
+            ret = OB_AIO_TIMEOUT;
+            break;
+          }
+          int64_t buffer_available = AIO_BUFFER_SIZE - iocb->buffer_pos;
+          int64_t size2copy = std::min(buffer_available, size2append);
+          memcpy(iocb->buffer + iocb->buffer_pos, (char*)buf + (count - size2append), size2copy);
+          iocb->buffer_pos += size2copy;
+          size2append -= size2copy;
+          if (AIO_BUFFER_SIZE == iocb->buffer_pos
+              && OB_SUCCESS != (ret = submit_iocb_(iocb)))
+          {
+            break;
+          }
+        }
+        if (OB_SUCCESS != ret
+            && 0 != size2append
+            && count != size2append)
+        {
+          // Fatal error
+          TBSYS_LOG(ERROR, "iocb timeout, to protect the file, will set fd=-1, and the fd will leek");
+          fd_ = -1;
+          cur_iocb_ = NULL;
+        }
+        if (OB_SUCCESS == ret
+            && is_fsync)
+        {
+          ret = fsync();
+        }
+      }
+      return ret;
+    }
+
+    int ObFileAsyncAppender::fsync()
+    {
+      int ret = OB_SUCCESS;
+      if (-1 == fd_)
+      {
+        ret = OB_NOT_INIT;
+      }
+      else if (NULL != cur_iocb_)
+      {
+        ret = submit_iocb_(cur_iocb_);
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        int64_t pool_used = pool_.used();
+        for (int64_t i = 0; i < pool_used; i++)
+        {
+          wait();
+        }
+        if (0 != pool_.used())
+        {
+          ret = OB_AIO_TIMEOUT;
+        }
+      }
+      return ret;
+    }
+
+    int ObFileAsyncAppender::submit_iocb_(AIOCB *iocb)
+    {
+      int ret = OB_SUCCESS;
+      io_prep_pwrite(&(iocb->cb), fd_, iocb->buffer, upper_align(iocb->buffer_pos, align_size_), file_pos_);
+      iocb->cb.data = iocb;
+      struct iocb* cb_ptr = &(iocb->cb);
+      int tmp_ret = 0;
+      if (1 != (tmp_ret = io_submit(ctx_, 1, &cb_ptr)))
+      {
+        TBSYS_LOG(WARN, "io_submit fail ret=%d", tmp_ret);
+        ret = OB_ERR_UNEXPECTED;
+      }
+      else
+      {
+        file_pos_ += iocb->buffer_pos;
+        cur_iocb_ = NULL;
+      }
+      return ret;
+    }
+
+    ObFileAsyncAppender::AIOCB *ObFileAsyncAppender::get_iocb_()
+    {
+      AIOCB *ret = NULL;
+      if (NULL != cur_iocb_)
+      {
+        if (AIO_BUFFER_SIZE != cur_iocb_->buffer_pos)
+        {
+          ret = cur_iocb_;
+        }
+        else
+        {
+          if (OB_SUCCESS  == submit_iocb_(cur_iocb_))
+          {
+            pool_.alloc_obj(cur_iocb_, *this);
+            ret = cur_iocb_;
+          }
+        }
+      }
+      else 
+      {
+        pool_.alloc_obj(cur_iocb_, *this);
+        ret = cur_iocb_;
+      }
+      if (NULL != ret
+          && NULL == ret->buffer)
+      {
+        if (NULL == (ret->buffer = (char*)memalign(align_size_, AIO_BUFFER_SIZE)))
+        {
+          TBSYS_LOG(WARN, "alloc async buffer fail");
+          pool_.free_obj(ret);
+          cur_iocb_ = NULL;
+          ret = NULL;
+        }
+        else
+        {
+          memset(ret->buffer, 0, AIO_BUFFER_SIZE);
+        }
+      }
+      return ret;
+    }
+
+    void ObFileAsyncAppender::wait()
+    {
+      struct timespec ts;
+      ts.tv_sec = AIO_WAIT_TIME_US / 1000000;
+      ts.tv_nsec = (AIO_WAIT_TIME_US % 1000000) * 1000;
+      struct io_event ioe[1];
+      int64_t ret_num = io_getevents(ctx_, 1, 1, ioe, &ts);
+      for (int64_t i = 0; i < ret_num; i++)
+      {
+        AIOCB *iocb = (AIOCB*)ioe[i].data;
+        if (NULL != iocb
+            && 0 == ioe[i].res2
+            && upper_align(iocb->buffer_pos, align_size_) == (int64_t)ioe[i].res)
+        {
+          iocb->buffer_pos = 0;
+          pool_.free_obj(iocb);
+        }
+        else
+        {
+          // Fatal error
+          TBSYS_LOG(ERROR, "iocb return fail iocb=%p res=%ld res2=%ld, will set fd=-1, and the fd will leek",
+                    ioe[i].data, ioe[i].res, ioe[i].res2);
+          fd_ = -1;
+          cur_iocb_ = NULL;
+        }
+      }
+    }
+#endif // __USE_AIO_FILE
   }
 }
 

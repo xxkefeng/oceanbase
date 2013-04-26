@@ -83,9 +83,18 @@ namespace oceanbase
                const ObSSTableReader* const readers[], const int64_t reader_size,
                bool not_exit_col_ret_nop = false, ObSSTableRowCache* row_cache = NULL);
 
-      int64_t get_handled_cells_in_param()
+      inline int64_t get_handled_cells_in_param()
       {
         return handled_cells_;
+      }
+
+      inline int is_row_finished(bool* is_row_finished)
+      {
+        if (NULL != is_row_finished) 
+        {
+          *is_row_finished = is_row_finished_;
+        }
+        return common::OB_SUCCESS;
       }
 
     private:
@@ -139,7 +148,7 @@ namespace oceanbase
        */
       int fetch_block();
 
-      int fetch_cache_row(const common::ObString row_key, 
+      int fetch_cache_row(const common::ObRowkey& row_key, 
         const int64_t store_style, ObSSTableRowCacheValue& row_cache_val);
 
       /**
@@ -172,7 +181,7 @@ namespace oceanbase
                               const uint64_t table_id,
                               const uint64_t column_group_id);
       int filter_column_group();
-      
+
     private:
       enum ObGetterIterState
       {
@@ -192,6 +201,7 @@ namespace oceanbase
       bool inited_;                     //whether sstable getter is initialized
       ObGetterIterState cur_state_;     //current getter state
       bool not_exit_col_ret_nop_;       //whether return nop if columns doesn't exit
+      bool is_row_finished_;            //whether the row is end
 
       const ObSSTableReader* const* readers_; //sstable readers
       int64_t readers_size_;            //sstable readers count
@@ -216,6 +226,8 @@ namespace oceanbase
 
       common::ObMemBuf uncomp_buf_;     //uncompressed buffer
       common::ObMemBuf row_buf_;     //sstable row data buffer
+      common::ObObj rowkey_obj_array_[common::OB_MAX_ROWKEY_COLUMN_NUMBER];
+      common::ObRowkeyInfo rowkey_info_; // for deserialize old fashion binary rowkey
     };
   }//end namespace sstable
 }//end namespace oceanbase

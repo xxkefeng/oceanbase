@@ -9,12 +9,21 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 using namespace oceanbase::common;
 namespace oceanbase
 {
   namespace test
   {
+#define core() (*(char*)(0) = 0)
+    inline int64_t get_usec()
+    {
+      struct timeval time_val;
+      gettimeofday(&time_val, NULL);
+      return time_val.tv_sec*1000000 + time_val.tv_usec;
+    }
+    
     struct CBuf {
       CBuf(): buf_(NULL), len_(0), pos_(0) {}
       ~CBuf() {}

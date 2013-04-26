@@ -1,5 +1,4 @@
 #include "ob_update_stmt.h"
-#include "parse_tools.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -39,7 +38,6 @@ namespace oceanbase
       fprintf(fp, "ObUpdateStmt %d End\n", index);
     }
 
-    
+
   }
 }
-

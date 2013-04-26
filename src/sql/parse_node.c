@@ -30,32 +30,32 @@ void destroy_tree(ParseNode* root)
 void print_tree(ParseNode* root, int level)
 {
   int i;
-  for(i = 0; i < level; ++i) 
-    printf("    ");
+  for(i = 0; i < level; ++i)
+    fprintf(stderr,"    ");
   if(root == 0)
   {
-    printf("NULL\n");
+    fprintf(stderr,"|-NULL\n");
     return;
   }
 
-  printf("%s", get_type_name(root->type_));
+  fprintf(stderr,"|-%s", get_type_name(root->type_));
   switch(root->type_)
   {
   case T_BOOL:
     if (root->value_ == 1)
-      printf(" : TRUE\n");
+      fprintf(stderr," : TRUE\n");
     else if (root->value_ == 0)
-      printf(" : FALSE\n");
+      fprintf(stderr," : FALSE\n");
     else
-      printf(" : UNKNOWN\n");
+      fprintf(stderr," : UNKNOWN\n");
     break;
   case T_BINARY:
-    printf(" : \\x");
+    fprintf(stderr," : \\x");
     for(i = 0; i < root->value_; ++i)
     {
-      printf("%02x", (unsigned char)root->str_value_[i]);
+      fprintf(stderr,"%02x", (unsigned char)root->str_value_[i]);
     }
-    printf("\n");
+    fprintf(stderr,"\n");
     break;
   case T_INT:
   case T_FLOAT:
@@ -65,40 +65,48 @@ void print_tree(ParseNode* root, int level)
   case T_DATE:
   case T_HINT:
   case T_IDENT:
-    printf(" : %s\n", root->str_value_);
+    fprintf(stderr," : %s\n", root->str_value_);
     break;
   case T_FUN_SYS:
-    printf(" : %s\n", root->str_value_);
+    fprintf(stderr," : %s\n", root->str_value_);
     break;
   default:
-    printf("\n");
+    fprintf(stderr,"\n");
     break;
   }
   for(i = 0; i < root->num_child_; ++i)
   {
-    if (root->children_[i])
-      print_tree(root->children_[i], level+1);
+    print_tree(root->children_[i], level+1);
   }
 }
 
 ParseNode* new_node(void *malloc_pool, ObItemType type, int num)
 {
-  //ParseNode* node = (ParseNode*)malloc(sizeof(ParseNode));
   ParseNode* node = (ParseNode*)parse_malloc(sizeof(ParseNode), malloc_pool);
-  memset(node, 0 , sizeof(ParseNode));
+  if (node != NULL)
+  {
+    memset(node, 0 , sizeof(ParseNode));
 
-  node->type_ = type;
-  node->num_child_ = num;
-  if(num > 0)
-  {
-    int64_t alloc_size = sizeof(ParseNode*) * num ;
-    //node->children_ = (ParseNode**)malloc(alloc_size);
-    node->children_ = (ParseNode**)parse_malloc(alloc_size, malloc_pool);
-    memset(node->children_, 0, alloc_size);
-  }
-  else
-  {
-    node->children_ = 0;
+    node->type_ = type;
+    node->num_child_ = num;
+    if(num > 0)
+    {
+      int64_t alloc_size = sizeof(ParseNode*) * num ;
+      //node->children_ = (ParseNode**)malloc(alloc_size);
+      node->children_ = (ParseNode**)parse_malloc(alloc_size, malloc_pool);
+      if (node->children_ != NULL)
+      {
+        memset(node->children_, 0, alloc_size);
+      }
+      else
+      {
+        parse_free(node);
+      }
+    }
+    else
+    {
+      node->children_ = 0;
+    }
   }
   return node;
 }
@@ -115,7 +123,7 @@ int count_child(ParseNode* root)
   int i;
   for(i = 0; i < root->num_child_; ++i)
   {
-    count += count_child(root->children_[i]);  
+    count += count_child(root->children_[i]);
   }
   return count;
 }
@@ -131,7 +139,7 @@ void merge_child(ParseNode* node, ParseNode* source_tree, int* index)
     int i;
     for(i = 0; i < source_tree->num_child_; ++i)
     {
-      merge_child(node, source_tree->children_[i], index);  
+      merge_child(node, source_tree->children_[i], index);
       source_tree->children_[i] = 0;
     }
     destroy_tree(source_tree);
@@ -152,10 +160,17 @@ ParseNode* merge_tree(void *malloc_pool, ObItemType node_tag, ParseNode* source_
   if(source_tree == NULL)
     return NULL;
   num = count_child(source_tree);
-  node = new_node(malloc_pool, node_tag, num);
-  merge_child(node, source_tree, &index);
-  assert(index == num);
+  if ((node = new_node(malloc_pool, node_tag, num)) != NULL)
+  {
+    merge_child(node, source_tree, &index);
+    assert(index == num);
+  }
   return node;
+}
+
+ParseNode* new_terminal_node(void *malloc_pool, ObItemType type)
+{
+  return new_node(malloc_pool, type, 0);
 }
 
 ParseNode* new_non_terminal_node(void *malloc_pool, ObItemType node_tag, int num, ...)
@@ -163,14 +178,17 @@ ParseNode* new_non_terminal_node(void *malloc_pool, ObItemType node_tag, int num
   assert(num>0);
   va_list va;
   int i;
-  
+
   ParseNode* node = new_node(malloc_pool, node_tag, num);
-  va_start(va, num);
-  for( i = 0; i < num; ++i)
+  if (node != NULL)
   {
-    node->children_[i] = va_arg(va, ParseNode*);
+    va_start(va, num);
+    for( i = 0; i < num; ++i)
+    {
+      node->children_[i] = va_arg(va, ParseNode*);
+    }
+    va_end(va);
   }
-  va_end(va);
   return node;
 }
 
@@ -189,5 +207,3 @@ char* copy_expr_string(ParseResult* p, int expr_start, int expr_end)
   }
   return expr_string;
 }
-
-

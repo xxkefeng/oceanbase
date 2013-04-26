@@ -17,7 +17,7 @@
 
 #include "ob_vector.h"
 #include "ob_object.h"
-#include "ob_string.h"
+#include "ob_rowkey.h"
 
 namespace oceanbase
 {
@@ -26,7 +26,7 @@ namespace oceanbase
     struct ObSimpleRightJoinCell
     {
       uint64_t table_id;
-      ObString rowkey;
+      ObRowkey rowkey;
     };
     template <> 
     struct ob_vector_traits<ObSimpleRightJoinCell>

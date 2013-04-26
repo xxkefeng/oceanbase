@@ -17,6 +17,7 @@
 #ifndef __OCEANBASE_CHUNKSERVER_OB_CLIENT_WRAPPER_TSI_H__
 #define __OCEANBASE_CHUNKSERVER_OB_CLIENT_WRAPPER_TSI_H__
 
+#include "mergeserver/ob_ms_tablet_location_proxy.h"
 #include "ob_client_wrapper.h"
 
 namespace oceanbase
@@ -48,7 +49,7 @@ namespace oceanbase
         int init(const int64_t rpc_retry_times, const int64_t rpc_timeout, const ObServer& root_server,
             const ObServer& merge_server, ObUpsTableMgr& table_mgr,
             ObUpsCache& ups_cache, ObMergerRpcStub* rpc_stub, ObMergerSchemaManager* schema,
-            ObMergerTabletLocationCache* tablet_cache, ObMergerServiceMonitor* monitor = NULL)
+            ObMergerLocationCacheProxy* tablet_cache)
         {
           int ret = OB_SUCCESS;
 
@@ -63,7 +64,7 @@ namespace oceanbase
             }
             else
             {
-              ret = client_wrapper_->init(rpc_stub, schema, tablet_cache, monitor);
+              ret = client_wrapper_->init(rpc_stub, schema, tablet_cache);
               if (OB_SUCCESS != ret)
               {
                 TBSYS_LOG(WARN, "failed to init client wrapper, ret=%d", ret);

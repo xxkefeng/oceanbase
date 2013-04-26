@@ -101,6 +101,7 @@ namespace oceanbase
       /// @brief 备主用来设置备备的日志同步点
       int set_send_log_point(const ObServer &server, const uint64_t send_log_point);
 
+        int set_log_sync_timeout_us(const int64_t timeout);
       /// @brief 向各台Slave发送数据
       /// 目前依次向各台Slave发送数据, 并且等待Slave的成功返回
       /// Slave返回操作失败或者发送超时的情况下, 将Slave下线并等待租约(Lease)超时
@@ -110,6 +111,8 @@ namespace oceanbase
       /// @retval OB_PARTIAL_FAILED 同步Slave过程中有失败
       /// @retval otherwise 其他错误
       virtual int send_data(const char* data, const int64_t length);
+      virtual int post_log_to_slave(const char* data, const int64_t length);
+      virtual int wait_post_log_to_slave(const char* data, const int64_t length);
 
       /// @brief 获取Slave个数
       /// @retval slave_num_ Slave个数

@@ -54,7 +54,7 @@ void gen_file(vector<string> &v)
   char buf[4096];
   char no_delima_buf[4096];
   char *date = "2011-08-09 03:10:12";
-  int idate = rand();
+  //int idate = rand();
 
   for(int i = 0;i < linenr; i++) {
 //    snprintf(buf, 4096, "%d\01%d\01%d\01%f\01%d\01%d\01%d\01%d\01%d\n", 
@@ -63,9 +63,9 @@ void gen_file(vector<string> &v)
     string str1 = gen_str();
 
     if (single) {
-      snprintf(buf, 4096, "%d\01%s\01%s\n", i, str.c_str(), str1.c_str());
+      snprintf(buf, 4096, "%d\01%s\01%s\01%s\n", i, str.c_str(), str1.c_str(), date);
     } else {
-      snprintf(buf, 4096, "%d\01\t%s\01\t%s\02\n", i, str.c_str(), str1.c_str());
+      snprintf(buf, 4096, "%d\01\t%s\01\t%s\01\t%s\02\n", i, str.c_str(), str1.c_str(), date);
     }
 
     snprintf(no_delima_buf, 4096, "%d\t%s\t%s\n", i, str.c_str(), str1.c_str());

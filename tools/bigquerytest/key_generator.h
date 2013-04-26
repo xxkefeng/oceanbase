@@ -18,7 +18,7 @@
 #define __OCEANBASE_KEY_GENERATOR_H__
 
 #include "util.h"
-#include "obsql_client.h"
+#include "mysql_client.h"
 #include "prefix_info.h"
 #include "bigquerytest_param.h"
 
@@ -37,7 +37,7 @@ class KeyGenerator
     KeyGenerator();
     ~KeyGenerator();
 
-    int init(ObSqlClient& ob_client, BigqueryTestParam& param);
+    int init(PrefixInfo& prefix_info, BigqueryTestParam& param);
 
   public:
     int get_next_key(uint64_t& prefix, bool is_read);
@@ -46,7 +46,7 @@ class KeyGenerator
     int get_next_key(uint64_t& prefix, GenType type);
 
   private:
-    PrefixInfo prefix_info_;
+    PrefixInfo* prefix_info_;
     uint64_t client_id_;
 };
 

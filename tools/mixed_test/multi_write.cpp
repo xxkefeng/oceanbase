@@ -281,12 +281,13 @@ int main(int argc, char **argv)
     {
       int64_t timeu = tbsys::CTimeUtil::getTime();
       ret = client.apply(mutator);
-      TBSYS_LOG(DEBUG, "apply ret=%d timeu=%ld\n", ret, tbsys::CTimeUtil::getTime() - timeu);
+      TBSYS_LOG(INFO, "apply ret=%d timeu=%ld\n", ret, tbsys::CTimeUtil::getTime() - timeu);
       if (OB_SUCCESS == ret)
       {
         break;
       }
     }
   }
+  client.destroy();
 }
 

@@ -2,9 +2,11 @@
 #include "common/ob_define.h"
 #include "get_all_column.h"
 #include "olap.h"
+#include "../../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 GetSingleRowAllColumn GetSingleRowAllColumn::static_case_;
+static CharArena allocator_;
 
 bool GetSingleRowAllColumn::check_result(const uint32_t min_key_include, const uint32_t max_key_include, ObScanner &result,
   void *arg)
@@ -17,7 +19,7 @@ bool GetSingleRowAllColumn::check_result(const uint32_t min_key_include, const u
   uint32_t big_endian_rowkey_val = *(uint32_t*)(((*get_param)[0])->row_key_.ptr());
   uint32_t rowkey_val = ntohl(big_endian_rowkey_val);
   ObCellInfo target_cell;
-  target_cell.row_key_.assign((char*)&big_endian_rowkey_val, sizeof(big_endian_rowkey_val));
+  target_cell.row_key_ = (*get_param)[0]->row_key_;
   target_cell.table_name_ = msolap::target_table_name;
   if (result.get_cell_num() != msolap::max_column_id - msolap::min_column_id + 1)
   {
@@ -98,11 +100,13 @@ int GetSingleRowAllColumn::form_get_param(ObGetParam &get_param, const uint32_t 
   int err = OB_SUCCESS;
   arg = NULL;
   uint32_t start_key_val = htonl(static_cast<int32_t>(random()%(max_key_include - min_key_include + 1) + min_key_include));
+  char key[32];
+  snprintf(key, 32, "%d", start_key_val);
   get_param.reset(true);
   ObCellInfo cell;
   cell.table_name_ = msolap::target_table_name;
   cell.column_name_ = ObGetParam::OB_GET_ALL_COLUMN_NAME;
-  cell.row_key_.assign((char*)&start_key_val,sizeof(start_key_val));
+  cell.row_key_ = make_rowkey(key, &allocator_);
   if (OB_SUCCESS != (err = get_param.add_cell(cell)))
   {
     TBSYS_LOG(WARN,"fail to add cell to ObGetParam [err:%d]", err);

@@ -1,6 +1,7 @@
 #include "common/ob_get_param.h"
 #include "common/ob_scan_param.h"
 #include "common/ob_scanner.h"
+#include "common/utility.h"
 #include "ob_ms_scanner_encoder.h"
 
 using namespace oceanbase::common;
@@ -8,10 +9,10 @@ using namespace oceanbase::mergeserver;
 
 void ObMergerScannerEncoder::output(const common::ObCellInfo & cell)
 {
-  TBSYS_LOG(DEBUG, "tableid:%lu, table_name:%.*s, rowkey:%.*s,"
+  TBSYS_LOG(DEBUG, "tableid:%lu, table_name:%.*s, rowkey:%s,"
       "column_id:%lu, column_name:%.*s, ext:%ld, type:%d",
       cell.table_id_, cell.table_name_.length(), cell.table_name_.ptr(),
-      cell.row_key_.length(), cell.row_key_.ptr(),
+      to_cstring(cell.row_key_),
       cell.column_id_, cell.column_name_.length(), cell.column_name_.ptr(),
       cell.value_.get_ext(), cell.value_.get_type());
 }

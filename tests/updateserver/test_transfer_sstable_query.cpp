@@ -2,11 +2,11 @@
  * (C) 2010-2011 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * test_transfer_sstable_query.cpp for test get and scan 
- * interface of transfer sstable query 
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * test_transfer_sstable_query.cpp for test get and scan
+ * interface of transfer sstable query
  *
  * Authors:
  *   huating <huating.zmq@taobao.com>
@@ -16,14 +16,15 @@
 #include <gtest/gtest.h>
 #include "common/ob_action_flag.h"
 #include "common/ob_scan_param.h"
+#include "common/ob_common_stat.h"
 #include "sstable/ob_sstable_reader.h"
 #include "sstable/ob_sstable_writer.h"
-#include "sstable/ob_sstable_stat.h"
 #include "sstable/ob_sstable_getter.h"
 #include "sstable/ob_sstable_scanner.h"
 #include "updateserver/ob_transfer_sstable_query.h"
 #include "sstable/ob_disk_path.h"
 #include "chunkserver/ob_fileinfo_cache.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
@@ -31,11 +32,12 @@ using namespace oceanbase::sstable;
 using namespace oceanbase::chunkserver;
 using namespace oceanbase::updateserver;
 
+static CharArena allocator_;
 namespace oceanbase
 {
   namespace tests
   {
-    namespace updateserver 
+    namespace updateserver
     {
       static const int64_t table_id = 100;
       static const int64_t sstable_file_id = 1001;
@@ -50,8 +52,6 @@ namespace oceanbase
       static const int64_t OB_MAX_GET_COLUMN_NUMBER = 128;
       static const int64_t DEL_ROW_INTERVAL = 10;
 
-      ObBlockCacheConf bc_conf;
-      ObBlockIndexCacheConf bic_conf;
       static char sstable_file_path[OB_MAX_FILE_NAME_LENGTH];
       static ObCellInfo** cell_infos;
       static char* row_key_strs[ROW_NUM + NON_EXISTENT_ROW_NUM][COL_NUM];
@@ -79,7 +79,7 @@ namespace oceanbase
             EXPECT_EQ((const char*) NULL, real.ptr());
           }
         }
-        
+
         void check_obj(const ObObj& real, int type, int64_t exp_val)
         {
           int64_t real_val;
@@ -99,8 +99,8 @@ namespace oceanbase
             EXPECT_EQ(exp_val, real_val);
           }
         }
-      
-        void check_cell(const ObCellInfo& expected, const ObCellInfo& real, 
+
+        void check_cell(const ObCellInfo& expected, const ObCellInfo& real,
                         int type=ObIntType, uint64_t column_id = UINT64_MAX,
                         bool nop = false)
         {
@@ -115,7 +115,7 @@ namespace oceanbase
             ASSERT_EQ(column_id, real.column_id_);
           }
           ASSERT_EQ(expected.table_id_, real.table_id_);
-          check_string(expected.row_key_, real.row_key_);
+          EXPECT_EQ(expected.row_key_, real.row_key_);
 
           if (ObIntType == type)
           {
@@ -135,7 +135,7 @@ namespace oceanbase
           check_obj(real.value_, type, exp_val);
         }
 
-        void get_one_row(const int32_t row_index = 0, 
+        void get_one_row(const int32_t row_index = 0,
                          const int32_t column_count = COL_NUM,
                          const int32_t nonexistent_column_count = 0,
                          const bool full_row = false)
@@ -167,14 +167,14 @@ namespace oceanbase
             for (int j = 0; j < column_count; j++)
             {
               param_cell = cell_infos[row_index][j];
-              param_cell.column_id_ = j + 2; 
+              param_cell.column_id_ = j + 2;
               ret = get_param.add_cell(param_cell);
               EXPECT_EQ(OB_SUCCESS, ret);
             }
             for (int j = column_count; j < column_count + nonexistent_column_count; j++)
             {
               param_cell = cell_infos[row_index][j];
-              param_cell.column_id_ = COL_NUM + 10; 
+              param_cell.column_id_ = COL_NUM + 10;
               ret = get_param.add_cell(param_cell);
               EXPECT_EQ(OB_SUCCESS, ret);
             }
@@ -185,6 +185,7 @@ namespace oceanbase
           {
             exp_cell_cnt += 1;
           }
+          exp_cell_cnt = full_row ? exp_cell_cnt + 1 : exp_cell_cnt;
 
           reader = readers[row_index / SSTABLE_ROW_NUM];
           reader2 = readers[0];
@@ -198,22 +199,33 @@ namespace oceanbase
           int64_t count = 0;
           int64_t del_row = 0;
           bool is_del_row = false;
+          int64_t col_num = full_row ? column_count + nonexistent_column_count + 1 
+            : column_count + nonexistent_column_count;
           while (OB_SUCCESS == (ret = iterator->next_cell())
                  && OB_SUCCESS == (ret = iterator2->next_cell()))
           {
-            index_i = row_index + (count - del_row) / (column_count + nonexistent_column_count);
-            index_j = (count - del_row) % (column_count + nonexistent_column_count);
-            expected = cell_infos[index_i][index_j];
+            index_i = row_index + (count - del_row) / col_num;
+            index_j = (count - del_row) % col_num;
             expected.table_name_ = table_name;
             EXPECT_EQ(OB_SUCCESS, iterator->get_cell(&ci));
             ASSERT_TRUE(NULL != ci);
             is_del_row = (index_i % DEL_ROW_INTERVAL == 0);
             if (is_del_row && index_j == 0 && del_row == 0)
             {
+              expected = cell_infos[index_i][index_j];
               check_cell(expected, *ci, ObExtendType);
+            }
+            else if (full_row && ((!is_del_row && index_j == 0) 
+                || (is_del_row && ((del_row == 0 && index_j == 1) 
+                    || (del_row > 0 && index_j == 0)))))
+            {
+              // rowkey column 
+              EXPECT_EQ((uint64_t)1, ci->column_id_);
             }
             else
             {
+              index_j = full_row ? index_j - 1 : index_j;
+              expected = cell_infos[index_i][index_j];
               if (is_del_row)
               {
                 if (index_j < COL_NUM - 1)
@@ -234,20 +246,29 @@ namespace oceanbase
               {
                 check_cell(expected, *ci, ObExtendType, COL_NUM + 10, true);
               }
-              else 
+              else
               {
                 check_cell(expected, *ci);
               }
+              index_j = full_row ? index_j + 1 : index_j;
             }
             EXPECT_EQ(OB_SUCCESS, iterator2->get_cell(&ci));
             ASSERT_TRUE(NULL != ci);
-            if (is_del_row && index_j == 0 && del_row == 0)
+            if (full_row && ((!is_del_row && index_j == 0) 
+                || (is_del_row && ((del_row == 0 && index_j == 1) 
+                    || (del_row > 0 && index_j == 0)))))
+            {
+              // rowkey column 
+              EXPECT_EQ((uint64_t)1, ci->column_id_);
+            }
+            else if (is_del_row && index_j == 0 && del_row == 0)
             {
               del_row++;
               check_cell(expected, *ci, ObExtendType);
             }
             else
             {
+              index_j = full_row ? index_j - 1 : index_j;
               if (is_del_row)
               {
                 if (index_j < COL_NUM - 1)
@@ -257,7 +278,7 @@ namespace oceanbase
                 else
                 {
                   expected.column_id_ = index_j + 2;
-                }                
+                }
                 expected.table_name_ = table_name;
               }
               if (column_count == COL_NUM && index_j == COL_NUM - 1)
@@ -268,20 +289,41 @@ namespace oceanbase
               {
                 check_cell(expected, *ci, ObExtendType, COL_NUM + 10, true);
               }
-              else 
+              else
               {
                 check_cell(expected, *ci);
               }
             }
             ++count;
+            if (count == exp_cell_cnt)
+            {
+              bool is_row_finished = false;
+              EXPECT_EQ(OB_SUCCESS, iterator->is_row_finished(&is_row_finished));
+              EXPECT_TRUE(is_row_finished);
+              EXPECT_EQ(OB_SUCCESS, iterator2->is_row_finished(&is_row_finished));
+              EXPECT_TRUE(is_row_finished);
+            }
+            else
+            {
+              bool is_row_finished = false;
+              EXPECT_EQ(OB_SUCCESS, iterator->is_row_finished(&is_row_finished));
+              EXPECT_FALSE(is_row_finished);
+              EXPECT_EQ(OB_SUCCESS, iterator2->is_row_finished(&is_row_finished));
+              EXPECT_FALSE(is_row_finished);
+            }
           }
           EXPECT_EQ(OB_ITER_END, ret);
           EXPECT_EQ(exp_cell_cnt, count);
           EXPECT_EQ(OB_ITER_END, iterator->next_cell());
           EXPECT_EQ(OB_ITER_END, iterator2->next_cell());
+          bool is_row_finished = false;
+          EXPECT_EQ(OB_SUCCESS, iterator->is_row_finished(&is_row_finished));
+          EXPECT_TRUE(is_row_finished);
+          EXPECT_EQ(OB_SUCCESS, iterator2->is_row_finished(&is_row_finished));
+          EXPECT_TRUE(is_row_finished);
         }
-        
-        void test_adjacent_row_query(const int32_t row_index = 0, 
+
+        void test_adjacent_row_query(const int32_t row_index = 0,
                                      const int32_t row_count = 1,
                                      const int32_t column_count = COL_NUM)
         {
@@ -291,7 +333,7 @@ namespace oceanbase
           }
         }
 
-        void test_full_row_query(const int32_t row_index = 0, 
+        void test_full_row_query(const int32_t row_index = 0,
                                  const int32_t row_count = 1)
         {
           for (int i = row_index; i < row_index + row_count; i++)
@@ -300,7 +342,7 @@ namespace oceanbase
           }
         }
 
-        void test_nonexistent_column_query(const int32_t row_index = 0, 
+        void test_nonexistent_column_query(const int32_t row_index = 0,
                                            const int32_t row_count = 1,
                                            const int32_t column_count = 0,
                                            const int32_t nonexistent_column_count = COL_NUM)
@@ -311,7 +353,7 @@ namespace oceanbase
           }
         }
 
-        void scan_one_sstable(const int32_t row_index = 0, 
+        void scan_one_sstable(const int32_t row_index = 0,
                               const int32_t row_count = 1,
                               const int32_t column_count = COL_NUM,
                               const int32_t nonexistent_column_count = 0)
@@ -323,7 +365,7 @@ namespace oceanbase
           ObCellInfo* ci;
           ObCellInfo expected;
           ObVersionRange ver_range;
-          ObRange range;
+          ObNewRange range;
           int64_t index_i = 0;
           int64_t index_j = 0;
           int64_t exp_cell_cnt = 0;
@@ -358,8 +400,8 @@ namespace oceanbase
             EXPECT_EQ(OB_SUCCESS, ret);
           }
           row_column_cnt = column_count + nonexistent_column_count;
-          exp_cell_cnt = row_column_cnt * row_count 
-            + (row_count / DEL_ROW_INTERVAL + 
+          exp_cell_cnt = row_column_cnt * row_count
+            + (row_count / DEL_ROW_INTERVAL +
                ((row_count < DEL_ROW_INTERVAL && row_index / DEL_ROW_INTERVAL == 0) ? 1 : 0));
 
           reader = readers[row_index / SSTABLE_ROW_NUM];
@@ -373,6 +415,7 @@ namespace oceanbase
           int64_t del_row = 0;
           bool is_del_row = false;
           bool handled_del_row = false;
+          int64_t next_index_i = 0;
           while (OB_SUCCESS == (ret = iterator->next_cell()))
           {
             index_i = row_index + (count - del_row) / row_column_cnt;
@@ -400,7 +443,7 @@ namespace oceanbase
                 else
                 {
                   expected.column_id_ = index_j + 2;
-                } 
+                }
                 expected.table_name_ = table_name;
               }
               if (column_count == COL_NUM && index_j == COL_NUM - 1)
@@ -417,14 +460,30 @@ namespace oceanbase
               }
             }
             ++count;
+            next_index_i = row_index + (count - del_row) / row_column_cnt;
+            if (count == exp_cell_cnt || next_index_i != index_i)
+            {
+              bool is_row_finished = false;
+              EXPECT_EQ(OB_SUCCESS, iterator->is_row_finished(&is_row_finished));
+              EXPECT_TRUE(is_row_finished);
+            }
+            else
+            {
+              bool is_row_finished = false;
+              EXPECT_EQ(OB_SUCCESS, iterator->is_row_finished(&is_row_finished));
+              EXPECT_FALSE(is_row_finished);
+            }
           }
 
           EXPECT_EQ(OB_ITER_END, ret);
           EXPECT_EQ(exp_cell_cnt, count);
           EXPECT_EQ(OB_ITER_END, iterator->next_cell());
+          bool is_row_finished = false;
+          EXPECT_EQ(OB_SUCCESS, iterator->is_row_finished(&is_row_finished));
+          EXPECT_TRUE(is_row_finished);
         }
 
-        void test_adjacent_row_scan(const int32_t row_index = 0, 
+        void test_adjacent_row_scan(const int32_t row_index = 0,
                                     const int32_t row_count = 1,
                                     const int32_t column_count = COL_NUM)
         {
@@ -446,7 +505,7 @@ namespace oceanbase
           }
         }
 
-        void test_nonexistent_column_scan(const int32_t row_index = 0, 
+        void test_nonexistent_column_scan(const int32_t row_index = 0,
                                           const int32_t row_count = 1,
                                           const int32_t column_count = 0,
                                           const int32_t nonexistent_column_count = COL_NUM)
@@ -472,14 +531,14 @@ namespace oceanbase
         void test_get_sstable_end_key()
         {
           int ret = OB_SUCCESS;
-          ObString rowkey;
+          ObRowkey rowkey;
 
           for (int64_t i = 0; i < SSTABLE_NUM; ++i)
           {
-            ret = trans_sst_query.get_sstable_end_key(*readers[i], 
+            ret = trans_sst_query.get_sstable_end_key(*readers[i],
               table_id, rowkey);
             ASSERT_EQ(OB_SUCCESS, ret);
-            check_string(cell_infos[ROW_NUM - 1][0].row_key_, rowkey);
+            EXPECT_EQ(cell_infos[ROW_NUM - 1][0].row_key_, rowkey);
           }
         }
 
@@ -492,7 +551,7 @@ namespace oceanbase
           {
             cell_infos[i] = new ObCellInfo[COL_NUM];
           }
-      
+
           for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
           {
             for (int64_t j = 0; j < COL_NUM; ++j)
@@ -500,7 +559,7 @@ namespace oceanbase
               row_key_strs[i][j] = new char[50];
             }
           }
-    
+
           // init cell infos
           for (int64_t i = 0; i < ROW_NUM + NON_EXISTENT_ROW_NUM; ++i)
           {
@@ -508,7 +567,7 @@ namespace oceanbase
             {
               cell_infos[i][j].table_id_ = table_id;
               sprintf(row_key_strs[i][j], "row_key_%08ld", i);
-              cell_infos[i][j].row_key_.assign(row_key_strs[i][j], static_cast<int32_t>(strlen(row_key_strs[i][j])));
+              cell_infos[i][j].row_key_ = make_rowkey(row_key_strs[i][j], &allocator_);
               if (i % DEL_ROW_INTERVAL == 0)
               {
                 if (j == 0)
@@ -560,18 +619,18 @@ namespace oceanbase
           }
         }
 
-        static int init_sstable(const ObCellInfo** cell_infos, const int64_t row_num, 
+        static int init_sstable(const ObCellInfo** cell_infos, const int64_t row_num,
                                 const int64_t col_num, const int64_t sst_id = 0L)
         {
           int err = OB_SUCCESS;
-  
+
           ObSSTableSchema sstable_schema;
           ObSSTableSchemaColumnDef column_def;
-  
+
           EXPECT_TRUE(NULL != cell_infos);
           EXPECT_TRUE(row_num > 0);
           EXPECT_TRUE(col_num > 0);
-  
+
           uint64_t table_id = cell_infos[0][0].table_id_;
           ObString path;
           int64_t sstable_file_id = 0;
@@ -579,16 +638,26 @@ namespace oceanbase
           char* path_str = sstable_file_path;
           int64_t path_len = OB_MAX_FILE_NAME_LENGTH;
 
+          // add rowkey column
+          column_def.reserved_ = 0;
+          column_def.rowkey_seq_ = 1;
+          column_def.column_group_id_= 0;
+          column_def.column_name_id_ = 1;
+          column_def.column_value_type_ = ObVarcharType;
+          column_def.table_id_ = static_cast<uint32_t>(table_id);
+          sstable_schema.add_column_def(column_def);
+
           for (int64_t i = 0; i < col_num; ++i)
           {
             column_def.reserved_ = 0;
+            column_def.rowkey_seq_ = 0;
             column_def.column_group_id_= 0;
-            column_def.column_name_id_ = static_cast<uint32_t>(i + 2);
+            column_def.column_name_id_ = static_cast<uint16_t>(i + 2);
             column_def.column_value_type_ = ObIntType;
             column_def.table_id_ = static_cast<uint32_t>(table_id);
             sstable_schema.add_column_def(column_def);
           }
-  
+
           if (0 == sst_id)
           {
             sstable_file_id = 100;
@@ -597,7 +666,7 @@ namespace oceanbase
           {
             sstable_file_id = sst_id;
           }
-  
+
           ObSSTableId sstable_id(sst_id);
           get_sstable_path(sstable_id, path_str, path_len);
           char cmd[256];
@@ -611,13 +680,13 @@ namespace oceanbase
           err = writer.create_sstable(sstable_schema, path, compress_name, 0,
                                       OB_SSTABLE_STORE_SPARSE);
           EXPECT_EQ(OB_SUCCESS, err);
-  
+
           for (int64_t i = 0; i < row_num; ++i)
           {
             ObSSTableRow row;
             row.set_table_id(table_id);
             row.set_column_group_id(0);
-            err = row.set_row_key(cell_infos[i][0].row_key_);
+            err = row.set_rowkey(cell_infos[i][0].row_key_);
             EXPECT_EQ(OB_SUCCESS, err);
 
             /**
@@ -626,20 +695,20 @@ namespace oceanbase
             int64_t colmun_cnt = (i % DEL_ROW_INTERVAL == 0) ? col_num : col_num - 1;
             for (int64_t j = 0; j < colmun_cnt; ++j)
             {
-              err = row.add_obj(cell_infos[i][j].value_, cell_infos[i][j].column_id_);
+              err = row.shallow_add_obj(cell_infos[i][j].value_, cell_infos[i][j].column_id_);
               EXPECT_EQ(OB_SUCCESS, err);
             }
-  
+
             int64_t space_usage = 0;
             err = writer.append_row(row, space_usage);
             EXPECT_EQ(OB_SUCCESS, err);
           }
-  
+
           int64_t offset = 0;
           int64_t sstable_size = 0;
           err = writer.close_sstable(offset, sstable_size);
           EXPECT_EQ(OB_SUCCESS, err);
- 
+
           return err;
         }
 
@@ -653,7 +722,7 @@ namespace oceanbase
             sst_ids[i].sstable_file_id_ = i % DISK_NUM + 256 * (i / DISK_NUM + 1) + 1;
             sst_ids[i].sstable_file_offset_ = 0;
 
-            ret = init_sstable((const ObCellInfo**)(&cell_infos[0]), 
+            ret = init_sstable((const ObCellInfo**)(&cell_infos[0]),
                                ROW_NUM, COL_NUM, sst_ids[i].sstable_file_id_);
             EXPECT_EQ(OB_SUCCESS, ret);
           }
@@ -663,7 +732,7 @@ namespace oceanbase
           {
             //init sstable readers
             ObSSTableReader* reader = new ObSSTableReader(arena, fic);
-            ret = reader->open(sst_ids[i]);
+            ret = reader->open(sst_ids[i], 1);
             if (OB_SUCCESS == ret)
             {
               readers[i] = reader;
@@ -682,16 +751,11 @@ namespace oceanbase
         static int init_tans_sst_query()
         {
           int err = OB_SUCCESS;
-  
-          bc_conf.block_cache_memsize_mb = 1024;
-          bc_conf.ficache_max_num = 1024;
-  
-          bic_conf.cache_mem_size = 128 * 1024 * 1024;
-  
+
           err = fic.init(1024);
           EXPECT_EQ(OB_SUCCESS, err);
 
-          err = trans_sst_query.init(bc_conf, bic_conf, 128 * 1024 * 1024);
+          err = trans_sst_query.init(1024<<20, 128<<20, 128 * 1024 * 1024);
           EXPECT_EQ(OB_SUCCESS, err);
 
           err = create_and_load_sstables();
@@ -699,7 +763,7 @@ namespace oceanbase
 
           return err;
         }
- 
+
       public:
         static void SetUpTestCase()
         {
@@ -708,13 +772,13 @@ namespace oceanbase
           TBSYS_LOGGER.setLogLevel("WARN");
           err = ob_init_memory_pool();
           ASSERT_EQ(OB_SUCCESS, err);
-      
+
           init_cell_infos();
-      
+
           err = init_tans_sst_query();
           ASSERT_EQ(OB_SUCCESS, err);
         }
-      
+
         static void TearDownTestCase()
         {
           destroy_cell_infos();
@@ -726,15 +790,15 @@ namespace oceanbase
             }
           }
         }
-      
+
         virtual void SetUp()
         {
-  
+
         }
-      
+
         virtual void TearDown()
         {
-      
+
         }
       };
 
@@ -856,7 +920,7 @@ namespace oceanbase
           test_nonexistent_column_query(row_count * i, row_count, 0, COL_NUM);
         }
       }
-      
+
       TEST_F(TestObTransferSSTableQuery, test_get_all_columns)
       {
         int32_t row_count = 20;
@@ -965,7 +1029,7 @@ namespace oceanbase
       {
         test_nonexistent_column_scan(0, ROW_NUM, 0, COL_NUM);
       }
-      
+
       TEST_F(TestObTransferSSTableQuery, test_scan_all_columns)
       {
         test_adjacent_row_query(0, ROW_NUM, COL_NUM);

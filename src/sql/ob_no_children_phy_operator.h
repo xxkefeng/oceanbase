@@ -23,8 +23,8 @@ namespace oceanbase
     class ObNoChildrenPhyOperator: public ObPhyOperator
     {
       public:
-        ObNoChildrenPhyOperator();
-        virtual ~ObNoChildrenPhyOperator();
+        ObNoChildrenPhyOperator() {}
+        virtual ~ObNoChildrenPhyOperator() {}
         /// @note always return OB_NOT_SUPPORTED
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
       private:

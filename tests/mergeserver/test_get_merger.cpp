@@ -37,14 +37,17 @@
 #include "mergeserver/ob_groupby_operator.h"
 #include "mergeserver/ob_read_param_decoder.h"
 #include "mergeserver/ob_ms_tsi.h"
-#include "mergeserver/ob_scan_param_loader.h"
+#include "ob_scan_param_loader.h"
 #include "mergeserver/ob_ms_sub_get_request.h"
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
+using namespace oceanbase::mergeserver::test;
 using namespace testing;
 using namespace std;
 
+static CharArena allocator_;
 
 TEST(ObGetMerger, basic)
 {
@@ -68,7 +71,7 @@ TEST(ObGetMerger, basic)
       int64_t idx = cell_idx + sub_req_idx;
       cell.table_id_ = idx + 1;
       cell.column_id_ = idx + 1;
-      cell.row_key_.assign((char*)&idx, sizeof(idx));
+      cell.row_key_ = make_rowkey((char*)&idx, sizeof(idx), &allocator_);
       EXPECT_EQ(get_param.add_cell(cell), OB_SUCCESS);
       EXPECT_EQ(res_vec[sub_req_idx].add_cell(cell), OB_SUCCESS);
       EXPECT_EQ(sub_reqs[sub_req_idx].add_cell(idx), OB_SUCCESS);
@@ -89,8 +92,8 @@ TEST(ObGetMerger, basic)
     EXPECT_EQ(get_merger.get_cell(&cur_cell,&row_changed), OB_SUCCESS);
     EXPECT_EQ(cur_cell->table_id_, static_cast<uint64_t>(i+1));
     EXPECT_EQ(cur_cell->column_id_, static_cast<uint64_t>(i+1));
-    ObString rowkey;
-    rowkey.assign((char*)&i,sizeof(i));
+    ObRowkey rowkey;
+    rowkey = make_rowkey((char*)&i,sizeof(i), &allocator_);
     EXPECT_TRUE(rowkey == cur_cell->row_key_);
   }
   EXPECT_EQ(get_merger.next_cell(), OB_ITER_END);

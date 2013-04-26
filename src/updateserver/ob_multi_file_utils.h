@@ -36,7 +36,8 @@ namespace oceanbase
   {
     class MultiFileUtils : public common::ObIFileAppender
     {
-      typedef common::hash::SimpleAllocer<common::ObFileAppender> FileAlloc;
+      typedef common::ObFileAppender FileAppenderImpl;
+      typedef common::hash::SimpleAllocer<FileAppenderImpl> FileAlloc;
       static const bool IS_DIRECT = true;
       static const bool IS_CREATE = true;
       static const bool IS_TRUNC = false;
@@ -52,7 +53,7 @@ namespace oceanbase
         int append(const void *buf, const int64_t count, bool is_fsync);
         int fsync();
       private:
-        common::ObList<common::ObFileAppender*> flist_;
+        common::ObList<common::ObIFileAppender*> flist_;
         FileAlloc file_alloc_;
     };
   }

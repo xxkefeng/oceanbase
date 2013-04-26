@@ -53,11 +53,11 @@ namespace oceanbase
       }
       else if (OB_NEED_RETRY != err)
       {
-        TBSYS_LOG(DEBUG, "rpc_stub->fetch_log(end_id=%ld)=>%d", end_id, err);
+        TBSYS_LOG(WARN, "rpc_stub->fetch_log(end_id=%ld)=>%d", end_id, err);
       }
       else
       {
-        TBSYS_LOG(DEBUG, "rpc_stub->fetch_log(): need retry");
+        TBSYS_LOG(TRACE, "rpc_stub->fetch_log(): need retry");
       }
       return err;
     }

@@ -123,10 +123,10 @@ namespace oceanbase
       /// virtual void inc_ref(void * cache_item_handle) = 0;
 
       /// @fn get the number of cache item in the cache
-      virtual int64_t get_cache_item_num() const = 0;
+      virtual int64_t get_cache_item_num() = 0;
 
       /// @fn get memory sized used by the cache
-      virtual int64_t get_cache_mem_size() const = 0;
+      virtual int64_t get_cache_mem_size() = 0;
 
     private:
       DISALLOW_COPY_AND_ASSIGN(ObCacheBase);
@@ -856,7 +856,7 @@ namespace oceanbase
       }
 
       /// virtual void inc_ref(void * cache_item_handle);
-      virtual int64_t get_cache_item_num() const
+      virtual int64_t get_cache_item_num()
       {
         int64_t result = 0;
         if (!inited_)
@@ -870,7 +870,7 @@ namespace oceanbase
         return result;
       }
 
-      virtual int64_t get_cache_mem_size() const
+      virtual int64_t get_cache_mem_size()
       {
         int64_t result = 0;
         if (inited_)
@@ -968,8 +968,6 @@ namespace oceanbase
             {
               block = CONTAINING_RECORD(block_it, LRUMemBlockHead, lru_list_link_);
               block_it = block->lru_list_link_.prev();
-              TBSYS_LOG(TRACE, "recycle block:allocate[%ld], recycled[%ld], available[%ld], travel[%d]",
-                  memory_size_handled, size_recycled, available_mem_size_, traversed_item_num);
               if (recycle_block(block))
               {
                 size_recycled += CACHE_MEM_BLOCK_SIZE;

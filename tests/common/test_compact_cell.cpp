@@ -128,6 +128,23 @@ TEST(TestObCompactCell, DENSE_DENSE)
       ASSERT_EQ(i, int_value);
       ASSERT_EQ(OB_INVALID_ID, column_id);
     }
+
+    ObString row;
+    ObCompactCellIterator iter2;
+
+    OK(iter.next_cell());
+    OK(iter.get_cell(column_id, value, &is_row_finished, &row));
+    ASSERT_TRUE(is_row_finished);
+    iter2.init(row, DENSE);
+    for(int64_t i=0;i<5;i++)
+    {
+      OK(iter2.next_cell());
+      OK(iter2.get_cell(column_id, value));
+      OK(value.get_int(int_value));
+      ASSERT_EQ(i, int_value);
+      ASSERT_EQ(OB_INVALID_ID, column_id);
+    }
+
     for(int64_t i=0;i<5;i++)
     {
       OK(iter.next_cell());
@@ -139,23 +156,13 @@ TEST(TestObCompactCell, DENSE_DENSE)
       ASSERT_EQ(OB_INVALID_ID, column_id);
     }
 
-    ObString row;
     OK(iter.next_cell());
     OK(iter.get_cell(column_id, value, &is_row_finished, &row));
     ASSERT_TRUE(is_row_finished);
     OK(iter.get_cell(column_id, value, &is_row_finished, &row));
     ASSERT_TRUE(is_row_finished);
 
-    ObCompactCellIterator iter2;
-    iter2.init(row, DENSE_DENSE);
-    for(int64_t i=0;i<5;i++)
-    {
-      OK(iter2.next_cell());
-      OK(iter2.get_cell(column_id, value));
-      OK(value.get_int(int_value));
-      ASSERT_EQ(i, int_value);
-      ASSERT_EQ(OB_INVALID_ID, column_id);
-    }
+    iter2.init(row, DENSE);
     for(int64_t i=0;i<5;i++)
     {
       OK(iter2.next_cell());
@@ -212,6 +219,25 @@ TEST(TestObCompactCell, DENSE_SPARSE)
       ASSERT_EQ(i, int_value);
       ASSERT_EQ(OB_INVALID_ID, column_id);
     }
+
+    ObString row;
+    ObCompactCellIterator iter2;
+
+    OK(iter.next_cell());
+    OK(iter.get_cell(column_id, value, &is_row_finished, &row));
+    ASSERT_TRUE(is_row_finished);
+
+    iter2.init(row, DENSE);
+    for(int64_t i=0;i<5;i++)
+    {
+      OK(iter2.next_cell());
+      OK(iter2.get_cell(column_id, value));
+      OK(value.get_int(int_value));
+      ASSERT_EQ(i, int_value);
+      ASSERT_EQ(OB_INVALID_ID, column_id);
+    }
+
+
     for(int64_t i=0;i<5;i++)
     {
       OK(iter.next_cell());
@@ -221,21 +247,11 @@ TEST(TestObCompactCell, DENSE_SPARSE)
       ASSERT_EQ(1u, column_id);
     }
 
-    ObString row;
     OK(iter.next_cell());
     OK(iter.get_cell(column_id, value, &is_row_finished, &row));
     ASSERT_TRUE(is_row_finished);
 
-    ObCompactCellIterator iter2;
-    iter2.init(row, DENSE_SPARSE);
-    for(int64_t i=0;i<5;i++)
-    {
-      OK(iter2.next_cell());
-      OK(iter2.get_cell(column_id, value));
-      OK(value.get_int(int_value));
-      ASSERT_EQ(i, int_value);
-      ASSERT_EQ(OB_INVALID_ID, column_id);
-    }
+    iter2.init(row, SPARSE);
     for(int64_t i=0;i<5;i++)
     {
       OK(iter2.next_cell());

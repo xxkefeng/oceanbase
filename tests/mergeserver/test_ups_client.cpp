@@ -23,11 +23,13 @@
 #include "common/ob_read_common_data.h"
 #include "common/ob_string.h"
 #include "common/ob_malloc.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase;
 using namespace oceanbase::common;
 const int64_t TIMEOUT =  10000000L;
+static CharArena allocator_;
 
 struct CParam
 {
@@ -151,7 +153,7 @@ int apply(CParam &param, MockClient &client)
   }
   else
   {
-    ObString rowkey_str;
+    ObRowkey rowkey_str;
     ObString column_str;
     ObMutator mutator;
     ObObj value_obj;
@@ -164,7 +166,7 @@ int apply(CParam &param, MockClient &client)
       mutator.reset();
       int64_t pos = 0;
       serialization::encode_i64(buffer, sizeof(buffer), pos, i);
-      rowkey_str.assign(buffer, static_cast<int32_t>(pos)); 
+      rowkey_str = make_rowkey(buffer, pos, &allocator_);
       const ObColumnSchemaV2 * temp_column = column_info;
       for (int32_t j = 0; j < size; ++j)
       {

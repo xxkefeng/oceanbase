@@ -26,9 +26,11 @@
 #include "common/ob_ms_list.h"
 #include "common/ob_ups_info.h"
 #include "updateserver/ob_log_sync_delay_stat.h"
+#include "updateserver/ob_session_mgr.h"
+#include "updateserver/ob_update_server_config.h"
 #include "test_utils.h"
 
-const int64_t timeout = 10 * 1000 * 1000L;
+int64_t timeout = 10 * 1000 * 1000L;
 
 void print_scanner(ObScanner &scanner)
 {
@@ -46,11 +48,11 @@ void print_scanner(ObScanner &scanner)
   }
   bool is_fullfilled = false;
   int64_t fullfilled_num = 0;
-  ObString last_rk;
+  ObRowkey last_rk;
   scanner.get_last_row_key(last_rk);
   scanner.get_is_req_fullfilled(is_fullfilled, fullfilled_num);
   fprintf(stdout, "is_fullfilled=%s fullfilled_num=%ld row_counter=%ld last_row_key=[%s]\n",
-          STR_BOOL(is_fullfilled), fullfilled_num, row_counter, print_string(last_rk));
+          STR_BOOL(is_fullfilled), fullfilled_num, row_counter, to_cstring(last_rk));
 }
 
 void print_scanner(const char *fname)
@@ -174,6 +176,30 @@ void print_schema(const char *fname)
     }
     close(fd);
   }
+}
+
+void ups_show_sessions(MockClient &client)
+{
+  ObNewScanner scanner;
+  int err = client.ups_show_sessions(scanner, timeout);
+  fprintf(stdout, "[%s] err=%d\n", __FUNCTION__, err);
+  if (OB_SUCCESS == err)
+  {
+    SessionMgr sm;
+    ShowSessions ss(sm, scanner);
+    scanner.set_default_row_desc(&(ss.get_row_desc()));
+    ObRow row;
+    while (OB_SUCCESS == scanner.get_next_row(row))
+    {
+      fprintf(stdout, "%s\n", to_cstring(row));
+    }
+  }
+}
+
+void ups_kill_session(const uint32_t session_descriptor, MockClient &client)
+{
+  int err = client.ups_kill_session(session_descriptor, timeout);
+  fprintf(stdout, "[%s] err=%d\n", __FUNCTION__, err);
 }
 
 int minor_load_bypass(MockClient &client)
@@ -414,6 +440,7 @@ void get_clog_status(MockClient &client)
   int err = OB_SUCCESS;
   ObUpsCLogStatus stat;
   char buf[OB_MAX_RESULT_MESSAGE_LENGTH];
+  TBSYS_LOG(ERROR, "timeout=%ld", timeout);
   if (OB_SUCCESS != (err = client.get_clog_status(stat, timeout)))
   {
     TBSYS_LOG(ERROR, "client.get_clog_status()=>%d", err);
@@ -481,6 +508,10 @@ void get_log_sync_delay_stat(MockClient &client)
 
 void reload_conf(const char* fname, MockClient &client)
 {
+  if (NULL == fname)
+  {
+    fname = "./default.conf";
+  }
   int err = client.reload_conf(fname, timeout);
   fprintf(stdout, "[%s] err=%d\n", __FUNCTION__, err);
   fprintf(stdout, "relaod fname=[%s]\n", fname);
@@ -532,11 +563,11 @@ void total_scan(const char *fname, PageArena<char> &allocer, MockClient &client,
       }
       bool is_fullfilled = false;
       int64_t fullfilled_num = 0;
-      ObString last_rk;
+      ObRowkey last_rk;
       scanner.get_last_row_key(last_rk);
       scanner.get_is_req_fullfilled(is_fullfilled, fullfilled_num);
       fprintf(stdout, "[SINGLE_SCAN] is_fullfilled=%s fullfilled_num=%ld row_counter=%ld timeu=%ld last_row_key=[%s]\n",
-              STR_BOOL(is_fullfilled), fullfilled_num, row_counter, timeu, print_string(last_rk));
+              STR_BOOL(is_fullfilled), fullfilled_num, row_counter, timeu, to_cstring(last_rk));
       total_fullfilled_num += fullfilled_num;
       total_row_counter += row_counter;
       total_timeu += timeu;
@@ -546,9 +577,9 @@ void total_scan(const char *fname, PageArena<char> &allocer, MockClient &client,
       }
       else
       {
-        const_cast<ObRange*>(scan_param.get_range())->start_key_ = last_rk;
-        const_cast<ObRange*>(scan_param.get_range())->border_flag_.unset_min_value();
-        const_cast<ObRange*>(scan_param.get_range())->border_flag_.unset_inclusive_start();
+        const_cast<ObNewRange*>(scan_param.get_range())->start_key_ = last_rk;
+        const_cast<ObNewRange*>(scan_param.get_range())->border_flag_.unset_min_value();
+        const_cast<ObNewRange*>(scan_param.get_range())->border_flag_.unset_inclusive_start();
       }
     }
   }
@@ -627,11 +658,11 @@ int param_get(const char *fname, MockClient &client)
           }
           bool is_fullfilled = false;
           int64_t fullfilled_num = 0;
-          ObString last_rk;
+          ObRowkey last_rk;
           scanner.get_last_row_key(last_rk);
           scanner.get_is_req_fullfilled(is_fullfilled, fullfilled_num);
           fprintf(stdout, "is_fullfilled=%s fullfilled_num=%ld row_counter=%ld last_row_key=[%s]\n",
-                  STR_BOOL(is_fullfilled), fullfilled_num, row_counter, print_string(last_rk));
+                  STR_BOOL(is_fullfilled), fullfilled_num, row_counter, to_cstring(last_rk));
         }
       }
       free(buf);
@@ -776,6 +807,17 @@ void init_mock_client(const char *addr, int32_t port, const char *login_type, Mo
   }
 }
 
+int execute_sql(MockClient &client, const char* sql_query)
+{
+  int ret = OB_SUCCESS;
+  ObString query;
+  query.assign_ptr(const_cast<char*>(sql_query), static_cast<int32_t>(strlen(sql_query)));
+  printf("execute_sql, query=[%.*s]...\n", query.length(), query.ptr());
+  ret = client.execute_sql(query, timeout);
+  printf("ret=%d\n", ret);
+  return ret;
+}
+
 struct CmdLineParam
 {
   char *serv_addr;
@@ -796,6 +838,8 @@ struct CmdLineParam
   char *info;
   char *log_level;
   bool quickly_exit;
+  char *sql_query;
+  int64_t timeout;
 };
 
 void print_usage()
@@ -809,9 +853,9 @@ void print_usage()
           "reload_conf|memory_watch|memory_limit|priv_queue_conf|clear_active_memtable|get_last_frozen_version|fetch_ups_stat_info|get_bloomfilter|"
           "store_memtable|erase_sstable|load_new_store|reload_all_store|reload_store|umount_store|force_report_frozen_version|switch_commit_log|get_table_time_stamp|print_scanner|print_schema|"
           "enable_memtable_checksum|disable_memtable_checksum|get_slave_ups_info|"
-          "delay_drop_memtable|immediately_drop_memtable|minor_load_bypass|major_load_bypass|change_log_level|list_sessions|kill_session|get_sstable_range_list]\n");
+          "delay_drop_memtable|immediately_drop_memtable|minor_load_bypass|major_load_bypass|change_log_level|list_sessions|kill_session|get_sstable_range_list|sql_query|ups_show_sessions|ups_kill_session]\n");
   fprintf(stdout, "   -f|--ini_fname ini file name\n");
-  fprintf(stdout, "   -n|--session session_id or table_id, must be set while cmd_type is [kill_session|get_sstable_range_list]\n");
+  fprintf(stdout, "   -n|--session session_id or table_id, must be set while cmd_type is [kill_session|get_sstable_range_list|ups_kill_session]\n");
   fprintf(stdout, "   -s|--timestamp must be set while cmd_type is [fetch_schema|get_bloomfilter|reload_store|get_table_time_stamp|get_sstable_range_list], optional for [store_memtable]\n");
   fprintf(stdout, "   -r|--version_range must be set while cmd_type is [get|scan]\n");
   //fprintf(stdout, "   -l|--memory_limit could be set while cmd_type is memory_limit\n");
@@ -823,13 +867,17 @@ void print_usage()
   fprintf(stdout, "   -h|--help print this help info\n");
   fprintf(stdout, "   -z|--time2str micro time to string\n");
   fprintf(stdout, "   -i|--ip2str int ip_addr to string\n");
+  fprintf(stdout, "   -x|--query SQL query string\n");
+  fprintf(stdout, "   -T|--timeout timeout(us)\n");
+  fprintf(stdout, "   -C|--config phy_memory_gb, list memory config\n");
+  fprintf(stdout, "   -A|--config total_memory_limit, list memory config\n");
   fprintf(stdout, "\n");
 }
 
 void parse_cmd_line(int argc, char **argv, CmdLineParam &clp)
 {
   int opt = 0;
-  const char* opt_string = "a:p:o:t:f:s:n:z:i:r:l:q:c:e:m:u:w:g:kh";
+  const char* opt_string = "a:p:o:t:f:s:n:z:i:r:l:q:c:e:m:u:w:g:khx:T:C:A:";
   struct option longopts[] =
   {
     {"serv_addr", 1, NULL, 'a'},
@@ -852,12 +900,16 @@ void parse_cmd_line(int argc, char **argv, CmdLineParam &clp)
     {"log_level", 1, NULL, 'g'},
     {"quickly_exit", 1, NULL, 'k'},
     {"help", 0, NULL, 'h'},
+    {"query", 1, NULL, 'x'},
+    {"timeout", 1, NULL, 'T'},
+    {"config", 1, NULL, 'g'},
     {0, 0, 0, 0}
   };
   memset(&clp, 0, sizeof(clp));
   clp.serv_addr = (char*)"localhost";
   clp.serv_port = 2700;
   clp.login_type = (char*)"direct";
+  clp.timeout = 0;
   while ((opt = getopt_long(argc, argv, opt_string, longopts, NULL)) != -1)
   {
     switch (opt)
@@ -923,8 +975,29 @@ void parse_cmd_line(int argc, char **argv, CmdLineParam &clp)
     case 'g':
       clp.log_level = optarg;
       break;
+    case 'x':
+      clp.sql_query = optarg;
+      break;
     case 'k':
       clp.quickly_exit = true;
+      break;
+    case 'T':
+      clp.timeout = atol(optarg);
+      break;
+    case 'A':
+      {
+        updateserver::ObUpdateServerConfig conf;
+        fprintf(stdout, "\n");
+        conf.auto_config_memory(atol(optarg));
+        exit(1);
+      }
+    case 'C':
+      {
+        updateserver::ObUpdateServerConfig conf;
+        fprintf(stdout, "\n");
+        conf.auto_config_memory(conf.get_total_memory_limit(atol(optarg)));
+        exit(1);
+      }
       break;
     case 'h':
     default:
@@ -940,18 +1013,20 @@ void parse_cmd_line(int argc, char **argv, CmdLineParam &clp)
       || (NULL == clp.ini_fname && 0 == strcmp("total_scan", clp.cmd_type))
       || (NULL == clp.ini_fname && 0 == strcmp("get", clp.cmd_type))
       || (NULL == clp.ini_fname && 0 == strcmp("param_get", clp.cmd_type))
-      || (NULL == clp.ini_fname && 0 == strcmp("reload_conf", clp.cmd_type))
       || (NULL == clp.ini_fname && 0 == strcmp("umount_store", clp.cmd_type))
       || (NULL == clp.version_range && 0 == strcmp("scan", clp.cmd_type))
       || (NULL == clp.version_range && 0 == strcmp("total_scan", clp.cmd_type))
       || (NULL == clp.version_range && 0 == strcmp("get", clp.cmd_type))
       || (0 == clp.session_id && 0 == strcmp("kill_session", clp.cmd_type))
+      || (0 == clp.session_id && 0 == strcmp("ups_kill_session", clp.cmd_type))
       || (0 == clp.timestamp && 0 == strcmp("get_bloomfilter", clp.cmd_type))
       || (0 == clp.timestamp && 0 == strcmp("fetch_schema", clp.cmd_type))
       || (0 == clp.timestamp && 0 == clp.session_id && 0 == strcmp("get_sstable_range_list", clp.cmd_type))
       || (0 == clp.timestamp && 0 == strcmp("get_table_time_stamp", clp.cmd_type))
       || (0 == clp.timestamp && 0 == strcmp("reload_store", clp.cmd_type))
-      || (NULL == clp.log_level && 0 == strcmp("change_log_level", clp.cmd_type)))
+      || (NULL == clp.log_level && 0 == strcmp("change_log_level", clp.cmd_type))
+      || (NULL == clp.sql_query && 0 == strcmp("sql_query", clp.cmd_type))
+    )
   {
     print_usage();
     fprintf(stdout, "serv_addr=%s serv_port=%d cmd_type=%s ini_fname=%s timestamp=%ld version_range=%s\n",
@@ -982,6 +1057,8 @@ int main(int argc, char** argv)
 
   CmdLineParam clp;
   parse_cmd_line(argc, argv, clp);
+
+  timeout = clp.timeout?: timeout;
 
   MockClient client;
   init_mock_client(clp.serv_addr, clp.serv_port, clp.login_type, client);
@@ -1178,6 +1255,18 @@ int main(int argc, char** argv)
   else if (0 == strcmp("print_schema", clp.cmd_type))
   {
     print_schema(clp.ini_fname);
+  }
+  else if (0 == strcmp("sql_query", clp.cmd_type))
+  {
+    execute_sql(client, clp.sql_query);
+  }
+  else if (0 == strcmp("ups_show_sessions", clp.cmd_type))
+  {
+    ups_show_sessions(client);
+  }
+  else if (0 == strcmp("ups_kill_session", clp.cmd_type))
+  {
+    ups_kill_session(static_cast<uint32_t>(clp.session_id), client);
   }
   else
   {

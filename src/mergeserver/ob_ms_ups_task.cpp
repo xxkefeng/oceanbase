@@ -46,10 +46,6 @@ void ObMergerUpsTask::runTimerTask(void)
     {
       TBSYS_LOG(WARN, "fetch update server list failed:ret[%d]", ret);
     }
-    else
-    {
-      TBSYS_LOG(DEBUG, "fetch update server list succ:count[%d]", count);
-    }
   }
 }
 

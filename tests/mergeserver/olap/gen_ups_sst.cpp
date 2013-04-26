@@ -7,6 +7,7 @@
 #include "common/ob_schema.h"
 #include "common/ob_malloc.h"
 #include "sstable/ob_sstable_writer.h"
+#include "../../common/test_rowkey_helper.h"
 #include "olap.h"
 using namespace std;
 using namespace oceanbase;
@@ -19,6 +20,8 @@ struct gen_param
   const char *sst_name_;
   const char *schema_;
 };
+
+static CharArena allocator_;
 
 void usage(char **argv)
 {
@@ -49,7 +52,7 @@ void parse_cmd_line(int argc, char **argv, gen_param &param)
     {
     case 'h':
       usage(argv);
-      break; 
+      break;
     case 's':
       param.start_include_ = static_cast<uint32_t>(strtoul(optarg,NULL,10));
       break;
@@ -96,7 +99,7 @@ int fill_sstable_schema(ObSchemaManagerV2 &mgr, const uint64_t table_id, ObSSTab
       memset(&column_def,0,sizeof(column_def));
       column_def.table_id_ = static_cast<uint32_t>(table_id);
       column_def.column_group_id_ = static_cast<uint16_t>((col + col_index)->get_column_group_id());
-      column_def.column_name_id_ = static_cast<uint32_t>((col + col_index)->get_id());
+      column_def.column_name_id_ = static_cast<uint16_t>((col + col_index)->get_id());
       column_def.column_value_type_ = (col + col_index)->get_type();
       if ( (ret = sstable_schema.add_column_def(column_def)) != OB_SUCCESS )
       {
@@ -158,7 +161,7 @@ int gen_sst(const gen_param &param)
   {
     big_endian_row_key = htonl(row_key);
     sst_row.clear();
-    if ((OB_SUCCESS == err) &&(OB_SUCCESS != (err =  sst_row.set_row_key(row_key_str))))
+    if ((OB_SUCCESS == err) &&(OB_SUCCESS != (err =  sst_row.set_rowkey(TestRowkeyHelper(row_key_str, &allocator_)))))
     {
       TBSYS_LOG(WARN,"fail to set sst row rowkey [err:%d]", err);
     }

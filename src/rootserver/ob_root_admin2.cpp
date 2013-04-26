@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2012 Taobao Inc.
+ * Copyright (C) 2007-2013 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -20,26 +20,22 @@
 #include <cstdio>
 #include <cstdlib>
 #include "common/ob_define.h"
+#include "common/ob_version.h"
 #include "common/ob_result.h"
 #include "common/serialization.h"
-#include "common/ob_obi_config.h"
 #include "common/ob_server.h"
 #include "common/ob_schema.h"
 #include "common/ob_scanner.h"
+#include "common/ob_ups_info.h"
 #include "common/utility.h"
 #include "common/ob_get_param.h"
 #include "common/ob_schema.h"
 #include "common/ob_scanner.h"
-#include "common/ob_ups_info.h"
 #include "rootserver/ob_root_admin_cmd.h"
 #include "rootserver/ob_root_stat_key.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
-
-const char* svn_version();
-const char* build_date();
-const char* build_time();
 
 namespace oceanbase
 {
@@ -47,7 +43,7 @@ namespace oceanbase
   {
     void usage()
     {
-      printf("Usage: rs_admin -r <rootserver_ip> -p <rootserver_port> -t <request_timeout_us> <command> -o <suboptions>\n");
+      printf("Usage: rs_admin -r <rootserver_ip> -p <rootserver_port> <command> -o <suboptions>\n");
       printf("\n\t-r <rootserver_ip>\tthe default is `127.0.0.1'\n");
       printf("\t-p <rootserver_port>\tthe default is 2500\n");
       printf("\t-t <request_timeout_us>\tthe default is 10000000(10S)\n");
@@ -59,6 +55,8 @@ namespace oceanbase
         printf("%s|", *str);
       }
       printf("\n");
+      printf("\tboot_strap\n");
+      printf("\tboot_recover\n");
       printf("\tdo_check_point\n");
       printf("\treload_config\n");
       printf("\tlog_move_to_debug\n");
@@ -68,17 +66,18 @@ namespace oceanbase
       printf("\tdump_server_info\n");
       printf("\tdump_migrate_info\n");
       printf("\tswitch_schema\n");
-      printf("\tforce_cs_report\n");
       printf("\tchange_log_level -o ERROR|WARN|INFO|DEBUG\n");
       printf("\tget_obi_role\n");
-      printf("\tclean_daily_merge_tablet_error\n");
+      printf("\tclean_error_msg\n");
       printf("\tset_obi_role -o OBI_SLAVE|OBI_MASTER\n");
       printf("\tget_obi_config\n");
+      printf("\tclean_error_msg\n");
+      printf("\tset_config -o config_name=config_value[,config_name2=config_value2[,...]]\n");
+      printf("\tget_config\n");
       printf("\tset_obi_config -o read_percentage=<read_percentage>\n");
       printf("\tset_obi_config -o rs_ip=<rs_ip>,rs_port=<rs_port>,read_percentage=<read_percentage>\n");
       printf("\tset_ups_config -o ups_ip=<ups_ip>,ups_port=<ups_port>,ms_read_percentage=<percentage>,cs_read_percentage=<percentage>\n");
       printf("\tset_master_ups_config -o master_master_ups_read_percentage=<percentage>,slave_master_ups_read_percentage=<percentage>\n");
-      printf("\tget_master_ups_config\n");
       printf("\tchange_ups_master -o ups_ip=<ups_ip>,ups_port=<ups_port>[,force]\n");
       printf("\timport_tablets -o table_id=<table_id>\n");
       printf("\trefresh_schema\n");
@@ -91,6 +90,7 @@ namespace oceanbase
       printf("\tdump_cs_tablet_info -o cs_ip=<cs_ip>,cs_port=<cs_port>\n");
       printf("\tcheck_tablet_version -o tablet_version=<tablet_version>\n");
       printf("\tsplit_tablet -o table_id=<table_id> -o table_version=<table_version>\n");
+      printf("\tcheck_root_table -o cs_ip=<cs_ip>,cs_port=<cs_port>\n");
       printf("\n\t-h\tprint this help message\n");
       printf("\t-V\tprint the version\n");
       printf("\nSee `rs_admin.log' for the detailed execution log.\n");
@@ -145,10 +145,6 @@ namespace oceanbase
         }
       ,
         {
-          "switch_schema", OB_RS_ADMIN_SWITCH_SCHEMA, do_rs_admin
-        }
-      ,
-        {
           "dump_unusual_tablets", OB_RS_ADMIN_DUMP_UNUSUAL_TABLETS, do_rs_admin
         }
       ,
@@ -157,7 +153,11 @@ namespace oceanbase
         }
       ,
         {
-          "clean_daily_merge_tablet_error", OB_RS_ADMIN_CLEAN_ERROR_MSG, do_rs_admin
+          "switch_schema", OB_RS_ADMIN_SWITCH_SCHEMA, do_rs_admin
+        }
+      ,
+        {
+          "clean_error_msg", OB_RS_ADMIN_CLEAN_ERROR_MSG, do_rs_admin
         }
       ,
         {
@@ -166,18 +166,6 @@ namespace oceanbase
       ,
         {
           "stat", OB_RS_STAT, do_rs_stat
-        }
-      ,
-        {
-          "get_obi_config", OB_GET_OBI_CONFIG, do_get_obi_config
-        }
-      ,
-        {
-          "get_master_ups_config", OB_GET_MASTER_UPS_CONFIG, do_get_master_ups_config
-        }
-      ,
-        {
-          "set_obi_config", OB_SET_OBI_CONFIG, do_set_obi_config
         }
       ,
         {
@@ -225,6 +213,14 @@ namespace oceanbase
         }
       ,
         {
+          "boot_strap", OB_RS_ADMIN_BOOT_STRAP, do_rs_admin
+        }
+      ,
+        {
+          "boot_recover", OB_RS_ADMIN_BOOT_RECOVER, do_rs_admin
+        }
+      ,
+        {
           "restart_cs", OB_RS_RESTART_SERVERS, do_restart_servers
         }
       ,
@@ -237,14 +233,23 @@ namespace oceanbase
         }
       ,
         {
-          "force_cs_report", OB_RS_FORCE_CS_REPORT, do_force_cs_report
-        },
-        {
           "split_tablet", OB_RS_SPLIT_TABLET, do_split_tablet
+        }
+      ,
+        {
+          "check_root_table", OB_RS_CHECK_ROOTTABLE, do_check_roottable
+        }
+      ,
+        {
+          "set_config", OB_SET_CONFIG, do_set_config
+        }
+      ,
+        {
+          "get_config", OB_GET_CONFIG, do_get_config
         }
     };
 
-    enum 
+    enum
     {
       OPT_OBI_ROLE_MASTER = 0,
       OPT_OBI_ROLE_SLAVE = 1,
@@ -273,7 +278,7 @@ namespace oceanbase
     };
 
     // 需要与上面的enum一一对应
-    const char* SUB_OPTIONS[] = 
+    const char* SUB_OPTIONS[] =
     {
       "OBI_MASTER",
       "OBI_SLAVE",
@@ -362,6 +367,7 @@ namespace oceanbase
               break;
             case 'o':
               subopts = optarg;
+              snprintf(args.config_str, MAX_CONFIG_STR_LENGTH, "%s", subopts);
               while('\0' != *subopts)
               {
                 switch(suboptidx = getsubopt(&subopts, (char* const*)all_sub_options, &value))
@@ -392,7 +398,7 @@ namespace oceanbase
                       printf("read_percentage needs an argument value\n");
                       ret = OB_INVALID_ARGUMENT;
                     }
-                    else 
+                    else
                     {
                       args.obi_read_percentage = atoi(value);
                     }
@@ -403,7 +409,7 @@ namespace oceanbase
                       printf("option `ups' needs an argument value\n");
                       ret = OB_INVALID_ARGUMENT;
                     }
-                    else 
+                    else
                     {
                       args.ups_ip = value;
                     }
@@ -414,7 +420,7 @@ namespace oceanbase
                       printf("option `port' needs an argument value\n");
                       ret = OB_INVALID_ARGUMENT;
                     }
-                    else 
+                    else
                     {
                       args.ups_port = atoi(value);
                     }
@@ -458,7 +464,7 @@ namespace oceanbase
                       printf("option `ms_read_percentage' needs an argument value\n");
                       ret = OB_INVALID_ARGUMENT;
                     }
-                    else 
+                    else
                     {
                       args.ms_read_percentage = atoi(value);
                     }
@@ -467,7 +473,7 @@ namespace oceanbase
                     if (NULL == value)
                     {
                       printf("option `cs_read_percentage' needs an argument value\n");
-                      ret = OB_INVALID_ARGUMENT;
+                      ret = OB_ERROR;
                     }
                     else
                     {
@@ -483,7 +489,7 @@ namespace oceanbase
                     else
                     {
                       char *end = NULL;
-                      int32_t data = strtol(value, &end, 10);
+                      int32_t data = static_cast<int32_t>(strtol(value, &end, 10));
                       if (end != value + strlen(value))
                       {
                         printf("option `master_master_ups_read_percentage' needs an valid integer value, value=%s\n", value);
@@ -504,7 +510,7 @@ namespace oceanbase
                     else
                     {
                       char *end = NULL;
-                      int32_t data = strtol(value, &end, 10);
+                      int32_t data = static_cast<int32_t>(strtol(value, &end, 10));
                       if (end !=  value + strlen(value))
                       {
                         printf("option `slave_master_ups_read_percentage' needs an valid integer value, value=%s\n", value);
@@ -525,7 +531,7 @@ namespace oceanbase
                       printf("option `rs_ip' needs an argument value\n");
                       ret = OB_INVALID_ARGUMENT;
                     }
-                    else 
+                    else
                     {
                       args.ups_ip = value;
                     }
@@ -536,7 +542,7 @@ namespace oceanbase
                       printf("option `rs_port' needs an argument value\n");
                       ret = OB_INVALID_ARGUMENT;
                     }
-                    else 
+                    else
                     {
                       args.ups_port = atoi(value);
                     }
@@ -547,7 +553,7 @@ namespace oceanbase
                       printf("option `table_id' needs an argument value\n");
                       ret = OB_INVALID_ARGUMENT;
                     }
-                    else 
+                    else
                     {
                       args.table_version = atoi(value);
                     }
@@ -558,7 +564,7 @@ namespace oceanbase
                       printf("option `table_id' needs an argument value\n");
                       ret = OB_INVALID_ARGUMENT;
                     }
-                    else 
+                    else
                     {
                       args.table_id = atoi(value);
                     }
@@ -736,7 +742,7 @@ namespace oceanbase
       }
       else if (OB_SUCCESS != (ret = client.send_recv(OB_RS_ADMIN, MY_VERSION, args.request_timeout_us, msgbuf)))
       {
-        printf("failed to send request, err=%d\n", ret);
+        printf("failed to send request, err=%d, timeout=%ld\n", ret, args.request_timeout_us);
       }
       else
       {
@@ -890,108 +896,16 @@ namespace oceanbase
       }
       return ret;
     }
-    int do_get_obi_config(ObBaseClient &client, Arguments &args)
-    {
-      int ret = OB_SUCCESS;
-      printf("get_obi_config...\n");
-      static const int32_t MY_VERSION = 1;
-      const int buff_size = sizeof(ObPacket) + 32;
-      char buff[buff_size];
-      ObDataBuffer msgbuf(buff, buff_size);
 
-      if (OB_SUCCESS != (ret = client.send_recv(OB_GET_OBI_CONFIG, MY_VERSION, args.request_timeout_us, msgbuf)))
-      {
-        printf("failed to send request, err=%d\n", ret);
-      }
-      else
-      {
-        ObResultCode result_code;
-        ObiConfig conf;
-        msgbuf.get_position() = 0;
-        if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
-        {
-          printf("failed to deserialize response, err=%d\n", ret);
-        }
-        else if (OB_SUCCESS != (ret = result_code.result_code_))
-        {
-          printf("failed to get obi role, err=%d\n", result_code.result_code_);
-        }
-        else if (OB_SUCCESS != (ret = conf.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
-        {
-          printf("failed to deserialized role, err=%d\n", ret);
-        }
-        else
-        {
-          printf("read_percentage=%d\n", conf.get_read_percentage());
-        }
-      }
-      return ret;    
-    }
-
-    int do_set_obi_config(ObBaseClient &client, Arguments &args)
-    {
-      int ret = OB_SUCCESS;
-      printf("set_obi_config, read_percentage=%d rs_port=%d...\n", args.obi_read_percentage, args.ups_port);
-      static const int32_t MY_VERSION = 2;
-
-      const int buff_size = sizeof(ObPacket) + 32;
-      char buff[buff_size];
-      ObDataBuffer msgbuf(buff, buff_size);
-      ObiConfig conf;
-      conf.set_read_percentage(args.obi_read_percentage);
-      ObServer rs_addr;
-      if (0 != args.ups_port && !rs_addr.set_ipv4_addr(args.ups_ip, args.ups_port))
-      {
-        printf("invalid param, addr=%s port=%d\n", args.ups_ip, args.ups_port);
-        usage();
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else if (0 > args.obi_read_percentage || 100 < args.obi_read_percentage)
-      {
-        printf("invalid param, read_percentage=%d\n", args.obi_read_percentage);
-        usage();
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else if (OB_SUCCESS != (ret = conf.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
-      {
-        printf("failed to serialize obi_config, err=%d\n", ret);
-      }
-      else if (OB_SUCCESS != (ret = rs_addr.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
-      {
-        printf("failed to serialize obi_config, err=%d\n", ret);
-      }
-      else if (OB_SUCCESS != (ret = client.send_recv(OB_SET_OBI_CONFIG, MY_VERSION, args.request_timeout_us, msgbuf)))
-      {
-        printf("failed to send request, err=%d\n", ret);
-      }
-      else
-      {
-        ObResultCode result_code;
-        msgbuf.get_position() = 0;
-        if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
-        {
-          printf("failed to deserialize response, err=%d\n", ret);
-        }
-        else if (OB_SUCCESS != (ret = result_code.result_code_))
-        {
-          printf("failed to set obi config, err=%d\n", result_code.result_code_);
-        }
-        else
-        {
-          printf("Okay\n");
-        }
-      }
-      return ret;
-    }
     int do_set_master_ups_config(ObBaseClient &client, Arguments &args)
     {
       int ret = OB_SUCCESS;
       if (((-1 != args.master_master_ups_read_percentage)
-          && (0 > args.master_master_ups_read_percentage
-            || 100 < args.master_master_ups_read_percentage))
+            && (0 > args.master_master_ups_read_percentage
+              || 100 < args.master_master_ups_read_percentage))
           || ((-1 != args.slave_master_ups_read_percentage)
-          && (0 > args.slave_master_ups_read_percentage
-            || 100 < args.slave_master_ups_read_percentage)))
+            && (0 > args.slave_master_ups_read_percentage
+              || 100 < args.slave_master_ups_read_percentage)))
       {
         printf("invalid param, master_master_ups_read_percentage=%d, slave_master_ups_read_percentage=%d\n",
             args.master_master_ups_read_percentage, args.slave_master_ups_read_percentage);
@@ -1076,7 +990,7 @@ namespace oceanbase
       }
       else
       {
-        printf("set_ups_config, ups_ip=%s ups_port=%d ms_read_percentage=%d cs_read_percentage=%d...\n", 
+        printf("set_ups_config, ups_ip=%s ups_port=%d ms_read_percentage=%d cs_read_percentage=%d...\n",
             args.ups_ip, args.ups_port, args.ms_read_percentage, args.cs_read_percentage);
 
         static const int32_t MY_VERSION = 1;
@@ -1115,6 +1029,76 @@ namespace oceanbase
           else
           {
             printf("Okay\n");
+          }
+        }
+      }
+      return ret;
+    }
+
+    int do_check_roottable(ObBaseClient &client, Arguments &args)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      const int buff_size = sizeof(ObPacket) + 128;
+      char buff[buff_size];
+      ObDataBuffer msgbuf(buff, buff_size);
+
+      common::ObServer cs_addr;
+      printf("check root_table integrity...");
+      if ((NULL == args.cs_ip) && (0 >= args.cs_port))
+      {
+      }
+      else
+      {
+        if ((NULL == args.cs_ip) || (0 >= args.cs_port))
+        {
+          printf("invalid param, cs_host=%s cs_port=%d\n", args.cs_ip, args.cs_port);
+          usage();
+          ret = OB_INVALID_ARGUMENT;
+        }
+        else if (!cs_addr.set_ipv4_addr(args.cs_ip, args.cs_port))
+        {
+          printf("invalid param, cs_host=%s cs_port=%d\n", args.cs_ip, args.cs_port);
+          usage();
+          ret = OB_INVALID_ARGUMENT;
+        }
+      }
+      printf("expect chunkserver addr:cs_addr=%s...\n", to_cstring(cs_addr));
+      if (OB_SUCCESS == ret)
+      {
+        if (OB_SUCCESS != (ret = cs_addr.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+        {
+          printf("failed to serialize cs_addr, err=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = client.send_recv(OB_RS_CHECK_ROOTTABLE, MY_VERSION, args.request_timeout_us, msgbuf)))
+        {
+          printf("failed to send request, err = %d", ret);
+        }
+        else
+        {
+          ObResultCode result_code;
+          msgbuf.get_position() = 0;
+          if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+          {
+            printf("failed to deserialize response code, err=%d", ret);
+          }
+          else if (OB_SUCCESS != (ret = result_code.result_code_))
+          {
+            printf("failed to check root_table integrity. err=%d", ret);
+          }
+          else
+          {
+            printf("Okay\n");
+            bool is_integrity = false;
+            if (OB_SUCCESS != (ret = serialization::decode_bool(
+                    msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), &is_integrity)))
+            {
+              printf("failed to decode check result, err=%d", ret);
+            }
+            else
+            {
+              printf("check result : roottable is %s integrity, expect cs=%s", is_integrity ? "" : "not", to_cstring(cs_addr));
+            }
           }
         }
       }
@@ -1195,7 +1179,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       static const int32_t MY_VERSION = 1;
       const int buff_size = sizeof(ObPacket) + 128;
-      char buff[buff_size];  
+      char buff[buff_size];
       ObDataBuffer msgbuf(buff, buff_size);
 
       common::ObServer ups_addr;
@@ -1313,9 +1297,14 @@ namespace oceanbase
       static const int32_t MY_VERSION = 1;
       char *buff = new(std::nothrow) char[OB_MAX_PACKET_LENGTH];
       ObDataBuffer msgbuf(buff, OB_MAX_PACKET_LENGTH);
+      int64_t schema_version = 0;
       if (NULL == buff)
       {
         printf("no memory\n");
+      }
+      else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), schema_version)))
+      {
+        TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
       }
       else if (OB_SUCCESS != (ret = client.send_recv(args.command.pcode, MY_VERSION, args.request_timeout_us, msgbuf)))
       {
@@ -1340,7 +1329,7 @@ namespace oceanbase
         }
         else
         {
-          schema_manager.print(stdout);      
+          schema_manager.print(stdout);
         }
       }
       if (NULL != buff)
@@ -1358,12 +1347,12 @@ namespace oceanbase
       static const int32_t MY_VERSION = 1;
       char *buff = new(std::nothrow) char[OB_MAX_PACKET_LENGTH];
       ObDataBuffer msgbuf(buff, OB_MAX_PACKET_LENGTH);
-      char keybuf[1];
-      keybuf[0] = '\0';
+      ObObj objs[1];
       ObCellInfo cell;
       cell.table_id_ = args.table_id;
       cell.column_id_ = 0;
-      cell.row_key_.assign(keybuf, 1);
+      objs[0].set_int(0);
+      cell.row_key_.assign(objs, 1);
       ObGetParam get_param;
       if (OB_INVALID_ID == args.table_id)
       {
@@ -1414,7 +1403,7 @@ namespace oceanbase
       {
         delete [] buff;
         buff = NULL;
-      }  
+      }
       return ret;
     }
 
@@ -1490,14 +1479,14 @@ namespace oceanbase
       {
         free(servers2);
         servers2 = NULL;
-      }  
+      }
       return ret;
     }
 
     int do_restart_servers(ObBaseClient &client, Arguments &args)
     {
       int ret = OB_SUCCESS;
-      printf("do_restart_servers, server_list=%s cancel=%d...\n", 
+      printf("do_restart_servers, server_list=%s cancel=%d...\n",
           args.server_list, args.flag_cancel);
       static const int32_t MY_VERSION = 1;
       char *buff = new(std::nothrow) char[OB_MAX_PACKET_LENGTH];
@@ -1540,7 +1529,7 @@ namespace oceanbase
         {
           TBSYS_LOG(ERROR, "serialize error");
         }
-        else if (OB_SUCCESS != (ret = client.send_recv(args.command.pcode, MY_VERSION, args.request_timeout_us, 
+        else if (OB_SUCCESS != (ret = client.send_recv(args.command.pcode, MY_VERSION, args.request_timeout_us,
                 msgbuf)))
         {
           printf("failed to send request, err=%d\n", ret);
@@ -1567,14 +1556,14 @@ namespace oceanbase
       {
         delete [] buff;
         buff = NULL;
-      }  
+      }
       return ret;
     }
 
     int do_shutdown_servers(ObBaseClient &client, Arguments &args)
     {
       int ret = OB_SUCCESS;
-      printf("do_shutdown_servers, server_list=%s cancel=%d...\n", 
+      printf("do_shutdown_servers, server_list=%s cancel=%d...\n",
           args.server_list, args.flag_cancel);
       static const int32_t MY_VERSION = 1;
       char *buff = new(std::nothrow) char[OB_MAX_PACKET_LENGTH];
@@ -1595,12 +1584,12 @@ namespace oceanbase
       {
         printf("failed to serialize get_param, err=%d\n", ret);
       }
-      else if (OB_SUCCESS != (ret = serialization::encode_vi32(msgbuf.get_data(), msgbuf.get_capacity(), 
+      else if (OB_SUCCESS != (ret = serialization::encode_vi32(msgbuf.get_data(), msgbuf.get_capacity(),
               msgbuf.get_position(), args.flag_cancel)))
       {
         TBSYS_LOG(ERROR, "serialize error");
       }
-      else if (OB_SUCCESS != (ret = client.send_recv(args.command.pcode, MY_VERSION, args.request_timeout_us, 
+      else if (OB_SUCCESS != (ret = client.send_recv(args.command.pcode, MY_VERSION, args.request_timeout_us,
               msgbuf)))
       {
         printf("failed to send request, err=%d\n", ret);
@@ -1626,7 +1615,7 @@ namespace oceanbase
       {
         delete [] buff;
         buff = NULL;
-      }  
+      }
       return ret;
     }
 
@@ -1692,38 +1681,6 @@ namespace oceanbase
       return err;
     }
 
-    int do_force_cs_report(ObBaseClient &client, Arguments &args)
-    {
-      int ret = OB_SUCCESS;
-      printf("force_cs_report_tablet...\n");
-      static const int32_t MY_VERSION = 1;
-      const int buff_size = sizeof(ObPacket) + 32;
-      char buff[buff_size];
-      ObDataBuffer msgbuf(buff, buff_size);
-      if (OB_SUCCESS != (ret = client.send_recv(OB_RS_FORCE_CS_REPORT, MY_VERSION, args.request_timeout_us, msgbuf)))
-      {
-        printf("fail to send request. err=%d\n", ret);
-      }
-      else
-      {
-        ObResultCode result_code;
-        msgbuf.get_position() = 0;
-        if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(),
-                msgbuf.get_position())))
-        {
-          printf("failed to deserialize response, err=%d\n", ret);
-        }
-        else if (OB_SUCCESS != (ret = result_code.result_code_))
-        {
-          printf("failed to request cs to report tablet, err=%d\n", result_code.result_code_);
-        }
-        else
-        {
-          printf("Okay\n");
-        }
-      }
-      return ret;
-    }
  int do_split_tablet(ObBaseClient &client, Arguments &args)
  {
    int err = OB_SUCCESS;
@@ -1757,5 +1714,86 @@ namespace oceanbase
    return err;
  }
 
+ int do_set_config(ObBaseClient &client, Arguments &args)
+ {
+   int err = OB_SUCCESS;
+   static const int32_t MY_VERSION = 1;
+   char buf[OB_MAX_PACKET_LENGTH];
+   ObString str = ObString::make_string(args.config_str);
+   int64_t pos = 0;
+   if (strlen(args.config_str) <= 0)
+   {
+     printf("ERROR: config string not specified.\n");
+     printf("\tset_config -o config_name=config_value[,config_name2=config_value2[,...]]\n");
+     err = OB_ERROR;
+   }
+   else if (OB_SUCCESS != (err = str.serialize(buf, sizeof (buf), pos)))
+   {
+     printf("Serialize config string failed! ret: [%d]", err);
+   }
+   else
+   {
+     printf("config_str: %s\n", args.config_str);
+
+     ObDataBuffer msgbuf(buf, sizeof (buf));
+     msgbuf.get_position() = pos;
+     if (OB_SUCCESS != (err = client.send_recv(OB_SET_CONFIG, MY_VERSION, args.request_timeout_us, msgbuf)))
+     {
+       printf("failed to send request. err=%d\n", err);
+     }
+     else
+     {
+       ObResultCode result_code;
+       msgbuf.get_position() = 0;
+       if (OB_SUCCESS != (err = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+       {
+         printf("failed to deserialize response code, err=%d\n", err);
+       }
+       else if (OB_SUCCESS != (err = result_code.result_code_))
+       {
+         printf("failed to set config. err=%d\n", err);
+       }
+       else
+       {
+         printf("OKay\n");
+       }
+     }
+   }
+   return err;
+ }
+
+ int do_get_config(ObBaseClient &client, Arguments &args)
+ {
+   int err = OB_SUCCESS;
+   static const int32_t MY_VERSION = 1;
+   char buf[OB_MAX_PACKET_LENGTH];
+   ObDataBuffer msgbuf(buf, sizeof (buf));
+   msgbuf.get_position() = 0;
+   if (OB_SUCCESS != (err = client.send_recv(OB_GET_CONFIG, MY_VERSION, args.request_timeout_us, msgbuf)))
+   {
+     printf("failed to send request. err=%d\n", err);
+   }
+   else
+   {
+     ObResultCode result_code;
+     msgbuf.get_position() = 0;
+     if (OB_SUCCESS != (err = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+     {
+       printf("failed to deserialize response code, err=%d\n", err);
+     }
+     else if (OB_SUCCESS != (err = result_code.result_code_))
+     {
+       printf("failed to set config. err=%d\n", err);
+     }
+     else
+     {
+       static const int HEADER_LENGTH = sizeof (uint32_t) + sizeof (uint64_t);
+       uint64_t length = *reinterpret_cast<uint64_t *>(msgbuf.get_data() + msgbuf.get_position() + sizeof (uint32_t));
+       msgbuf.get_position() += HEADER_LENGTH;
+       printf("%.*s", static_cast<int>(length), msgbuf.get_data() + msgbuf.get_position());
+     }
+   }
+   return err;
+ }
   } // end namespace rootserver
 }   // end namespace oceanbase

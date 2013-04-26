@@ -42,6 +42,7 @@ namespace oceanbase
         int to_int64(int64_t &i64) const;
         bool can_convert_to_int64() const;
         int round_to(int8_t precision, int8_t scale, int8_t &nwords, int8_t &vscale, uint32_t *words) const;
+        int cast_to_int64(int64_t &i64) const;
 
         int8_t get_vscale() const;
         int8_t get_nwords() const;

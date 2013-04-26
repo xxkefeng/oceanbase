@@ -24,6 +24,7 @@
 #include "ob_iterator.h"
 #include "ob_vector.h"
 #include "ob_string.h"
+#include "ob_rowkey.h"
 
 namespace oceanbase
 {
@@ -41,8 +42,8 @@ namespace oceanbase
       virtual ~ObCellArray();
       /// @fn append a cell into the array, the whole cell whill be copied
       int append(const ObCellInfo &cell, ObInnerCellInfo *& cell_out);
-      int append(const ObCellInfo &cell, ObInnerCellInfo *& cell_out, const ObString & row_key,
-          const bool is_first_cell_of_row = false);
+      int append(const ObCellInfo &cell, ObInnerCellInfo *& cell_out, 
+          const ObRowkey& row_key, const bool is_first_cell_of_row = false);
       int batch_append(ObCellInfo **cells_in, ObInnerCellInfo **cells_out, const int64_t cell_size);
       /// @fn apply changes to a given cell 
       int apply(const ObCellInfo &cell, const int64_t offset, ObInnerCellInfo *& cell_out);
@@ -150,7 +151,7 @@ namespace oceanbase
       /// @fn copy a cell
       int copy_cell_(ObInnerCellInfo &dst, const ObCellInfo &src, const int64_t prev_cell_idx);
       int copy_cell_fast(ObInnerCellInfo &dst, const ObCellInfo &src,
-          const ObString &row_key, const bool is_first_cell_of_row = false);
+          const ObRowkey &row_key, const bool is_first_cell_of_row = false);
       int ensure_current_block_space();
       /// @fn initialize all properties 
       void initialize_();
@@ -163,7 +164,7 @@ namespace oceanbase
       static const int64_t CELL_BLOCK_SHIF_BITS = 10;
       static const int64_t CELL_IN_BLOCK_OFFSET_AND_VAL = 1023;
       /// @property cell block array size
-      static const int64_t CELL_BLOCK_ARRAY_SIZE = 512 * 1024;
+      static const int64_t CELL_BLOCK_ARRAY_SIZE = 16 * 1024;
       /// @property number of cell can be accessed in O(1)
       static const int64_t O1_ACCESS_CELL_NUM = CELL_BLOCK_CAPACITY*CELL_BLOCK_ARRAY_SIZE;
       static const int64_t DEFAULT_HEAP_BUF_SIZE = 64 * 1024;
@@ -192,9 +193,9 @@ namespace oceanbase
       /// @property the number of cell consumed by iterator
       int64_t     consumed_row_num_;
       int32_t     cur_row_consumed_cell_num_;
-      ObString prev_key_;
+      ObRowkey    prev_key_;
       uint64_t    prev_tableid_;
-      ObString    last_append_rowkey_;
+      ObRowkey    last_append_rowkey_;
       bool cur_cell_row_changed_;
 
       /// order by and limit

@@ -7,7 +7,7 @@ $(top_srcdir)/svn_version.cpp: FORCE
 	echo '"; return SVN_Version; }' >> $@
 	echo 'const char* build_date() { return __DATE__; }' >> $@
 	echo 'const char* build_time() { return __TIME__; }' >> $@
-	MYFLAGS=`echo $(CXXFLAGS) $(CPPFLAGS)` && echo 'const char* build_flags() { return "${MYFLAGS}"; }' >> $@
+	echo -n 'const char* build_flags() { return "' >> $@ && echo -n $(CXXFLAGS) $(CPPFLAGS) |sed s/\"//g >> $@ && echo '"; }' >> $@
 	cp $@ $(top_srcdir)/svn_version.c
 
 if HAVESVNWC
@@ -16,4 +16,3 @@ $(top_srcdir)/svn_dist_version: FORCE
 endif
 
 FORCE:
-

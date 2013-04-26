@@ -17,14 +17,14 @@
 #ifndef __OCEANBASE_CHUNKSERVER_MOCK_CLIENT_H__
 #define __OCEANBASE_CHUNKSERVER_MOCK_CLIENT_H__
 
-#include "tbnet.h"
+#include "easy_io.h"
+#include "common/ob_tbnet_callback.h"
 #include "common/ob_define.h"
 #include "common/data_buffer.h"
 #include "common/ob_server.h"
 #include "common/ob_client_manager.h"
 #include "common/ob_schema.h"
 #include "common/ob_result.h"
-#include "common/ob_packet_factory.h"
 #include "common/ob_read_common_data.h"
 #include "common/ob_scanner.h"
 #include "common/ob_mutator.h"
@@ -35,6 +35,7 @@
 #include "common/ob_log_cursor.h"
 #include "common/ob_tablet_info.h"
 #include "common/ob_ups_info.h"
+#include "common/ob_new_scanner.h"
 #include "updateserver/ob_ups_utils.h"
 #include "updateserver/ob_ups_stat.h"
 #include "updateserver/ob_store_mgr.h"
@@ -79,7 +80,7 @@ struct IntArray
 class BaseClient
 {
   public:
-    BaseClient()
+    BaseClient(): eio_(NULL)
     {
     }
     virtual ~BaseClient()
@@ -96,29 +97,66 @@ class BaseClient
     }
 
   public:
-    tbnet::DefaultPacketStreamer streamer_;
-    tbnet::Transport transport_;
-    ObPacketFactory factory_;
     ObClientManager client_;
+    easy_io_t *eio_;
+    easy_io_handler_pt client_handler_;
 };
 
 inline int BaseClient::initialize()
 {
   ob_init_memory_pool();
-  streamer_.setPacketFactory(&factory_);
-  client_.initialize(&transport_, &streamer_);
-  return transport_.start();
+
+  int ret = OB_ERROR;
+  int rc = EASY_OK;
+  eio_ = easy_eio_create(eio_, 1);
+  if (NULL == eio_)
+  {
+    ret = OB_ERROR;
+    TBSYS_LOG(ERROR, "easy_io_create error");
+  }
+  else
+  {
+    memset(&client_handler_, 0, sizeof(easy_io_handler_pt));
+    client_handler_.encode = ObTbnetCallback::encode;
+    client_handler_.decode = ObTbnetCallback::decode;
+    client_handler_.get_packet_id = ObTbnetCallback::get_packet_id;
+    if (OB_SUCCESS != (ret = client_.initialize(eio_, &client_handler_)))
+    {
+      TBSYS_LOG(ERROR, "failed to init client_mgr, err=%d", ret);
+    }
+    else
+    {
+      //start io thread
+      if (ret == OB_SUCCESS)
+      {
+        rc = easy_eio_start(eio_);
+        if (EASY_OK == rc)
+        {
+          ret = OB_SUCCESS;
+          TBSYS_LOG(INFO, "start io thread");
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "easy_eio_start failed");
+          ret = OB_ERROR;
+        }
+      }
+    }
+  }
+  return ret;
 }
 
 inline int BaseClient::destroy()
 {
-  transport_.stop();
-  return transport_.wait();
+  easy_eio_stop(eio_);
+  easy_eio_wait(eio_);
+  easy_eio_destroy(eio_);
+  return OB_SUCCESS;
 }
 
 inline int BaseClient::wait()
 {
-  return transport_.wait();
+  return easy_eio_wait(eio_);
 }
 
 class MockClient : public BaseClient
@@ -529,6 +567,14 @@ class MockClient : public BaseClient
     {
       return send_request(OB_SCAN_REQUEST, scan_param, scanner, timeout);
     }
+    int ups_show_sessions(ObNewScanner &scanner, const int64_t timeout)
+    {
+      return send_request(OB_UPS_SHOW_SESSIONS, scanner, timeout);
+    }
+    int ups_kill_session(const uint32_t session_descriptor, const int64_t timeout)
+    {
+      return send_command(OB_UPS_KILL_SESSION, session_descriptor, timeout);
+    }
 
     int get_thread_buffer_(ObDataBuffer& data_buff)
     {
@@ -634,11 +680,14 @@ class MockClient : public BaseClient
     {
       return send_command(OB_CHANGE_LOG_LEVEL, log_level, timeout);
     }
+
+    int execute_sql(const ObString &query, const int64_t timeout)
+    {
+      return send_command(OB_SQL_EXECUTE, query, timeout);
+    }
   private:
     ObServer server_;
     ThreadSpecificBuffer rpc_buffer_;
 };
 
-
 #endif //__MOCK_CLIENT_H__
-

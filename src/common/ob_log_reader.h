@@ -102,22 +102,36 @@ namespace oceanbase
       }
       inline uint64_t get_last_log_offset()
       {
-        return log_file_reader_->get_last_log_offset();
-      }
-        inline int get_next_cursor(common::ObLogCursor& cursor)
-      {
-        int err = OB_SUCCESS;
-        cursor.file_id_ = cur_log_file_id_;
-        cursor.log_id_ = cur_log_seq_id_  + 1;
-        cursor.offset_ = log_file_reader_->get_last_log_offset();
-        return err;
+        return NULL != log_file_reader_? log_file_reader_->get_last_log_offset(): 0;
       }
         inline int get_cursor(common::ObLogCursor& cursor)
       {
         int err = OB_SUCCESS;
-        cursor.file_id_ = cur_log_file_id_;
-        cursor.log_id_ = cur_log_seq_id_;
-        cursor.offset_ = log_file_reader_->get_last_log_offset();
+        if (NULL == log_file_reader_)
+        {
+          err = OB_READ_NOTHING;
+        }
+        else
+        {
+          cursor.file_id_ = cur_log_file_id_;
+          cursor.log_id_ = cur_log_seq_id_;
+          cursor.offset_ = log_file_reader_->get_last_log_offset();
+        }
+        return err;
+      }
+        inline int get_next_cursor(common::ObLogCursor& cursor)
+      {
+        int err = OB_SUCCESS;
+        if (NULL == log_file_reader_)
+        {
+          err = OB_READ_NOTHING;
+        }
+        else
+        {
+          cursor.file_id_ = cur_log_file_id_;
+          cursor.log_id_ = cur_log_seq_id_  + 1;
+          cursor.offset_ = log_file_reader_->get_last_log_offset();
+        }
         return err;
       }
     private:

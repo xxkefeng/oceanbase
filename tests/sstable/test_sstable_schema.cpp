@@ -29,8 +29,9 @@ namespace oceanbase
   {
     namespace sstable
     {
-      static const int64_t DEFAULT_COLUMN_DEF_SIZE = OB_MAX_TABLE_NUMBER * OB_MAX_COLUMN_NUMBER;
+      static const int64_t DEFAULT_COLUMN_DEF_SIZE = 1280; 
       static const char * schema_file_name = "schema_for_test";
+      static const int64_t ROWKEY_COLUMN_GROUP = 65535;
       class TestObSSTableSchema: public ::testing::Test
       {
       public:
@@ -52,7 +53,7 @@ namespace oceanbase
 
         EXPECT_EQ(0, schema.get_column_count());
 
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
+        for (int i = 0; i < oceanbase::common::OB_MAX_COLUMN_NUMBER; ++i)
         {
           column_def = schema.get_column_def(i);
           EXPECT_TRUE(NULL == column_def);
@@ -67,6 +68,7 @@ namespace oceanbase
         int ret = OB_SUCCESS;
 
         column_def.reserved_ = 0;
+        column_def.rowkey_seq_ = 0;
         column_def.column_group_id_ = 2;
         column_def.column_name_id_ = 2;
         column_def.column_value_type_ = ObDoubleType;
@@ -109,6 +111,258 @@ namespace oceanbase
         EXPECT_EQ(ObVarcharType, column->column_value_type_);
         EXPECT_EQ(1000, (int32_t)column->table_id_);
       }
+
+      TEST_F(TestObSSTableSchema, test_add_columns_one_table_with_rowkey)
+      {
+        ObSSTableSchema schema;
+        ObSSTableSchemaColumnDef column_def;
+        const ObSSTableSchemaColumnDef *column = NULL;
+        int ret = OB_SUCCESS;
+
+        const uint64_t TABLE_ID = 1000;
+
+        // add column group 2; rowkey(3,2), column 4.
+        column_def.reserved_ = 0;
+        column_def.column_group_id_ = 2;
+        column_def.column_name_id_ = 2;
+        column_def.rowkey_seq_ = 1;
+        column_def.column_value_type_ = ObDoubleType;
+        column_def.table_id_ = TABLE_ID;
+        ret = schema.add_column_def(column_def);
+        EXPECT_TRUE(OB_SUCCESS == ret);
+
+        column_def.column_group_id_ = 2;
+        column_def.column_name_id_ = 3;
+        column_def.column_value_type_ = ObIntType;
+        column_def.rowkey_seq_ = 2;
+        column_def.table_id_ = 1000;
+        ret = schema.add_column_def(column_def);
+        EXPECT_TRUE(OB_SUCCESS == ret);
+
+        column_def.column_group_id_ = 2;
+        column_def.column_name_id_ = 4;
+        column_def.column_value_type_ = ObVarcharType;
+        column_def.table_id_ = TABLE_ID;
+        column_def.rowkey_seq_ = 0;
+        ret = schema.add_column_def(column_def);
+        EXPECT_TRUE(OB_SUCCESS == ret);
+
+        // add column_group 3; rowkey(3,2), column 5;
+        column_def.column_group_id_ = 3;
+        column_def.column_name_id_ = 2;
+        column_def.rowkey_seq_ = 1;
+        column_def.column_value_type_ = ObDoubleType;
+        column_def.table_id_ = TABLE_ID;
+        ret = schema.add_column_def(column_def);
+        EXPECT_TRUE(OB_ERROR == ret);
+
+        column_def.column_group_id_ = 3;
+        column_def.column_name_id_ = 3;
+        column_def.column_value_type_ = ObIntType;
+        column_def.rowkey_seq_ = 0;
+        column_def.table_id_ = TABLE_ID;
+        ret = schema.add_column_def(column_def);
+        EXPECT_TRUE(OB_ERROR== ret);
+
+        column_def.column_group_id_ = 3;
+        column_def.column_name_id_ = 5;
+        column_def.column_value_type_ = ObDateTimeType;
+        column_def.rowkey_seq_ = 0;
+        column_def.table_id_ = TABLE_ID;
+        ret = schema.add_column_def(column_def);
+        EXPECT_TRUE(OB_SUCCESS == ret);
+
+        EXPECT_EQ(4, schema.get_column_count());
+
+        column = schema.get_column_def(0);
+        EXPECT_TRUE(NULL != column);
+        EXPECT_EQ(65535, (int32_t)column->column_group_id_);
+        EXPECT_EQ(2, (int32_t)column->column_name_id_);
+        EXPECT_EQ(ObDoubleType, column->column_value_type_);
+        EXPECT_EQ(TABLE_ID, (uint64_t)column->table_id_);
+
+        column = schema.get_column_def(1);
+        EXPECT_EQ(65535, (int32_t)column->column_group_id_);
+        EXPECT_EQ(3, (int32_t)column->column_name_id_);
+        EXPECT_EQ(ObIntType, column->column_value_type_);
+        EXPECT_EQ(TABLE_ID, (uint64_t)column->table_id_);
+
+        column = schema.get_column_def(2);
+        EXPECT_EQ(2, (int32_t)column->column_group_id_);
+        EXPECT_EQ(4, (int32_t)column->column_name_id_);
+        EXPECT_EQ(ObVarcharType, column->column_value_type_);
+        EXPECT_EQ(TABLE_ID, (uint64_t)column->table_id_);
+
+        column = schema.get_rowkey_column(TABLE_ID, 1);
+        EXPECT_TRUE(NULL != column);
+        EXPECT_EQ(2, (int32_t)column->column_name_id_);
+        EXPECT_EQ(65535, (int32_t)column->column_group_id_);
+
+        column = schema.get_rowkey_column(TABLE_ID, 2);
+        EXPECT_TRUE(NULL != column);
+        EXPECT_EQ(3, (int32_t)column->column_name_id_);
+        EXPECT_EQ(65535, (int32_t)column->column_group_id_);
+
+        int64_t offset = schema.find_offset_column_group_schema(TABLE_ID, 2, 4);
+        EXPECT_EQ(offset, 0);
+        offset = schema.find_offset_column_group_schema(TABLE_ID, 3, 5);
+        EXPECT_EQ(offset, 0);
+        offset = schema.find_offset_column_group_schema(TABLE_ID, 3, 6);
+        EXPECT_EQ(offset, -1);
+      }
+
+      TEST_F(TestObSSTableSchema, test_add_columns_continuous_rowkey)
+      {
+        ObSSTableSchema schema;
+        ObSSTableSchemaColumnDef column_def;
+        const ObSSTableSchemaColumnDef *column = NULL;
+        int ret = OB_SUCCESS;
+
+        const uint64_t TABLE_ID = 1000;
+        const int CG_NUM = 4;
+        const int COL_NUM = 10;
+        const int RK_COL_NUM = 3;
+        for (int ci = 1; ci < 1 + RK_COL_NUM; ++ci)
+        {
+          column_def.reserved_ = 0;
+          column_def.column_group_id_ = 0;
+          column_def.column_name_id_ = static_cast<uint16_t>(ci);
+          column_def.rowkey_seq_ = static_cast<uint16_t>(ci);
+          column_def.column_value_type_ = ObDoubleType;
+          column_def.table_id_ = TABLE_ID;
+          ret = schema.add_column_def(column_def);
+          EXPECT_TRUE(OB_SUCCESS == ret);
+        }
+
+        for (int cg = 10; cg < 10 + CG_NUM; ++cg)
+        {
+          for (int ci = RK_COL_NUM + 1; ci < 1 + COL_NUM; ++ci)
+          {
+            column_def.reserved_ = 0;
+            column_def.column_group_id_ = static_cast<uint16_t>(cg);
+            column_def.column_name_id_ = static_cast<uint16_t>(ci);
+            if (10 == cg && ci <= 3)
+            {
+              column_def.rowkey_seq_ = static_cast<uint16_t>(ci);
+            }
+            else 
+            {
+              column_def.rowkey_seq_ = 0;
+            }
+            column_def.column_value_type_ = ObDoubleType;
+            column_def.table_id_ = TABLE_ID;
+            ret = schema.add_column_def(column_def);
+            EXPECT_TRUE(OB_SUCCESS == ret);
+          }
+        }
+
+        EXPECT_EQ(CG_NUM * (COL_NUM-RK_COL_NUM) + RK_COL_NUM, schema.get_column_count());
+
+        for (int seq = 1; seq <= 3; ++seq)
+        {
+          column = schema.get_rowkey_column(TABLE_ID, seq);
+          EXPECT_TRUE(NULL != column);
+          EXPECT_EQ(seq, (int32_t)column->column_name_id_);
+          EXPECT_EQ(ROWKEY_COLUMN_GROUP, (int32_t)column->column_group_id_);
+        }
+
+      }
+
+      TEST_F(TestObSSTableSchema, test_add_columns_multi_table_rowkey)
+      {
+        ObSSTableSchema schema;
+        ObSSTableSchemaColumnDef column_def;
+        const ObSSTableSchemaColumnDef *column = NULL;
+        int ret = OB_SUCCESS;
+
+        const uint64_t TABLE_ID = 1000;
+        const int CG_NUM = 4;
+        const int COL_NUM = 10;
+        const int RK_COL_NUM = 3;
+
+        for (int ci = 1; ci < 1 + RK_COL_NUM; ++ci)
+        {
+          column_def.reserved_ = 0;
+          column_def.column_group_id_ = 0;
+          column_def.column_name_id_ = static_cast<uint16_t>(ci);
+          column_def.rowkey_seq_ = static_cast<uint16_t>(ci);
+          column_def.column_value_type_ = ObDoubleType;
+          column_def.table_id_ = TABLE_ID;
+          ret = schema.add_column_def(column_def);
+          EXPECT_TRUE(OB_SUCCESS == ret);
+        }
+
+        for (int cg = 10; cg < 10 + CG_NUM; ++cg)
+        {
+          for (int ci = 1+RK_COL_NUM; ci < 1 + COL_NUM; ++ci)
+          {
+            column_def.reserved_ = 0;
+            column_def.column_group_id_ = static_cast<uint16_t>(cg);
+            column_def.column_name_id_ = static_cast<uint16_t>(ci);
+            if (10 == cg &&  ci <= 3)
+            {
+              column_def.rowkey_seq_ = static_cast<uint16_t>(ci);
+            }
+            else
+            {
+              column_def.rowkey_seq_ = 0;
+            }
+            column_def.column_value_type_ = ObDoubleType;
+            column_def.table_id_ = TABLE_ID;
+            ret = schema.add_column_def(column_def);
+            EXPECT_TRUE(OB_SUCCESS == ret);
+          }
+        }
+
+        for (int ci = 1; ci < 1 + RK_COL_NUM; ++ci)
+        {
+          column_def.reserved_ = 0;
+          column_def.column_group_id_ = 0;
+          column_def.column_name_id_ = static_cast<uint16_t>(ci);
+          column_def.rowkey_seq_ = static_cast<uint16_t>(ci);
+          column_def.column_value_type_ = ObDoubleType;
+          column_def.table_id_ = TABLE_ID + 1;
+          ret = schema.add_column_def(column_def);
+          EXPECT_TRUE(OB_SUCCESS == ret);
+        }
+
+        for (int cg = 10; cg < 10 + CG_NUM; ++cg)
+        {
+          for (int ci = 1 + RK_COL_NUM; ci < 1 + COL_NUM; ++ci)
+          {
+            column_def.reserved_ = 0;
+            column_def.column_group_id_ = static_cast<uint16_t>(cg);
+            column_def.column_name_id_ = static_cast<uint16_t>(ci);
+            if (10 == cg &&  ci <= 3)
+            {
+              column_def.rowkey_seq_ = static_cast<uint16_t>(ci);
+            }
+            else
+            {
+              column_def.rowkey_seq_ = 0;
+            }
+            column_def.column_value_type_ = ObDoubleType;
+            column_def.table_id_ = TABLE_ID+1;
+            ret = schema.add_column_def(column_def);
+            EXPECT_TRUE(OB_SUCCESS == ret);
+          }
+        }
+
+        EXPECT_EQ(2 * (CG_NUM * (COL_NUM-RK_COL_NUM) + RK_COL_NUM), schema.get_column_count());
+
+        for (int seq = 1; seq <= 3; ++seq)
+        {
+          column = schema.get_rowkey_column(TABLE_ID, seq);
+          EXPECT_TRUE(NULL != column);
+          EXPECT_EQ(seq, (int32_t)column->column_name_id_);
+          EXPECT_EQ(ROWKEY_COLUMN_GROUP, (int32_t)column->column_group_id_);
+          column = schema.get_rowkey_column(TABLE_ID+1, seq);
+          EXPECT_TRUE(NULL != column);
+          EXPECT_EQ(seq, (int32_t)column->column_name_id_);
+          EXPECT_EQ(ROWKEY_COLUMN_GROUP, (int32_t)column->column_group_id_);
+        }
+
+      }
       
       TEST_F(TestObSSTableSchema, test_add_max_columns_one_table)
       {
@@ -116,19 +370,20 @@ namespace oceanbase
         ObSSTableSchemaColumnDef column_def;
         const ObSSTableSchemaColumnDef *column = NULL;
         int ret = OB_SUCCESS;
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
+        for (int i = 0; i < oceanbase::common::OB_MAX_COLUMN_NUMBER; ++i)
         {
           column_def.column_group_id_ = 2;
-          column_def.column_name_id_ = i + 2;
+          column_def.column_name_id_ = static_cast<uint16_t>(i + 2);
           column_def.table_id_ = 1000;
+          column_def.rowkey_seq_ = 0;
           column_def.column_value_type_ = ObNullType;
           ret = schema.add_column_def(column_def);
           EXPECT_EQ(OB_SUCCESS, ret);
         }
 
-        EXPECT_EQ(OB_MAX_COLUMN_NUMBER, schema.get_column_count());
+        EXPECT_EQ(oceanbase::common::OB_MAX_COLUMN_NUMBER, schema.get_column_count());
 
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
+        for (int i = 0; i < oceanbase::common::OB_MAX_COLUMN_NUMBER; ++i)
         {
           column = schema.get_column_def(i);
           EXPECT_EQ(i + 2, (int32_t)column->column_name_id_);
@@ -147,8 +402,9 @@ namespace oceanbase
         for (int i = 0; i < DEFAULT_COLUMN_DEF_SIZE; ++i)
         {
           column_def.column_group_id_ = 2;
-          column_def.column_name_id_ = i + 2;
-          if (OB_MAX_COLUMN_NUMBER > i)
+          column_def.column_name_id_ = static_cast<uint16_t>(i + 2);
+          column_def.rowkey_seq_ = 0;
+          if (oceanbase::common::OB_MAX_COLUMN_NUMBER > i)
           {
             column_def.table_id_ = 1000;
           }
@@ -168,7 +424,7 @@ namespace oceanbase
           column = schema.get_column_def(i);
           EXPECT_EQ(i + 2, (int32_t)column->column_name_id_);
           EXPECT_EQ(2, (int32_t)column->column_group_id_);
-          if (OB_MAX_COLUMN_NUMBER > i)
+          if (oceanbase::common::OB_MAX_COLUMN_NUMBER > i)
           {
             EXPECT_EQ(1000, (int32_t)column->table_id_);
           }
@@ -180,7 +436,7 @@ namespace oceanbase
         }
       }
 
-      TEST_F(TestObSSTableSchema, test_reset_scheam)
+      TEST_F(TestObSSTableSchema, test_reset_schema)
       {
         ObSSTableSchema schema;
         ObSSTableSchemaColumnDef column_def;
@@ -189,8 +445,9 @@ namespace oceanbase
         for (int i = 0; i < DEFAULT_COLUMN_DEF_SIZE; ++i)
         {
           column_def.column_group_id_ = 2;
-          column_def.column_name_id_ = i + 2;
-          if (OB_MAX_COLUMN_NUMBER > i)
+          column_def.column_name_id_ = static_cast<uint16_t>(i + 2);
+          column_def.rowkey_seq_ = 0;
+          if (oceanbase::common::OB_MAX_COLUMN_NUMBER > i)
           {
             column_def.table_id_ = 1000;
           }
@@ -210,7 +467,7 @@ namespace oceanbase
           column = schema.get_column_def(i);
           EXPECT_EQ(i + 2, (int32_t)column->column_name_id_);
           EXPECT_EQ(2, (int32_t)column->column_group_id_);
-          if (OB_MAX_COLUMN_NUMBER > i)
+          if (oceanbase::common::OB_MAX_COLUMN_NUMBER > i)
           {
             EXPECT_EQ(1000, (int32_t)column->table_id_);
           }
@@ -226,8 +483,9 @@ namespace oceanbase
         for (int i = 0; i < DEFAULT_COLUMN_DEF_SIZE; ++i)
         {
           column_def.column_group_id_ = 2;
-          column_def.column_name_id_ = i + 2;
-          if (OB_MAX_COLUMN_NUMBER > i)
+          column_def.column_name_id_ = static_cast<uint16_t>(i + 2);
+          column_def.rowkey_seq_ = 0;
+          if (oceanbase::common::OB_MAX_COLUMN_NUMBER > i)
           {
             column_def.table_id_ = 1000;
           }
@@ -247,58 +505,7 @@ namespace oceanbase
           column = schema.get_column_def(i);
           EXPECT_EQ(i + 2, (int32_t)column->column_name_id_);
           EXPECT_EQ(2, (int32_t)column->column_group_id_);
-          if (OB_MAX_COLUMN_NUMBER > i)
-          {
-            EXPECT_EQ(1000, (int32_t)column->table_id_);
-          }
-          else
-          {
-            EXPECT_EQ(1001, (int32_t)column->table_id_);
-          }
-          EXPECT_EQ(ObNullType, column->column_value_type_);
-        }
-      }
-
-
-      TEST_F(TestObSSTableSchema, test_add_more_columns_than_default)
-      {
-        ObSSTableSchema schema;
-        ObSSTableSchemaColumnDef column_def;
-        const ObSSTableSchemaColumnDef *column = NULL;
-        int ret = OB_SUCCESS;
-        for (int i = 0; i <= DEFAULT_COLUMN_DEF_SIZE; ++i)
-        {
-          column_def.column_group_id_ = 2;
-          column_def.column_name_id_ = i + 2;
-          if (OB_MAX_COLUMN_NUMBER > i)
-          {
-            column_def.table_id_ = 1000;
-          }
-          else
-          {
-            column_def.table_id_ = 1001;
-          }
-          column_def.column_value_type_ = ObNullType;
-          ret = schema.add_column_def(column_def);
-          if ( DEFAULT_COLUMN_DEF_SIZE != i)
-          {
-            EXPECT_EQ(OB_SUCCESS, ret);
-          }
-          else
-          {
-            EXPECT_EQ(OB_ERROR, ret);
-          }
-
-        }
-
-        EXPECT_EQ(DEFAULT_COLUMN_DEF_SIZE, schema.get_column_count());
-
-        for (int i = 0; i < DEFAULT_COLUMN_DEF_SIZE; ++i)
-        {
-          column = schema.get_column_def(i);
-          EXPECT_EQ(i + 2, (int32_t)column->column_name_id_);
-          EXPECT_EQ(2, (int32_t)column->column_group_id_);
-          if (OB_MAX_COLUMN_NUMBER > i)
+          if (oceanbase::common::OB_MAX_COLUMN_NUMBER > i)
           {
             EXPECT_EQ(1000, (int32_t)column->table_id_);
           }
@@ -319,6 +526,7 @@ namespace oceanbase
         int ret = OB_SUCCESS;
 
         column_def.reserved_ = 0;
+        column_def.rowkey_seq_ = 0;
         column_def.column_group_id_ = 2;
         column_def.column_name_id_ = 2;
         column_def.column_value_type_ = ObDoubleType;
@@ -422,7 +630,7 @@ namespace oceanbase
             column_def.column_group_id_ = static_cast<uint16_t>(group_id);
             for ( int column_id = 0; column_id < group_id; ++column_id )
             {
-              column_def.column_name_id_ = column_id;
+              column_def.column_name_id_ = static_cast<uint16_t>(column_id);
               column_def.column_value_type_ = ObIntType;
               ret = schema.add_column_def(column_def);
               EXPECT_TRUE(OB_SUCCESS == ret);
@@ -454,6 +662,7 @@ namespace oceanbase
         ObSSTableSchemaColumnDef column_def;
         int ret = OB_SUCCESS;
         column_def.reserved_ = 0;
+        column_def.rowkey_seq_ = 0;
 
         for ( int table_id = 1000; table_id < 1010; ++table_id )
         {
@@ -463,7 +672,7 @@ namespace oceanbase
             column_def.column_group_id_ = static_cast<uint16_t>(group_id);
             for ( int column_id = 0; column_id < group_id; ++column_id )
             {
-              column_def.column_name_id_ = column_id;
+              column_def.column_name_id_ = static_cast<uint16_t>(column_id);
               column_def.column_value_type_ = ObIntType;
               ret = schema.add_column_def(column_def);
               EXPECT_TRUE(OB_SUCCESS == ret);
@@ -474,7 +683,7 @@ namespace oceanbase
         EXPECT_EQ(31, schema.get_column_count());
 
         //find an column that doesn't exist
-        uint64_t find[OB_MAX_COLUMN_GROUP_NUMBER];
+        uint64_t find[oceanbase::common::OB_MAX_COLUMN_GROUP_NUMBER];
         int64_t size = OB_MAX_COLUMN_NUMBER;
         uint64_t table_id = 10000;
         //uint64_t group_id = 4;
@@ -485,7 +694,7 @@ namespace oceanbase
         {
           for ( int ci = 0; ci < (i - 1000)%3 + 1; ++ci)
           {
-            size = OB_MAX_COLUMN_GROUP_NUMBER;
+            size = oceanbase::common::OB_MAX_COLUMN_GROUP_NUMBER;
             ret = schema.get_table_column_groups_id(i, find, size);
             EXPECT_EQ(OB_SUCCESS, ret);
             EXPECT_EQ((i-1000)%3+1, size);
@@ -503,6 +712,7 @@ namespace oceanbase
         ObSSTableSchemaColumnDef column_def;
         int ret = OB_SUCCESS;
         column_def.reserved_ = 0;
+        column_def.rowkey_seq_ = 0;
 
         for ( int table_id = 1000; table_id < 1010; ++table_id )
         {
@@ -512,7 +722,7 @@ namespace oceanbase
             column_def.column_group_id_ = static_cast<uint16_t>(group_id);
             for ( int column_id = 0; column_id < group_id; ++column_id )
             {
-              column_def.column_name_id_ = column_id;
+              column_def.column_name_id_ = static_cast<uint16_t>(column_id);
               column_def.column_value_type_ = ObIntType;
               ret = schema.add_column_def(column_def);
               EXPECT_TRUE(OB_SUCCESS == ret);
@@ -523,7 +733,7 @@ namespace oceanbase
         EXPECT_EQ(31, schema.get_column_count());
 
         //find an column that doesn't exist
-        uint64_t find[OB_MAX_COLUMN_GROUP_NUMBER];
+        uint64_t find[oceanbase::common::OB_MAX_COLUMN_GROUP_NUMBER];
         int64_t size = OB_MAX_COLUMN_GROUP_NUMBER;
         uint64_t table_id = 10000;
         uint64_t group_id = 4;
@@ -534,7 +744,7 @@ namespace oceanbase
         {
           for ( int ci = 0; ci < (i - 1000)%3 + 1; ++ci)
           {
-            size = OB_MAX_COLUMN_GROUP_NUMBER;
+            size = oceanbase::common::OB_MAX_COLUMN_GROUP_NUMBER;
             ret = schema.get_column_groups_id(i, ci, find, size);
             EXPECT_EQ(OB_SUCCESS, ret);
             EXPECT_EQ((i-1000)%3+1 - ci, size);
@@ -552,6 +762,7 @@ namespace oceanbase
         ObSSTableSchemaColumnDef column_def;
         int ret = OB_SUCCESS;
         column_def.reserved_ = 0;
+        column_def.rowkey_seq_ = 0;
 
         for ( int table_id = 1000; table_id < 1010; ++table_id )
         {
@@ -561,7 +772,7 @@ namespace oceanbase
             column_def.column_group_id_ = static_cast<uint16_t>(group_id);
             for ( int column_id = 0; column_id < group_id; ++column_id )
             {
-              column_def.column_name_id_ = column_id;
+              column_def.column_name_id_ = static_cast<uint16_t>(column_id);
               column_def.column_value_type_ = ObIntType;
               ret = schema.add_column_def(column_def);
               EXPECT_TRUE(OB_SUCCESS == ret);
@@ -586,7 +797,7 @@ namespace oceanbase
              for ( int ci = 0; ci < gi; ++ci)
              {
                offset_in_table = schema.find_offset_first_column_group_schema(i, ci, group_id);
-               EXPECT_EQ((int)group_id, ci + 1);
+               EXPECT_EQ((int)group_id, ci + 1) << ",i=" << i << ",gi=" << gi << ",ci=" << ci;
                EXPECT_EQ(offset_in_table, ci);
              }
            }
@@ -600,6 +811,7 @@ namespace oceanbase
         int ret = OB_SUCCESS;
         int64_t offset_in_group = 0;
         column_def.reserved_ = 0;
+        column_def.rowkey_seq_ = 0;
 
         for ( int table_id = 1000; table_id < 1010; ++table_id )
         {
@@ -609,7 +821,7 @@ namespace oceanbase
             column_def.column_group_id_ = static_cast<uint16_t>(group_id);
             for (int column_id = 0; column_id < group_id; ++column_id)
             {
-              column_def.column_name_id_ = column_id;
+              column_def.column_name_id_ = static_cast<uint16_t>(column_id);
               column_def.column_value_type_ = ObIntType;
               ret = schema.add_column_def(column_def);
               EXPECT_TRUE(OB_SUCCESS == ret);
@@ -642,6 +854,7 @@ namespace oceanbase
         ObSSTableSchemaColumnDef column_def;
         int ret = OB_SUCCESS;
         column_def.reserved_ = 0;
+        column_def.rowkey_seq_ = 0;
 
         for ( int table_id = 1000; table_id < 1010; ++table_id )
         {
@@ -651,7 +864,7 @@ namespace oceanbase
             column_def.column_group_id_ = static_cast<uint16_t>(group_id);
             for ( int column_id = 0; column_id < group_id; ++column_id )
             {
-              column_def.column_name_id_ = column_id;
+              column_def.column_name_id_ = static_cast<uint16_t>(column_id);
               column_def.column_value_type_ = ObIntType;
               ret = schema.add_column_def(column_def);
               EXPECT_TRUE(OB_SUCCESS == ret);
@@ -674,190 +887,6 @@ namespace oceanbase
         serialize_buf = NULL;
       }
 
-#ifdef COMPATIBLE  
-      //test compatible between version1 and version2
-      TEST_F(TestObSSTableSchema, test_compatible)
-      {
-        ObSSTableSchemaV1 schema;
-        ObSSTableSchema schemaV2;
-        ObSSTableSchemaColumnDefV1 column_def;
-        memset(&column_def, 0, sizeof(ObSSTableSchemaColumnDefV1));
-
-        const ObSSTableSchemaColumnDef *columnV2      = NULL;
-        const ObSSTableSchemaColumnDef *columnV2_find = NULL;
-        const ObSSTableSchemaColumnDefV1 *column      = NULL;
-
-        int64_t buf_size = OB_MAX_COLUMN_NUMBER * sizeof(ObSSTableSchemaColumnDefV1)
-                            + sizeof(ObSSTableSchemaHeaderV1);
-        char serialize_buf[buf_size];
-        int64_t pos = 0;
-
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
-        {
-          column_def.column_name_id_ = i + 2;
-          column_def.column_value_type_ = ObNullType;
-          schema.add_column_def(column_def);
-        }
-
-        EXPECT_EQ(OB_MAX_COLUMN_NUMBER, schema.get_column_count());
-
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
-        {
-          column = schema.get_column_def(i);
-          EXPECT_EQ(i + 2, (int32_t)column->column_name_id_);
-          EXPECT_EQ(ObNullType, column->column_value_type_);
-          EXPECT_EQ(i, schema.find_column_id(column->column_name_id_));
-        }
-        schema.serialize(serialize_buf, buf_size, pos);
-        pos = 0;
-
-        schemaV2.deserialize(serialize_buf, buf_size, pos);
-        EXPECT_EQ(schema.get_column_count(), schemaV2.get_column_count());
-        uint64_t group_id = OB_INVALID_ID;
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
-        {
-          column = schema.get_column_def(i);
-          columnV2 = schemaV2.get_column_def(i);
-          EXPECT_EQ(0, (int32_t)columnV2->column_group_id_);
-          EXPECT_EQ(i + 2, (int32_t)column->column_name_id_);
-          int64_t offset = schemaV2.find_offset_first_column_group_schema(1000, i+2, group_id);
-          EXPECT_EQ(offset, i);
-          EXPECT_EQ((int)group_id, 0);
-          columnV2_find = schemaV2.get_column_def(
-            static_cast<int32_t>(schemaV2.find_offset_first_column_group_schema(1000, i+2, group_id)));
-          EXPECT_TRUE(0 == memcmp(columnV2, columnV2_find, sizeof(ObSSTableSchemaColumnDef)));
-          EXPECT_EQ(column->column_name_id_, columnV2->column_name_id_);
-          EXPECT_EQ(ObNullType, column->column_value_type_);
-          EXPECT_EQ(0, (int32_t)columnV2->table_id_);
-          EXPECT_EQ(column->column_value_type_, columnV2->column_value_type_);
-        }
-
-        //reset schema
-        schemaV2.reset();
-        pos = 0;
-        EXPECT_EQ(0, schemaV2.get_column_count());
-
-        //deserialize schema again
-        schemaV2.deserialize(serialize_buf, buf_size, pos);
-        EXPECT_EQ(schema.get_column_count(), schemaV2.get_column_count());
-        group_id = OB_INVALID_ID;
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
-        {
-          column = schema.get_column_def(i);
-          columnV2 = schemaV2.get_column_def(i);
-          EXPECT_EQ(0, (int32_t)columnV2->column_group_id_);
-          EXPECT_EQ(i + 2, (int32_t)column->column_name_id_);
-          columnV2_find = schemaV2.get_column_def(
-            static_cast<int32_t>(schemaV2.find_offset_first_column_group_schema(1000, i+2, group_id)));
-          EXPECT_TRUE(0 == memcmp(columnV2, columnV2_find, sizeof(ObSSTableSchemaColumnDef)));
-          EXPECT_EQ(column->column_name_id_, columnV2->column_name_id_);
-          EXPECT_EQ(ObNullType, column->column_value_type_);
-          EXPECT_EQ(0, (int32_t)columnV2->table_id_);
-          EXPECT_EQ(column->column_value_type_, columnV2->column_value_type_);
-        }
-
-        //TEST interfaceV2 with schema deserialize from schemaV1
-        //Get table schema
-        int64_t size = 0;
-        columnV2_find = schemaV2.get_column_def(0);   //first column def
-        columnV2 = schemaV2.get_group_schema(1000, 0, size);
-        EXPECT_EQ(size, schemaV2.get_column_count());
-        EXPECT_EQ(0, (int32_t)columnV2->column_group_id_);
-        EXPECT_EQ(2, (int32_t)columnV2->column_name_id_);
-        EXPECT_TRUE(0 == memcmp(columnV2, columnV2_find, sizeof(ObSSTableSchemaColumnDef)));
-        EXPECT_EQ(columnV2_find->column_name_id_, columnV2->column_name_id_);
-        EXPECT_EQ(ObNullType, columnV2->column_value_type_);
-        EXPECT_EQ(0, (int32_t)columnV2->table_id_);
-        EXPECT_EQ(columnV2_find->column_value_type_, columnV2->column_value_type_);
-
-        //Get group schema
-        columnV2_find = schemaV2.get_column_def(0);
-        columnV2 = schemaV2.get_group_schema(1000, 0, size);
-        EXPECT_EQ(size, schemaV2.get_column_count());
-        EXPECT_EQ(0, (int32_t)columnV2->column_group_id_);
-        EXPECT_EQ(2, (int32_t)columnV2->column_name_id_);
-        EXPECT_TRUE(0 == memcmp(columnV2, columnV2_find, sizeof(ObSSTableSchemaColumnDef)));
-        EXPECT_EQ(columnV2_find->column_name_id_, columnV2->column_name_id_);
-        EXPECT_EQ(ObNullType, columnV2->column_value_type_);
-        EXPECT_EQ(0, (int32_t)columnV2->table_id_);
-        EXPECT_EQ(columnV2_find->column_value_type_, columnV2->column_value_type_);
-
-        //Get group schema with wrong column group id
-        columnV2 = schemaV2.get_group_schema(1000, 10, size);
-        EXPECT_TRUE(NULL == columnV2);
-
-        int64_t group_offset     = 0;
-        uint64_t group_ids[OB_MAX_COLUMN_GROUP_NUMBER];
-        int64_t size_group_id = OB_MAX_COLUMN_GROUP_NUMBER;
-        int ret = OB_ERROR;
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
-        {
-          //Get column group id
-          size_group_id = OB_MAX_COLUMN_NUMBER;
-          ret = schemaV2.get_column_groups_id((uint64_t)1000, (uint64_t)i+2, group_ids, size_group_id);
-          EXPECT_EQ(size_group_id, 1);
-          EXPECT_EQ(OB_SUCCESS, ret);
-          EXPECT_EQ((int)group_ids[0], 0);
-
-          //Find table column group
-          size_group_id = OB_MAX_COLUMN_GROUP_NUMBER;
-          ret = schemaV2.get_table_column_groups_id(1000, group_ids, size_group_id);
-          EXPECT_EQ(OB_SUCCESS, ret);
-          EXPECT_EQ(1, size_group_id);
-          EXPECT_EQ(group_ids[0], (uint64_t)0);
-
-          //Find group offset
-          group_offset = schemaV2.find_offset_column_group_schema(1000, 10, i+2);
-          EXPECT_EQ(-1, group_offset);
-          group_offset = schemaV2.find_offset_column_group_schema(1000, 0, i+2);
-          EXPECT_EQ(i, group_offset);
-        }
-      }
-
-#else //test compatible between version2 and version2 compiled without -DCOMPATIBLE
-      TEST_F(TestObSSTableSchema, test_compatible)
-      {
-        ObSSTableSchema schema;
-        const ObSSTableSchemaColumnDef *column      = NULL;
-
-        int64_t file_len = FileDirectoryUtils::get_size(schema_file_name);
-        char * file_buf = reinterpret_cast<char*>(malloc(file_len));
-        int64_t pos = 0;
-        FileUtils filesys;
-        filesys.open(schema_file_name, O_RDONLY);
-        int64_t read_size = filesys.read(file_buf, file_len);
-        EXPECT_EQ(read_size, file_len);
-        schema.deserialize(file_buf, file_len, pos);
-        EXPECT_EQ(schema.get_column_count(), 550);
-        int64_t index_find = 0;
-        int64_t index = 0;
-        int64_t table_schema_size = 0;
-        int64_t group_schema_size = 0;
-          
-        for (uint64_t table_id = 1000; table_id < 1010; ++table_id)
-        {
-          schema.get_table_schema(table_id, table_schema_size);
-          EXPECT_EQ(55, table_schema_size);
-          for(uint64_t group_id = 1; group_id < 11; ++group_id)
-          {
-            schema.get_group_schema(table_id, group_id, group_schema_size);
-            EXPECT_EQ(group_schema_size, (int64_t)group_id);
-            for(uint64_t column_id = 0; column_id < group_id; ++column_id)
-            {
-              index_find  = schema.find_column_id(table_id, group_id, column_id);
-              column = schema.get_column_def(index_find);
-              EXPECT_EQ(index, index_find);
-              EXPECT_EQ(column_id, column->column_name_id_);
-              EXPECT_EQ(group_id,  column->column_group_id_);
-              EXPECT_EQ(table_id,  column->table_id_);
-              EXPECT_EQ(ObIntType, column->column_value_type_);
-              ++index;
-            }
-          }
-        }
-        }
-#endif
-
       TEST_F(TestObSSTableSchema, test_serialize_and_deserialize)
       {
         ObSSTableSchema schema;
@@ -868,16 +897,18 @@ namespace oceanbase
         const ObSSTableSchemaColumnDef *deserialized_column = NULL;
         int64_t buf_size = (DEFAULT_COLUMN_DEF_SIZE + 1)  * sizeof(ObSSTableSchemaColumnDef)
                             + sizeof(ObSSTableSchemaHeader);
-        char serialize_buf[buf_size];
+        char* serialize_buf = new char[buf_size];
         int64_t pos = 0;
         int ret = OB_SUCCESS;
+        int64_t group_columns_count = OB_MAX_COLUMN_NUMBER / OB_MAX_COLUMN_GROUP_NUMBER;
 
         for (int i = 0; i < DEFAULT_COLUMN_DEF_SIZE; ++i)
         {
-          column_def.column_group_id_ = static_cast<uint16_t>((i % 128) / 8);
-          column_def.column_name_id_ = (i % 8) + 2;
+          column_def.column_group_id_ = static_cast<uint16_t>((i % OB_MAX_COLUMN_NUMBER) / group_columns_count);
+          column_def.column_name_id_ = (uint16_t)((i % group_columns_count) + 2);
           column_def.column_value_type_ = ObNullType;
-          column_def.table_id_ = i / 128 + 1000;
+          column_def.table_id_ = (uint32_t)(i / OB_MAX_COLUMN_NUMBER + 1000);
+          column_def.rowkey_seq_ = 0;
           ret = schema.add_column_def(column_def);
           EXPECT_EQ(OB_SUCCESS, ret);
         }
@@ -887,10 +918,10 @@ namespace oceanbase
         for (int i = 0; i < DEFAULT_COLUMN_DEF_SIZE; ++i)
         {
           column = schema.get_column_def(i);
-          EXPECT_EQ((i % 128) / 8, (int32_t)column->column_group_id_);
-          EXPECT_EQ((i % 8) + 2, (int32_t)column->column_name_id_);
+          EXPECT_EQ((i % OB_MAX_COLUMN_NUMBER) / group_columns_count, (int32_t)column->column_group_id_);
+          EXPECT_EQ((i % group_columns_count) + 2, (int32_t)column->column_name_id_);
           EXPECT_EQ(ObNullType, column->column_value_type_);
-          EXPECT_EQ(i / 128 + 1000, (int32_t)column->table_id_);
+          EXPECT_EQ(i / OB_MAX_COLUMN_NUMBER + 1000, (int32_t)column->table_id_);
         }
 
         uint64_t find_id[OB_MAX_COLUMN_GROUP_NUMBER];
@@ -898,8 +929,10 @@ namespace oceanbase
 
         int64_t size = OB_MAX_COLUMN_GROUP_NUMBER;
         
+        uint64_t max_table_id = 1000 + DEFAULT_COLUMN_DEF_SIZE / OB_MAX_COLUMN_NUMBER ;
+        
         //TEST get table column group ids
-        for(uint64_t table_id = 1000; table_id < 1100; ++table_id)
+        for(uint64_t table_id = 1000; table_id < max_table_id; ++table_id)
         {
           size = OB_MAX_COLUMN_GROUP_NUMBER;
           ret  = schema.get_table_column_groups_id(table_id, find_id, size);
@@ -912,7 +945,7 @@ namespace oceanbase
         
         //TEST get offset first column group schema
         int64_t offset = -1;
-        for(uint64_t table_id = 1000; table_id < 1100; ++table_id)
+        for(uint64_t table_id = 1000; table_id < max_table_id; ++table_id)
         {
           for(uint64_t column_id = 2; column_id < 10; ++column_id)
           {
@@ -926,18 +959,18 @@ namespace oceanbase
         //TEST get column group schema
         int64_t group_size = 0;
         const ObSSTableSchemaColumnDef* def = NULL;
-        for(uint64_t table_id = 1000; table_id < 1100; ++table_id)
+        for(uint64_t table_id = 1000; table_id < max_table_id; ++table_id)
         {
           for(uint64_t group_id = 0; group_id < 16; ++group_id)
           {
             def = schema.get_group_schema(table_id, group_id, group_size);
-            EXPECT_EQ(group_size, 8);
-            EXPECT_EQ(def, schema.get_column_def(static_cast<int32_t>(group_id * 8 + (table_id - 1000) * 128)));
+            EXPECT_EQ(group_size, group_columns_count);
+            EXPECT_EQ(def, schema.get_column_def(static_cast<int32_t>(group_id * group_columns_count + (table_id - 1000) * OB_MAX_COLUMN_NUMBER)));
           }
         }
         
         //TEST get column group ids 
-        for(uint64_t table_id = 1000; table_id < 1100; ++table_id)
+        for(uint64_t table_id = 1000; table_id < max_table_id; ++table_id)
         {
           for(uint64_t column_id = 2; column_id < 10; ++column_id)
           {
@@ -961,14 +994,15 @@ namespace oceanbase
         {
           column = schema.get_column_def(i);
           deserialized_column = deserialized_schema.get_column_def(i);
-          EXPECT_EQ((i % 128) / 8, (int32_t)column->column_group_id_);
-          EXPECT_EQ((i % 8) + 2, (int32_t)column->column_name_id_);
+          EXPECT_EQ((i % OB_MAX_COLUMN_NUMBER) / group_columns_count, (int32_t)column->column_group_id_);
+          EXPECT_EQ((i % group_columns_count) + 2, (int32_t)column->column_name_id_);
           EXPECT_EQ(column->column_name_id_, deserialized_column->column_name_id_);
           EXPECT_EQ(ObNullType, column->column_value_type_);
-          EXPECT_EQ(i / 128 + 1000, (int32_t)column->table_id_);
+          EXPECT_EQ(i / OB_MAX_COLUMN_NUMBER + 1000, (int32_t)column->table_id_);
           EXPECT_EQ(column->column_value_type_, deserialized_column->column_value_type_);
+          EXPECT_EQ(column->table_id_, deserialized_column->table_id_);
         }
-        for(uint64_t table_id = 1000; table_id < 1100; ++table_id)
+        for(uint64_t table_id = 1000; table_id < max_table_id; ++table_id)
         {
           size = OB_MAX_COLUMN_GROUP_NUMBER;
           ret  = deserialized_schema.get_table_column_groups_id(table_id, find_id, size);
@@ -981,7 +1015,7 @@ namespace oceanbase
 
         offset = -1;
         group_id_out = OB_INVALID_ID;
-        for(uint64_t table_id = 1000; table_id < 1100; ++table_id)
+        for(uint64_t table_id = 1000; table_id < max_table_id; ++table_id)
         {
           for(uint64_t column_id = 2; column_id < 10; ++column_id)
           {
@@ -994,18 +1028,18 @@ namespace oceanbase
                  
         //TEST get column group schema
         group_size = 0;
-        for(uint64_t table_id = 1000; table_id < 1100; ++table_id)
+        for(uint64_t table_id = 1000; table_id < max_table_id; ++table_id)
         {
           for(uint64_t group_id = 0; group_id < 16; ++group_id)
           {
             def = deserialized_schema.get_group_schema(table_id, group_id, group_size);
-            EXPECT_EQ(group_size, 8);
-            EXPECT_EQ(def, deserialized_schema.get_column_def(static_cast<int32_t>(group_id * 8 + (table_id - 1000) * 128)));
+            EXPECT_EQ(group_size, group_columns_count);
+            EXPECT_EQ(def, deserialized_schema.get_column_def(static_cast<int32_t>(group_id * group_columns_count + (table_id - 1000) * OB_MAX_COLUMN_NUMBER)));
           }
         }
         
         //TEST get column group ids 
-        for(uint64_t table_id = 1000; table_id < 1100; ++table_id)
+        for(uint64_t table_id = 1000; table_id < max_table_id; ++table_id)
         {
           for(uint64_t column_id = 2; column_id < 10; ++column_id)
           {
@@ -1018,6 +1052,8 @@ namespace oceanbase
             }
           }
         }
+
+        delete [] serialize_buf;
       }
     }//end namespace common
   }//end namespace tests

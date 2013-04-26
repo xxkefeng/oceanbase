@@ -134,12 +134,12 @@ TEST(ObMergerScanEvent, parallel_count_limit_2_with_scanner_fulfill)
 
   ObLocationListCacheLoader *cache_loader = new ObLocationListCacheLoader();
   cache_loader->load(filename, "tablet_location_cache");
-  ObMergerTabletLocationCache cache;
+  ObTabletLocationCache cache;
   cache_loader->get_decoded_location_list_cache(cache);
   TBSYS_LOG(INFO, "+==============DUMP===============+");
   cache.dump();
   TBSYS_LOG(INFO, "+=============END DUMP============+");
-  ObMergerTabletLocationCache * location = &cache;  //new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = &cache;  //new ObMergerTabletLocationCache;
 
   ObScanParam scan_param;
   ObScanParam org_param;

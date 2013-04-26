@@ -6,8 +6,11 @@
 #include "ob_string_buf.h"
 #include "ob_define.h"
 #include "ob_cond_info.h"
+#include "test_rowkey_helper.h"
 
 using namespace oceanbase::common;
+
+static CharArena allocator_;
 
 #define BLOCK_FUNC()  if (true) \
 
@@ -42,9 +45,11 @@ TEST_F(TestCondInfo, test_set)
   ObString column_name;
   char * column = (char*)"column";
   column_name.assign(column, static_cast<int32_t>(strlen(column)));
-  ObString row_key;
-  char * rowkey = (char*)"rowkey";
-  row_key.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+
+  ObString str_row_key;
+  str_row_key.assign((char*)"row_key", static_cast<int32_t>(strlen("row_key")));
+  ObRowkey row_key = TestRowkeyHelper(str_row_key, &allocator_);
+
   ObObj value;
   value.set_int(1234);
   cond.set(EQ, table_name, row_key, column_name, value);
@@ -69,9 +74,11 @@ TEST_F(TestCondInfo, test_copy)
   ObString column_name;
   char * column = (char*)"column";
   column_name.assign(column, static_cast<int32_t>(strlen(column)));
-  ObString row_key;
-  char * rowkey = (char*)"rowkey";
-  row_key.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+
+  ObString str_row_key;
+  str_row_key.assign((char*)"row_key", static_cast<int32_t>(strlen("row_key")));
+  ObRowkey row_key = TestRowkeyHelper(str_row_key, &allocator_);
+
   ObObj value;
   value.set_int(1234);
   cond.set(EQ, table_name, row_key, column_name, value);
@@ -112,9 +119,9 @@ TEST_F(TestCondInfo, test_serialize)
   ObString column_name;
   char * column = (char*)"column";
   column_name.assign(column, static_cast<int32_t>(strlen(column)));
-  ObString row_key;
-  char * rowkey = (char*)"rowkey";
-  row_key.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+  ObString str_row_key;
+  str_row_key.assign((char*)"row_key", static_cast<int32_t>(strlen("row_key")));
+  ObRowkey row_key = TestRowkeyHelper(str_row_key, &allocator_);
   ObObj value;
   value.set_int(1234);
   cond.set(EQ, table_name, row_key, column_name, value);

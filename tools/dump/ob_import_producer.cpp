@@ -8,7 +8,7 @@ using namespace oceanbase::common;
 
 int ImportProducer::init()
 {
-  return reader_.open();
+  return OB_SUCCESS;
 }
 
 int ImportProducer::produce(RecordBlock &obj)
@@ -16,7 +16,7 @@ int ImportProducer::produce(RecordBlock &obj)
   int ret = ComsumerQueue<RecordBlock>::QUEUE_SUCCESS;
 
   if (!reader_.eof()) {
-    if (reader_.get_records(obj, rec_delima_, delima_) != 0) {
+    if (reader_.get_records(obj, rec_delima_, delima_, INT64_MAX) != 0) {
       TBSYS_LOG(ERROR, "can't get record");
       ret = ComsumerQueue<RecordBlock>::QUEUE_ERROR;
     }

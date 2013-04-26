@@ -4,7 +4,7 @@
 using namespace oceanbase::common;
 
 /*
-static char* root_server_stats_str[] = 
+static char* root_server_stats_str[] =
 {
   "succ_get_count",
   "succ_scan_count",
@@ -12,7 +12,7 @@ static char* root_server_stats_str[] =
   "fail_scan_count",
 };
 
-static char* chunk_server_stats_str[] = 
+static char* chunk_server_stats_str[] =
 {
   "get_count",
   "scan_count",
@@ -40,7 +40,7 @@ static char* merge_server_stats_str[] =
 {
   "succ_get_count",
   "succ_get_time",
-  "fail_get_count",                                                                                                      
+  "fail_get_count",
   "fail_get_time",
 
   // scan
@@ -63,19 +63,19 @@ static char* merge_server_stats_str[] =
   "cs_cache_hit_ratio"
 };
 
-static char* update_server_stats_str[] = 
+static char* update_server_stats_str[] =
 {
   "min",
 
   "get_count",
   "scan_count",
-  "apply_count", 
+  "apply_count",
   "batch_count",
   "merge_count",
 
   "get_timeu",
   "scan_timeu",
-  "apply_timeu", 
+  "apply_timeu",
   "batch_timeu",
   "merge_timeu",
 
@@ -102,10 +102,10 @@ static char* update_server_stats_str[] =
 };
 
 
-static char** stats_info_str[] = 
-{ 
-  NULL, 
-  root_server_stats_str, 
+static char** stats_info_str[] =
+{
+  NULL,
+  root_server_stats_str,
   chunk_server_stats_str,
   merge_server_stats_str,
   update_server_stats_str
@@ -115,13 +115,13 @@ static char** stats_info_str[] =
 //static int stats_size[5] = {0, 4, 14, 14, 26};
 static const char* server_name[] = {"unknown", "rs:table", "cs:table", "ms:table", "ups:table", "dailymerge"};
 
-namespace oceanbase 
-{ 
-  namespace tools 
+namespace oceanbase
+{
+  namespace tools
   {
 
     //---------------------------------------------------------------
-    // class Present 
+    // class Present
     //---------------------------------------------------------------
     Present::Present()
     {
@@ -137,8 +137,8 @@ namespace oceanbase
     void Present::init()
     {
       // rootserver
-      ServerInfo & root_server_info = server_info_[ObStatManager::SERVER_TYPE_ROOT-1];
-      root_server_info.push_back(Item("rs_succ_get_count", 4, ShowCurrent)); 
+      ServerInfo & root_server_info = server_info_[OB_ROOTSERVER - 1];
+      root_server_info.push_back(Item("rs_succ_get_count", 4, ShowCurrent));
       root_server_info.push_back(Item("rs_succ_scan_count", 4, ShowCurrent));
       root_server_info.push_back(Item("rs_fail_get_count", 4, ShowCurrent));
       root_server_info.push_back(Item("rs_fail_scan_count", 4, ShowCurrent));
@@ -147,7 +147,7 @@ namespace oceanbase
       root_server_info.push_back(Item("rs_copy_count", 4, ShowCurrent));
 
       // chunkserver
-      ServerInfo & chunk_server_info = server_info_[ObStatManager::SERVER_TYPE_CHUNK-1];
+      ServerInfo & chunk_server_info = server_info_[OB_CHUNKSERVER - 1];
       chunk_server_info.push_back(Item( "cs_get_count", 4, ShowCurrent));
       chunk_server_info.push_back(Item( "cs_scan_count", 4, ShowCurrent));
       chunk_server_info.push_back(Item( "cs_get_time", 8, ShowCurrent));
@@ -166,10 +166,10 @@ namespace oceanbase
       //chunk_server_info.push_back(Item( "cs_average_scan_time", 8, Ratio));
 
       // mergeserver
-      ServerInfo & merge_server_info = server_info_[ObStatManager::SERVER_TYPE_MERGE - 1];
+      ServerInfo & merge_server_info = server_info_[OB_MERGESERVER - 1];
       merge_server_info.push_back(Item( "ms_succ_get_count", 4, ShowCurrent));
       merge_server_info.push_back(Item( "ms_succ_get_time", 8, ShowCurrent));
-      merge_server_info.push_back(Item( "ms_fail_get_count", 4, ShowCurrent)); 
+      merge_server_info.push_back(Item( "ms_fail_get_count", 4, ShowCurrent));
       merge_server_info.push_back(Item( "ms_fail_get_time", 8, ShowCurrent));
       // scan
       merge_server_info.push_back(Item( "ms_succ_scan_count", 4, ShowCurrent));
@@ -184,15 +184,13 @@ namespace oceanbase
       // local query
       merge_server_info.push_back(Item( "ms_local_cs_query", 4, ShowCurrent));
       merge_server_info.push_back(Item( "ms_remote_cs_query", 4, ShowCurrent));
-      // scan count of non-precision query
-      merge_server_info.push_back(Item( "ms_succ_scan_not_precision_count", 4, ShowCurrent));
       //merge_server_info.push_back(Item( "ms_cs_cache_hit_ratio", 3, Ratio));
       //merge_server_info.push_back(Item( "ms_average_succ_get_time", 8, Ratio));
       //merge_server_info.push_back(Item( "ms_average_succ_scan_time", 8, Ratio));
 
 
       // updateserver
-      ServerInfo &update_server_info = server_info_[ObStatManager::SERVER_TYPE_UPDATE-1];
+      ServerInfo &update_server_info = server_info_[OB_UPDATESERVER - 1];
       update_server_info.push_back(Item( "min", 0, ShowCurrent));
       update_server_info.push_back(Item( "ups_get_count", 4, ShowCurrent));
       update_server_info.push_back(Item( "ups_scan_count", 4, ShowCurrent));
@@ -258,31 +256,31 @@ namespace oceanbase
     void ObServerStats::initialize_empty_value()
     {
       const int64_t server_type = store_.current.get_server_type();
-      const Present::ServerInfo & server_info = 
+      const Present::ServerInfo & server_info =
         present_.get_server_info(static_cast<int32_t>(server_type));
-      std::set<uint64_t>::const_iterator it = table_filter_.begin(); 
+      std::set<uint64_t>::const_iterator it = table_filter_.begin();
       while (it != table_filter_.end())
       {
         uint64_t table_id = *it;
         for (int i = 0; i < (int)server_info.size(); ++i)
         {
 
-          store_.current.set_value(table_id, i, 0);
-          store_.prev.set_value(table_id, i, 0);
-          store_.diff.set_value(table_id, i, 0);
+          store_.current.set_value(mod_, table_id, i, 0);
+          store_.prev.set_value(mod_, table_id, i, 0);
+          store_.diff.set_value(mod_, table_id, i, 0);
         }
         ++it;
       }
     }
 
     // retrive data from dataserver.
-    int32_t ObServerStats::refresh() 
+    int32_t ObServerStats::refresh()
     {
       int ret = rpc_stub_.fetch_stats(store_.current);
       return ret;
     }
 
-    int ObServerStats::calc_hit_ratio(oceanbase::common::ObStat &stat_item, 
+    int ObServerStats::calc_hit_ratio(oceanbase::common::ObStat &stat_item,
         const int ratio, const int hit, const int miss)
     {
       int64_t hit_num = stat_item.get_value(hit);
@@ -292,7 +290,7 @@ namespace oceanbase
       return stat_item.set_value(ratio, ratio_num);
     }
 
-    int ObServerStats::calc_div_value(oceanbase::common::ObStat &stat_item, 
+    int ObServerStats::calc_div_value(oceanbase::common::ObStat &stat_item,
         const int div, const int count, const int time)
     {
       int64_t count_value = stat_item.get_value(count);
@@ -302,10 +300,10 @@ namespace oceanbase
       return stat_item.set_value(div, div_value);
     }
 
-    int32_t ObServerStats::calc() 
+    int32_t ObServerStats::calc()
     {
       //int ret = store_.current.subtract(store_.prev, store_.diff);
-      int64_t stats_item_size = store_.current.end() - store_.current.begin();
+      int64_t stats_item_size = store_.current.end(mod_) - store_.current.begin(mod_);
       if (0 == stats_item_size )
       {
         //fprintf(stderr, "server has not got any requests, no stats information.\n");
@@ -313,10 +311,10 @@ namespace oceanbase
       }
       store_.diff = store_.current;
       store_.diff.subtract(store_.prev);
-      if (store_.diff.get_server_type() == ObStatManager::SERVER_TYPE_CHUNK) // chunk server 
+      if (store_.diff.get_server_type() == OB_CHUNKSERVER) // chunk server
       {
-        ObStatManager::const_iterator it = store_.diff.begin();
-        while (it != store_.diff.end())
+        ObStatManager::const_iterator it = store_.diff.begin(mod_);
+        while (it != store_.diff.end(mod_))
         {
           calc_hit_ratio(*const_cast<ObStat*>(it), 12, 4, 5);
           calc_hit_ratio(*const_cast<ObStat*>(it), 13, 6, 7);
@@ -325,10 +323,10 @@ namespace oceanbase
           ++it;
         }
       }
-      else if (store_.diff.get_server_type() == ObStatManager::SERVER_TYPE_MERGE) //mergeserver
+      else if (store_.diff.get_server_type() == OB_MERGESERVER) //mergeserver
       {
-        ObStatManager::const_iterator it = store_.diff.begin();
-        while (it != store_.diff.end())
+        ObStatManager::const_iterator it = store_.diff.begin(mod_);
+        while (it != store_.diff.end(mod_))
         {
           calc_hit_ratio(*const_cast<ObStat*>(it), 13, 8, 9);
           calc_div_value(*const_cast<ObStat*>(it), 14, 0, 1);
@@ -336,10 +334,10 @@ namespace oceanbase
           ++it;
         }
       }
-      else if (store_.diff.get_server_type() == ObStatManager::SERVER_TYPE_UPDATE) //mergeserver
+      else if (store_.diff.get_server_type() == OB_UPDATESERVER) //updateserver
       {
-        ObStatManager::const_iterator it = store_.diff.begin();
-        while (it != store_.diff.end())
+        ObStatManager::const_iterator it = store_.diff.begin(mod_);
+        while (it != store_.diff.end(mod_))
         {
           calc_div_value(*const_cast<ObStat*>(it), 6, 1, 6 );
           calc_div_value(*const_cast<ObStat*>(it), 7, 2, 7);
@@ -351,16 +349,16 @@ namespace oceanbase
       }
 
       // special case for daily merge
-      if (store_.diff.get_server_type() == ObStatManager::SERVER_TYPE_CHUNK 
+      if (store_.diff.get_server_type() == OB_CHUNKSERVER
           && table_filter_.size() == 1 && *table_filter_.begin() == 0)
       {
-        store_.diff.set_server_type(Present::SERVER_COUNT);
-        store_.prev.set_server_type(Present::SERVER_COUNT);
-        store_.current.set_server_type(Present::SERVER_COUNT);
+        store_.diff.set_server_type(static_cast<ObRole>(Present::SERVER_COUNT));
+        store_.prev.set_server_type(static_cast<ObRole>(Present::SERVER_COUNT));
+        store_.current.set_server_type(static_cast<ObRole>(Present::SERVER_COUNT));
 
         int64_t sum_value = 0;
-        ObStatManager::const_iterator it = store_.current.begin();
-        while (it != store_.current.end())
+        ObStatManager::const_iterator it = store_.current.begin(mod_);
+        while (it != store_.current.end(mod_))
         {
           if (it->get_table_id() == 0)
           {
@@ -377,7 +375,7 @@ namespace oceanbase
       return 0;
     }
 
-    int32_t ObServerStats::save() 
+    int32_t ObServerStats::save()
     {
       store_.prev = store_.current;
       return 0;
@@ -388,7 +386,7 @@ namespace oceanbase
     {
       //char** info_str = stats_info_str[store_.diff.get_server_type()];
       //int32_t show_size = stats_size[store_.diff.get_server_type()];
-      const Present::ServerInfo & server_info = 
+      const Present::ServerInfo & server_info =
         present_.get_server_info(static_cast<int32_t>(store_.diff.get_server_type()));
       if (show_date_) fprintf(stderr, "%18s|", "date      time");
       fprintf(stderr, "%s|", server_name[store_.diff.get_server_type()]);
@@ -417,7 +415,7 @@ namespace oceanbase
       fprintf(stderr, "\n");
     }
 
-    int64_t ObServerStats::print_value(const Present::ServerInfo & server_info, 
+    int64_t ObServerStats::print_value(const Present::ServerInfo & server_info,
         ObStatManager::const_iterator it, const uint32_t index, const int32_t interval) const
     {
       const int32_t FMT_SIZE = 24;
@@ -434,7 +432,7 @@ namespace oceanbase
       {
         // get value from current;
         ObStat *cur_stat = NULL;
-        int ret = store_.current.get_stat(it->get_table_id(), cur_stat);
+        int ret = store_.current.get_stat(it->get_mod_id(), it->get_table_id(), cur_stat);
         if (OB_SUCCESS == ret && NULL != cur_stat)
         {
           value = cur_stat->get_value(index);
@@ -453,7 +451,7 @@ namespace oceanbase
       if (show_header_ > 0 && count % show_header_ == 0) output_header();
       //if (count == 0) return 0;
 
-      const Present::ServerInfo & server_info = 
+      const Present::ServerInfo & server_info =
         present_.get_server_info(static_cast<int32_t>(store_.diff.get_server_type()));
       int32_t show_size = static_cast<int32_t>(server_info.size());
 
@@ -466,13 +464,13 @@ namespace oceanbase
           tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday,
           tm.tm_hour, tm.tm_min, tm.tm_sec);
 
-      ObStatManager::const_iterator it = store_.diff.begin();
-      while (it != store_.diff.end())
+      ObStatManager::const_iterator it = store_.diff.begin(mod_);
+      while (it != store_.diff.end(mod_))
       {
-        if (table_filter_.size() > 0 
+        if (table_filter_.size() > 0
             && table_filter_.find(it->get_table_id()) == table_filter_.end())
         {
-          ++it; 
+          ++it;
           continue;
         }
         if ((int64_t)store_.diff.get_server_type() != Present::SERVER_TYPE_DAILY_MERGE

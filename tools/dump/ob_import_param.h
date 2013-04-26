@@ -8,7 +8,7 @@
 
 struct TableParam {
   TableParam() 
-    : input_column_nr(0), delima('\01'), rec_delima('\n'), concurrency(10) { }
+    : input_column_nr(0), delima('\01'), rec_delima('\n'), has_nop_flag(false), has_null_flag(false), concurrency(10) { }
 
   std::vector<ColumnDesc> col_descs;
   std::vector<RowkeyDesc> rowkey_descs;
@@ -17,7 +17,12 @@ struct TableParam {
   int input_column_nr;
   RecordDelima delima;
   RecordDelima rec_delima;
+  bool has_nop_flag;
+  char nop_flag;
+  bool has_null_flag;
+  char null_flag;
   int concurrency;                              /* default 5 threads */
+  bool has_table_title;
   const char *bad_file_;
 };
 

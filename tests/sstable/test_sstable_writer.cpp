@@ -9,7 +9,7 @@
  *
  * Authors:
  *   huating <huating.zmq@taobao.com>
- *
+ *   fangji  <fangji.hcm@taobao.com>
  */
 
 #include <iostream>
@@ -39,10 +39,16 @@ namespace oceanbase
       static const int64_t table_id = 128;
       static const int64_t column_scheme_def_size = 100;
       static const int64_t sstable_id = 1026;
-      static const int32_t objs_per_row = 3;
-      static const int64_t TABLE_COUNT = 4;
+      static const int64_t TABLE_COUNT = 5;
+      static const int32_t COLUMN_GROUP_PER_TABLE = 10;
+      static const int32_t COLUMN_NUMBER_PER_GROUP = 3; 
       static const int64_t ROWS_PER_TABLE = 5000;
-      static const uint64_t TABLE_ID_BASE = 1025;
+      static const int16_t TABLE_ID_BASE = 1025;
+      static const int32_t ROWKEY_COLUMN_START_ID = 2;
+      static const int32_t NORMAL_COLUMN_START_ID = 5;
+      static const int32_t ROWKEY_COLUMN_NUMBER = 3;
+      static const int16_t COLUMN_GROUP_ID_BASE = 2;
+      static const int32_t OBJS_PER_ROW = ROWKEY_COLUMN_NUMBER + COLUMN_NUMBER_PER_GROUP;
 
       class TestObSSTableWriter: public ::testing::Test
       {
@@ -58,55 +64,108 @@ namespace oceanbase
 
         }
 
+
+        void add_schema_column(ObSSTableSchema& schema, 
+            int32_t table_id, int32_t column_group_id, int64_t seq, 
+            int32_t column_id, int32_t column_value_type)
+        {
+          ObSSTableSchemaColumnDef def;
+          def.reserved_ = 0;
+          def.table_id_ = table_id;
+          def.column_group_id_ =static_cast<uint16_t>( column_group_id);
+          def.rowkey_seq_ = static_cast<uint16_t>(seq);
+          def.column_name_id_ = static_cast<uint16_t>(column_id);
+          def.column_value_type_ = column_value_type;
+          schema.add_column_def(def);
+        }
+
+        void add_schema_generic_rowkey(ObSSTableSchema& schema,
+            int32_t table_id, int16_t column_group_id)
+        {
+          // seq from 1 ~3
+          // column id from  2 ~ 4
+          int16_t column_id = ROWKEY_COLUMN_START_ID;
+          for (int32_t i = 0; i < ROWKEY_COLUMN_NUMBER; ++i)
+          {
+            add_schema_column(schema, table_id, column_group_id, i+1, column_id++, ObIntType);
+          }
+        }
+
+        void init_generic_schema(ObSSTableSchema& schema)
+        {
+          int16_t start_id = 0;
+          for (int16_t i = 0; i < TABLE_COUNT; ++i)
+          {
+            add_schema_generic_rowkey(schema, TABLE_ID_BASE + i, 0);
+            for ( int16_t j = 0; j < COLUMN_GROUP_PER_TABLE ; ++j)
+            {
+              start_id =static_cast<int16_t>( j * COLUMN_NUMBER_PER_GROUP + NORMAL_COLUMN_START_ID);
+              add_schema_column(schema, TABLE_ID_BASE + i, j + COLUMN_GROUP_ID_BASE, 0, 
+                  start_id, ObDoubleType);
+              add_schema_column(schema, TABLE_ID_BASE + i, j + COLUMN_GROUP_ID_BASE, 0, 
+                  start_id + 1, ObIntType);
+              add_schema_column(schema, TABLE_ID_BASE + i, j + COLUMN_GROUP_ID_BASE, 0, 
+                  start_id + 2, ObVarcharType);
+            }
+          }
+        }
+
+
         void build_row(int64_t index, ObSSTableRow &row, int type, uint64_t table_id, uint64_t column_group_id)
         {
           ObObj tmp_obj;
           Key tmp_key;
-          ObString key;
+          ObRowkey key;
           row.set_table_id(table_id);
           row.set_column_group_id(column_group_id);
 
           tmp_key.assign(index, 10, 1000);
-          key.assign(tmp_key.get_ptr(), tmp_key.key_len());
-          row.set_row_key(key);
+          tmp_key.trans_to_rowkey(key);
+          row.set_rowkey(key);
 
-          for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
+          for (int i = ROWKEY_COLUMN_NUMBER; i < OB_MAX_COLUMN_NUMBER; ++i)
           {
             switch (type)
             {
-            case ObNullType:
-              tmp_obj.set_null();
-              break;
-            case ObIntType:
-              tmp_obj.set_int(i);
-              break;
-            default:
-              break;
+              case ObNullType:
+                tmp_obj.set_null();
+                break;
+              case ObDoubleType:
+                tmp_obj.set_double(i);
+                break;
+              case ObIntType:
+                tmp_obj.set_int(i);
+                break;
+              default:
+                break;
             }
             row.add_obj(tmp_obj);
           }
         }
 
         void build_row(int64_t index, ObSSTableRow &row, int type, int column_count, 
-                       uint64_t table_id, uint64_t column_group_id)
+            uint64_t table_id, uint64_t column_group_id)
         {
           ObObj tmp_obj;
           ObObj id_obj;
           Key tmp_key;
-          ObString key;
+          ObRowkey key;
 
           row.set_table_id(table_id);
           row.set_column_group_id(column_group_id);
           tmp_key.assign(index, 10, 1000);
-          key.assign(tmp_key.get_ptr(), tmp_key.key_len());
-          row.set_row_key(key);
+          tmp_key.trans_to_rowkey(key);
+          row.set_rowkey(key);
 
-          for (int i = 0; i < column_count; ++i)
+          for (int i = ROWKEY_COLUMN_NUMBER; i < column_count; ++i)
           {
             switch (type)
             {
-            case ObNullType:
-              tmp_obj.set_null();
+              case ObNullType:
+                tmp_obj.set_null();
+                break;
+              case ObDoubleType:
+              tmp_obj.set_double(i);
               break;
             case ObIntType:
               tmp_obj.set_int(i);
@@ -123,7 +182,7 @@ namespace oceanbase
                              uint64_t table_id, uint64_t column_group_id, int64_t size_in_kb)
         {
           ObObj tmp_obj;
-          int32_t value_size = static_cast<int32_t>(1024 * size_in_kb + 1);
+          int32_t value_size =static_cast<int32_t>( 1024 * size_in_kb + 1);
           char value_data[value_size];
           char *ptr;
 
@@ -136,12 +195,13 @@ namespace oceanbase
           ObString value_str(value_size, value_size, value_data);
 
           Key tmp_key(index, 10, 1000);
-          ObString key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
-          row.set_row_key(key);
+          ObRowkey key;
+          tmp_key.trans_to_rowkey(key);
+          row.set_rowkey(key);
           row.set_table_id(table_id);
           row.set_column_group_id(column_group_id);
 
-          for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
+          for (int i = ROWKEY_COLUMN_NUMBER; i < OB_MAX_COLUMN_NUMBER; ++i)
           {
             tmp_obj.set_varchar(value_str);
             row.add_obj(tmp_obj);
@@ -152,11 +212,11 @@ namespace oceanbase
         {
           FileUtils file_util;
           int type;
-          int types[3] = {ObIntType, ObIntType, ObVarcharType};
+          int types[3] = {ObDoubleType, ObIntType, ObVarcharType};
           char *file_buf = NULL;
           int64_t file_len = FileDirectoryUtils::get_size(file_name);
           int64_t read_len = 0;
-          const char *compressor_name = COMPRESSOR_NAME;
+          char *compressor_name = (char*)COMPRESSOR_NAME;
           ObCompressor *compressor = NULL;
           int64_t uncompressed_size = 0;
           ObTrailerOffset trailer_offset;
@@ -190,12 +250,13 @@ namespace oceanbase
           int64_t row_data_len = 0;
           int64_t row_count = 0;
           ObSSTableRow new_row;
-          ObString row_key;
+          ObRowkey row_key(NULL, ROWKEY_COLUMN_NUMBER);
           const ObObj *obj = NULL;
           Key tmp_key;
-          ObString key;
+          ObRowkey key;
           ObString string_value;
           int64_t index = 0;
+          double val = 0.0;
           int64_t val64 = 0;
           int64_t pos = 0;
           // uint64_t cur_table_id = TABLE_ID_BASE;
@@ -273,14 +334,26 @@ namespace oceanbase
           }
           EXPECT_TRUE(OB_SUCCESS == ret);
 
-          EXPECT_EQ(150, schema.get_column_count());
-          for (int i = 0; i < 150; ++i)
+          const int32_t columns_per_row = ROWKEY_COLUMN_NUMBER + COLUMN_GROUP_PER_TABLE * COLUMN_NUMBER_PER_GROUP;
+          const int32_t total_column_count = TABLE_COUNT * columns_per_row;
+          int32_t row_num = 0;
+          int32_t col_num = 0;
+
+          EXPECT_EQ(total_column_count, schema.get_column_count());
+          for (int i = 0; i < total_column_count; ++i)
           {
             column = schema.get_column_def(i);
-            EXPECT_EQ(2+i%3, (int32_t)column->column_name_id_);
-            EXPECT_EQ(i/30+1025, (int32_t)column->table_id_);
-            EXPECT_EQ(i%30/3, (int32_t)column->column_group_id_);
-            EXPECT_EQ(types[i%3], column->column_value_type_);
+            
+            row_num = i / columns_per_row;
+            col_num = i % columns_per_row;
+
+            ASSERT_EQ(col_num + ROWKEY_COLUMN_START_ID, (int32_t)column->column_name_id_) << i << "," << row_num << "," << col_num;
+            ASSERT_EQ(row_num + TABLE_ID_BASE, (int32_t)column->table_id_);
+            if (col_num > ROWKEY_COLUMN_NUMBER)
+            {
+              ASSERT_EQ((col_num - ROWKEY_COLUMN_NUMBER) / 3 + COLUMN_GROUP_ID_BASE ,  (int32_t)column->column_group_id_);
+              ASSERT_EQ(types[(col_num - ROWKEY_COLUMN_NUMBER) % 3], column->column_value_type_);
+            }
           }
 
           //read bloom filter
@@ -372,25 +445,28 @@ namespace oceanbase
               for (int j = 0; j < row_count; ++j)
               {
                 new_row.clear();
-                new_row.set_obj_count(objs_per_row);
+                new_row.set_obj_count(OBJS_PER_ROW);
                 ret = new_row.deserialize(row_data, row_data_len, pos);
                 EXPECT_TRUE(OB_SUCCESS == ret);
-                row_key = new_row.get_row_key();
+                new_row.get_rowkey(row_key);
 
                 //check row key
                 tmp_key.assign(index, 0, 0);
-                key.assign(tmp_key.get_ptr(), tmp_key.key_len());
-                EXPECT_EQ(tmp_key.key_len(), row_key.length());
+                tmp_key.trans_to_rowkey(key);
                 EXPECT_TRUE(key == row_key);
 
                 //check objs of row
-                for (int k = 0; k < objs_per_row; ++k)
+                for (int k = ROWKEY_COLUMN_NUMBER; k < OBJS_PER_ROW; ++k)
                 {
                   obj = new_row.get_obj(k);
                   EXPECT_TRUE(NULL != obj);
                   type = obj->get_type();
                   switch (type)
                   {
+                  case ObDoubleType:
+                    obj->get_double(val);
+                    EXPECT_DOUBLE_EQ(static_cast<double>(index), val);
+                    break;
                   case ObIntType:
                     obj->get_int(val64);
                     EXPECT_EQ(index, val64);
@@ -443,6 +519,7 @@ namespace oceanbase
         int ret;
         ObSSTableSchemaColumnDef column_def;
         int64_t trailer_offset = 0;
+        int64_t sstable_size = 0;
 
         char cmd[256];
         sprintf(cmd, "mkdir -p %s", sstable_path);
@@ -467,7 +544,7 @@ namespace oceanbase
         column_def.table_id_ = 1025;
         column_def.column_group_id_ = 1;
         column_def.column_name_id_ = 2;
-        column_def.column_value_type_ = ObIntType;
+        column_def.column_value_type_ = ObDoubleType;
         schema.add_column_def(column_def);
         //not null path, not null compressor, not null schema,table version 0
         ret = writer.create_sstable(schema, file_name, compressor, 0);
@@ -475,7 +552,7 @@ namespace oceanbase
 
         ret = writer.close_sstable(trailer_offset);
         EXPECT_TRUE(OB_SUCCESS == ret);
-        EXPECT_TRUE(trailer_offset == -1);
+        EXPECT_TRUE(trailer_offset > 0);
         remove(sstable_path);
 
         column_def.table_id_ = 1025;
@@ -500,7 +577,17 @@ namespace oceanbase
 
         ret = writer.close_sstable(trailer_offset);
         EXPECT_TRUE(OB_SUCCESS == ret);
-        EXPECT_TRUE(trailer_offset == -1);
+        EXPECT_TRUE(trailer_offset > 0);
+        remove(sstable_path);
+
+        //create empty sstable
+        ret = writer.create_sstable(schema, file_name, compressor, 0);
+        EXPECT_TRUE(OB_SUCCESS == ret);
+
+        ret = writer.close_sstable(trailer_offset, sstable_size);
+        EXPECT_TRUE(OB_SUCCESS == ret);
+        EXPECT_TRUE(trailer_offset > 0);
+        EXPECT_TRUE(sstable_size > 0);
         remove(sstable_path);
       }
 
@@ -512,19 +599,19 @@ namespace oceanbase
         int64_t sstable_size = 0;
 
         ret = writer.close_sstable(trailer_offset);
-        EXPECT_TRUE(OB_SUCCESS == ret);
+        EXPECT_TRUE(OB_SUCCESS != ret);
         EXPECT_TRUE(trailer_offset == -1);
 
         //close ssatble again
         ret = writer.close_sstable(trailer_offset);
-        EXPECT_TRUE(OB_SUCCESS == ret);
+        EXPECT_TRUE(OB_SUCCESS != ret);
         EXPECT_TRUE(trailer_offset == -1);
 
         //close ssatble again
         ret = writer.close_sstable(trailer_offset, sstable_size);
-        EXPECT_TRUE(OB_SUCCESS == ret);
+        EXPECT_TRUE(OB_SUCCESS != ret);
         EXPECT_TRUE(trailer_offset == -1);
-        EXPECT_TRUE(sstable_size == 0);
+        EXPECT_TRUE(sstable_size == -1);
       }
 
       TEST_F(TestObSSTableWriter, test_append_row)
@@ -535,23 +622,22 @@ namespace oceanbase
         ObString file_name;
         ObString compressor;
         int ret;
-        ObSSTableSchemaColumnDef column_def;
         int64_t trailer_offset = 0;
         int64_t space_usage = 0;
         ObObj tmp_obj;
         ObString row_key;
         Key tmp_key;
-        ObString key;
+        ObRowkey key;
 
-        file_name.assign(sstable_path, static_cast<int32_t>(strlen(sstable_path)));
+        file_name.assign(sstable_path,static_cast<int32_t>( strlen(sstable_path)));
         char *compressor_name = (char*)COMPRESSOR_NAME;
         compressor.assign(compressor_name, static_cast<int32_t>(strlen(compressor_name) + 1));
-        column_def.reserved_ = 0;
-        column_def.table_id_ = 10086;
-        column_def.column_group_id_ = 2;
-        column_def.column_name_id_ = 2;
-        column_def.column_value_type_ = ObIntType;
-        schema.add_column_def(column_def);
+
+        // rowkey column;
+        add_schema_generic_rowkey(schema, TABLE_ID_BASE, COLUMN_GROUP_ID_BASE);
+        // column 1;
+        add_schema_column(schema, TABLE_ID_BASE, COLUMN_GROUP_ID_BASE, 0, 
+            NORMAL_COLUMN_START_ID, ObDoubleType);
 
         ret = writer.create_sstable(schema, file_name, compressor, 0x200);
         EXPECT_TRUE(OB_SUCCESS == ret);
@@ -563,7 +649,7 @@ namespace oceanbase
         EXPECT_TRUE(OB_ERROR == ret);
         EXPECT_TRUE(space_usage > 0);
 
-        tmp_obj.set_int(10);
+        tmp_obj.set_double(10.0);
         row.add_obj(tmp_obj);
 
         //append row without row key buf with objs
@@ -571,33 +657,35 @@ namespace oceanbase
         EXPECT_TRUE(OB_ERROR == ret);
         EXPECT_TRUE(space_usage > 0);
 
+        row.clear();
         tmp_key.assign(12345, 10, 1000);
-        key.assign(tmp_key.get_ptr(), tmp_key.key_len());
-        row.set_row_key(key);
+        tmp_key.trans_to_rowkey(key);
+        row.set_rowkey(key);
+        tmp_obj.set_double(10.0);
+        row.add_obj(tmp_obj);
 
         //can not set table id with  invalid table id
         ret = row.set_table_id(OB_INVALID_ID);
         EXPECT_TRUE(OB_ERROR == ret);
        
         //can not set column group id with invalid column group id
-        row.set_table_id(10086);
+        row.set_table_id(TABLE_ID_BASE);
         ret = row.set_column_group_id(OB_INVALID_ID);
         EXPECT_TRUE(OB_ERROR == ret);
-        
 
         //append legal row
-        row.set_column_group_id(2);
+        row.set_column_group_id(COLUMN_GROUP_ID_BASE);
         ret = writer.append_row(row, space_usage);
         EXPECT_TRUE(OB_SUCCESS == ret);
         EXPECT_TRUE(space_usage > 0);
 
         row.clear();
-        row.set_table_id(10086);
-        row.set_column_group_id(2);
+        row.set_table_id(TABLE_ID_BASE);
+        row.set_column_group_id(COLUMN_GROUP_ID_BASE);
         tmp_key.assign(12346, 10, 1000);
-        key.assign(tmp_key.get_ptr(), tmp_key.key_len());
-        row.set_row_key(key);
-        tmp_obj.set_int(1000);
+        tmp_key.trans_to_rowkey(key);
+        row.set_rowkey(key);
+        tmp_obj.set_double(1000.0);
         row.add_obj(tmp_obj);
         //append second legal row  in order (table_id, column_group_id, rowkey)
         ret = writer.append_row(row, space_usage);
@@ -607,17 +695,17 @@ namespace oceanbase
         //row is not consistent with schema, row has 2 objs, but schema has 1 column
         tmp_obj.set_int(100);
         row.add_obj(tmp_obj);
-        EXPECT_EQ(2, row.get_obj_count());
+        EXPECT_EQ(2 + ROWKEY_COLUMN_NUMBER, row.get_obj_count());
         ret = writer.append_row(row, space_usage);
-        EXPECT_TRUE(OB_ERROR == ret);
+        EXPECT_TRUE(OB_SUCCESS != ret);
         EXPECT_TRUE(space_usage > 0);
 
         //row with inconsistent type with schema
         row.clear();
         tmp_key.assign(12347, 10, 1000);
-        key.assign(tmp_key.get_ptr(), tmp_key.key_len());
-        row.set_row_key(key);
-        tmp_obj.set_modifytime(0);
+        tmp_key.trans_to_rowkey(key);
+        row.set_rowkey(key);
+        tmp_obj.set_int(100);
         row.add_obj(tmp_obj);
 
         ret = writer.append_row(row, space_usage);
@@ -628,11 +716,11 @@ namespace oceanbase
         //table id not in order
         row.clear();
         tmp_key.assign(12348, 10, 1000);
-        key.assign(tmp_key.get_ptr(), tmp_key.key_len());
-        row.set_row_key(key);
+        tmp_key.trans_to_rowkey(key);
+        row.set_rowkey(key);
         row.set_table_id(1000);
         row.set_column_group_id(2);
-        tmp_obj.set_int(100);
+        tmp_obj.set_double(100.0);
         row.add_obj(tmp_obj);
         ret = writer.append_row(row, space_usage);
         EXPECT_TRUE(OB_ERROR == ret);
@@ -641,11 +729,11 @@ namespace oceanbase
         //column group id not in order
         row.clear();
         tmp_key.assign(12348, 10, 1000);
-        key.assign(tmp_key.get_ptr(), tmp_key.key_len());
-        row.set_row_key(key);
+        tmp_key.trans_to_rowkey(key);
+        row.set_rowkey(key);
         row.set_table_id(10086);
         row.set_column_group_id(1);
-        tmp_obj.set_int(100);
+        tmp_obj.set_double(100.0);
         row.add_obj(tmp_obj);
         ret = writer.append_row(row, space_usage);
         EXPECT_TRUE(OB_ERROR == ret);
@@ -654,11 +742,11 @@ namespace oceanbase
         //rowkey not in order
         row.clear();
         tmp_key.assign(12340, 10, 1000);
-        key.assign(tmp_key.get_ptr(), tmp_key.key_len());
-        row.set_row_key(key);
+        tmp_key.trans_to_rowkey(key);
+        row.set_rowkey(key);
         row.set_table_id(10086);
         row.set_column_group_id(2);
-        tmp_obj.set_int(100);
+        tmp_obj.set_double(100.0);
         row.add_obj(tmp_obj);
         ret = writer.append_row(row, space_usage);
         EXPECT_TRUE(OB_ERROR == ret);
@@ -680,26 +768,21 @@ namespace oceanbase
         ObString file_name;
         ObString compressor;
         int ret;
-        ObSSTableSchemaColumnDef column_def;
         int64_t trailer_offset = 0;
         int64_t space_usage = 0;
         ObObj tmp_obj;
         ObString row_key;
-        Key tmp_key;
-        ObString key;
         int j = 0;
 
-        file_name.assign(sstable_path, static_cast<int32_t>(strlen(sstable_path)));
+        file_name.assign(sstable_path,static_cast<int32_t>( strlen(sstable_path)));
         char *compressor_name = (char*)COMPRESSOR_NAME;
-        compressor.assign(compressor_name, static_cast<int32_t>(strlen(compressor_name) + 1));
+        compressor.assign(compressor_name,static_cast<int32_t>( strlen(compressor_name) + 1));
 
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
+        add_schema_generic_rowkey(schema, TABLE_ID_BASE, COLUMN_GROUP_ID_BASE);
+        for (int i = ROWKEY_COLUMN_NUMBER; i < OB_MAX_COLUMN_NUMBER; ++i)
         {
-          column_def.table_id_ = 1025;
-          column_def.column_group_id_ = 2;
-          column_def.column_name_id_ = i + 2;
-          column_def.column_value_type_ = ObNullType;
-          schema.add_column_def(column_def);
+          add_schema_column(schema, TABLE_ID_BASE, COLUMN_GROUP_ID_BASE, 0, 
+              ROWKEY_COLUMN_START_ID + i, ObNullType);
         }
         EXPECT_EQ(OB_MAX_COLUMN_NUMBER, schema.get_column_count());
 
@@ -709,7 +792,7 @@ namespace oceanbase
         while (true)
         {
           row.clear();
-          build_row(j, row, ObNullType, 1025, 2);
+          build_row(j, row, ObNullType, TABLE_ID_BASE, COLUMN_GROUP_ID_BASE);
           EXPECT_EQ(OB_MAX_COLUMN_NUMBER, row.get_obj_count());
           ret = writer.append_row(row, space_usage);
           EXPECT_TRUE(OB_SUCCESS == ret);
@@ -718,56 +801,7 @@ namespace oceanbase
           {
             break;
           }
-          j++;
-        }
-
-        ret = writer.close_sstable(trailer_offset);
-        EXPECT_TRUE(OB_SUCCESS == ret);
-        EXPECT_TRUE(trailer_offset > 0);
-        remove(sstable_path);
-      }
-
-      TEST_F(TestObSSTableWriter, test_append_many_rows_int_objs)
-      {
-        ObSSTableWriter writer;
-        ObSSTableSchema schema;
-        ObSSTableRow row;
-        ObString file_name;
-        ObString compressor;
-        int ret;
-        ObSSTableSchemaColumnDef column_def;
-        int64_t trailer_offset = 0;
-        int64_t space_usage = 0;
-        ObObj tmp_obj;
-        ObString row_key;
-        Key tmp_key;
-        ObString key;
-        int j = 0;
-
-        file_name.assign(sstable_path, static_cast<int32_t>(strlen(sstable_path)));
-        char *compressor_name = (char*)COMPRESSOR_NAME;
-        compressor.assign(compressor_name, static_cast<int32_t>(strlen(compressor_name) + 1));
-
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
-        {
-          column_def.table_id_ = 1025;
-          column_def.column_group_id_ = 2;
-          column_def.column_name_id_ = i + 2;
-          column_def.column_value_type_ = ObIntType;
-          schema.add_column_def(column_def);
-        }
-        EXPECT_EQ(OB_MAX_COLUMN_NUMBER, schema.get_column_count());
-        ret = writer.create_sstable(schema, file_name, compressor, 0);
-        EXPECT_TRUE(OB_SUCCESS == ret);
-
-        while (true)
-        {
-          row.clear();
-          build_row(j, row, ObIntType, 1025, 2);
-          ret = writer.append_row(row, space_usage);
-          EXPECT_TRUE(OB_SUCCESS == ret);
-          EXPECT_TRUE(space_usage > 0);
-          if (space_usage > 1024 * 1024)
+          else if (OB_SUCCESS != ret)
           {
             break;
           }
@@ -780,7 +814,7 @@ namespace oceanbase
         remove(sstable_path);
       }
 
-      TEST_F(TestObSSTableWriter, test_append_many_rows_int_objs2)
+      TEST_F(TestObSSTableWriter, test_append_many_rows_double_objs)
       {
         ObSSTableWriter writer;
         ObSSTableSchema schema;
@@ -788,33 +822,77 @@ namespace oceanbase
         ObString file_name;
         ObString compressor;
         int ret;
-        ObSSTableSchemaColumnDef column_def;
+        int64_t trailer_offset = 0;
+        int64_t space_usage = 0;
+        int j = 0;
+
+        file_name.assign(sstable_path, static_cast<int32_t>(strlen(sstable_path)));
+        char *compressor_name = (char*)COMPRESSOR_NAME;
+        compressor.assign(compressor_name,static_cast<int32_t>( strlen(compressor_name) + 1));
+
+        add_schema_generic_rowkey(schema, TABLE_ID_BASE, COLUMN_GROUP_ID_BASE);
+        for (int i = ROWKEY_COLUMN_NUMBER; i < OB_MAX_COLUMN_NUMBER; ++i)
+        {
+          add_schema_column(schema, TABLE_ID_BASE, COLUMN_GROUP_ID_BASE, 0, 
+              ROWKEY_COLUMN_START_ID + i, ObDoubleType);
+        }
+
+        EXPECT_EQ(OB_MAX_COLUMN_NUMBER, schema.get_column_count());
+        ret = writer.create_sstable(schema, file_name, compressor, 0);
+        EXPECT_TRUE(OB_SUCCESS == ret);
+
+        while (true)
+        {
+          row.clear();
+          build_row(j, row, ObDoubleType, TABLE_ID_BASE, COLUMN_GROUP_ID_BASE);
+          ret = writer.append_row(row, space_usage);
+          EXPECT_TRUE(OB_SUCCESS == ret);
+          EXPECT_TRUE(space_usage > 0);
+          if (space_usage > 1024 * 1024)
+          {
+            break;
+          }
+          else if (OB_SUCCESS != ret)
+          {
+            break;
+          }
+          j++;
+        }
+
+        ret = writer.close_sstable(trailer_offset);
+        EXPECT_TRUE(OB_SUCCESS == ret);
+        EXPECT_TRUE(trailer_offset > 0);
+        remove(sstable_path);
+      }
+
+      TEST_F(TestObSSTableWriter, test_append_many_rows_double_objs2)
+      {
+        ObSSTableWriter writer;
+        ObSSTableSchema schema;
+        ObSSTableRow row;
+        ObString file_name;
+        ObString compressor;
+        int ret = 0;
         int64_t trailer_offset = 0;
         int64_t sstable_size = 0;
         int64_t space_usage = 0;
         uint64_t table_id = 0;
         uint64_t column_group_id = 0;
-        ObObj tmp_obj;
-        ObString row_key;
-        Key tmp_key;
-        ObString key;
         int j = 0;
 
-        file_name.assign(sstable_path, static_cast<int32_t>(strlen(sstable_path)));
+        file_name.assign(sstable_path,static_cast<int32_t>( strlen(sstable_path)));
         char *compressor_name = (char*)COMPRESSOR_NAME;
         compressor.assign(compressor_name, static_cast<int32_t>(strlen(compressor_name) + 1));
+
         for (int t = 0; t < 5; ++t)
         {
-          column_def.table_id_ = static_cast<uint32_t>(TABLE_ID_BASE + t);
-          for (int c = 0; c < 10; ++c)
+          add_schema_generic_rowkey(schema, TABLE_ID_BASE + t, 0);
+          for (int c = COLUMN_GROUP_ID_BASE; c < 10; ++c)
           {
-            column_def.column_group_id_ = static_cast<uint16_t>(c);
-            for (int i = 0; i < 12 /*OB_MAX_COLUMN_NUMBER*/; ++i)
+            for (int i = ROWKEY_COLUMN_NUMBER; i < 12 /*OB_MAX_COLUMN_NUMBER*/; ++i)
             {
-              column_def.column_name_id_ = i + 2;
-              column_def.column_value_type_ = ObIntType;
-              column_def.reserved_ = 0;
-              schema.add_column_def(column_def);
+              add_schema_column(schema, TABLE_ID_BASE + t, c, 0, 
+                  i + ROWKEY_COLUMN_START_ID , ObDoubleType);
             }
           }
         }
@@ -822,16 +900,18 @@ namespace oceanbase
         ret = writer.create_sstable(schema, file_name, compressor, 1);
         EXPECT_TRUE(OB_SUCCESS == ret);
 
-        while ( 100000 > j)
+        for (int t = 0; t < 5; ++t)
         {
-          row.clear();
-          table_id = j/20000 + TABLE_ID_BASE;
-          column_group_id = j%20000/2000;
-          build_row(j, row, ObIntType, 12, table_id, column_group_id);
-          ret = writer.append_row(row, space_usage);
-          EXPECT_TRUE(OB_SUCCESS == ret);
-          EXPECT_TRUE(space_usage > 0);
-          j++;
+          for (int c = COLUMN_GROUP_ID_BASE; c < 10; ++c)
+          {
+            table_id = t + TABLE_ID_BASE;
+            column_group_id = c;
+            row.clear();
+            build_row(j++, row, ObDoubleType, 12, table_id, column_group_id);
+            ret = writer.append_row(row, space_usage);
+            ASSERT_TRUE(OB_SUCCESS == ret) << "j:" << j << ",table_id:" << table_id << ",column_group_id:" << column_group_id;
+            EXPECT_TRUE(space_usage > 0);
+          }
         }
 
         ret = writer.close_sstable(trailer_offset, sstable_size);
@@ -844,7 +924,6 @@ namespace oceanbase
 
       TEST_F(TestObSSTableWriter, test_write_one_file)
       {
-        ObSSTableSchemaColumnDef column_def;
         ObSSTableSchema schema;
         ObSSTableRow row;
         char *compressor_name = (char*)COMPRESSOR_NAME;
@@ -852,7 +931,7 @@ namespace oceanbase
         ObString file_name(static_cast<int32_t>(strlen(sstable_path) + 1),
                       static_cast<int32_t>(strlen(sstable_path) + 1), sstable_path);
         ObString compressor(static_cast<int32_t>(strlen(compressor_name) + 1),
-                            static_cast<int32_t>(strlen(compressor_name) + 1), compressor_name);
+                           static_cast<int32_t>( strlen(compressor_name) + 1), compressor_name);
         int64_t disk_usage = 0;
         int64_t trailer_offset = 0;
         ObObj obj;
@@ -863,25 +942,8 @@ namespace oceanbase
         int ret;
 
         // init schema
-        for (int i = 0; i < 5; ++i)
-        {
-          column_def.table_id_ = 1025 + i;
-          for ( int j = 0; j < 10 ; ++j)
-          {
-            column_def.column_group_id_ = static_cast<uint16_t>(j);
-            column_def.column_name_id_ = 2;
-            column_def.column_value_type_ = ObIntType;
-            schema.add_column_def(column_def);
+        init_generic_schema(schema);
 
-            column_def.column_name_id_ = 3;
-            column_def.column_value_type_ = ObIntType;
-            schema.add_column_def(column_def);
-
-            column_def.column_name_id_ = 4;
-            column_def.column_value_type_ = ObVarcharType;
-            schema.add_column_def(column_def);
-          }
-        }
         // create sstable file
         if (OB_ERROR == (ret = writer.create_sstable(schema, file_name,
                                   compressor, 2)))
@@ -897,18 +959,19 @@ namespace oceanbase
           ptr += 8;
         }
         ObString value_str(1025, 1025, value_data);
+        ObRowkey row_key;
 
         for (int i = 0; i < 500000; ++i) {
           row.clear();
-          table_id = i / 100000 + 1025;
-          column_group_id = i%100000/10000;
+          table_id = i / 100000 + TABLE_ID_BASE;
+          column_group_id = i%100000/10000 + COLUMN_GROUP_ID_BASE;
           row.set_table_id(table_id);
           row.set_column_group_id(column_group_id);
           Key tmp_key(i, 0, 0);
-          ObString row_key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
-          row.set_row_key(row_key);
+          tmp_key.trans_to_rowkey(row_key);
+          row.set_rowkey(row_key);
 
-          obj.set_int(i);
+          obj.set_double(i);
           row.add_obj(obj);
           obj.set_int(i);
           row.add_obj(obj);
@@ -920,14 +983,14 @@ namespace oceanbase
             cout << "add row failed" << endl;
             return;
           }
-          EXPECT_TRUE(OB_SUCCESS == ret);
+          ASSERT_TRUE(OB_SUCCESS == ret) << i << "," << table_id << "," << column_group_id;
         }
 
         if (OB_ERROR == (ret = writer.close_sstable(trailer_offset)))
         {
           cout << "close sstable failed ------------------" << endl;
         }
-        EXPECT_TRUE(OB_SUCCESS == ret);
+        ASSERT_TRUE(OB_SUCCESS == ret);
         remove(sstable_path);
       }
 
@@ -939,44 +1002,25 @@ namespace oceanbase
         ObString file_name;
         ObString compressor;
         int ret;
-        ObSSTableSchemaColumnDef column_def;
         int64_t trailer_offset = 0;
         int64_t space_usage = 0;
         int64_t sstable_size = 0;
         uint64_t table_id = 0;
         uint64_t column_group_id = 0;
         ObObj tmp_obj;
-        ObString row_key;
+        ObRowkey row_key;
         Key tmp_key;
         ObString key;
         ObObj obj;
         char value_data[1024 + 1];
         char *ptr;
-        file_name.assign(sstable_path, static_cast<int32_t>(strlen(sstable_path)));
+        file_name.assign(sstable_path,static_cast<int32_t>( strlen(sstable_path)));
         char *compressor_name = (char*)COMPRESSOR_NAME;
         compressor.assign(compressor_name, static_cast<int32_t>(strlen(compressor_name) + 1));
 
         //init schema
-        for (int i = 0; i < 5; ++i)
-        {
-          column_def.table_id_ = 1025 + i;
-          for ( int j = 0; j < 10 ; ++j)
-          {
-            column_def.column_group_id_ = static_cast<uint16_t>(j);
-            column_def.column_name_id_ = 2;
-            column_def.column_value_type_ = ObIntType;
-            schema.add_column_def(column_def);
-            
-            column_def.column_name_id_ = 3;
-            column_def.column_value_type_ = ObIntType;
-            schema.add_column_def(column_def);
+        init_generic_schema(schema);
 
-            column_def.column_name_id_ = 4;
-            column_def.column_value_type_ = ObVarcharType;
-            schema.add_column_def(column_def);
-          }
-        }
-       
         ret = writer.create_sstable(schema, file_name, compressor, 2, 
                                     OB_SSTABLE_STORE_SPARSE);
         EXPECT_TRUE(OB_SUCCESS == ret);
@@ -991,15 +1035,15 @@ namespace oceanbase
 
         for (int i = 0; i < 500000; ++i) {
           row.clear();
-          table_id = i / 100000 + 1025;
-          column_group_id = i%100000/10000;
+          table_id = i / 100000 + TABLE_ID_BASE;
+          column_group_id = i%100000/10000 + COLUMN_GROUP_ID_BASE;
           row.set_table_id(table_id);
           row.set_column_group_id(column_group_id);
           Key tmp_key(i, 0, 0);
-          ObString row_key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
-          row.set_row_key(row_key);
+          tmp_key.trans_to_rowkey(row_key);
+          row.set_rowkey(row_key);
 
-          obj.set_int(i);
+          obj.set_double(i);
           row.add_obj(obj);
           obj.set_int(i);
           row.add_obj(obj);
@@ -1034,14 +1078,13 @@ namespace oceanbase
         ObString file_name;
         ObString compressor;
         int ret;
-        ObSSTableSchemaColumnDef column_def;
         int64_t trailer_offset = 0;
         int64_t space_usage = 0;
         int64_t sstable_size = 0;
         uint64_t table_id = 0;
         uint64_t column_group_id = 0;
         ObObj tmp_obj;
-        ObString row_key;
+        ObRowkey row_key;
         Key tmp_key;
         ObString key;
         ObObj obj;
@@ -1052,25 +1095,7 @@ namespace oceanbase
         compressor.assign(compressor_name, static_cast<int32_t>(strlen(compressor_name) + 1));
 
         //init schema
-        for (int i = 0; i < 5; ++i)
-        {
-          column_def.table_id_ = 1025 + i;
-          for ( int j = 0; j < 10 ; ++j)
-          {
-            column_def.column_group_id_ = static_cast<uint16_t>(j);
-            column_def.column_name_id_ = 2;
-            column_def.column_value_type_ = ObIntType;
-            schema.add_column_def(column_def);
-            
-            column_def.column_name_id_ = 3;
-            column_def.column_value_type_ = ObIntType;
-            schema.add_column_def(column_def);
-
-            column_def.column_name_id_ = 4;
-            column_def.column_value_type_ = ObVarcharType;
-            schema.add_column_def(column_def);
-          }
-        }
+        init_generic_schema(schema);
        
         ret = writer.create_sstable(schema, file_name, compressor, 2);
         EXPECT_TRUE(OB_SUCCESS == ret);
@@ -1085,15 +1110,15 @@ namespace oceanbase
 
         for (int i = 0; i < 500000; ++i) {
           row.clear();
-          table_id = i / 100000 + 1025;
-          column_group_id = i%100000/10000;
+          table_id = i / 100000 + TABLE_ID_BASE;
+          column_group_id = i%100000/10000 + COLUMN_GROUP_ID_BASE;
           row.set_table_id(table_id);
           row.set_column_group_id(column_group_id);
           Key tmp_key(i, 0, 0);
-          ObString row_key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
-          row.set_row_key(row_key);
+          tmp_key.trans_to_rowkey(row_key);
+          row.set_rowkey(row_key);
 
-          obj.set_int(i);
+          obj.set_double(i);
           row.add_obj(obj);
           obj.set_int(i);
           row.add_obj(obj);
@@ -1123,40 +1148,23 @@ namespace oceanbase
         //write second file
       
         //init schema
-        for (int i = 0; i < 5; ++i)
-        {
-          column_def.table_id_ = 1025 + i;
-          for ( int j = 0; j < 10 ; ++j)
-          {
-            column_def.column_group_id_ = static_cast<uint16_t>(j);
-            column_def.column_name_id_ = 2;
-            column_def.column_value_type_ = ObIntType;
-            schema.add_column_def(column_def);
-            
-            column_def.column_name_id_ = 3;
-            column_def.column_value_type_ = ObIntType;
-            schema.add_column_def(column_def);
-
-            column_def.column_name_id_ = 4;
-            column_def.column_value_type_ = ObVarcharType;
-            schema.add_column_def(column_def);
-          }
-        }
+        init_generic_schema(schema);
        
         ret = writer.create_sstable(schema, file_name, compressor, 2);
         EXPECT_TRUE(OB_SUCCESS == ret);
 
+
         for (int i = 0; i < 500000; ++i) {
           row.clear();
-          table_id = i / 100000 + 1025;
-          column_group_id = i%100000/10000;
+          table_id = i / 100000 + TABLE_ID_BASE;
+          column_group_id = i%100000/10000 + COLUMN_GROUP_ID_BASE;
           row.set_table_id(table_id);
           row.set_column_group_id(column_group_id);
           Key tmp_key(i, 0, 0);
-          ObString row_key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
-          row.set_row_key(row_key);
+          tmp_key.trans_to_rowkey(row_key);
+          row.set_rowkey(row_key);
 
-          obj.set_int(i);
+          obj.set_double(i);
           row.add_obj(obj);
           obj.set_int(i);
           row.add_obj(obj);
@@ -1183,14 +1191,6 @@ namespace oceanbase
         remove(sstable_path);
       }
       
-      TEST_F(TestObSSTableWriter, read_sstable_and_check)
-      {
-        ObString file_name;
-        
-        //read_sstable_and_check(sstable_path, trailer_offset, true);
-
-      }
-      
       TEST_F(TestObSSTableWriter, append_large_row)
       {
         ObSSTableWriter writer;
@@ -1212,16 +1212,20 @@ namespace oceanbase
         char *compressor_name = (char*)COMPRESSOR_NAME;
         compressor.assign(compressor_name, static_cast<int32_t>(strlen(compressor_name) + 1));
 
-        for (int i = 0; i < OB_MAX_COLUMN_NUMBER; ++i)
+        add_schema_generic_rowkey(schema, TABLE_ID_BASE, 0);
+        column_def.rowkey_seq_ = 0;
+        for (int i = ROWKEY_COLUMN_NUMBER; i < OB_MAX_COLUMN_NUMBER; ++i)
         {
-          column_def.table_id_ = 1025;
-          column_def.column_group_id_ = 2;
-          column_def.column_name_id_ = i + 2;
+          column_def.table_id_ = TABLE_ID_BASE;
+          column_def.column_group_id_ = COLUMN_GROUP_ID_BASE;
+          column_def.column_name_id_ = static_cast<uint16_t>(i + ROWKEY_COLUMN_START_ID);
           column_def.column_value_type_ = ObVarcharType;
-          schema.add_column_def(column_def);
+          ret = schema.add_column_def(column_def);
+          EXPECT_EQ(OB_SUCCESS, ret);
         }
         EXPECT_EQ(OB_MAX_COLUMN_NUMBER, schema.get_column_count());
 
+        remove(sstable_path);
         ret = writer.create_sstable(schema, file_name, compressor, 2);
         EXPECT_TRUE(OB_SUCCESS == ret);
 
@@ -1233,14 +1237,18 @@ namespace oceanbase
           }
           row.clear();
           //build row row size form 1M--5M
-          build_large_row(j, row, 1025, 2, 8 * (j%8+1));
-          EXPECT_EQ(OB_MAX_COLUMN_NUMBER, row.get_obj_count());
+          build_large_row(j, row, TABLE_ID_BASE, COLUMN_GROUP_ID_BASE, 8 * (j%8+1));
+          //EXPECT_EQ(OB_MAX_COLUMN_NUMBER, row.get_obj_count());
           //fprintf(stderr, "row serialize size is %ld\n", row.get_serialize_size());
           ret = writer.append_row(row, space_usage);
           EXPECT_TRUE(OB_SUCCESS == ret);
           EXPECT_TRUE(space_usage > 0);
           //   fprintf(stderr, "space_usage=%ld\n", space_usage);
           if (space_usage > 32 * 1024 * 1024)
+          {
+            break;
+          }
+          else if (OB_SUCCESS != ret)
           {
             break;
           }
@@ -1260,7 +1268,6 @@ int main(int argc, char** argv)
 {
   ob_init_memory_pool();
   TBSYS_LOGGER.setLogLevel("ERROR");
-  printf("sizeof obj=%ld", sizeof(ObObj));
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

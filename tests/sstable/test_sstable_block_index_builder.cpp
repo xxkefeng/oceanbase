@@ -252,7 +252,7 @@ namespace oceanbase
 
         index_block = (char*)ob_malloc(index_builder.get_index_block_size());
         EXPECT_TRUE(NULL != index_block);
-        ret = index_builder.build_block_index(index_block, 
+        ret = index_builder.build_block_index(true, index_block, 
                                               index_builder.get_index_block_size(),
                                               index_size);
         EXPECT_TRUE(OB_SUCCESS == ret);
@@ -275,7 +275,8 @@ namespace oceanbase
         EXPECT_EQ((int64_t)(sizeof(ObSSTableBlockIndexHeader) 
                   + sizeof(ObSSTableBlockIndexItem) * i), 
                   deserialize_header.end_key_char_stream_offset_);
-        EXPECT_EQ(0, deserialize_header.reserved32_);
+        EXPECT_EQ(0, deserialize_header.rowkey_flag_);
+        EXPECT_EQ(0, deserialize_header.reserved16_);
         EXPECT_EQ(0, deserialize_header.reserved64_[0]);
         EXPECT_EQ(0, deserialize_header.reserved64_[1]);
 

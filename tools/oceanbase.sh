@@ -4,7 +4,6 @@ DIR=`dirname $0`
 BIN_DIR=${DIR}/bin
 ETC_DIR=${DIR}/etc
 LIB_DIR=${DIR}/lib
-LOG_DIR=${DIR}/log
 
 
 CS_CMD=chunkserver
@@ -19,9 +18,6 @@ UPS_CONF=updateserver.conf
 RS_CMD=rootserver
 RS_CONF=rootserver.conf
 
-IS_CMD=importserver.py
-IS_CONF=importserver.conf
-IS_PID=importserver.pid
 
 set_env()
 {
@@ -62,9 +58,6 @@ case $1 in
 	start_rs)
 		start_service $BIN_DIR/$RS_CMD ${ETC_DIR}/$RS_CONF
 		;;
-	start_is)
-		python2.6 $BIN_DIR/$IS_CMD -f ${ETC_DIR}/$IS_CONF
-		;;
 	stop_cs)
 		stop_service ${CS_CMD}
 		;;
@@ -77,14 +70,11 @@ case $1 in
 	stop_rs)
 		stop_service ${RS_CMD}
 		;;
-	stop_is)
-		kill `cat ${LOG_DIR}/${IS_PID}`
-		;;
 	clean)
 		rm  log  -rf
 		;;
 	*)
-		echo "Usage: $0 start_cs|stop_cs|start_ms|stop_ms|start_rs|stop_rs|start_ups|stop_ups|start_is|stop_is|clean)"
+		echo "Usage: $0 start_cs|stop_cs|start_ms|stop_ms|start_rs|stop_rs|start_ups|stop_ups|clean)"
 		;;
 esac
 

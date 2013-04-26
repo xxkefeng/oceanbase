@@ -17,18 +17,19 @@
 #define _OB_SQL_H 1
 #include "common/ob_string.h"
 #include "sql/ob_result_set.h"
+#include "sql/ob_sql_context.h"
+#include "sql/ob_logical_plan.h"
+#include "sql/ob_multi_phy_plan.h"
+#include "obmysql/ob_mysql_global.h" // for EMySQLFieldType
 namespace oceanbase
 {
   namespace sql
   {
     struct ObStmtPrepareResult;
     // this class is the main interface for sql module
-    // @note thread-safe
     class ObSql
     {
       public:
-        ObSql(){}
-        ~ObSql(){}
         /**
          * execute the SQL statement directly
          *
@@ -37,16 +38,17 @@ namespace oceanbase
          *
          * @return oceanbase error code defined in ob_define.h
          */
-        int direct_execute(const common::ObString &stmt, ObResultSet &result);
+        static int direct_execute(const common::ObString &stmt, ObResultSet &result, ObSqlContext &context);
         /**
          * prepare the SQL statement for later execution
          * @see stmt_execute()
          * @param stmt [in]
          * @param result [out]
+         * @param context [out]
          *
          * @return oceanbase error code defined in ob_define.h
          */
-        int stmt_prepare(const common::ObString &stmt, ObStmtPrepareResult &result);
+        static int stmt_prepare(const common::ObString &stmt, ObResultSet &result, ObSqlContext &context);
         /**
          * execute the prepared statement
          *
@@ -56,35 +58,44 @@ namespace oceanbase
          *
          * @return oceanbase error code defined in ob_define.h
          */
-        int stmt_execute(const uint64_t stmt_id, const common::ObArray<common::ObObj> params, ObResultSet &result);
+        static int stmt_execute(const uint64_t stmt_id,
+                                const common::ObArray<obmysql::EMySQLFieldType> &params_type,
+                                const common::ObArray<common::ObObj> &params,
+                                ObResultSet &result, ObSqlContext &context);
         /**
          * close the prepared statement
          *
          * @param stmt_id [in] statement handler id returned by stmt_prepare()
+         * @param context [in]
          *
          * @return oceanbase error code defined in ob_define.h
          */
-        int stmt_close(const uint64_t stmt_id);
+        static int stmt_close(const uint64_t stmt_id, ObSqlContext &context);
       private:
         // types and constants
       private:
+        ObSql(){}
+        ~ObSql(){}
         // disallow copy
         ObSql(const ObSql &other);
         ObSql& operator=(const ObSql &other);
+        static int generate_logical_plan(const common::ObString &stmt, ObSqlContext & context, ResultPlan  &logical_plan, ObResultSet & result);
+        static int generate_physical_plan(ObSqlContext & context, ResultPlan &result_plan, ObMultiPhyPlan & multi_phy_plan, ObResultSet & result);
+        static int do_grant_privilege(const ObBasicStmt *stmt, ObSqlContext & context, ObResultSet &result);
+        static void clean_result_plan(ResultPlan &result_plan);
         // function members
+
+        // for temp use to deal with special statment
+        // todo: use standard sql parser to deal with this purpose
+        // @return
+        //  true: hook success
+        //  false: not hooked
+        static bool process_special_stmt_hook(const common::ObString &stmt, ObResultSet &result, ObSqlContext &context);
+        static int do_privilege_check(const common::ObString & username, const ObPrivilege **pp_privilege, ObLogicalPlan *plan);
+        static bool no_enough_memory();
       private:
         // data members
     };
-
-    /// @see ObSql::stmt_prepare()
-    struct ObStmtPrepareResult
-    {
-      uint64_t stmt_id_;         // statement handler id
-      int64_t res_columns_count_;   // number of columns in result set
-      int64_t params_count_;      // number of parameters in query
-      int64_t warning_count_;   // warning count
-    };
-
   } // end namespace sql
 } // end namespace oceanbase
 

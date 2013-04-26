@@ -26,11 +26,13 @@
 #include "test_ups_table_mgr_helper.h"
 #include "updateserver/ob_update_server_main.h"
 #include <bitset>
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
 using namespace oceanbase::updateserver;
 
+static CharArena allocator_;
 
 namespace oceanbase
 {
@@ -88,7 +90,7 @@ TEST_F(TestScan, test_scan)
     for (int64_t j = 0; j < COL_NUM; ++j)
     {
       cell_infos[i][j].table_id_ = table_id;
-      cell_infos[i][j].row_key_.assign(row_key_strs[i], static_cast<int32_t>(strlen(row_key_strs[i])));
+      cell_infos[i][j].row_key_ = make_rowkey(row_key_strs[i], &allocator_);
       //cell_infos[i][j].op_info_.set_sem_ob();
 
       cell_infos[i][j].column_id_ = j + 10;
@@ -132,7 +134,7 @@ TEST_F(TestScan, test_scan)
   ObScanParam scan_param;
   //ObOperateInfo op_info;
   ObString table_name;
-  ObRange range;
+  ObNewRange range;
   range.start_key_ = cell_infos[0][0].row_key_;
   range.end_key_ = cell_infos[ROW_NUM - 1][0].row_key_;
   range.border_flag_.set_inclusive_start();

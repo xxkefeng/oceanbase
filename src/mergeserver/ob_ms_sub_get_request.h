@@ -1,18 +1,18 @@
 /**
  * (C) 2010-2011 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or 
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * ob_ms_sub_get_request.h for 
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * ob_ms_sub_get_request.h for
  *
  * Authors:
  *   wushi <wushi.ly@taobao.com>
  *
  */
-#ifndef MERGESERVER_OB_MS_SUB_GET_REQUEST_H_ 
-#define MERGESERVER_OB_MS_SUB_GET_REQUEST_H_ 
+#ifndef MERGESERVER_OB_MS_SUB_GET_REQUEST_H_
+#define MERGESERVER_OB_MS_SUB_GET_REQUEST_H_
 #include "common/ob_get_param.h"
 #include "common/ob_scanner.h"
 #include "common/ob_iterator.h"
@@ -33,7 +33,7 @@ namespace oceanbase
 
       void set_param(common::ObGetParam & get_param);
       int add_cell(const int64_t cell_idx);
-      int add_result(common::ObScanner &res); 
+      int add_result(common::ObScanner &res);
 
       int has_next();
       int  next(common::ObInnerCellInfo *&cell, int64_t & org_cell_idx);
@@ -48,7 +48,7 @@ namespace oceanbase
         }
       }
 
-      inline int32_t get_last_svr_ipv4()const
+      inline uint32_t get_last_svr_ipv4()const
       {
         return svr_ip_;
       }
@@ -64,16 +64,6 @@ namespace oceanbase
         return last_rpc_event_;
       }
 
-      inline int32_t get_cell_size(void) const
-      {
-        return cur_get_param_.get_cell_size();
-      }
-
-      inline void clear_get_param()
-      {
-        cur_get_param_.destroy();
-      }
-
       inline int64_t get_retry_times()const
       {
         return retry_times_;
@@ -85,7 +75,7 @@ namespace oceanbase
         return(++retry_times_);
       }
 
-      inline int32_t get_fail_svr_ipv4()const
+      inline uint32_t get_fail_svr_ipv4()const
       {
         return fail_svr_ip_;
       }
@@ -104,6 +94,11 @@ namespace oceanbase
           get_param = &cur_get_param_;
         }
         return err;
+      }
+
+      inline void clear_get_param(void)
+      {
+        cur_get_param_.destroy();
       }
 
       inline common::ObCellInfo * get_first_unfetched_cell()const
@@ -132,11 +127,13 @@ namespace oceanbase
 
       int64_t   res_iterator_idx_;
       int64_t   poped_cell_count_;
-      int32_t   svr_ip_;
-      int32_t   fail_svr_ip_;
+      uint32_t   svr_ip_;
+      uint32_t   fail_svr_ip_;
       uint64_t last_rpc_event_;
       int64_t   last_session_id_;
       int64_t retry_times_;
+      common::ObStringBuf rowkey_buf_;
+      common::ObRowkey last_rowkey_;
     };
 
     class ObGetMerger : public common::ObInnerIterator
@@ -158,7 +155,7 @@ namespace oceanbase
       virtual int get_cell(common::ObInnerCellInfo** cell);
       virtual int get_cell(common::ObInnerCellInfo** cell, bool* is_row_changed);
     private:
-      static const int64_t MAX_RES_SIZE = 4096; 
+      static const int64_t MAX_RES_SIZE = 4096;
       struct ResInfo
       {
         int64_t org_cell_idx_;

@@ -26,24 +26,36 @@ namespace oceanbase
     {
       public:
         ObSchemaChecker();
-        explicit ObSchemaChecker(const common::ObSchemaManagerV2& schema_mgr);
+        // explicit ObSchemaChecker(const common::ObSchemaManagerV2& schema_mgr);
         virtual ~ObSchemaChecker();
 
         void set_schema(const common::ObSchemaManagerV2& schema_mgr);
         bool column_exists(
             const common::ObString& table_name,
             const common::ObString& column_name) const;
+        bool is_join_column(
+            uint64_t table_id,
+            uint64_t column_id) const;
         uint64_t get_column_id(
             const common::ObString& table_name, 
             const common::ObString& column_name) const;
         uint64_t get_table_id(const common::ObString& table_name) const;
+        uint64_t get_local_table_id(const common::ObString& table_name) const;
         const common::ObTableSchema* get_table_schema(const char* table_name) const;
+        const common::ObTableSchema* get_table_schema(const common::ObString& table_name) const;
+        const common::ObTableSchema* get_table_schema(const uint64_t table_id) const;
         const common::ObColumnSchemaV2* get_column_schema(
             const common::ObString& table_name, 
             const common::ObString& column_name) const;
+        const common::ObColumnSchemaV2* get_column_schema(
+            const uint64_t table_id, 
+            const uint64_t column_id) const;
         const common::ObColumnSchemaV2* get_table_columns(
             const uint64_t table_id,
             int32_t& size) const;
+        bool is_rowkey_column(
+            const common::ObString& table_name,
+            const common::ObString& column_name) const;
         
       private:
         // disallow copy
@@ -51,12 +63,8 @@ namespace oceanbase
         ObSchemaChecker& operator=(const ObSchemaChecker &other);
       private:
         const common::ObSchemaManagerV2 *schema_mgr_;
+        const common::ObSchemaManagerV2 *show_schema_mgr_;
     };
-
-    inline void ObSchemaChecker::set_schema(const common::ObSchemaManagerV2& schema_mgr)
-    {
-      schema_mgr_ = &schema_mgr;
-    }
   } // end namespace sql
 } // end namespace oceanbase
 

@@ -6,6 +6,7 @@
 #include "common/ob_tsi_factory.h"
 #include "common/ob_schema.h"
 #include "common/ob_mutator.h"
+#include "common/ob_range2.h"
 #include "common/utility.h"
 
 using namespace oceanbase;
@@ -18,7 +19,7 @@ namespace common
   void get_table_name(const ObTableSchema& table, ObObj& value)
   {
     ObString table_name;
-    table_name.assign_ptr(const_cast<char*>(table.get_table_name()), 
+    table_name.assign_ptr(const_cast<char*>(table.get_table_name()),
       static_cast<int32_t>(strlen(table.get_table_name())));
     value.set_varchar(table_name);
   }
@@ -38,9 +39,9 @@ namespace common
     value.set_int(static_cast<int64_t>(table.get_rowkey_max_length()));
   }
 
-  void get_rowkey_is_fixed_len(const ObTableSchema& table, ObObj& value)
+  void get_merge_write_sstable_version(const ObTableSchema& table, ObObj& value)
   {
-    value.set_int(static_cast<int64_t>(table.is_row_key_fixed_len()));
+    value.set_int(table.get_merge_write_sstable_version());
   }
 
   void get_rowkey_split(const ObTableSchema& table, ObObj& value)
@@ -60,8 +61,8 @@ namespace common
   {
     value.set_int(table.get_max_column_id());
   }
-    
-    
+
+
   void get_table_name(const ObSchemaManagerV2& schema_mgr, const ObColumnSchemaV2& column, ObObj& value)
   {
     const ObTableSchema* table = schema_mgr.get_table_schema(column.get_table_id());
@@ -115,15 +116,16 @@ namespace common
     UNUSED(schema_mgr);
     value.set_int(static_cast<int64_t>(column.get_column_group_id()));
   }
-  
 
+
+  // TODO :: join info interface for schema tables..
   void get_start_pos(const ObSchemaManagerV2& schema_mgr, const ObColumnSchemaV2& column, ObObj& value)
   {
     UNUSED(schema_mgr);
     const ObColumnSchemaV2::ObJoinInfo* joininfo = column.get_join_info();
     if(NULL != joininfo)
     {
-      value.set_int(static_cast<int64_t>(joininfo->start_pos_));
+      value.set_int(static_cast<int64_t>(joininfo->correlated_column_));
     }
     else
     {
@@ -137,7 +139,7 @@ namespace common
     const ObColumnSchemaV2::ObJoinInfo* joininfo = column.get_join_info();
     if(NULL != joininfo)
     {
-      value.set_int(static_cast<int64_t>(joininfo->end_pos_));
+      value.set_int(static_cast<int64_t>(joininfo->correlated_column_));
     }
     else
     {
@@ -205,7 +207,7 @@ namespace common
       TBSYS_LOG(WARN, "column has no join info");
     }
   }
-  
+
   void get_right_column_id(const ObSchemaManagerV2& schema_mgr, const ObColumnSchemaV2& column, ObObj& value)
   {
     UNUSED(schema_mgr);
@@ -226,13 +228,13 @@ namespace common
     TableMap("table_id", get_table_id),
     TableMap("table_type", get_table_type),
     TableMap("rowkey_len", get_rowkey_len),
-    TableMap("rowkey_is_fixed_len", get_rowkey_is_fixed_len),
+    TableMap("merge_write_sstable_version", get_merge_write_sstable_version),
     TableMap("rowkey_split", get_rowkey_split),
     TableMap("compressor", get_compressor),
     TableMap("max_column_id", get_max_column_id)
   };
 
-  const ColumnMap COLUMN_OR_MAP[7] = 
+  const ColumnMap COLUMN_OR_MAP[7] =
   {
     ColumnMap("table_name", get_table_name),
     ColumnMap("table_id", get_table_id),
@@ -243,7 +245,7 @@ namespace common
     ColumnMap("column_group_id", get_column_group_id)
   };
 
-  const JoininfoMap JOININFO_OR_MAP[10] = 
+  const JoininfoMap JOININFO_OR_MAP[10] =
   {
     JoininfoMap("left_table_name", get_table_name),
     JoininfoMap("left_table_id", get_table_id),
@@ -263,20 +265,21 @@ namespace common
 int oceanbase::common::dump_joininfo(const ObSchemaManagerV2& schema_mgr, common::ObClientHelper* client_helper, ObMutator* mutator)
 {
   int ret = OB_SUCCESS;
-  ObString rowkey;
+  const int32_t rowkey_obj_count = 2;
+  ObRowkey rowkey;
+  ObObj    rowkey_obj_array[rowkey_obj_count];
   ObString column;
   ObString table_name;
   ObObj value;
-  table_name.assign_ptr(const_cast<char*>(JOININFO_TABLE_NAME), static_cast<int32_t>(strlen(JOININFO_TABLE_NAME)));
+  table_name.assign_ptr(const_cast<char*>(OB_ALL_JOININFO_TABLE_NAME), static_cast<int32_t>(strlen(OB_ALL_JOININFO_TABLE_NAME)));
   column.assign_ptr(const_cast<char*>(JOININFO_OR_MAP[0].column_name_), static_cast<int32_t>(strlen(JOININFO_OR_MAP[0].column_name_)));
 
   ret = clean_table(table_name, column, client_helper, mutator);
   if(OB_SUCCESS != ret)
   {
-    TBSYS_LOG(WARN, "clean table[%s] fail:ret[%d]", JOININFO_TABLE_NAME, ret);
+    TBSYS_LOG(WARN, "clean table[%s] fail:ret[%d]", OB_ALL_JOININFO_TABLE_NAME, ret);
   }
 
-  char buf[sizeof(uint64_t) * 2];
   for(const ObColumnSchemaV2* it=schema_mgr.column_begin();it != schema_mgr.column_end();it++)
   {
     if(NULL == it->get_join_info())
@@ -285,19 +288,18 @@ int oceanbase::common::dump_joininfo(const ObSchemaManagerV2& schema_mgr, common
     }
 
     // rowkey = (left_table_id, left_column_id)
-    uint64_t table_id = it->get_table_id();
-    uint64_t column_id = it->get_id();
-    memcpy(buf, &table_id, sizeof(uint64_t));
-    memcpy(buf + sizeof(uint64_t), &column_id, sizeof(uint64_t));
-    rowkey.assign_ptr(buf, sizeof(uint64_t));
+    rowkey_obj_array[0].set_int(it->get_table_id());
+    rowkey_obj_array[1].set_int(it->get_id());
+    rowkey.assign(rowkey_obj_array, rowkey_obj_count);
+
 
     for(uint32_t i=0;i<ARRAYSIZEOF(JOININFO_OR_MAP) && (OB_SUCCESS == ret);i++)
     {
       column.assign_ptr(const_cast<char*>(JOININFO_OR_MAP[i].column_name_), static_cast<int32_t>(strlen(JOININFO_OR_MAP[i].column_name_)));
       JOININFO_OR_MAP[i].func_(schema_mgr, *it, value);
 
-      TBSYS_LOG(DEBUG, "table_name[%.*s], column[%.*s]", table_name.length(), table_name.ptr(), column.length(), column.ptr());
-      hex_dump(rowkey.ptr(), rowkey.length());
+      TBSYS_LOG(DEBUG, "table_name[%.*s], column[%.*s], %s", table_name.length(), table_name.ptr(),
+          column.length(), column.ptr(), to_cstring(rowkey));
 
       if(ObIntType == value.get_type())
       {
@@ -325,36 +327,35 @@ int oceanbase::common::dump_joininfo(const ObSchemaManagerV2& schema_mgr, common
 int oceanbase::common::dump_columns(const ObSchemaManagerV2& schema_mgr, common::ObClientHelper* client_helper, ObMutator* mutator)
 {
   int ret = OB_SUCCESS;
-  ObString rowkey;
+  const int32_t rowkey_obj_count = 2;
+  ObRowkey rowkey;
+  ObObj    rowkey_obj_array[rowkey_obj_count];
   ObString column;
   ObString table_name;
   ObObj value;
-  table_name.assign_ptr(const_cast<char*>(COLUMN_TABLE_NAME), static_cast<int32_t>(strlen(COLUMN_TABLE_NAME)));
+  table_name.assign_ptr(const_cast<char*>(OB_ALL_COLUMN_TABLE_NAME), static_cast<int32_t>(strlen(OB_ALL_COLUMN_TABLE_NAME)));
   column.assign_ptr(const_cast<char*>(COLUMN_OR_MAP[0].column_name_), static_cast<int32_t>(strlen(COLUMN_OR_MAP[0].column_name_)));
 
   ret = clean_table(table_name, column, client_helper, mutator);
   if(OB_SUCCESS != ret)
   {
-    TBSYS_LOG(WARN, "clean table[%s] fail:ret[%d]", COLUMN_TABLE_NAME, ret);
+    TBSYS_LOG(WARN, "clean table[%s] fail:ret[%d]", OB_ALL_COLUMN_TABLE_NAME, ret);
   }
 
-  char buf[sizeof(uint64_t) * 2];
   for(const ObColumnSchemaV2* it=schema_mgr.column_begin();it != schema_mgr.column_end() && (OB_SUCCESS == ret); it++)
   {
     // rowkey = (table_id, column_id)
-    uint64_t table_id = it->get_table_id();
-    uint64_t column_id = it->get_id();
-    memcpy(buf, &table_id, sizeof(uint64_t));
-    memcpy(buf + sizeof(uint64_t), &column_id, sizeof(uint64_t));
-    rowkey.assign_ptr(buf, 2 * sizeof(table_id));
+    rowkey_obj_array[0].set_int(it->get_table_id());
+    rowkey_obj_array[1].set_int(it->get_id());
+    rowkey.assign(rowkey_obj_array, rowkey_obj_count);
 
     for(uint32_t i=0;i<ARRAYSIZEOF(COLUMN_OR_MAP) && (OB_SUCCESS == ret);i++)
     {
       column.assign_ptr(const_cast<char*>(COLUMN_OR_MAP[i].column_name_), static_cast<int32_t>(strlen(COLUMN_OR_MAP[i].column_name_)));
       COLUMN_OR_MAP[i].func_(schema_mgr, *it, value);
 
-      TBSYS_LOG(DEBUG, "table_name[%.*s], column[%.*s]", table_name.length(), table_name.ptr(), column.length(), column.ptr());
-      hex_dump(rowkey.ptr(), rowkey.length());
+      TBSYS_LOG(DEBUG, "table_name[%.*s], column[%.*s],%s", table_name.length(), table_name.ptr(),
+          column.length(), column.ptr(), to_cstring(rowkey));
 
       if(ObIntType == value.get_type())
       {
@@ -384,29 +385,36 @@ int oceanbase::common::dump_tables(const ObSchemaManagerV2& schema_mgr, common::
 {
   int ret = OB_SUCCESS;
 
-  ObString rowkey;
+  const int32_t rowkey_obj_count = 1;
+  ObRowkey rowkey;
+  ObString rowkey_str;
+  ObObj    rowkey_obj_array[rowkey_obj_count];
   ObString column;
   ObString table_name;
   ObObj value;
   table_name.assign_ptr(const_cast<char*>(FIRST_TABLET_TABLE_NAME), static_cast<int32_t>(strlen(FIRST_TABLET_TABLE_NAME)));
   column.assign_ptr(const_cast<char*>(TABLE_OR_MAP[0].column_name_), static_cast<int32_t>(strlen(TABLE_OR_MAP[0].column_name_)));
 
-  ret = clean_table(table_name, column, client_helper, mutator); 
+  ret = clean_table(table_name, column, client_helper, mutator);
   if(OB_SUCCESS != ret)
   {
     TBSYS_LOG(WARN, "clean table[%s] fail:ret[%d]", FIRST_TABLET_TABLE_NAME, ret);
   }
- 
+
   for(const ObTableSchema* it=schema_mgr.table_begin();(it != schema_mgr.table_end()) && (OB_SUCCESS == ret);it++)
   {
-    rowkey.assign_ptr(const_cast<char*>(it->get_table_name()), static_cast<int32_t>(strlen(it->get_table_name())));
+    rowkey_str.assign_ptr(const_cast<char*>(it->get_table_name()), static_cast<int32_t>(strlen(it->get_table_name())));
+    rowkey_obj_array[0].set_varchar(rowkey_str);
+    rowkey.assign(rowkey_obj_array, rowkey_obj_count);
+
     for(uint32_t i = 0;i<ARRAYSIZEOF(TABLE_OR_MAP) && (OB_SUCCESS == ret);i++)
     {
       column.assign_ptr(const_cast<char*>(TABLE_OR_MAP[i].column_name_), static_cast<int32_t>(strlen(TABLE_OR_MAP[i].column_name_)));
       TABLE_OR_MAP[i].func_(*it, value);
 
-      TBSYS_LOG(INFO, "table_name[%.*s], rowkey[%.*s], column[%.*s]", table_name.length(), table_name.ptr(), rowkey.length(), rowkey.ptr(),
-        column.length(), column.ptr());
+      TBSYS_LOG(INFO, "table_name[%.*s], rowkey[%s], column[%.*s]",
+          table_name.length(), table_name.ptr(), to_cstring(rowkey),
+          static_cast<int32_t>(column.length()), column.ptr());
 
       if(ObIntType == value.get_type())
       {
@@ -436,7 +444,7 @@ int oceanbase::common::clean_table(const ObString& table_name, const ObString& s
   int ret = OB_SUCCESS;
   ObScanParam* param = NULL;
   ObVersionRange version_range;
-  ObRange range;
+  ObNewRange range;
 
   if(NULL == mutator)
   {
@@ -469,16 +477,15 @@ int oceanbase::common::clean_table(const ObString& table_name, const ObString& s
       param->reset();
     }
   }
-  
+
   if(OB_SUCCESS == ret)
   {
     version_range.border_flag_.set_min_value();
     version_range.border_flag_.set_max_value();
     param->set_version_range(version_range);
 
-    range.border_flag_.set_min_value();
-    range.border_flag_.set_max_value();
-    param->set(OB_INVALID_ID, table_name, range);
+    range.set_whole_range();
+    param->set(OB_INVALID_ID, table_name, range, true);
   }
 
   if(OB_SUCCESS == ret)
@@ -545,7 +552,7 @@ int oceanbase::common::clean_table(const ObString& table_name, const ObString& s
       }
     }
   }
-  
+
   return ret;
 }
 

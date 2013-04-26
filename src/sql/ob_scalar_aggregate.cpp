@@ -20,6 +20,7 @@ using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
 ObScalarAggregate::ObScalarAggregate()
+  :is_first_row_(true), is_input_empty_(false)
 {
 }
 
@@ -27,19 +28,69 @@ ObScalarAggregate::~ObScalarAggregate()
 {
 }
 
+void ObScalarAggregate::reset()
+{
+  ObSingleChildPhyOperator::clear();
+  merge_groupby_.reset();
+  is_first_row_ = true;
+  is_input_empty_ = false;
+}
+
+int ObScalarAggregate::set_child(int32_t child_idx, ObPhyOperator &child_operator)
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = ObSingleChildPhyOperator::set_child(child_idx, child_operator)))
+  {
+    TBSYS_LOG(WARN, "failed to set single child, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = merge_groupby_.set_child(0, *child_op_)))
+  {
+    TBSYS_LOG(WARN, "failed to set child, err=%d", ret);
+  }
+  return ret;
+}
+
 int ObScalarAggregate::open()
 {
+  is_first_row_ = true;
+  is_input_empty_ = false;
   return merge_groupby_.open();
 }
 
 int ObScalarAggregate::close()
 {
+  is_first_row_ = true;
+  is_input_empty_ = false;
   return merge_groupby_.close();
 }
 
 int ObScalarAggregate::get_next_row(const ObRow *&row)
 {
-  return merge_groupby_.get_next_row(row);
+  int ret = OB_SUCCESS;
+  if (OB_UNLIKELY(is_first_row_))
+  {
+    is_first_row_ = false;
+    ret = merge_groupby_.get_next_row(row);
+    if (OB_ITER_END == ret)
+    {
+      is_input_empty_ = true;
+      // @see http://bugfree.corp.taobao.com/bug/200752
+      TBSYS_LOG(DEBUG, "scalar aggregate returns single row for the empty input set");
+      ret = merge_groupby_.get_row_for_empty_set(row);
+    }
+  }
+  else
+  {
+    if (OB_UNLIKELY(is_input_empty_))
+    {
+      ret = OB_ITER_END;
+    }
+    else
+    {
+      ret = merge_groupby_.get_next_row(row);
+    }
+  }
+  return ret;
 }
 
 int ObScalarAggregate::get_row_desc(const common::ObRowDesc *&row_desc) const
@@ -47,9 +98,14 @@ int ObScalarAggregate::get_row_desc(const common::ObRowDesc *&row_desc) const
   return merge_groupby_.get_row_desc(row_desc);
 }
 
-int ObScalarAggregate::add_aggr_column(ObSqlExpression& expr)
+int ObScalarAggregate::add_aggr_column(const ObSqlExpression& expr)
 {
   return merge_groupby_.add_aggr_column(expr);
+}
+
+void ObScalarAggregate::assign(const ObScalarAggregate &other)
+{
+  merge_groupby_.assign(other.merge_groupby_);
 }
 
 int64_t ObScalarAggregate::to_string(char* buf, const int64_t buf_len) const
@@ -72,4 +128,31 @@ int64_t ObScalarAggregate::to_string(char* buf, const int64_t buf_len) const
     pos += pos2;
   }
   return pos;
+}
+
+DEFINE_SERIALIZE(ObScalarAggregate)
+{
+  int ret = OB_SUCCESS;
+  if ((ret = merge_groupby_.serialize(buf, buf_len, pos)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "fail to serialize ObScalarAggregate. ret=%d", ret);
+  }
+  return ret;
+}
+
+DEFINE_DESERIALIZE(ObScalarAggregate)
+{
+  int ret = OB_SUCCESS;
+  if ((ret = merge_groupby_.deserialize(buf, data_len, pos)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "fail to deserialize ObScalarAggregate. ret=%d", ret);
+  }
+  return ret;
+}
+
+DEFINE_GET_SERIALIZE_SIZE(ObScalarAggregate)
+{
+  int64_t size = 0;
+  size = merge_groupby_.get_serialize_size();
+  return size;
 }

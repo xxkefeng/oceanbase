@@ -8,10 +8,12 @@
 #include "common/ob_scanner.h"
 #include "common/ob_get_param.h"
 #include "ob_ms_scanner_encoder.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
+static CharArena allocator_;
 
 int main(int argc, char **argv)
 {
@@ -40,13 +42,13 @@ TEST_F(TestScannerEncoder, encode)
   const int64_t count = 50;
   ObCellInfo cell;
   ObString table_name;
-  ObString row_key;
+  ObRowkey row_key;
   ObString column_name;
   char * table = (char*)"table";
   char * rowkey = (char*)"rowkey";
   char * column = (char*)"column";
   table_name.assign(table, static_cast<int32_t>(strlen(table)));
-  row_key.assign(rowkey, static_cast<int32_t>(strlen(rowkey)));
+  row_key = make_rowkey(rowkey, &allocator_);
   column_name.assign(column, static_cast<int32_t>(strlen(column)));
   for (int64_t i = 0; i < count; ++i)
   {

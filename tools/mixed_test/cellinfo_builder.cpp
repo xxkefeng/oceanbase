@@ -32,7 +32,8 @@ int CellinfoBuilder::check_schema_mgr(const ObSchemaManager &schema_mgr)
         || SEED_COLUMN_ID != schema->find_column_info(SEED_COLUMN_NAME)->get_id()
         || ROWKEY_INFO_COLUMN_ID != schema->find_column_info(ROWKEY_INFO_COLUMN_NAME)->get_id())
     {
-      TBSYS_LOG(WARN, "no seed or rowkey_info column in the schema");
+      TBSYS_LOG(WARN, "no seed[%p] or rowkey_info[%p] column in the schema",
+                schema->find_column_info(SEED_COLUMN_NAME), schema->find_column_info(ROWKEY_INFO_COLUMN_NAME));
       ret = OB_ERROR;
       break;
     }
@@ -75,11 +76,11 @@ int CellinfoBuilder::get_mutator(const ObString &row_key, const ObSchema &schema
   column_name.assign_ptr((char*)SEED_COLUMN_NAME, static_cast<int32_t>(strlen(SEED_COLUMN_NAME)));
   ObObj obj;
   obj.set_int(cur_seed);
-  mutator.update(table_name, row_key, column_name, obj);
+  mutator.update(table_name, TestRowkeyHelper(row_key, &allocer), column_name, obj);
 
   column_name.assign_ptr((char*)CELL_NUM_COLUMN_NAME, static_cast<int32_t>(strlen(CELL_NUM_COLUMN_NAME)));
   obj.set_int(cell_num);
-  mutator.update(table_name, row_key, column_name, obj);
+  mutator.update(table_name, TestRowkeyHelper(row_key, &allocer), column_name, obj);
 
   return ret;
 }
@@ -133,13 +134,13 @@ int CellinfoBuilder::build_operator_(struct drand48_data &rand_data, const ObStr
     case DEL_CELL:
     case UPDATE:
     case ADD:
-      mutator.update(table_name, row_key, column_name, obj);
+      mutator.update(table_name, TestRowkeyHelper(row_key, &allocer), column_name, obj);
       break;
     case INSERT:
-      mutator.insert(table_name, row_key, column_name, obj);
+      mutator.insert(table_name, TestRowkeyHelper(row_key, &allocer), column_name, obj);
       break;
     case DEL_ROW:
-      ret = mutator.del_row(table_name, row_key);
+      ret = mutator.del_row(table_name, TestRowkeyHelper(row_key, &allocer));
       break;
     default:
       break;
@@ -163,6 +164,10 @@ void CellinfoBuilder::build_cell_(struct drand48_data &rand_data, const ObString
   {
     lrand48_r(&rand_data, &rand);
     column_pos = range_rand(0, column_num - META_COLUMN_NUM, rand);
+    if (column_schema[column_pos].is_rowkey_column())
+    {
+      continue;
+    }
     if (ObIntType <= column_schema[column_pos].get_type()
         && ObVarcharType >= column_schema[column_pos].get_type())
     {
@@ -261,7 +266,7 @@ int CellinfoBuilder::get_result(const ObString &row_key, const ObSchema &schema,
                   cell_info->value_, column_pos, op_type,
                   allocer);
       cell_info->table_id_ = table_id;
-      cell_info->row_key_ = row_key;
+      cell_info->row_key_ = TestRowkeyHelper(row_key, &allocer);
       if (DEL_ROW == op_type)
       {
         cell_info->column_id_ = OB_INVALID_ID;

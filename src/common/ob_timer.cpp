@@ -1,7 +1,7 @@
 #include "common/ob_timer.h"
-namespace oceanbase 
+namespace oceanbase
 {
-  namespace common 
+  namespace common
   {
     using namespace tbutil;
     int ObTimer::init()
@@ -49,7 +49,7 @@ namespace oceanbase
         tid_ = 0;
       }
     }
-    
+
     int ObTimer::schedule(ObTimerTask& task,const int64_t delay,bool repeate /*=false*/)
     {
       int ret = OB_ERROR;

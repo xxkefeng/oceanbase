@@ -21,27 +21,23 @@ static const int64_t PREFIX_BITS = 48;
 KeyGenerator::KeyGenerator()
 {
   client_id_ = 0;
+  prefix_info_ = NULL;
 }
 
 KeyGenerator::~KeyGenerator()
 {
+  prefix_info_ = NULL;
 }
 
-int KeyGenerator::init(ObSqlClient& ob_client, BigqueryTestParam& param)
+int KeyGenerator::init(PrefixInfo& prefix_info, BigqueryTestParam& param)
 {
-  int err = prefix_info_.init(ob_client);
-  if (0 != err)
-  {
-    TBSYS_LOG(WARN, "failed to init prefix info, err=%d", err);
-  }
+  int err = 0;
 
-  if (0 == err)
-  {
-    uint32_t local_addr = ntohl(tbsys::CNetUtil::getLocalAddr(NULL));
-    client_id_ = local_addr & 0xffff;
+  prefix_info_ = &prefix_info;
+  uint32_t local_addr = ntohl(tbsys::CNetUtil::getLocalAddr(NULL));
+  client_id_ = local_addr & 0xffff;
 
-    TBSYS_LOG(INFO, "[CLIENT_ID] client_id=%lu", client_id_);
-  }
+  TBSYS_LOG(INFO, "[CLIENT_ID] client_id=%lu", client_id_);
 
   return err;
 }
@@ -64,18 +60,18 @@ int KeyGenerator::get_next_key(uint64_t& prefix, GenType type)
   int err = 0;
   uint64_t max_prefix = 0;
 
-  int64_t MAX_PREFIX_NUM = 100 * 1024L;
+  int64_t MAX_PREFIX_NUM = 100 * 1024L * 1024L;
 
   switch (type)
   {
     case GEN_SEQ:
-      prefix_info_.get_max_prefix(client_id_, max_prefix);
-      prefix_info_.set_max_prefix(client_id_, max_prefix + 1);
+      prefix_info_->get_max_prefix(client_id_, max_prefix);
+      prefix_info_->set_max_prefix(client_id_, max_prefix + 1);
       prefix = (max_prefix % MAX_PREFIX_NUM) | (client_id_ << PREFIX_BITS);
       break;
 
     case GEN_RANDOM:
-      prefix_info_.get_max_prefix(client_id_, max_prefix);
+      prefix_info_->get_max_prefix(client_id_, max_prefix);
       if (0 == max_prefix)
       {
         err = OB_NEED_RETRY;

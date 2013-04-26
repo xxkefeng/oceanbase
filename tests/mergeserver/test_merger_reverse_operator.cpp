@@ -36,35 +36,38 @@
 #include "mergeserver/ob_ms_scan_param.h"
 #include "mergeserver/ob_merger_sorted_operator.h"
 #include "mergeserver/ob_merger_reverse_operator.h"
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace testing;
-using namespace std;   
+using namespace std;
+static CharArena allocator_;
 
 TEST(ObSortedOperator, backword)
 {
   const int32_t sharding_count = 5;
   const int32_t cell_count_each_sharding = 2;
   ObScanner *sharding_res_arr = new ObScanner[sharding_count];
-  ObRange   *q_range_arr = new ObRange[sharding_count];
+  ObNewRange   *q_range_arr = new ObNewRange[sharding_count];
   ObStringBuf buf;
   char row_key_buf[32];
   int32_t row_key_len = 0;
   ObString str;
-  ObString row_key;
+  ObRowkey row_key;
+  ObRowkey key;
   ObCellInfo cell;
   cell.table_id_ = 1;
   cell.column_id_ = 1;
   ObScanParam scan_param;
   EXPECT_EQ(scan_param.add_column(1),OB_SUCCESS);
   row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",9);
-  str.assign(row_key_buf,row_key_len);
-  EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
-  ObRange q_range;
+  key = make_rowkey(row_key_buf,row_key_len, &allocator_);
+  EXPECT_EQ(buf.write_string(key,&row_key),OB_SUCCESS);
+  ObNewRange q_range;
   q_range.end_key_ = row_key;
   q_range.border_flag_.set_inclusive_end();
-  q_range.border_flag_.set_min_value();
+  q_range.start_key_.set_min_row();
   ObString table_name;
   EXPECT_EQ(scan_param.set(1,table_name, q_range), OB_SUCCESS);
   scan_param.set_scan_direction(ObScanParam::BACKWARD);
@@ -85,8 +88,8 @@ TEST(ObSortedOperator, backword)
     {
       row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",sharding_count * cell_count_each_sharding - 1);
     }
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS);
+    key = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(key,&row_key),OB_SUCCESS);
     q_range_arr[sharding_idx].end_key_ = row_key;
     if (i < sharding_count * cell_count_each_sharding - 2)
     {
@@ -96,23 +99,23 @@ TEST(ObSortedOperator, backword)
     {
       q_range_arr[sharding_idx].border_flag_.set_inclusive_end();
     }
-    q_range_arr[sharding_idx].border_flag_.set_min_value();
+    q_range_arr[sharding_idx].start_key_.set_min_row();
     q_range_arr[sharding_idx].border_flag_.set_inclusive_start();
 
     /// first cell
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",i + 1);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS); 
+    key = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(key,&row_key),OB_SUCCESS);
     cell.row_key_ = row_key;
-    cell.value_.set_int(i - 1); 
+    cell.value_.set_int(i - 1);
     EXPECT_EQ(sharding_res_arr[sharding_idx].add_cell(cell), OB_SUCCESS);
 
     /// second cell
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",i);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_EQ(buf.write_string(str,&row_key),OB_SUCCESS); 
+    key = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_EQ(buf.write_string(key,&row_key),OB_SUCCESS);
     cell.row_key_ = row_key;
-    cell.value_.set_int(i - 1); 
+    cell.value_.set_int(i - 1);
     EXPECT_EQ(sharding_res_arr[sharding_idx].add_cell(cell), OB_SUCCESS);
 
     bool is_finish = true;
@@ -121,15 +124,15 @@ TEST(ObSortedOperator, backword)
   }
 
   EXPECT_EQ(s_operator.seal(),OB_SUCCESS);
-  int32_t beg = 0; 
+  int32_t beg = 0;
   ObInnerCellInfo *cur_cell = NULL;
   int err = OB_SUCCESS;
   while ((err = s_operator.next_cell()) == OB_SUCCESS)
   {
     EXPECT_EQ(s_operator.get_cell(&cur_cell),OB_SUCCESS);
     row_key_len = snprintf(row_key_buf, sizeof(row_key_buf),"%d",beg);
-    str.assign(row_key_buf,row_key_len);
-    EXPECT_TRUE(cur_cell->row_key_ == str);
+    key = make_rowkey(row_key_buf,row_key_len, &allocator_);
+    EXPECT_TRUE(cur_cell->row_key_ == key);
     beg ++;
   }
   EXPECT_EQ(OB_ITER_END, err);

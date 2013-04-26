@@ -105,8 +105,7 @@ int oceanbase::common::ObSessionManager::session_begin(const ObGetParam & get_pa
     session_info->begin(session_id, tid, pid);
   }
   int64_t buf_size = sizeof(session_info->infos_);
-  if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = get_param.to_str(session_info->infos_, 
-    buf_size, pos))))
+  if ((OB_SUCCESS == err) && (pos = get_param.to_string(session_info->infos_, buf_size) < 0))
   {
     TBSYS_LOG(WARN,"fail to get ObScanParam str expression [err:%d]", err);
   }

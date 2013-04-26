@@ -17,6 +17,7 @@
 #include "ob_action_flag.h"
 #include "ob_malloc.h"
 #include "ob_get_param.h"
+#include "test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
@@ -39,6 +40,7 @@ namespace oceanbase
       static char* row_key_strs[ROW_NUM][COL_NUM];
       static const int64_t SERIALIZE_BUF_SIZE = 2048 * 1024;
       static char* serialize_buf = NULL;
+      static CharArena  allocator_;
 
       /// bool operator==(const ObCellInfo &a, const ObCellInfo &b)
       /// {
@@ -84,7 +86,7 @@ namespace oceanbase
             {
               cell_infos[i][j].table_id_ = table_id;
               sprintf(row_key_strs[i][j], "row_key_%08ld", i);
-              cell_infos[i][j].row_key_.assign(row_key_strs[i][j], static_cast<int32_t>(strlen(row_key_strs[i][j])));
+              cell_infos[i][j].row_key_ = make_rowkey(row_key_strs[i][j], &allocator_);
               cell_infos[i][j].column_id_ = j + 2;
               cell_infos[i][j].value_.set_int(1000 + i * COL_NUM + j);
             }
@@ -611,7 +613,7 @@ namespace oceanbase
 
         c_str = "rowkey";
         str.assign((char*)c_str, static_cast<int32_t>(strlen(c_str)));
-        EXPECT_EQ(OB_SUCCESS, buffer.write_string(str, &(cell.row_key_)));
+        EXPECT_EQ(OB_SUCCESS, buffer.write_string(TestRowkeyHelper(str, &allocator_), &(cell.row_key_)));
 
         c_str = "varchar";
         str.assign((char*)c_str, static_cast<int32_t>(strlen(c_str)));

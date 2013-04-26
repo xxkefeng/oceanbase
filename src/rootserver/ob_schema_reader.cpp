@@ -1,12 +1,12 @@
 /*===============================================================
 *   (C) 2007-2010 Taobao Inc.
-*   
-*   
+*
+*
 *   Version: 0.1 2010-09-26
-*   
+*
 *   Authors:
 *          daoan(daoan@taobao.com)
-*   
+*
 *
 ================================================================*/
 #include <tbsys.h>
@@ -28,10 +28,9 @@ int main(int argc, char* argv[])
   {
     mm.print_info();
   }
-  else 
+  else
   {
     printf("parse file %s error\n",argv[1]);
   }
   return 0;
-
 }

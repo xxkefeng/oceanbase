@@ -6,14 +6,14 @@
 
 class ImportProducer : public QueueProducer<RecordBlock> {
   public:
-    ImportProducer(const char *file_name, const RecordDelima &delima, const RecordDelima &rec_delima) 
-      : reader_(file_name), delima_(delima), rec_delima_(rec_delima) { }
+    ImportProducer(FileReader &reader, const RecordDelima &delima, const RecordDelima &rec_delima) 
+      : reader_(reader), delima_(delima), rec_delima_(rec_delima) { }
 
     int init();
 
     int produce(RecordBlock &obj);
   private:
-    FileReader reader_;
+    FileReader &reader_;
 
     RecordDelima delima_;
     RecordDelima rec_delima_;

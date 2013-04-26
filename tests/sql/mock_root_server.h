@@ -12,7 +12,7 @@ namespace oceanbase
       class MockRootServer : public MockServer
       {
       public:
-        static const int32_t ROOT_SERVER_PORT = 12340;
+        static const int32_t ROOT_SERVER_PORT = 22479;
       public:
         int initialize();
 
@@ -37,6 +37,7 @@ namespace oceanbase
 
         // get root table
         int handle_get_root(ObPacket * ob_packet);
+        int handle_get_root_ranged(ObPacket * ob_packet);
       };
     }
   }

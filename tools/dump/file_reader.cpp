@@ -22,6 +22,8 @@ bool RecordBlock::next_record(Slice &slice)
   }
 }
 
+int kReadBufferSize = 1 * 512 * 1024;
+
 FileReader::FileReader(const char *file_name)
 {
   file_name_ = file_name;
@@ -55,7 +57,7 @@ int FileReader::open()
   return ret;
 }
 
-int FileReader::get_records(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima)
+int FileReader::get_records(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima, int64_t max_rec_extracted)
 {
   int ret = 0;
   int len = 0;
@@ -78,7 +80,7 @@ int FileReader::get_records(RecordBlock &block, const RecordDelima &rec_delima, 
 
     if (buffer_size_ != 0) {
       TBSYS_LOG(DEBUG, "extract record in file, buffersize = %ld", buffer_size_);
-      ret = extract_record(block, rec_delima, col_delima);
+      ret = extract_record(block, rec_delima, col_delima, max_rec_extracted);
     } else {
       TBSYS_LOG(DEBUG, "All data is processed");
     }
@@ -101,7 +103,7 @@ bool FileReader::is_partial_record(int64_t &pos, const RecordDelima &rec_delima,
   return partial_rec;
 }
 
-int FileReader::extract_record(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima) 
+int FileReader::extract_record(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima, int64_t max_rec_extracted) 
 {
   int64_t pos = 0;
   int64_t rec_nr = 0;
@@ -114,6 +116,11 @@ int FileReader::extract_record(RecordBlock &block, const RecordDelima &rec_delim
   while (pos < buffer_size_) {
     char *p = reader_buffer_ + pos;
     last_pos = pos;
+
+    if (rec_nr >= max_rec_extracted) {
+      TBSYS_LOG(DEBUG, "extract rec count[%ld] reaches max_rec_extracted[%ld]", rec_nr, max_rec_extracted);
+      break;
+    }
 
     if ((has_partial_rec = is_partial_record(pos, rec_delima, col_delima)) == true) {
       TBSYS_LOG(DEBUG, "partial record meet, will be proceed next time");
@@ -132,7 +139,10 @@ int FileReader::extract_record(RecordBlock &block, const RecordDelima &rec_delim
     buffer.append(p, psize);                   /* append length of record here */
   }
 
-  if (has_partial_rec && last_pos < buffer_size_) {                     /* partial record reside in buffer */
+  TBSYS_LOG(DEBUG, "record block actual used size[%ld], rec_nr[%ld]", pos, rec_nr);
+
+  if ((has_partial_rec && last_pos < buffer_size_)    /* partial record reside in buffer */
+    || (rec_nr >= max_rec_extracted && last_pos < buffer_size_)) {                     
     shrink(last_pos);
   } else {
     buffer_size_ = 0;
@@ -177,4 +187,98 @@ void FileReader::shrink(int64_t pos)
   }
 
   buffer_size_ = total;
+}
+
+EncodingFileReader::EncodingFileReader(const char *file_name)
+  :FileReader(file_name)
+{
+  raw_buffer_ = NULL;
+  raw_buffer_size_ = 0;
+}
+
+EncodingFileReader::~EncodingFileReader()
+{
+  if (raw_buffer_ != NULL)
+    delete [] raw_buffer_;
+}
+
+int EncodingFileReader::open()
+{
+  int ret = 0;
+  raw_buffer_ = new(std::nothrow) char[kReadBufferSize];
+  if (raw_buffer_ == NULL) {
+    ret = -1;
+    TBSYS_LOG(ERROR, "can't allocate memory for raw_buffer_, size=%d", kReadBufferSize);
+  }
+  if (ret == 0) {
+    cd_ = iconv_open("utf-8", "gbk");
+    if (NULL == cd_) {
+      ret = -1;
+      TBSYS_LOG(ERROR, "fail to open iconv gbk -> utf8");
+    }
+  }
+  if (ret == 0) {
+    ret = FileReader::open();
+  }
+  return ret;
+}
+
+int EncodingFileReader::get_records(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima, int64_t max_rec_extracted)
+{
+  int ret = 0;
+  int len = 0;
+
+  if (buffer_size_ < kReadBufferSize) {
+    len = static_cast<int32_t>(file_.read(reader_buffer_ + buffer_size_, kReadBufferSize - buffer_size_));
+    if (len != -1)
+      buffer_size_ += len;
+    else  {
+      ret = -1;
+      TBSYS_LOG(ERROR, "can't read from file, name=%s", file_name_);
+    }
+  }
+
+  if (ret == 0) {
+    if (len == 0) {
+      eof_ = true;
+      TBSYS_LOG(DEBUG, "FileReader:read file end, name=%s", file_name_);
+    } 
+
+    if (buffer_size_ != 0) {
+      TBSYS_LOG(DEBUG, "extract record in file, buffersize = %ld", buffer_size_);
+      ret = extract_record(block, rec_delima, col_delima, max_rec_extracted);
+    } else {
+      TBSYS_LOG(DEBUG, "All data is processed");
+    }
+  }
+
+  return ret;
+}
+
+int EncodingFileReader::convert_string_encode()
+{
+  int ret = 0;
+  char *raw_buf_ptr = raw_buffer_;
+  char *reader_buf_ptr = reader_buffer_ + buffer_size_;
+  size_t raw_buf_size = raw_buffer_size_;
+  size_t read_buf_remain_size = kReadBufferSize - buffer_size_;
+
+  size_t iconv_ret = iconv(cd_, &raw_buf_ptr, &raw_buf_size, &reader_buf_ptr, &read_buf_remain_size);
+  if (-1 == (int)iconv_ret && errno != E2BIG) {
+    ret = -1;
+    TBSYS_LOG(ERROR, "fail to iconv, errno[%d]", errno);
+    return ret;
+  }
+
+  if (eof_ && 0 != raw_buf_size) {
+    ret = -1;
+    TBSYS_LOG(ERROR, "when file is end, raw_buf_size should be zero");
+    //可能发生错误，这里面也许有bug
+  }
+
+  buffer_size_ = kReadBufferSize - read_buf_remain_size;
+  memcpy(raw_buffer_, raw_buf_ptr, raw_buf_size);
+  raw_buffer_size_ = raw_buf_size;
+
+  return ret;
 }

@@ -3,9 +3,11 @@
 #include "multi_parellel_get.h"
 #include "olap.h"
 #include <assert.h>
+#include "../../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 MultiGetP MultiGetP::static_case_;
+static CharArena allocator_;
 namespace
 {
   const int64_t get_cell_count = 8192;
@@ -83,6 +85,7 @@ int MultiGetP::form_get_param(ObGetParam &get_param, const uint32_t min_key_incl
 
   uint32_t start_key = min_key_include;
   uint32_t start_key_val = 0;
+  char strkey[32];
   for (int64_t cell_idx = 0; 
     (OB_SUCCESS == err) && (start_key <= max_key_include) && (cell_idx < cell_count);
     cell_idx ++,start_key = static_cast<int32_t>(start_key + random_selector))
@@ -90,7 +93,8 @@ int MultiGetP::form_get_param(ObGetParam &get_param, const uint32_t min_key_incl
     uint32_t cur_key = static_cast<uint32_t>(start_key + random() % random_selector);
     c_name = msolap::olap_get_column_name(msolap::min_column_id + random()%(msolap::max_column_id - msolap::min_column_id + 1));
     start_key_val = htonl(cur_key);
-    cell.row_key_.assign((char*)&start_key_val,sizeof(start_key_val));
+    snprintf(strkey, 32, "%d", start_key_val);
+    cell.row_key_ = make_rowkey(strkey, &allocator_);
     assert(cell.column_name_.ptr()[0] <= 'z'  && cell.column_name_.ptr()[0] >= 'a');
     if (OB_SUCCESS != (err = get_param.add_cell(cell)))
     {

@@ -16,20 +16,22 @@
 #ifndef _OB_ARRAY_H
 #define _OB_ARRAY_H 1
 #include "ob_malloc.h"
-
+#include "page_arena.h"         // for ModulePageAllocator
+#include "utility.h"
 namespace oceanbase
 {
   namespace common
   {
-    template<typename T>
+    template<typename T, typename BlockAllocatorT = ModulePageAllocator>
     class ObArray
     {
       public:
-        ObArray(int64_t block_size = 64*1024);
+        ObArray(int64_t block_size = 64*1024, const BlockAllocatorT &alloc = BlockAllocatorT(ObModIds::OB_COMMON_ARRAY));
         virtual ~ObArray();
 
         int push_back(const T &obj);
         void pop_back();
+        int pop_back(T &obj);
 
         int at(int64_t idx, T &obj) const;
         T& at(int64_t idx);     // dangerous
@@ -38,13 +40,14 @@ namespace oceanbase
         int64_t count() const;
         void clear();
         void reserve(int64_t capacity);
-
+        int64_t to_string(char* buffer, int64_t length) const;
         // deep copy
         ObArray(const ObArray &other);
         ObArray& operator=(const ObArray &other);
       private:
         void extend_buf();
         void extend_buf(int64_t new_size);
+        int64_t get_capacity() const;
       private:
         // data members
         T* data_;
@@ -53,26 +56,30 @@ namespace oceanbase
         int64_t block_size_;
         int32_t error_;
         int32_t reserve_;
+        BlockAllocatorT block_allocator_;
     };
 
-    template<typename T>
-    ObArray<T>::ObArray(int64_t block_size)
-      :data_(NULL), count_(0), data_size_(0), block_size_(block_size),
-       error_(0), reserve_(0)
+    template<typename T, typename BlockAllocatorT>
+    ObArray<T, BlockAllocatorT>::ObArray(int64_t block_size, const BlockAllocatorT &alloc)
+      :data_(NULL), count_(0),
+       data_size_(0), block_size_(block_size),
+       error_(0), reserve_(0),
+       block_allocator_(alloc)
     {
       block_size_ = std::max(static_cast<int64_t>(sizeof(T)), block_size);
     }
 
-    template<typename T>
-    ObArray<T>::~ObArray()
+    template<typename T, typename BlockAllocatorT>
+    ObArray<T, BlockAllocatorT>::~ObArray()
     {
       if (NULL != data_)
       {
-        for (int i = 0; i < count_; ++i)
+        int64_t max_obj_count = data_size_/(int64_t)sizeof(T);
+        for (int i = 0; i < max_obj_count; ++i)
         {
           data_[i].~T();
         }
-        ob_free(data_);
+        block_allocator_.deallocate(data_);
         data_ = NULL;
       }
       count_ = data_size_ = 0;
@@ -80,16 +87,16 @@ namespace oceanbase
       reserve_ = 0;
     }
 
-    template<typename T>
-    int ObArray<T>::at(int64_t idx, T &obj) const
+    template<typename T, typename BlockAllocatorT>
+    int ObArray<T, BlockAllocatorT>::at(int64_t idx, T &obj) const
     {
       int ret = OB_SUCCESS;
-      if (error_)
+      if (OB_UNLIKELY(error_))
       {
         ret = OB_ERROR;
         TBSYS_LOG(ERROR, "array in error state");
       }
-      else if (0 > idx || idx >= count_)
+      else if (OB_UNLIKELY(0 > idx || idx >= count_))
       {
         ret = OB_ARRAY_OUT_OF_RANGE;
       }
@@ -100,39 +107,46 @@ namespace oceanbase
       return ret;
     }
 
-    template<typename T>
-    T& ObArray<T>::at(int64_t idx)
+    template<typename T, typename BlockAllocatorT>
+    T& ObArray<T, BlockAllocatorT>::at(int64_t idx)
     {
       OB_ASSERT(0 <= idx && idx < count_ && 0 == error_);
       return data_[idx];
     }
 
-    template<typename T>
-    const T& ObArray<T>::at(int64_t idx) const
+    template<typename T, typename BlockAllocatorT>
+    const T& ObArray<T, BlockAllocatorT>::at(int64_t idx) const
     {
       OB_ASSERT(0 <= idx && idx < count_ && 0 == error_);
       return data_[idx];
     }
 
-    template<typename T>
-    void ObArray<T>::extend_buf(int64_t new_size)
+    template<typename T, typename BlockAllocatorT>
+    void ObArray<T, BlockAllocatorT>::extend_buf(int64_t new_size)
     {
       OB_ASSERT(new_size > data_size_);
-      T* new_data = (T*)ob_malloc(new_size);
+      T* new_data = (T*)block_allocator_.allocate(new_size);
       if (NULL != new_data)
       {
         int64_t max_obj_count = new_size/(int64_t)sizeof(T);
         new_data = new(new_data) T[max_obj_count];
-        data_size_ = new_size;
         if (NULL != data_)
         {
-          for (int i = 0; i < count_; ++i)
+          int64_t old_max_obj_count = data_size_/(int64_t)sizeof(T);
+          OB_ASSERT(count_ <= old_max_obj_count);
+          for (int64_t i = 0; i < old_max_obj_count; ++i)
           {
-            new_data[i] = data_[i];
+            if (i < count_)
+            {
+              // copy object
+              new_data[i] = data_[i];
+            }
+            // destruct old objects
             data_[i].~T();
           }
-          ob_free(data_);
+          block_allocator_.deallocate(data_);
         }
+        data_size_ = new_size;
         data_ = new_data;
       }
       else
@@ -141,15 +155,15 @@ namespace oceanbase
       }
     }
 
-    template<typename T>
-    void ObArray<T>::extend_buf()
+    template<typename T, typename BlockAllocatorT>
+    void ObArray<T, BlockAllocatorT>::extend_buf()
     {
       int64_t new_size = data_size_ + block_size_;
       extend_buf(new_size);
     }
 
-    template<typename T>
-    void ObArray<T>::reserve(int64_t capacity)
+    template<typename T, typename BlockAllocatorT>
+    void ObArray<T, BlockAllocatorT>::reserve(int64_t capacity)
     {
       if (capacity > data_size_/(int64_t)sizeof(T))
       {
@@ -160,11 +174,30 @@ namespace oceanbase
       }
     }
 
-    template<typename T>
-    int ObArray<T>::push_back(const T &obj)
+    template<typename T, typename BlockAllocatorT>
+    int64_t ObArray<T, BlockAllocatorT>::to_string(char *buffer, int64_t length) const
+    {
+      int64_t pos = 0;
+      for (int64_t index = 0; index < count_; ++index)
+      {
+        databuff_printf(buffer, length, pos, "<%ld:", index);
+        databuff_print_obj(buffer, length, pos, at(index));
+        databuff_printf(buffer, length, pos, "> ");
+      }
+      return pos;
+    }
+
+    template<typename T, typename BlockAllocatorT>
+    int64_t ObArray<T, BlockAllocatorT>::get_capacity() const
+    {
+      return data_size_/static_cast<int64_t>(sizeof(T));
+    }
+
+    template<typename T, typename BlockAllocatorT>
+    int ObArray<T, BlockAllocatorT>::push_back(const T &obj)
     {
       int ret = OB_SUCCESS;
-      if (error_)
+      if (OB_UNLIKELY(error_))
       {
         ret = OB_ERROR;
         TBSYS_LOG(ERROR, "array in error state");
@@ -179,15 +212,15 @@ namespace oceanbase
       }
       else
       {
-        TBSYS_LOG(WARN, "count_=%ld, data_size_=%ld, (int64_t)sizeof(T)=%ld, data_size_/(int64_t)sizeof(T)=%ld, ret=%d", 
+        TBSYS_LOG(WARN, "count_=%ld, data_size_=%ld, (int64_t)sizeof(T)=%ld, data_size_/(int64_t)sizeof(T)=%ld, ret=%d",
             count_, data_size_, static_cast<int64_t>(sizeof(T)), data_size_/static_cast<int64_t>(sizeof(T)), ret);
         ret = OB_ALLOCATE_MEMORY_FAILED;
       }
       return ret;
     }
 
-    template<typename T>
-    void ObArray<T>::pop_back()
+    template<typename T, typename BlockAllocatorT>
+    void ObArray<T, BlockAllocatorT>::pop_back()
     {
       if (0 < count_)
       {
@@ -195,40 +228,57 @@ namespace oceanbase
       }
     }
 
-    template<typename T>
-    int64_t ObArray<T>::count() const
+    template<typename T, typename BlockAllocatorT>
+    int ObArray<T, BlockAllocatorT>::pop_back(T &obj)
+    {
+      int ret = OB_ENTRY_NOT_EXIST;
+      if (0 < count_)
+      {
+        obj = data_[count_-1];
+        --count_;
+        ret = OB_SUCCESS;
+      }
+      return ret;
+    }
+
+    template<typename T, typename BlockAllocatorT>
+    int64_t ObArray<T, BlockAllocatorT>::count() const
     {
       return count_;
     }
 
-    template<typename T>
-    void ObArray<T>::clear()
+    template<typename T, typename BlockAllocatorT>
+    void ObArray<T, BlockAllocatorT>::clear()
     {
       count_ = 0;
       error_ = 0;
     }
 
-    template<typename T>
-    ObArray<T>::ObArray(const ObArray<T> &other)
+    template<typename T, typename BlockAllocatorT>
+    ObArray<T, BlockAllocatorT>::ObArray(const ObArray<T, BlockAllocatorT> &other)
     {
       *this = other;
     }
 
-    template<typename T>
-    ObArray<T>& ObArray<T>::operator=(const ObArray<T> &other)
+    template<typename T, typename BlockAllocatorT>
+    ObArray<T, BlockAllocatorT>& ObArray<T, BlockAllocatorT>::operator=(const ObArray<T, BlockAllocatorT> &other)
     {
       if (this != &other)
       {
         this->clear();
         this->reserve(other.count());
-        if (data_size_ < other.data_size_)
+        if (static_cast<uint64_t>(data_size_) < (sizeof(T)*other.count_) )
         {
           TBSYS_LOG(ERROR, "no memory");
           error_ = 1;
         }
         else
         {
-          memcpy(data_, other.data_, sizeof(T)*other.count_);
+          // copy objects
+          for (int64_t i = 0; i < other.count_; ++i)
+          {
+            data_[i] = other.data_[i];
+          }
           count_ = other.count_;
         }
       }

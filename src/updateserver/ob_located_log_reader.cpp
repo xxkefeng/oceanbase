@@ -30,6 +30,7 @@ namespace oceanbase
       int64_t path_len = 0;
       ObString fname;
       ObFileReader file_reader;
+      read_count = 0;
       if (NULL == log_dir || 0 >= file_id || 0 > offset || NULL == buf || 0 >= len)
       {
         err = OB_INVALID_ARGUMENT;
@@ -48,7 +49,14 @@ namespace oceanbase
       {}
       else if (OB_SUCCESS != (err = file_reader.open(fname, dio)))
       {
-        TBSYS_LOG(ERROR, "file_reader.open(%s/%ld)=>%d", path, file_id, err);
+        if (OB_FILE_NOT_EXIST != err)
+        {
+          TBSYS_LOG(WARN, "file_reader.open(%s/%ld)=>%d", path, file_id, err);
+        }
+        else
+        {
+          err = OB_SUCCESS;
+        }
       }
       else if (OB_SUCCESS != (err = file_reader.pread(buf, len, offset, read_count)))
       {

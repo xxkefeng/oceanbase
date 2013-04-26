@@ -22,8 +22,12 @@ namespace oceanbase
 {
   namespace common
   {
+    class ObRow;
+
     class ObRawRow
     {
+      friend class ObRow;
+
       public:
         ObRawRow();
         ~ObRawRow();
@@ -36,10 +40,12 @@ namespace oceanbase
         int get_cell(const int64_t i, const common::ObObj *&cell) const;
         int get_cell(const int64_t i, common::ObObj *&cell);
         int set_cell(const int64_t i, const common::ObObj &cell);
+
       private:
         // types and constants
         static const int64_t MAX_COLUMNS_COUNT = common::OB_ROW_MAX_COLUMNS_COUNT;
       private:
+        const ObObj* get_obj_array(int64_t& array_size) const;
         // disallow copy
         ObRawRow(const ObRawRow &other);
         ObRawRow& operator=(const ObRawRow &other);
@@ -52,6 +58,55 @@ namespace oceanbase
         int32_t reserved2_;
     };
 
+    inline int ObRawRow::get_cell(const int64_t i, const common::ObObj *&cell) const
+    {
+      int ret = common::OB_SUCCESS;
+      if (0 > i || i >= MAX_COLUMNS_COUNT)
+      {
+        TBSYS_LOG(WARN, "invalid index, count=%hd i=%ld", cells_count_, i);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        cell = &cells_[i];
+      }
+      return ret;
+    }
+
+    inline int ObRawRow::get_cell(const int64_t i, common::ObObj *&cell)
+    {
+      int ret = common::OB_SUCCESS;
+      if (0 > i || i >= MAX_COLUMNS_COUNT)
+      {
+        TBSYS_LOG(WARN, "invalid index, count=%hd i=%ld", cells_count_, i);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        cell = &cells_[i];
+      }
+      return ret;
+    }
+
+    inline int ObRawRow::set_cell(const int64_t i, const common::ObObj &cell)
+    {
+      int ret = common::OB_SUCCESS;
+      if (0 > i || i >= MAX_COLUMNS_COUNT)
+      {
+        TBSYS_LOG(WARN, "invalid index, count=%ld i=%ld", MAX_COLUMNS_COUNT, i);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        cells_[i] = cell;
+        if (i >= cells_count_)
+        {
+          cells_count_ = static_cast<int16_t>(1+i);
+        }
+      }
+      return ret;
+    }
+
     inline int64_t ObRawRow::get_cells_count() const
     {
       return cells_count_;
@@ -60,6 +115,12 @@ namespace oceanbase
     inline void ObRawRow::clear()
     {
       cells_count_ = 0;
+    }
+
+    inline const ObObj* ObRawRow::get_obj_array(int64_t& array_size) const
+    {
+      array_size = cells_count_;
+      return cells_;
     }
   } // end namespace common
 } // end namespace oceanbase

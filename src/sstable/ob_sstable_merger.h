@@ -30,7 +30,8 @@ namespace oceanbase
 
         int merge_sstables(const common::ObString& sstable_path,
           ObBlockCache& block_cache, ObBlockIndexCache& block_index_cache,
-          ObSSTableReader* readers[], const int64_t reader_size);
+          ObSSTableReader* readers[], const int64_t reader_size, 
+          const common::ObNewRange& new_range);
 
         void cleanup();
 
@@ -48,7 +49,7 @@ namespace oceanbase
         void reset();
         int check_readers_param(ObSSTableReader* readers[], const int64_t reader_size);
         int create_new_sstable();
-        int finish_sstable();
+        int finish_sstable(const common::ObNewRange& new_range);
         int save_current_row();
         int check_row_count_in_column_group();
         void reset_for_next_column_group();
@@ -56,7 +57,8 @@ namespace oceanbase
         int merge_one_column_group(const int64_t column_group_idx,
           const uint64_t column_group_id, ObSSTableReader* readers[], 
           const int64_t reader_size);
-        int merge_column_groups(ObSSTableReader* readers[], const int64_t reader_size);
+        int merge_column_groups(ObSSTableReader* readers[], 
+          const int64_t reader_size, const common::ObNewRange& new_range);
 
       private:
         enum RowStatus

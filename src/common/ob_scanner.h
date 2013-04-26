@@ -20,13 +20,16 @@
 #include "ob_define.h"
 #include "ob_read_common_data.h"
 #include "ob_iterator.h"
-#include "ob_string_buf.h"
 #include "ob_object.h"
+#include "ob_rowkey.h"
+#include "ob_range2.h"
+#include "page_arena.h"
 
 namespace oceanbase
 {
   namespace common
   {
+    class ObSchemaManagerV2;
     class ObScanner : public ObIterator, public ObInnerIterator
     {
       static const int64_t DEFAULT_MAX_SERIALIZE_SIZE = OB_MAX_PACKET_LENGTH - OB_MAX_ROW_KEY_LENGTH * 2 - 1024;
@@ -63,12 +66,26 @@ namespace oceanbase
           TableReader();
           virtual ~TableReader();
 
+          inline TableReader& operator=(const TableReader& other)
+          {
+            if (this != &other)
+            {
+              cur_table_name_ = other.cur_table_name_;
+              cur_table_id_ = other.cur_table_id_;
+              id_name_type_ = other.id_name_type_;
+              is_row_changed_ = other.is_row_changed_;
+              memcpy(cur_rowkey_obj_array_, other.cur_rowkey_obj_array_, sizeof(ObObj)*OB_MAX_ROWKEY_COLUMN_NUMBER);
+              cur_row_key_.assign(cur_rowkey_obj_array_, other.cur_row_key_.get_obj_cnt());
+            }
+            return *this;
+          }
+
           /// @brief get a complete ObCellInfo from the buffer
           /// iterate a series of cells, store the current table and row
           /// reconstruct a complete ObCellInfo with the current column and the table and row info
           /// @param [out] cell_info output complete ObCellInfo
           /// @param [out] last_obj the last read ObObj
-          int read_cell(const char *buf, const int64_t data_len, int64_t &pos,
+          int read_cell(const ObSchemaManagerV2* schema_manager, const char *buf, const int64_t data_len, int64_t &pos,
                 ObCellInfo &cell_info, ObObj &last_obj);
 
           /// @brief get current table name
@@ -87,7 +104,7 @@ namespace oceanbase
 
           /// @brief get current row key
           /// namely the last read row key
-          inline const ObString& get_cur_row_key() const
+          inline const ObRowkey& get_cur_row_key() const
           {
             return cur_row_key_;
           }
@@ -100,9 +117,10 @@ namespace oceanbase
         private:
           ObString cur_table_name_;
           uint64_t cur_table_id_;
-          ObString cur_row_key_;
+          ObRowkey cur_row_key_;
           int64_t id_name_type_;
           bool is_row_changed_;
+          ObObj cur_rowkey_obj_array_[OB_MAX_ROWKEY_COLUMN_NUMBER];
       };
 
       class Iterator
@@ -167,6 +185,7 @@ namespace oceanbase
           bool is_iterator_end_();
           void update_cur_mem_block_();
           int get_row_();
+          ObObj cur_rowkey_objs_[OB_MAX_ROWKEY_COLUMN_NUMBER];
           ObCellInfo cur_row_[OB_MAX_COLUMN_NUMBER];
           int64_t row_cell_num_;
           int64_t row_start_pos_;
@@ -191,6 +210,20 @@ namespace oceanbase
 
         int rollback();
 
+        // for translate binary rowkey to obj array rowkey while deserialize.
+        // for translate obj array rowkey to binary rowkey while serialize.
+        inline void set_compatible_schema(const ObSchemaManagerV2* sm) 
+        {
+          schema_manager_ = sm;
+        }
+
+        // if is_binary_rowkey_format_ is true, serialize obj array rowkey to binary
+        // format rowkey for compatibile with old clients.
+        inline void set_binary_rowkey_format(const bool is_binary_rowkey_format)
+        {
+          is_binary_rowkey_format_ = is_binary_rowkey_format;
+        }
+
         NEED_SERIALIZE_AND_DESERIALIZE;
 
       private:
@@ -208,9 +241,13 @@ namespace oceanbase
         int serialize_column_(char* buf, const int64_t buf_len, int64_t &pos,
             const ObCellInfo &cell_info);
 
+        int serialize_rowkey_in_binary_format(char* buf, const int64_t buf_len, int64_t &pos, 
+            const uint64_t table_id, const ObString& table_name, const ObRowkey& rowkey) const;
+
         /// alocate a new memblock to store ObCellInfo
         int get_memblock_(const int64_t size);
 
+        /// when deserialization, iterate all ObCellInfo and get the size
         int64_t get_valid_data_size_(const char* data, const int64_t data_len, int64_t &pos, ObObj &last_obj);
       private:
         // BASIC_PARAM_FIELD 
@@ -268,7 +305,7 @@ namespace oceanbase
 
         /// after deserialization, get_last_row_key can retreive the last row key of this scanner
         /// @param [out] row_key the last row key
-        int get_last_row_key(ObString &row_key) const;
+        int get_last_row_key(ObRowkey &row_key) const;
 
       public:
         /// indicating the request was fullfiled, must be setted by cs and ups
@@ -281,11 +318,11 @@ namespace oceanbase
         /// when response scan request, range must be setted
         /// the range is the seviced range of this tablet or (min, max) in updateserver
         /// @param [in] range
-        int set_range(const ObRange &range);
+        int set_range(const ObNewRange& range);
         /// same as above but do not deep copy keys of %range, just set the reference.
         /// caller ensures keys of %range remains reachable until ObScanner serialized.
-        int set_range_shallow_copy(const ObRange &range);
-        int get_range(ObRange &range) const;
+        int set_range_shallow_copy(const ObNewRange& range);
+        int get_range(ObNewRange& range) const;
 
         inline void set_data_version(const int64_t version)
         {
@@ -322,16 +359,6 @@ namespace oceanbase
           whole_result_row_num_ = new_whole_result_row_num;
         }
 
-        inline bool get_is_result_precision() const
-        {
-          return is_result_precision_;
-        }
-
-        inline void set_is_result_precision(bool is_result_precision)
-        {
-          is_result_precision_ = is_result_precision;
-        }
-
         inline void set_id_name_type(const ID_NAME_STATUS type)
         {
           id_name_type_ = type;
@@ -352,10 +379,10 @@ namespace oceanbase
         int64_t rollback_size_counter_;
         ObString cur_table_name_;
         uint64_t cur_table_id_;
-        ObString cur_row_key_;
+        ObRowkey cur_row_key_;
         ObString tmp_table_name_;
         uint64_t tmp_table_id_;
-        ObString tmp_row_key_;
+        ObRowkey tmp_row_key_;
         bool has_row_key_flag_;
         int64_t mem_size_limit_;
         Iterator iter_;
@@ -364,20 +391,23 @@ namespace oceanbase
         int64_t cur_cell_num_;
         int64_t rollback_row_num_;
         int64_t rollback_cell_num_;
-        mutable ObString rollback_row_key_;
-        mutable ObString last_row_key_;
+        mutable ObRowkey rollback_row_key_;
+        mutable ObRowkey last_row_key_;
         bool first_next_;
         bool first_next_row_;
-        ObStringBuf string_buf_;
-        ObRange range_;
+        ObNewRange range_;
         int64_t data_version_;
         bool has_range_;
         bool is_request_fullfilled_;
         int64_t  fullfilled_item_num_;
         int64_t id_name_type_;
         int64_t whole_result_row_num_;
-        bool is_result_precision_;
         ObInnerCellInfo ugly_inner_cell_;
+
+        const ObSchemaManagerV2* schema_manager_;
+        bool is_binary_rowkey_format_;  // old binary rowkey format
+        ModulePageAllocator mod_;
+        mutable ModuleArena rowkey_allocator_;
     };
     typedef ObScanner::Iterator ObScannerIterator;
     inline bool ObScannerIterator::is_iterator_end_()

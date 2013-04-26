@@ -81,7 +81,9 @@ namespace oceanbase
           "CASE",
           "ROW",
           "EXISTS",
-          "CNN"
+          "CNN",
+          "SYS",
+          "LEFT_PARAM_END",
         };
 
       const char* ret = "UNKNOWN_OP";

@@ -37,6 +37,7 @@ namespace oceanbase
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+        virtual ObPhyOperatorType get_type() const;
 
         /**
          * 添加一个需输出的column
@@ -75,7 +76,9 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        int set_limit(const int64_t limit, const int64_t offset);
+        int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset);
+
+        NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy
         ObTableMemScan(const ObTableMemScan &other);

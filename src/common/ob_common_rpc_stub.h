@@ -26,7 +26,9 @@
 #include "ob_packet.h"
 #include "ob_lease_common.h"
 #include "ob_obi_role.h"
-
+#include "ob_scan_param.h"
+#include "ob_scanner.h"
+#include "ob_mutator.h"
 namespace oceanbase
 {
   namespace common
@@ -38,7 +40,7 @@ namespace oceanbase
         virtual ~ObCommonRpcStub();
 
         int init(const ObClientManager *client_mgr);
-
+        const ObClientManager* get_client_mgr() const;
         //add: master ups report slave failure to rootserver
         virtual int ups_report_slave_failure(const common::ObServer &slave_add, const int64_t timeout_us);
 
@@ -68,6 +70,9 @@ namespace oceanbase
         //send request to rs to get master_ups_addr
         virtual int get_master_ups_info(const ObServer& rs, ObServer &master_ups, const int64_t timeout_us);
         virtual int get_obi_role(const common::ObServer& rs, common::ObiRole &obi_role, const int64_t timeout_us);
+
+        virtual int scan(const ObServer& ms, const common::ObScanParam& scan_param, common::ObScanner& scanner, const int64_t timeout);
+        virtual int mutate(const ObServer& update_server, const common::ObMutator& mutator, const int64_t timeout);
       private:
         int get_thread_buffer_(ObDataBuffer& data_buff);
 

@@ -50,10 +50,8 @@ namespace oceanbase
               set_batch_process(false);
               set_listen_port(MOCK_SERVER_LISTEN_PORT);
               set_dev_name("bond0");
-              set_packet_factory(&factory_);
               set_default_queue_size(100);
               set_thread_count(1);
-              set_packet_factory(&factory_);
               ObSingleServer::initialize();
 
               return OB_SUCCESS;
@@ -65,7 +63,7 @@ namespace oceanbase
               ObPacket* ob_packet = base_packet;
               int32_t packet_code = ob_packet->get_packet_code();
               int32_t version = ob_packet->get_api_version();
-              int32_t channel_id = ob_packet->getChannelId();
+              int32_t channel_id = ob_packet->get_channel_id();
               ret = ob_packet->deserialize();
 
               TBSYS_LOG(INFO, "recv packet with packet_code[%d] version[%d] channel_id[%d]",
@@ -98,7 +96,7 @@ namespace oceanbase
               {
                 EXPECT_EQ(0, memcmp(data->get_data() + data->get_position(), log_data, BUFSIZ));
                 ObResultCode result_msg;
-                tbnet::Connection* connection = ob_packet->get_connection();
+                easy_request_t* connection = ob_packet->get_request();
                 ThreadSpecificBuffer::Buffer* thread_buffer = response_packet_buffer_.get_buffer();
                 if (NULL != thread_buffer)
                 {
@@ -112,7 +110,7 @@ namespace oceanbase
                   TBSYS_LOG(DEBUG, "handle tablets report packet");
 
                   int32_t version = 1;
-                  int32_t channel_id = ob_packet->getChannelId();
+                  int32_t channel_id = ob_packet->get_channel_id();
                   ret = send_response(OB_SEND_LOG_RES, version, out_buffer, connection, channel_id);
                 }
                 else

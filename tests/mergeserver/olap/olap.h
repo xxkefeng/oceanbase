@@ -80,7 +80,7 @@ namespace msolap
     bool res = true;
     if (res && (cell.row_key_.length() != sizeof(uint32_t)))
     {
-      TBSYS_LOG(WARN,"rowkey size error [size:%d]",  cell.row_key_.length());
+      TBSYS_LOG(WARN,"rowkey size error [size:%ld]",  cell.row_key_.length());
       res = false;
     }
     uint32_t big_endian_row_key = 0;

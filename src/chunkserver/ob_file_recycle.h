@@ -2,6 +2,7 @@
 #define OCEANBASE_CHUNKSERVER_OB_FILE_RECYCLE_H_
 #include <dirent.h>
 #include "common/ob_define.h"
+#include "common/ob_range2.h"
 #include "ob_tablet.h"
 #include "chunkserver/ob_tablet_image.h"
 
@@ -39,12 +40,17 @@ namespace oceanbase
         int recycle(const int64_t version);
 
         /**
+         *  recycle removed tablet in specified tablet image
+         */
+        int recycle(const ObTabletImage& image);
+
+        /**
          * recycle specific tablet of %range 
          * 
          * @param range of tablet
          * @param version must equal to version of prepare_recycle
          */
-        int recycle_tablet(const common::ObRange & range, const int64_t version);
+        int recycle_tablet(const common::ObNewRange & range, const int64_t version);
 
         /**
          * backup all meta files with version in disks.
@@ -54,8 +60,9 @@ namespace oceanbase
       private:
         int load_all_tablets(const int64_t version);
         int load_tablet(const int64_t version, const int32_t disk_no);
-        int check_current_status(const bool do_recycle);
-        int do_recycle_tablet(const common::ObRange & range);
+        int recycle_tablet_image(const ObTabletImage& image, const bool do_recycle, 
+          const bool only_recycle_removed = false);
+        int do_recycle_tablet(const ObTabletImage& image, const common::ObNewRange & range);
         
       private:
         ObTabletImage expired_image_;

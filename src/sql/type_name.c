@@ -1,4 +1,4 @@
-#include "parse_node.h"
+#include "ob_item_type.h"
 const char* get_type_name(int type)
 {
 	switch(type){
@@ -11,6 +11,7 @@ const char* get_type_name(int type)
 	case T_DECIMAL : return "T_DECIMAL";
 	case T_BOOL : return "T_BOOL";
 	case T_NULL : return "T_NULL";
+	case T_QUESTIONMARK : return "T_QUESTIONMARK";
 	case T_UNKNOWN : return "T_UNKNOWN";
 	case T_REF_COLUMN : return "T_REF_COLUMN";
 	case T_REF_EXPR : return "T_REF_EXPR";
@@ -18,11 +19,21 @@ const char* get_type_name(int type)
 	case T_HINT : return "T_HINT";     // Hint message from rowkey
 	case T_IDENT : return "T_IDENT";
 	case T_STAR : return "T_STAR";
+	case T_SYSTEM_VARIABLE : return "T_SYSTEM_VARIABLE";
+	case T_TEMP_VARIABLE : return "T_TEMP_VARIABLE";
 	case T_TYPE_INTEGER : return "T_TYPE_INTEGER";
 	case T_TYPE_FLOAT : return "T_TYPE_FLOAT";
 	case T_TYPE_DOUBLE : return "T_TYPE_DOUBLE";
-	case T_TYPE_VARCHAR : return "T_TYPE_VARCHAR";
+	case T_TYPE_DECIMAL : return "T_TYPE_DECIMAL";
+	case T_TYPE_BOOLEAN : return "T_TYPE_BOOLEAN";
+	case T_TYPE_DATE : return "T_TYPE_DATE";
+	case T_TYPE_TIME : return "T_TYPE_TIME";
 	case T_TYPE_DATETIME : return "T_TYPE_DATETIME";
+	case T_TYPE_TIMESTAMP : return "T_TYPE_TIMESTAMP";
+	case T_TYPE_CHARACTER : return "T_TYPE_CHARACTER";
+	case T_TYPE_VARCHAR : return "T_TYPE_VARCHAR";
+	case T_TYPE_CREATETIME : return "T_TYPE_CREATETIME";
+	case T_TYPE_MODIFYTIME : return "T_TYPE_MODIFYTIME";
 	case T_OP_NEG : return "T_OP_NEG";   // negative
 	case T_OP_POS : return "T_OP_POS";   // positive
 	case T_OP_ADD : return "T_OP_ADD";
@@ -55,7 +66,9 @@ const char* get_type_name(int type)
 	case T_OP_EXISTS : return "T_OP_EXISTS";
 	case T_OP_CNN : return "T_OP_CNN";  /* 3. String operators */
 	case T_FUN_SYS : return "T_FUN_SYS";                    // system functions, CHAR_LENGTH, ROUND, etc.
+	case T_OP_LEFT_PARAM_END : return "T_OP_LEFT_PARAM_END";
 	case T_MAX_OP : return "T_MAX_OP";
+	case T_FUN_SYS_CAST : return "T_FUN_SYS_CAST";               // special system function : CAST(val AS type)
 	case T_OP_NAME_FIELD : return "T_OP_NAME_FIELD";
 	case T_FUN_MAX : return "T_FUN_MAX";
 	case T_FUN_MIN : return "T_FUN_MIN";
@@ -66,6 +79,7 @@ const char* get_type_name(int type)
 	case T_SELECT : return "T_SELECT";
 	case T_UPDATE : return "T_UPDATE";
 	case T_INSERT : return "T_INSERT";
+	case T_EXPLAIN : return "T_EXPLAIN";
 	case T_LINK_NODE : return "T_LINK_NODE";
 	case T_ASSIGN_LIST : return "T_ASSIGN_LIST";
 	case T_ASSIGN_ITEM : return "T_ASSIGN_ITEM";
@@ -100,11 +114,73 @@ const char* get_type_name(int type)
 	case T_WHEN : return "T_WHEN";
 	case T_CREATE_TABLE : return "T_CREATE_TABLE";
 	case T_TABLE_ELEMENT_LIST : return "T_TABLE_ELEMENT_LIST";
+	case T_TABLE_OPTION_LIST : return "T_TABLE_OPTION_LIST";
 	case T_PRIMARY_KEY : return "T_PRIMARY_KEY";
-	case T_COLUMN_DEF : return "T_COLUMN_DEF";
-	case T_NOT_NULL : return "T_NOT_NULL";
+	case T_COLUMN_DEFINITION : return "T_COLUMN_DEFINITION";
+	case T_COLUMN_ATTRIBUTES : return "T_COLUMN_ATTRIBUTES";
+	case T_CONSTR_NOT_NULL : return "T_CONSTR_NOT_NULL";
+	case T_CONSTR_NULL : return "T_CONSTR_NULL";
+	case T_CONSTR_DEFAULT : return "T_CONSTR_DEFAULT";
+	case T_CONSTR_AUTO_INCREMENT : return "T_CONSTR_AUTO_INCREMENT";
+	case T_CONSTR_PRIMARY_KEY : return "T_CONSTR_PRIMARY_KEY";
+	case T_IF_NOT_EXISTS : return "T_IF_NOT_EXISTS";
 	case T_IF_EXISTS : return "T_IF_EXISTS";
+	case T_EXPIRE_INFO : return "T_EXPIRE_INFO";
+	case T_TABLET_MAX_SIZE : return "T_TABLET_MAX_SIZE";
+	case T_TABLET_BLOCK_SIZE : return "T_TABLET_BLOCK_SIZE";
+	case T_REPLICA_NUM : return "T_REPLICA_NUM";
+	case T_COMPRESS_METHOD : return "T_COMPRESS_METHOD";
+	case T_USE_BLOOM_FILTER : return "T_USE_BLOOM_FILTER";
+	case T_CONSISTENT_MODE : return "T_CONSISTENT_MODE";
+	case T_DROP_TABLE : return "T_DROP_TABLE";
+	case T_TABLE_LIST : return "T_TABLE_LIST";
+	case T_ALTER_TABLE : return "T_ALTER_TABLE";
+	case T_ALTER_ACTION_LIST : return "T_ALTER_ACTION_LIST";
+	case T_TABLE_RENAME : return "T_TABLE_RENAME";
+	case T_COLUMN_DROP : return "T_COLUMN_DROP";
+	case T_COLUMN_ALTER : return "T_COLUMN_ALTER";
+	case T_COLUMN_RENAME : return "T_COLUMN_RENAME";
+	case T_ALTER_SYSTEM : return "T_ALTER_SYSTEM";
+	case T_SYTEM_ACTION_LIST : return "T_SYTEM_ACTION_LIST";
+	case T_SYSTEM_ACTION : return "T_SYSTEM_ACTION";
+	case T_CLUSTER : return "T_CLUSTER";
+	case T_SERVER_ADDRESS : return "T_SERVER_ADDRESS";
+	case T_SHOW_TABLES : return "T_SHOW_TABLES";
+	case T_SHOW_VARIABLES : return "T_SHOW_VARIABLES";
+	case T_SHOW_COLUMNS : return "T_SHOW_COLUMNS";
+	case T_SHOW_SCHEMA : return "T_SHOW_SCHEMA";
+	case T_SHOW_CREATE_TABLE : return "T_SHOW_CREATE_TABLE";
+	case T_SHOW_TABLE_STATUS : return "T_SHOW_TABLE_STATUS";
+	case T_SHOW_PARAMETERS : return "T_SHOW_PARAMETERS";
+	case T_SHOW_SERVER_STATUS : return "T_SHOW_SERVER_STATUS";
+	case T_SHOW_WARNINGS : return "T_SHOW_WARNINGS";
+	case T_SHOW_GRANTS : return "T_SHOW_GRANTS";
+	case T_SHOW_LIMIT : return "T_SHOW_LIMIT";
+	case T_CREATE_USER : return "T_CREATE_USER";
+	case T_CREATE_USER_SPEC : return "T_CREATE_USER_SPEC";
+	case T_DROP_USER : return "T_DROP_USER";
+	case T_SET_PASSWORD : return "T_SET_PASSWORD";
+	case T_RENAME_USER : return "T_RENAME_USER";
+	case T_RENAME_INFO : return "T_RENAME_INFO";
+	case T_LOCK_USER : return "T_LOCK_USER";
+	case T_GRANT : return "T_GRANT";
+	case T_PRIVILEGES : return "T_PRIVILEGES";
+	case T_PRIV_LEVEL : return "T_PRIV_LEVEL";
+	case T_PRIV_TYPE : return "T_PRIV_TYPE";
+	case T_USERS : return "T_USERS";
+	case T_REVOKE : return "T_REVOKE";
+	case T_BEGIN : return "T_BEGIN";
+	case T_COMMIT : return "T_COMMIT";
+	case T_PREPARE : return "T_PREPARE";
+	case T_DEALLOCATE : return "T_DEALLOCATE";
+	case T_EXECUTE : return "T_EXECUTE";
+	case T_ARGUMENT_LIST : return "T_ARGUMENT_LIST";
+	case T_VARIABLE_SET : return "T_VARIABLE_SET";
+	case T_VAR_VAL : return "T_VAR_VAL";
+	case T_ROLLBACK : return "T_ROLLBACK";
+	case T_HINT_OPTION_LIST : return "T_HINT_OPTION_LIST";
+	case T_READ_STATIC : return "T_READ_STATIC";
 	case T_MAX : return "T_MAX";
-	default:return 0;
+	default:return "Unknown";
 	}
 }

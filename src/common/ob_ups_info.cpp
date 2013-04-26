@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_rs_ms_message.cpp
@@ -88,7 +88,7 @@ int ObUpsInfo::deserialize(const char* buf, const int64_t buf_len, int64_t& pos)
   {
     TBSYS_LOG(ERROR, "invalid ups stat, stat=%d", stat);
   }
-  else 
+  else
   {
     stat_ = (ObUpsStat)stat;
     ret = OB_SUCCESS;
@@ -150,12 +150,10 @@ int ObUpsList::deserialize(const char* buf, const int64_t buf_len, int64_t& pos)
 
 void ObUpsList::print() const
 {
-  char addr_buf[OB_IP_STR_BUFF];
   for (int32_t i = 0; i < ups_count_; ++i)
   {
-    ups_array_[i].addr_.to_string(addr_buf, OB_IP_STR_BUFF);
     TBSYS_LOG(INFO, "ups_list, idx=%d addr=%s inner_port=%d ms_read_percentage=%hhd cs_read_percentage=%hhd",
-              i, addr_buf, 
+              i, to_cstring(ups_array_[i].addr_),
               ups_array_[i].inner_port_,
               ups_array_[i].ms_read_percentage_,
               ups_array_[i].cs_read_percentage_);
@@ -164,12 +162,10 @@ void ObUpsList::print() const
 
 void ObUpsList::print(char* buf, const int64_t buf_len, int64_t &pos) const
 {
-  char addr_buf[OB_IP_STR_BUFF];
   for (int32_t i = 0; i < ups_count_; ++i)
   {
-    ups_array_[i].addr_.to_string(addr_buf, OB_IP_STR_BUFF);
     databuff_printf(buf, buf_len, pos, "%s(%d %hhd %hhd) ",
-                    addr_buf, 
+                    to_cstring(ups_array_[i].addr_),
                     ups_array_[i].inner_port_,
                     ups_array_[i].ms_read_percentage_,
                     ups_array_[i].cs_read_percentage_);

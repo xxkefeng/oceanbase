@@ -89,6 +89,23 @@ namespace oceanbase
         return ret;
       }
 
+      inline int is_row_finished(bool* is_row_finished)
+      {
+        int ret = common::OB_SUCCESS;
+        if (NULL != is_row_finished)
+        {
+          if (ITERATE_END == iterate_status_)
+          {
+            *is_row_finished = true;
+          }
+          else 
+          {
+            ret = scanner_.is_row_finished(is_row_finished);
+          }
+        }
+        return ret;
+      }
+
       /**
        * @param [in] group_id group id of this scanner.
        * @param [in] scan_param input scan param, query columns, table, etc.
@@ -101,7 +118,8 @@ namespace oceanbase
         const int64_t group_size, const ObSSTableScanParam *scan_param, 
         const ObSSTableReader* const sstable_reader);
 
-      int initialize(ObBlockIndexCache* block_index_cache, ObBlockCache* block_cache);
+      int initialize(ObBlockIndexCache* block_index_cache, ObBlockCache* block_cache, 
+          const common::ObRowkeyInfo* rowkey_info = NULL);
 
     private:
       /**
@@ -201,6 +219,7 @@ namespace oceanbase
       // input parameters set by initialize 
       ObBlockIndexCache* block_index_cache_;
       ObBlockCache* block_cache_;
+      const common::ObRowkeyInfo* rowkey_info_;
 
       // internal status
       int64_t iterate_status_;

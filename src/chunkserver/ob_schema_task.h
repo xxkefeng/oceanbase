@@ -20,10 +20,13 @@
 
 namespace oceanbase
 {
+  namespace common
+  {
+    class ObMergerSchemaManager;
+  }
   namespace chunkserver
   {
     class ObMergerRpcProxy;
-    class ObMergerSchemaManager;
 
     // check and fetch new schema timer task
     class ObMergerSchemaTask : public common::ObTimerTask
@@ -34,7 +37,7 @@ namespace oceanbase
     
     public:
       // init set rpc and schema manager
-      void init(ObMergerRpcProxy * rpc, ObMergerSchemaManager * schema);
+      void init(ObMergerRpcProxy * rpc, common::ObMergerSchemaManager * schema);
       
       // set fetch new version
       void set_version(const int64_t local, const int64_t remote);
@@ -54,11 +57,11 @@ namespace oceanbase
       volatile int64_t local_version_;
       volatile int64_t remote_version_;
       ObMergerRpcProxy * rpc_proxy_;
-      ObMergerSchemaManager * schema_;
+      common::ObMergerSchemaManager * schema_;
     };
     
     inline void ObMergerSchemaTask::init(ObMergerRpcProxy * rpc,
-                                         ObMergerSchemaManager * schema)
+                                         common::ObMergerSchemaManager * schema)
     {
       local_version_ = 0;
       remote_version_ = 0;

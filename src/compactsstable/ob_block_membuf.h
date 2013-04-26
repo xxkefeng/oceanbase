@@ -71,8 +71,6 @@ namespace oceanbase
 
       int64_t get_data_size() const;
 
-      int64_t get_usage_size() const;
-
       const char* get_current_pos() const;
 
       int clear();

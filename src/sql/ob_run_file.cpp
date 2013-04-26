@@ -25,7 +25,7 @@ ObRunFile::ObRunFile()
 
 ObRunFile::~ObRunFile()
 {
-  for (int64_t i = 0; i < run_blocks_.count(); ++i)
+  for (int32_t i = 0; i < run_blocks_.count(); ++i)
   {
     run_blocks_.at(i).free_buffer();
   } // end for
@@ -65,7 +65,7 @@ int ObRunFile::close()
   int ret = OB_SUCCESS;
   file_appender_.close();
   file_reader_.close();
-  for (int64_t i = 0; i < run_blocks_.count(); ++i)
+  for (int32_t i = 0; i < run_blocks_.count(); ++i)
   {
     run_blocks_.at(i).free_buffer();
   } // end for
@@ -83,7 +83,7 @@ bool ObRunFile::is_opened() const
 int ObRunFile::find_last_run_trailer(const int64_t bucket_idx, RunTrailer *&bucket_info)
 {
   int ret = OB_ENTRY_NOT_EXIST;
-  for (int64_t i = 0; i < buckets_last_run_trailer_.count(); ++i)
+  for (int32_t i = 0; i < buckets_last_run_trailer_.count(); ++i)
   {
     if (bucket_idx == buckets_last_run_trailer_.at(i).bucket_idx_)
     {
@@ -115,7 +115,7 @@ int ObRunFile::begin_append_run(const int64_t bucket_idx)
     }
     else
     {
-      curr_run_trailer_ = &buckets_last_run_trailer_.at(buckets_last_run_trailer_.count()-1);
+      curr_run_trailer_ = &buckets_last_run_trailer_.at(static_cast<int32_t>(buckets_last_run_trailer_.count()-1));
       TBSYS_LOG(INFO, "begin append run for bucket=%ld", bucket_idx);
     }
   }
@@ -312,7 +312,7 @@ int ObRunFile::get_next_row(const int64_t run_idx, common::ObRow &row)
   }
   else
   {
-    RunBlock &run_block = run_blocks_.at(run_count - run_idx - 1);
+    RunBlock &run_block = run_blocks_.at(static_cast<int32_t>(run_count - run_idx - 1));
     if (run_block.is_end_of_run())
     {
       TBSYS_LOG(INFO, "reach end of run, run_idx=%ld", run_idx);
@@ -437,7 +437,7 @@ int ObRunFile::read_next_run_block(RunBlock &run_block)
 int ObRunFile::end_read_bucket()
 {
   int ret = OB_SUCCESS;
-  for (int64_t i = 0; i < run_blocks_.count(); ++i)
+  for (int32_t i = 0; i < run_blocks_.count(); ++i)
   {
     run_blocks_.at(i).free_buffer();
   } // end for

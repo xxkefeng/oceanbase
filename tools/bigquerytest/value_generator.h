@@ -18,7 +18,7 @@
 #define __OCEANBASE_VALUE_GENERATOR_H__
 
 #include "util.h"
-#include "obsql_client.h"
+#include "mysql_client.h"
 #include "prefix_info.h"
 
 class ValueRule
@@ -46,6 +46,7 @@ class ValueRule
 
     int serialize(char* buf, int64_t buf_size);
     int deserialize(const char* buf, int64_t buf_size);
+    const char* to_string();
 
   private:
     void get_value(uint64_t suffix, int64_t col_idx, int64_t& value);

@@ -19,6 +19,7 @@
 #include "ob_update_server.h"
 #include "ob_update_server_main.h"
 #include "ob_fetched_log.h"
+#include "common/ob_trigger_msg.h"
 
 namespace oceanbase
 {
@@ -36,11 +37,12 @@ namespace oceanbase
     }
 
     int ObUpsRpcStub :: fetch_schema(const common::ObServer& root_server, const int64_t timestamp,
-        CommonSchemaManagerWrapper& schema_mgr, const int64_t timeout_us)
+        CommonSchemaManagerWrapper& schema_mgr, const bool only_core_tables, const int64_t timeout_us)
     {
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
 
+      int32_t version = 2;
       if (NULL == client_mgr_)
       {
         TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
@@ -61,12 +63,21 @@ namespace oceanbase
               timestamp, err);
         }
       }
+      if (OB_SUCCESS == err)
+      {
+        err = serialization::encode_bool(data_buff.get_data(),
+            data_buff.get_capacity(), data_buff.get_position(), only_core_tables);
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(WARN, "serialize fail. err=%d", err);
+        }
+      }
 
       // step 2. send request to fetch new schema
       if (OB_SUCCESS == err)
       {
         err = client_mgr_->send_request(root_server, 
-            OB_FETCH_SCHEMA, DEFAULT_VERSION, timeout_us, data_buff);
+            OB_FETCH_SCHEMA, version, timeout_us, data_buff);
         if (err != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "send request to root server for fetch schema failed"
@@ -489,7 +500,7 @@ namespace oceanbase
       else if (OB_SUCCESS != (err = updateserver::send_request(client_mgr_, server, DEFAULT_VERSION, pcode,
                                                  input, output, data_buff, timeout)))
       {
-        TBSYS_LOG(ERROR, "send_request(server=%s, pcode=%d)=>%d", server.to_cstring(), pcode, err);
+        TBSYS_LOG(ERROR, "send_request(server=%s, pcode=%d)=>%d", to_cstring(server), pcode, err);
       }
       return err;
     }
@@ -864,18 +875,10 @@ namespace oceanbase
       {
         err = get_thread_buffer_(data_buff);
       }
-      common::ObClientConfig client_config;
-      if (OB_SUCCESS == err)
-      {
-        if (OB_SUCCESS != (err = get_client_config(root_server, client_config, timeout_us)))
-        {
-          TBSYS_LOG(WARN, "fail to get client config, err = %d", err);
-        }
-      }
       common::ObServer master_inst_rs;
       if (OB_SUCCESS == err)
       {
-        if (OB_SUCCESS != (err = get_master_obi_rs(master_inst_rs, client_config, timeout_us)))
+        if (OB_SUCCESS != (err = get_master_obi_rs(root_server, master_inst_rs, timeout_us)))
         {
           TBSYS_LOG(WARN, "fail to get master obi rootserver addr. err=%d", err);
         }
@@ -887,94 +890,62 @@ namespace oceanbase
           TBSYS_LOG(WARN, "fail to get master obi ups addr. master_inst_rs=%s, err=%d", master_inst_rs.to_cstring(), err);
         }
       }
+
       return err;
     }
 
-    int ObUpsRpcStub :: get_master_obi_rs(common::ObServer &root_server, const common::ObClientConfig client_config, const int64_t timeout_us)
+    int ObUpsRpcStub::get_master_obi_rs(const ObServer &rootserver,
+                                        ObServer &master_obi_rs,
+                                        const int64_t timeout)
     {
-      int err = OB_SUCCESS;
-      ObDataBuffer data_buff;
-      if (NULL == client_mgr_)
-      {
-        TBSYS_LOG(WARN, "invalid argument, client_mgr_=%p", client_mgr_);
-        err = OB_INVALID_ARGUMENT;
-      }
-      else
-      {
-        get_thread_buffer_(data_buff);
-      }
-      common::ObiRole role;
-      common::ObServer server, null_server;
-      if (OB_SUCCESS == err)
-      {
-        for (int32_t i = 0; i < client_config.obi_list_.obi_count_ && i < client_config.obi_list_.MAX_OBI_COUNT; ++i)
-        {
-          server = client_config.obi_list_.conf_array_[i].get_rs_addr();
-          if (OB_SUCCESS != (err = get_obi_role(server, role, timeout_us)))
-          {
-            TBSYS_LOG(WARN, "fail to get obi role .rs_addr=%s, err=%d", server.to_cstring(), err);
-          }
-          else if (ObiRole::MASTER == role.get_role())
-          {
-            root_server.set_ipv4_addr(server.get_ipv4(), server.get_port());
-            break;
-          }
-        }
-        if (null_server == root_server)
-        {
-          TBSYS_LOG(WARN, "fail to get master obi rootserver.");
-          err = OB_ENTRY_NOT_EXIST;
-        }
-      }
-      return err;
-    }
-
-    //add 
-    int ObUpsRpcStub :: get_client_config(const common::ObServer &root_server, common::ObClientConfig &client_config, const int64_t timeout_us)
-    {
-      int err = OB_SUCCESS;
+      int ret = OB_SUCCESS;
       ObDataBuffer data_buff;
       if (NULL == client_mgr_)
       {
         TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
-        err = OB_ERROR;
+        ret = OB_ERROR;
       }
       else
       {
-        err = get_thread_buffer_(data_buff);
+        ret = get_thread_buffer_(data_buff);
       }
 
-      if (OB_SUCCESS == err)
+
+      if (OB_SUCCESS == ret)
       {
-        err = client_mgr_->send_request(root_server, OB_GET_CLIENT_CONFIG,DEFAULT_VERSION, timeout_us, data_buff);
-        if (OB_SUCCESS != err)
+        ret = client_mgr_->send_request(rootserver, OB_GET_MASTER_OBI_RS,
+                                        DEFAULT_VERSION, timeout, data_buff);
+        if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "fail to send request. err = %d", err);
+          TBSYS_LOG(WARN, "fail to send request. ret: [%d]", ret);
         }
       }
       int64_t pos = 0;
-      if (OB_SUCCESS == err)
+      if (OB_SUCCESS == ret)
       {
         ObResultCode result_code;
-        err = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
-        if (OB_SUCCESS != err)
+        ret = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
+        if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "deserialize result_code failed:pos[%ld], err[%d].", pos, err);
+          TBSYS_LOG(WARN, "deserialize result_code failed,"
+                    " pos: [%ld], ret: [%d].", pos, ret);
         }
         else
         {
-          err = result_code.result_code_;
+          ret = result_code.result_code_;
         }
       }
-      if (OB_SUCCESS == err)
+      if (OB_SUCCESS == ret)
       {
-        err = client_config.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
-        if (OB_SUCCESS != err)
+        ret = master_obi_rs.deserialize(data_buff.get_data(),
+                                        data_buff.get_position(), pos);
+        if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "fail to deserialize the response. err = %d", err);
+          TBSYS_LOG(WARN, "fail to deserialize the response. ret: %d", ret);
         }
       }
-      return err;
+
+      return ret;
     }
 
     /* //add
@@ -1233,6 +1204,34 @@ namespace oceanbase
 
       return err;
     }
-  }
+    int ObUpsRpcStub::notify_rs_trigger_event(const ObServer &rootserver, const ObTriggerMsg &msg, const int64_t timeout_us)
+    {
+      int err = OB_SUCCESS;
+      ObDataBuffer data_buff;
+      if (NULL == client_mgr_)
+      {
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
+        err = OB_ERROR;
+      }
+      else
+      {
+        err = get_thread_buffer_(data_buff);
+      }
+
+      if (OB_SUCCESS == err)
+      {
+        err = msg.serialize(data_buff.get_data(), data_buff.get_capacity(), data_buff.get_position());
+      }
+      if (OB_SUCCESS == err)
+      {
+        err = client_mgr_->send_request(rootserver, OB_HANDLE_TRIGGER_EVENT, DEFAULT_VERSION, timeout_us, data_buff);
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(ERROR, "fail to send request to rootserver [%s], err = %d", rootserver.to_cstring(), err);
+        }
+      }
+      return err; 
+    }
+  } // end namespace updateserver
 }
 

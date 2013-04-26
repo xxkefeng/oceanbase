@@ -20,15 +20,16 @@ namespace oceanbase {
       public:
         ObDataSet(OceanbaseDb *db);
 
-        int data_boundry_init(const ObString &start_key, const ObString &end_key, int64_t version = 0);
+        int data_boundry_init(const ObRowkey &start_key, const ObRowkey &end_key, int64_t version = 0);
 
         int set_data_source(const TabletInfo &info, const std::string table,
-                            const std::vector<std::string> &cols, const ObString &start_key, 
-                            const ObString &end_key, int64_t version_ = 0);
+                            const std::vector<std::string> &cols, const ObRowkey &start_key, 
+                            const ObRowkey &end_key, int64_t version_ = 0);
 
         int set_data_source(const std::string table,
-                            const std::vector<std::string> &cols, const ObString &start_key, 
-                            const ObString &end_key, int64_t version_ = 0);
+                            const std::vector<std::string> &cols, const ObRowkey &start_key, 
+                            const ObRowkey &end_key, int64_t version_ = 0);
+        void set_scan_limit(int64_t count) { db_->set_limit_info(0, count); }
 
         bool has_next();
         int get_record(DbRecord *&recp);
@@ -38,14 +39,14 @@ namespace oceanbase {
         void set_inclusie_start(bool start) { inclusive_start_ = start; }
 
       private:
-        int read_more(const ObString &start_key, const ObString &end_key, int64_t version);
+        int read_more(const ObRowkey &start_key, const ObRowkey &end_key, int64_t version);
 
       private:
         OceanbaseDb *db_;
 
-        ObString start_key_;
-        ObString end_key_;
-        ObString last_end_key_;
+        ObRowkey start_key_;
+        ObRowkey end_key_;
+        ObRowkey last_end_key_;
 
         DbRecordSet ds_;
         DbRecordSet::Iterator ds_itr_;

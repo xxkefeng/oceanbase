@@ -17,7 +17,7 @@
 
 #include "common/ob_common_param.h"
 #include "common/ob_iterator.h"
-#include "common/ob_string.h"
+#include "common/ob_rowkey.h"
 #include "common/ob_schema.h"
 
 namespace oceanbase
@@ -36,14 +36,19 @@ namespace oceanbase
 
       int add_cell(const common::ObCellInfo &cell);
 
-      inline const common::ObString & get_row_key()const
+      inline const oceanbase::common::ObRowkey& get_row_key()const
       {
         return row_key_;
       } 
 
       uint64_t get_table_id()const
       {
-        return table_id_;
+        return NULL == row_ ? 0 : row_->table_id_;
+      }
+
+      inline int64_t get_cell_num() const
+      {
+        return NULL == row_ ? 0: row_->cell_num_;
       }
 
       void reset_iterator();
@@ -66,14 +71,14 @@ namespace oceanbase
         int32_t cell_num_;
         int32_t row_key_len_;
         uint64_t table_id_;
+        common::ObObj row_key_obj_array_[common::OB_MAX_ROWKEY_COLUMN_NUMBER];
         ObMsCellInfo cells_[0];
       };
       char    *row_buffer_;
       int32_t row_buffer_size_;
       int32_t cur_buffer_offset_; 
       ObRow   *row_;
-      common::ObString row_key_;
-      uint64_t  table_id_;
+      oceanbase::common::ObRowkey row_key_;
       int32_t   consumed_cell_num_;
       bool      is_empty_;
       common::ObCellInfo cur_cell_;

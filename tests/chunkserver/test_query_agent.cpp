@@ -18,6 +18,7 @@
 #include "common/ob_action_flag.h"
 #include "common/ob_groupby.h"
 #include "ob_query_agent.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace oceanbase;
 using namespace oceanbase::common;
@@ -47,6 +48,7 @@ namespace oceanbase
       static ObQueryAgent query_agent(rpc_proxy);
       static ObScanParam scan_param;
       static ObComposeOperator compose_operator;
+      static CharArena allocator_;
 
       class TestQueryAgent : public testing::Test
       {
@@ -99,7 +101,7 @@ namespace oceanbase
             ASSERT_EQ(column_id, real.column_id_);
           }
           ASSERT_EQ(expected.table_id_, real.table_id_);
-          check_string(expected.row_key_, real.row_key_);
+          EXPECT_EQ(expected.row_key_, real.row_key_);
 
           if (ObVarcharType == type)
           {
@@ -133,7 +135,7 @@ namespace oceanbase
             ASSERT_EQ(column_id, real.column_id_);
           }
           ASSERT_EQ(expected.table_id_, real.table_id_);
-          check_string(expected.row_key_, real.row_key_);
+          EXPECT_EQ(expected.row_key_, real.row_key_);
 
           if (ObVarcharType == type)
           {
@@ -192,7 +194,7 @@ namespace oceanbase
                              const int64_t limit_count = 0)
         {
           int ret = OB_SUCCESS;
-          ObRange scan_range;
+          ObNewRange scan_range;
           ObString table_name;
 
           scan_param.reset();
@@ -682,6 +684,7 @@ namespace oceanbase
                 if (is_aggreate)
                 {
                   expected.row_key_.assign(NULL, 0);
+                  cell_info->row_key_.assign(NULL, 0);
                 }
                 check_cell(expected, *cell_info);
               }
@@ -743,7 +746,7 @@ namespace oceanbase
             {
               cell_infos[i][j].table_id_ = table_id;
               sprintf(row_key_strs[i][j], "row_key_%08ld", i);
-              cell_infos[i][j].row_key_.assign(row_key_strs[i][j], static_cast<int32_t>(strlen(row_key_strs[i][j])));
+              cell_infos[i][j].row_key_ = make_rowkey(row_key_strs[i][j], &allocator_);
               cell_infos[i][j].column_id_ = j + 2;
               if (j == 0)
               {
@@ -768,7 +771,7 @@ namespace oceanbase
               else if (j == 4)
               {
                 //column 4, row key
-                cell_infos[i][j].value_.set_varchar(cell_infos[i][j].row_key_);
+                cell_infos[i][j].value_.set_varchar(TestRowkeyHelper(cell_infos[i][j].row_key_, &allocator_));
               }
               else
               {

@@ -36,6 +36,7 @@ namespace oceanbase
 {
   namespace updateserver
   {
+    class BtreeEngineIterator;
     class BtreeEngineTransHandle
     {
       friend class BtreeEngine;

@@ -58,13 +58,14 @@ namespace oceanbase
         int ret = OB_SUCCESS;
         ObSSTableBlockIndexBuffer index_block;
                 
+        ObRowkey key;
         Key tmp_key(1000, 0, 100);
-        ObString key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
+        tmp_key.trans_to_rowkey(key);
         ret = index_block.add_key(key);
 
         EXPECT_TRUE(OB_SUCCESS == ret);
         EXPECT_TRUE(index_block.get_data_size() > 0);
-        EXPECT_EQ(17, index_block.get_data_size());
+        EXPECT_EQ(6, index_block.get_data_size());
         EXPECT_TRUE(index_block.get_total_size() > 0);
         EXPECT_TRUE(index_block.get_data_size() < index_block.get_total_size());
         EXPECT_TRUE(NULL != index_block.get_block_head());
@@ -77,12 +78,13 @@ namespace oceanbase
       {
         ObSSTableBlockIndexBuffer index_buffer;
         int ret = OB_SUCCESS;
+        ObRowkey key;
         
         //need 2 mem block to store all(200,000) key
-        for (int i = 0; i < 200000; ++i)
+        for (int i = 0; i < 400000; ++i)
         {
           Key tmp_key(i, static_cast<char>(i%128), i);
-          ObString key(tmp_key.key_len(), tmp_key.key_len(), tmp_key.get_ptr());
+          tmp_key.trans_to_rowkey(key);
           ret = index_buffer.add_key(key);
           EXPECT_TRUE(OB_SUCCESS == ret);
         }
@@ -110,7 +112,7 @@ namespace oceanbase
         int ret = OB_SUCCESS;
 
         ObSSTableBlockIndexItem index_item;
-        index_item.reserved16_ = 0;
+        index_item.rowkey_column_count_ = 0;
         index_item.column_group_id_ = 1;
         index_item.table_id_ = 1000;
         index_item.block_record_size_ = 100;
@@ -139,7 +141,7 @@ namespace oceanbase
         for (int i=0; i<200000; ++i)
         {
           ObSSTableBlockIndexItem index_item;
-          index_item.reserved16_ = 0;
+          index_item.rowkey_column_count_ = 0;
           index_item.column_group_id_ = 1;
           index_item.table_id_ = 1000;
           index_item.block_record_size_ = 100;
@@ -168,7 +170,7 @@ namespace oceanbase
         for (int i=0; i<200000; ++i)
         {
           ObSSTableBlockIndexItem index_item;
-          index_item.reserved16_ = 0;
+          index_item.rowkey_column_count_ = 0;
           index_item.column_group_id_ = 1;
           index_item.table_id_ = 1000;
           index_item.block_record_size_ = 100;
@@ -202,7 +204,7 @@ namespace oceanbase
         for (int i=0; i<200000; ++i)
         {
           ObSSTableBlockIndexItem index_item;
-          index_item.reserved16_ = 0;
+          index_item.rowkey_column_count_ = 0;
           index_item.column_group_id_ = 1;
           index_item.table_id_ = 1000;
           index_item.block_record_size_ = 100;

@@ -1,2 +1,1 @@
-SUBDIRS=cpp
-
+SUBDIRS=obsql

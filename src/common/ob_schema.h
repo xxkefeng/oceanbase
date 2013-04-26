@@ -20,6 +20,7 @@
 #include "ob_define.h"
 #include "ob_object.h"
 #include "ob_string.h"
+#include "ob_array.h"
 #include "hash/ob_hashutils.h"
 #include "hash/ob_hashmap.h"
 #include "ob_postfix_expression.h"
@@ -42,54 +43,83 @@ namespace oceanbase
 {
   namespace common
   {
+    const int64_t OB_SCHEMA_VERSION = 1;
+    const int64_t OB_SCHEMA_VERSION_TWO = 2;
+    const int64_t OB_SCHEMA_VERSION_THREE = 3;
+    const int64_t OB_SCHEMA_VERSION_FOUR = 4;
+
+    struct TableSchema;
     //these classes are so close in logical, so I put them together to make client have a easy life
     typedef ObObjType ColumnType;
-
-    class BaseInited
+    struct ObRowkeyColumn
     {
-      public:
-        BaseInited();
-        virtual ~BaseInited();
-        void set_flag();
-        bool have_inited() const;
-        VIRTUAL_NEED_SERIALIZE_AND_DESERIALIZE;
-      private:
-        bool inited_;
+      enum Order
+      {
+        ASC = 1,
+        DESC = -1,
+      };
+      int64_t length_;
+      uint64_t column_id_;
+      ObObjType type_;
+      Order order_;
+      NEED_SERIALIZE_AND_DESERIALIZE;
+      int64_t to_string(char* buf, const int64_t buf_len) const;
     };
 
-    class ObJoinInfo :public BaseInited
+    class ObRowkeyInfo
     {
-      public:
-        ObJoinInfo();
-        bool init(const uint64_t left_column, const int32_t start_pos, const int32_t end_pos, const uint64_t table_id_joined);
-        virtual ~ObJoinInfo();
 
-        //if you got start_pos = end_pos = -1, that means you should use the whole rowkey
-        void get_rowkey_join_range(int32_t& out_start_pos, int32_t& out_end_pos) const;
+    public:
+      ObRowkeyInfo();
+      ~ObRowkeyInfo();
 
-        void add_correlated_column(const uint64_t left_column_id, const uint64_t right_column_id);
+      inline int64_t get_size() const
+      {
+        return size_;
+      }
 
-        uint64_t get_table_id_joined() const;
+      /**
+       * get sum of every column's length.
+       */
+      int64_t get_binary_rowkey_length() const;
 
-        uint64_t find_left_column_id(const uint64_t rid) const;
-        uint64_t find_right_column_id(const uint64_t lid) const;
-        NEED_SERIALIZE_AND_DESERIALIZE;
+      /**
+       * Get rowkey column by index
+       * @param[in]  index   column index in RowkeyInfo
+       * @param[out] column
+       *
+       * @return int  return OB_SUCCESS if get the column, otherwist return OB_ERROR
+       */
+      int get_column(const int64_t index, ObRowkeyColumn& column) const;
+      const ObRowkeyColumn *get_column(const int64_t index) const;
 
-        //this is for test
-        void print_info() const;
+      /**
+       * Get rowkey column id by index
+       * @param[in]  index   column index in RowkeyInfo
+       * @param[out] column_id in ObRowkeyInfo
+       *
+       * @return int  return OB_SUCCESS if get the column, otherwist return OB_ERROR
+       */
+      int get_column_id(const int64_t index, uint64_t & column_id) const;
 
-      private:
-        uint64_t left_column_id_; //for the first version, this one always is 1, means rowkey only
-        int32_t  start_pos_;
-        int32_t  end_pos_;  //this means which part of left_column_ to be used make rowkey
-        uint64_t table_id_joined_;
+      /**
+       * Add column to rowkey info
+       * @param column column to add
+       * @return itn  return OB_SUCCESS if add success, otherwise return OB_ERROR
+       */
+      int add_column(const ObRowkeyColumn& column);
 
-        uint64_t correlated_left_columns[OB_OLD_MAX_COLUMN_NUMBER];
-        uint64_t correlated_right_columns[OB_OLD_MAX_COLUMN_NUMBER];
-        // 3,4 means this table column 3 will be
-        //corrected by table_id_joined_ column 4
-        int32_t correlated_info_size_;
+      int get_index(const uint64_t column_id, int64_t &index, ObRowkeyColumn& column) const;
+      bool is_rowkey_column(const uint64_t column_id) const;
+      int set_column(int64_t idx, const ObRowkeyColumn& column);
+
+      int64_t to_string(char* buf, const int64_t buf_len) const;
+      NEED_SERIALIZE_AND_DESERIALIZE;
+    private:
+      ObRowkeyColumn columns_[OB_MAX_ROWKEY_COLUMN_NUMBER];
+      int64_t size_;
     };
+
 
     class ObOperator;
     class ObSchemaManagerV2;
@@ -100,12 +130,12 @@ namespace oceanbase
 
         struct ObJoinInfo
         {
-          ObJoinInfo() : join_table_(OB_INVALID_ID) {}
-          uint64_t join_table_;
-          uint64_t left_column_id_;//for the first version, this one always is 1, means rowkey only
-          uint64_t correlated_column_;  //this means which part of left_column_ to be used make rowkey
-          int32_t start_pos_;
-          int32_t end_pos_;
+          ObJoinInfo() : join_table_(OB_INVALID_ID),left_column_count_(0) {}
+          uint64_t join_table_;   // join table id
+          uint64_t correlated_column_;  // column in joined table
+          //this means which part of left_column_ to be used make rowkey
+          uint64_t left_column_offset_array_[OB_MAX_ROWKEY_COLUMN_NUMBER];
+          uint64_t left_column_count_;
         };
 
         ObColumnSchemaV2();
@@ -119,7 +149,7 @@ namespace oceanbase
         uint64_t    get_table_id()        const;
         bool        is_maintained()       const;
         uint64_t    get_column_group_id() const;
-
+        bool        is_join_column() const;
 
         void set_table_id(const uint64_t id);
         void set_column_id(const uint64_t id);
@@ -130,8 +160,8 @@ namespace oceanbase
         void set_column_group_id(const uint64_t id);
         void set_maintained(bool maintained);
 
-        void set_join_info(const uint64_t join_table,const uint64_t left_column_id,
-                           const uint64_t correlated_column, const int32_t start_pos,const int32_t end_pos);
+        void set_join_info(const uint64_t join_table, const uint64_t* left_column_id,
+            const uint64_t left_column_count, const uint64_t correlated_column);
 
         const ObJoinInfo* get_join_info() const;
 
@@ -141,12 +171,23 @@ namespace oceanbase
 
         //this is for test
         void print_info() const;
+        void print(FILE* fd) const;
 
         NEED_SERIALIZE_AND_DESERIALIZE;
+
+        int deserialize_v3(const char* buf, const int64_t data_len, int64_t& pos);
+        int deserialize_v4(const char* buf, const int64_t data_len, int64_t& pos);
+
+        inline bool is_nullable() const { return is_nullable_; }
+        inline void set_nullable(const bool null) { is_nullable_ = null; }
+        inline const ObObj & get_default_value()  const { return default_value_; }
+        inline void set_default_value(const ObObj& value) { default_value_ = value; }
+
       private:
         friend class ObSchemaManagerV2;
       private:
         bool maintained_;
+        bool is_nullable_;
 
         uint64_t table_id_;
         uint64_t column_group_id_;
@@ -156,6 +197,7 @@ namespace oceanbase
         ColumnType type_;
         char name_[OB_MAX_COLUMN_NAME_LENGTH];
 
+        ObObj default_value_;
         //join info
         ObJoinInfo join_info_;
 
@@ -198,27 +240,23 @@ namespace oceanbase
           SSTABLE_IN_RAM,
         };
 
-        struct ExpireInfo
-        {
-          uint64_t column_id_;
-          int64_t duration_;
-        };
-
         uint64_t    get_table_id()   const;
         TableType   get_table_type() const;
         const char* get_table_name() const;
         const char* get_compress_func_name() const;
         uint64_t    get_max_column_id() const;
-        int         get_expire_condition(uint64_t &column_id, int64_t &duration) const;
         const char* get_expire_condition() const;
-        int32_t     get_version() const;
+        const ObRowkeyInfo&  get_rowkey_info() const;
+        ObRowkeyInfo& get_rowkey_info();
+        int64_t     get_version() const;
 
         int32_t get_split_pos() const;
         int32_t get_rowkey_max_length() const;
 
         bool is_pure_update_table() const;
         bool is_use_bloomfilter()   const;
-        bool is_row_key_fixed_len() const;
+        bool is_read_static()   const;
+        bool has_baseline_data() const;
         bool is_merge_dynamic_data() const;
         bool is_expire_effect_immediately() const;
         int32_t get_block_size()    const;
@@ -227,13 +265,15 @@ namespace oceanbase
         int64_t get_query_cache_expire_time() const;
         int64_t get_max_scan_rows_per_tablet() const;
         int64_t get_internal_ups_scan_size() const;
+        int64_t get_merge_write_sstable_version() const;
+        int64_t get_replica_count() const;
 
         uint64_t get_create_time_column_id() const;
         uint64_t get_modify_time_column_id() const;
 
         void set_table_id(const uint64_t id);
         void set_max_column_id(const uint64_t id);
-        void set_version(const int32_t version);
+        void set_version(const int64_t version);
 
         void set_table_type(TableType type);
         void set_split_pos(const int64_t split_pos);
@@ -249,19 +289,21 @@ namespace oceanbase
 
         void set_pure_update_table(bool is_pure);
         void set_use_bloomfilter(bool use_bloomfilter);
-        void set_rowkey_fixed_len(bool fixed_len);
-
+        void set_read_static(bool read_static);
+        void set_has_baseline_data(const bool base_data);
         void set_merge_dynamic_data(bool merge_danamic_data);
         void set_expire_effect_immediately(const int64_t expire_effect_immediately);
 
-        void set_expire_info(ExpireInfo& expire_info);
         void set_expire_condition(const char* expire_condition);
         void set_expire_condition(const ObString& expire_condition);
 
         void set_expire_frequency(const int64_t expire_frequency);
         void set_query_cache_expire_time(const int64_t expire_time);
+        void set_rowkey_info(ObRowkeyInfo& rowkey_info);
         void set_max_scan_rows_per_tablet(const int64_t max_scan_rows);
         void set_internal_ups_scan_size(const int64_t scan_size);
+        void set_merge_write_sstable_version(const int64_t version);
+        void set_replica_count(const int64_t count) ;
 
         void set_create_time_column(uint64_t id);
         void set_modify_time_column(uint64_t id);
@@ -274,6 +316,9 @@ namespace oceanbase
         //this is for test
         void print_info() const;
         void print(FILE* fd) const;
+      private:
+        int deserialize_v3(const char* buf, const int64_t data_len, int64_t& pos);
+        int deserialize_v4(const char* buf, const int64_t data_len, int64_t& pos);
       private:
         static const int64_t TABLE_SCHEMA_RESERVED_NUM = 4;
         uint64_t table_id_;
@@ -289,25 +334,30 @@ namespace oceanbase
         char expire_condition_[OB_MAX_EXPIRE_CONDITION_LENGTH];
         bool is_pure_update_table_;
         bool is_use_bloomfilter_;
-        bool is_row_key_fixed_len_;
         bool is_merge_dynamic_data_;
-        ExpireInfo expire_info_;
-        int64_t expire_frequency_;  //how many frozen version passed before do expire once
+        bool has_baseline_data_;
+        ObRowkeyInfo rowkey_info_;
+        int64_t expire_frequency_;  // how many frozen version passed before do expire once
         int64_t max_sstable_size_;
-        int32_t version_;
         int64_t query_cache_expire_time_;
         int64_t is_expire_effect_immediately_;
         int64_t max_scan_rows_per_tablet_;
         int64_t internal_ups_scan_size_;
+        int64_t merge_write_sstable_version_;
+        int64_t replica_count_;
         int64_t reserved_[TABLE_SCHEMA_RESERVED_NUM];
+        int64_t version_;
 
         //in mem
         uint64_t create_time_column_id_;
         uint64_t modify_time_column_id_;
     };
 
+    class ObSchemaSortByIdHelper;
     class ObSchemaManagerV2
     {
+      public:
+        friend class ObSchemaSortByIdHelper;
       public:
         ObSchemaManagerV2();
         explicit ObSchemaManagerV2(const int64_t timestamp);
@@ -430,18 +480,35 @@ namespace oceanbase
          */
         void set_drop_column_group(bool drop_group = true);
 
-        bool is_join_table(const uint64_t table_id) const;
-
-        int64_t get_join_table_num() const { return join_table_nums_; }
-
-        int add_join_table(const uint64_t table_id);
+        // convert new table schema into old one and insert it into the schema_manager
+        // zhuweng.yzf@taobao.com
+        int add_new_table_schema(const TableSchema& tschema);
+        //convert new table schema into old one and insert it into the schema_manager
+        //rongxuan.lc@taobao.com
+        int add_new_table_schema(const ObArray<TableSchema>& schema_array);
 
       public:
         bool parse_from_file(const char* file_name, tbsys::CConfig& config);
         bool parse_one_table(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
         bool parse_column_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
         bool parse_join_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
-        bool parse_expire_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
+        bool parse_rowkey_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
+
+      private:
+        /**
+         * parse rowkey column description into ObRowkeyColumn
+         * rowkey column description may contains compatible old binary rowkey structure.
+         * @param column_str column description string.
+         * @param [out] column rowkey column id, length, data type.
+         * @param [in, out] schema check column if exist, and set rowkey info.
+         */
+        bool parse_rowkey_column(const char* column_str, ObRowkeyColumn& column,  ObTableSchema& schema);
+
+        /**
+         * check join column if match with joined table's rowkey column.
+         */
+        bool check_join_column(const int32_t column_index, const char* column_name, const char* join_column_name,
+            ObTableSchema& schema, const ObTableSchema& join_table_schema, uint64_t& column_offset);
 
       public:
         void print_info() const;
@@ -484,14 +551,17 @@ namespace oceanbase
       public:
         NEED_SERIALIZE_AND_DESERIALIZE;
         int sort_column();
+        bool check_table_expire_condition() const;
 
-        static const int64_t DEFAULT_MAX_COLUMNS = OB_MAX_TABLE_NUMBER * OB_MAX_COLUMN_NUMBER;
+        static const int64_t MAX_COLUMNS_LIMIT = OB_MAX_TABLE_NUMBER * OB_MAX_COLUMN_NUMBER;
+        static const int64_t DEFAULT_MAX_COLUMNS = 16 * OB_MAX_COLUMN_NUMBER;;
 
       private:
         int replace_system_variable(char* expire_condition, const int64_t buf_size) const;
         int check_expire_dependent_columns(const ObString& expr,
           const ObTableSchema& table_schema, ObExpressionParser& parser) const;
-        bool check_table_expire_condition() const;
+        int ensure_column_storage();
+        int prepare_column_storage(const int64_t column_num, bool need_reserve_space = false);
 
       private:
         int32_t   schema_magic_;
@@ -504,9 +574,8 @@ namespace oceanbase
         char app_name_[OB_MAX_APP_NAME_LENGTH];
 
         ObTableSchema    table_infos_[OB_MAX_TABLE_NUMBER];
-        //ObColumnSchemaV2 columns_[DEFAULT_MAX_COLUMNS];
-        //ObColumnSchemaV2 columns_[OB_MAX_COLUMN_NUMBER * OB_MAX_TABLE_NUMBER];
-        ObColumnSchemaV2* columns_;
+        ObColumnSchemaV2 *columns_;
+        int64_t   column_capacity_; // current %columns_ occupy size.
 
         //just in mem
         bool drop_column_group_; //
@@ -516,9 +585,64 @@ namespace oceanbase
 
         int64_t column_group_nums_;
         ObColumnGroupHelper column_groups_[OB_MAX_COLUMN_GROUP_NUMBER * OB_MAX_TABLE_NUMBER];
+    };
 
-        int64_t join_table_nums_;
-        uint64_t join_tables_[OB_MAX_TABLE_NUMBER];
+    class ObSchemaSortByIdHelper
+    {
+      public:
+        explicit ObSchemaSortByIdHelper(const ObSchemaManagerV2* schema_manager)
+        {
+          init(schema_manager);
+        }
+        ~ObSchemaSortByIdHelper()
+        {
+        }
+      public:
+        struct Item
+        {
+          int64_t table_id_;
+          int64_t index_;
+          bool operator<(const Item& rhs) const
+          {
+            return table_id_ < rhs.table_id_;
+          }
+        };
+      public:
+        const ObTableSchema* get_table_schema(const Item* item) const
+        {
+          return &schema_manager_->table_infos_[item->index_];
+        }
+        const Item* begin() const { return table_infos_index_; }
+        const Item* end() const { return table_infos_index_ + table_nums_; }
+
+      private:
+        inline int init(const ObSchemaManagerV2* schema_manager)
+        {
+          int ret = OB_SUCCESS;
+          if (NULL == schema_manager)
+          {
+            ret = OB_INVALID_ARGUMENT;
+          }
+          else
+          {
+            schema_manager_ = schema_manager;
+            memset(table_infos_index_, 0, sizeof(table_infos_index_));
+            int64_t i = 0;
+            for (; i < schema_manager_->table_nums_; ++i)
+            {
+              table_infos_index_[i].table_id_ = schema_manager_->table_infos_[i].get_table_id();
+              table_infos_index_[i].index_ = i;
+            }
+            table_nums_ = i;
+            std::sort(table_infos_index_, table_infos_index_ + table_nums_);
+          }
+          return ret;
+        }
+
+        Item table_infos_index_[OB_MAX_TABLE_NUMBER];
+        int64_t table_nums_;
+        const ObSchemaManagerV2* schema_manager_;
+
     };
   }
 }

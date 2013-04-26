@@ -1,15 +1,20 @@
 #include "ob_raw_expr.h"
-#include "parse_tools.h"
 #include "ob_transformer.h"
 #include "type_name.c"
-#include <assert.h>
+#include "ob_prepare.h"
+#include "ob_result_set.h"
 
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
 bool ObRawExpr::is_const() const
 {
-  return (type_ >= T_STRING && type_ <= T_NULL);
+  return (type_ >= T_INT && type_ <= T_NULL);
+}
+
+bool ObRawExpr::is_column() const
+{
+  return (type_ == T_REF_COLUMN);
 }
 
 bool ObRawExpr::is_equal_filter() const
@@ -63,6 +68,65 @@ bool ObRawExpr::is_aggr_fun() const
   bool ret = false;
   if (type_ >= T_FUN_MAX && type_ <= T_FUN_AVG)
     ret = true;
+  return ret;
+}
+
+int ObConstRawExpr::set_value_and_type(const common::ObObj& val)
+{
+  int ret = OB_SUCCESS;
+  switch(val.get_type())
+  {
+    case ObNullType:   // 空类型
+      this->set_expr_type(T_NULL);
+      this->set_result_type(ObNullType);
+      break;
+    case ObIntType:
+      this->set_expr_type(T_INT);
+      this->set_result_type(ObIntType);
+      break;
+    case ObFloatType:              // @deprecated
+      this->set_expr_type(T_FLOAT);
+      this->set_result_type(ObFloatType);
+      break;
+    case ObDoubleType:             // @deprecated
+      this->set_expr_type(T_DOUBLE);
+      this->set_result_type(ObDoubleType);
+      break;
+    case ObPreciseDateTimeType:    // =5
+    case ObCreateTimeType:
+    case ObModifyTimeType:
+      this->set_expr_type(T_DATE);
+      this->set_result_type(ObPreciseDateTimeType);
+      break;
+    case ObVarcharType:
+      this->set_expr_type(T_STRING);
+      this->set_result_type(ObVarcharType);
+      break;
+    case ObExtendType:
+    {
+      this->set_expr_type(T_QUESTIONMARK);
+      this->set_result_type(ObIntType);
+      int64_t v = 0;
+      val.get_ext(v);
+      value_.set_int(v);
+      break;
+    }
+    case ObBoolType:
+      this->set_expr_type(T_BOOL);
+      this->set_result_type(ObBoolType);
+      break;
+    default:
+      ret = OB_NOT_SUPPORTED;
+      TBSYS_LOG(WARN, "obj type not support, type=%d", val.get_type());
+      break;
+  }
+  if (OB_LIKELY(OB_SUCCESS == ret))
+  {
+    if (ObExtendType != val.get_type())
+    {
+      value_ = val;
+    }
+  }
   return ret;
 }
 
@@ -145,11 +209,10 @@ int ObConstRawExpr::fill_sql_expression(
     ObPhysicalPlan *physical_plan) const
 {
   int ret = OB_SUCCESS;
-  UNUSED(transformer);
   UNUSED(logical_plan);
   UNUSED(physical_plan);
   float f = 0.0f;
-  double d = 0.0f;
+  double d = 0.0;
   ExprItem item;
   item.type_ = get_expr_type();
   item.data_type_ = get_result_type();
@@ -157,34 +220,106 @@ int ObConstRawExpr::fill_sql_expression(
   {
     case T_STRING:
     case T_BINARY:
-      value_.get_varchar(item.string_);
+      ret = value_.get_varchar(item.string_);
       break;
     case T_FLOAT:
-      value_.get_float(f);
-      item.value_.double_ = f;
+      ret = value_.get_float(f);
+      item.value_.float_ = f;
       break;
     case T_DOUBLE:
-      value_.get_double(d);
+      ret = value_.get_double(d);
       item.value_.double_ = d;
       break;
     case T_DECIMAL:
-      value_.get_varchar(item.string_);
+      ret = value_.get_varchar(item.string_);
       break;
     case T_INT:
-      value_.get_int(item.value_.int_);
+      ret = value_.get_int(item.value_.int_);
       break;
     case T_BOOL:
-      value_.get_bool(item.value_.bool_);
+      ret = value_.get_bool(item.value_.bool_);
       break;
     case T_DATE:
-      value_.get_datetime(item.value_.datetime_);
+      ret = value_.get_precise_datetime(item.value_.datetime_);
       break;
+    case T_QUESTIONMARK:
+    {
+      ObSqlContext *sql_context = NULL;
+      ObResultSet *result_set = NULL;
+      if (transformer == NULL
+        || (sql_context = transformer->get_sql_context()) == NULL
+        || sql_context->session_info_ == NULL
+        || (result_set = sql_context->session_info_->get_current_result_set()) == NULL)
+      {
+        ret = OB_NOT_INIT;
+        TBSYS_LOG(ERROR, "Session stored param placeholder is needed\n");
+        break;
+      }
+      else if ((ret = value_.get_int(item.value_.int_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(ERROR, "invalid question mark value, type=%d", value_.get_type());
+        break;
+      }
+      else if (item.value_.int_ < 0 || item.value_.int_ >= result_set->get_params().count())
+      {
+        TBSYS_LOG(ERROR, "Wrong index of question mark position, pos = %ld\n", item.value_.int_);
+        break;
+      }
+      else
+      {
+        ObObj *place_holder = result_set->get_params().at(item.value_.int_);
+        item.value_.int_ = reinterpret_cast<int64_t>(place_holder);
+      }
+      break;
+    }
+    case T_SYSTEM_VARIABLE:
+    case T_TEMP_VARIABLE:
+    {
+      ObSqlContext *sql_context = NULL;
+      ObString var_name;
+      const ObObj *var_ptr = NULL;
+      if (transformer == NULL
+        || (sql_context = transformer->get_sql_context()) == NULL
+        || sql_context->session_info_ == NULL)
+      {
+        ret = OB_NOT_INIT;
+        TBSYS_LOG(ERROR, "Session information is needed\n");
+      }
+      else if ((ret = value_.get_varchar(var_name)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(ERROR, "invalid question mark value, type=%d", value_.get_type());
+      }
+      else if (item.type_ == T_SYSTEM_VARIABLE
+        && (var_ptr = sql_context->session_info_->get_sys_variable_value(var_name)) == NULL)
+      {
+        ret = OB_ERR_VARIABLE_UNKNOWN;
+        TBSYS_LOG(ERROR, "System variable %.*s does not exists", var_name.length(), var_name.ptr());
+      }
+      else if (item.type_ == T_TEMP_VARIABLE
+        && (var_ptr = sql_context->session_info_->get_variable_value(var_name)) == NULL)
+      {
+        ret = OB_ERR_VARIABLE_UNKNOWN;
+        TBSYS_LOG(USER_ERROR, "Variable %.*s does not exists", var_name.length(), var_name.ptr());
+      }
+      else
+      {
+        item.value_.int_ = reinterpret_cast<int64_t>(var_ptr);
+        TBSYS_LOG(INFO, "get system variable type=%d name=%.*s ptr=%p val=%s",
+                  item.type_, var_name.length(), var_name.ptr(), var_ptr, to_cstring(*var_ptr));
+      }
+      break;
+    }
     case T_NULL:
       break;
     default:
+      TBSYS_LOG(WARN, "unexpected expression type %d", item.type_);
+      ret = OB_ERR_EXPR_UNKNOWN;
       break;
   }
-  ret = inter_expr.add_expr_item(item);
+  if (OB_SUCCESS == ret)
+  {
+    ret = inter_expr.add_expr_item(item);
+  }
   return ret;
 }
 
@@ -210,7 +345,10 @@ int ObUnaryRefRawExpr::fill_sql_expression(
   }
   else
   {
-    item.value_.int_ = transformer->gen_phy_mono_select(logical_plan, physical_plan, id_);
+    ErrStat err_stat;
+    int32_t index = OB_INVALID_INDEX;
+    ret = transformer->gen_physical_select(logical_plan, physical_plan, err_stat, id_, &index);
+    item.value_.int_ = index;
   }
   if (ret == OB_SUCCESS && OB_INVALID_INDEX == item.value_.int_)
   {
@@ -295,6 +433,46 @@ void ObBinaryOpRawExpr::print(FILE* fp, int32_t level) const
   second_expr_->print(fp, level + 1);
 }
 
+void ObBinaryOpRawExpr::set_op_exprs(ObRawExpr *first_expr, ObRawExpr *second_expr)
+{
+  ObItemType exchange_type = T_MIN_OP;
+  switch (get_expr_type())
+  {
+    case T_OP_LE:
+      exchange_type = T_OP_GE;
+      break;
+    case T_OP_LT:
+      exchange_type = T_OP_GT;
+      break;
+    case T_OP_GE:
+      exchange_type = T_OP_LE;
+      break;
+    case T_OP_GT:
+      exchange_type = T_OP_LT;
+      break;
+    case T_OP_EQ:
+    case T_OP_NE:
+      exchange_type = get_expr_type();
+      break;
+    default:
+      exchange_type = T_MIN_OP;
+      break;
+  }
+  if (exchange_type != T_MIN_OP
+    && first_expr && first_expr->is_const()
+    && second_expr && second_expr->is_column())
+  {
+    set_expr_type(exchange_type);
+    first_expr_ = second_expr;
+    second_expr_ = first_expr;
+  }
+  else
+  {
+    first_expr_ = first_expr;
+    second_expr_ = second_expr;
+  }
+}
+
 int ObBinaryOpRawExpr::fill_sql_expression(
     ObSqlExpression& inter_expr,
     ObTransformer *transformer,
@@ -302,15 +480,96 @@ int ObBinaryOpRawExpr::fill_sql_expression(
     ObPhysicalPlan *physical_plan) const
 {
   int ret = OB_SUCCESS;
+  bool dem_1_to_2 = false;
   ExprItem item;
   item.type_ = get_expr_type();
   item.data_type_ = get_result_type();
   item.value_.int_ = 2; /* Two operators */
 
+  // all form with 1 dimension and without sub-select will be changed to 2 dimensions
+  // c1 in (1, 2, 3) ==> (c1) in ((1), (2), (3))
+  if ((ret = first_expr_->fill_sql_expression(
+                             inter_expr,
+                             transformer,
+                             logical_plan,
+                             physical_plan)) == OB_SUCCESS
+    && (get_expr_type() == T_OP_IN || get_expr_type() == T_OP_NOT_IN))
+  {
+    if (!first_expr_ || !second_expr_)
+    {
+      ret = OB_ERR_EXPR_UNKNOWN;
+    }
+    else if (first_expr_->get_expr_type() != T_OP_ROW
+      && first_expr_->get_expr_type() != T_REF_QUERY
+      && second_expr_->get_expr_type() == T_OP_ROW)
+    {
+      dem_1_to_2 = true;
+      ExprItem dem2;
+      dem2.type_ = T_OP_ROW;
+      dem2.data_type_ = ObIntType;
+      dem2.value_.int_ = 1;
+      ret = inter_expr.add_expr_item(dem2);
+    }
+    if (OB_LIKELY(ret == OB_SUCCESS))
+    {
+      ExprItem left_item;
+      left_item.type_ = T_OP_LEFT_PARAM_END;
+      left_item.data_type_ = ObIntType;
+      switch (first_expr_->get_expr_type())
+      {
+        case T_OP_ROW:
+        case T_REF_QUERY:
+          left_item.value_.int_ = 2;
+          break;
+        default:
+          left_item.value_.int_ = 1;
+          break;
+      }
+      if (dem_1_to_2)
+        left_item.value_.int_ = 2;
+      ret = inter_expr.add_expr_item(left_item);
+    }
+  }
   if (ret == OB_SUCCESS)
-    ret = first_expr_->fill_sql_expression(inter_expr, transformer, logical_plan, physical_plan);
-  if (ret == OB_SUCCESS)
-    ret = second_expr_->fill_sql_expression(inter_expr, transformer, logical_plan, physical_plan);
+  {
+    if (!dem_1_to_2)
+    {
+      ret = second_expr_->fill_sql_expression(inter_expr, transformer, logical_plan, physical_plan);
+    }
+    else
+    {
+      ExprItem dem2;
+      dem2.type_ = T_OP_ROW;
+      dem2.data_type_ = ObIntType;
+      dem2.value_.int_ = 1;
+      ObMultiOpRawExpr *row_expr = dynamic_cast<ObMultiOpRawExpr*>(second_expr_);
+      if (row_expr != NULL)
+      {
+        ExprItem row_item;
+        row_item.type_ = row_expr->get_expr_type();
+        row_item.data_type_ = row_expr->get_result_type();
+        row_item.value_.int_ = row_expr->get_expr_size();
+        for (int32_t i = 0; ret == OB_SUCCESS && i < row_expr->get_expr_size(); i++)
+        {
+          if ((ret = row_expr->get_op_expr(i)->fill_sql_expression(
+                                                   inter_expr,
+                                                   transformer,
+                                                   logical_plan,
+                                                   physical_plan)) != OB_SUCCESS
+            || (ret = inter_expr.add_expr_item(dem2)) != OB_SUCCESS)
+          {
+            break;
+          }
+        }
+        if (ret == OB_SUCCESS)
+          ret = inter_expr.add_expr_item(row_item);
+      }
+      else
+      {
+        ret = OB_ERR_EXPR_UNKNOWN;
+      }
+    }
+  }
   if (ret == OB_SUCCESS)
     ret = inter_expr.add_expr_item(item);
   return ret;
@@ -323,6 +582,16 @@ void ObTripleOpRawExpr::print(FILE* fp, int32_t level) const
   first_expr_->print(fp, level + 1);
   second_expr_->print(fp, level + 1);
   third_expr_->print(fp, level + 1);
+}
+
+void ObTripleOpRawExpr::set_op_exprs(
+    ObRawExpr *first_expr,
+    ObRawExpr *second_expr,
+    ObRawExpr *third_expr)
+{
+  first_expr_ = first_expr;
+  second_expr_ = second_expr;
+  third_expr_ = third_expr;
 }
 
 int ObTripleOpRawExpr::fill_sql_expression(
@@ -437,7 +706,7 @@ void ObAggFunRawExpr::print(FILE* fp, int32_t level) const
 {
   for(int i = 0; i < level; ++i) fprintf(fp, "    ");
   fprintf(fp, "%s\n", get_type_name(get_expr_type()));
-  if (set_distinct_)
+  if (distinct_)
   {
     for(int i = 0; i < level; ++i) fprintf(fp, "    ");
     fprintf(fp, "DISTINCT\n");
@@ -453,7 +722,7 @@ int ObAggFunRawExpr::fill_sql_expression(
     ObPhysicalPlan *physical_plan) const
 {
   int ret = OB_SUCCESS;
-  inter_expr.set_aggr_func(get_expr_type(), set_distinct_);
+  inter_expr.set_aggr_func(get_expr_type(), distinct_);
   if (param_expr_)
     ret = param_expr_->fill_sql_expression(inter_expr, transformer, logical_plan, physical_plan);
   return ret;
@@ -476,22 +745,23 @@ int ObSysFunRawExpr::fill_sql_expression(
     ObPhysicalPlan *physical_plan) const
 {
   int ret = OB_SUCCESS;
-  ExprItem name_item;
-  name_item.type_ = T_STRING;
-  name_item.string_ = func_name_;
-  ret = inter_expr.add_expr_item(name_item);
   ExprItem item;
-  item.type_ = get_expr_type();
-  item.data_type_ = get_result_type();
-  item.value_.int_ = 1 + exprs_.size();
+  item.type_ = T_FUN_SYS;
+  item.string_ = func_name_;
+  item.value_.int_ = exprs_.size();
   for (int32_t i = 0; ret == OB_SUCCESS && i < exprs_.size(); i++)
   {
     ret = exprs_[i]->fill_sql_expression(inter_expr, transformer, logical_plan, physical_plan);
     if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "Add parameters of system function failed, param %d", i + 1);
       break;
+    }
   }
-  if (ret == OB_SUCCESS)
-    ret = inter_expr.add_expr_item(item);
+  if (ret == OB_SUCCESS && (ret = inter_expr.add_expr_item(item)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "Add system function %.*s failed", func_name_.length(), func_name_.ptr());
+  }
   return ret;
 }
 
@@ -502,6 +772,8 @@ ObSqlRawExpr::ObSqlRawExpr()
   column_id_ = OB_INVALID_ID;
   is_apply_ = false;
   contain_aggr_ = false;
+  contain_alias_ = false;
+  is_columnlized_ = false;
   expr_ = NULL;
 }
 
@@ -513,6 +785,8 @@ ObSqlRawExpr::ObSqlRawExpr(
   column_id_ = column_id;
   is_apply_ = false;
   contain_aggr_ = false;
+  contain_alias_ = false;
+  is_columnlized_ = false;
   expr_ = expr;
 }
 
@@ -530,15 +804,17 @@ int ObSqlRawExpr::fill_sql_expression(
   }
 
   inter_expr.set_tid_cid(table_id_, column_id_);
-  expr_->fill_sql_expression(inter_expr, transformer, logical_plan, physical_plan);
-  inter_expr.add_expr_item_end();
+  if (ret == OB_SUCCESS)
+    ret = expr_->fill_sql_expression(inter_expr, transformer, logical_plan, physical_plan);
+  if (ret == OB_SUCCESS)
+    ret = inter_expr.add_expr_item_end();
   return ret;
 }
 
 void ObSqlRawExpr::print(FILE* fp, int32_t level, int32_t index) const
 {
   for(int i = 0; i < level; ++i) fprintf(fp, "    ");
-  fprintf(fp, "ObSqlRawExpr %d Begin\n", index);
+  fprintf(fp, "<ObSqlRawExpr %d Begin>\n", index);
   for(int i = 0; i < level; ++i) fprintf(fp, "    ");
   fprintf(fp, "expr_id = %lu\n", expr_id_);
   for(int i = 0; i < level; ++i) fprintf(fp, "    ");
@@ -548,6 +824,5 @@ void ObSqlRawExpr::print(FILE* fp, int32_t level, int32_t index) const
     fprintf(fp, "(table_id : column_id) = (%lu : %lu)\n", table_id_, column_id_);
   expr_->print(fp, level);
   for(int i = 0; i < level; ++i) fprintf(fp, "    ");
-  fprintf(fp, "ObSqlRawExpr %d End\n", index);
+  fprintf(fp, "<ObSqlRawExpr %d End>\n", index);
 }
-

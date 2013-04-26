@@ -46,7 +46,7 @@ int ObCommitLogReceiver::init(common::ObLogWriter *log_writer, common::ObBaseSer
 }
 
 int ObCommitLogReceiver::receive_log(const int32_t version, common::ObDataBuffer& in_buff,
-    tbnet::Connection* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
 {
   int ret = OB_SUCCESS;
 
@@ -73,7 +73,7 @@ int ObCommitLogReceiver::receive_log(const int32_t version, common::ObDataBuffer
 
   if (OB_SUCCESS == ret)
   {
-    ret = end_receiving_log(version, conn, channel_id, out_buff);
+    ret = end_receiving_log(version, req, channel_id, out_buff);
     if (OB_SUCCESS != ret)
     {
       TBSYS_LOG(ERROR, "flush log error, ret=%d", ret);
@@ -241,7 +241,7 @@ int ObCommitLogReceiver::start_receiving_log()
   return ret;
 }
 
-int ObCommitLogReceiver::end_receiving_log(const int32_t version, tbnet::Connection* conn, const int32_t channel_id, common::ObDataBuffer& out_buff)
+int ObCommitLogReceiver::end_receiving_log(const int32_t version, easy_request_t* req, const int32_t channel_id, common::ObDataBuffer& out_buff)
 {
   int ret = OB_SUCCESS;
 
@@ -261,7 +261,7 @@ int ObCommitLogReceiver::end_receiving_log(const int32_t version, tbnet::Connect
     }
     else
     {
-      ret = base_server_->send_response(OB_SEND_LOG_RES, version, out_buff, conn, channel_id);
+      ret = base_server_->send_response(OB_SEND_LOG_RES, version, out_buff, req, channel_id);
       if (OB_SUCCESS != ret)
       {
         TBSYS_LOG(WARN, "send_response error, ret=%d", ret);

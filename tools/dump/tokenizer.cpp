@@ -90,6 +90,45 @@ void Tokenizer::tokenize(const std::string &str, char delima, int &token_nr, Tok
   token_nr = token;
 }
 
+void Tokenizer::tokenize_gbk(Slice &slice, char delima, int &token_nr, TokenInfo *tokens)
+{
+  size_t pos = 0;
+  int token = 0;
+  const char *ptoken = NULL;
+  const char *data = slice.data();
+
+  if (!token_nr || !tokens) {
+    token_nr = 0;
+    return;
+  }
+
+  size_t dlen = slice.size();
+  while (pos < dlen && token < token_nr) {
+    ptoken = data + pos;
+
+    while(true) {
+      if (pos >= dlen) break;
+      if (data[pos] == '\n') break;
+      if (data[pos] == '\0') break;
+
+      if (static_cast<unsigned char>(data[pos]) >= 128u) { //判断是否是gbk中文字符的前一个编码，如果是，则跳过下一个编码
+        pos ++;
+      }
+      else if (data[pos] == delima) {
+        break;
+      }
+      pos ++;
+    }
+
+    tokens[token].token = ptoken;
+    tokens[token].len = data + pos - ptoken;
+    token++;
+    pos++;
+  }
+
+  token_nr = token;
+}
+
 void Tokenizer::tokenize(Slice &slice, char delima, int &token_nr, TokenInfo *tokens)
 {
   size_t pos = 0;

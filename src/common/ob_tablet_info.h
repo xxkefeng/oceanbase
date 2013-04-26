@@ -15,10 +15,10 @@
 
 #include <tblog.h>
 #include "ob_define.h"
-#include "ob_range.h"
 #include "ob_server.h"
 #include "ob_array_helper.h"
 #include "page_arena.h"
+#include "ob_range2.h"
 
 namespace oceanbase 
 { 
@@ -47,23 +47,36 @@ namespace oceanbase
     
     struct ObTabletInfo 
     {
-      ObRange range_;
+      ObNewRange range_;
       int64_t row_count_;
       int64_t occupy_size_;
       uint64_t crc_sum_;
 
       ObTabletInfo() 
         : range_(), row_count_(0), occupy_size_(0), crc_sum_(0) {}
-      ObTabletInfo(const ObRange& r, const int32_t rc, const int32_t sz, const uint64_t crc_sum = 0)
+      ObTabletInfo(const ObNewRange& r, const int32_t rc, const int32_t sz, const uint64_t crc_sum = 0)
         : range_(r), row_count_(rc), occupy_size_(sz), crc_sum_(crc_sum) {}
 
       inline bool equal(const ObTabletInfo& tablet) const 
       {
         return range_.equal(tablet.range_);
       }
-      int deep_copy(common::CharArena &allocator, const ObTabletInfo &other, bool new_start_key, bool new_end_key);
+      template <typename Allocator>
+      int deep_copy(Allocator &allocator, const ObTabletInfo &other);
       NEED_SERIALIZE_AND_DESERIALIZE;
     };
+
+    template <typename Allocator>
+    inline int ObTabletInfo::deep_copy(Allocator &allocator, const ObTabletInfo &other)
+    {
+      int ret = OB_SUCCESS;
+      this->row_count_ = other.row_count_;
+      this->occupy_size_ = other.occupy_size_;
+      this->crc_sum_ = other.crc_sum_;
+      
+      ret = deep_copy_range(allocator, other.range_, this->range_);
+      return ret;
+    }
 
     struct ObTabletReportInfo
     {
@@ -78,6 +91,7 @@ namespace oceanbase
     {
       ObTabletReportInfo tablets_[OB_MAX_TABLET_LIST_NUMBER];
       ObArrayHelper<ObTabletReportInfo> tablet_list_;
+      CharArena allocator_;
 
       ObTabletReportInfoList()
       {
@@ -161,6 +175,72 @@ namespace oceanbase
 
       inline int64_t get_tablet_size() const { return tablet_list.get_array_index(); }
       inline const ObTabletInfo* const get_tablet() const { return tablets; }
+
+      NEED_SERIALIZE_AND_DESERIALIZE;
+    };
+
+    struct ObTableImportInfoList
+    {
+      uint64_t tables_[OB_MAX_TABLE_NUMBER];
+      ObArrayHelper<uint64_t> table_list_;
+      int64_t tablet_version_;
+      bool import_all_;
+      bool response_rootserver_;
+      bool is_sorted_;
+
+      ObTableImportInfoList()
+      {
+        reset();
+      }
+
+      void reset()
+      {
+        table_list_.init(OB_MAX_TABLE_NUMBER, tables_);
+        tablet_version_ = 0;
+        import_all_ = true;
+        response_rootserver_ = true;
+        is_sorted_ = false;
+      }
+
+      inline int add_table(const uint64_t& table_id)
+      {
+        int ret = OB_SUCCESS;
+
+        if (!table_list_.push_back(table_id))
+          ret = OB_ARRAY_OUT_OF_RANGE;
+
+        return ret;
+      }
+
+      inline void sort()
+      {
+        if (!is_sorted_ && table_list_.get_array_index() > 0)
+        {
+          std::sort(tables_, tables_ + table_list_.get_array_index());
+          is_sorted_ = true;
+        }
+      }
+
+      inline bool is_table_exist(const uint64_t table_id) const
+      {
+        bool bret = false;
+        int64_t size = table_list_.get_array_index();
+
+        if (import_all_)
+        {
+          bret = true;
+        }
+        else if (is_sorted_ && size > 0)
+        {
+          bret = std::binary_search(tables_, tables_ + size, table_id);
+        }
+
+        return bret;
+      }
+
+      inline int64_t get_table_size() const { return table_list_.get_array_index(); }
+      inline const uint64_t* const get_table() const { return tables_; }
+      int64_t to_string(char* buffer, const int64_t length) const;
 
       NEED_SERIALIZE_AND_DESERIALIZE;
     };

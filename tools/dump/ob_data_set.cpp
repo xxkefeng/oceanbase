@@ -28,8 +28,8 @@ int ObDataSet::get_record(DbRecord *&recp)
 
 /* (start_key, end_key] */
 int ObDataSet::set_data_source(const std::string table,
-                    const std::vector<std::string> &cols, const ObString &start_key, 
-                    const ObString &end_key, int64_t version)
+                    const std::vector<std::string> &cols, const ObRowkey &start_key, 
+                    const ObRowkey &end_key, int64_t version)
 {
   version_ = version;
   start_key_ = start_key;
@@ -83,8 +83,8 @@ int ObDataSet::set_data_source(const std::string table,
 
 /* (start_key, end_key] */
 int ObDataSet::set_data_source(const TabletInfo &info, const std::string table,
-                    const std::vector<std::string> &cols, const ObString &start_key, 
-                    const ObString &end_key, int64_t version)
+                    const std::vector<std::string> &cols, const ObRowkey &start_key, 
+                    const ObRowkey &end_key, int64_t version)
 {
   int ret = set_data_source(table, cols, start_key, end_key, version);
   
@@ -120,36 +120,39 @@ int ObDataSet::next()
   return ret;
 }
 
-int ObDataSet::read_more(const ObString &start_key, const ObString &end_key, int64_t version)
+int ObDataSet::read_more(const ObRowkey &start_key, const ObRowkey &end_key, int64_t version)
 {
-#if 1
   {
     char start_buff[128];
     char end_buf[128];
 
-    int len = hex_to_str(start_key.ptr(), start_key.length(), start_buff, 128);
-    start_buff[2 * len] = 0;
-    len = hex_to_str(end_key.ptr(), end_key.length(), end_buf, 128);
-    end_buf[2 * len] = 0;
+    int len = start_key.to_string(start_buff, 128);
+    start_buff[len] = 0;
+    len = end_key.to_string(end_buf, 128);
+    end_buf[len] = 0;
 
-    TBSYS_LOG(DEBUG, "reading range--(%s:%s]", start_buff, end_buf);
+    TBSYS_LOG(INFO, "reading range--(%s:%s]", start_buff, end_buf);
   }
-#endif
+
   int ret = OB_SUCCESS;
   if (has_tablet_info_) {
-    ret = db_->scan(tablet_info_, table_, columns_, start_key, end_key, ds_, version, inclusive_start_);
+    ret = db_->scan(tablet_info_, table_, columns_, start_key, end_key, ds_, version, inclusive_start_, true);
   } else {
-    ret = db_->scan(table_, columns_, start_key, end_key, ds_, version, inclusive_start_);
+    ret = db_->scan(table_, columns_, start_key, end_key, ds_, version, inclusive_start_, true);
   }
 
   if (ret == OB_SUCCESS) {
-    fullfilled_ = ds_.has_more_data();
-
-    TBSYS_LOG(DEBUG, "fullfilled_ = %d", fullfilled_);
-    if (fullfilled_ == false) {
+    if (ds_.empty()) {
+      fullfilled_ = true;
+    } else {
       ret = ds_.get_last_rowkey(last_end_key_);
       if (ret != OB_SUCCESS) {
         TBSYS_LOG(WARN, "can't get last_end_key");
+      }
+      if (last_end_key_ != end_key_) {
+        fullfilled_ = false;
+      } else {
+        fullfilled_ = true;
       }
     }
   } else {

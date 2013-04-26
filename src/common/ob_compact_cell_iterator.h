@@ -34,10 +34,15 @@ namespace oceanbase
       public:
         ObCompactCellIterator();
         virtual ~ObCompactCellIterator() { }
-        
+
       public:
         int init(const char *buf, enum ObCompactStoreType store_type = SPARSE);
         int init(const ObString &buf, enum ObCompactStoreType store_type = SPARSE);
+
+        int get_next_cell(ObObj& value, uint64_t& column_id,
+            bool& is_row_finished);
+
+        int get_next_cell(ObObj& value, bool& is_row_finished);
 
         /*
          * 移动到下一个cell
@@ -51,19 +56,21 @@ namespace oceanbase
          * @param is_row_finished 是否到了一行的结束。到一行结束返回一个特殊的ObObj - OP_END_ROW
          * @param row             行结束时返回这一行的紧凑格式的内存区域
          */
-        int get_cell(uint64_t &column_id, const ObObj *&value, bool *is_row_finished = NULL, ObString *row = NULL);
+        int get_cell(uint64_t &column_id, const ObObj *&value,
+            bool *is_row_finished = NULL, ObString *row = NULL);
 
         /*
          * 用于稠密格式读取cell
          * 在带有column_id的稀疏格式读取数据使用此函数会出错
          */
-        int get_cell(const ObObj *&value, bool *is_row_finished = NULL, ObString *row = NULL);
-
+        int get_cell(const ObObj *&value, bool *is_row_finished = NULL,
+            ObString *row = NULL);
 
         /*
          * 因为效率问题，此函数过期
          */
-        int get_cell(uint64_t &column_id, ObObj &value, bool *is_row_finished = NULL, ObString *row = NULL); // 过期
+        int get_cell(uint64_t &column_id, ObObj &value,
+            bool *is_row_finished = NULL, ObString *row = NULL);
 
         void reset_iter();
         inline int64_t parsed_size();

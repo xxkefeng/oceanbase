@@ -6,7 +6,7 @@
 #include "common/utility.h"
 #include "sql/parse_node.h"
 #include "sql/build_plan.h"
-#include "sql/ob_multi_plan.h"
+#include "sql/ob_multi_logic_plan.h"
 #include "sql/ob_schema_checker.h"
 
 using namespace oceanbase;
@@ -15,7 +15,6 @@ using namespace oceanbase::sql;
 
 const char* STR_SQL_TEST = "SQL_TEST";
 const char* STR_SQL_FILE = "sql_file.sql";
-const int64_t OB_MAX_SQL_LENGTH = 65536;
 
 
 // NOTE about sql_file.sql
@@ -120,7 +119,7 @@ int32_t runSqlTestFile(const char* pFileName)
     resultPlan.plan_tree_ = NULL;
     if (resolve(&resultPlan, result.result_tree_) == OB_SUCCESS)
     {
-      ObMultiPlan* pMultiPlan = static_cast<ObMultiPlan*>(resultPlan.plan_tree_);
+      ObMultiLogicPlan* pMultiPlan = static_cast<ObMultiLogicPlan*>(resultPlan.plan_tree_);
       pMultiPlan->print();
     }
     else
@@ -129,14 +128,14 @@ int32_t runSqlTestFile(const char* pFileName)
       fprintf(stderr, "Resolve error!\n");
     }
     destroy_plan(&resultPlan);
-    
+
     if (result.result_tree_)
     {
       destroy_tree(result.result_tree_);
       result.result_tree_ = NULL;
     }
   }
-  
+
 errExit:
   if (sqlFd)
     fclose(sqlFd);
@@ -260,7 +259,7 @@ int32_t cmpSqlResults(const char* pFileName)
       }
     }
   }
-  
+
 errExit:
   if (sqlFd)
     fclose(sqlFd);
@@ -288,4 +287,3 @@ int main(int argc, char **argv)
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
-

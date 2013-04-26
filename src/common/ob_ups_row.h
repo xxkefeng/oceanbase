@@ -14,22 +14,33 @@ namespace oceanbase
         ObUpsRow();
         virtual ~ObUpsRow();
 
-        int assign_to(ObRow &other) const;
-        void set_delete_row(bool delete_row);
-        bool is_delete_row() const;
+        virtual int reset();
+        virtual void set_is_delete_row(bool is_delete_row);
+        virtual bool get_is_delete_row() const;
+
+        int reuse();
+        bool get_is_all_nop() const;
+        void set_is_all_nop(bool is_all_nop);
         
       private:
         bool is_delete_row_;
+        bool is_all_nop_;
     };
 
-    inline void ObUpsRow::set_delete_row(bool delete_row)
+    inline void ObUpsRow::set_is_all_nop(bool is_all_nop)
     {
-      is_delete_row_ = delete_row;
+      is_all_nop_ = is_all_nop;
     }
 
-    inline bool ObUpsRow::is_delete_row() const
+    inline bool ObUpsRow::get_is_all_nop() const
     {
-      return is_delete_row_;
+      return is_all_nop_;
+    }
+
+    inline int ObUpsRow::reuse()
+    {
+      set_is_delete_row(false);
+      return reset();
     }
   }
 }

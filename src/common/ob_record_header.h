@@ -19,6 +19,7 @@
 #include "ob_define.h"
 #include "serialization.h"
 #include "ob_crc64.h"
+#include "utility.h"
 
 namespace oceanbase 
 {
@@ -57,6 +58,17 @@ namespace oceanbase
       int32_t data_zlength_;   // length after compress, if without compresssion 
                                // data_length_= data_zlength_
       int64_t data_checksum_;  // record checksum
+      ObRecordHeader();
+
+      int64_t to_string(char* buf, const int64_t buf_len) const
+      {
+        int64_t pos = 0;
+        databuff_printf(buf, buf_len, pos, "[RecordHeader] magic=%hd header_length=%hd version=%hd "
+                        "header_checksum=%hd reserved=%ld data_length=%d data_zlength=%d",
+                        magic_, header_length_, version_,
+                        header_checksum_, reserved_, data_length_, data_zlength_);
+        return pos;
+      }
       
       /**
        * sert magic number of record header
@@ -66,6 +78,10 @@ namespace oceanbase
       inline void set_magic_num(const int16_t magic = MAGIC_NUMER)
       {
         magic_ = magic;
+      }
+      int64_t get_reserved()
+      {
+        return reserved_;
       }
 
       /**

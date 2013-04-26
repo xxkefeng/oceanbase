@@ -28,6 +28,19 @@ ObAggregateFunction::~ObAggregateFunction()
   destroy();
 }
 
+void ObAggregateFunction::reset()
+{
+  aggr_columns_ = NULL;
+  row_desc_.reset();
+  curr_row_.reset(false, ObRow::DEFAULT_NULL);
+  varchar_buffs_count_ = 0;
+  row_store_.reuse();
+  dedup_row_desc_.reset();
+  for (int64_t i = 0; i < OB_ROW_MAX_COLUMNS_COUNT; i++)
+    dedup_sets_[i].clear();
+  did_int_div_as_double_ = 0;
+}
+
 int ObAggregateFunction::init(const ObRowDesc &input_row_desc, common::ObArray<ObSqlExpression> &aggr_columns)
 {
   int ret = OB_SUCCESS;
@@ -38,7 +51,7 @@ int ObAggregateFunction::init(const ObRowDesc &input_row_desc, common::ObArray<O
   // add aggr columns
   for (int64_t i = 0; i < aggr_columns_->count(); ++i)
   {
-    const ObSqlExpression &cexpr = aggr_columns_->at(i);
+    const ObSqlExpression &cexpr = aggr_columns_->at(static_cast<int32_t>(i));
     if (OB_SUCCESS != (ret = row_desc_.add_column_desc(cexpr.get_table_id(),
                                                        cexpr.get_column_id())))
     {
@@ -46,8 +59,19 @@ int ObAggregateFunction::init(const ObRowDesc &input_row_desc, common::ObArray<O
       break;
     }
   } // end for
-  curr_row_.set_row_desc(row_desc_);
-  ret = init_dedup_sets();
+
+  if (OB_SUCCESS == ret)
+  {
+    curr_row_.set_row_desc(row_desc_);
+    if (OB_SUCCESS != (ret = curr_row_.reset(false, ObRow::DEFAULT_NULL)))
+    {
+      TBSYS_LOG(WARN, "fail to reset curr_row_:ret[%d]", ret);
+    }
+    else if (OB_SUCCESS != (ret = init_dedup_sets()))
+    {
+      TBSYS_LOG(WARN, "fail to init_dedup_sets:ret[%d]", ret);
+    }
+  }
   return ret;
 }
 
@@ -62,6 +86,7 @@ void ObAggregateFunction::destroy()
   varchar_buffs_count_ = 0;
   row_desc_.reset();
   aggr_columns_ = NULL;
+  curr_row_.reset(false, ObRow::DEFAULT_NULL);
   destroy_dedup_sets();
 }
 
@@ -206,7 +231,7 @@ int ObAggregateFunction::prepare(const ObRow &input_row)
   bool has_distinct = false;
   for (int64_t i = 0; OB_SUCCESS == ret && i < aggr_columns_->count(); ++i)
   {
-    ObSqlExpression &cexpr = aggr_columns_->at(i);
+    ObSqlExpression &cexpr = aggr_columns_->at(static_cast<int32_t>(i));
     tid = cexpr.get_table_id();
     cid = cexpr.get_column_id();
     if (OB_SUCCESS != (ret = cexpr.get_aggr_column(aggr_fun, is_distinct)))
@@ -324,7 +349,7 @@ int ObAggregateFunction::process(const ObRow &input_row)
     for (int64_t i = 0; OB_SUCCESS == ret && i < aggr_columns_->count(); ++i)
     {
       // for each distinct aggr column
-      ObSqlExpression &cexpr = aggr_columns_->at(i);
+      ObSqlExpression &cexpr = aggr_columns_->at(static_cast<int32_t>(i));
       tid = cexpr.get_table_id();
       cid = cexpr.get_column_id();
       if (OB_SUCCESS != (ret = cexpr.get_aggr_column(aggr_fun, is_distinct)))
@@ -341,7 +366,7 @@ int ObAggregateFunction::process(const ObRow &input_row)
         {
           TBSYS_LOG(WARN, "failed to set row cell, err=%d tid=%lu cid=%lu", ret, tid, cid);
         }
-        else if (hash::HASH_EXIST == (ret = dedup_sets_[i].exist(input_cell)))
+        else if (hash::HASH_EXIST == (ret = dedup_sets_[dedup_cell_idx].exist(input_cell)))
         {
           is_qualified[dedup_cell_idx++] = false;
           ret = OB_SUCCESS;
@@ -351,6 +376,11 @@ int ObAggregateFunction::process(const ObRow &input_row)
           is_qualified[dedup_cell_idx++] = true;
           ret = OB_SUCCESS;
           has_qualified = true;
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "unexpected branch, hash_ret=%d", ret);
+          ret = OB_ERR_UNEXPECTED;
         }
       }
     } // end for
@@ -386,7 +416,7 @@ int ObAggregateFunction::process(const ObRow &input_row)
   int64_t dedup_cell_idx = 0;
   for (int64_t i = 0; OB_SUCCESS == ret && i < aggr_columns_->count(); ++i)
   {
-    ObSqlExpression &cexpr = aggr_columns_->at(i);
+    ObSqlExpression &cexpr = aggr_columns_->at(static_cast<int32_t>(i));
     tid = cexpr.get_table_id();
     cid = cexpr.get_column_id();
     if (OB_SUCCESS != (ret = cexpr.get_aggr_column(aggr_fun, is_distinct)))
@@ -414,11 +444,8 @@ int ObAggregateFunction::process(const ObRow &input_row)
         {
           TBSYS_LOG(WARN, "failed to calculate aggr cell, err=%d", ret);
         }
-        else
-        {
-          ++dedup_cell_idx;
-        }
       }
+      ++dedup_cell_idx;
     }
     else
     {
@@ -483,7 +510,7 @@ int ObAggregateFunction::calc_aggr_cell(const ObItemType aggr_fun, const ObObj &
     ObExprObj one;
     ObExprObj result;
     one.set_int(1);
-    ret = res2.add(one, result);
+    ret = res2.add(one, result); // count++
     if (OB_SUCCESS == ret)
     {
       res2 = result;
@@ -502,6 +529,15 @@ int ObAggregateFunction::calc_aggr_cell(const ObItemType aggr_fun, const ObObj &
           {
             ret = clone_expr_cell(oprand_clone, res1);
           }
+          else if (result.is_null())
+          {
+            // MAX(10, NULL, 20) = 10
+            // @ref mysql_test/r/group_min_max.test
+            if (res1.is_null() && !oprand_clone.is_null())
+            {
+              ret = clone_expr_cell(oprand_clone, res1);
+            }
+          }
           break;
         case T_FUN_MIN:
           oprand_clone.lt(res1, result);
@@ -509,19 +545,30 @@ int ObAggregateFunction::calc_aggr_cell(const ObItemType aggr_fun, const ObObj &
           {
             ret = clone_expr_cell(oprand_clone, res1);
           }
-          break;
-        case T_FUN_SUM:
-          ret = res1.add(oprand_clone, result);
-          if (OB_SUCCESS == ret)
+          else if (result.is_null())
           {
-            res1 = result;
+            // MIN(10, NULL, 20) = 10
+            // @ref mysql_test/r/group_min_max.test
+            if (res1.is_null() && !oprand_clone.is_null())
+            {
+              ret = clone_expr_cell(oprand_clone, res1);
+            }
           }
           break;
+        case T_FUN_SUM:
         case T_FUN_AVG:
-          ret = res1.add(oprand_clone, result);
-          if (OB_SUCCESS == ret)
+          if (res1.is_null())
           {
-            res1 = result;
+            // the first non-NULL cell
+            ret = clone_expr_cell(oprand_clone, res1);
+          }
+          else
+          {
+            ret = res1.add(oprand_clone, result);
+            if (OB_SUCCESS == ret)
+            {
+              res1 = result;
+            }
           }
           break;
         default:
@@ -544,7 +591,7 @@ int ObAggregateFunction::get_result(const ObRow *&row)
   ObExprObj result;
   for (int64_t i = 0; OB_SUCCESS == ret && i < aggr_columns_->count(); ++i)
   {
-    const ObSqlExpression &cexpr = aggr_columns_->at(i);
+    const ObSqlExpression &cexpr = aggr_columns_->at(static_cast<int32_t>(i));
     ObItemType aggr_fun;
     bool is_distinct = false;
     if (OB_SUCCESS != (ret = cexpr.get_aggr_column(aggr_fun, is_distinct)))
@@ -617,9 +664,10 @@ int ObAggregateFunction::init_dedup_sets()
   uint64_t cid = OB_INVALID_ID;
   ObItemType aggr_fun;
   bool is_distinct = false;
+  int64_t dedup_cell_idx = 0;
   for (int64_t i = 0; OB_SUCCESS == ret && i < aggr_columns_->count(); ++i)
   {
-    ObSqlExpression &cexpr = aggr_columns_->at(i);
+    ObSqlExpression &cexpr = aggr_columns_->at(static_cast<int32_t>(i));
     tid = cexpr.get_table_id();
     cid = cexpr.get_column_id();
     if (OB_SUCCESS != (ret = cexpr.get_aggr_column(aggr_fun, is_distinct)))
@@ -642,9 +690,14 @@ int ObAggregateFunction::init_dedup_sets()
       {
         TBSYS_LOG(WARN, "failed to add column desc, err=%d", ret);
       }
-      else if (OB_SUCCESS != (ret = dedup_sets_[i].create(DEDUP_HASH_SET_SIZE)))
+      else if (OB_SUCCESS != (ret = dedup_sets_[dedup_cell_idx++].create(DEDUP_HASH_SET_SIZE)))
       {
         TBSYS_LOG(WARN, "failed to create hash set, err=%d", ret);
+      }
+      else
+      {
+        TBSYS_LOG(DEBUG, "create dedup set, i=%ld dedup_cell_idx=%ld tid=%lu cid=%lu",
+                  i, dedup_cell_idx, tid, cid);
       }
     }
   } // end for
@@ -662,4 +715,50 @@ void ObAggregateFunction::destroy_dedup_sets()
     }
   }
   dedup_row_desc_.reset();
+}
+
+int ObAggregateFunction::get_result_for_empty_set(const ObRow *&row)
+{
+  int ret = OB_SUCCESS;
+  // 1. set all cells as null
+  ObObj null_cell;
+  for (int64_t i = 0; OB_SUCCESS == ret && i < curr_row_.get_column_num(); ++i)
+  {
+    if (OB_SUCCESS != (ret = curr_row_.raw_set_cell(i, null_cell)))
+    {
+      TBSYS_LOG(WARN, "failed to set cell, err=%d", ret);
+    }
+  } // end for
+
+  // 2. init COUNT cell as 0
+  OB_ASSERT(aggr_columns_);
+  ObItemType aggr_fun;
+  bool is_distinct = false;
+  uint64_t tid = OB_INVALID_ID;
+  uint64_t cid = OB_INVALID_ID;
+  ObObj zero_cell;
+  zero_cell.set_int(0);
+  for (int64_t i = 0; OB_SUCCESS == ret && i < aggr_columns_->count(); ++i)
+  {
+    ObSqlExpression &cexpr = aggr_columns_->at(static_cast<int32_t>(i));
+    tid = cexpr.get_table_id();
+    cid = cexpr.get_column_id();
+    if (OB_SUCCESS != (ret = cexpr.get_aggr_column(aggr_fun, is_distinct)))
+    {
+      TBSYS_LOG(WARN, "failed to get aggr column, err=%d", ret);
+    }
+    else if (T_FUN_COUNT == aggr_fun)
+    {
+      if (OB_SUCCESS != (ret = curr_row_.set_cell(tid, cid, zero_cell)))
+      {
+        TBSYS_LOG(WARN, "failed to set cell, err=%d", ret);
+      }
+    }
+  } // end for
+
+  if (OB_SUCCESS == ret)
+  {
+    row = &curr_row_;
+  }
+  return ret;
 }

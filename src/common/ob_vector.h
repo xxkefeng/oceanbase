@@ -109,6 +109,7 @@ namespace oceanbase
           int push_back(const_value_type value);
           int insert(iterator pos, const_value_type value);
           int remove(iterator pos);
+          int remove(iterator start_pos, iterator end_pos);
           int remove_if(const_value_type value);
           template <typename ValueType, typename Predicate>
             int remove_if(const ValueType& value, Predicate predicate);
@@ -202,6 +203,8 @@ namespace oceanbase
             int remove_if(const ValueType& value, Compare comapre, Equal equal);
           template <typename ValueType, typename Compare, typename Equal>
             int remove_if(const ValueType& value, Compare comapre, Equal equal, value_type & removed_value);
+
+          int remove(iterator start_pos, iterator end_pos);
 
         private:
           ObVector<T, Allocator> vector_;

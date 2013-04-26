@@ -330,9 +330,9 @@ TEST(ObTabletLocationRangeIterator, range_intersect)
 
 }
 
-TEST(ObMergerTabletLocationList, serailize)
+TEST(ObTabletLocationList, serailize)
 {
-  ObMergerTabletLocationList list;
+  ObTabletLocationList list;
  
   ObServer chunkserver(ObServer::IPV4, "10.232.36.33", 7077);
   ObTabletLocation location(1, chunkserver);
@@ -365,7 +365,7 @@ TEST(ObMergerTabletLocationList, serailize)
   int64_t data_len = pos;
   pos = 0;
 
-  ObMergerTabletLocationList list2;
+  ObTabletLocationList list2;
   ret = list2.deserialize(buf, data_len, pos);
   EXPECT_EQ(ret, 0);
 
@@ -435,7 +435,7 @@ TEST(ObChunkServerTaskDispatcher, select_cs)
 
 TEST(ObTabletLocationIterator, next)
 {
-  ObMergerTabletLocationCache location_cache;
+  ObTabletLocationCache location_cache;
 
   location_cache.init(1024 * 1024 * 8, 100, 2000);
  
@@ -454,7 +454,7 @@ TEST(ObTabletLocationIterator, next)
   range.border_flag_.set_inclusive_end();
   range.border_flag_.set_min_value();
   
-  ObMergerTabletLocationList list1;
+  ObTabletLocationList list1;
   list1.set_tablet_range(range);
   list1.add(location);
   location_cache.set(range, list1);
@@ -468,7 +468,7 @@ TEST(ObTabletLocationIterator, next)
   range.border_flag_.unset_min_value();
 
 
-  ObMergerTabletLocationList list2;
+  ObTabletLocationList list2;
   list2.set_tablet_range(range);
   list2.add(location);
   location_cache.set(range, list2);
@@ -480,7 +480,7 @@ TEST(ObTabletLocationIterator, next)
   range.border_flag_.unset_inclusive_start();
   range.border_flag_.set_inclusive_end();
 
-  ObMergerTabletLocationList list3;
+  ObTabletLocationList list3;
   list3.set_tablet_range(range);
   list3.add(location);
   location_cache.set(range, list3);
@@ -493,7 +493,7 @@ TEST(ObTabletLocationIterator, next)
   range.border_flag_.unset_inclusive_end();
   range.border_flag_.set_max_value();
 
-  ObMergerTabletLocationList list4;
+  ObTabletLocationList list4;
   list4.set_tablet_range(range);
   list4.add(location);
   location_cache.set(range, list4);
@@ -847,12 +847,12 @@ TEST(ObTabletLocationIterator, next)
 
 TEST(ObChunkServerTaskDispatcher, get_tablet_locations)
 {
-  ObMergerTabletLocationCache location_cache;
+  ObTabletLocationCache location_cache;
 
 
   location_cache.init(1024 * 1024 * 8, 100, 2000);
 
-  ObMergerTabletLocationList list;
+  ObTabletLocationList list;
  
   ObServer chunkserver(ObServer::IPV4, "10.232.36.33", 7077);
   ObTabletLocation location(1, chunkserver);

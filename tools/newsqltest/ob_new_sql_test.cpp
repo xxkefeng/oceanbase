@@ -15,6 +15,10 @@
  */
 #include <mysql/mysql.h>
 #include <gtest/gtest.h>
+#include <sys/time.h>
+const char* HOST = "127.0.0.1";
+int PORT = 3306;
+
 class ObNewSqlTest: public ::testing::Test
 {
   public:
@@ -48,7 +52,8 @@ ObNewSqlTest::~ObNewSqlTest()
 void ObNewSqlTest::SetUp()
 {
   ASSERT_TRUE(NULL != mysql_init(&my_));
-  ASSERT_TRUE(NULL != mysql_real_connect(&my_, "127.0.0.1", "", "", "test", 0, NULL, 0));
+  fprintf(stderr, "Connecting server %s:%d...\n", HOST, PORT);
+  ASSERT_TRUE(NULL != mysql_real_connect(&my_, HOST, "admin", "admin", "test", PORT, NULL, 0));
   delete_table();
   create_table();
 }
@@ -121,6 +126,9 @@ void ObNewSqlTest::generate_data(int row_count)
   char stmt[1024];
   char row[1024];
   srand(0);
+  struct timeval tv_start;
+  struct timeval tv_end;
+  gettimeofday(&tv_start, NULL);
   for (int i = 0; i < row_count; ++i)
   {
     get_row(i, row, 1024);
@@ -131,12 +139,20 @@ void ObNewSqlTest::generate_data(int row_count)
     {
       fprintf(stderr, "%s\n", mysql_error(&my_));
     }
+    if (0 != i && i % 200 == 0)
+    {
+      fprintf(stderr, "insert %d rows\n", i);
+    }
   }
+  gettimeofday(&tv_end, NULL);
+  int64_t start_us = static_cast<int64_t>(tv_start.tv_sec)*1000*1000 + tv_start.tv_usec;
+  int64_t end_us = static_cast<int64_t>(tv_end.tv_sec)*1000*1000 + tv_end.tv_usec;
+  fprintf(stderr, "performance of insert rows: %ld (usec/row)\n", (end_us-start_us)/row_count);
 }
 
 void ObNewSqlTest::delete_table()
 {
-  int ret = mysql_query(&my_, "drop table ob_new_sql_test");
+  int ret = mysql_query(&my_, "drop table if exists ob_new_sql_test");
   if (0 != ret)
   {
     fprintf(stderr, "%s\n", mysql_error(&my_));
@@ -149,10 +165,16 @@ void ObNewSqlTest::TearDown()
   mysql_close(&my_);
 }
 
+static int ROW_COUNT = 4800;
+
 TEST_F(ObNewSqlTest, select_all)
 {
-  static const int ROW_COUNT = 5000;
+  fprintf(stderr, "row_count=%d\n", ROW_COUNT);
   generate_data(ROW_COUNT);
+
+  struct timeval tv_start;
+  struct timeval tv_end;
+  gettimeofday(&tv_start, NULL);
   ASSERT_EQ(0, mysql_query(&my_, "select * from ob_new_sql_test"));
   MYSQL_RES *res = mysql_use_result(&my_);
   ASSERT_TRUE(NULL != res);
@@ -190,16 +212,26 @@ TEST_F(ObNewSqlTest, select_all)
       }
     }
     ASSERT_STREQ(expected_row, text_row);
+    if (0 != i && i % 200 == 0)
+    {
+      fprintf(stderr, "fetch %d rows\n", i);
+    }
   }
   row = mysql_fetch_row(res);
   ASSERT_TRUE(NULL == row);
   mysql_free_result(res);
+  gettimeofday(&tv_end, NULL);
+  int64_t start_us = static_cast<int64_t>(tv_start.tv_sec)*1000*1000 + tv_start.tv_usec;
+  int64_t end_us = static_cast<int64_t>(tv_end.tv_sec)*1000*1000 + tv_end.tv_usec;
+  fprintf(stderr, "performance of table scan: %ld (usec/row)\n", (end_us-start_us)/ROW_COUNT);
 }
 
 TEST_F(ObNewSqlTest, comprehensive)
 {
-  static const int ROW_COUNT = 1200;
-  generate_data(ROW_COUNT);
+  int ROW_COUNT2 = ROW_COUNT;
+  ASSERT_EQ(0, ROW_COUNT2 % 12);
+  fprintf(stderr, "row_count=%d\n", ROW_COUNT2);
+  generate_data(ROW_COUNT2);
 
   int ret = mysql_query(&my_,
                         "SELECT DISTINCT c1, max(c5), count(c2), sum(c2+c3) "
@@ -244,7 +276,8 @@ TEST_F(ObNewSqlTest, comprehensive)
     lengths = mysql_fetch_lengths(res);
     ASSERT_TRUE(NULL != lengths);
     // c1
-    int j = ROW_COUNT / 12 - 1 - i;
+    int n = ROW_COUNT2 / 12;
+    int j = n - 1 - i;
     int expect = 6 + j * 12;
     int val = atoi(row[0]);
     ASSERT_TRUE(expect == val || expect + 1 == val || expect + 2 == val);  // because the sort operator for merge_groupby is not stable
@@ -281,6 +314,32 @@ int main(int argc, char **argv)
   {
     fprintf(stderr, "could not init mysql library\n");
     exit(1);
+  }
+  int ch = 0;
+  while (-1 != (ch = getopt(argc, argv, "H:P:N:")))
+  {
+    switch(ch)
+    {
+      case 'H':
+        HOST = optarg;
+        break;
+      case 'P':
+        PORT = atoi(optarg);
+        break;
+      case 'N':
+        ROW_COUNT = atoi(optarg);
+        ROW_COUNT = ROW_COUNT / 12 * 12;
+        if (ROW_COUNT <= 0)
+        {
+          ROW_COUNT = 1200;
+        }
+        break;
+      case '?':
+        fprintf(stderr, "option `%c' missing argument\n", optopt);
+        exit(0);
+      default:
+        break;
+    }
   }
   int ret = RUN_ALL_TESTS();
   mysql_library_end();

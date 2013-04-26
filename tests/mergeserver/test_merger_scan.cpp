@@ -57,12 +57,12 @@ const char * addr = "127.0.0.1";
   EXPECT_TRUE(OB_SUCCESS == rpc.init(&stub));    \
   ObLocationListCacheLoader *cache_loader = new ObLocationListCacheLoader();    \
   cache_loader->load(filename, "tablet_location_cache");    \
-  ObMergerTabletLocationCache cache;    \
+  ObTabletLocationCache cache;    \
   cache_loader->get_decoded_location_list_cache(cache);    \
   TBSYS_LOG(INFO, "+==============DUMP===============+");    \
   cache.dump();    \
   TBSYS_LOG(INFO, "+=============END DUMP============+");    \
-  ObMergerTabletLocationCache * location = &cache;    \
+  ObTabletLocationCache * location = &cache;    \
   ObScanParam scan_param;    \
   ObScanParam org_param;    \
   ObScanParamLoader *scan_param_loader = new ObScanParamLoader();    \

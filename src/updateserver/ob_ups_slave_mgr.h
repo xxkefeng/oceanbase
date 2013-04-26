@@ -16,7 +16,9 @@
 #define OCEANBASE_UPDATESERVER_OB_SLAVE_MGR_H_
 
 #include "common/ob_slave_mgr.h"
+#include "common/ob_client_wait_obj.h"
 #include "ob_ups_role_mgr.h"
+
 using namespace oceanbase::common;
 namespace oceanbase
 {
@@ -24,7 +26,14 @@ namespace oceanbase
   {
     class ObUpsSlaveMgr : private common::ObSlaveMgr
     {
+      struct SendLogReq
+      {
+        ObDLink* p_slave_node_;
+        common::ObClientWaitObj wait_obj_;
+      };
       public:
+        static const int32_t RPC_VERSION = 1;
+        static const int64_t MAX_SLAVE_NUM = 8;
         ObUpsSlaveMgr();
         virtual ~ObUpsSlaveMgr();
 
@@ -41,6 +50,9 @@ namespace oceanbase
         /// @retval OB_PARTIAL_FAILED 同步Slave过程中有失败
         /// @retval otherwise 其他错误
         int send_data(const char* data, const int64_t length);
+        int set_log_sync_timeout_us(const int64_t timeout);
+        int post_log_to_slave(const char* data, const int64_t length);
+        int wait_post_log_to_slave(const char* data, const int64_t length);
 
         int grant_keep_alive();
         int add_server(const ObServer &server);
@@ -50,7 +62,9 @@ namespace oceanbase
         int get_num() const;
         void print(char *buf, const int64_t buf_len, int64_t& pos);
       private:
+        int64_t n_slave_last_post_;
         ObUpsRoleMgr *role_mgr_;
+        SendLogReq reqs_[MAX_SLAVE_NUM];
     };
   } // end namespace common
 } // end namespace oceanbase

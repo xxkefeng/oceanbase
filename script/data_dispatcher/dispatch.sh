@@ -251,6 +251,7 @@ read_param_from_config_file()
 	TABLE_NAME=$(get_conf "$conf" "TABLE_NAME" "table_name")
 	TABLE_ID=$(get_conf "$conf" "TABLE_ID" "1001")
 	ROWKEY_SPLIT=$(get_conf "$conf" "ROWKEY_SPLIT" "3-8")
+	ROWKEY_DELIM_ASCII=$(get_conf "$conf" "ROWKEY_DELIM_ASCII" "")
 
 	#if user specify config file of app, read it
 	if [ "X$APP_CONFIG_FILE" != "X" ]; then
@@ -274,6 +275,9 @@ read_param_from_config_file()
 	LOG_DIR=$(get_conf "$conf" "LOG_DIR" "/home/admin/data_dispatcher/log/")
 	if [ "X$DATA_DAYS_AGO" == "X" ]; then
 		DATA_DAYS_AGO=$(get_conf "$conf" "DATA_DAYS_AGO" "0")
+	fi
+	if [ "X$ROWKEY_DELIM_ASCII" == "X" ]; then
+		ROWKEY_DELIM_ASCII=$(get_conf "$conf" "ROWKEY_DELIM_ASCII" "1")
 	fi
 	RM_DAYS_AGO=$(get_conf "$conf" "RM_DAYS_AGO" "3")
 
@@ -595,7 +599,7 @@ mr_generate_sstable()
 build_range_file()
 {
 	mlog "INFO: start build rowkey range file" $LOG_FILE
-	if [ -f $RANGE_FILE ]; then
+	if [ -s $RANGE_FILE ]; then
 		mlog "INFO: $RANGE_FILE is existent, needn't build again" $LOG_FILE
 		echo "INFO: $RANGE_FILE is existent, needn't build again"
 		return 0
@@ -628,7 +632,7 @@ build_range_file()
 		errorlog "ERROR: $cs_admin_file isn't existent"
 		exit 2
 	fi
-	$cs_admin_file -s $ROOTSERVER_IP -p $ROOTSERVER_PORT -q -i "scan_root_table $TABLE_NAME $TABLE_ID $ROWKEY_SPLIT $APP_NAME $LOCAL_TABLE_DIR"
+	$cs_admin_file -s $ROOTSERVER_IP -p $ROOTSERVER_PORT -q -i "scan_root_table $TABLE_NAME $TABLE_ID $ROWKEY_SPLIT $APP_NAME $LOCAL_TABLE_DIR $ROWKEY_DELIM_ASCII"
 	if [ "X$?" != "X0" ]; then
 		errorlog "ERROR: failed to build rowkey range file $RANGE_FILE"
 		exit 2
@@ -672,6 +676,8 @@ build_dispatch_map()
 	declare prev_file_prefix
 	declare name_part
 	declare file
+	declare old_ifs=$IFS
+	export IFS=' '
 	while read -a array; do
 		if [ $org_file_index -lt ${#ORG_FILES[@]} ]; then
 			file=${ORG_FILES[$org_file_index]#${HADOOP_DATA_DIR}}
@@ -714,6 +720,7 @@ build_dispatch_map()
 		fi
 		disp_file_index=$((disp_file_index+1))
 	done < $RANGE_FILE
+	export IFS=$old_ifs
 	
 	if [ $org_file_index -ne ${#ORG_FILES[@]} ]; then
 		errorlog "ERROR: wrong files count, actual_files_count=$org_file_index, expected_files_count=${#ORG_FILES[@]}"
@@ -807,7 +814,7 @@ copy_data_from_hadoop()
 			files_count=$((files_count+1))
 		fi
 
-		if [ $files_count -ge 4 ]; then
+		if [ $files_count -ge 2 ]; then
 			for ((j=0;j<$files_count;j++))
 			do
 				num=${files_index[$j]}
@@ -1105,6 +1112,51 @@ scp_data_to_cs()
 	infolog "INFO: finish scp file to chunk server, succ_count=$SCP_FILE_SUCC_COUNT, failed_count=$SCP_FILE_FAIL_COUNT"
 }
 
+#clear up import directory in each chunkserver
+cleanup_cs_import_dir()
+{
+	# range file line format:
+	#   1999^A-1 1001-000000 00000000000007CFFFFFFFFFFFFFFFFF 10.232.36.39 10.232.36.38
+	#     1999^A-1  rowkey column separate by special delimeter, ex: \1
+	#     1001-000001 table id and tablet range number
+	#     00000000000007CFFFFFFFFFFFFFFFFF binary rowkey for hex format
+	#     10.232.36.39  the first chunkserver ip
+	#     10.232.36.38  the second chunkserver ip
+	#     ...           the third chunkserver ip if it exist
+	declare -i disp_file_index=0
+	declare old_ifs=$IFS
+	export IFS=' '
+	while read -a array; do
+		if [ "X${array[3]}" != "X" ]
+		then
+			CS_SERVER1[$disp_file_index]=${array[3]}
+		fi
+
+		if [ "X${array[4]}" != "X" ]
+		then
+			CS_SERVER2[$disp_file_index]=${array[4]}
+		fi
+
+		if [ "X${array[5]}" != "X" ]
+		then
+			CS_SERVER3[$disp_file_index]=${array[5]}
+		fi
+		disp_file_index=$((disp_file_index+1))
+	done < $RANGE_FILE
+	export IFS=$old_ifs
+
+	declare -a cs_servers=(${CS_SERVER1[@]} ${CS_SERVER2[@]} ${CS_SERVER3[@]})
+	declare -a uniq_cs_servers=($(echo ${cs_servers[@]} | sed -e 's/ /\n/g' | sort | uniq))
+	declare rm_files="${DST_DATA_DIR}*/${APP_NAME}/import/*"
+	for cs in ${uniq_cs_servers[@]}
+	do
+		declare rm_cmd="ssh ${USER_NAME}@$cs 'rm -rf $rm_files'"
+		mlog "INFO: $rm_cmd"
+		echo "INFO: $rm_cmd"
+		ssh ${USER_NAME}@$cs "rm -rf $rm_files"
+	done
+}
+
 #insert one fake line into update server and major freeze
 #major_free <write_flag> <wait_merge>
 major_freeze()
@@ -1224,6 +1276,7 @@ major_freeze()
 				frozen_time_file=$APP_FREEZE_TIME_FILE_PREFIX$frozen_time
 				rm -rf $APP_FREEZE_TIME_FILE_PREFIX*
 				touch $frozen_time_file
+				cleanup_cs_import_dir
 			fi
 		fi
 	fi
@@ -1540,7 +1593,7 @@ check_root_table_unchanged()
 		fi
 
 		mv $RANGE_FILE $RANGE_FILE_OLD
-		$cs_admin_file -s $ROOTSERVER_IP -p $ROOTSERVER_PORT -q -i "scan_root_table $TABLE_NAME $TABLE_ID $ROWKEY_SPLIT $APP_NAME $LOCAL_TABLE_DIR"
+		$cs_admin_file -s $ROOTSERVER_IP -p $ROOTSERVER_PORT -q -i "scan_root_table $TABLE_NAME $TABLE_ID $ROWKEY_SPLIT $APP_NAME $LOCAL_TABLE_DIR $ROWKEY_DELIM_ASCII"
 		if [ "X$?" != "X0" ]; then
 			errorlog "ERROR: failed to build rowkey range file $RANGE_FILE"
 			return 2
@@ -1589,6 +1642,8 @@ dispatch_tables()
 			major_freeze 1 1
 		fi
 	fi
+
+	return $fail_count
 }
 
 #check the previous majore freeze time

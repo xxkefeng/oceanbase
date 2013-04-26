@@ -12,9 +12,10 @@
  *
  */
 #include "ob_ms_sql_operator.h"
-#include "common/ob_scan_param.h"
+#include "sql/ob_sql_scan_param.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
+using namespace oceanbase::sql;
 using namespace oceanbase::mergeserver;
 oceanbase::mergeserver::ObMsSqlOperator::ObMsSqlOperator()
 {
@@ -35,25 +36,20 @@ oceanbase::mergeserver::ObMsSqlOperator::~ObMsSqlOperator()
 void oceanbase::mergeserver::ObMsSqlOperator::reset()
 {
   scan_param_ = NULL;
-  cells_.reset();
   sorted_operator_.reset();
   last_sharding_res_ = NULL;
   sharding_res_count_ = 0;
 }
 
-int oceanbase::mergeserver::ObMsSqlOperator::set_param(const ObScanParam & scan_param)
+int oceanbase::mergeserver::ObMsSqlOperator::set_param(const ObSqlScanParam & scan_param)
 {
   int err = OB_SUCCESS;
   reset();
   scan_param_ = &scan_param;
-  if ((scan_param_->get_group_by_param().get_aggregate_row_width() == 0)
-    && (scan_param_->get_orderby_column_size() == 0))
+  status_ = USE_SORTED_OPERATOR;
+  if (OB_SUCCESS != (err = sorted_operator_.set_param(*scan_param_)))
   {
-    status_ = USE_SORTED_OPERATOR;
-    if (OB_SUCCESS != (err = sorted_operator_.set_param(*scan_param_)))
-    {
-      TBSYS_LOG(WARN,"fail to set scan param to sorted_operator_ [err:%d]", err);
-    }
+    TBSYS_LOG(WARN,"fail to set scan param to sorted_operator_ [err:%d]", err);
   }
   if (OB_SUCCESS != err)
   {
@@ -64,7 +60,7 @@ int oceanbase::mergeserver::ObMsSqlOperator::set_param(const ObScanParam & scan_
 
 
 int oceanbase::mergeserver::ObMsSqlOperator::add_sharding_result(ObNewScanner & sharding_res, 
-  const ObRange & query_range, const int64_t limit_offset, bool &is_finish, bool &can_free_res)
+  const ObNewRange & query_range, const int64_t limit_offset, bool &is_finish, bool &can_free_res, ObStringBuf &rowkey_buffer)
 {
   int err = OB_SUCCESS;
   UNUSED(limit_offset);
@@ -79,7 +75,7 @@ int oceanbase::mergeserver::ObMsSqlOperator::add_sharding_result(ObNewScanner & 
     switch (status_)
     {
     case USE_SORTED_OPERATOR:
-      err = sorted_operator_.add_sharding_result(sharding_res,query_range,is_finish);
+      err = sorted_operator_.add_sharding_result(sharding_res,query_range,is_finish,rowkey_buffer);
       break;
    default:
       TBSYS_LOG(ERROR, "status error [status_:%d]", status_);
@@ -98,7 +94,7 @@ int oceanbase::mergeserver::ObMsSqlOperator::add_sharding_result(ObNewScanner & 
   return err;
 }
 
-int oceanbase::mergeserver::ObMsSqlOperator::get_mem_size_used()const
+int64_t oceanbase::mergeserver::ObMsSqlOperator::get_mem_size_used()const
 {
   int64_t res = 0;
   switch (status_)
@@ -109,7 +105,7 @@ int oceanbase::mergeserver::ObMsSqlOperator::get_mem_size_used()const
   default:
     TBSYS_LOG(WARN, "status error [status_:%d]", status_);
   }
-  return static_cast<int32_t>(res);
+  return res;
 }
 
 int64_t oceanbase::mergeserver::ObMsSqlOperator::get_result_row_width()const
@@ -117,9 +113,7 @@ int64_t oceanbase::mergeserver::ObMsSqlOperator::get_result_row_width()const
   int64_t res = 0;
   if (NULL != scan_param_)
   {
-    res = (scan_param_->get_group_by_param().get_aggregate_row_width() > 0) ?
-      (scan_param_->get_group_by_param().get_aggregate_row_width() ) : 
-      (scan_param_->get_column_id_size() + scan_param_->get_composite_columns_size());
+    res = scan_param_->get_output_column_size();
   }
   return res;
 }

@@ -50,9 +50,9 @@ namespace oceanbase
       Config()
       {
         max_log_file_size = 1<<24;
-        block_size_shift = 12;
+        block_size_shift = 14;
         n_blocks = 1<<2;
-        log_generator_buf_size = 1<<11;
+        log_generator_buf_size = 1<<12;
         reserved_buf_len = 1<<4;
         retry_wait_time = 10 * 1000;
         max_num_items = MAX_N_DATA_ITEMS;
@@ -292,13 +292,13 @@ namespace oceanbase
       }
     }
 #endif
+#if 0
     TEST_F(ObLogCacheTest, AsyncPushAndGet){
       setThreadCount((int)n_reader+1);
       start();
       wait();
       ASSERT_EQ(OB_SUCCESS, err);
     }
-#if 0
     TEST_F(ObLogCacheTest, AsyncPushAndGetSlowWrite){
       slow_write = true;
       setThreadCount((int)n_reader+1);

@@ -26,7 +26,7 @@ ReadWorker::~ReadWorker()
   // empty
 }
 
-int ReadWorker::init(KeyGenerator& key_gen, ObSqlClient& ob_client, PrefixInfo& prefix_info)
+int ReadWorker::init(KeyGenerator& key_gen, MysqlClient& ob_client, PrefixInfo& prefix_info)
 {
   key_gen_ = &key_gen;
 

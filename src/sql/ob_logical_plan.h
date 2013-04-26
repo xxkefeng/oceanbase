@@ -8,60 +8,73 @@
 #include "common/ob_string.h"
 #include "common/ob_string_buf.h"
 #include "common/ob_vector.h"
-
+#include "common/ob_stack_allocator.h"
 namespace oceanbase
 {
   namespace sql
   {
+    class ObSQLSessionInfo;
     class ObLogicalPlan
     {
     public:
       explicit ObLogicalPlan(oceanbase::common::ObStringBuf* name_pool);
       virtual ~ObLogicalPlan();
-      
+
       oceanbase::common::ObStringBuf* get_name_pool() const
       {
         return name_pool_;
       }
 
-      ObStmt* get_query(uint64_t query_id) const;
+      ObBasicStmt* get_query(uint64_t query_id) const;
 
-      ObStmt* get_main_stmt()
+      ObBasicStmt* get_main_stmt()
       {
-       ObStmt *stmt = NULL;
+       ObBasicStmt *stmt = NULL;
         if (stmts_.size() > 0)
           stmt = stmts_[0];
         return stmt;
       }
 
       ObSelectStmt* get_select_query(uint64_t query_id) const;
-     
+
       ObSqlRawExpr* get_expr(uint64_t expr_id) const;
 
-      int add_query(ObStmt* stmt)
+      int add_query(ObBasicStmt* stmt)
       {
         int ret = common::OB_SUCCESS;
-        if (!stmt || stmts_.push_back(stmt) != common::OB_SUCCESS)
+        if ((!stmt) || (stmts_.push_back(stmt) != common::OB_SUCCESS))
+        {
+          TBSYS_LOG(WARN, "fail to allocate space for stmt. %p", stmt);
           ret = common::OB_ERROR;
+        }
         return ret;
       }
 
       int add_expr(ObSqlRawExpr* expr)
       {
         int ret = common::OB_SUCCESS;
-        if (!expr || exprs_.push_back(expr) != common::OB_SUCCESS)
+        if ((!expr) || (exprs_.push_back(expr) != common::OB_SUCCESS))
+        {
+          TBSYS_LOG(WARN, "fail to allocate space for expr. %p", expr);
           ret = common::OB_ERROR;
+        }
         return ret;
       }
 
       // Just a storage, only need to add raw expression
       int add_raw_expr(ObRawExpr* expr)
       {
-        return raw_exprs_store_.push_back(expr);
+        int ret = common::OB_SUCCESS;
+        if ((!expr) || (raw_exprs_store_.push_back(expr) != common::OB_SUCCESS))
+        {
+          TBSYS_LOG(WARN, "fail to allocate space for raw expr. %p", expr);
+          ret = common::OB_ERROR;
+        }
+        return ret;
       }
 
-      int fill_result_set(ObResultSet& result_set);
-      
+        int fill_result_set(ObResultSet& result_set, ObSQLSessionInfo *session_info, common::StackAllocator &alloc);
+
       uint64_t generate_table_id()
       {
         return new_gen_tid_--;
@@ -71,7 +84,17 @@ namespace oceanbase
       {
         return new_gen_cid_--;
       }
-      
+
+      // It will reserve 10 id for the caller
+      // In fact is for aggregate functions only, 
+      // because we need to push part aggregate to tablet and keep top aggregate on all
+      uint64_t generate_range_column_id()
+      {
+        uint64_t ret_cid = new_gen_cid_;
+        new_gen_cid_ -= 10;
+        return ret_cid;
+      }
+
       uint64_t generate_expr_id()
       {
         return new_gen_eid_++;
@@ -82,15 +105,34 @@ namespace oceanbase
         return new_gen_qid_++;
       }
 
+      int64_t inc_question_mark()
+      {
+        return question_marks_count_++;
+      }
+
+      int64_t get_question_mark_size() const
+      {
+        return question_marks_count_;
+      }
+      int32_t get_stmts_count() const
+      {
+        return stmts_.size();
+      }
+      ObBasicStmt* get_stmt(int32_t index) const
+      {
+        OB_ASSERT(index >= 0 && index < get_stmts_count());
+        return stmts_.at(index);
+      }
       void print(FILE* fp = stderr, int32_t level = 0) const;
-      
+
     protected:
       oceanbase::common::ObStringBuf* name_pool_;
-      
+
     private:
-      oceanbase::common::ObVector<ObStmt*> stmts_;
+      oceanbase::common::ObVector<ObBasicStmt*> stmts_;
       oceanbase::common::ObVector<ObSqlRawExpr*> exprs_;
       oceanbase::common::ObVector<ObRawExpr*> raw_exprs_store_;
+      int64_t   question_marks_count_;
       uint64_t  new_gen_tid_;
       uint64_t  new_gen_cid_;
       uint64_t  new_gen_qid_;
@@ -100,4 +142,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_SQL_LOGICALPLAN_H_
-

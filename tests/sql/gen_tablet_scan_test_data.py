@@ -33,7 +33,7 @@ def gen_int_obj(rand_is_add = False):
     return IntObj(False, random.randint(0, 1000))
 
 class Row:
-  DESC = "2 3 4 5 6"
+  DESC = "20 30 40 50 60"
   TYPE = "1 1 0 1 0"
 
   def __init__(self):
@@ -58,7 +58,7 @@ class UpsRow(Row):
     return t + " " + Row.to_string(self)
 
 class JoinUpsRow:
-  DESC = "2 3 4 5"
+  DESC = "20 30 40 50"
   TYPE = "1 1 0 1"
 
   def __init__(self):
@@ -79,8 +79,8 @@ def gen_row(rowkey_seq, row):
   rowkey = "rowkey_%05d" % (rowkey_seq)
   row.c2 = rowkey;
 
-  join_rowkey = "rowkey_%05d" % random.randint(0, 100)
-  row.c3 = join_rowkey;
+  #join_rowkey = "rowkey_%05d" % random.randint(0, 100)
+  row.c3 = rowkey;
 
   row.c4 = gen_int_obj() 
   row.c5 = gen_test_data.random_str(5, 10)
@@ -103,7 +103,7 @@ def gen_ups_row(rowkey_seq, ups_row):
   ups_row.c2 = rowkey;
 
   join_rowkey = "rowkey_%05d" % random.randint(0, 100)
-  ups_row.c3 = join_rowkey;
+  ups_row.c3 = rowkey;
 
   ups_row.c4 = gen_int_obj(True) 
   ups_row.c5 = gen_test_data.random_str(5, 10)
@@ -125,6 +125,8 @@ def gen_join_ups_table(path, row_num):
   print >>f, row_num, 4
   print >>f, JoinUpsRow.DESC
   print >>f, JoinUpsRow.TYPE
+  print >>f, "20"
+  print >>f, "20 30 40 50"
   for i in range(0, row_num):
     rowkey = "rowkey_%05d" % i
     if rowkey in table:
@@ -134,10 +136,12 @@ def gen_join_ups_table(path, row_num):
 
 def gen_ups_table1(path, row_num):
   table = {}
+  table2 = {}
   for i in range(0, row_num):
     rowkey = "rowkey_%05d" % i
     ups_row = UpsRow()
     gen_ups_row(i, ups_row)
+    table2[rowkey + ups_row.c3] = ups_row
     table[rowkey] = ups_row
   f = open(path, 'w')
 
@@ -145,13 +149,15 @@ def gen_ups_table1(path, row_num):
   print >>f, row_num, 5
   print >>f, Row.DESC
   print >>f, Row.TYPE
+  print >>f, "20 30"
+  print >>f, "20 30 40 50 60"
 
   for i in range(0, row_num):
     rowkey = "rowkey_%05d" % i
     if rowkey in table:
       print >>f, table[rowkey].to_string()
   f.close()
-  return table
+  return table2
 
 
 def gen_table1(table1_path, row_num):
@@ -166,6 +172,8 @@ def gen_table1(table1_path, row_num):
   print >>f, row_num, 5
   print >>f, Row.DESC
   print >>f, Row.TYPE
+  print >>f, "20 30"
+  print >>f, "20 30 40 50 60"
   for i in range(0, len(table1)):
     print >>f, table1[i].to_string()
   f.close()
@@ -200,7 +208,7 @@ def gen_result(path, table1, ups_table1, ups_table2):
   table = []
   result = None
   for i in range(0, len(table1)):
-    rowkey = table1[i].c2
+    rowkey = table1[i].c2 + table1[i].c3
     if rowkey in ups_table1:
       result = fuse_row(table1[i], ups_table1[rowkey])
     else:
@@ -217,6 +225,8 @@ def gen_result(path, table1, ups_table1, ups_table2):
   print >>f, len(table), 5
   print >>f, Row.DESC
   print >>f, Row.TYPE
+  print >>f, "20 30"
+  print >>f, "20 30 40 50 60"
   for i in range(0, len(table)):
     print >>f, table[i].to_string()
   f.close()
@@ -224,8 +234,9 @@ def gen_result(path, table1, ups_table1, ups_table2):
   return result
 
 if __name__ == '__main__':
-  table1 = gen_table1("tablet_scan_test_data/table1.ini", 10)
-  ups_table1 = gen_ups_table1("tablet_scan_test_data/ups_table1.ini", 10)
-  ups_table2 = gen_join_ups_table("tablet_scan_test_data/ups_table2.ini", 10)
+  num = 1000
+  table1 = gen_table1("tablet_scan_test_data/table1.ini", num)
+  ups_table1 = gen_ups_table1("tablet_scan_test_data/ups_table1.ini", num)
+  ups_table2 = gen_join_ups_table("tablet_scan_test_data/ups_table2.ini", num)
   gen_result("tablet_scan_test_data/result.ini", table1, ups_table1, ups_table2)
 

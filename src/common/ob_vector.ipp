@@ -201,6 +201,24 @@ namespace oceanbase
       }
 
     template <typename T, typename Allocator>
+      int ObVector<T, Allocator>::remove(iterator start_pos, iterator end_pos)
+      {
+        int ret = OB_SUCCESS;
+        if (start_pos < mem_begin_ || start_pos >= mem_end_
+          || end_pos < mem_begin_ || end_pos > mem_end_)
+        {
+          ret = OB_ARRAY_OUT_OF_RANGE;
+        }
+        else if (end_pos - start_pos > 0)
+        {
+          iterator new_end_pos = move(start_pos, end_pos, mem_end_);
+          assert(mem_end_ == new_end_pos + (end_pos - start_pos));
+          mem_end_ = new_end_pos;
+        }
+        return ret;
+      }
+
+    template <typename T, typename Allocator>
       int ObVector<T, Allocator>::remove_if(const_value_type value)
       {
         int ret = OB_SUCCESS;
@@ -450,6 +468,17 @@ namespace oceanbase
         {
           removed_value = *pos;
           ret = vector_.remove(pos);
+        }
+        return ret;
+      }
+    
+    template <typename T, typename Allocator>
+      int ObSortedVector<T, Allocator>::remove(iterator start_pos, iterator end_pos)
+      {
+        int ret = OB_SUCCESS;
+        if (end_pos - start_pos > 0)
+        {
+          ret = vector_.remove(start_pos, end_pos);
         }
         return ret;
       }

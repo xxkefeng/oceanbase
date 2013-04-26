@@ -26,6 +26,10 @@
 
 namespace oceanbase
 {
+  namespace common
+  {
+    class ObRowkeyInfo;
+  }
   namespace sstable
   {
     class ObSSTableReader;
@@ -74,6 +78,13 @@ namespace oceanbase
         return (1 == column_group_size_) ? 
           column_group_scanner_.get_cell(cell, is_row_changed)
           : merger_.get_cell(cell, is_row_changed);
+      }
+
+      inline int is_row_finished(bool* is_row_finished)
+      {
+        return (1 == column_group_size_) ? 
+          column_group_scanner_.is_row_finished(is_row_finished)
+          :merger_.is_row_finished(is_row_finished);
       }
 
       /**
@@ -145,11 +156,11 @@ namespace oceanbase
       int initialize(ObBlockCache& block_cache, ObBlockIndexCache& block_index_cache);
 
       int set_column_group_scanner(const uint64_t *group_array, const int64_t group_size, 
-          const ObSSTableReader* const sstable_reader);
+          const ObSSTableReader* const sstable_reader, const common::ObRowkeyInfo* rowkey_info);
       int set_mult_column_group_scanner(const uint64_t *group_array, const int64_t group_size, 
-          const ObSSTableReader* const sstable_reader);
+          const ObSSTableReader* const sstable_reader, const common::ObRowkeyInfo* rowkey_info);
       int set_single_column_group_scanner(const uint64_t column_group_id, 
-          const ObSSTableReader* const sstable_reader);
+          const ObSSTableReader* const sstable_reader, const common::ObRowkeyInfo* rowkey_info);
 
       /**
        * reset all members of scanner.
@@ -163,6 +174,7 @@ namespace oceanbase
       // hold cache reference
       ObBlockIndexCache* block_index_cache_;
       ObBlockCache* block_cache_;
+      common::ObRowkeyInfo rowkey_info_;
 
       ObSSTableScanParam scan_param_;
       char* internal_scanner_obj_ptr_;

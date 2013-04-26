@@ -17,7 +17,7 @@
 #ifndef __OCEANBASE_ERROR_RECORD_H__
 #define __OCEANBASE_ERROR_RECORD_H__
 
-#include "obsql_client.h"
+#include "mysql_client.h"
 
 // prefix status is stored at OB
 // create table prefix_info (
@@ -32,7 +32,7 @@ class PrefixInfo
   public:
     PrefixInfo();
     ~PrefixInfo();
-    int init(ObSqlClient& ob_client);
+    int init(MysqlClient& ob_client);
 
   public:
     int set_read_write_status(uint64_t prefix, int flag);
@@ -50,7 +50,7 @@ class PrefixInfo
     int get_status(uint64_t prefix, int& status);
 
   private:
-    ObSqlClient* ob_client_;
+    MysqlClient* ob_client_;
     mutable pthread_rwlock_t w_lock_;
 };
 

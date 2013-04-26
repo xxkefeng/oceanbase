@@ -64,7 +64,7 @@ namespace oceanbase
         bool got_first_row_;
         common::ObRow last_row_;
         common::ObRow curr_row_;
-        static const uint64_t OB_ROW_BUF_SIZE = common::OB_ROW_MAX_COLUMNS_COUNT * (common::OB_MAX_VARCHAR_LENGTH + 32);
+        static const uint64_t OB_ROW_BUF_SIZE = common::OB_MAX_ROW_LENGTH;
         char *last_row_buf_;
     };
   } // end namespace sql

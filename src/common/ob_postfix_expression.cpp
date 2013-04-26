@@ -574,6 +574,21 @@ namespace oceanbase
       plus_func
     };
 
+    ObPostfixExpression& ObPostfixExpression::operator=(const ObPostfixExpression &other)
+    {
+      int i = 0;
+      if (&other != this)
+      {
+        // BUG: not deep copy implementation. WATCH OUT!
+        for (i = 0; i < other.postfix_size_; i++)
+        {
+            expr_[i] = other.expr_[i];
+        }
+        postfix_size_ = other.postfix_size_;
+      }
+      return *this;
+    }
+
     int ObPostfixExpression::set_expression(const ObObj *expr, oceanbase::common::ObStringBuf  & data_buf)
     {
       int err = OB_SUCCESS;
@@ -583,7 +598,7 @@ namespace oceanbase
 
       if (NULL != expr)
       {
-        while ((i < OB_MAX_COMPOSITE_EXPR_COUNT) && (OB_SUCCESS == err))
+        while ((i < OB_MAX_COMPOSITE_SYMBOL_COUNT) && (OB_SUCCESS == err))
         {
           expr_[i] = expr[i];
           postfix_size_++;
@@ -631,7 +646,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "postfix expression is null!");
       }
 
-      if (OB_SUCCESS == err && OB_MAX_COMPOSITE_EXPR_COUNT <= i)
+      if (OB_SUCCESS == err && OB_MAX_COMPOSITE_SYMBOL_COUNT <= i)
       {
         err = OB_INVALID_ARGUMENT;
         TBSYS_LOG(WARN, "END symbol not found postfix expression. [i=%d]", i);
@@ -696,7 +711,7 @@ namespace oceanbase
       ObString key_col_name;
 
       ObArrayHelper<ObObj> expr_array;
-      expr_array.init(OB_MAX_COMPOSITE_EXPR_COUNT, expr_);
+      expr_array.init(OB_MAX_COMPOSITE_SYMBOL_COUNT, expr_);
       err = parser.parse(expr, expr_array);
       TBSYS_LOG(DEBUG, "parse done. expr_array len= %ld", expr_array.get_array_index());
 
@@ -905,7 +920,7 @@ namespace oceanbase
       postfix_size_ = 0;
       int err = OB_SUCCESS;
       int64_t type = 0;
-      while (postfix_size_ < OB_MAX_COMPOSITE_EXPR_COUNT)
+      while (postfix_size_ < OB_MAX_COMPOSITE_SYMBOL_COUNT)
       {
 
         /* 取type value pair中的type */
@@ -943,6 +958,12 @@ namespace oceanbase
           break;
         }
         expr_[postfix_size_++] = obj;
+      }
+
+      if (END != type)  
+      {
+        err = OB_ERR_UNEXPECTED; 
+        TBSYS_LOG(ERROR, "fail to deserialize. postfix_size_=%d", postfix_size_);  
       }
 
       if (OB_SUCCESS != err)

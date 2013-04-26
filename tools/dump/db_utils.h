@@ -62,5 +62,7 @@ int db_utils_init();
 void encode_int32(char* buf, uint32_t value);
 
 int32_t decode_int32(const char *buf);
+
+int append_obj(const oceanbase::common::ObObj &obj, oceanbase::common::ObDataBuffer &buff);
 #endif   /* ----- #ifndef db_utils_INC  ----- */
 

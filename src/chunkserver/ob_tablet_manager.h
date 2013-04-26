@@ -18,22 +18,28 @@
 #define __OCEANBASE_CHUNKSERVER_OB_TABLET_MANAGER_H__
 
 #include "common/thread_buffer.h"
+#include "common/ob_file_client.h"
 #include "sstable/ob_blockcache.h"
 #include "sstable/ob_block_index_cache.h"
 #include "sstable/ob_sstable_row_cache.h"
 #include "sstable/ob_sstable_scanner.h"
 #include "sstable/ob_sstable_getter.h"
 #include "sstable/ob_sstable_reader.h"
+#include "compactsstablev2/ob_sstable_block_cache.h"
+#include "compactsstablev2/ob_sstable_block_index_cache.h"
+#include "sql/ob_sstable_scan.h"
 #include "ob_join_cache.h"
 #include "ob_fileinfo_cache.h"
 #include "ob_disk_manager.h"
 #include "ob_tablet_image.h"
-#include "ob_chunk_server_param.h"
+#include "ob_chunk_server_config.h"
 #include "ob_chunk_server_stat.h"
 #include "ob_chunk_merge.h"
 #include "ob_switch_cache_utility.h"
 #include "ob_compactsstable_cache.h"
 #include "ob_multi_tablet_merger.h"
+#include "ob_bypass_sstable_loader.h"
+#include "ob_file_recycle.h"
 
 namespace oceanbase
 {
@@ -44,7 +50,7 @@ namespace oceanbase
     class ObGetParam;
     class ObScanParam;
     class ObScanner;
-    class ObRange;
+    class ObNewRange;
     class ObTabletReportInfo;
     class ObTabletReportInfoList;
     class ObScanner;
@@ -64,20 +70,23 @@ namespace oceanbase
       public:
         ObTabletManager();
         ~ObTabletManager();
-        int init(const ObChunkServerParam* param);
-        int init(const sstable::ObBlockCacheConf& bc_conf,
-                 const sstable::ObBlockIndexCacheConf& bic_conf,  
-                 const int64_t sstable_row_cache_size = 0, const char* data_dir = "/data", 
-                 const int64_t max_sstable_size = 256L * 1024L * 1024L);
+        int init(const ObChunkServerConfig* config);
+        int init(const int64_t block_cache_size,
+            const int64_t block_index_cache_size,
+            const int64_t sstable_row_cache_size,
+            const int64_t file_info_cache_num,
+            const char* data_dir,
+            const int64_t max_sstable_size);
         int start_merge_thread();
         int start_cache_thread();
+        int start_bypass_loader_thread();
         int load_tablets(const int32_t* disk_no_array, const int32_t size);
         void destroy();
 
       public:
-        /** 
+        /**
          * must call end_get() to release the resources.
-         * 
+         *
          */
         int get(const common::ObGetParam& get_param, common::ObScanner& scanner);
         int end_get();
@@ -100,27 +109,30 @@ namespace oceanbase
         int merge_tablets(const int64_t memtable_frozen_version);
         ObChunkMerge &get_chunk_merge() ;
         ObCompactSSTableMemThread& get_cache_thread();
+        ObBypassSSTableLoader& get_bypass_sstable_loader();
 
         int report_tablets();
 
         int report_capacity_info();
 
-        int create_tablet(const common::ObRange& range, const int64_t data_version);
+        int create_tablet(const common::ObNewRange& range, const int64_t data_version);
 
-        int migrate_tablet(const common::ObRange& range, 
+        int migrate_tablet(const common::ObNewRange& range,
             const common::ObServer& dest_server,
             char (*src_path)[common::OB_MAX_FILE_NAME_LENGTH],
-            char (*dest_path)[common::OB_MAX_FILE_NAME_LENGTH], 
+            char (*dest_path)[common::OB_MAX_FILE_NAME_LENGTH],
             int64_t & num_file,
             int64_t & tablet_version,
+            int64_t& tablet_seq_num,
             int32_t & dest_disk_no,
             uint64_t & crc_sum);
 
-        int dest_load_tablet(const common::ObRange& range, 
+        int dest_load_tablet(const common::ObNewRange& range,
             char (*dest_path)[common::OB_MAX_FILE_NAME_LENGTH],
             const int64_t num_file,
             const int64_t tablet_version,
-            const int32_t dest_disk_no, 
+            const int64_t tablet_seq_num,
+            const int32_t dest_disk_no,
             const uint64_t crc_sum);
 
         void start_gc(const int64_t recycle_version);
@@ -129,38 +141,48 @@ namespace oceanbase
 
         int sync_all_tablet_images();
 
+        int load_bypass_sstables(const common::ObTableImportInfoList& table_list);
+        int load_bypass_sstables_over(const common::ObTableImportInfoList& table_list,
+          const bool is_load_succ);
+
+        int delete_table(const uint64_t table_id);
+
       public:
-        FileInfoCache& get_fileinfo_cache();
-        sstable::ObBlockCache& get_serving_block_cache();
-        sstable::ObBlockCache& get_unserving_block_cache();
-        sstable::ObBlockIndexCache& get_serving_block_index_cache();
-        sstable::ObBlockIndexCache& get_unserving_block_index_cache();
-        ObMultiVersionTabletImage& get_serving_tablet_image();
-        ObDiskManager& get_disk_manager();
-        ObRegularRecycler& get_regular_recycler();
-        ObScanRecycler& get_scan_recycler();
-        ObJoinCache& get_join_cache();
+        inline FileInfoCache& get_fileinfo_cache();
+        inline sstable::ObBlockCache& get_serving_block_cache();
+        inline sstable::ObBlockCache& get_unserving_block_cache();
+        inline sstable::ObBlockIndexCache& get_serving_block_index_cache();
+        inline sstable::ObBlockIndexCache& get_unserving_block_index_cache();
+        inline compactsstablev2::ObSSTableBlockIndexCache & get_compact_block_index_cache();
+        inline compactsstablev2::ObSSTableBlockCache & get_compact_block_cache();
+        inline ObMultiVersionTabletImage& get_serving_tablet_image();
+        inline ObDiskManager& get_disk_manager();
+        inline ObRegularRecycler& get_regular_recycler();
+        inline ObScanRecycler& get_scan_recycler();
+        inline ObJoinCache& get_join_cache();
+        inline void build_scan_context(sql::ScanContext& scan_context);
 
         const ObMultiVersionTabletImage& get_serving_tablet_image() const;
+        inline sstable::ObSSTableRowCache* get_row_cache() const { return sstable_row_cache_; }
 
         /**
          * only after the new tablet image is loaded, and the tablet
          * manager is also using the old tablet image, this function can
-         * be called. this function will duplicate serving cache to 
-         * unserving cache. 
-         *  
-         * @return int if success,return OB_SUCCESS, else return 
-         *         OB_ERROR 
+         * be called. this function will duplicate serving cache to
+         * unserving cache.
+         *
+         * @return int if success,return OB_SUCCESS, else return
+         *         OB_ERROR
          */
         int build_unserving_cache();
-        int build_unserving_cache(const sstable::ObBlockCacheConf& bc_conf,
-                                  const sstable::ObBlockIndexCacheConf& bic_conf);
+        int build_unserving_cache(const int64_t block_cache_size,
+                                  const int64_t block_index_cache_size);
 
         /**
-         * after switch to the new tablet image, call this function to 
-         * drop the unserving cache. 
-         * 
-         * @return int if success,return OB_SUCCESS, else return 
+         * after switch to the new tablet image, call this function to
+         * drop the unserving cache.
+         *
+         * @return int if success,return OB_SUCCESS, else return
          *         OB_ERROR
          */
         int drop_unserving_cache();
@@ -172,7 +194,7 @@ namespace oceanbase
         inline bool is_stoped() { return !is_init_; }
 
       public:
-        struct ObGetThreadContext 
+        struct ObGetThreadContext
         {
           ObTablet* tablets_[common::OB_MAX_GET_ROW_NUMBER];
           int64_t tablets_count_;
@@ -180,20 +202,23 @@ namespace oceanbase
           sstable::ObSSTableReader* readers_[common::OB_MAX_GET_ROW_NUMBER];
           int64_t readers_count_;
         };
+    
+        int gen_sstable_getter(const ObGetParam& get_param, sstable::ObSSTableGetter *sstable_getter, int64_t &tablet_version);
 
       private:
         int internal_scan(const common::ObScanParam& scan_param, common::ObScanner& scanner);
         int init_sstable_scanner(const common::ObScanParam& scan_param,
             const ObTablet* tablet, sstable::ObSSTableScanner& sstable_scanner);
-        
+
         int internal_get(const common::ObGetParam& get_param, common::ObScanner& scanner);
-        int acquire_tablet(const common::ObGetParam& get_param, ObMultiVersionTabletImage& image, 
+        int acquire_tablet(const common::ObGetParam& get_param, ObMultiVersionTabletImage& image,
                            ObTablet* tablets[], int64_t& size, int64_t& tablet_version,
                            int64_t* compactsstable_version = NULL);
         int release_tablet(ObMultiVersionTabletImage& image, ObTablet* tablets[], int64_t size);
         int init_sstable_getter(const common::ObGetParam& get_param, ObTablet* tablets[],
                                 const int64_t size, sstable::ObSSTableGetter& sstable_getter);
         int fill_get_data(common::ObIterator& iterator, common::ObScanner& scanner);
+
       public:
         ObTablet*& get_cur_thread_scan_tablet();
         ObGetThreadContext*& get_cur_thread_get_contex();
@@ -209,8 +234,6 @@ namespace oceanbase
         // switch to new tablets, call by merge_tablets() after all new tablets loaded.
         int switch_cache();
 
-        ObJoinCompactSSTable& get_join_compactsstable() { return join_compactsstable_;}
-
       private:
         static const uint64_t TABLET_ARRAY_NUM = 2; // one for serving, the other for merging
         static const int64_t DEF_MAX_TABLETS_NUM  = 4000; // max tablets num
@@ -224,15 +247,19 @@ namespace oceanbase
           MERGED,     // merging complete, waiting to be switched
         };
 
+
+
       private:
         bool is_init_;
         volatile uint64_t cur_serving_idx_;
         volatile uint64_t mgr_status_;
         volatile uint64_t max_sstable_file_seq_;
-        
+
         FileInfoCache fileinfo_cache_;
         sstable::ObBlockCache block_cache_[TABLET_ARRAY_NUM];
         sstable::ObBlockIndexCache block_index_cache_[TABLET_ARRAY_NUM];
+        compactsstablev2::ObSSTableBlockIndexCache compact_block_index_cache_;
+        compactsstablev2::ObSSTableBlockCache compact_block_cache_;
         ObJoinCache join_cache_; //used for join phase of daily merge
         sstable::ObSSTableRowCache* sstable_row_cache_;
 
@@ -244,10 +271,84 @@ namespace oceanbase
 
         ObChunkMerge chunk_merge_;
         ObCompactSSTableMemThread cache_thread_;
-        const ObChunkServerParam* param_;
-
-        ObJoinCompactSSTable join_compactsstable_;
+        const ObChunkServerConfig* config_;
+        ObBypassSSTableLoader bypass_sstable_loader_;
     };
+
+    inline FileInfoCache&  ObTabletManager::get_fileinfo_cache()
+    {
+       return fileinfo_cache_;
+    }
+
+    inline sstable::ObBlockCache& ObTabletManager::get_serving_block_cache()
+    {
+       return block_cache_[cur_serving_idx_];
+    }
+
+    inline sstable::ObBlockCache& ObTabletManager::get_unserving_block_cache()
+    {
+      return block_cache_[(cur_serving_idx_ + 1) % TABLET_ARRAY_NUM];
+    }
+
+    inline sstable::ObBlockIndexCache& ObTabletManager::get_serving_block_index_cache()
+    {
+      return block_index_cache_[cur_serving_idx_];
+    }
+
+    inline sstable::ObBlockIndexCache& ObTabletManager::get_unserving_block_index_cache()
+    {
+      return block_index_cache_[(cur_serving_idx_ + 1) % TABLET_ARRAY_NUM];
+    }
+
+    inline ObMultiVersionTabletImage& ObTabletManager::get_serving_tablet_image()
+    {
+      return tablet_image_;
+    }
+
+    inline const ObMultiVersionTabletImage& ObTabletManager::get_serving_tablet_image() const
+    {
+      return tablet_image_;
+    }
+
+    inline ObDiskManager& ObTabletManager::get_disk_manager()
+    {
+      return disk_manager_;
+    }
+
+    inline ObRegularRecycler& ObTabletManager::get_regular_recycler()
+    {
+      return regular_recycler_;
+    }
+
+    inline ObScanRecycler& ObTabletManager::get_scan_recycler()
+    {
+      return scan_recycler_;
+    }
+
+    inline ObJoinCache& ObTabletManager::get_join_cache()
+    {
+      return join_cache_;
+    }
+
+    inline compactsstablev2::ObSSTableBlockIndexCache & ObTabletManager::get_compact_block_index_cache()
+    {
+      return compact_block_index_cache_;
+    }
+
+    inline compactsstablev2::ObSSTableBlockCache & ObTabletManager::get_compact_block_cache()
+    {
+      return compact_block_cache_;
+    }
+
+    inline void ObTabletManager::build_scan_context(sql::ScanContext& scan_context)
+    {
+      scan_context.tablet_image_ = &tablet_image_;
+      scan_context.block_index_cache_ = &block_index_cache_[cur_serving_idx_];
+      scan_context.block_cache_ = &block_cache_[cur_serving_idx_];
+      scan_context.compact_context_.block_index_cache_ = &compact_block_index_cache_;
+      scan_context.compact_context_.block_cache_ = &compact_block_cache_;
+    }
+
   }
 }
 

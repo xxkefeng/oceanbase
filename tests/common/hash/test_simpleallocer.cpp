@@ -116,6 +116,7 @@ TEST(TestSimpleAllocer, overflow)
 
 int main(int argc, char **argv)
 {
+  TBSYS_LOGGER.setLogLevel("ERROR");
   ob_init_memory_pool();
   testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();

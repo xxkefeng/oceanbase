@@ -107,10 +107,11 @@ void ObUpsReplayRunnable::run(tbsys::CThread* thread, void* arg)
     }
     else if (OB_NEED_RETRY == err)
     {
-      usleep(static_cast<useconds_t>(replay_wait_time_us_));
+      log_mgr_->wait_new_log_to_replay(replay_wait_time_us_);
     }
     else if (OB_NEED_WAIT == err)
     {
+      TBSYS_LOG(WARN, "slave need wait for master ready %ld, %s", fetch_log_wait_time_us_, to_cstring(*log_mgr_));
       usleep(static_cast<useconds_t>(fetch_log_wait_time_us_));
     }
   }

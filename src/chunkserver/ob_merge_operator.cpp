@@ -992,7 +992,7 @@ namespace oceanbase
         merger_.reset();
         if (NULL != scan_param_)
         {
-          merger_.set_asc(scan_param_->get_scan_direction() == ObScanParam::FORWARD);
+          merger_.set_asc(scan_param_->get_scan_direction() == ScanFlag::FORWARD);
         }
         for(int64_t i=0; i < it_size; ++i)
         {
@@ -1036,7 +1036,7 @@ namespace oceanbase
     int ObMergeOperator::get_next_scan_rpc_result()
     {
       int err = OB_SUCCESS;
-      const ObRange *org_scan_range = scan_param_->get_range();
+      const ObNewRange *org_scan_range = scan_param_->get_range();
       ObIterator *cur_cs_cell_it[OB_MAX_ITERATOR];
       int64_t it_size = OB_MAX_ITERATOR;
       bool ups_scan_iter_end = false;
@@ -1086,7 +1086,7 @@ namespace oceanbase
         merger_.reset();
         if (NULL != scan_param_)
         {
-          merger_.set_asc(scan_param_->get_scan_direction() == ObScanParam::FORWARD);
+          merger_.set_asc(scan_param_->get_scan_direction() == ScanFlag::FORWARD);
         }
         for(int32_t i=0; i<it_size;++i)
         {
@@ -1160,17 +1160,7 @@ namespace oceanbase
 
     bool ObMergeOperator::need_join() const
     {
-      bool ret = is_need_join_;
-      if (!is_need_query_ups_)
-      {
-        int64_t cs_version = cur_cs_result_.get_data_version();
-        if (ObVersion::get_major(cs_version) == cs_version)
-        {
-          //have no compact sstable
-          ret = (is_need_query_ups_ && is_need_join_);
-        }
-      }
-      return ret;
+      return (is_need_query_ups_ && is_need_join_);
     }
 
     bool ObMergeOperator::is_unchanged() const

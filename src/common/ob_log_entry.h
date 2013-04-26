@@ -58,7 +58,9 @@ namespace oceanbase
       OB_RT_REMOVE_REPLICA = 424,
       OB_RT_SYNC_FROZEN_VERSION_AND_TIME = 425,
       OB_RT_REMOVE_TABLE = 426,
-      OB_RT_BATCH_ADD_NEW_TABLET = 427,
+      OB_RT_SYNC_FIRST_META_ROW = 427,
+      OB_RT_BATCH_ADD_NEW_TABLET = 428,
+      OB_RT_GOT_CONFIG_VERSION = 429,
       //// ChunkServer ... 600 - 799 ////
 
       //// Base command ... ////
@@ -86,6 +88,15 @@ namespace oceanbase
         memset(this, 0x00, sizeof(ObLogEntry));
       }
 
+      int64_t to_string(char* buf, const int64_t buf_len) const
+      {
+        int64_t pos = 0;
+        databuff_printf(buf, buf_len, pos, "[LogEntry] ");
+        pos += header_.to_string(buf + pos, buf_len - pos);
+        databuff_printf(buf, buf_len, pos, " seq=%lu cmd=%d", seq_, cmd_);
+        return pos;
+      }
+      
       /**
        * @brief 设置日志序号
        */
@@ -119,13 +130,13 @@ namespace oceanbase
         return static_cast<int32_t>(header_.data_length_ - sizeof(uint64_t) - sizeof(LogCommand));
       }
 
-      int check_header_integrity() const;
+      int check_header_integrity(const bool dump_content=true) const;
 
       /**
        * 调用deserialization之后, 调用该函数检查数据正确性
        * @param [in] log 日志内容缓冲区地址
        */
-      int check_data_integrity(const char* log_data) const;
+      int check_data_integrity(const char* log_data, const bool dump_content=true) const;
 
       static int get_header_size() {return sizeof(ObRecordHeader) + sizeof(uint64_t) + sizeof(LogCommand);}
 

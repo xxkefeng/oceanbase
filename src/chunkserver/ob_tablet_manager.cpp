@@ -28,39 +28,38 @@
 #include "sstable/ob_sstable_getter.h"
 #include "sstable/ob_disk_path.h"
 #include "ob_tablet.h"
-#include "ob_root_server_rpc.h"
 #include "ob_chunk_server.h"
 #include "ob_chunk_server_main.h"
 #include "ob_chunk_merge.h"
 #include "ob_file_recycle.h"
 #include "ob_chunk_server_stat.h"
 
-#define LOG_CACHE_MEMORY_USAGE(header) \
-  do  { \
-    TBSYS_LOG(INFO, "%s cur_serving_idx_ =%ld, mgr_status_ =%ld," \
-        "table memory usage=%ld," \
-        "serving block index cache=%ld, block cache=%ld," \
-        "unserving block index cache=%ld, block cache=%ld", \
-        header, cur_serving_idx_, mgr_status_, \
-        ob_get_mod_memory_usage(ObModIds::OB_CS_TABLET_IMAGE), \
-        get_serving_block_index_cache().get_cache_mem_size(), \
-        get_serving_block_cache().size(), \
-        get_unserving_block_index_cache().get_cache_mem_size(), \
-        get_unserving_block_cache().size()); \
+#define LOG_CACHE_MEMORY_USAGE(header)                                  \
+  do  {                                                                 \
+    TBSYS_LOG(INFO, "%s cur_serving_idx_ =%ld, mgr_status_ =%ld,"       \
+              "table memory usage=%ld,"                                 \
+              "serving block index cache=%ld, block cache=%ld,"         \
+              "unserving block index cache=%ld, block cache=%ld",       \
+              header, cur_serving_idx_, mgr_status_,                    \
+              ob_get_mod_memory_usage(ObModIds::OB_CS_TABLET_IMAGE),    \
+              get_serving_block_index_cache().get_cache_mem_size(),     \
+              get_serving_block_cache().size(),                         \
+              get_unserving_block_index_cache().get_cache_mem_size(),   \
+              get_unserving_block_cache().size());                      \
   } while(0);
 
-#define LOG_CACHE_MEMORY_USAGE_E(header, manager) \
-  do  { \
-    TBSYS_LOG(INFO, "%s cur_serving_idx_ =%ld, mgr_status_ =%ld," \
-        "table memory usage=%ld," \
-        "serving block index cache=%ld, block cache=%ld," \
-        "unserving block index cache=%ld, block cache=%ld", \
-        header, manager->cur_serving_idx_, manager->mgr_status_, \
-        ob_get_mod_memory_usage(ObModIds::OB_CS_TABLET_IMAGE), \
-        manager->get_serving_block_index_cache().get_cache_mem_size(), \
-        manager->get_serving_block_cache().size(), \
-        manager->get_unserving_block_index_cache().get_cache_mem_size(), \
-        manager->get_unserving_block_cache().size()); \
+#define LOG_CACHE_MEMORY_USAGE_E(header, manager)                       \
+  do  {                                                                 \
+    TBSYS_LOG(INFO, "%s cur_serving_idx_ =%ld, mgr_status_ =%ld,"       \
+              "table memory usage=%ld,"                                 \
+              "serving block index cache=%ld, block cache=%ld,"         \
+              "unserving block index cache=%ld, block cache=%ld",       \
+              header, manager->cur_serving_idx_, manager->mgr_status_,  \
+              ob_get_mod_memory_usage(ObModIds::OB_CS_TABLET_IMAGE),    \
+              manager->get_serving_block_index_cache().get_cache_mem_size(), \
+              manager->get_serving_block_cache().size(),                \
+              manager->get_unserving_block_index_cache().get_cache_mem_size(), \
+              manager->get_unserving_block_cache().size());             \
   } while(0);
 
 namespace oceanbase
@@ -71,15 +70,15 @@ namespace oceanbase
     using namespace oceanbase::sstable;
 
     ObTabletManager::ObTabletManager()
-    : is_init_(false), 
-      cur_serving_idx_(0), 
-      mgr_status_(NORMAL), 
+    : is_init_(false),
+      cur_serving_idx_(0),
+      mgr_status_(NORMAL),
       max_sstable_file_seq_(0),
       sstable_row_cache_(NULL),
       regular_recycler_(*this),
       scan_recycler_(*this),
-      tablet_image_(fileinfo_cache_),
-      param_(NULL)
+      tablet_image_(fileinfo_cache_, disk_manager_),
+      config_(NULL)
     {
     }
 
@@ -88,17 +87,18 @@ namespace oceanbase
       destroy();
     }
 
-    int ObTabletManager::init(const ObBlockCacheConf& bc_conf,
-                              const ObBlockIndexCacheConf& bic_conf, 
+    int ObTabletManager::init(const int64_t block_cache_size,
+                              const int64_t block_index_cache_size,
                               const int64_t sstable_row_cache_size,
-                              const char* data_dir, 
+                              const int64_t file_info_cache_num,
+                              const char* data_dir,
                               const int64_t max_sstable_size)
     {
       int err = OB_SUCCESS;
 
       if (NULL == data_dir || max_sstable_size <= 0)
       {
-        TBSYS_LOG(WARN, "invalid parameter, data_dir=%s, max_sstable_size=%ld", 
+        TBSYS_LOG(WARN, "invalid parameter, data_dir=%s, max_sstable_size=%ld",
                   data_dir, max_sstable_size);
         err = OB_INVALID_ARGUMENT;
       }
@@ -106,17 +106,21 @@ namespace oceanbase
       {
         if (OB_SUCCESS == err)
         {
-          err = fileinfo_cache_.init(bc_conf.ficache_max_num);
+          err = fileinfo_cache_.init(file_info_cache_num);
         }
         if (OB_SUCCESS == err)
         {
           block_cache_[cur_serving_idx_].set_fileinfo_cache(fileinfo_cache_);
-          err = block_cache_[cur_serving_idx_].init(bc_conf);
+          err = block_cache_[cur_serving_idx_].init(block_cache_size);
+          compact_block_cache_.set_fileinfo_cache(fileinfo_cache_);
+          compact_block_cache_.init(block_cache_size);
         }
         if (OB_SUCCESS == err)
         {
           block_index_cache_[cur_serving_idx_].set_fileinfo_cache(fileinfo_cache_);
-          err = block_index_cache_[cur_serving_idx_].init(bic_conf);
+          err = block_index_cache_[cur_serving_idx_].init(block_index_cache_size);
+          compact_block_index_cache_.set_fileinfo_cache(fileinfo_cache_);
+          compact_block_index_cache_.init(block_index_cache_size);
         }
 
         if (OB_SUCCESS == err)
@@ -131,7 +135,7 @@ namespace oceanbase
                 TBSYS_LOG(ERROR, "init sstable row cache failed");
               }
             }
-            else 
+            else
             {
               TBSYS_LOG(WARN, "failed to new sstable row cache");
               err = OB_ERROR;
@@ -154,32 +158,32 @@ namespace oceanbase
       return err;
     }
 
-    int ObTabletManager::init(const ObChunkServerParam* param)
+    int ObTabletManager::init(const ObChunkServerConfig* config)
     {
       int err = OB_SUCCESS;
 
-      if (NULL == param)
+      if (NULL == config)
       {
         TBSYS_LOG(ERROR, "invalid parameter, param is NULL");
         err = OB_INVALID_ARGUMENT;
       }
-      else 
+      else
       {
-        err = init(param->get_block_cache_conf(), param->get_block_index_cache_conf(), 
-                   param->get_sstable_row_cache_size(), param->get_datadir_path(), 
-                   param->get_max_sstable_size());
+        err = init(config->block_cache_size, config->block_index_cache_size,
+                   config->sstable_row_cache_size, config->file_info_cache_num,
+                   config->datadir, OB_DEFAULT_MAX_TABLET_SIZE);
       }
 
       if (OB_SUCCESS == err)
       {
-        param_ = param;
+        config_ = config;
       }
 
       if (OB_SUCCESS == err)
       {
-        if (param_->get_join_cache_conf().cache_mem_size > 0) // <= 0 will disable the join cache
+        if (config_->join_cache_size >= 1) // <= 0 will disable the join cache
         {
-          if ( (err = join_cache_.init(param_->get_join_cache_conf().cache_mem_size)) != OB_SUCCESS)
+          if ( (err = join_cache_.init(config_->join_cache_size)) != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR, "init join cache failed");
           }
@@ -199,7 +203,12 @@ namespace oceanbase
       return cache_thread_.init(this);
     }
 
-    ObChunkMerge & ObTabletManager::get_chunk_merge() 
+    int ObTabletManager::start_bypass_loader_thread()
+    {
+      return bypass_sstable_loader_.init(this);
+    }
+
+    ObChunkMerge & ObTabletManager::get_chunk_merge()
     {
       return chunk_merge_;
     }
@@ -209,6 +218,11 @@ namespace oceanbase
       return cache_thread_;
     }
 
+    ObBypassSSTableLoader & ObTabletManager::get_bypass_sstable_loader()
+    {
+      return bypass_sstable_loader_;
+    }
+
     void ObTabletManager::destroy()
     {
       if ( is_init_ )
@@ -216,6 +230,7 @@ namespace oceanbase
         is_init_ = false;
 
         chunk_merge_.destroy();
+        bypass_sstable_loader_.destroy();
         cache_thread_.destroy();
         fileinfo_cache_.destroy();
         for (uint64_t i = 0; i < TABLET_ARRAY_NUM; ++i)
@@ -233,12 +248,13 @@ namespace oceanbase
       }
     }
 
-    int ObTabletManager::migrate_tablet(const common::ObRange& range, 
+    int ObTabletManager::migrate_tablet(const common::ObNewRange& range,
                                         const common::ObServer& dest_server,
                                         char (*src_path)[OB_MAX_FILE_NAME_LENGTH],
-                                        char (*dest_path)[OB_MAX_FILE_NAME_LENGTH], 
+                                        char (*dest_path)[OB_MAX_FILE_NAME_LENGTH],
                                         int64_t& num_file,
                                         int64_t& tablet_version,
+                                        int64_t& tablet_seq_num,
                                         int32_t& dest_disk_no,
                                         uint64_t & crc_sum)
     {
@@ -246,6 +262,7 @@ namespace oceanbase
       ObMultiVersionTabletImage & tablet_image = get_serving_tablet_image();
       ObTablet * tablet = NULL;
       char dest_dir_buf[OB_MAX_FILE_NAME_LENGTH];
+      char dest_filename_buf[OB_MAX_FILE_NAME_LENGTH];
 
       if (NULL == src_path || NULL == dest_path)
       {
@@ -264,11 +281,8 @@ namespace oceanbase
         else if ( range.compare_with_startkey2(tablet->get_range()) != 0
             || range.compare_with_endkey2(tablet->get_range()) != 0)
         {
-          char range_buf[OB_RANGE_STR_BUFSIZ];
-          range.to_string(range_buf, OB_RANGE_STR_BUFSIZ);
-          TBSYS_LOG(INFO, "migrate tablet range = <%s>", range_buf);
-          tablet->get_range().to_string(range_buf, OB_RANGE_STR_BUFSIZ);
-          TBSYS_LOG(INFO, "not equal to local tablet range = <%s>", range_buf);
+          TBSYS_LOG(INFO, "migrate tablet range = <%s>", to_cstring(range));
+          TBSYS_LOG(INFO, "not equal to local tablet range = <%s>", to_cstring(tablet->get_range()));
           rc = OB_ERROR;
         }
         else
@@ -280,74 +294,72 @@ namespace oceanbase
       // get destination disk no and dest directory for store sstable files.
       dest_disk_no = 0;
       memset(dest_dir_buf, 0, OB_MAX_FILE_NAME_LENGTH);
-      // buffer size set to OB_MAX_FILE_NAME_LENGTH, 
+      // buffer size set to OB_MAX_FILE_NAME_LENGTH,
       // make deserialize ObString copy to dest_dir_buf
       ObString dest_directory(OB_MAX_FILE_NAME_LENGTH, 0, dest_dir_buf);
       if (OB_SUCCESS == rc && NULL != tablet)
       {
-        ObRootServerRpcStub cs_rpc_stub; 
-        rc = cs_rpc_stub.init(dest_server, &(THE_CHUNK_SERVER.get_client_manager()));
-        if (OB_SUCCESS != rc)
+        rc = CS_RPC_CALL(get_migrate_dest_location, dest_server,
+                         tablet->get_occupy_size(), dest_disk_no, dest_directory);
+        if (OB_SUCCESS == rc && dest_disk_no > 0)
         {
-          TBSYS_LOG(ERROR, "init cs_rpc_stub error.");
+          TBSYS_LOG(INFO, "get_migrate_dest_location succeed, dest_disk_no=%d, %s",
+              dest_disk_no, dest_dir_buf);
         }
         else
         {
-          rc = cs_rpc_stub.get_migrate_dest_location(
-              tablet->get_occupy_size(), dest_disk_no, dest_directory);
-          if (OB_SUCCESS == rc && dest_disk_no > 0)
-          {
-            TBSYS_LOG(INFO, "get_migrate_dest_location succeed, dest_disk_no=%d, %s",
-                dest_disk_no, dest_dir_buf);
-          }
-          else
-          {
-            TBSYS_LOG(ERROR, "get_migrate_dest_location failed, rc = %d, dest_disk_no=%d", 
-                rc, dest_disk_no);
-          }
+          TBSYS_LOG(ERROR, "get_migrate_dest_location failed, rc = %d, dest_disk_no=%d",
+              rc, dest_disk_no);
         }
       }
 
       if (OB_SUCCESS == rc && NULL != tablet)
       {
-        num_file = tablet->get_sstable_id_list().get_array_index();
+        num_file = tablet->get_sstable_id_list().count();
         tablet_version = tablet->get_data_version();
+        tablet_seq_num = tablet->get_sequence_num();
         crc_sum = tablet->get_checksum();
         TBSYS_LOG(INFO, "migrate_tablet sstable file num =%ld , version=%ld, checksum=%lu",
             num_file, tablet_version, crc_sum);
       }
 
-      // copy sstable files path & generate dest path
+      // copy sstable files path & generate dest file name
       if (OB_SUCCESS == rc && NULL != tablet && num_file > 0)
       {
         int64_t now = 0;
         now = tbsys::CTimeUtil::getTime();
         for(int64_t idx = 0; idx < num_file && OB_SUCCESS == rc; idx++)
         {
-          ObSSTableId * sstable_id = tablet->get_sstable_id_list().at(idx);
-          if ( NULL != sstable_id)
+          const ObSSTableId & sstable_id = tablet->get_sstable_id_list().at(idx);
+          rc = get_sstable_path(sstable_id, src_path[idx], OB_MAX_FILE_NAME_LENGTH);
+          if ( OB_SUCCESS != rc )
           {
-            rc = get_sstable_path(*sstable_id, src_path[idx], OB_MAX_FILE_NAME_LENGTH);
-            if ( OB_SUCCESS != rc )
-            {
-              TBSYS_LOG(WARN, "get sstable path error, rc=%d, sstable_id=%ld", 
-                  rc, sstable_id->sstable_file_id_);
-            }
-            else
-            {
-              // generate dest dir
-              rc = snprintf(dest_path[idx], 
-                  OB_MAX_FILE_NAME_LENGTH, 
-                  "%s/%ld.%ld", dest_dir_buf,
-                  sstable_id->sstable_file_id_, now);  
-              if (rc > 0) rc = OB_SUCCESS;
-              else rc = OB_ERROR;
-            }
+            TBSYS_LOG(WARN, "get sstable path error, rc=%d, sstable_id=%ld",
+                rc, sstable_id.sstable_file_id_);
           }
           else
-          {
-            TBSYS_LOG(ERROR, "sstable not exist, cannot happen.");
-            rc = OB_ERROR;
+          {// generate dest path
+            int n = snprintf(dest_filename_buf, OB_MAX_FILE_NAME_LENGTH,
+                "%ld.%ld", sstable_id.sstable_file_id_, now);
+            if (n < 0 || n >= OB_MAX_FILE_NAME_LENGTH)
+            {
+              TBSYS_LOG(WARN, "generate dest_filename_buf failed: length[%d] [%ld.%ld]",
+                  n, sstable_id.sstable_file_id_, now);
+              rc = OB_SIZE_OVERFLOW;
+            }
+
+            if (OB_SUCCESS == rc)
+            {
+              int n = snprintf(dest_path[idx], OB_MAX_FILE_NAME_LENGTH,
+                  "%s/%ld.%ld", dest_dir_buf,
+                  sstable_id.sstable_file_id_, now);
+              if (n < 0 || n >= OB_MAX_FILE_NAME_LENGTH)
+              {
+                TBSYS_LOG(WARN, "generate dest_path failed: length[%d] %s/%ld.%ld",
+                    n, dest_dir_buf, sstable_id.sstable_file_id_, now);
+                rc = OB_SIZE_OVERFLOW;
+              }
+            }
           }
         }
       }
@@ -369,42 +381,26 @@ namespace oceanbase
 
       if (OB_SUCCESS == rc && NULL != src_path && num_file > 0)
       {
-        int64_t rsync_band_limit = THE_CHUNK_SERVER.get_param().get_rsync_band_limit(); 
-        char cmd[MAX_COMMAND_LENGTH];
-        char ip_addr[OB_IP_STR_BUFF];
-        //send all sstable files of this tablet using scp
+        int64_t timeout = THE_CHUNK_SERVER.get_config().network_timeout;
+        int64_t band_limit = THE_CHUNK_SERVER.get_config().migrate_band_limit_per_second;
+        common::ObFileClient& file_client = THE_CHUNK_SERVER.get_file_client();
+
         for(int64_t idx = 0; idx < num_file && OB_SUCCESS == rc; idx++)
         {
-          uint32_t ipv4 = dest_server.get_ipv4();
+          ObString ob_src_path(sizeof(src_path[idx]),
+              static_cast<ObString::obstr_size_t>(strlen(src_path[idx])), src_path[idx]);
+          ObString ob_dest_dir(sizeof(dest_dir_buf),
+              static_cast<ObString::obstr_size_t>(strlen(dest_dir_buf)), dest_dir_buf);
+          ObString ob_dest_filename(sizeof(dest_filename_buf),
+              static_cast<ObString::obstr_size_t>(strlen(dest_filename_buf)), dest_filename_buf);
 
-          rc = snprintf(ip_addr, OB_IP_STR_BUFF, 
-              "%d.%d.%d.%d",
-              (ipv4& 0xFF),
-              (ipv4>> 8) & 0xFF,
-              (ipv4>> 16) & 0xFF,
-              (ipv4 >> 24) & 0xFF);
+          rc = file_client.send_file(timeout, band_limit, dest_server,
+              ob_src_path, ob_dest_dir, ob_dest_filename);
 
-          if ( rc > 0)
-          { 
-            rc = snprintf(cmd, MAX_COMMAND_LENGTH, 
-                "scp -oStrictHostKeyChecking=no -c arcfour -l %ld %s %s:%s",
-                rsync_band_limit * 8, src_path[idx], ip_addr, dest_path[idx]);  
-          }
-
-          if( rc > 0)
+          if (OB_SUCCESS != rc)
           {
-            TBSYS_LOG(INFO, "copy sstable file, idx=%ld, cmd=%s", idx, cmd);
-            rc = system(cmd);
-            if ( 0 != rc)
-            {
-              TBSYS_LOG(ERROR, "transfer sstable file[%ld]=[%s] failed, rc=%d", idx, (char*)src_path, rc);
-              rc = OB_ERROR;
-            }
-            else
-            {
-              TBSYS_LOG(DEBUG, "transfer sstable file[%ld]=[%s] success.", idx, (char*)src_path);
-              rc = OB_SUCCESS;
-            }
+            TBSYS_LOG(ERROR, "Transfer sstable failed [%ld]%s to "
+                "server[%s] failed, rc=%d.", idx, src_path[idx], dest_server.to_cstring(), rc);
           }
         }//end of send all sstable file
       }
@@ -412,16 +408,17 @@ namespace oceanbase
       return rc;
     }
 
-    int ObTabletManager::dest_load_tablet(const common::ObRange& range,
+    int ObTabletManager::dest_load_tablet(const common::ObNewRange& range,
                                           char (*dest_path)[OB_MAX_FILE_NAME_LENGTH],
-                                          const int64_t num_file, 
+                                          const int64_t num_file,
                                           const int64_t tablet_version,
+                                          const int64_t tablet_seq_num,
                                           const int32_t dest_disk_no,
                                           const uint64_t crc_sum)
     {
       int rc = OB_SUCCESS;
       int idx = 0;
-      //construct a new tablet and then add all sstable file to it 
+      //construct a new tablet and then add all sstable file to it
       ObMultiVersionTabletImage & tablet_image = get_serving_tablet_image();
 
       ObTablet * tablet = NULL;
@@ -440,24 +437,24 @@ namespace oceanbase
             "new tablet = %s, version=%ld", input_range_buf, tablet_version);
         rc = OB_CS_EAGAIN;
       }
-      if (tablet_version < serving_version 
+      if (tablet_version < serving_version
           || (serving_version > 0 && tablet_version > serving_version + 1))
       {
         /**
-         * 1. if server version is 0, it means cs is empty, it allow to 
-         * migrate any tablet with any version 
-         * 2. migrate in tablet version can't be greater than 
-         * serving_vervion + 1 
-         * 3. migrate in tablet version can't be less than serving 
-         * version 
+         * 1. if server version is 0, it means cs is empty, it allow to
+         * migrate any tablet with any version
+         * 2. migrate in tablet version can't be greater than
+         * serving_vervion + 1
+         * 3. migrate in tablet version can't be less than serving
+         * version
          */
         TBSYS_LOG(WARN, "migrate in tablet = %s version =%ld, local serving version=%ld",
             input_range_buf, tablet_version, serving_version);
         rc = OB_ERROR;
       }
-      else if (OB_SUCCESS == ( tablet_exist = 
+      else if (OB_SUCCESS == ( tablet_exist =
             tablet_image.acquire_tablet_all_version(
-              range,  ObMultiVersionTabletImage::SCAN_FORWARD, 
+              range,  ObMultiVersionTabletImage::SCAN_FORWARD,
               ObMultiVersionTabletImage::FROM_NEWEST_INDEX, 0, old_tablet)) )
       {
         char exist_range_buf[OB_RANGE_STR_BUFSIZ];
@@ -502,14 +499,14 @@ namespace oceanbase
         else
         {
           /**
-           * if tablet is existent and migrate in tablet's version is 
-           * greater than local version + 1, can't add this tablet. maybe 
-           * this chunkserver merge too slow. because chunkserver must 
-           * daily merge version by version and chunkserver must keep two 
-           * continious tablet versions, if add a tablet whose version is 
-           * larger than local versoin + 1, the tablet version isn't 
-           * continious, then it can't destroy one tablet image to store 
-           * the next tablet version when do next daily merge. 
+           * if tablet is existent and migrate in tablet's version is
+           * greater than local version + 1, can't add this tablet. maybe
+           * this chunkserver merge too slow. because chunkserver must
+           * daily merge version by version and chunkserver must keep two
+           * continious tablet versions, if add a tablet whose version is
+           * larger than local versoin + 1, the tablet version isn't
+           * continious, then it can't destroy one tablet image to store
+           * the next tablet version when do next daily merge.
            */
           TBSYS_LOG(WARN, "migrate in tablet's version=%ld > "
               "local tablet's version+1, local_version=%ld, can't load.",
@@ -529,12 +526,13 @@ namespace oceanbase
         {
           tablet->set_disk_no(dest_disk_no);
           tablet->set_data_version(tablet_version);
+          tablet->set_sequence_num(tablet_seq_num);
         }
- 
+
         for( ; idx < num_file && OB_SUCCESS == rc; idx++)
         {
           ObSSTableId sstable_id;
-          sstable_id.sstable_file_id_     = allocate_sstable_file_seq(); 
+          sstable_id.sstable_file_id_     = allocate_sstable_file_seq();
           sstable_id.sstable_file_offset_ = 0;
           sstable_id.sstable_file_id_     = (sstable_id.sstable_file_id_ << 8) | (dest_disk_no & 0xff);
           rc = get_sstable_path(sstable_id, path, OB_MAX_FILE_NAME_LENGTH);
@@ -548,7 +546,7 @@ namespace oceanbase
             rc = rename(dest_path[idx], path);
             if (OB_SUCCESS != rc)
             {
-              TBSYS_LOG(ERROR, "rename %s -> %s failed, error: %d, %s", 
+              TBSYS_LOG(ERROR, "rename %s -> %s failed, error: %d, %s",
                   dest_path[idx], path, errno, strerror(errno));
               rc = OB_IO_ERROR;
             }
@@ -563,11 +561,11 @@ namespace oceanbase
             }
           }
         }
-        
+
         if ( OB_SUCCESS == rc )
-        {              
+        {
           bool for_create = get_serving_data_version() == 0 ? true : false;
-          rc = tablet_image.add_tablet(tablet, true, for_create);  
+          rc = tablet_image.add_tablet(tablet, true, for_create);
           if(OB_SUCCESS != rc)
           {
             TBSYS_LOG(ERROR, "add tablet <%s> failed, rc=%d", input_range_buf, rc);
@@ -611,11 +609,11 @@ namespace oceanbase
       return rc;
     }
 
-    void ObTabletManager::start_gc(const int64_t recycle_version) 
+    void ObTabletManager::start_gc(const int64_t recycle_version)
     {
       TBSYS_LOG(INFO, "start gc");
       UNUSED(recycle_version);
-      if (chunk_merge_.is_merge_stoped())
+      if (chunk_merge_.is_merge_stoped() && bypass_sstable_loader_.is_loader_stoped())
       {
         scan_recycler_.recycle();
       }
@@ -627,8 +625,8 @@ namespace oceanbase
       int err = OB_SUCCESS;
       ObMultiTabletMerger* multi_tablet_merger = NULL;
 
-      if (NULL == (multi_tablet_merger = GET_TSI_MULT(ObMultiTabletMerger, 
-        TSI_CS_MULTI_TABLET_MERGER_1))) 
+      if (NULL == (multi_tablet_merger = GET_TSI_MULT(ObMultiTabletMerger,
+        TSI_CS_MULTI_TABLET_MERGER_1)))
       {
         TBSYS_LOG(ERROR, "cannot get ObMultiTabletMerger object");
         err = OB_ALLOCATE_MEMORY_FAILED;
@@ -653,20 +651,20 @@ namespace oceanbase
       const int32_t* disk_no_array = disk_manager_.get_disk_no_array(disk_num);
 
       /**
-       * after daily merge, in order to ensure the tablet image in 
+       * after daily merge, in order to ensure the tablet image in
        * memroy is consistent with the meta file in disk, we flush the
-       * meta file of each disk with two version, ignore the return 
-       * value. this function must be called before 
-       * tablet_image.upgrade_service() 
-       *  
-       * the cs_admin tool also can force sync all tablet images by 
-       * rpc command 
+       * meta file of each disk with two version, ignore the return
+       * value. this function must be called before
+       * tablet_image.upgrade_service()
+       *
+       * the cs_admin tool also can force sync all tablet images by
+       * rpc command
        */
       if (disk_num > 0 && NULL != disk_no_array)
       {
         /**
-         * ignore the write fail status, we just ensure flush meta file 
-         * of each disk once 
+         * ignore the write fail status, we just ensure flush meta file
+         * of each disk once
          */
         ret = tablet_image_.sync_all_images(disk_no_array, disk_num);
       }
@@ -680,34 +678,65 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletManager::create_tablet(const ObRange& range, const int64_t data_version)
+    int ObTabletManager::load_bypass_sstables(const ObTableImportInfoList& table_list)
+    {
+      return bypass_sstable_loader_.start_load(table_list);
+    }
+
+    int ObTabletManager::load_bypass_sstables_over(
+      const ObTableImportInfoList& table_list, const bool is_load_succ)
+    {
+      int ret = OB_SUCCESS;
+      int64_t retry_times = THE_CHUNK_SERVER.get_config().retry_times;
+
+      RPC_RETRY_WAIT(is_init_, retry_times, ret,
+        CS_RPC_CALL_RS(load_bypass_sstables_over, THE_CHUNK_SERVER.get_self(),table_list, is_load_succ));
+
+      return ret;
+    }
+
+    int ObTabletManager::delete_table(const uint64_t table_id)
+    {
+      int ret = OB_SUCCESS;
+
+      if (chunk_merge_.is_merge_stoped()
+          && bypass_sstable_loader_.is_loader_stoped())
+      {
+        if (OB_SUCCESS != (ret = tablet_image_.delete_table(table_id)))
+        {
+          TBSYS_LOG(WARN, "failed to delete table tablets in tablet image, table_id=%lu", table_id);
+        }
+      }
+
+      return ret;
+    }
+
+    int ObTabletManager::create_tablet(const ObNewRange& range, const int64_t data_version)
     {
       int err = OB_SUCCESS;
       ObTablet* tablet = NULL;
 
-      if (range.empty() || 0 >= data_version || 
+      if (range.empty() || 0 >= data_version ||
           (get_serving_data_version() > 0 && data_version != get_serving_data_version()))
       {
         TBSYS_LOG(ERROR, "create_tablet error, input range is empty "
-            "or data_version=%ld or != serving data version %ld", 
+            "or data_version=%ld or != serving data version %ld",
             data_version, get_serving_data_version());
         err = OB_INVALID_ARGUMENT;
       }
       else
       {
         // find tablet if exist?
-        err = tablet_image_.acquire_tablet(range, 
+        err = tablet_image_.acquire_tablet(range,
             ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);
-        if (OB_SUCCESS == err && NULL != tablet 
+        if (OB_SUCCESS == err && NULL != tablet
             && tablet->get_data_version() >= data_version )
         {
-          char range_buf[OB_RANGE_STR_BUFSIZ];
-          char exist_range_buf[OB_RANGE_STR_BUFSIZ];
-          range.to_string(range_buf, sizeof(range_buf));
-          tablet->get_range().to_string(exist_range_buf, sizeof(exist_range_buf));
           TBSYS_LOG(ERROR, "tablet (%ld) >= input version(%ld) "
-              "already exists! dump input and exist, create_range=%s, exist_range=%s", 
-              tablet->get_data_version(), data_version, range_buf, exist_range_buf);
+              "already exists! dump input and exist:",
+              tablet->get_data_version(), data_version);
+          range.hex_dump(TBSYS_LOG_LEVEL_ERROR);
+          tablet->get_range().hex_dump(TBSYS_LOG_LEVEL_ERROR);
           err = OB_ENTRY_EXIST;
         }
         else
@@ -718,7 +747,7 @@ namespace oceanbase
 
         if (NULL != tablet)
         {
-          // release tablet acquired 
+          // release tablet acquired
           tablet_image_.release_tablet(tablet);
           tablet = NULL;
         }
@@ -728,17 +757,17 @@ namespace oceanbase
       {
         // error return
       }
-      else if ( OB_SUCCESS != (err = 
+      else if ( OB_SUCCESS != (err =
             tablet_image_.alloc_tablet_object(range, data_version, tablet)) )
       {
-        TBSYS_LOG(ERROR, "allocate tablet object failed, ret=%d, version=%ld", 
+        TBSYS_LOG(ERROR, "allocate tablet object failed, ret=%d, version=%ld",
             err, data_version);
       }
       else
       {
         // add empty tablet, there is no sstable files in it.
         // if scan or get query on this tablet, scan will return empty dataset.
-        // TODO, create_tablet need send the %memtable_frozen_version 
+        // TODO, create_tablet need send the %memtable_frozen_version
         // as first version of this new tablet.
         tablet->set_data_version(data_version);
         // assign a disk for new tablet.
@@ -754,7 +783,7 @@ namespace oceanbase
           // save new meta file in disk
           TBSYS_LOG(ERROR, "create table failed write meta file error"
               ", version=%ld, disk=%d", data_version, tablet->get_disk_no());
-        } 
+        }
       }
 
       return err;
@@ -764,14 +793,14 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
 
-      bool load_sstable = THE_CHUNK_SERVER.get_param().get_lazy_load_sstable() == 0 ;
+      bool load_sstable = ! THE_CHUNK_SERVER.get_config().lazy_load_sstable;
 
       if (NULL == disk_no_array || size <= 0)
       {
         TBSYS_LOG(WARN, "invalid param, disk_no_array=%p, size=%d", disk_no_array, size);
         err = OB_INVALID_ARGUMENT;
       }
-      else if (OB_SUCCESS != (err = 
+      else if (OB_SUCCESS != (err =
             get_serving_tablet_image().load_tablets(disk_no_array, size, load_sstable)) )
       {
         TBSYS_LOG(ERROR, "read tablets from disk error, ret=%d", err);
@@ -779,7 +808,7 @@ namespace oceanbase
       else
       {
         //get_serving_tablet_image().dump(true);
-        max_sstable_file_seq_ = 
+        max_sstable_file_seq_ =
           get_serving_tablet_image().get_max_sstable_file_seq();
         TBSYS_LOG(INFO, "load tablets, sstable seq:%ld, load sstable=%d", max_sstable_file_seq_, load_sstable);
       }
@@ -814,17 +843,15 @@ namespace oceanbase
       return err;
     }
 
-    int ObTabletManager::internal_get(const ObGetParam& get_param, 
-                                      ObScanner& scanner)
+    int ObTabletManager::gen_sstable_getter(const ObGetParam& get_param,
+                                      sstable::ObSSTableGetter *sstable_getter, int64_t &tablet_version)
     {
       int err                           = OB_SUCCESS;
       int64_t cell_size                 = get_param.get_cell_size();
       int64_t row_size                  = get_param.get_row_size();
-      int64_t tablet_version            = 0;
       ObMultiVersionTabletImage& image  = get_serving_tablet_image();
-      ObSSTableGetter* sstable_getter   = GET_TSI_MULT(ObSSTableGetter, TSI_CS_SSTABLE_GETTER_1);
       ObGetThreadContext* get_context   = GET_TSI_MULT(ObTabletManager::ObGetThreadContext, TSI_CS_GET_THREAD_CONTEXT_1);
-      
+
       if (NULL == sstable_getter || NULL == get_context)
       {
         TBSYS_LOG(WARN, "get thread local instance of sstable getter failed");
@@ -836,18 +863,13 @@ namespace oceanbase
         err = OB_INVALID_ARGUMENT;
       }
 
-#ifdef OB_PROFILER
-      PROFILER_START("profiler_get");
-      PROFILER_BEGIN("internal_get");
-#endif
-
       if (OB_SUCCESS == err)
       {
 #ifdef OB_PROFILER
         PROFILER_BEGIN("acquire_tablet");
 #endif
         get_context->tablets_count_ = OB_MAX_GET_ROW_NUMBER;
-        err = acquire_tablet(get_param, image, &get_context->tablets_[0], 
+        err = acquire_tablet(get_param, image, &get_context->tablets_[0],
                              get_context->tablets_count_, tablet_version,
                              &(get_context->min_compactsstable_version_));
         FILL_TRACE_LOG("acquire_tablet:tablets_count_:%ld,version:%ld,err=%d",
@@ -857,18 +879,15 @@ namespace oceanbase
 #endif
       }
 
-      //if can't find the first row in all the tablets, just exit get 
       if (OB_SUCCESS == err && 0 == get_context->tablets_count_)
       {
-        scanner.set_data_version(tablet_version);
-        scanner.set_is_req_fullfilled(true, 0);
         err = OB_CS_TABLET_NOT_EXIST;
       }
-      else if (OB_SUCCESS != err || get_context->tablets_count_ <= 0 
+      else if (OB_SUCCESS != err || get_context->tablets_count_ <= 0
                || cell_size < get_context->tablets_count_)
       {
         TBSYS_LOG(WARN, "failed to acquire tablet, cell size=%ld, "
-                        "tablets size=%ld, err=%d", 
+                        "tablets size=%ld, err=%d",
                   cell_size, get_context->tablets_count_, err);
         err = OB_ERROR;
       }
@@ -879,11 +898,11 @@ namespace oceanbase
         {
           thread_get_context = get_context;
         }
-        
+
 #ifdef OB_PROFILER
         PROFILER_BEGIN("init_sstable_getter");
 #endif
-        err = init_sstable_getter(get_param, &get_context->tablets_[0], 
+        err = init_sstable_getter(get_param, &get_context->tablets_[0],
                                   get_context->tablets_count_, *sstable_getter);
 #ifdef OB_PROFILER
         PROFILER_END();
@@ -893,8 +912,34 @@ namespace oceanbase
           TBSYS_LOG(WARN, "failed to init sstable getter, err=%d", err);
         }
       }
+      return err;
+    }
 
-      // fill result to result objects of ObScanner 
+    int ObTabletManager::internal_get(const ObGetParam& get_param,
+                                      ObScanner& scanner)
+    {
+      int err = OB_SUCCESS;
+      int64_t tablet_version = 0;
+      ObSSTableGetter* sstable_getter   = GET_TSI_MULT(ObSSTableGetter, TSI_CS_SSTABLE_GETTER_1);
+
+#ifdef OB_PROFILER
+      PROFILER_START("profiler_get");
+      PROFILER_BEGIN("internal_get");
+#endif
+
+      err = gen_sstable_getter(get_param, sstable_getter, tablet_version);
+      //if can't find the first row in all the tablets, just exit get
+      if (OB_CS_TABLET_NOT_EXIST == err)
+      {
+        scanner.set_data_version(tablet_version);
+        scanner.set_is_req_fullfilled(true, 0);
+      }
+      else if (OB_SUCCESS != err)
+      {
+        TBSYS_LOG(WARN, "fail to gen sstable getter");
+      }
+
+      // fill result to result objects of ObScanner
       if (OB_SUCCESS == err)
       {
         scanner.set_data_version(tablet_version);
@@ -909,9 +954,8 @@ namespace oceanbase
 #ifdef OB_PROFILER
       PROFILER_BEGIN("release_tablet");
 #endif
-
-      if (get_context->tablets_count_ > 0 
-          && OB_SUCCESS != release_tablet(image, &get_context->tablets_[0], 
+      if (get_context->tablets_count_ > 0
+          && OB_SUCCESS != release_tablet(image, &get_context->tablets_[0],
                                           get_context->tablets_count_))
       {
         TBSYS_LOG(WARN, "failed to release tablets");
@@ -932,9 +976,9 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       ObGetThreadContext*& get_context = get_cur_thread_get_contex();
       ObMultiVersionTabletImage& image  = get_serving_tablet_image();
-      
-      if (get_context != NULL && get_context->tablets_count_ > 0 
-          && OB_SUCCESS != release_tablet(image, &get_context->tablets_[0], 
+
+      if (get_context != NULL && get_context->tablets_count_ > 0
+          && OB_SUCCESS != release_tablet(image, &get_context->tablets_[0],
                                           get_context->tablets_count_))
       {
         TBSYS_LOG(WARN, "failed to release tablets");
@@ -949,7 +993,7 @@ namespace oceanbase
 
       err = reset_query_thread_local_buffer();
 
-      // suppose table_name, column_name already 
+      // suppose table_name, column_name already
       // translated to table_id, column_id by MergeServer
       if (OB_SUCCESS == err)
       {
@@ -969,13 +1013,13 @@ namespace oceanbase
     int ObTabletManager::prepare_tablet_image(const int64_t memtable_frozen_version)
     {
       int ret = OB_SUCCESS;
-      int64_t retry_times = THE_CHUNK_SERVER.get_param().get_retry_times();
-      int64_t sleep_interval = THE_CHUNK_SERVER.get_param().get_network_time_out();
+      int64_t retry_times = THE_CHUNK_SERVER.get_config().retry_times;
+      int64_t sleep_interval = THE_CHUNK_SERVER.get_config().network_timeout;
       int64_t i = 0;
       while (i++ < retry_times)
       {
         ret = tablet_image_.prepare_for_merge(memtable_frozen_version);
-        if (OB_SUCCESS == ret) 
+        if (OB_SUCCESS == ret)
         {
           break;
         }
@@ -985,7 +1029,7 @@ namespace oceanbase
         }
         else
         {
-          TBSYS_LOG(ERROR, "prepare image version = %ld error ret = %d", 
+          TBSYS_LOG(ERROR, "prepare image version = %ld error ret = %d",
               memtable_frozen_version, ret);
           break;
         }
@@ -998,9 +1042,9 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
 
-      if ( OB_SUCCESS != (err = prepare_tablet_image(memtable_frozen_version)) ) 
+      if ( OB_SUCCESS != (err = prepare_tablet_image(memtable_frozen_version)) )
       {
-        TBSYS_LOG(WARN, "prepare_for_merge version = %ld error, err = %d", 
+        TBSYS_LOG(WARN, "prepare_for_merge version = %ld error, err = %d",
             memtable_frozen_version, err);
       }
       else if ( OB_SUCCESS != (err = drop_unserving_cache()) )
@@ -1035,14 +1079,14 @@ namespace oceanbase
         //update schema,
         //new version coming,clear join cache
         join_cache_.destroy();
-        if (param_->get_join_cache_conf().cache_mem_size > 0) // <= 0 will disable the join cache
+        if (config_->join_cache_size >= 1) // <= 0 will disable the join cache
         {
-          if ( (ret = join_cache_.init(param_->get_join_cache_conf().cache_mem_size)) != OB_SUCCESS)
+          if ( (ret = join_cache_.init(config_->join_cache_size)) != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR,"init join cache failed");
           }
         }
-        disk_manager_.scan(param_->get_datadir_path(),param_->get_max_sstable_size());
+        disk_manager_.scan(config_->datadir, OB_DEFAULT_MAX_TABLET_SIZE);
         chunk_merge_.schedule(memtable_frozen_version);
       }
       return ret;
@@ -1061,35 +1105,21 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "report_capacity_info invalid status, cur_serving_idx=%ld", cur_serving_idx_);
         err = OB_ERROR;
       }
-      else
+      else if (OB_SUCCESS != (err = CS_RPC_CALL_RS(report_capacity_info,
+              THE_CHUNK_SERVER.get_self(), disk_manager_.get_total_capacity(),
+              disk_manager_.get_total_used())))
       {
-        const ObServer& root_server = THE_CHUNK_SERVER.get_root_server();
-        ObRootServerRpcStub root_stub;
-        err = root_stub.init(root_server, &(THE_CHUNK_SERVER.get_client_manager()));
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "failed to init root stub, err=%d", err);
-        }
-        else
-        {
-          err = root_stub.report_capacity_info(THE_CHUNK_SERVER.get_self(), 
-              disk_manager_.get_total_capacity(), disk_manager_.get_total_used());
-          if (OB_SUCCESS != err)
-          {
-            TBSYS_LOG(WARN, "failed to report capacity info, err=%d", err);
-          }
-        }
+        TBSYS_LOG(WARN, "failed to report capacity info, err=%d", err);
       }
 
       return err;
-    } 
+    }
 
     int ObTabletManager::report_tablets()
     {
       int err = OB_SUCCESS;
       ObTablet* tablet = NULL;
       ObTabletReportInfo tablet_info;
-      char range_buf[OB_RANGE_STR_BUFSIZ];
       // since report_tablets process never use block_uncompressed_buffer_
       // so borrow it to store ObTabletReportInfoList
       int64_t num = OB_MAX_TABLET_LIST_NUMBER;
@@ -1110,6 +1140,7 @@ namespace oceanbase
         report_info_list_second->reset();
       }
 
+      bool is_version_changed = false;
       ObMultiVersionTabletImage& image = get_serving_tablet_image();
       if (OB_SUCCESS == err) err = image.begin_scan_tablets();
       if (OB_ITER_END == err)
@@ -1143,25 +1174,33 @@ namespace oceanbase
             else if (tablet->get_data_version() != image.get_serving_version())
             {
               image.release_tablet(tablet);
+              is_version_changed = true;
               continue;
             }
             else if (tablet->is_removed())
             {
-              tablet->get_range().to_string(range_buf, OB_RANGE_STR_BUFSIZ);
-              TBSYS_LOG(WARN, "report: ignore removed range = <%s>", range_buf);
+              TBSYS_LOG(WARN, "report: ignore removed range = <%s>", to_cstring(tablet->get_range()));
               image.release_tablet(tablet);
               continue;
             }
             else
             {
 
-              if (!tablet->get_range().border_flag_.is_left_open_right_closed())
+              if (!tablet->get_range().is_left_open_right_closed())
               {
-                tablet->get_range().to_string(range_buf, OB_RANGE_STR_BUFSIZ);
-                TBSYS_LOG(WARN, "report illegal tablet range = <%s>", range_buf);
+                TBSYS_LOG(WARN, "report illegal tablet range = <%s>", to_cstring(tablet->get_range()));
               }
 
               fill_tablet_info(*tablet, tablet_info);
+              TBSYS_LOG(INFO, "add tablet <%s>, row count:[%ld], size:[%ld], "
+                  "crc:[%ld] version:[%ld] sequence_num:[%ld] to report list",
+                  to_cstring(tablet_info.tablet_info_.range_),
+                  tablet_info.tablet_info_.row_count_,
+                  tablet_info.tablet_info_.occupy_size_,
+                  tablet_info.tablet_info_.crc_sum_,
+                  tablet_info.tablet_location_.tablet_version_,
+                  tablet_info.tablet_location_.tablet_seq_);
+
               err = report_info_list->add_tablet(tablet_info);
               if (OB_SUCCESS != err)
               {
@@ -1170,7 +1209,7 @@ namespace oceanbase
               else
               {
                 serialize_size += tablet_info.get_serialize_size();
-                if (!tablet->is_with_next_brother() 
+                if (!tablet->is_with_next_brother()
                     && serialize_size <= max_serialize_size)
                 {
                   cur_tablet_brother_cnt = 0;
@@ -1200,12 +1239,12 @@ namespace oceanbase
             if (serialize_size > max_serialize_size)
             {
               /**
-               * FIXME: it's better to ensure the tablets splited from one 
-               * tablet are reported in one packet, in this case, one tablet 
+               * FIXME: it's better to ensure the tablets splited from one
+               * tablet are reported in one packet, in this case, one tablet
                * splits more than 1024 tablets, after add the last tablet, the
-               * serialize size is greater than packet size, we need rollback 
+               * serialize size is greater than packet size, we need rollback
                * the last tablet, and report the tablets more than one packet,
-               * rootserver is also handle this case. 
+               * rootserver is also handle this case.
                */
               TBSYS_LOG(WARN, "one tablet splited more than %ld tablets, "
                               "and the serialize size is greater than packet size, "
@@ -1232,7 +1271,7 @@ namespace oceanbase
               }
               else if (report_info_list->get_serialize_size() > max_serialize_size)
               {
-                TBSYS_LOG(ERROR, "report_info_list serialize_size: %ld still greater than %ld", 
+                TBSYS_LOG(ERROR, "report_info_list serialize_size: %ld still greater than %ld",
                     report_info_list->get_serialize_size(), max_serialize_size);
                 err = OB_ERROR;
               }
@@ -1240,13 +1279,13 @@ namespace oceanbase
             else
             {
               /**
-               * FIXME: it's better to ensure the tablets splited from one 
-               * tablet are reported in one packet, in this case, rootserver 
-               * can ensure the atomicity. we only report 1024 tablets to 
-               * rootserver each time, if one tablet splits more than 1024 
-               * tablets, we can't report all the tablets in one packet, we 
-               * report the tablets more than one packet, rootserver is also 
-               * handle this case. 
+               * FIXME: it's better to ensure the tablets splited from one
+               * tablet are reported in one packet, in this case, rootserver
+               * can ensure the atomicity. we only report 1024 tablets to
+               * rootserver each time, if one tablet splits more than 1024
+               * tablets, we can't report all the tablets in one packet, we
+               * report the tablets more than one packet, rootserver is also
+               * handle this case.
                */
               TBSYS_LOG(WARN, "one tablet splited more than %ld tablets, "
                               "can't report in one packet atomicly",
@@ -1295,6 +1334,11 @@ namespace oceanbase
         }
       }
 
+      if (is_version_changed)
+      {
+        err = OB_CS_EAGAIN;
+      }
+
 
       return err;
     }
@@ -1304,7 +1348,7 @@ namespace oceanbase
       return OB_SUCCESS;
     }
 
-    int ObTabletManager::init_sstable_scanner(const ObScanParam& scan_param, 
+    int ObTabletManager::init_sstable_scanner(const ObScanParam& scan_param,
         const ObTablet* tablet, ObSSTableScanner& sstable_scanner)
     {
       int err = OB_SUCCESS;
@@ -1336,7 +1380,7 @@ namespace oceanbase
     ObTablet*& ObTabletManager::get_cur_thread_scan_tablet()
     {
       static __thread ObTablet* cur_thread_scan_tablet = NULL;
-      
+
       return cur_thread_scan_tablet;
     }
 
@@ -1355,28 +1399,41 @@ namespace oceanbase
       ObSSTableScanner *sstable_scanner = GET_TSI_MULT(ObSSTableScanner, TSI_CS_SSTABLE_SCANNER_1);
 
       int64_t query_version = 0;
-      ObMultiVersionTabletImage::ScanDirection scan_direction = 
-        scan_param.get_scan_direction() == ObScanParam::FORWARD ? 
+      ObMultiVersionTabletImage::ScanDirection scan_direction =
+        scan_param.get_scan_direction() == ScanFlag::FORWARD ?
         ObMultiVersionTabletImage::SCAN_FORWARD : ObMultiVersionTabletImage::SCAN_BACKWARD;
-
-      const ObVersionRange & version_range = scan_param.get_version_range();
-      if (!version_range.border_flag_.is_max_value() && version_range.end_version_ != 0)
-      {
-        query_version = version_range.end_version_;
-      }
 
       if (NULL == sstable_scanner)
       {
-        TBSYS_LOG(ERROR, "failed to get thread local sstable scanner, sstable_scanner=%p", 
+        TBSYS_LOG(ERROR, "failed to get thread local sstable scanner, sstable_scanner=%p",
                   sstable_scanner);
         err = OB_ALLOCATE_MEMORY_FAILED;
       }
-      else if (OB_SUCCESS != (err = 
-            tablet_image_.acquire_tablet(*scan_param.get_range(), 
+      else if ((query_version = scan_param.get_version_range().get_query_version()) < 0)
+      {
+        TBSYS_LOG(ERROR, "empty version range to scan, version_range=%s",
+          to_cstring(scan_param.get_version_range()));
+        err = OB_ERROR;
+      }
+      else if (OB_SUCCESS != (err =
+            tablet_image_.acquire_tablet(*scan_param.get_range(),
               scan_direction, query_version, tablet)))
       {
-        TBSYS_LOG(WARN, "failed to acquire tablet, tablet=%p, version=%ld, err=%d", 
-            tablet, query_version, err);
+        TBSYS_LOG(WARN, "failed to acquire range(%s), tablet=%p, version=%ld, err=%d",
+            to_cstring(*scan_param.get_range()), tablet, query_version, err);
+      }
+      else if (NULL != tablet && tablet->is_removed())
+      {
+        TBSYS_LOG(INFO, "tablet is removed, can't scan, tablet_range=%s",
+            to_cstring(tablet->get_range()));
+        err = tablet_image_.release_tablet(tablet);
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(WARN, "failed to release tablet, tablet=%p, range:%s",
+            tablet, to_cstring(tablet->get_range()));
+        }
+        tablet = NULL;
+        err = OB_CS_TABLET_NOT_EXIST;
       }
       else if (OB_SUCCESS != (err = init_sstable_scanner(scan_param, tablet, *sstable_scanner)))
       {
@@ -1385,15 +1442,15 @@ namespace oceanbase
       else
       {
         scanner.set_data_version(tablet->get_data_version());
-        ObRange copy_range;
-        deep_copy_range(*GET_TSI_MULT(ModuleArena, TSI_SSTABLE_MODULE_ARENA_1), 
+        ObNewRange copy_range;
+        deep_copy_range(*GET_TSI_MULT(ModuleArena, TSI_SSTABLE_MODULE_ARENA_1),
           tablet->get_range(), copy_range);
         scanner.set_range_shallow_copy(copy_range);
 
         /**
-         * the scan data will be merged and joined by merge join agent, 
-         * so it doesn't fill scan data into obscanner, we just add som 
-         * meta data into obscanner for merge join agent. 
+         * the scan data will be merged and joined by merge join agent,
+         * so it doesn't fill scan data into obscanner, we just add som
+         * meta data into obscanner for merge join agent.
          */
         scanner.set_is_req_fullfilled(true,1);
 
@@ -1408,10 +1465,8 @@ namespace oceanbase
 
         if (TBSYS_LOGGER._level >= TBSYS_LOG_LEVEL_DEBUG)
         {
-          char range_buf[OB_RANGE_STR_BUFSIZ];
-          tablet->get_range().to_string(range_buf, OB_RANGE_STR_BUFSIZ);
           TBSYS_LOG(DEBUG, "scan result: tablet's data version=%ld, range=%s",
-              tablet->get_data_version(), range_buf);
+              tablet->get_data_version(), to_cstring(tablet->get_range()));
 
           common::ModuleArena* internal_buffer_arena = GET_TSI_MULT(common::ModuleArena, TSI_SSTABLE_MODULE_ARENA_1);
           TBSYS_LOG(DEBUG, "thread local page arena hold memory usage,"
@@ -1437,7 +1492,7 @@ namespace oceanbase
 
       if (NULL == sstable_scanner)
       {
-        TBSYS_LOG(ERROR, "failed to get thread local sstable scanner, sstable_scanner=%p", 
+        TBSYS_LOG(ERROR, "failed to get thread local sstable scanner, sstable_scanner=%p",
                   sstable_scanner);
         err = OB_ALLOCATE_MEMORY_FAILED;
       }
@@ -1451,7 +1506,7 @@ namespace oceanbase
         err = tablet_image_.release_tablet(scan_tablet);
         if (OB_SUCCESS != err)
         {
-          TBSYS_LOG(ERROR, "failed to release tablet, tablet=%p,range:%s", scan_tablet,scan_range2str(scan_tablet->get_range()));
+          TBSYS_LOG(ERROR, "failed to release tablet, tablet=%p", scan_tablet);
         }
         else
         {
@@ -1462,7 +1517,7 @@ namespace oceanbase
       return err;
     }
 
-    int ObTabletManager::acquire_tablet(const ObGetParam& get_param, 
+    int ObTabletManager::acquire_tablet(const ObGetParam& get_param,
                                         ObMultiVersionTabletImage& image,
                                         ObTablet* tablets[], int64_t& size,
                                         int64_t& tablet_version,
@@ -1477,7 +1532,8 @@ namespace oceanbase
       int64_t tablets_count   = 0;
       int64_t cache_version   = 0;
       int64_t tmp_version     = 0;
-      ObRange range;
+      int64_t query_version   = 0;
+      ObNewRange range;
 
       if (cell_size <= 0)
       {
@@ -1499,6 +1555,12 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid get param");
         err = OB_ERROR;
       }
+      else if ((query_version = get_param.get_version_range().get_query_version()) < 0)
+      {
+        TBSYS_LOG(ERROR, "empty version range to get, version_range=%s",
+          to_cstring(get_param.get_version_range()));
+        err = OB_ERROR;
+      }
       else
       {
         row_index = get_param.get_row_index();
@@ -1515,22 +1577,20 @@ namespace oceanbase
           range.table_id_ = get_param[row_index[i].offset_]->table_id_;
           range.start_key_ = get_param[row_index[i].offset_]->row_key_;
           range.end_key_ = get_param[row_index[i].offset_]->row_key_;
-          range.border_flag_.set_inclusive_start(); 
+          range.border_flag_.set_inclusive_start();
           range.border_flag_.set_inclusive_end();
-          err = image.acquire_tablet(range, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablets[i]);
+          err = image.acquire_tablet(range, ObMultiVersionTabletImage::SCAN_FORWARD, query_version, tablets[i]);
           if (OB_SUCCESS != err)
           {
-            TBSYS_LOG(DEBUG, "the tablet does not exist, err=%d, rowkey: ", err);
-            hex_dump(range.start_key_.ptr(), range.start_key_.length(), 
-                     true, TBSYS_LOG_LEVEL_DEBUG);
+            TBSYS_LOG(DEBUG, "the tablet does not exist, err=%d, rowkey: %s", err, to_cstring(range.start_key_));
             tablets[i] = NULL;
             err = OB_SUCCESS;
             /**
-             * don't get the next row after the first non-existent row 
-             * WARNING: please don't optimize this, mergeserver rely on this 
-             * feature, when chunkserver can't find tablet for this rowkey, 
-             * chunserver will return special error 
-             * code(OB_CS_TABLET_NOT_EXIST) for this case. 
+             * don't get the next row after the first non-existent row
+             * WARNING: please don't optimize this, mergeserver rely on this
+             * feature, when chunkserver can't find tablet for this rowkey,
+             * chunserver will return special error
+             * code(OB_CS_TABLET_NOT_EXIST) for this case.
              */
             break;
           }
@@ -1540,16 +1600,19 @@ namespace oceanbase
             {
               cur_tablet_ver = tablets[i]->get_data_version();
             }
-            else if (cur_tablet_ver != tablets[i]->get_data_version())
+
+            if (cur_tablet_ver != tablets[i]->get_data_version()
+                || tablets[i]->is_removed())
             {
               //release the tablet we don't need
               err = image.release_tablet(tablets[i]);
               if (OB_SUCCESS != err)
               {
-                TBSYS_LOG(WARN, "failed to release tablet, tablet=%p, err=%d", 
+                TBSYS_LOG(WARN, "failed to release tablet, tablet=%p, err=%d",
                           tablets[i], err);
               }
-              //tablet version change, break acquire tablet, skip current tablet
+              //tablet version change or tablet is removed, break acquire
+              //tablet, skip current tablet
               break;
             }
 
@@ -1562,7 +1625,7 @@ namespace oceanbase
             {
               cache_version = tmp_version;
             }
-            
+
             tablets_count++;
           }
         }
@@ -1581,8 +1644,8 @@ namespace oceanbase
       if (0 == size || 0 == cur_tablet_ver)
       {
         /**
-         * not found tablet or error happens, use the data verion of 
-         * current tablet image instead 
+         * not found tablet or error happens, use the data verion of
+         * current tablet image instead
          */
         cur_tablet_ver = get_serving_data_version();
       }
@@ -1616,7 +1679,7 @@ namespace oceanbase
             err = image.release_tablet(tablets[i]);
             if (OB_SUCCESS != err)
             {
-              TBSYS_LOG(WARN, "failed to release tablet, tablet=%p, err=%d", 
+              TBSYS_LOG(WARN, "failed to release tablet, tablet=%p, err=%d",
                         tablets[i], err);
               ret = err;
             }
@@ -1627,9 +1690,9 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletManager::init_sstable_getter(const ObGetParam& get_param, 
+    int ObTabletManager::init_sstable_getter(const ObGetParam& get_param,
                                              ObTablet* tablets[],
-                                             const int64_t size, 
+                                             const int64_t size,
                                              ObSSTableGetter& sstable_getter)
     {
       int err                   = OB_SUCCESS;
@@ -1637,7 +1700,7 @@ namespace oceanbase
       int32_t reader_size       = 1;
       const ObGetParam::ObRowIndex* row_index = NULL;
       ObGetThreadContext* get_context         = GET_TSI_MULT(ObGetThreadContext, TSI_CS_GET_THREAD_CONTEXT_1);
-      
+
       if (NULL == get_context)
       {
         TBSYS_LOG(WARN, "get thread local instance of sstable getter failed");
@@ -1667,11 +1730,11 @@ namespace oceanbase
 
           reader_size = 1;  //reset reader size, find_sstable will modify it
           /** FIXME: find sstable may return more than one reader */
-          err = tablets[i]->find_sstable(get_param[row_index[i].offset_]->row_key_, 
+          err = tablets[i]->find_sstable(get_param[row_index[i].offset_]->row_key_,
                                          &reader, reader_size);
-          if (OB_SUCCESS == err && 1 == reader_size)
+          if (OB_SUCCESS == err && 1 == reader_size && !reader->empty())
           {
-            TBSYS_LOG(DEBUG, "find_sstable reader=%p, reader_size=%d", 
+            TBSYS_LOG(DEBUG, "find_sstable reader=%p, reader_size=%d",
                       reader, reader_size);
             get_context->readers_[i] = reader;
 
@@ -1695,9 +1758,9 @@ namespace oceanbase
         if (OB_SUCCESS == err)
         {
           get_context->readers_count_ = size;
-          err = sstable_getter.init(get_serving_block_cache() , 
-                                    get_serving_block_index_cache(), 
-                                    get_param, &get_context->readers_[0], 
+          err = sstable_getter.init(get_serving_block_cache() ,
+                                    get_serving_block_index_cache(),
+                                    get_param, &get_context->readers_[0],
                                     get_context->readers_count_,
                                     false, sstable_row_cache_);
           if (OB_SUCCESS != err)
@@ -1771,8 +1834,7 @@ namespace oceanbase
       report_tablet_info.tablet_info_.range_ = tablet.get_range();
       report_tablet_info.tablet_info_.occupy_size_ = tablet.get_occupy_size();
       report_tablet_info.tablet_info_.row_count_ = tablet.get_row_count();
-      uint64_t tablet_checksum = tablet.get_checksum();
-      report_tablet_info.tablet_info_.crc_sum_ = tablet_checksum;
+      report_tablet_info.tablet_info_.crc_sum_ = tablet.get_checksum();
 
       const ObServer& self = THE_CHUNK_SERVER.get_self();
       report_tablet_info.tablet_location_.chunkserver_ = self;
@@ -1786,99 +1848,33 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
 
-      const ObServer& root_server = THE_CHUNK_SERVER.get_root_server();
-      int64_t retry_times = THE_CHUNK_SERVER.get_param().get_retry_times();
-      ObRootServerRpcStub root_stub;
-
-      if (OB_SUCCESS != (err = 
-            root_stub.init(root_server, &(THE_CHUNK_SERVER.get_client_manager()))) )
-      {
-        TBSYS_LOG(WARN, "failed to init root stub, err=%d", err);
-      }
-      else
-      {
-        rpc_retry_wait(is_init_,  retry_times, err, 
-            root_stub.report_tablets(tablets, 0 /*not used*/, has_more));
-      }
+      int64_t retry_times = THE_CHUNK_SERVER.get_config().retry_times;
+      RPC_RETRY_WAIT(is_init_,  retry_times, err,
+          CS_RPC_CALL_RS(report_tablets, THE_CHUNK_SERVER.get_self(), tablets, get_serving_data_version(), has_more));
 
       return err;
-    }
-
-    FileInfoCache&  ObTabletManager::get_fileinfo_cache()
-    {
-       return fileinfo_cache_;
-    }
-
-    ObBlockCache& ObTabletManager::get_serving_block_cache()
-    {
-       return block_cache_[cur_serving_idx_];
-    }
-
-    ObBlockCache& ObTabletManager::get_unserving_block_cache()
-    {
-      return block_cache_[(cur_serving_idx_ + 1) % TABLET_ARRAY_NUM];
-    }
-
-    ObBlockIndexCache& ObTabletManager::get_serving_block_index_cache()
-    {
-      return block_index_cache_[cur_serving_idx_];
-    }
-
-    ObBlockIndexCache& ObTabletManager::get_unserving_block_index_cache()
-    {
-      return block_index_cache_[(cur_serving_idx_ + 1) % TABLET_ARRAY_NUM];
-    }
-
-    ObMultiVersionTabletImage& ObTabletManager::get_serving_tablet_image()
-    {
-      return tablet_image_;
-    }
-
-    const ObMultiVersionTabletImage& ObTabletManager::get_serving_tablet_image() const
-    {
-      return tablet_image_;
-    }
-
-    ObDiskManager& ObTabletManager::get_disk_manager()
-    {
-      return disk_manager_;
-    }
-
-    ObRegularRecycler& ObTabletManager::get_regular_recycler()
-    {
-      return regular_recycler_;
-    }
-
-    ObScanRecycler& ObTabletManager::get_scan_recycler()
-    {
-      return scan_recycler_;
-    }
-
-    ObJoinCache& ObTabletManager::get_join_cache()
-    {
-      return join_cache_;
     }
 
     int ObTabletManager::build_unserving_cache()
     {
       int ret = OB_SUCCESS;
 
-      if (NULL == param_)
+      if (NULL == config_)
       {
         TBSYS_LOG(WARN, "param is NULL");
         ret = OB_ERROR;
       }
-      else 
+      else
       {
-        ret = build_unserving_cache(param_->get_block_cache_conf(), 
-                                    param_->get_block_index_cache_conf());
+        ret = build_unserving_cache(config_->block_cache_size,
+                                    config_->block_index_cache_size);
       }
 
       return ret;
     }
 
-    int ObTabletManager::build_unserving_cache(const ObBlockCacheConf& bc_conf,
-                                               const ObBlockIndexCacheConf& bic_conf)
+    int ObTabletManager::build_unserving_cache(const int64_t block_cache_size,
+                                               const int64_t block_index_cache_size)
     {
       int ret                             = OB_SUCCESS;
       ObBlockCache& dst_block_cache       = get_unserving_block_cache();
@@ -1891,21 +1887,21 @@ namespace oceanbase
       {
         //initialize unserving block cache
         dst_block_cache.set_fileinfo_cache(fileinfo_cache_);
-        ret = dst_block_cache.init(bc_conf);
+        ret = dst_block_cache.init(block_cache_size);
       }
 
       if (OB_SUCCESS == ret)
       {
         //initialize unserving block index cache
         dst_index_cache.set_fileinfo_cache(fileinfo_cache_);
-        ret = dst_index_cache.init(bic_conf);
+        ret = dst_index_cache.init(block_index_cache_size);
       }
 
-      if (OB_SUCCESS == ret && NULL != param_
-          && param_->get_switch_cache_after_merge() > 0)
+      if (OB_SUCCESS == ret && NULL != config_
+          && config_->switch_cache_after_merge)
       {
         ret = switch_cache_utility_.switch_cache(tablet_image_, src_tablet_version,
-                                                 dst_tablet_version, 
+                                                 dst_tablet_version,
                                                  src_block_cache, dst_block_cache,
                                                  dst_index_cache);
       }

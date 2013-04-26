@@ -7,24 +7,15 @@
 #include "common/ob_log_entry.h"
 #include "ob_root_log_manager.h"
 
-namespace
-{
-  const int64_t DEFAULT_LOG_SIZE_MB = 64; // 64MB
-  const int64_t DEFAULT_LOG_SYNC_TYPE = 0;
-
-  const char* STR_ROOT_SECTION = "root_server";
-  const char* OBRT_LOG_DIR_PATH = "log_dir_path";
-  const char* OBRT_LOG_SIZE_MB = "log_size_mb";
-  const char* OBRT_LOG_SYNC_TYPE = "log_sync_type";
-}
-
 namespace oceanbase
 {
   namespace rootserver
   {
     using namespace common;
     const int ObRootLogManager::UINT64_MAX_LEN = 32;
-    ObRootLogManager::ObRootLogManager() : ckpt_id_(0), replay_point_(0), max_log_id_(0), rt_server_status_(0), is_initialized_(false), is_log_dir_empty_(false)
+    ObRootLogManager::ObRootLogManager()
+      : ckpt_id_(0), replay_point_(0), max_log_id_(0), rt_server_status_(0),
+        is_initialized_(false), is_log_dir_empty_(false)
     {
     }
 
@@ -46,12 +37,12 @@ namespace oceanbase
       log_worker_.set_root_server(root_server_);
       log_worker_.set_log_manager(this);
 
-      const char* log_dir = TBSYS_CONFIG.getString(STR_ROOT_SECTION, OBRT_LOG_DIR_PATH);
+      const char* log_dir = root_server_->get_config().commit_log_dir;
       if (OB_SUCCESS == ret)
       {
         if (NULL == log_dir)
         {
-          TBSYS_LOG(ERROR, "log directory is null, section: %s, name: %s", STR_ROOT_SECTION, OBRT_LOG_DIR_PATH);
+          TBSYS_LOG(ERROR, "commit log directory is null");
           ret = OB_INVALID_ARGUMENT;
         }
         else
@@ -148,8 +139,8 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        int64_t log_file_max_size = TBSYS_CONFIG.getInt(STR_ROOT_SECTION, OBRT_LOG_SIZE_MB, DEFAULT_LOG_SIZE_MB) * 1000 * 1000;
-        int64_t log_sync_type = TBSYS_CONFIG.getInt(STR_ROOT_SECTION, OBRT_LOG_SYNC_TYPE, DEFAULT_LOG_SYNC_TYPE);
+        int64_t log_file_max_size = root_server_->get_config().max_commit_log_size;
+        int64_t log_sync_type = root_server_->get_config().commit_log_sync_type;
 
         ret = ObLogWriter::init(log_dir, log_file_max_size, slave_mgr, log_sync_type);
         if (OB_SUCCESS != ret)
@@ -185,6 +176,7 @@ namespace oceanbase
         }
         else
         {
+          tbsys::CThreadGuard log_guard(get_log_sync_mutex());
           ret = switch_log_file(new_log_file_id);
           if (ret != OB_SUCCESS)
           {
@@ -200,7 +192,6 @@ namespace oceanbase
     {
       TBSYS_LOG(INFO, "[NOTICE] after recovery checkpointing");
       root_server_->start_threads();
-      root_server_->wait_init_finished();
       TBSYS_LOG(INFO, "[NOTICE] background threads started and finished init");
       return OB_SUCCESS;
     }
@@ -260,18 +251,16 @@ namespace oceanbase
 
             while (ret == OB_SUCCESS)
             {
-              set_cur_log_seq(seq + 1);
-
               if (OB_LOG_NOP != cmd)
               {
                 ret = log_worker_.apply(cmd, log_data, log_length);
-
                 if (ret != OB_SUCCESS)
                 {
-                  TBSYS_LOG(ERROR, "apply log failed, command: %d", cmd);
+                  TBSYS_LOG(ERROR, "apply log failed:command[%d], log[%s], ret[%d]", cmd, log_data, ret);
+                  //WARNING: master root server not exit when apply log failed
+                  // ::exit(OB_FATAL_EXIT);
                 }
               }
-
               ret = log_reader.read_log(cmd, seq, log_data, log_length);
               if (OB_FILE_NOT_EXIST != ret && OB_READ_NOTHING != ret && OB_SUCCESS != ret)
               {
@@ -302,14 +291,29 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        ret = start_log(max_log_id_, get_cur_log_seq());
-        if (OB_SUCCESS != ret)
+        ObLogCursor start_cursor;
+        if (OB_SUCCESS != (ret = log_reader.get_next_cursor(start_cursor))
+            && OB_READ_NOTHING != ret)
         {
-          TBSYS_LOG(ERROR, "ObLogWriter start_log[max_log_id_=%lu get_cur_log_seq()=%lu", max_log_id_, get_cur_log_seq());
+          TBSYS_LOG(ERROR, "get_cursor(%s)=>%d", to_cstring(start_cursor), ret);
+        }
+        else if (OB_SUCCESS == ret)
+        {}
+        else
+        {
+          set_cursor(start_cursor, replay_point_, 1, 0);
+          ret = OB_SUCCESS;
+        }
+
+        if (OB_SUCCESS != ret)
+        {}
+        else if (OB_SUCCESS != (ret = start_log(start_cursor)))
+        {
+          TBSYS_LOG(ERROR, "ObLogWriter start_log[%s]", to_cstring(start_cursor));
         }
         else
         {
-          TBSYS_LOG(INFO, "start log [%lu] done, cur_log_seq=%lu", max_log_id_, get_cur_log_seq());
+          TBSYS_LOG(INFO, "start log [%s] done", to_cstring(start_cursor));
         }
       }
       return ret;
@@ -370,7 +374,7 @@ namespace oceanbase
         }
         else
         {
-          err = ckpt_file.open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH); 
+          err = ckpt_file.open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
           if (err < 0)
           {
             TBSYS_LOG(ERROR, "open check point file[%s] failed: %s", filename, strerror(errno));
@@ -380,7 +384,8 @@ namespace oceanbase
           {
             char st_str[UINT64_MAX_LEN];
             int st_str_len = 0;
-            int server_status = root_server_->get_server_status();
+            static const int STATUS_SLEEP        = 6;
+            int server_status = STATUS_SLEEP; // for compatible purpose
             st_str_len = snprintf(st_str, UINT64_MAX_LEN, "%d", server_status);
             if (st_str_len < 0)
             {

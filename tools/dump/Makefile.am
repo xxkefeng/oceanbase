@@ -1,5 +1,6 @@
 AM_CPPFLAGS = -I${TBLIB_ROOT}/include/tbsys \
 	      -I${TBLIB_ROOT}/include/tbnet \
+        -I${EASY_ROOT}/include/easy\
 	      -I${top_srcdir}/include \
 	      -I${top_srcdir}/src \
 	      -I./include
@@ -13,6 +14,7 @@ LDADD = $(top_builddir)/src/updateserver/libupdateserver.a \
 	$(top_builddir)/src/common/libcommon.a \
 	$(top_builddir)/src/common/btree/libbtree.a \
 	${TBLIB_ROOT}/lib/libtbnet.a \
+	${EASY_LIB_PATH}/libeasy.a \
 	${TBLIB_ROOT}/lib/libtbsys.a -lcrypt
 
 AM_LDFLAGS = -lpthread -lc -lm -lrt -ldl ${GCOV_LIB} -laio -lcrypt -lssl
@@ -56,9 +58,11 @@ ob_export_SOURCES = oceanbase_db.cpp db_record_set.cpp db_utils.cpp \
 										 db_table_info.cpp db_record.cpp ob_data_set.cpp tokenizer.cpp \
 										 $(top_builddir)/src/updateserver/ob_ups_stat.cpp ob_export_main.cpp
 obbinlog_SOURCES = obbinlog.cpp $(top_builddir)/src/updateserver/ob_ups_stat.cpp
+genfile_SOURCES = gen_file.cpp
 
-bin_PROGRAMS = obdump ob_import tablet_stats obbinlog ob_export
-SUBDIRS=scripts
-DIST_SUBDIRS=scripts
+#bin_PROGRAMS = obdump ob_import tablet_stats obbinlog ob_export
+bin_PROGRAMS = ob_import
+#SUBDIRS=scripts
+#DIST_SUBDIRS=scripts
 clean-local:
 	-rm -f *.gcov *.gcno *.gcda

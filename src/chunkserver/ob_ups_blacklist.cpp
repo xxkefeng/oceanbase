@@ -15,6 +15,7 @@
 #include "tblog.h"
 #include "tbsys.h"
 #include "ob_ups_blacklist.h"
+#include "common/utility.h"
 
 namespace oceanbase
 {
@@ -79,10 +80,7 @@ namespace oceanbase
         }
         else
         {
-          const int32_t MAX_SERVER_ADDR_SIZE = 64;
-          char server_addr[MAX_SERVER_ADDR_SIZE];
-          fail_counter_[server_index].server_.to_string(server_addr, MAX_SERVER_ADDR_SIZE);
-          TBSYS_LOG(WARN, "check server is in blacklist:server[%s]", server_addr);
+          TBSYS_LOG(WARN, "check server is in blacklist:server[%s]", to_cstring(fail_counter_[server_index].server_));
           ret = false;
         }
       }

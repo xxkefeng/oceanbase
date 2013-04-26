@@ -27,9 +27,7 @@ namespace oceanbase
     class ObObj;
     class ObMutator;
     class ObGetParam;
-    class ObCondInfo;
     class ObMutatorCellInfo;
-    class ObUpdateCondition;
   }
 
   namespace mergeserver
@@ -41,22 +39,12 @@ namespace oceanbase
       virtual ~ObMutatorParamDecoder() {};
 
     private:
-      /// decode update condition then add to get param
-      static int decode_condition(const common::ObUpdateCondition & org_cond,
-          const common::ObSchemaManagerV2 & schema, common::ObUpdateCondition & decoded_cond,
-          common::ObGetParam & get_param);
-
       /// decode mutator cell and add to get param
       static int decode_mutator(const common::ObMutator & org_mutator,
           const common::ObSchemaManagerV2 & schema, common::ObMutator & decoded_mutator,
           common::ObGetParam & return_param, common::ObGetParam & get_param);
 
     private:
-      /// add decoded update condition to new cond and get_param
-      static int add_condition(const common::ObCondInfo & decoded_cell,
-          common::ObUpdateCondition & decoded_cond, common::ObGetParam & get_param);
-
-      /// add decoded mutator cell to new mutator and get_param
       static int add_mutator(const common::ObMutatorCellInfo & decoded_cell,
           common::ObMutator & decoded_mutator, common::ObGetParam & get_param);
 

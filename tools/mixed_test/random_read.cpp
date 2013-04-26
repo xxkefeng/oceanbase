@@ -31,6 +31,7 @@ struct CmdLine
   int64_t cell_num;
   bool check;
   const char *log_level;
+  const char *rowkey2check;
 
   CmdLine()
   {
@@ -48,6 +49,7 @@ struct CmdLine
     cell_num = DEFAULT_CELL_NUM;
     check = false;
     log_level = DEFAULT_LOG_LEVEL;
+    rowkey2check = NULL;;
   };
 
   void log_all()
@@ -98,13 +100,15 @@ void print_usage()
   fprintf(stderr, "   -u|--row_num row number of each random get test [default %ld]\n", CmdLine::DEFAULT_ROW_NUM);
   fprintf(stderr, "   -n|--cell_num max cell number to get of each row [default %ld]\n", CmdLine::DEFAULT_CELL_NUM);
 
+  fprintf(stderr, "   -R|--rowkey2check rowkey to run check [default NULL]\n");
+
   fprintf(stderr, "\n");
 }
 
 void parse_cmd_line(int argc, char **argv, CmdLine &clp)
 {
   int opt = 0;
-  const char* opt_string = "a:p:r:o:idt:f:s:m:u:n:w:kh";
+  const char* opt_string = "a:p:r:o:idt:f:s:m:u:n:R:w:kh";
   struct option longopts[] =
   {
     {"serv_addr", 1, NULL, 'a'},
@@ -119,6 +123,7 @@ void parse_cmd_line(int argc, char **argv, CmdLine &clp)
     {"test_times", 1, NULL, 'm'},
     {"row_num", 1, NULL, 'u'},
     {"cell_num", 1, NULL, 'n'},
+    {"rowkey2check", 1, NULL, 'R'},
     {"log_level", 1, NULL, 'w'},
     {"check", 1, NULL, 'k'},
     {"help", 0, NULL, 'h'},
@@ -171,6 +176,9 @@ void parse_cmd_line(int argc, char **argv, CmdLine &clp)
     case 'n':
       clp.cell_num = atoll(optarg);
       break;
+    case 'R':
+      clp.rowkey2check = optarg;
+      break;
     case 'w':
       clp.log_level = optarg;
       break;
@@ -208,7 +216,8 @@ int random_scan_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t t
   {
     int64_t timeu = tbsys::CTimeUtil::getTime();
     ret = client.scan(scan_param, scanner);
-    TBSYS_LOG(DEBUG, "server_scan ret=%d timeu=%ld", ret, tbsys::CTimeUtil::getTime() - timeu);
+    timeu = tbsys::CTimeUtil::getTime() - timeu;
+    int64_t cur_row_counter = 0;
     if (OB_SUCCESS == ret)
     {
       while (OB_SUCCESS == scanner.next_cell())
@@ -219,6 +228,7 @@ int random_scan_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t t
         {
           if (is_row_changed)
           {
+            cur_row_counter++;
             row_counter++;
           }
           if (!check)
@@ -231,7 +241,7 @@ int random_scan_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t t
           }
           if (is_row_changed && 0 != rc.cell_num())
           {
-            std::string row_key_str(rc.get_cur_rowkey().ptr(), 0, rc.get_cur_rowkey().length());
+            std::string row_key_str(to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).ptr(), 0, to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).length());
 
             bool get_row_bret = true;
             get_row_bret = get_check_row(mb.get_schema(i), rc.get_cur_rowkey(), mb.get_cellinfo_builder(i), client, table_start_version, using_id);
@@ -248,7 +258,7 @@ int random_scan_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t t
               && 0 != rc.rowkey_num()
               && rc.is_prefix_changed(ci->row_key_))
           {
-            std::string row_key_str(rc.get_last_rowkey().ptr(), 0, rc.get_last_rowkey().length());
+            std::string row_key_str(to_obstr(TestRowkeyHelper(rc.get_last_rowkey())).ptr(), 0, to_obstr(TestRowkeyHelper(rc.get_last_rowkey())).length());
 
             bool bret = rc.check_rowkey(mb.get_rowkey_builder(i), &prefix);
             if (!bret)
@@ -266,7 +276,7 @@ int random_scan_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t t
       if (check
           && 0 != rc.cell_num())
       {
-        std::string row_key_str(rc.get_cur_rowkey().ptr(), 0, rc.get_cur_rowkey().length());
+        std::string row_key_str(to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).ptr(), 0, to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).length());
 
         bool get_row_bret = true;
         get_row_bret = get_check_row(mb.get_schema(i), rc.get_cur_rowkey(), mb.get_cellinfo_builder(i), client, table_start_version, using_id);
@@ -280,24 +290,12 @@ int random_scan_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t t
         }
       }
     }
+    TBSYS_LOG(INFO, "random_scan ret=%d timeu=%ld row_counter=%ld", ret, timeu, cur_row_counter);
     scanner.get_is_req_fullfilled(is_fullfilled, fullfilled_item_num);
-    ObRange *range = const_cast<ObRange*>(scan_param.get_range());
+    ObNewRange *range = const_cast<ObNewRange*>(scan_param.get_range());
     scanner.get_last_row_key(range->start_key_);
-    range->border_flag_.unset_min_value();
     range->border_flag_.unset_inclusive_start();
   }
-  if (check
-      && 0 != rc.rowkey_num())
-  {
-    std::string row_key_str(rc.get_last_rowkey().ptr(), 0, rc.get_last_rowkey().length());
-
-    bool bret = rc.check_rowkey(mb.get_rowkey_builder(i), &prefix);
-    if (!bret)
-    {
-      TBSYS_LOG(ERROR, "[%s] [row_key check_ret=%s]", row_key_str.c_str(), STR_BOOL(bret));
-    }
-  }
-
   TBSYS_LOG(DEBUG, "table_id=%lu row_counter=%ld", mb.get_schema(i).get_table_id(), row_counter);
   return ret;
 }
@@ -312,8 +310,7 @@ int random_get_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t ta
   mb.build_get_param(get_param, allocer, table_start_version, using_id, row_num, cell_num_per_row);
   int64_t timeu = tbsys::CTimeUtil::getTime();
   ret = client.get(get_param, scanner);
-  assert(OB_SUCCESS == ret);
-  TBSYS_LOG(DEBUG, "server_get ret=%d timeu=%ld", ret, tbsys::CTimeUtil::getTime() - timeu);
+  timeu= tbsys::CTimeUtil::getTime() - timeu;
   int64_t row_counter = 0;
   if (OB_SUCCESS == ret)
   {
@@ -340,7 +337,7 @@ int random_get_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t ta
         {
           if (false && rec.check_row_not_exist(client, ci, using_id, table_start_version, timeu))
           {
-            TBSYS_LOG(ERROR, "[%.*s] maybe un-exist but not, timeu=%ld", ci->row_key_.length(), ci->row_key_.ptr(), timeu);
+            TBSYS_LOG(ERROR, "[%s] maybe un-exist but not, timeu=%ld", to_cstring(ci->row_key_), timeu);
           }
           continue;
         }
@@ -356,7 +353,7 @@ int random_get_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t ta
         }
         if (is_row_changed && 0 != rc.cell_num())
         {
-          std::string row_key_str(rc.get_cur_rowkey().ptr(), 0, rc.get_cur_rowkey().length());
+          std::string row_key_str(to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).ptr(), 0, to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).length());
 
           bool get_row_bret = true;
           get_row_bret = get_check_row(mb.get_schema(schema_pos), rc.get_cur_rowkey(), mb.get_cellinfo_builder(schema_pos), client, table_start_version, using_id);
@@ -380,7 +377,7 @@ int random_get_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t ta
     if (check
         && 0 != rc.cell_num())
     {
-      std::string row_key_str(rc.get_cur_rowkey().ptr(), 0, rc.get_cur_rowkey().length());
+      std::string row_key_str(to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).ptr(), 0, to_obstr(TestRowkeyHelper(rc.get_cur_rowkey())).length());
 
       bool get_row_bret = true;
       get_row_bret = get_check_row(mb.get_schema(schema_pos), rc.get_cur_rowkey(), mb.get_cellinfo_builder(schema_pos), client, table_start_version, using_id);
@@ -394,6 +391,7 @@ int random_get_check(MutatorBuilder &mb, ClientWrapper &client, const int64_t ta
       }
     }
   }
+  TBSYS_LOG(INFO, "random_mget ret=%d timeu=%ld row_counter=%ld", ret, timeu, row_counter);
 
   bool is_fullfilled = false;
   int64_t fullfilled_item_num = 0;
@@ -455,16 +453,25 @@ int main(int argc, char **argv)
 
   ClientWrapper client;
   client.init(clp.serv_addr, static_cast<int32_t>(clp.serv_port));
-  for (int64_t i = 0; i < clp.test_times; i++)
+  if (NULL != clp.rowkey2check)
   {
-    if (clp.get2read)
+    CharArena allocer;
+    get_check_row(mb.get_schema(0), make_rowkey(clp.rowkey2check, &allocer), mb.get_cellinfo_builder(0), client, clp.table_start_version, clp.using_id);
+  }
+  else
+  {
+    for (int64_t i = 0; i < clp.test_times; i++)
     {
-      random_get_check(mb, client, clp.table_start_version, clp.using_id, clp.row_num, clp.cell_num, clp.check);
-    }
-    else
-    {
-      random_scan_check(mb, client, clp.table_start_version, clp.using_id, clp.check);
+      if (clp.get2read)
+      {
+        random_get_check(mb, client, clp.table_start_version, clp.using_id, clp.row_num, clp.cell_num, clp.check);
+      }
+      else
+      {
+        random_scan_check(mb, client, clp.table_start_version, clp.using_id, clp.check);
+      }
     }
   }
+  client.destroy();
 }
 

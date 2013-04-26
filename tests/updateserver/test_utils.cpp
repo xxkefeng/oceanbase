@@ -12,6 +12,7 @@ static const char *CELL_INFOS_NUM = "CELL_INFOS_NUM";
 static const char *OP_TYPE_KEY_FORMAT = "OP_TYPE_%d";
 static const char *TABLE_NAME_KEY_FORMAT = "TABLE_NAME_%d";
 static const char *TABLE_ID_KEY_FORMAT = "TABLE_ID_%d";
+static const char *ROW_KEY_DESC_KEY_FORMAT = "ROW_KEY_DESC_%d";
 static const char *ROW_KEY_KEY_FORMAT = "ROW_KEY_%d";
 static const char *COLUMN_NAME_KEY_FORMAT = "COLUMN_NAME_%d";
 static const char *COLUMN_ID_KEY_FORMAT = "COLUMN_ID_%d";
@@ -58,6 +59,7 @@ static void init_obj_type_map_()
     obj_type_map.set("seq", ObSeqType);
     obj_type_map.set("create_time", ObCreateTimeType);
     obj_type_map.set("modify_time", ObModifyTimeType);
+    obj_type_map.set("extend", ObExtendType);
     inited = true;
   }
 }
@@ -127,6 +129,146 @@ static const char *getAndCopyString_(PageArena<char> &allocer, const char *secti
   return ret;
 }
 
+static int parse_rowkey_type_array(const char* rowkey_type_str, int* array, int32_t& size)
+{
+  int ret = OB_SUCCESS;
+  int type = ObNullType;
+  std::vector<char*> list;
+  tbsys::CStringUtil::split(const_cast<char*>(rowkey_type_str), ",", list);
+  int32_t cnt = 0;
+  for (size_t i = 0; i < list.size(); ++i)
+  {
+    if (hash::HASH_EXIST == obj_type_map.get(list[i], type))
+    {
+      if (cnt < size) array[cnt++] = type;
+      else ret = OB_SIZE_OVERFLOW;
+    }
+    else
+    {
+      ret = OB_ERROR;
+      fprintf(stderr, "unrecognize type :(%s)\n", list[i]);
+    }
+  }
+  size = cnt;
+  return ret;
+}
+
+static int parse_rowkey_obj_array(PageArena<char> &allocer, const int* type_array, const int32_t size, const char* rowkey_value_str, ObObj* obj_array)
+{
+  int ret = OB_SUCCESS;
+  int64_t tmp_value = 0;
+  std::vector<char*> list;
+  tbsys::CStringUtil::split(const_cast<char*>(rowkey_value_str), ",", list);
+  if ((int32_t)list.size() != size)
+  {
+    ret = OB_ERROR;
+    fprintf(stderr, "type array size = %d not match with value size =%d\n", size, (int32_t)list.size());
+  }
+  else
+  {
+    for (int i = 0; i < size; ++i)
+    {
+      tmp_value = strtoll(list[i], NULL, 10);
+      switch (type_array[i])
+      {
+        case ObNullType:
+          obj_array[i].set_null();
+          break;
+        case ObIntType:
+          obj_array[i].set_int(tmp_value);
+          break;
+        case ObFloatType:
+          tmp_value = strtoll(list[i], NULL, 10);
+          obj_array[i].set_int(tmp_value);
+          break;
+        case ObDoubleType:
+          obj_array[i].set_double(static_cast<double>(tmp_value));
+          break;
+        case ObDateTimeType:
+          obj_array[i].set_datetime(tmp_value);
+          break;
+        case ObPreciseDateTimeType:
+          obj_array[i].set_precise_datetime(tmp_value);
+          break;
+        case ObCreateTimeType:
+          obj_array[i].set_createtime(tmp_value);
+          break;
+        case ObModifyTimeType:
+          obj_array[i].set_modifytime(tmp_value);
+          break;
+        case ObVarcharType:
+          if (0 == strncmp("0x", list[i], 2))
+          {
+            const int64_t BUFFER_SIZE = 1024;
+            char buffer[BUFFER_SIZE];
+            int64_t pos = 0;
+            const char *iter = list[i];
+            while (0 != *iter)
+            {
+              char *next = NULL;
+              buffer[pos++] = static_cast<char>(strtol(iter, &next, 16));
+              iter = next;
+            }
+            buffer[pos] = 0;
+            char *str = allocer.alloc(pos + 1);
+            memcpy(str, buffer, pos + 1);
+            int32_t len = static_cast<int32_t>(pos);
+            ObString str_value(0, len, str);
+            obj_array[i].set_varchar(str_value);
+          }
+          else
+          {
+            ObString str_value(0, static_cast<int32_t>(strlen(list[i])), list[i]);
+            obj_array[i].set_varchar(str_value);
+          }
+        case ObSeqType:
+          break;
+        case ObExtendType:
+          if (strcmp(list[i], "min") == 0)
+          {
+            obj_array[i].set_min_value();
+          }
+          else if (strcmp(list[i], "max") == 0)
+          {
+            obj_array[i].set_max_value();
+          }
+          else
+          {
+            obj_array[i].set_ext(tmp_value);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  return ret;
+}
+
+static int parse_rowkey(const char* rowkey_type_str, const char* rowkey_value_str, PageArena<char>& allocer, ObRowkey &rowkey)
+{
+  int ret = OB_SUCCESS;
+  int size = OB_MAX_ROWKEY_COLUMN_NUMBER;
+  int type_array[OB_MAX_ROWKEY_COLUMN_NUMBER];
+  ObObj obj_array[OB_MAX_ROWKEY_COLUMN_NUMBER];
+  ObRowkey tmp_rowkey;
+
+  ret = parse_rowkey_type_array(rowkey_type_str, type_array, size);
+  if (OB_SUCCESS == ret)
+  {
+    ret = parse_rowkey_obj_array(allocer, type_array, size, rowkey_value_str, obj_array);
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    tmp_rowkey.assign(obj_array, size);
+    ret = tmp_rowkey.deep_copy(rowkey, allocer);
+  }
+
+  return ret;
+}
+
 void read_get_param(const char *fname, const char *section, PageArena<char> &allocer, ObGetParam &get_param)
 {
   init_opt_map_();
@@ -164,9 +306,15 @@ void read_get_param(const char *fname, const char *section, PageArena<char> &all
     }
 
     // row key
+    const char* rowkey_desc = NULL;
+    sprintf(buffer, ROW_KEY_DESC_KEY_FORMAT, i);
+    rowkey_desc = TBSYS_CONFIG.getString(section, buffer);
+
     sprintf(buffer, ROW_KEY_KEY_FORMAT, i);
-    str = getAndCopyString_(allocer, section, buffer, len);
-    ci->row_key_.assign_ptr(const_cast<char*>(str), len);
+    str = TBSYS_CONFIG.getString(section, buffer);
+    parse_rowkey(rowkey_desc, str, allocer, ci->row_key_);
+
+    //ci->row_key_.assign_ptr(const_cast<char*>(str), len);
 
     // column name
     sprintf(buffer, COLUMN_NAME_KEY_FORMAT, i);
@@ -184,12 +332,14 @@ void read_get_param(const char *fname, const char *section, PageArena<char> &all
       ci->column_id_ = OB_INVALID_ID;
     }
 
+    fprintf(stderr, "get rowkey=%s,column_name=%.*s\n", to_cstring(ci->row_key_), len, ci->column_name_.ptr());
     get_param.add_cell(*ci);
   }
 }
 
 void read_scan_param(const char *fname, const char *section, PageArena<char> &allocer, ObScanParam &scan_param)
 {
+  init_obj_type_map_();
   TBSYS_CONFIG.load(fname);
   const char *str = NULL;
   int32_t len = 0;
@@ -204,11 +354,11 @@ void read_scan_param(const char *fname, const char *section, PageArena<char> &al
   if (NULL == str
       || 0 != strcmp("YES", str))
   {
-    scan_param.set_scan_direction(ObScanParam::FORWARD);
+    scan_param.set_scan_direction(ScanFlag::FORWARD);
   }
   else
   {
-    scan_param.set_scan_direction(ObScanParam::BACKWARD);
+    scan_param.set_scan_direction(ScanFlag::BACKWARD);
   }
 
   ObString table_name;
@@ -245,29 +395,36 @@ void read_scan_param(const char *fname, const char *section, PageArena<char> &al
     }
   }
 
-  ObRange range;
+  const char* rowkey_desc_start = TBSYS_CONFIG.getString(section, "ROW_KEY_DESC");
+  char* rowkey_desc_end = strdup(rowkey_desc_start);
+
+
+  ObNewRange range;
   range.table_id_ = table_id;
-  
-  str = getAndCopyString_(allocer, section, SCAN_START_KEY, len);
-  range.start_key_.assign_ptr(const_cast<char*>(str), len);
+  str = TBSYS_CONFIG.getString(section, SCAN_START_KEY);
+  parse_rowkey(rowkey_desc_start, str, allocer, range.start_key_);
+  //str = getAndCopyString_(allocer, section, SCAN_START_KEY, len);
+  //range.start_key_.assign_ptr(const_cast<char*>(str), len);
   if (0 == strcmp("MIN_KEY", str))
   {
-    range.border_flag_.set_min_value();
+    range.start_key_.set_min_row();
   }
   if (0 == strcmp("MAX_KEY", str))
   {
-    range.border_flag_.set_max_value();
+    range.end_key_.set_max_row();
   }
-  
-  str = getAndCopyString_(allocer, section, SCAN_END_KEY, len);
-  range.end_key_.assign_ptr(const_cast<char*>(str), len);
+
+  str = TBSYS_CONFIG.getString(section, SCAN_END_KEY);
+  parse_rowkey(rowkey_desc_end, str, allocer, range.end_key_);
+  //str = getAndCopyString_(allocer, section, SCAN_END_KEY, len);
+  //range.end_key_.assign_ptr(const_cast<char*>(str), len);
   if (0 == strcmp("MIN_KEY", str))
   {
-    range.border_flag_.set_min_value();
+    range.start_key_.set_min_row();
   }
   if (0 == strcmp("MAX_KEY", str))
   {
-    range.border_flag_.set_max_value();
+    range.end_key_.set_max_row();
   }
 
   str = getAndCopyString_(allocer, section, SCAN_INCLUSIVE_START, len);
@@ -321,9 +478,17 @@ void read_cell_infos(const char *fname, const char *section, PageArena<char> &al
     ci->table_id_ = TBSYS_CONFIG.getInt(section, buffer);
 
     // row key
+    const char* rowkey_desc = NULL;
+    sprintf(buffer, ROW_KEY_DESC_KEY_FORMAT, i);
+    rowkey_desc = TBSYS_CONFIG.getString(section, buffer);
+
     sprintf(buffer, ROW_KEY_KEY_FORMAT, i);
-    str = getAndCopyString_(allocer, section, buffer, len);
-    ci->row_key_.assign_ptr(const_cast<char*>(str), len);
+    str = TBSYS_CONFIG.getString(section, buffer);
+    parse_rowkey(rowkey_desc, str, allocer, ci->row_key_);
+
+    //sprintf(buffer, ROW_KEY_KEY_FORMAT, i);
+    //str = getAndCopyString_(allocer, section, buffer, len);
+    //ci->row_key_.assign_ptr(const_cast<char*>(str), len);
 
     // column name
     sprintf(buffer, COLUMN_NAME_KEY_FORMAT, i);
@@ -412,6 +577,8 @@ void read_cell_infos(const char *fname, const char *section, PageArena<char> &al
     {
       fprintf(stderr, "value_type=%d is not supported\n", value_type);
     }
+
+    fprintf(stderr, "rowkey=%s,value=%s\n", to_cstring(ci->row_key_), to_cstring(ci->value_));
 
     switch (op_type)
     {
@@ -578,7 +745,7 @@ void print_cellinfo(const ObCellInfo *ci, const char *ext_info/* = NULL*/)
 {
   char row_key[2048];
   row_key[0] = '\0';
-  hex_to_str(ci->row_key_.ptr(), ci->row_key_.length(), row_key, sizeof(row_key));
+  //hex_to_str(ci->row_key_.ptr(), ci->row_key_.length(), row_key, sizeof(row_key));
   if (NULL != ci)
   {
     if (NULL == ext_info)
@@ -755,6 +922,51 @@ void prepare_mutator(ObMutator &mutator)
   delete[] buffer;
 }
 
+void prepare_cell_new_scanner(ObCellNewScanner &scanner)
+{
+  int64_t pos = 0;
+  int64_t size = 2 * 1024 * 1024;
+  char *buffer = new char[size];
+  int err = scanner.serialize(buffer, size, pos);
+  if (OB_SUCCESS != err)
+  {
+    TBSYS_LOG(ERROR, "ObCellNewScanner serialize error, err: %d", err);
+  }
+  else
+  {
+    pos = 0;
+    scanner.reuse();
+    err = scanner.deserialize(buffer, size, pos);
+    if (OB_SUCCESS != err)
+    {
+      TBSYS_LOG(ERROR, "ObCellNewScanner deserialize error, err: %d", err);
+    }
+  }
+  delete[] buffer;
+}
+
+void prepare_cell_new_scanner(const ObCellNewScanner &scanner, ObCellNewScanner &out_scanner)
+{
+  int64_t pos = 0;
+  int64_t size = 2 * 1024 * 1024;
+  char *buffer = new char[size];
+  int err = scanner.serialize(buffer, size, pos);
+  if (OB_SUCCESS != err)
+  {
+    TBSYS_LOG(ERROR, "ObCellNewScanner serialize error, err: %d", err);
+  }
+  else
+  {
+    pos = 0;
+    err = out_scanner.deserialize(buffer, size, pos);
+    if (OB_SUCCESS != err)
+    {
+      TBSYS_LOG(ERROR, "ObCellNewScanner deserialize error, err: %d", err);
+    }
+  }
+  delete[] buffer;
+}
+
 void dup_mutator(const ObMutator &src, ObMutator &dest)
 {
   int64_t pos = 0;
@@ -784,4 +996,3 @@ int main(int argc, char **argv)
   }
 }
 */
-

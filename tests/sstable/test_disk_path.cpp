@@ -15,7 +15,7 @@
 #include <tbsys.h>
 #include "common/ob_define.h"
 #include "sstable/ob_disk_path.h"
-#include "sstable/ob_sstable_stat.h"
+#include "common/ob_common_stat.h"
 
 using namespace oceanbase::common;
 
@@ -153,22 +153,23 @@ namespace oceanbase
       return ret;
     }
 
-    int get_import_sstable_directory(const int32_t disk_no, char *path, 
-      const int64_t path_len)
+    static int get_sstable_directory_helper(const int32_t disk_no, char *path, 
+      const int64_t path_len, const char* import_dir_name)
     {
       int ret = OB_SUCCESS;
-      if (disk_no < 0 || NULL == path || path_len < 0)
+      if (disk_no < 0 || NULL == path || path_len < 0 || NULL == import_dir_name)
       {
-        TBSYS_LOG(WARN, "get_sstable_import_directory invalid arguments, "
-            "disk_no=%d, path=%p, path_len=%ld", disk_no, path, path_len);
+        TBSYS_LOG(WARN, "get_sstable_directory_helper invalid arguments, "
+            "disk_no=%d, path=%p, path_len=%ld, import_dir_name=%p", disk_no, path, path_len, import_dir_name);
         ret = OB_INVALID_ARGUMENT;
       }
       else
       {
-        int bufsiz = snprintf(path, path_len, "./tmp/%d/import", disk_no);
+        int bufsiz = snprintf(path, path_len, "./tmp/%d/%s", disk_no, import_dir_name);
         if (bufsiz + 1 > path_len)
         {
-          TBSYS_LOG(WARN, "get_sstable_import_directory, path_len=%ld <= bufsiz=%d", path_len, bufsiz);
+          TBSYS_LOG(WARN, "get_sstable_directory_helper, path_len=%ld <= bufsiz=%d, "
+                          "import_dir_name=%s", path_len, bufsiz, import_dir_name);
           ret = OB_SIZE_OVERFLOW;
         }
       }
@@ -176,30 +177,44 @@ namespace oceanbase
       return ret;
     }
 
-    int get_import_sstable_path(const int32_t disk_no, 
-      const char* sstable_name, char *path, const int64_t path_len)
+    static int get_sstable_path_helper(const int32_t disk_no, 
+      const char* sstable_name, char *path, const int64_t path_len, 
+      const char* import_dir_name)
     {
       int ret = OB_SUCCESS;
-      if (disk_no < 0 || NULL == sstable_name || NULL == path || path_len < 0)
+      if (disk_no < 0 || NULL == sstable_name || NULL == path || path_len < 0 || NULL == import_dir_name)
       {
         TBSYS_LOG(WARN, "get_import_sstable_path invalid arguments, "
-            "disk_no=%d, sstable_name=%p, path=%p,path_len=%ld", 
-            disk_no, sstable_name, path, path_len);
+            "disk_no=%d, sstable_name=%p, path=%p, path_len=%ld, import_dir_name=%p", 
+            disk_no, sstable_name, path, path_len, import_dir_name);
         ret = OB_INVALID_ARGUMENT;
       }
       else
       {
-        int bufsiz = snprintf(path, path_len, "./tmp/%d/import/%s",
-            disk_no, sstable_name);
+        int bufsiz = snprintf(path, path_len, "./tmp/%d/%s/%s",
+            disk_no, import_dir_name, sstable_name);
         if (bufsiz + 1 > path_len)
         {
-          TBSYS_LOG(WARN, "get_import_sstable_path, path_len=%ld <= bufsiz=%d", 
-              path_len, bufsiz);
+          TBSYS_LOG(WARN, "get_import_sstable_path, path_len=%ld <= bufsiz=%d, "
+                          "import_dir_name=%s", 
+              path_len, bufsiz, import_dir_name);
           ret = OB_SIZE_OVERFLOW;
         }
       }
 
       return ret;
+    }
+
+    int get_bypass_sstable_directory(const int32_t disk_no, char *path, 
+      const int64_t path_len)
+    {
+      return get_sstable_directory_helper(disk_no, path, path_len, "bypass");
+    }
+
+    int get_bypass_sstable_path(const int32_t disk_no, 
+      const char* sstable_name, char *path, const int64_t path_len)
+    {
+      return get_sstable_path_helper(disk_no, sstable_name, path, path_len, "bypass");
     }
   }
 }

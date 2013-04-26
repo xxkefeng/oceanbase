@@ -46,6 +46,7 @@ namespace oceanbase
       int64_t max_data_len_;
       int serialize(char* buf, int64_t len, int64_t& pos) const;
       int deserialize(char* buf, int64_t len, int64_t& pos);
+      int64_t to_string(char* buf, const int64_t len) const;
     };
 
     struct ObFetchedLog
@@ -63,6 +64,7 @@ namespace oceanbase
       int set_buf(char* buf, int64_t len);
       int serialize(char* buf, int64_t len, int64_t& pos) const;
       int deserialize(char* buf, int64_t len, int64_t& pos);
+      int64_t to_string(char* buf, const int64_t len) const;
     };
   }; // end namespace updateserver
 }; // end namespace oceanbase

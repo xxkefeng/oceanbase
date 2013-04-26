@@ -24,6 +24,7 @@ namespace
   static const char* OB_PORT = "ob_port";
   static const char* OB_RS_IP = "ob_rs_ip";
   static const char* OB_RS_PORT = "ob_rs_port";
+  static const char* OB_ADDR = "ob_addr";
   static const char* WRITE_THREAD_COUNT = "write_thread_count";
   static const char* READ_THREAD_COUNT = "read_thread_count";
 }
@@ -84,6 +85,7 @@ int BigqueryTestParam::load_from_config()
   client_id_ = TBSYS_CONFIG.getInt(SQLTEST_SECTION, CLIENT_ID, 0);
   assert(client_id_ >= 0);
 
+  /*
   if (0 == err)
   {
     ob_port_ = TBSYS_CONFIG.getInt(SQLTEST_SECTION, OB_PORT, 0);
@@ -96,6 +98,11 @@ int BigqueryTestParam::load_from_config()
     ob_rs_port_ = TBSYS_CONFIG.getInt(SQLTEST_SECTION, OB_RS_PORT, 0);
     assert(ob_rs_port_ > 0);
     err = load_string(ob_rs_ip_, sizeof(ob_rs_ip_), SQLTEST_SECTION, OB_RS_IP, true);
+  }
+  */
+  if (0 == err)
+  {
+    err = load_string(ob_addr_, sizeof(ob_addr_), SQLTEST_SECTION, OB_ADDR, true);
   }
 
   if (0 == err)
@@ -110,8 +117,6 @@ int BigqueryTestParam::load_from_config()
 
 void BigqueryTestParam::dump_param()
 {
-  fprintf(stderr, "    ob_addr: [%s, %d] ob_rs_addr: [%s, %d]\n"
-      "    write_thread_count: %ld \n"
-      "    read_thread_count: %ld \n",
-      ob_ip_, ob_port_, ob_rs_ip_, ob_rs_port_, write_thread_count_, read_thread_count_);
+  fprintf(stderr, "    ob_addr: [%s] write_thread_count: %ld read_thread_count: %ld \n",
+      ob_addr_, write_thread_count_, read_thread_count_);
 }

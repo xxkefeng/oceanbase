@@ -29,8 +29,10 @@ namespace oceanbase
       public:
         ObAggregateFunction();
         ~ObAggregateFunction();
+        void reset();
 
         void set_int_div_as_double(bool did);
+        bool get_int_div_as_double() const;
 
         int init(const ObRowDesc &input_row_desc, common::ObArray<ObSqlExpression> &aggr_columns);
         void destroy();
@@ -41,11 +43,14 @@ namespace oceanbase
         int process(const ObRow &row);
         int get_result(const ObRow *&row);
 
+        // used by ScalarAggregate operator when there's no input rows
+        int get_result_for_empty_set(const ObRow *&row);
+
         int64_t get_used_mem_size() const;
       private:
         // types and constants
         typedef common::hash::ObHashSet<const common::ObObj*> DedupSet;
-        static const int64_t DEDUP_HASH_SET_SIZE = INT64_C(1024*1024);
+        static const int64_t DEDUP_HASH_SET_SIZE = (1024*1024);
       private:
         // disallow copy
         ObAggregateFunction(const ObAggregateFunction &other);
@@ -77,6 +82,11 @@ namespace oceanbase
     inline void ObAggregateFunction::set_int_div_as_double(bool did)
     {
       did_int_div_as_double_ = did;
+    }
+
+    inline bool ObAggregateFunction::get_int_div_as_double() const
+    {
+      return did_int_div_as_double_;
     }
 
     inline const ObRow& ObAggregateFunction::get_curr_row() const

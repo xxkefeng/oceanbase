@@ -15,11 +15,12 @@
  */
 #include "ob_limit.h"
 #include "common/utility.h"
+#include "common/ob_obj_cast.h"
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
 ObLimit::ObLimit()
-  :limit_(-1), offset_(0), input_count_(0), output_count_(0)
+  :is_instantiated_(false), limit_(-1), offset_(0), input_count_(0), output_count_(0)
 {
 }
 
@@ -29,23 +30,58 @@ ObLimit::~ObLimit()
 
 void ObLimit::reset()
 {
+  is_instantiated_ = false;
+  org_limit_.reset();
+  org_offset_.reset();
   limit_ = -1;
   offset_ = input_count_ = output_count_ = 0;
   return;
 }
 
-int ObLimit::set_limit(const int64_t limit, const int64_t offset)
+void ObLimit::clear()
+{
+  ObSingleChildPhyOperator::clear();
+  reset();
+}
+
+int ObLimit::set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset)
 {
   int ret = OB_SUCCESS;
-  if (0 > offset)
+  org_limit_ = limit;
+  org_offset_ = offset;
+  return ret;
+}
+
+int ObLimit::get_int_value(const ObSqlExpression& in_val, int64_t& out_val) const
+{
+  int ret = OB_SUCCESS;
+  ObRow input_row;
+  const ObObj *result = NULL;
+  ObObj casted_cell;
+  ObSqlExpression tmp_val = in_val;
+  if (in_val.is_empty())
   {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "invalid arguments, limit=%ld offset=%ld", limit, offset);
+    /* do nothing */
   }
-  else
+  else if ((ret = tmp_val.calc(input_row, result)) != OB_SUCCESS)
   {
-    limit_ = limit;
-    offset_ = offset;
+    TBSYS_LOG(WARN, "Failed to calculate, err=%d", ret);
+  }
+  else if (result->get_type() != ObIntType)
+  {
+    ObObj type;
+    type.set_type(ObIntType);
+    if ((ret = obj_cast(*result, type, casted_cell, result)) != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "Cast limit/offset value failed, err=%d", ret);
+    }
+  }
+  if (ret == OB_SUCCESS)
+  {
+    if (result != NULL && (ret = result->get_int(out_val)) != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "get_int error [err:%d]", ret);
+    }
   }
   return ret;
 }
@@ -53,20 +89,45 @@ int ObLimit::set_limit(const int64_t limit, const int64_t offset)
 int ObLimit::get_limit(int64_t &limit, int64_t &offset) const
 {
   int ret = OB_SUCCESS;
-  limit = limit_;
-  offset = offset_;
+  limit = -1;
+  offset = 0;
+  if (!is_instantiated_
+    && ((ret = get_int_value(org_limit_, limit)) != OB_SUCCESS
+    || (ret = get_int_value(org_offset_, offset)) != OB_SUCCESS))
+  {
+    TBSYS_LOG(WARN, "Get limit/offset value failed, err=%d", ret);
+  }
+  else if (limit < -1 || offset < 0)
+  {
+    ret = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(WARN, "Invalid arguments, limit=%ld offset=%ld", limit_, offset_);
+  }
   return ret;
 }
 
 int ObLimit::open()
 {
+  int ret = OB_SUCCESS;
   input_count_ = 0;
   output_count_ = 0;
-  return ObSingleChildPhyOperator::open();
+  if ((ret = ObSingleChildPhyOperator::open()) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "Failed to open child_op, err=%d", ret);
+  }
+  else if ((ret = get_limit(limit_, offset_)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "Failed to instantiate limit/offset, err=%d", ret);
+  }
+  else
+  {
+    is_instantiated_ = true;
+  }
+  return ret;
 }
 
 int ObLimit::close()
 {
+  is_instantiated_ = false;
   return ObSingleChildPhyOperator::close();
 }
 
@@ -138,7 +199,11 @@ int ObLimit::get_next_row(const common::ObRow *&row)
 int64_t ObLimit::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
-  databuff_printf(buf, buf_len, pos, "Limit(limit=%ld, offset=%ld)\n", limit_, offset_);
+  databuff_printf(buf, buf_len, pos, "Limit(limit=");
+  pos += org_limit_.to_string(buf + pos, buf_len - pos);
+  databuff_printf(buf, buf_len, pos, ", offset=");
+  pos += org_offset_.to_string(buf + pos, buf_len - pos);
+  databuff_printf(buf, buf_len, pos, ")\n");
   if (NULL != child_op_)
   {
     int64_t pos2 = child_op_->to_string(buf+pos, buf_len-pos);
@@ -151,34 +216,38 @@ int64_t ObLimit::to_string(char* buf, const int64_t buf_len) const
 DEFINE_SERIALIZE(ObLimit)
 {
   int ret = OB_SUCCESS;
-  ObObj obj;
-  if (OB_SUCCESS == ret)
-  {
-    obj.set_int(limit_);
-    if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
-    {
-      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-    }
+  bool has_limit_count = !org_limit_.is_empty();
+  bool has_limit_offset = !org_offset_.is_empty();
+  
+#define ENCODE_EXPRESSION(has_part, expr) \
+  if (OB_SUCCESS == ret) \
+  { \
+    if (OB_SUCCESS != (ret = serialization::encode_bool(buf, buf_len, pos, has_part))) \
+    { \
+      TBSYS_LOG(WARN, "fail to encode " #expr ":ret[%d]", ret); \
+    } \
+    else if (has_part && OB_SUCCESS != (ret = expr.serialize(buf, buf_len, pos))) \
+    { \
+      TBSYS_LOG(WARN, "fail to serialize " #expr ":ret[%d]", ret); \
+    } \
   }
-  if (OB_SUCCESS == ret)
-  {
-    obj.set_int(offset_);
-    if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
-    {
-      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-    }
-  }
+  ENCODE_EXPRESSION(has_limit_count, org_limit_);
+  ENCODE_EXPRESSION(has_limit_offset, org_offset_);
+#undef ENCODE_EXPRESSION
+
   return ret;
 }
 
 DEFINE_GET_SERIALIZE_SIZE(ObLimit)
 {
   int64_t size = 0;
-  ObObj obj;
-  obj.set_int(limit_);
-  size += obj.get_serialize_size();
-  obj.set_int(offset_);
-  size += obj.get_serialize_size();
+  bool has_limit_count = !org_limit_.is_empty();
+  bool has_limit_offset = !org_offset_.is_empty();
+  size += serialization::encoded_length_bool(has_limit_count);
+  if (has_limit_count)
+    size += org_limit_.get_serialize_size();
+  if (has_limit_offset)
+    size += org_offset_.get_serialize_size();
   return size;
 }
 
@@ -186,35 +255,36 @@ DEFINE_GET_SERIALIZE_SIZE(ObLimit)
 DEFINE_DESERIALIZE(ObLimit)
 {
   int ret = OB_SUCCESS;
-  ObObj obj;
-  reset();
-  if (OB_SUCCESS == ret)
-  {
-    if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
-    {
-      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-    }
-    if (OB_SUCCESS != (ret = obj.get_int(limit_)))
-    {
-      TBSYS_LOG(WARN, "fail to get int value. ret=%d, limit_=%ld", ret, limit_);
-    }
+#define DECODE_EXPRESSION(expr) \
+  if (OB_SUCCESS == ret) \
+  { \
+    bool has_part = false; \
+    if (OB_SUCCESS != (ret = serialization::decode_bool(buf, data_len, pos, &has_part))) \
+    { \
+      TBSYS_LOG(WARN, "fail to decode Limit/Offset expression :ret[%d]", ret); \
+    } \
+    else if (has_part && OB_SUCCESS != (ret = expr.deserialize(buf, data_len, pos))) \
+    { \
+      TBSYS_LOG(WARN, "fail to deserialize " #expr ":ret[%d]", ret); \
+    } \
   }
-  if (OB_SUCCESS == ret)
-  {
-    if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
-    {
-      TBSYS_LOG(WARN, "fail to serialize obj. ret=%d", ret);
-    }
-    if (OB_SUCCESS != (ret = obj.get_int(offset_)))
-    {
-      TBSYS_LOG(WARN, "fail to get int value. ret=%d, offset_=%ld", ret, offset_);
-    }
-  }
+  org_limit_.reset();
+  DECODE_EXPRESSION(org_limit_);
+  org_offset_.reset();
+  DECODE_EXPRESSION(org_offset_);
+#undef DECODE_EXPRESSION
+
   return ret;
 }
 
 void ObLimit::assign(const ObLimit &other)
 {
-  limit_ = other.limit_;
-  offset_ = other.offset_;
+  org_limit_ = other.org_limit_;
+  org_offset_ = other.org_offset_;
 }
+
+ObPhyOperatorType ObLimit::get_type() const
+{
+  return PHY_LIMIT;
+}
+

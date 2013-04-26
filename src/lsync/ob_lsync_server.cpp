@@ -16,6 +16,8 @@
 
 #include "common/ob_repeated_log_reader.h"
 #include "ob_lsync_server.h"
+#include "common/ob_tbnet_callback.h"
+#include "ob_lsync_callback.h"
 
 namespace oceanbase
 {
@@ -138,13 +140,29 @@ namespace oceanbase
       log_dir_ = log_dir;
       origin_log_file_id_ = log_start;
       set_dev_name(dev);
-      set_packet_factory(&my_packet_factory_);
+      //set_packet_factory(&my_packet_factory_);
       set_listen_port(port);
+
+      if (OB_SUCCESS == err)
+      {
+        memset(&server_handler_, 0, sizeof(easy_io_handler_pt));
+        server_handler_.encode = ObTbnetCallback::encode;
+        server_handler_.decode = ObTbnetCallback::decode;
+        server_handler_.process = ObLsyncCallback::process;
+        server_handler_.get_packet_id = ObTbnetCallback::get_packet_id;
+        server_handler_.on_disconnect = ObTbnetCallback::on_disconnect;
+        server_handler_.user_data = this;
+      }
+
+      //if (OB_SUCCESS == err)
+      //{
+      //  err = set_io_thread_count(1);//defalut
+      //}
 
       if (OB_SUCCESS != (err = new_data_buffer(log_buffer_, OB_MAX_LOG_BUFFER_SIZE)))
       {
-        TBSYS_LOG(ERROR, "new_data_buffer(log_buffer, len=%ld)=>%d", OB_MAX_LOG_BUFFER_SIZE, err);
-      }
+        TBSYS_LOG(ERROR, "new_data_buffer(log_buffer, len=%ld)=>%d", OB_MAX_LOG_BUFFER_SIZE, err); 
+     }
       else if (OB_SUCCESS != (err = reader_.init(log_dir, 0 == convert_switch_log, lsync_retry_wait_time_us)))
       {
         TBSYS_LOG(ERROR, "reader_.initialize(log_dir='%s', retry_wait_time_us=%ld)=>%d", log_dir, lsync_retry_wait_time_us, err);
@@ -158,7 +176,7 @@ namespace oceanbase
       reader_.stop();
     }
 
-    int ObLsyncServer::ups_slave_register(tbnet::Connection* conn, const uint32_t channel_id, int packet_code,
+    int ObLsyncServer::ups_slave_register(easy_request_t* req, const uint32_t channel_id, int packet_code,
                                             ObDataBuffer* buf)
     {
       int ret = OB_SUCCESS;
@@ -193,7 +211,7 @@ namespace oceanbase
           reg_packet.log_file_id = origin_log_file_id_;
           reg_packet.log_seq_id = 0;
         }
-        slave_id_ = conn->getServerId();
+        slave_id_ = convert_addr_to_server(req->ms->c->addr);
       }
       else
       {
@@ -203,7 +221,7 @@ namespace oceanbase
 
       ObSlaveRegisterResponse response(ret, reg_packet);
 
-      if (OB_SUCCESS != (ret = send_response_packet(OB_SLAVE_REG_RES, MY_VERSION, &response, conn, channel_id)))
+      if (OB_SUCCESS != (ret = send_response_packet(OB_SLAVE_REG_RES, MY_VERSION, &response, req, channel_id)))
       {
         TBSYS_LOG(DEBUG, "ups_slave_register:send_packet()=>%d", ret);
       }
@@ -216,7 +234,7 @@ namespace oceanbase
         && (id & 0xffffffff) == (slave_id_ & 0xffffffff);
     }
 
-    int ObLsyncServer::send_log(tbnet::Connection* conn, const uint32_t channel_id,
+    int ObLsyncServer::send_log(easy_request_t* request, const uint32_t channel_id,
                                 int packet_code, ObDataBuffer* buf, int64_t timeout)
     {
       int ret = OB_SUCCESS;
@@ -233,9 +251,9 @@ namespace oceanbase
         TBSYS_LOG(WARN, "unexpected packet: %d", packet_code);
         ret = OB_ERR_UNEXPECTED;
       }
-      else if(!is_registered(conn->getServerId()))
+      else if(!is_registered(convert_addr_to_server(request->ms->c->addr)))
       {
-        TBSYS_LOG(WARN, "not registered: %s", net_addr_format(conn->getServerId()));
+        TBSYS_LOG(WARN, "not registered: %s", get_peer_ip(request));
         ret = OB_DATA_NOT_SERVE; // not served by me
       }
 
@@ -246,14 +264,14 @@ namespace oceanbase
       }
       else
       {
-        ret = send_log_(req, conn, channel_id, timeout);
+        ret = send_log_(req, request, channel_id, timeout);
         if(OB_SUCCESS != ret && OB_READ_NOTHING != ret)
           TBSYS_LOG(WARN, "send_log:send_packet=>%d", ret);
       }
       return ret;
     }
 
-    int ObLsyncServer::send_log_(ObFetchLogRequest& req, tbnet::Connection* conn, const uint32_t channel_id, int64_t timeout)
+    int ObLsyncServer::send_log_(ObFetchLogRequest& req, easy_request_t* request, const uint32_t channel_id, int64_t timeout)
     {
       int ret = OB_SUCCESS;
       int64_t start_us = tbsys::CTimeUtil::getTime();
@@ -268,8 +286,9 @@ namespace oceanbase
         TBSYS_LOG(DEBUG, "ObLsyncServer.get_log()=>%d.", ret);
       }
 
+      ObFetchLogResponse response(ret, log_buffer_);
       if (start_us + timeout < tbsys::CTimeUtil::getTime())
-      {}
+      {} // timeout
       else
       {
         if (OB_SUCCESS != ret) // 其他的错误重设为OB_NEED_RETRY
@@ -282,7 +301,7 @@ namespace oceanbase
           }
         }
         ObFetchLogResponse response(ret, log_buffer_);
-        if (OB_SUCCESS != (ret = send_response_packet(OB_SEND_LOG, MY_VERSION, &response, conn, channel_id)))
+        if (OB_SUCCESS != (ret = send_response_packet(OB_SEND_LOG, MY_VERSION, &response, request, channel_id)))
         {
           TBSYS_LOG(WARN, "send_log:send_packet=>%d", ret);
         }
@@ -291,76 +310,97 @@ namespace oceanbase
     }
 
     // make sure only one thread call handlePacket()
-    tbnet::IPacketHandler::HPRetCode ObLsyncServer::handlePacket(tbnet::Connection *conn, tbnet::Packet *packet)
-    {
-      tbnet::IPacketHandler::HPRetCode rc = tbnet::IPacketHandler::KEEP_CHANNEL;
-      int err = OB_SUCCESS;
-      int64_t remain_time = 0;
-      ObPacket* req = (ObPacket*) packet;
+    //tbnet::IPacketHandler::HPRetCode ObLsyncServer::handlePacket(tbnet::Connection *conn, tbnet::Packet *packet)
+    //{
+    //  tbnet::IPacketHandler::HPRetCode rc = tbnet::IPacketHandler::KEEP_CHANNEL;
+    //  int err = OB_SUCCESS;
+    //
+    //  if (!packet->isRegularPacket()) // Maybe caused by `Timeout', so reset state => WAIT_REGISTER
+    //  {
+    //    rc = tbnet::IPacketHandler::FREE_CHANNEL;
+    //    state_ = WAIT_REGISTER;
+    //    err = OB_ERR_UNEXPECTED;
+    //    TBSYS_LOG(WARN, "control packet, packet code: %d", ((tbnet::ControlPacket*)packet)->getCommand());
+    //  }
+    //
+    //  if (OB_SUCCESS == err)
+    //  {
+    //    ObPacket* req = (ObPacket*) packet;
+    //    req->set_connection(conn);
+    //    if (OB_SUCCESS != (err = req->deserialize()))
+    //    {
+    //      TBSYS_LOG(WARN, "packet deserialize error: packet_code=%d, err=%d", req->get_packet_code(), err);
+    //    }
+    //    else if (OB_SUCCESS != (err = (req->get_api_version() == MY_VERSION)? OB_SUCCESS: OB_ERROR_FUNC_VERSION))
+    //    {
+    //      TBSYS_LOG(ERROR, "api version mismatch: request version %d, support version %d", req->get_api_version(), MY_VERSION);
+    //    }
+    //    else if (OB_SUCCESS != (err = handleRequest(conn, req->getChannelId(), req->get_packet_code(), req->get_buffer(),
+    //                                                req->get_source_timeout())))
+    //    {
+    //      TBSYS_LOG(DEBUG, "handleRequest(packet_code=%d)=>%d", req->get_packet_code(), err);
+    //    }
+    //  }
+    //  return rc;
+    //}
 
-      if (!packet->isRegularPacket()) // Maybe caused by `Timeout', so reset state => WAIT_REGISTER
-      {
-        rc = tbnet::IPacketHandler::FREE_CHANNEL;
-        state_ = WAIT_REGISTER;
-        err = OB_ERR_UNEXPECTED;
-        TBSYS_LOG(WARN, "control packet, packet code: %d", ((tbnet::ControlPacket*)packet)->getCommand());
-      }
-      else if (0 >= (remain_time = req->get_receive_ts() + req->get_source_timeout() - tbsys::CTimeUtil::getTime()))
+    int ObLsyncServer::handlePacket(ObPacket *packet)
+    {
+      int err = OB_SUCCESS;
+      ObPacket* req = (ObPacket*) packet;
+      int64_t remain_time = 0;
+      if (0 >= (remain_time = req->get_receive_ts() + req->get_source_timeout() - tbsys::CTimeUtil::getTime()))
       {
         TBSYS_LOG(WARN, "packet wait too long time: receive[%ld] + timeout[%ld] < now[%ld]",
                   req->get_receive_ts(), req->get_source_timeout(), tbsys::CTimeUtil::getTime());
       }
-      else
+      else if (OB_SUCCESS != (err = req->deserialize()))
       {
-        req->set_connection(conn);
-        if (OB_SUCCESS != (err = req->deserialize()))
-        {
-          TBSYS_LOG(WARN, "packet deserialize error: packet_code=%d, err=%d", req->get_packet_code(), err);
-        }
-        else if (OB_SUCCESS != (err = (req->get_api_version() == MY_VERSION)? OB_SUCCESS: OB_ERROR_FUNC_VERSION))
-        {
-          TBSYS_LOG(ERROR, "api version mismatch: request version %d, support version %d", req->get_api_version(), MY_VERSION);
-        }
-        else if (OB_SUCCESS != (err = handleRequest(conn, req->getChannelId(), req->get_packet_code(), req->get_buffer(),
-                                                    remain_time)))
-        {
-          TBSYS_LOG(DEBUG, "handleRequest(packet_code=%d)=>%d", req->get_packet_code(), err);
-        }
+        TBSYS_LOG(WARN, "packet deserialize error: packet_code=%d, err=%d", req->get_packet_code(), err);
       }
-      return rc;
+      else if (OB_SUCCESS != (err = (req->get_api_version() == MY_VERSION)? OB_SUCCESS: OB_ERROR_FUNC_VERSION))
+      {
+        TBSYS_LOG(ERROR, "api version mismatch: request version %d, support version %d", req->get_api_version(), MY_VERSION);
+      }
+      else if (OB_SUCCESS != (err = handleRequest(req->get_request(), req->get_channel_id(), req->get_packet_code(),
+                                                  req->get_buffer(), req->get_source_timeout())))
+      {
+        TBSYS_LOG(DEBUG, "handleRequest(packet_code=%d)=>%d", req->get_packet_code(), err);
+      }
+
+      return err;
     }
 
-    bool ObLsyncServer::handleBatchPacket(tbnet::Connection *connection, tbnet::PacketQueue &packetQueue)
+    int ObLsyncServer::handleBatchPacket(ObPacketQueue& packetQueue)
     {
-      UNUSED(connection);
       UNUSED(packetQueue);
-      TBSYS_LOG(ERROR, "you should not reach this, not supported");
-      return true;
+      return OB_SUCCESS;
     }
 
-    int ObLsyncServer::handleRequest(tbnet::Connection* conn, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout)
+    int ObLsyncServer::handleRequest(easy_request_t* req, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout)
     {
-      int err = handleRequestMayNeedRetry(conn, channel_id, packet_code, buf, timeout);
+      int err = handleRequestMayNeedRetry(req, channel_id, packet_code, buf, timeout);
       if (OB_NEED_RETRY == err)
       {
-        err = handleRequestMayNeedRetry(conn, channel_id, packet_code, buf, timeout);
+        err = handleRequestMayNeedRetry(req, channel_id, packet_code, buf, timeout);
       }
       return err;
     }
 
-    int ObLsyncServer::handleRequestMayNeedRetry(tbnet::Connection* conn, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout)
+    int ObLsyncServer::handleRequestMayNeedRetry(easy_request_t* req, const uint32_t channel_id, int packet_code, ObDataBuffer* buf, int64_t timeout)
     {
       int err = OB_SUCCESS;
       uint64_t id = 0;
-      id = conn->getServerId();
+      easy_connection_t* conn = req->ms->c;
+      id = convert_addr_to_server(conn->addr);
 
       switch(state_)
       {
       case WAIT_REGISTER:
-        err = ups_slave_register(conn, channel_id, packet_code, buf);
+        err = ups_slave_register(req, channel_id, packet_code, buf);
         if (OB_SUCCESS == err)
         {
-          TBSYS_LOG(INFO, "slave register ok:%s", net_addr_format(conn->getServerId()));
+          TBSYS_LOG(INFO, "slave register ok:%s", inet_ntoa_r((conn->addr)));
           state_ = WAIT_LOG_REQ;
         }
         else
@@ -370,7 +410,7 @@ namespace oceanbase
         }
         break;
       case WAIT_LOG_REQ:
-        err = send_log(conn, channel_id, packet_code, buf, timeout);
+        err = send_log(req, channel_id, packet_code, buf, timeout);
         if (OB_SUCCESS == err || OB_READ_NOTHING == err)
         {
           state_ = WAIT_LOG_REQ;
@@ -390,7 +430,7 @@ namespace oceanbase
       return err;
     }
 
-    const char *inet_ntoa_r(const uint64_t ipport)
+    /*const char *inet_ntoa_r(const uint64_t ipport)
     {
       static const int64_t BUFFER_SIZE = 32;
       static __thread char buffers[2][BUFFER_SIZE];
@@ -411,17 +451,17 @@ namespace oceanbase
       }
 
       return buffer;
-    }
+      }*/
 
     int ObLsyncServer::send_response_packet(int packet_code, int version, ObLsyncPacket* packet,
-                                   tbnet::Connection* conn, const uint32_t channel_id)
+                                   easy_request_t* req, const uint32_t channel_id)
     {
       ObDataBuffer out_buff;
       int err = OB_SUCCESS;
       char cbuf[OB_LSYNC_MAX_STR_LEN];
       TBSYS_LOG(DEBUG, "send_response(%s)", packet->str(cbuf, sizeof(cbuf)));
       UNUSED(packet_code);
-
+      easy_connection_t* conn = req->ms->c;
       if (OB_SUCCESS != (err = get_thread_buffer(thread_buffer_, out_buff)))
       {
         TBSYS_LOG(WARN, "get_buffer_()=>%d", err);
@@ -432,13 +472,13 @@ namespace oceanbase
                   out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
       }
 
-      if (OB_SUCCESS != (err = send_response(OB_SEND_LOG, version, out_buff, conn, channel_id)))
+      if (OB_SUCCESS != (err = send_response(OB_SEND_LOG, version, out_buff, req, channel_id)))
       {
         TBSYS_LOG(WARN, "send_response()=>%d", err);
       }
       else
       {
-        TBSYS_LOG(DEBUG, "send response succ size=%ld src=[%s]", out_buff.get_position(), inet_ntoa_r(conn->getPeerId()));
+        TBSYS_LOG(DEBUG, "send response succ size=%ld src=[%s]", out_buff.get_position(), inet_ntoa_r(conn->addr));
       }
       return err;
     }

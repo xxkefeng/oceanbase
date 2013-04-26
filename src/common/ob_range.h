@@ -1,14 +1,14 @@
 
 /*
  *   (C) 2007-2010 Taobao Inc.
- *   
- *         
+ *
+ *
  *   Version: 0.1
- *           
+ *
  *   Authors:
  *      qushan <qushan@taobao.com>
- *        - ob range class, 
- *               
+ *        - ob range class,
+ *
  */
 #ifndef OCEANBASE_COMMON_OB_RANGE_H_
 #define OCEANBASE_COMMON_OB_RANGE_H_
@@ -18,8 +18,8 @@
 #include "ob_string.h"
 #include "ob_string_buf.h"
 
-namespace oceanbase 
-{ 
+namespace oceanbase
+{
   namespace common
   {
     class ObBorderFlag
@@ -56,8 +56,6 @@ namespace oceanbase
 
         inline void set_data(const int8_t data) { data_ = data; }
         inline int8_t get_data() const { return data_; }
-
-        inline bool is_left_open_right_closed() const { return (!inclusive_start() && inclusive_end()) || is_max_value(); }
       private:
         int8_t data_;
     };
@@ -138,8 +136,22 @@ namespace oceanbase
         {
           ret = 1;
         }
-        return ret;        
+        return ret;
       }
+
+      int64_t to_string(char * buf, const int64_t buf_len) const
+      {
+        int64_t pos = snprintf(buf, buf_len, "%d-%hd-%hd",
+                               major_, minor_, is_final_minor_);
+        return pos;
+      }
+    };
+
+    class ObVersionProvider
+    {
+      public:
+        virtual ~ObVersionProvider(){}
+        virtual const ObVersion get_frozen_version() const = 0;
     };
 
     struct ObVersionRange
@@ -149,9 +161,47 @@ namespace oceanbase
       ObVersion end_version_;
 
       // from MIN to MAX, complete set.
-      inline bool is_whole_range() const 
+      inline bool is_whole_range() const
       {
         return (border_flag_.is_min_value()) && (border_flag_.is_max_value());
+      }
+
+      inline int64_t get_query_version() const
+      {
+        int64_t query_version = 0;
+
+        /**
+         * query_version = 0 means read the data of serving version
+         * query_version > 0 means read the data of specified version
+         * query_version = -1 means invalid version
+         * start_version_ and end_version_ is 0, only read data of
+         * serving version, not merge dynamic data
+         */
+        if (!border_flag_.is_max_value() && end_version_.major_ > 0)
+        {
+          if (border_flag_.inclusive_end())
+          {
+            query_version = end_version_.major_;
+          }
+          else
+          {
+            if (end_version_.major_ > start_version_.major_ + 1)
+            {
+              query_version = end_version_.major_;
+            }
+            else if (end_version_.major_ == start_version_.major_ + 1
+                     && border_flag_.inclusive_start())
+            {
+              query_version = start_version_.major_;
+            }
+            else
+            {
+              query_version = -1;
+            }
+          }
+        }
+
+        return query_version;
       }
 
       int to_string(char* buf,int64_t buf_len) const
@@ -173,7 +223,7 @@ namespace oceanbase
           {
             lb = "(";
           }
-          
+
           if (border_flag_.is_max_value())
           {
             rb = "MAX)";
@@ -196,14 +246,14 @@ namespace oceanbase
           else if (border_flag_.is_min_value())
           {
             len = snprintf(buf,buf_len,"%s,%d-%hd-%hd%s",lb,
-                           end_version_.major_,end_version_.minor_,end_version_.is_final_minor_,rb);            
+                           end_version_.major_,end_version_.minor_,end_version_.is_final_minor_,rb);
           }
           else if (border_flag_.is_max_value())
           {
             len = snprintf(buf,buf_len,"%s%d-%hd-%hd, %s",lb,
                            start_version_.major_,start_version_.minor_,start_version_.is_final_minor_,rb);
           }
-          else 
+          else
           {
             len = snprintf(buf,buf_len,"%s %d-%hd-%hd,%d-%hd-%hd %s",lb,
                            start_version_.major_,start_version_.minor_,start_version_.is_final_minor_,
@@ -217,279 +267,7 @@ namespace oceanbase
         return ret;
       }
     };
-
-    struct ObRange 
-    {
-      enum SubDirection
-      {
-        RIGHT,
-        LEFT
-      };
-
-      uint64_t table_id_;
-      ObBorderFlag border_flag_;
-      ObString start_key_;
-      ObString end_key_;
-
-      ObRange()
-      {
-        reset();
-      }
-
-      void reset()
-      {
-        table_id_ = OB_INVALID_ID;
-        border_flag_.set_data(0);
-        start_key_.assign(NULL, 0);
-        end_key_.assign(NULL, 0);
-      }
-      
-      // new compare func for tablet.range and scan_param.range
-      int compare_with_endkey2(const ObRange & r) const
-      {
-        int cmp = 0;
-        if (border_flag_.is_max_value())
-        {
-          if (!r.border_flag_.is_max_value())
-          {
-            cmp = 1;
-          }
-        }
-        else if (r.border_flag_.is_max_value())
-        {
-          cmp = -1;
-        }
-        else
-        {
-          cmp = end_key_.compare(r.end_key_);
-          if (0 == cmp)
-          {
-            if (border_flag_.inclusive_end() && !r.border_flag_.inclusive_end())
-            {
-              cmp = 1;
-            }
-            else if (!border_flag_.inclusive_end() && r.border_flag_.inclusive_end())
-            {
-              cmp = -1;
-            }
-          }
-        }
-        return cmp;
-      }
-
-      inline int compare_with_endkey(const ObRange & r) const 
-      {
-        int cmp = 0;
-        if (table_id_ != r.table_id_) 
-        {
-          cmp = (table_id_ < r.table_id_) ? -1 : 1;
-        } 
-        else 
-        {
-          if (border_flag_.is_max_value())
-          {
-            // MAX_VALUE == MAX_VALUE;
-            if (r.border_flag_.is_max_value())
-            {
-              cmp = 0;
-            }
-            else
-            {
-              cmp = 1;
-            }
-          }
-          else
-          {
-            if (r.border_flag_.is_max_value())
-            {
-              cmp = -1;
-            }
-            else
-            {
-              cmp = end_key_.compare(r.end_key_);
-            }
-          }
-        }
-        return cmp;
-      }
-      
-      inline int compare_with_startkey(const ObRange & r) const 
-      {
-        int cmp = 0;
-        if (table_id_ != r.table_id_) 
-        {
-          cmp = (table_id_ < r.table_id_) ? -1 : 1;
-        } 
-        else 
-        {
-          if (border_flag_.is_min_value())
-          {
-            // MIN_VALUE == MIN_VALUE;
-            if (r.border_flag_.is_min_value())
-            {
-              cmp = 0;
-            }
-            else
-            {
-              cmp = -1;
-            }
-          }
-          else
-          {
-            if (r.border_flag_.is_min_value())
-            {
-              cmp = 1;
-            }
-            else
-            {
-              cmp = start_key_.compare(r.start_key_);
-            }
-          }
-        }
-        return cmp;
-      }
-      
-      int compare_with_startkey2(const ObRange & r) const 
-      {
-        int cmp = 0;
-        if (border_flag_.is_min_value())
-        {
-          if (!r.border_flag_.is_min_value())
-          {
-            cmp = -1;
-          }
-        }
-        else if (r.border_flag_.is_min_value())
-        {
-          cmp = 1;
-        }
-        else
-        {
-          cmp = start_key_.compare(r.start_key_);
-          if (0 == cmp)
-          {
-            if (border_flag_.inclusive_start() && !r.border_flag_.inclusive_start())
-            {
-              cmp = -1;
-            }
-            else if (!border_flag_.inclusive_start() && r.border_flag_.inclusive_start())
-            {
-              cmp = 1;
-            }
-          }
-        }
-        return cmp;
-      }
-
-      inline bool empty() const 
-      {
-        bool ret = false;
-        if (border_flag_.is_min_value() || border_flag_.is_max_value())
-        {
-          ret = false;
-        }
-        else 
-        {
-          ret  = end_key_ < start_key_ 
-            || ((end_key_ == start_key_) 
-                && !((border_flag_.inclusive_end()) 
-                  && border_flag_.inclusive_start()));
-        }
-        return ret;
-      }
-
-      // from MIN to MAX, complete set.
-      inline bool is_whole_range() const 
-      {
-        return (border_flag_.is_min_value()) && (border_flag_.is_max_value());
-      }
-
-      bool equal(const ObRange& r) const;
-
-      bool intersect(const ObRange& r) const;
-      
-      // cut out the range r from this range, this range will be changed
-      // r should be included by this range
-      // one of condition below should be satisfied
-      // 1. the left end of r should equal to the left end of this range
-      // 2. the right end of r should equal to the right end of this range
-      // 
-      // @param r ObRange 
-      // @param string_buf string memory for changed this range rowkey
-      //
-      // if r equal to this range, than will return OB_EMPTY_RANGE, this range will NOT CHANGED
-      int trim(const ObRange& r, ObStringBuf & string_buf);
-
-      void dump() const;
-      
-      bool check(void) const;
-
-      void hex_dump(const int32_t log_level = TBSYS_LOG_LEVEL_DEBUG) const;
-
-      int to_string(char* buffer, const int32_t length) const;
-
-      int64_t hash() const;
-
-      bool operator == (const ObRange &other) const
-      {
-        return equal(other);
-      };
-
-      NEED_SERIALIZE_AND_DESERIALIZE;
-    };
-
-    template <typename Allocator>
-      int deep_copy_range(Allocator& allocator, const ObRange &src, ObRange &dst)
-      {
-        int ret = OB_SUCCESS;
-
-        ObString::obstr_size_t start_len = src.start_key_.length();
-        ObString::obstr_size_t end_len = src.end_key_.length();
-
-        char* copy_start_key_ptr = NULL;
-        char* copy_end_key_ptr = NULL;
-
-        dst.table_id_ = src.table_id_;
-        dst.border_flag_ = src.border_flag_;
-
-        if (!src.border_flag_.is_min_value() 
-            && NULL == (copy_start_key_ptr = allocator.alloc(start_len)))
-        {
-          ret = OB_ALLOCATE_MEMORY_FAILED;
-        }
-        else if (!src.border_flag_.is_max_value() 
-                 && NULL == (copy_end_key_ptr = allocator.alloc(end_len)))
-        {
-          ret = OB_ALLOCATE_MEMORY_FAILED;
-        }
-        else
-        {
-          if (!src.border_flag_.is_min_value())
-          {
-            memcpy(copy_start_key_ptr, src.start_key_.ptr(), start_len);
-            dst.start_key_.assign_ptr(copy_start_key_ptr, start_len);
-          }
-          else
-          {
-            dst.start_key_.assign_ptr(NULL, 0);
-          }
-          if (!src.border_flag_.is_max_value())
-          {
-            memcpy(copy_end_key_ptr, src.end_key_.ptr(), end_len);
-            dst.end_key_.assign_ptr(copy_end_key_ptr, end_len);
-          }
-          else
-          {
-            dst.end_key_.assign_ptr(NULL, 0);
-          }
-        }
-
-        return ret;
-      }
-
-
   } // end namespace common
 } // end namespace oceanbase
 
 #endif //OCEANBASE_COMMON_OB_RANGE_H_
-

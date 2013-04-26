@@ -1,17 +1,17 @@
 /**
  * (C) 2010-2011 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or 
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
  * ob_session_mgr.h for query session manager
  *
  * Authors:
  *   wushi <wushi.ly@taobao.com>
  *
  */
-#ifndef COMMON_OB_SESSION_MGR_H_ 
+#ifndef COMMON_OB_SESSION_MGR_H_
 #define COMMON_OB_SESSION_MGR_H_
 #include <sys/types.h>
 #include <pthread.h>
@@ -35,30 +35,30 @@ namespace oceanbase
       ObSessionManager();
       ~ObSessionManager();
 
-      /// called when a session begin, this will record the session info in the mgr, and will record 
-      /// session start time in a thread specific variable whose type is SessionInfo, so the info can 
+      /// called when a session begin, this will record the session info in the mgr, and will record
+      /// session start time in a thread specific variable whose type is SessionInfo, so the info can
       /// be checked by ob administrator
-      int session_begin(const oceanbase::common::ObScanParam & scan_param, const uint64_t peer_port, 
+      int session_begin(const oceanbase::common::ObScanParam & scan_param, const uint64_t peer_port,
         uint64_t &session_id, const pthread_t tid, const pid_t pid);
-      int session_begin(const oceanbase::common::ObGetParam & get_param, const uint64_t peer_port, 
+      int session_begin(const oceanbase::common::ObGetParam & get_param, const uint64_t peer_port,
         uint64_t &session_id, const pthread_t tid, const pid_t pid);
 
       /// record the end time of the given session
       int session_end(const uint64_t  session_id);
 
-      /// kill the given session, this function will be triggered by ob administrator when he/she 
+      /// kill the given session, this function will be triggered by ob administrator when he/she
       /// finds that some ssessions are using up a lot of resource or have taken a long time.
       /// Caller should pay attention that, this function will not really kill the given session. It
       /// only sets a flag which indicates that the given session should be terminated.
-      /// It's the caller's responsibility to check this flag according session_alive, and to act 
-      /// when decting session should be terminated 
+      /// It's the caller's responsibility to check this flag according session_alive, and to act
+      /// when decting session should be terminated
       void kill_session(const uint64_t  session_id);
 
-      /// check if session is alive, checking by session worker. When decting the session is not 
+      /// check if session is alive, checking by session worker. When decting the session is not
       /// alive, the worker should take appropriate action, like stopping to process this given session
       bool session_alive(const uint64_t  session_id);
 
-      /// get infos of current sessions, this function will put readable infos of all the sessions 
+      /// get infos of current sessions, this function will put readable infos of all the sessions
       /// current alive into buf
       /// using this function, ob administrator can see all current alive sessions
       /// <sql statement of current session> <client ip port> <start_time> <time used>
@@ -74,7 +74,7 @@ namespace oceanbase
 
       typedef union
       {
-        struct 
+        struct
         {
           uint64_t session_id_:48;
           uint64_t status_:2;
@@ -94,7 +94,7 @@ namespace oceanbase
           SessionIdStatus tmp;
           tmp.uval_ = 0;
           tmp.uval_ |= session_id;
-          tmp.id_status_.status_ = TRUE;
+          tmp.id_status_.status_ = TRUE_VAL;
           session_id_status_.uval_ = tmp.uval_;
           start_time_ =  tbsys::CTimeUtil::getTime();
           end_time_ = -1;
@@ -109,11 +109,11 @@ namespace oceanbase
           SessionIdStatus org_id_status;
           org_id_status.uval_ = 0;
           org_id_status.uval_ |= session_id;
-          org_id_status.id_status_.status_ = TRUE;
+          org_id_status.id_status_.status_ = TRUE_VAL;
           SessionIdStatus new_id_status;
           new_id_status.uval_ = 0;
           new_id_status.uval_ |= session_id;
-          new_id_status.id_status_.status_ = FALSE;
+          new_id_status.id_status_.status_ = FALSE_VAL;
           if (atomic_compare_exchange(&(session_id_status_.uval_), new_id_status.uval_, org_id_status.uval_) == org_id_status.uval_)
           {
             end_time_ = tbsys::CTimeUtil::getTime();
@@ -124,7 +124,7 @@ namespace oceanbase
 
         bool alive(const uint64_t session_id)const
         {
-          return((session_id_status_.id_status_.session_id_ == session_id) 
+          return((session_id_status_.id_status_.session_id_ == session_id)
             && (session_id_status_.id_status_.status_));
         }
 
@@ -149,13 +149,16 @@ namespace oceanbase
         volatile SessionIdStatus session_id_status_;
         volatile pid_t     worker_tid_;
         volatile pthread_t worker_thread_;
-
-        static const uint32_t TRUE = 1;
-        static const uint32_t FALSE = 0;
+#undef TRUE
+#undef FALSE
+        static const uint32_t TRUE_VAL = 1;
+        static const uint32_t FALSE_VAL = 0;
+#define TRUE 1
+#define FALSE 0
       };
 
-      static __thread SessionInfo * thread_session_info_; 
-      SessionInfo session_infos_per_thread_[MAX_SESSION_WORKER_COUNT]; 
+      static __thread SessionInfo * thread_session_info_;
+      SessionInfo session_infos_per_thread_[MAX_SESSION_WORKER_COUNT];
       mutable volatile uint32_t session_worker_count_;
       volatile static uint32_t session_id_generator_;
 
@@ -169,5 +172,5 @@ namespace oceanbase
       }
     };
   }
-}   
+}
 #endif /* COMMON_OB_SESSION_MGR_H_ */

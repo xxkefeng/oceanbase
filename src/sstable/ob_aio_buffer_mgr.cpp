@@ -1009,8 +1009,8 @@ namespace oceanbase
             {
               if (!reverse_scan)
               {
-                end_curread_block_idx_ = i + 1;
-                preread_block_idx_ = i + 1;
+                end_curread_block_idx_ = i;
+                preread_block_idx_ = i;
               }
               else
               {

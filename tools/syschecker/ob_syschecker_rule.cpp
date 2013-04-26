@@ -56,12 +56,15 @@ namespace oceanbase
       "OP_MIX",  
       "OP_GET",
       "OP_SCAN",
+      "OP_SQL_GET",
+      "OP_SQL_SCAN",
       "OP_MAX"      
     };
 
     const char* OP_GEN_MODE_STR[] =
     {
       "GEN_NULL",
+      "GEN_RANDOM",
       "GEN_RANDOM",
       "GEN_SEQ",
       "GEN_COMBO_RANDOM",
@@ -111,7 +114,7 @@ namespace oceanbase
                       "    gen_row_count_: %s \n"
                       "    gen_cell_count_: %s \n"
                       "    gen_cell_: %s \n", 
-              OP_GEN_MODE_STR[gen_op_], OP_GEN_MODE_STR[gen_table_name_],
+              OP_GEN_MODE_STR[gen_op_], OP_GEN_MODE_STR[gen_table_name_], 
               OP_GEN_MODE_STR[gen_row_key_], OP_GEN_MODE_STR[gen_row_count_],
               OP_GEN_MODE_STR[gen_cell_count_], OP_GEN_MODE_STR[gen_cell_]);
     }
@@ -214,10 +217,11 @@ namespace oceanbase
       fprintf(stderr, "      op_type_: %s \n"
                       "      gen_cell_: %s \n"
                       "      column_name_: %.*s \n"
+                      "      column_id_: %ld \n"
                       "      cell_type_: %s \n"
                       "      key_prefix_: %ld \n", 
               OP_TYPE_STR[op_type_], OP_GEN_MODE_STR[gen_cell_], 
-              column_name_.length(), column_name_.ptr(), 
+              column_name_.length(), column_name_.ptr(), column_id_,
               OBJ_TYPE_STR[cell_type_], key_prefix_);
       switch (cell_type_)
       {
@@ -490,12 +494,13 @@ namespace oceanbase
                       "  is_wide_table_: %s \n"
                       "  op_type_: %s \n"
                       "  table_name_: %.*s \n"
+                      "  table_id_: %ld \n"
                       "  row_count_: %ld \n",
               invalid_op_ ? "true" : "false",
               is_read_ ? "true" : "false",
               is_wide_table_ ? "true" : "false",
               OP_TYPE_STR[op_type_], table_name_.length(),
-              table_name_.ptr(), row_count_);
+              table_name_.ptr(), table_id_, row_count_);
       param_gen_.display();
       for (int64_t i = 0; i < row_count_; ++i)
       {
@@ -869,6 +874,7 @@ namespace oceanbase
         syschecker_count_ = param.get_syschecker_count();
         operate_full_row_ = param.is_operate_full_row();
         perf_test_ = param.is_perf_test();
+        is_sql_read_ = param.is_sql_read();
         read_table_type_ = static_cast<int32_t>(param.get_read_table_type());
         write_table_type_ = static_cast<int32_t>(param.get_write_table_type());
         get_row_cnt_ = param.get_get_row_cnt();
@@ -947,18 +953,25 @@ namespace oceanbase
 
     ObOpType ObSyscheckerRule::get_random_read_op(const uint64_t random_num)
     {
-      return (random_num % READ_OP_COUNT == 0 ? OP_GET : OP_SCAN);
+      if (random_num % READ_OP_COUNT == 0 ) 
+      {
+        return is_sql_read_ ? OP_SQL_GET: OP_GET;
+      }
+      else
+      {
+        return is_sql_read_ ? OP_SQL_SCAN : OP_SCAN;
+      }
     }
 
     ObOpType ObSyscheckerRule::get_config_read_op(const uint64_t random_num)
     {
       if (get_row_cnt_ > 0 && scan_row_cnt_ == 0)
       {
-        return OP_GET;
+        return is_sql_read_ ? OP_SQL_GET: OP_GET;
       }
       else if (get_row_cnt_ == 0 && scan_row_cnt_ > 0)
       {
-        return OP_SCAN;
+        return is_sql_read_ ? OP_SQL_SCAN : OP_SCAN;
       }
       else
       {
@@ -1053,11 +1066,13 @@ namespace oceanbase
           if (read_table_type_ == WIDE_TABLE)
           {
             op_param.table_name_ = syschecker_schema_.get_wt_name();
+            op_param.table_id_ = syschecker_schema_.get_wt_schema()->get_table_id();
             op_param.is_wide_table_ = true;          
           }
           else if (read_table_type_ == JOIN_TABLE)
           {
             op_param.table_name_ = syschecker_schema_.get_jt_name();
+            op_param.table_id_ = syschecker_schema_.get_jt_schema()->get_table_id();
             op_param.is_wide_table_ = false;
           }
         }
@@ -1066,11 +1081,13 @@ namespace oceanbase
           if (random_num % ObSyscheckerSchema::TABLE_COUNT == 0)
           {
             op_param.table_name_ = syschecker_schema_.get_wt_name();
+            op_param.table_id_ = syschecker_schema_.get_wt_schema()->get_table_id();
             op_param.is_wide_table_ = true;
           }
           else
           {
             op_param.table_name_ = syschecker_schema_.get_jt_name();
+            op_param.table_id_ = syschecker_schema_.get_jt_schema()->get_table_id();
             op_param.is_wide_table_ = false;
           }
         }
@@ -1115,7 +1132,7 @@ namespace oceanbase
       case GEN_FROM_CONFIG:
         if (op_param.is_read_)
         {
-          if (OP_GET == op_param.op_type_)
+          if (OP_GET == op_param.op_type_ || OP_SQL_GET == op_param.op_type_)
           {
             if (!op_param.invalid_op_)
             {
@@ -1133,7 +1150,7 @@ namespace oceanbase
               op_param.row_count_ = random_num % (MAX_INVALID_ROW_COUNT - 1) + 1;
             }
           }
-          else if (OP_SCAN == op_param.op_type_) 
+          else if (OP_SCAN == op_param.op_type_ || OP_SQL_SCAN == op_param.op_type_) 
           {
             op_param.row_count_ = SCAN_PARAM_ROW_COUNT;
           }
@@ -1227,24 +1244,24 @@ namespace oceanbase
                                          const int64_t suffix)
     {
       int ret     = OB_SUCCESS;
-      int64_t pos = 0;
 
       if (op_param.is_wide_table_)
       {
-        row_param.rowkey_len_ = MAX_SYSCHECKER_ROWKEY_LEN;
-        ret = encode_i64(row_param.rowkey_, row_param.rowkey_len_, 
-                         pos, prefix);
-        if (OB_SUCCESS == ret)
+        row_param.rowkey_len_ = MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT;
+        row_param.rowkey_[0].set_int(prefix);
+        if (suffix < 0) 
         {
-          ret = encode_i64(row_param.rowkey_, row_param.rowkey_len_, 
-                           pos, suffix);
-        }              
+          row_param.rowkey_[1].set_max_value();
+        }
+        else
+        {
+          row_param.rowkey_[1].set_int(suffix);
+        }
       }
       else
       {
-        row_param.rowkey_len_ = ROWKEY_SUFFIX_SIZE;
-        ret = encode_i64(row_param.rowkey_, row_param.rowkey_len_, 
-                         pos, suffix);              
+        row_param.rowkey_len_ = MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT / 2;
+        row_param.rowkey_[0].set_int(suffix);
       } 
 
       return ret;
@@ -1267,7 +1284,7 @@ namespace oceanbase
         //skip key with prefix 0
         prefix = random_num % (cur_max_prefix_ - 1) + 1;
         suffix = random_num % cur_max_suffix_;
-        if (OP_SCAN == op_param.op_type_)
+        if (OP_SCAN == op_param.op_type_ || OP_SQL_SCAN == op_param.op_type_)
         {
           if (op_param.is_wide_table_ && prefix_back > 0)
           {
@@ -1298,7 +1315,7 @@ namespace oceanbase
             }
           }
         }
-        else if (OP_GET == op_param.op_type_)
+        else if (OP_GET == op_param.op_type_ || OP_SQL_GET == op_param.op_type_)
         {
           //avoid adjacent rowkey is the same
           if (op_param.is_wide_table_ && prefix_back == prefix 
@@ -1661,16 +1678,19 @@ namespace oceanbase
       {
         org_cell.column_name_ = 
           syschecker_schema_.get_column_name(*column_pair.org_);
+        org_cell.column_id_ = column_pair.org_->get_id();
         if (NULL != column_pair.aux_)
         {
           aux_cell.column_name_ = 
             syschecker_schema_.get_column_name(*column_pair.aux_);
+          aux_cell.column_id_ = column_pair.aux_->get_id();
         }
         else
         {
           //no auxiliary column, set original column twice
           aux_cell.column_name_ = 
             syschecker_schema_.get_column_name(*column_pair.org_);
+          aux_cell.column_id_ = column_pair.org_->get_id();
         }
       }
 

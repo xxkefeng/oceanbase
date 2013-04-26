@@ -23,6 +23,10 @@ namespace oceanbase
         table_id_ = id;
         return id;
       }
+      uint64_t get_update_table_id(void)
+      {
+        return table_id_;
+      }
       
       int add_update_column(uint64_t column_id)
       {
@@ -32,6 +36,20 @@ namespace oceanbase
         return ret;
       }
       
+      int get_update_column_id(int64_t idx, uint64_t &column_id)
+      {
+        int ret = common::OB_SUCCESS;
+        if (idx < update_columns_.count())
+        {
+          column_id = update_columns_.at(idx);
+        }
+        else
+        {
+          ret = common::OB_INVALID_ARGUMENT;
+        }
+        return ret;
+      }
+
       int add_update_expr(uint64_t expr_id)
       {
         int ret = common::OB_SUCCESS;
@@ -40,6 +58,25 @@ namespace oceanbase
         else
           ret = update_exprs_.push_back(expr_id);
         return ret;
+      }
+
+      int get_update_expr_id(int64_t idx, uint64_t &expr_id)
+      {
+        int ret = common::OB_SUCCESS;
+        if (idx < update_exprs_.count())
+        {
+          expr_id = update_exprs_.at(idx);
+        }
+        else
+        {
+          ret = common::OB_INVALID_ARGUMENT;
+        }
+        return ret;
+      }
+     
+      int64_t get_update_column_count(void)
+      {
+        return update_columns_.count();
       }
 
       void print(FILE* fp, int32_t level, int32_t index);

@@ -82,10 +82,8 @@ namespace oceanbase
         int add_commit_data(ITableEngine *commiter, void *data);
         // 获取当前未结束事务中最早的事务id
         int64_t get_min_flying_trans_id() const;
-        void flush_min_flying_trans_id() const;
         // 分配事务局部内存 事务结束后自动释放
         void *stack_alloc(const int64_t size);
-        bool is_replaying_log() const;
       private:
         // TransMgr需要调用的接口
         void reset();
@@ -165,13 +163,12 @@ namespace oceanbase
         TransNode *get_trans_node(const uint64_t trans_descriptor);
       private:
         int64_t get_min_flying_trans_id() const;
-        void flush_min_flying_trans_id() const;
       private:
         static int64_t generate_trans_id_(const int64_t commited_trans_id, const int64_t trans_id);
       private:
         bool inited_;
 
-        int64_t flying_trans_counter_;
+        volatile int64_t flying_trans_counter_;
         volatile int64_t commited_trans_id_;
         volatile int64_t writing_trans_id_;
 

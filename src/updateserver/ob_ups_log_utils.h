@@ -41,14 +41,33 @@ namespace oceanbase
     class ObUpsTableMgr;
     class ObUpsMutator;
     class CommonSchemaManagerWrapper;
+    class ObLogReplayWorker;
 
-    int load_replay_point_func(const char* log_dir, const char* log_replay_point_file, int64_t& replay_point);
-    int write_replay_point_func(const char* log_dir, const int64_t replay_point);
-    int scan_log_dir_func(const char* log_dir, int64_t& replay_point, int64_t& min_log_id, int64_t& max_log_id);
+    class ObLogReplayPoint
+    {
+      public:
+        static const char* REPLAY_POINT_FILE;
+      public:
+        ObLogReplayPoint(): log_dir_(NULL) {}
+        ~ObLogReplayPoint(){}
+        int init(const char* log_dir);
+        int write(const int64_t replay_point);
+        int get(int64_t& replay_point);
+      private:
+        const char* log_dir_;
+    };
+
+    int64_t set_counter(tbsys::CThreadCond& cond, volatile int64_t& counter, const int64_t new_counter);
+    int64_t wait_counter(tbsys::CThreadCond& cond, volatile int64_t& counter, const int64_t limit, const int64_t timeout_us);
+
+    int get_local_max_log_cursor_func(const char* log_dir, const common::ObLogCursor& start_cursor,
+                                      common::ObLogCursor& end_cursor);
     int get_local_max_log_cursor_func(const char* log_dir, const uint64_t log_file_id_by_sst, common::ObLogCursor& log_cursor);
-    int get_replay_point_func(const char* log_dir, int64_t& replay_point);
 
-    int replay_single_log_func(ObUpsMutator& mutator, CommonSchemaManagerWrapper& schema, ObUpsTableMgr* table_mgr, common::LogCommand cmd, const char* log_data, int64_t data_len, const ReplayType replay_type);
+    int replay_single_log_func(ObUpsMutator& mutator, CommonSchemaManagerWrapper& schema, ObUpsTableMgr* table_mgr, common::LogCommand cmd, const char* log_data, int64_t data_len, const int64_t commit_id, const ReplayType replay_type);
+    int replay_local_log_func(const volatile bool& stop, const char* log_dir,
+                              const common::ObLogCursor& start_cursor, common::ObLogCursor& end_cursor,
+                              ObLogReplayWorker& replay_worker);
     int replay_local_log_func(const volatile bool& stop, const char* log_dir, const common::ObLogCursor& start_cursor,
                               common::ObLogCursor& end_cursor, IObLogApplier* log_applier);
     int replay_log_in_buf_func(const char* log_data, int64_t data_len, IObLogApplier* log_applier);
@@ -60,7 +79,7 @@ namespace oceanbase
                      const char* log_data, const int64_t data_len);
     int set_entry(common::ObLogEntry& entry, const int64_t seq, const common::LogCommand cmd,
                   const char* log_data, const int64_t data_len);
-    int serialize_log_entry(char* buf, const int64_t len, int64_t& pos, const common::LogCommand cmd, const uint64_t seq,
+    int serialize_log_entry(char* buf, const int64_t len, int64_t& pos, const common::LogCommand cmd, const int64_t seq,
                             const char* log_data, const int64_t data_len);
 
     int parse_log_buffer(const char* log_data, const int64_t len,

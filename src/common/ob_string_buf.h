@@ -12,7 +12,8 @@
  * Authors:
  *   chuanhui <rizhao.ych@taobao.com>
  *     - some work details if you want
- *
+ *   Yang Zhifeng <zhuweng.yzf@taobao.com>
+ *     - using PageArena to implement
  */
 #ifndef OCEANBASE_COMMON_OB_STRING_BUF_H_
 #define OCEANBASE_COMMON_OB_STRING_BUF_H_
@@ -21,22 +22,25 @@
 #include "ob_string.h"
 #include "ob_object.h"
 #include "ob_memory_pool.h"
+#include "page_arena.h"
+#include "ob_rowkey.h"
 
 namespace oceanbase
 {
   namespace common
   {
     // This class is not thread safe.
-    // ObStringBuf is used to store the ObString and ObObj object.
-    class ObStringBuf
+    // ObStringBufT is used to store the ObString and ObObj object.
+    template <typename PageAllocatorT = ModulePageAllocator, typename PageArenaT = PageArena<char, PageAllocatorT> >
+    class ObStringBufT
     {
       public:
-        ObStringBuf(const int32_t mod_id = 0, const int64_t block_size = DEF_MEM_BLOCK_SIZE);
-        ~ObStringBuf();
+        ObStringBufT(const int32_t mod_id = 0, const int64_t block_size = DEF_MEM_BLOCK_SIZE);
+        explicit ObStringBufT(PageArenaT &arena);
+        ~ObStringBufT();
         int clear();
-        // only remain one memory block, clear block_head_ and block_tail_
         int reset();
-
+        int reuse();
       public:
         // Writes a string to buf.
         // @param [in] str the string object to be stored.
@@ -48,49 +52,38 @@ namespace oceanbase
         // @param [out] stored_obj records the stored obj
         // @return OB_SUCCESS if succeed, other error code if error occurs.
         int write_obj(const ObObj& obj, ObObj* stored_obj);
+        // Write a rowkey
+        int write_string(const ObRowkey& rowkey, ObRowkey* stored_rowkey);
 
         inline int64_t used() const
         {
-          return total_res_;
+          return arena_.used();
         };
 
         inline int64_t total() const
         {
-          return total_virt_;
+          return arena_.total();
         };
 
-      private:
-        // Mem alloc/free methods
-        
-        /* param @ref_size does not mean the real block size.
-         * it gives a hit to the allocator how large the block should be allocated only.
-         */
-        int alloc_a_block_(const int64_t ref_size);
-        int alloc_mem_(const int64_t size, void*& ptr);
-        int free_mem_(void* ptr);
-
-      private:
-        static const int64_t DEF_MEM_BLOCK_SIZE = 2 * 1024L * 1024L;
-        static const int64_t MIN_DEF_MEM_BLOCK_SIZE = 64 * 1024L;
-      private:
-        struct MemBlock
+        inline PageArenaT& get_arena() const {return arena_;}
+        inline void *alloc(const int64_t size) { return arena_.alloc(size);}
+        inline void *realloc(void *ptr, const int64_t oldsz, const int64_t newsz)
         {
-          MemBlock* next;
-          int32_t cur_pos;
-          int32_t block_size;
-          char data[0];
-        };
+          return arena_.realloc((char*)ptr, oldsz, newsz);
+        }
+        inline void free(void *ptr) { return arena_.free((char*)ptr); }
       private:
-        MemBlock* block_head_;
-        MemBlock* block_tail_;
-        int64_t total_virt_;
-        int64_t total_res_;
-        int64_t mod_id_;
-        int64_t mem_block_size_;
+        DISALLOW_COPY_AND_ASSIGN(ObStringBufT);
+        static const int64_t DEF_MEM_BLOCK_SIZE;
+        static const int64_t MIN_DEF_MEM_BLOCK_SIZE;
+      private:
+        PageArenaT local_arena_;
+        PageArenaT &arena_;
     };
+    typedef ObStringBufT<> ObStringBuf;
   }
 }
 
+#include "ob_string_buf.ipp"
 
 #endif //__OB_STRING_BUF_H__
-

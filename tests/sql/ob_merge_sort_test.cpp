@@ -60,7 +60,7 @@ void ObMergeSortTest::SetUp()
   ASSERT_EQ(OB_SUCCESS, sort_columns_.push_back(sort_column));
   ObString filename;
   char* filename_buf = (char *)"ob_merge_sort_test.run";
-  filename.assign_ptr(filename_buf, strlen(filename_buf));
+  filename.assign_ptr(filename_buf, (int32_t)strlen(filename_buf));
   merge_sort_.set_run_filename(filename);
   merge_sort_.set_sort_columns(sort_columns_);
   in_mem_sort_.set_sort_columns(sort_columns_);
@@ -108,7 +108,7 @@ TEST_F(ObMergeSortTest, basic_test)
   ObString str_cell1;
   ObObj last_cell1;
   ObObj last_cell2;
-  int64_t int_cell2;
+  int64_t int_cell2 = 0;
   const ObObj *cell1 = NULL;
   const ObObj *cell2 = NULL;
   for (int64_t i = 0; i < row_count_per_run * (dump_run_count + 1); ++i)
@@ -147,4 +147,3 @@ int main(int argc, char **argv)
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
-

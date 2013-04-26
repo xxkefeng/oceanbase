@@ -2,9 +2,11 @@
 #include "common/ob_define.h"
 #include "select_where_order_limit.h"
 #include "olap.h"
+#include "../../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 SelectWhereOrderLimit SelectWhereOrderLimit::static_case_;
+static CharArena allocator_;
 namespace 
 {
   static const char * where_cond = "d = 255";
@@ -64,8 +66,10 @@ bool SelectWhereOrderLimit::check_result(const uint32_t min_key_include, const u
     row_key --)
   {
     uint32_t big_endian_key = htonl(row_key);
-    ObString row_key_str;
-    row_key_str.assign((char*)&big_endian_key,sizeof(big_endian_key));
+    char key[32];
+    snprintf(key, 32, "%d", big_endian_key);
+    ObRowkey row_key_str;
+    row_key_str = make_rowkey(key, &allocator_);
     uint32_t where_c_val = msolap::olap_get_column_val(where_cond_id, big_endian_key);
     if (where_c_val == where_right_operand)
     {

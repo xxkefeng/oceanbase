@@ -13,12 +13,14 @@
 #include "common/ob_action_flag.h"
 #include "common/ob_groupby.h"
 #include "mergeserver/ob_groupby_operator.h"
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
 using namespace testing;
 using namespace std;
 
+static CharArena allocator_;
 
 TEST(ObGroupByParam, function)
 {
@@ -239,6 +241,7 @@ TEST(ObGroupByParam, row_change)
   ObStringBuf buffer;
   ObString str;
   const char *c_str = NULL;
+  ObRowkey rowkey;
   ObCellInfo org_cell_info;
   ObCellArray org_cells;
   ObInnerCellInfo  *cell_out;
@@ -249,8 +252,8 @@ TEST(ObGroupByParam, row_change)
   org_cell_info.table_name_ = table_name;
 
   c_str = "abc";
-  str.assign((char*)c_str, static_cast<int32_t>(strlen(c_str)));
-  EXPECT_EQ(buffer.write_string(str,&(org_cell_info.row_key_)), OB_SUCCESS);
+  rowkey = make_rowkey(c_str, &allocator_);
+  EXPECT_EQ(buffer.write_string(rowkey,&(org_cell_info.row_key_)), OB_SUCCESS);
 
   int groupby_one_val = 1;
   org_cell_info.value_.set_int(groupby_one_val);
@@ -259,8 +262,8 @@ TEST(ObGroupByParam, row_change)
 
   int groupby_two_val = 2;
   c_str = "def";
-  str.assign((char*)c_str, static_cast<int32_t>(strlen(c_str)));
-  EXPECT_EQ(buffer.write_string(str,&(org_cell_info.row_key_)), OB_SUCCESS);
+  rowkey = make_rowkey(c_str, &allocator_);
+  EXPECT_EQ(buffer.write_string(rowkey,&(org_cell_info.row_key_)), OB_SUCCESS);
   org_cell_info.value_.set_int(groupby_two_val);
   EXPECT_EQ(org_cells.append(org_cell_info, cell_out),OB_SUCCESS);
   EXPECT_EQ(org_cells.append(org_cell_info, cell_out),OB_SUCCESS);
@@ -302,7 +305,7 @@ TEST(ObGroupByParam, test_max)
   ObInnerCellInfo *cell_out = NULL;
   //cell.table_name_.assign("table", strlen("table"));
   cell.table_id_ = 1001;
-  cell.row_key_.assign(const_cast<char*>("row1"), static_cast<int32_t>(strlen("row1")));
+  cell.row_key_ = make_rowkey("row1", &allocator_);
   // add first row
   // row = row1
   // column1 = 82
@@ -325,7 +328,7 @@ TEST(ObGroupByParam, test_max)
   // row = row2
   // column1 = 82
   // column2 = 1341829819829419L;
-  cell.row_key_.assign(const_cast<char*>("row2"), static_cast<int32_t>(strlen("row1")));
+  cell.row_key_ = make_rowkey("row2", &allocator_);
   //cell.column_name_.assign("column1", strlen("column1"));
   cell.column_id_ = 2;
   cell.value_.set_int(82);

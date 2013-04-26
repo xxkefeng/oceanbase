@@ -21,6 +21,7 @@
 #include "mock_root_server.h"
 #include "mock_update_server.h"
 #include "mock_chunk_server.h"
+#include "../common/test_rowkey_helper.h"
 
 using namespace std;
 using namespace oceanbase::common;
@@ -29,6 +30,7 @@ using namespace oceanbase::mergeserver::test;
 
 const uint64_t timeout = 10000000;
 const char * addr = "127.0.0.1";
+static CharArena allocator_;
 
 int main(int argc, char **argv)
 {
@@ -93,18 +95,15 @@ ObScanParam *create_scan_param()
   // table name
   uint64_t table_id = 123;
   ObString table_name;
-  ObRange scan_range;
+  ObNewRange scan_range;
 
   // scan range
-  ObString key;
   scan_range.table_id_ = 23455;
   char * start_key = (char*)"start_row_key_start";
   char * end_key = (char*)"end_row_key_end";
-  scan_range.border_flag_.set_max_value();
-  key.assign(start_key, static_cast<int32_t>(strlen(start_key)));
-  scan_range.start_key_ = key;
-  key.assign(end_key, static_cast<int32_t>(strlen(end_key)));
-  scan_range.end_key_ = key;
+  scan_range.end_key_.set_max_row();
+  scan_range.start_key_ = make_rowkey(start_key, &allocator_);
+  scan_range.end_key_ = make_rowkey(end_key, &allocator_);
   param->set(table_id, table_name, scan_range);
 
   // columns
@@ -136,7 +135,7 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   ObClientManager client_manager;
   client_manager.initialize(transport, streamer);
   transport->start();
-  
+
 
 
   TBSYS_LOG(INFO, "( 2 )");
@@ -144,9 +143,9 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   ObServer root_server;
   ObServer merge_server;
   update_server.set_ipv4_addr(addr, MockUpdateServer::UPDATE_SERVER_PORT);
-  root_server.set_ipv4_addr(addr, MockRootServer::ROOT_SERVER_PORT);    
+  root_server.set_ipv4_addr(addr, MockRootServer::ROOT_SERVER_PORT);
   ObMergerRpcProxy proxy(3, timeout, root_server, merge_server);
-  
+
   ObMergerRpcStub stub;
   ThreadSpecificBuffer buffer;
   stub.init(&buffer, &client_manager);
@@ -154,16 +153,16 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   EXPECT_TRUE(OB_SUCCESS == rpc.init(&stub));
 
   merge_server.set_ipv4_addr(addr, 10256);
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   location->init(50000 * 5, 1000, 100000);
-  
-  // init tablet cache 
-  char temp[256] = ""; 
+
+  // init tablet cache
+  char temp[256] = "";
   char temp_end[256] = "";
   ObServer server;
   const uint64_t START_ROW = 100L;
-  const uint64_t MAX_ROW = 200L; 
-  ObMergerTabletLocationList list;
+  const uint64_t MAX_ROW = 200L;
+  ObTabletLocationList list;
   for (uint64_t i = START_ROW; i <= MAX_ROW - 100; i += 100)
   {
     server.set_ipv4_addr(addr, MockChunkServer::CHUNK_SERVER_PORT);
@@ -175,13 +174,11 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
 
     snprintf(temp, 100, "row_%lu", i);
     snprintf(temp_end, 100, "row_%lu", i + 100);
-    ObString start_key(100, static_cast<int32_t>(strlen(temp)), temp);
-    ObString end_key(100, static_cast<int32_t>(strlen(temp_end)), temp_end);
 
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = 123;
-    range.start_key_ = start_key;
-    range.end_key_ = end_key;
+    range.start_key_ = make_rowkey(temp, &allocator_);
+    range.end_key_ = make_rowkey(temp_end, &allocator_);
     range.border_flag_.unset_inclusive_start();
     range.border_flag_.set_inclusive_end();
     list.set_tablet_range(range);
@@ -190,13 +187,13 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   }
 
   TBSYS_LOG(INFO, "( 3 )");
-   
+
   // start root server
   MockRootServer root;
   tbsys::CThread root_server_thread;
   MockServerRunner test_root_server(root);
   root_server_thread.start(&test_root_server, NULL);
-  
+
   // start chunk server
   MockChunkServer chunk;
   tbsys::CThread chunk_server_thread;
@@ -209,33 +206,30 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   ObScanParam scan_param;
   uint64_t table_id = 123;
   ObString table_name;
-  ObRange scan_range;
-  char * start_key = (char*)"row_100"; 
-  char * end_key = (char*)"row_200"; 
-  ObString key; 
-  scan_range.table_id_ = table_id; 
-  //scan_range.border_flag_.set_max_value(); 
+  ObNewRange scan_range;
+  char * start_key = (char*)"row_100";
+  char * end_key = (char*)"row_200";
+  scan_range.table_id_ = table_id;
+  //scan_range.border_flag_.set_max_value();
   scan_range.border_flag_.unset_inclusive_start();
   scan_range.border_flag_.set_inclusive_end();
-  key.assign(start_key, static_cast<int32_t>(strlen(start_key))); 
-  scan_range.start_key_ = key; 
-  key.assign(end_key, static_cast<int32_t>(strlen(end_key))); 
-  scan_range.end_key_ = key; 
+  scan_range.start_key_ = make_rowkey(start_key, &allocator_);
+  scan_range.end_key_ = make_rowkey(end_key, &allocator_);
   scan_param.set(table_id, table_name, scan_range);
   scan_param.add_column(101);
 
   ObMergerScanParam param;
   param.set_param(scan_param);
-  
+
   /// (4) do it!
   ObMergerAsyncRpcStub async;
   async.init(&buffer, &client_manager);
   ObMergerLocationCacheProxy location_proxy(root_server, &rpc, location);
   ObMergerScanEvent scan_event(&location_proxy, &async);
   scan_event.init(100, 10);
-  scan_event.set_request_param(param, 10000000, 100000);
+  scan_event.set_request_param(param, 100000);
   scan_event.wait(timeout);
-  
+
   ObInnerCellInfo * cur_cell = NULL;
   while(1)
   {
@@ -247,9 +241,8 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
     {
       break;
     }
-    TBSYS_LOG(DEBUG, "[id:%lu][key:%.*s][obj:dumped bellow]", cur_cell->table_id_, cur_cell->row_key_.length(), 
-        cur_cell->row_key_.ptr());
-    cur_cell->value_.dump();
+    TBSYS_LOG(DEBUG, "[id:%lu][key:%s][obj:%s]", cur_cell->table_id_,
+        to_cstring(cur_cell->row_key_), to_cstring(cur_cell->value_));
   }
 
   TBSYS_LOG(INFO, "( request sent )");
@@ -265,7 +258,7 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   ThreadSpecificBuffer buffer;
   ObPacketFactory factory;
   tbnet::Transport transport;
-  tbnet::DefaultPacketStreamer streamer; 
+  tbnet::DefaultPacketStreamer streamer;
   streamer.setPacketFactory(&factory);
   transport.start();
   ObClientManager client_manager;
@@ -297,9 +290,9 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   EXPECT_TRUE(OB_SUCCESS != proxy.ups_scan(cs_addr, scan_param, scanner));
 
   // init
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
-  
+
   ObServer root_server;
   root_server.set_ipv4_addr(addr, MockRootServer::ROOT_SERVER_PORT);
   ObMergerRootRpcProxy rpc(0, timeout, root_server);
@@ -315,7 +308,7 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   MockUpdateServer server;
   MockServerRunner test_update_server(server);
   tbsys::CThread update_server_thread;
-  update_server_thread.start(&test_update_server, NULL); 
+  update_server_thread.start(&test_update_server, NULL);
   sleep(2);
   //
   EXPECT_TRUE(OB_SUCCESS == proxy.ups_get(cs_addr, get_param, scanner));
@@ -332,7 +325,7 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   scanner.clear();
 
   ObScanParam param;
-  ObRange range;
+  ObNewRange range;
   range.border_flag_.set_min_value();
   ObString end_row;
   end_row.assign(temp, strlen(temp));
@@ -353,7 +346,7 @@ TEST_F(TestObMergerScanEvent, test_single_scan)
   }
   // return 10 cells
   EXPECT_TRUE(count == 10);
-  
+
   if (location != NULL)
   {
     delete location;
@@ -371,7 +364,7 @@ TEST_F(TestRpcProxy, test_cs)
   ThreadSpecificBuffer buffer;
   ObPacketFactory factory;
   tbnet::Transport transport;
-  tbnet::DefaultPacketStreamer streamer; 
+  tbnet::DefaultPacketStreamer streamer;
   streamer.setPacketFactory(&factory);
   transport.start();
   ObClientManager client_manager;
@@ -401,7 +394,7 @@ TEST_F(TestRpcProxy, test_cs)
   cell.column_id_ = 111;
   cell.row_key_ = row_key;
   EXPECT_TRUE(OB_SUCCESS == get_param.add_cell(cell));
-  
+
   ObScanner scanner;
   EXPECT_TRUE(OB_SUCCESS != proxy.ups_get(cs_addr, get_param, scanner));
   ObScanParam scan_param;
@@ -411,12 +404,12 @@ TEST_F(TestRpcProxy, test_cs)
   root_server.set_ipv4_addr(addr, MockRootServer::ROOT_SERVER_PORT);
   ObMergerRootRpcProxy rpc(0, timeout, root_server);
   EXPECT_TRUE(OB_SUCCESS == rpc.init(&stub));
-  ObMergerTabletLocationCache * location = new ObMergerTabletLocationCache;
+  ObTabletLocationCache * location = new ObMergerTabletLocationCache;
   EXPECT_TRUE(NULL != location);
   EXPECT_TRUE(OB_SUCCESS == location->init(50000 * 5, 1000, 10000));
   ObMergerLocationCacheProxy cache(merge_server, &rpc, location);
 
-  // init tablet cache 
+  // init tablet cache
   char temp_end[256] = "";
   ObServer server;
   const uint64_t START_ROW = 100L;
@@ -426,7 +419,7 @@ TEST_F(TestRpcProxy, test_cs)
     server.set_ipv4_addr(i + 256, 1024 + i);
     ObTabletLocation addr(i, server);
 
-    ObMergerTabletLocationList list;
+    ObTabletLocationList list;
     EXPECT_TRUE(OB_SUCCESS == list.add(addr));
     EXPECT_TRUE(OB_SUCCESS == list.add(addr));
     EXPECT_TRUE(OB_SUCCESS == list.add(addr));
@@ -436,17 +429,17 @@ TEST_F(TestRpcProxy, test_cs)
     ObString start_key(100, strlen(temp), temp);
     ObString end_key(100, strlen(temp_end), temp_end);
 
-    ObRange range;
+    ObNewRange range;
     range.table_id_ = 234;
     range.start_key_ = start_key;
     range.end_key_ = end_key;
-    list.set_timestamp(tbsys::CTimeUtil::getTime()); 
+    list.set_timestamp(tbsys::CTimeUtil::getTime());
     EXPECT_TRUE(OB_SUCCESS == location->set(range, list));
     ObString rowkey;
     snprintf(temp, 100, "row_%lu", i + 40);
     rowkey.assign(temp, strlen(temp));
     EXPECT_TRUE(OB_SUCCESS == location->get(234, rowkey, list));
-    
+
     rowkey.assign(temp_end, strlen(temp_end));
     EXPECT_TRUE(OB_SUCCESS == location->get(234, rowkey, list));
   }
@@ -454,7 +447,7 @@ TEST_F(TestRpcProxy, test_cs)
   // server not start
   ObIterator *it = NULL;
   ObMergerTabletLocation succ_addr;
-  ObMergerTabletLocationList list;
+  ObTabletLocationList list;
   EXPECT_TRUE(OB_SUCCESS == proxy.init(&stub, &cache, NULL));
   EXPECT_TRUE(OB_SUCCESS != proxy.cs_get(get_param, succ_addr, scanner, it));
   EXPECT_TRUE(OB_SUCCESS != proxy.cs_scan(scan_param, succ_addr, scanner, it));
@@ -463,13 +456,13 @@ TEST_F(TestRpcProxy, test_cs)
   MockRootServer root;
   tbsys::CThread root_server_thread;
   MockServerRunner test_root_server(root);
-  root_server_thread.start(&test_root_server, NULL); 
+  root_server_thread.start(&test_root_server, NULL);
 
   // start chunk server
   MockChunkServer chunk;
   tbsys::CThread chunk_server_thread;
   MockServerRunner test_chunk_server(chunk);
-  chunk_server_thread.start(&test_chunk_server, NULL); 
+  chunk_server_thread.start(&test_chunk_server, NULL);
   sleep(2);
 
   // init get param
@@ -480,8 +473,8 @@ TEST_F(TestRpcProxy, test_cs)
   cell.row_key_ = row_key;
   get_param.add_cell(cell);
 
-  // cache server not exist so fetch from root server error 
-  ObMergerTabletLocationList addr_temp;
+  // cache server not exist so fetch from root server error
+  ObTabletLocationList addr_temp;
   EXPECT_TRUE(OB_SUCCESS == location->get(234, row_key, addr_temp));
 
   // scan from root server
@@ -491,7 +484,7 @@ TEST_F(TestRpcProxy, test_cs)
   EXPECT_TRUE(OB_SUCCESS == location->get(234, row_key, addr_temp));
 
   ObGetParam get_param2;
-  ObMergerTabletLocationList list2;
+  ObTabletLocationList list2;
   // cache not exist, get from root server
   snprintf(temp, 100, "row_998");
   ObString row_key2;
@@ -503,7 +496,7 @@ TEST_F(TestRpcProxy, test_cs)
   get_param2.add_cell(cell2);
   EXPECT_TRUE(OB_SUCCESS == proxy.cs_get(get_param2, succ_addr, scanner, it));
 
-  // not find the cs 
+  // not find the cs
   snprintf(temp, 100, "zzz_row_999");
   EXPECT_TRUE(OB_SUCCESS != proxy.cs_get(get_param2, succ_addr, scanner, it));
 

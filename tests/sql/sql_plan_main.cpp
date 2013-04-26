@@ -4,7 +4,7 @@
 #include <readline/history.h>
 #include "sql/parse_node.h"
 #include "sql/build_plan.h"
-#include "sql/ob_multi_plan.h"
+#include "sql/ob_multi_logic_plan.h"
 #include "sql/ob_transformer.h"
 #include "sql/ob_schema_checker.h"
 #include "common/ob_string_buf.h"
@@ -36,7 +36,7 @@ int main(void)
     printf("parse_init error!!!");
     return -1;
   }
-  
+
   while (!bExitFlag)
   {
     // 1. read sql from terminator
@@ -57,7 +57,7 @@ int main(void)
 
 
     sqlStartTime = clock();
-    
+
     // 2. parse the sql
     parse_sql(&result, pSqlString, strlen(pSqlString));
     if(result.result_tree_ == 0)
@@ -69,7 +69,7 @@ int main(void)
     print_tree(result.result_tree_, 0);
 
     // 3. resolve node trees
-    
+
     ResultPlan resultPlan;
     resultPlan.name_pool_ = &malloc_pool;
     resultPlan.schema_checker_ = &schema_checker;
@@ -82,23 +82,34 @@ int main(void)
     if (ret == OB_SUCCESS)
     {
       // 4. print result
-      ObMultiPlan* pMultiPlan = static_cast<ObMultiPlan*>(resultPlan.plan_tree_);
+      ObMultiLogicPlan* pMultiPlan = static_cast<ObMultiLogicPlan*>(resultPlan.plan_tree_);
       pMultiPlan->print();
-
-      ObTransformer ob_transformer(pMultiPlan->at(0)->get_name_pool());
-      ob_transformer.add_logical_plans(pMultiPlan);
-      for (int32_t i = 0; i < pMultiPlan->size(); i++)
+      oceanbase::sql::ObSqlContext context;
+      //ObTransformer ob_transformer(*pMultiPlan->at(0)->get_name_pool(), context);
+      ObTransformer ob_transformer(context);
+      ObMultiPhyPlan multi_phy_plan;
+      ErrStat err_stat;
+       if (OB_SUCCESS != (ret = ob_transformer.generate_physical_plans(*pMultiPlan, multi_phy_plan, err_stat)))
       {
-        ObPhysicalPlan * physical_plan = ob_transformer.get_physical_plan(i);
-        if (physical_plan)
+        TBSYS_LOG(WARN, "failed to transform to physical plan");
+        ret = OB_ERR_GEN_PLAN;
+      }
+      else
+      {
+        ObPhysicalPlan *phy_plan = NULL;
+        ObPhyOperator *exec_plan = NULL;
+        for (int32_t i = 0; i < multi_phy_plan.size(); i++)
         {
-          pos = physical_plan->to_string(buf, BUF_LEN);
-          printf("%.*s\n", (int32_t)pos, buf);
-        }
-        else
-        {
-          printf("Transformer logical plan to physical plan error!\n");
-          break;
+          if ((NULL != (phy_plan = multi_phy_plan.at(0))) && (NULL != (exec_plan = phy_plan->get_phy_query(0))))
+          {
+            pos = phy_plan->to_string(buf, BUF_LEN);
+            printf("%.*s\n", (int32_t)pos, buf);
+          }
+          else
+          {
+            printf("Transformer logical plan to physical plan error!\n");
+            break;
+          }
         }
       }
     }
@@ -107,20 +118,19 @@ int main(void)
       printf("Resolve error!\n");
       printf("ERROR MESSAGE: %s\n", resultPlan.err_stat_.err_msg_);
     }
-    
+
     destroy_plan(&resultPlan);
-    
+
     // 5. release node tree
     if (result.result_tree_)
     {
       destroy_tree(result.result_tree_);
       result.result_tree_ = NULL;
     }
-    
+
     // 6. release sql
     free(pSqlString);
   }
 
   return 0;
 }
-

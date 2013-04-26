@@ -12,19 +12,21 @@
  *   rongxuan <rongxuan.lc@taobao.com>
  *     - some work details if you want
  */
- 
+
 #include "common/ob_tablet_info.h"
 #include "common/serialization.h"
 #include <gtest/gtest.h>
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase::common;
-void build_range(ObRange & r, int64_t tid, int8_t flag, const char* sk, const char* ek)
+static CharArena allocator_;
+void build_range(ObNewRange & r, int64_t tid, int8_t flag, const char* sk, const char* ek)
 {
   ObString start_key(static_cast<int32_t>(strlen(sk)), static_cast<int32_t>(strlen(sk)), (char*)sk);
   ObString end_key(static_cast<int32_t>(strlen(ek)), static_cast<int32_t>(strlen(ek)), (char*)ek);
   r.table_id_ = tid;
   r.border_flag_.set_data(flag);
-  r.start_key_ = start_key;
-  r.end_key_ = end_key;
+  r.start_key_ = make_rowkey(sk, &allocator_);
+  r.end_key_ = make_rowkey(ek, &allocator_);
 }
 
 TEST(TestLog, log)
@@ -32,27 +34,27 @@ TEST(TestLog, log)
   ObTabletInfoList tablets;
   int ret = OB_SUCCESS;
   int64_t table_id = 1001;
-  ObRange range1;
-  range1.border_flag_.set_min_value();
+  ObNewRange range1;
+  range1.start_key_.set_min_row();
   range1.border_flag_.set_inclusive_end();
   build_range(range1, table_id, range1.border_flag_.get_data(), "0000", "2222");
   ObTabletInfo *tablet1 = new ObTabletInfo (range1, 0, 0, 0);
 
-  ObRange range2;
+  ObNewRange range2;
   range2.border_flag_.unset_inclusive_start();
   range2.border_flag_.set_inclusive_end();
   build_range(range2, table_id, range2.border_flag_.get_data(), "2222", "5555");
   ObTabletInfo *tablet2 = new ObTabletInfo (range2, 0, 0, 0);
 
-  ObRange range3;
+  ObNewRange range3;
   range3.border_flag_.unset_inclusive_start();
   range3.border_flag_.set_inclusive_end();
   build_range(range3, table_id, range3.border_flag_.get_data(), "5555", "8888");
   ObTabletInfo *tablet3 = new ObTabletInfo (range3, 0, 0, 0);
 
-  ObRange range4;
+  ObNewRange range4;
   range4.border_flag_.unset_inclusive_start();
-  range4.border_flag_.set_max_value();
+  range4.end_key_.set_max_row();
   build_range(range4, table_id, range4.border_flag_.get_data(), "8888", "0000");
   ObTabletInfo *tablet4 = new ObTabletInfo (range4, 0, 0, 0);
 

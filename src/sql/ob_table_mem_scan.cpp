@@ -187,11 +187,10 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTableMemScan::set_limit(const int64_t limit, const int64_t offset)
+    int ObTableMemScan::set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset)
     {
       int ret = OB_SUCCESS;
-      ret = limit_.set_limit(limit, offset);
-      if (OB_SUCCESS != ret)
+      if (OB_SUCCESS != (ret = limit_.set_limit(limit, offset)))
       {
         TBSYS_LOG(WARN, "fail to set limit. ret=%d", ret);
       }
@@ -235,6 +234,87 @@ namespace oceanbase
         pos += child_op_->to_string(buf+pos, buf_len-pos);
       }
       return pos;
+    }
+
+    DEFINE_SERIALIZE(ObTableMemScan)
+    {
+      int ret = OB_SUCCESS;
+#define ENCODE_OP(has_op, op) \
+      if (OB_SUCCESS == ret) \
+      { \
+        if (OB_SUCCESS != (ret = common::serialization::encode_bool(buf, buf_len, pos, has_op))) \
+        { \
+          TBSYS_LOG(WARN, "fail to encode " #has_op ":ret[%d]", ret); \
+        } \
+        else if (has_op) \
+        { \
+          if (OB_SUCCESS != (ret = op.serialize(buf, buf_len, pos))) \
+          { \
+            TBSYS_LOG(WARN, "fail to serialize " #op ":ret[%d]", ret); \
+          } \
+        } \
+      }
+
+      ENCODE_OP(has_rename_, rename_);
+      ENCODE_OP(has_project_, project_);
+      ENCODE_OP(has_filter_, filter_);
+      ENCODE_OP(has_limit_, limit_);
+#undef ENCODE_OP
+
+      return ret;
+    }
+
+    DEFINE_DESERIALIZE(ObTableMemScan)
+    {
+      int ret = OB_SUCCESS;
+
+#define DECODE_OP(has_op, op) \
+      if (OB_SUCCESS == ret) \
+      { \
+        if (OB_SUCCESS != (ret = common::serialization::decode_bool(buf, data_len, pos, &has_op))) \
+        { \
+          TBSYS_LOG(WARN, "fail to decode " #has_op ":ret[%d]", ret); \
+        } \
+        else if (has_op) \
+        { \
+          if (OB_SUCCESS != (ret = op.deserialize(buf, data_len, pos))) \
+          { \
+            TBSYS_LOG(WARN, "fail to deserialize " #op ":ret[%d]", ret); \
+          } \
+        } \
+      }
+      rename_.clear();
+      DECODE_OP(has_rename_, rename_);
+      project_.reset();
+      DECODE_OP(has_project_, project_);
+      filter_.reset();
+      DECODE_OP(has_filter_, filter_);
+      limit_.reset();
+      DECODE_OP(has_limit_, limit_);
+#undef DECODE_OP
+      return ret;
+    }
+
+    DEFINE_GET_SERIALIZE_SIZE(ObTableMemScan)
+    {
+      int64_t size = 0;
+#define GET_OP_SIZE(has_op, op) \
+      size += common::serialization::encoded_length_bool(has_op); \
+      if (has_op)\
+      {\
+        size += op.get_serialize_size();\
+      }
+      GET_OP_SIZE(has_rename_, rename_);
+      GET_OP_SIZE(has_project_, project_);
+      GET_OP_SIZE(has_filter_, filter_);
+      GET_OP_SIZE(has_limit_, limit_);
+#undef GET_OP_SIZE
+      return size;
+    }
+
+    ObPhyOperatorType ObTableMemScan::get_type() const
+    {
+      return PHY_TABLE_MEM_SCAN;
     }
   } // end namespace sql
 } // end namespace oceanbase

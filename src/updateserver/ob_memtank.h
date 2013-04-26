@@ -31,7 +31,10 @@
 #include "common/ob_string_buf.h"
 #include "common/page_arena.h"
 #include "common/utility.h"
+#include "common/ob_rowkey.h"
 #include "ob_ups_utils.h"
+#include "common/ob_simple_tpl.h"
+#include "common/ob_stack_allocator.h"
 
 namespace oceanbase
 {
@@ -54,22 +57,24 @@ namespace oceanbase
           return 0;
         }
     };
-
     class MemTank
     {
+      typedef common::ObHandyAllocatorWrapper<common::TSIStackAllocator> Allocator;
       static const int64_t PAGE_SIZE = 2 * 1024L * 1024L;
       static const int64_t AVAILABLE_WARN_SIZE = 2L * 1024L * 1024L * 1024L; //2G
+      static const int64_t BLOCK_ALLOCATOR_LIMIT_DELTA = 2L * 1024L * 1024L * 1024L;
       public:
         MemTank(const int32_t mod_id = common::ObModIds::OB_UPS_MEMTABLE)
           : total_limit_(INT64_MAX),
-            string_buf_(mod_id),
-            mod_(mod_id),
-            allocer_(PAGE_SIZE, mod_),
-            tevalue_allocer_(PAGE_SIZE, mod_),
-            btree_engine_allocer_(PAGE_SIZE, mod_),
-            hash_engine_allocer_(PAGE_SIZE, mod_),
             extern_mem_total_ptr_(&default_extern_mem_total_)
         {
+          int64_t block_size = PAGE_SIZE;
+          block_allocator_.set_mod(mod_id);
+          string_buf_.init(&block_allocator_, block_size);
+          allocer_.init(&block_allocator_, block_size);
+          tevalue_allocer_.init(&block_allocator_, block_size);
+          btree_engine_allocer_.init(&block_allocator_, block_size);
+          hash_engine_allocer_.init(&block_allocator_, block_size);
         };
         ~MemTank()
         {
@@ -82,6 +87,19 @@ namespace oceanbase
           if (!mem_over_limit())
           {
             ret = string_buf_.write_string(str, stored_str);
+          }
+          else
+          {
+            log_error_(__FUNCTION__);
+          }
+          return ret;
+        };
+        int write_string(const common::ObRowkey& rowkey, common::ObRowkey* stored_rowkey)
+        {
+          int ret = common::OB_MEM_OVERFLOW;
+          if (!mem_over_limit())
+          {
+            ret = string_buf_.write_string(rowkey, stored_rowkey);
           }
           else
           {
@@ -102,7 +120,7 @@ namespace oceanbase
           }
           return ret;
         };
-        void *node_alloc(const int32_t sz)
+        void *node_alloc(const int64_t sz)
         {
           void *ret = NULL;
           if (!mem_over_limit())
@@ -119,7 +137,7 @@ namespace oceanbase
           }
           return ret;
         };
-        void *tevalue_alloc(const int32_t sz)
+        void *tevalue_alloc(const int64_t sz)
         {
           void *ret = NULL;
           if (!mem_over_limit())
@@ -136,7 +154,7 @@ namespace oceanbase
           }
           return ret;
         };
-        void *btree_engine_alloc(const int32_t sz)
+        void *btree_engine_alloc(const int64_t sz)
         {
           void *ret = NULL;
           if (!mem_over_limit())
@@ -149,7 +167,7 @@ namespace oceanbase
           }
           return ret;
         };
-        void *hash_engine_alloc(const int32_t sz)
+        void *hash_engine_alloc(const int64_t sz)
         {
           void *ret = NULL;
           if (!mem_over_limit())
@@ -165,10 +183,10 @@ namespace oceanbase
         void clear()
         {
           string_buf_.clear();
-          allocer_.free();
-          tevalue_allocer_.free();
-          btree_engine_allocer_.free();
-          hash_engine_allocer_.free();
+          allocer_.clear();
+          tevalue_allocer_.clear();
+          btree_engine_allocer_.clear();
+          hash_engine_allocer_.clear();
         };
       public:
         bool mem_over_limit() const
@@ -184,11 +202,11 @@ namespace oceanbase
         };
         int64_t used() const
         {
-          return (string_buf_.used() + allocer_.used() + tevalue_allocer_.used() + btree_engine_allocer_.used() + hash_engine_allocer_.used());
+          return block_allocator_.get_allocated();
         };
         int64_t total() const
         {
-          return (string_buf_.total() + allocer_.total() + tevalue_allocer_.total() + btree_engine_allocer_.total() + hash_engine_allocer_.total());
+          return block_allocator_.get_allocated();
         };
         void set_extern_mem_total(IExternMemTotal *extern_mem_total_ptr)
         {
@@ -206,6 +224,7 @@ namespace oceanbase
           if (0 < limit)
           {
             total_limit_ = limit;
+            block_allocator_.set_limit(limit + BLOCK_ALLOCATOR_LIMIT_DELTA);
           }
           return total_limit_;
         };
@@ -215,43 +234,43 @@ namespace oceanbase
         };
         void log_info() const
         {
-          TBSYS_LOG(INFO, "MemTank report used=%ld total=%ld extern=%ld limit=%ld "
-                    "string_buf_used=%ld string_buf_total=%ld "
-                    "allocer_used=%ld allocer_total=%ld "
-                    "indep_allocer_used=%ld indep_allocer_total=%ld "
-                    "btree_engine_allocer_used=%ld btree_engine_allocer_total=%ld "
-                    "hash_engine_allocer_used=%ld hash_engine_allocer_total=%ld",
+          TBSYS_LOG(INFO,  "MemTank report used=%ld total=%ld extern=%ld limit=%ld "
+                    "string_buf_used=%ld "
+                    "allocer_used=%ld "
+                    "tevalue_allocer_used=%ld "
+                    "btree_engine_allocer_used=%ld "
+                    "hash_engine_allocer_used=%ld ",
                     used(), total(), extern_mem_total_ptr_->get_extern_mem_total(), get_total_limit(),
-                    string_buf_.used(), string_buf_.total(),
-                    allocer_.used(), allocer_.total(),
-                    tevalue_allocer_.used(), tevalue_allocer_.total(),
-                    btree_engine_allocer_.used(), btree_engine_allocer_.total(),
-                    hash_engine_allocer_.used(), hash_engine_allocer_.total());
+                    string_buf_.get_alloc_size(),
+                    allocer_.get_alloc_size(),
+                    tevalue_allocer_.get_alloc_size(),
+                    btree_engine_allocer_.get_alloc_size(),
+                    hash_engine_allocer_.get_alloc_size());
         };
       private:
         void log_error_(const char *caller) const
         {
-          TBSYS_LOG(ERROR, "memory over limited, caller=[%s] used=%ld total=%ld extern=%ld limit=%ld "
-                    "string_buf_used=%ld string_buf_total=%ld "
-                    "allocer_used=%ld allocer_total=%ld "
-                    "indep_allocer_used=%ld indep_allocer_total=%ld "
-                    "btree_engine_allocer_used=%ld btree_engine_allocer_total=%ld "
-                    "hash_engine_allocer_used=%ld hash_engine_allocer_total=%ld",
+          TBSYS_LOG(ERROR,  "[%s] MemTank report used=%ld total=%ld extern=%ld limit=%ld"
+                    "string_buf_used=%ld "
+                    "allocer_used=%ld "
+                    "tevalue_allocer_used=%ld "
+                    "btree_engine_allocer_used=%ld "
+                    "hash_engine_allocer_used=%ld ",
                     caller, used(), total(), extern_mem_total_ptr_->get_extern_mem_total(), get_total_limit(),
-                    string_buf_.used(), string_buf_.total(),
-                    allocer_.used(), allocer_.total(),
-                    tevalue_allocer_.used(), tevalue_allocer_.total(),
-                    btree_engine_allocer_.used(), btree_engine_allocer_.total(),
-                    hash_engine_allocer_.used(), hash_engine_allocer_.total());
+                    string_buf_.get_alloc_size(),
+                    allocer_.get_alloc_size(),
+                    tevalue_allocer_.get_alloc_size(),
+                    btree_engine_allocer_.get_alloc_size(),
+                    hash_engine_allocer_.get_alloc_size());
         };
       private:
         int64_t total_limit_;
-        common::ObStringBuf string_buf_;
-        common::ModulePageAllocator mod_;
-        common::ModuleArena allocer_;
-        common::ModuleArena tevalue_allocer_;
-        common::ModuleArena btree_engine_allocer_;
-        common::ModuleArena hash_engine_allocer_;
+        common::DefaultBlockAllocator block_allocator_;
+        Allocator string_buf_;
+        Allocator allocer_;
+        Allocator tevalue_allocer_;
+        Allocator btree_engine_allocer_;
+        Allocator hash_engine_allocer_;
         IExternMemTotal *extern_mem_total_ptr_;
         DefaultExternMemTotal default_extern_mem_total_;
     };

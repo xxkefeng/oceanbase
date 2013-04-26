@@ -488,26 +488,6 @@ TEST(TestObRange, to_string)
   printf("r1:%s\n", buffer);
 }
 
-TEST(TestObVersion,test)
-{
-  ObVersion t;
-  int64_t i=0;  
-  t = 10;
-  ASSERT_EQ(t,10);
-  ASSERT_EQ(t.major_,10);
-  ASSERT_EQ(t.minor_,0);
-  ASSERT_EQ(t.is_final_minor_,0);
-
-  t = ObVersion::get_version(10,1,1);
-  ASSERT_EQ(t.major_,10);
-  ASSERT_EQ(t.minor_,1);
-  ASSERT_EQ(t.is_final_minor_,1);
-
-
-  i = 1L << 48 | 1L << 32| 10;
-  ASSERT_EQ(i,t);
-}
-
 int main(int argc, char **argv)
 {
   ob_init_memory_pool();

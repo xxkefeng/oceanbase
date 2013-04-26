@@ -1,9 +1,9 @@
 AM_CPPFLAGS = -I${TBLIB_ROOT}/include/tbsys \
-			  -I${TBLIB_ROOT}/include/tbnet \
+			  -I${EASY_ROOT}/include/easy \
 			  -I${top_srcdir}/include \
 				-I${top_srcdir}/tools/sqltest/include/mysql \
 				-I${top_srcdir}/tools/sqltest/include/postgre\
-			  -I${top_srcdir}/src 
+			  -I${top_srcdir}/src
 
 LDADD = $(top_builddir)/src/chunkserver/libchunkserver.a \
 		$(top_builddir)/src/mergeserver/libmergeserver.a \
@@ -12,8 +12,8 @@ LDADD = $(top_builddir)/src/chunkserver/libchunkserver.a \
 		$(top_builddir)/src/common/compress/libcomp.a \
 		$(top_builddir)/src/common/libcommon.a \
 		$(top_builddir)/src/common/btree/libbtree.a \
-		${TBLIB_ROOT}/lib/libtbnet.a \
-		${TBLIB_ROOT}/lib/libtbsys.a 
+		${EASY_LIB_PATH}/libeasy.a \
+		${TBLIB_ROOT}/lib/libtbsys.a
 
 AM_LDFLAGS = -lpq -lmysqlclient_r -lpthread -lc -lm -lrt -ldl -lnuma -L$(top_builddir)/tools/sqltest/lib/
 #AM_LDFLAGS = -lpq -lmysqlclient -lpthread -lc -lm -lrt -ldl -lnuma

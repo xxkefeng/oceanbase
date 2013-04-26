@@ -15,8 +15,8 @@
  */
 
 #include "common/ob_define.h"
+#include "common/ob_common_stat.h"
 #include "sstable/ob_disk_path.h"
-#include "sstable/ob_sstable_stat.h"
 
 using namespace oceanbase::common;
 

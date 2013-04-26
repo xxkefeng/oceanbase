@@ -2,13 +2,13 @@
 #ifndef OCEANBASE_PACKET_H_
 #define OCEANBASE_PACKET_H_
 
-#include <tbnet.h>
-
+#include "easy_io_struct.h"
 #include "ob_record_header.h" // for ObRecordHeader
 #include "data_buffer.h"
 //#include "ob_malloc.h"
 #include "ob_memory_pool.h"
 #include "thread_buffer.h"
+#include "ob_trace_id.h"
 
 namespace oceanbase
 {
@@ -116,6 +116,17 @@ namespace oceanbase
       OB_REQUIRE_HEARTBEAT = 227,
       OB_DUMP_CS_INFO = 229,
       OB_DUMP_CS_INFO_RESPONSE = 230,
+      OB_CS_FETCH_SSTABLE_DIST = 231,
+      OB_CS_FETCH_SSTABLE_DIST_RESPONSE  = 232,
+      OB_CS_LOAD_BYPASS_SSTABLE = 233,
+      OB_CS_LOAD_BYPASS_SSTABLE_RESPONSE = 234,
+      OB_CS_LOAD_BYPASS_SSTABLE_DONE = 235,
+      OB_CS_LOAD_BYPASS_SSTABLE_DONE_RESPONSE = 236,
+      OB_CS_DELETE_TABLE = 237,
+      OB_CS_DELETE_TABLE_RESPONSE = 238,
+      OB_CS_DELETE_TABLE_DONE = 239,
+      OB_CS_DELETE_TABLE_DONE_RESPONSE = 240,
+
       OB_CS_GET_MIGRATE_DEST_LOC = 260,
       OB_CS_GET_MIGRATE_DEST_LOC_RESPONSE = 261,
       OB_CS_DUMP_TABLET_IMAGE = 262,
@@ -185,6 +196,10 @@ namespace oceanbase
       OB_GET_MASTER_UPS_CONFIG = 327,
       OB_GET_MASTER_UPS_CONFIG_RESPONSE = 328,
 
+      /* 0.4 ms register */
+      OB_MERGE_SERVER_REGISTER = 329,
+      OB_MERGE_SERVER_REGISTER_RESPONSE = 330,
+
       OB_FETCH_STATS = 401,
       OB_FETCH_STATS_RESPONSE = 402,
 
@@ -196,6 +211,14 @@ namespace oceanbase
       OB_GET_LOG_SYNC_DELAY_STAT = 403,
       OB_GET_LOG_SYNC_DELAY_STAT_RESPONSE = 404,
 
+      OB_SQL_SCAN_REQUEST = 405,
+      OB_SQL_SCAN_RESPONSE = 406,
+      //OB_UPDATE_SERVER_REPORT_PRIVILEGE_VERSION = 407,
+      //OB_UPDATE_SERVER_REPORT_PRIVILEGE_VERSION_RESPONSE = 408,
+
+      OB_SQL_GET_REQUEST = 409,
+      OB_SQL_GET_RESPONSE = 410,
+
       OB_FETCH_LOG = 420,
       OB_FETCH_LOG_RESPONSE = 421,
       OB_PREFETCH_LOG = 422,
@@ -203,6 +226,32 @@ namespace oceanbase
       OB_FILL_LOG_CURSOR_RESPONSE = 424,
       OB_GET_CLOG_STATUS = 430,
       OB_GET_CLOG_STATUS_RESPONSE = 431,
+
+      OB_NEW_GET_REQUEST = 432,
+      OB_NEW_GET_RESPONSE = 433,
+      OB_NEW_SCAN_REQUEST = 434,
+      OB_NEW_SCAN_RESPONSE = 435,
+
+      /* get master ob instance rs packet code */
+      OB_GET_MASTER_OBI_RS = 466,
+      OB_GET_MASTER_OBI_RS_RESPONSE = 467,
+
+      OB_SET_CONFIG = 470,
+      OB_SET_CONFIG_RESPONSE = 471,
+      OB_GET_CONFIG = 472,
+      OB_GET_CONFIG_RESPONSE = 473,
+
+      // schema service
+      OB_CREATE_TABLE = 500,
+      OB_CREATE_TABLE_RESPONSE = 501,
+      OB_DROP_TABLE = 502,
+      OB_DROP_TABLE_RESPONSE = 503,
+      OB_ALTER_TABLE = 504,
+      OB_ALTER_TABLE_RESPONSE = 505,
+
+      // trigger event
+      OB_HANDLE_TRIGGER_EVENT = 600,
+      OB_HANDLE_TRIGGER_EVENT_RESPONSE = 601,
 
       OB_UPS_DUMP_TEXT_MEMTABLE = 1227,
       OB_UPS_DUMP_TEXT_MEMTABLE_RESPONSE = 1228,
@@ -279,11 +328,24 @@ namespace oceanbase
       OB_UPS_MAJOR_LOAD_BYPASS = 1300,
       OB_UPS_MAJOR_LOAD_BYPASS_RESPONSE = 1301,
       OB_UPS_ASYNC_CHECK_CUR_VERSION = 1302,
+      OB_UPS_ASYNC_UPDATE_SCHEMA = 1303,
+      OB_UPS_ASYNC_AUTO_FREEZE_MEMTABLE = 1304,
+      OB_UPS_ASYNC_WRITE_SCHEMA = 1305,
+      OB_UPS_ASYNC_KILL_ZOMBIE = 1306,
+      OB_UPS_SHOW_SESSIONS = 1307,
+      OB_UPS_SHOW_SESSIONS_RESPONSE = 1308,
+      OB_UPS_KILL_SESSION = 1309,
+      OB_UPS_KILL_SESSION_RESPONSE = 1310,
+
+      OB_GET_CLOG_STAT = 1340,
+      OB_GET_CLOG_STAT_RESPONSE = 1341,
 
       OB_RS_CHECK_TABLET_MERGED = 1500,
       OB_RS_CHECK_TABLET_MERGED_RESPONSE = 1501,
       OB_RS_GET_LAST_FROZEN_VERSION = 1502,
       OB_RS_GET_LAST_FROZEN_VERSION_RESPONSE = 1503,
+      OB_RS_CHECK_ROOTTABLE = 1504,
+      OB_RS_CHECK_ROOTTABLE_RESPONSE = 1505,
 
       OB_GET_INSTANCE_ROLE = 2048,
       OB_GET_INSTANCE_ROLE_RESPONSE = 2049,
@@ -311,14 +373,33 @@ namespace oceanbase
       OB_KILL_SESSION_REQUEST = 2513,
       OB_KILL_SESSION_RESPONSE = 2514,
 
-      ///rootserver session
+      //rootserver sesscion
       OB_SET_OBI_ROLE_TO_SLAVE = 3000,
       OB_SET_OBI_ROLE_TO_SLAVE_RESPONSE = 3001,
+
+      // sql
+      OB_SQL_EXECUTE = 4000,
+      OB_SQL_EXECUTE_RESPONSE = 4001,
+      OB_PHY_PLAN_EXECUTE = 4002,
+      OB_PHY_PLAN_EXECUTE_RESPONSE = 4003,
+      OB_START_TRANSACTION = 4004,
+      OB_START_TRANSACTION_RESPONSE = 4005,
+      OB_END_TRANSACTION = 4006,
+      OB_END_TRANSACTION_RESPONSE = 4007,
+
+      // ob file service
+      OB_SEND_FILE_REQUEST = 5000,
+      OB_SEND_FILE_REQUEST_RESPONSE = 5001,
+
+      //rs extra packet code
+      OB_RS_INNER_MSG_AFTER_RESTART = 6001,
 
       /// network session
       OB_SESSION_NEXT_REQUEST = 9999,
       OB_SESSION_NEXT_RESPONSE = 10000,
       OB_SESSION_END = 10001,
+
+      OB_PACKET_NUM, // do not fill value
     };
 
     enum ServerFlag
@@ -335,17 +416,25 @@ namespace oceanbase
       LOW_PRI = 1,
     };
 
-    class ObPacket : public tbnet::Packet
+    class ObPacket
     {
       friend class ObPacketQueue;
       public:
         static const int16_t OB_PACKET_CHECKSUM_MAGIC = static_cast<int16_t>(0xBCDE);
+        static uint32_t global_chid;
+      public:
         ObPacket();
         virtual ~ObPacket();
         virtual void free();
 
+        uint32_t get_channel_id() const;
+        void set_channel_id(uint32_t chid);
+
+        int get_packet_len() const;
+        void set_packet_len(int length);
+
         void set_no_free();
-        int32_t get_packet_code();
+        int32_t get_packet_code() const;
         void set_packet_code(const int32_t packet_code);
 
         int32_t get_target_id() const;
@@ -354,12 +443,18 @@ namespace oceanbase
         int64_t get_session_id() const;
         void set_session_id(const int64_t session_id);
 
+        int64_t get_expire_time() const;
+
         int32_t get_api_version() const;
         void set_api_version(const int32_t api_version);
 
         void set_data(const ObDataBuffer& buffer);
         ObDataBuffer* get_buffer();
+
+        ObDataBuffer* get_inner_buffer();
+
         int32_t get_data_length() const;
+        void set_data_length(int32_t datalen);
 
         void set_source_timeout(const int64_t& timeout);
         int64_t get_source_timeout() const;
@@ -368,25 +463,57 @@ namespace oceanbase
         void set_packet_priority(const int32_t priority);
         int32_t get_packet_priority() const;
 
-        tbnet::Connection* get_connection() const;
-        void set_connection(tbnet::Connection* connection);
+        ObPacket* get_next() const;
+
+        easy_request_t* get_request() const;
+        void set_request(easy_request_t *r);
 
         int serialize();
+        /*serialize packet to buffer*/
+        int serialize(ObDataBuffer *buffer);
         int deserialize();
 
-        bool encode(tbnet::DataBuffer *output);
-        bool decode(tbnet::DataBuffer *input, tbnet::PacketHeader *header);
+        /**
+         * encode tbnet header, obpacket header, record header,
+         *              data into output buffer
+         * @param output   pointer to request output buffer
+         * @param len      buffer length
+         *
+         * caller should make sure output has enough content for encode
+         */
+        bool encode(char* output, int64_t len);
 
         int64_t get_packet_buffer_offset() const;
         void set_packet_buffer_offset(const int64_t buffer_offset);
 
         ObDataBuffer* get_packet_buffer();
+        const ObDataBuffer* get_packet_buffer() const;
         void set_packet_buffer(char* buffer, const int64_t buffer_length);
+
+        int64_t get_header_size() const;
+        void set_trace_id(const uint64_t &trace_id);
+        uint64_t get_trace_id() const;
+        void set_req_sign(const uint64_t req_sign);
+        uint64_t get_req_sign() const;
+
+        void set_ob_packet_header_size(const uint16_t ob_packet_header_size);
+        uint16_t get_ob_packet_header_size() const;
+
+        static uint64_t &tsi_req_sign()
+        {
+          static __thread bool first_invoke = true;
+          static __thread uint64_t req_sign = 0;
+          if (first_invoke)
+          {
+            TBSYS_LOG(INFO, "[TSI_REQ_SIGN] %p", &req_sign);
+            first_invoke = false;
+          }
+          return req_sign;
+        };
 
       private:
         int do_check_sum();
         int do_sum_check();
-
         int __deserialize();
 
       private:
@@ -394,9 +521,14 @@ namespace oceanbase
         // free is not needed if the packet is used by server;
         // free is needed if the packet is used by client.
         bool no_free_;
-        int32_t api_version_;  // encode, decode
+
+        uint32_t chid_;         //tbnet header channel id
+        int pcode_;             //tbnet header packet code
+        int packet_len_;          //tbnet header total packet len not include tbnet header
+        mutable uint16_t ob_packet_header_size_;
+        int16_t api_version_;
         int32_t timeout_;      // encode, decode
-        int32_t data_length_;
+        int32_t data_length_;   //real data length
         int32_t priority_;
         int32_t target_id_;
         int64_t receive_ts_;
@@ -405,12 +537,17 @@ namespace oceanbase
         ObDataBuffer buffer_; // user buffer holder
         ObDataBuffer inner_buffer_; // packet inner buffer
         ObRecordHeader header_;
-        tbnet::Connection* connection_;
+        easy_request_t *req_;       //request pointer for sendreponse
 
+        ObPacket* _next;         //tbnet::Packet* _next  ObPacketQueue using _next;
+        int64_t expire_time_;    //compatible with tbnet packet int64_t _expireTime;
         bool alloc_inner_mem_; // alloc from out_mem_pool_ or not
+        uint64_t trace_id_;
+        uint64_t req_sign_;
+        //TraceId trace_id_;
         static ObVarMemPool out_mem_pool_;
     };
   } /* common */
 } /* oceanbas */
-#endif /* end of include guard: OCEANBASE_PACKET_H_ */
 
+#endif /* end of include guard: OCEANBASE_PACKET_H_ */

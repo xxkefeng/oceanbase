@@ -33,7 +33,7 @@ namespace oceanbase
 {
   namespace common
   {
-    ObRowCompaction::ObRowCompaction() : NODES_NUM_(65536),
+    ObRowCompaction::ObRowCompaction() : NODES_NUM_(OB_ALL_MAX_COLUMN_ID + 1),
                                          nodes_(NULL),
                                          list_(NULL),
                                          tail_(NULL),
@@ -151,6 +151,29 @@ namespace oceanbase
           && NULL != is_row_changed)
       {
         *is_row_changed = is_row_changed_;
+      }
+      return ret;
+    }
+
+    int ObRowCompaction::is_row_finished(bool *is_row_finished)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == nodes_
+          || NULL == iter_)
+      {
+        TBSYS_LOG(WARN, "nodes=%p iter=%p can not work", nodes_, iter_);
+        ret = OB_ERROR;
+      }
+      else if (NULL == list_)
+      {
+        ret = OB_ITER_END;
+      }
+      else
+      {
+        if (NULL != is_row_finished)
+        {
+          *is_row_finished = (NULL == list_->next);
+        }
       }
       return ret;
     }

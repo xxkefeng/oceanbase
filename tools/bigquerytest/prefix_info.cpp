@@ -21,14 +21,17 @@ static const int64_t PREFIX_BITS = 48;
 
 PrefixInfo::PrefixInfo()
 {
+  ob_client_ = NULL;
+  pthread_rwlock_init(&w_lock_, NULL);
 }
 
 PrefixInfo::~PrefixInfo()
 {
+  pthread_rwlock_destroy(&w_lock_);
   // empty
 }
 
-int PrefixInfo::init(ObSqlClient& ob_client)
+int PrefixInfo::init(MysqlClient& ob_client)
 {
   assert(NULL == ob_client_);
 
@@ -41,7 +44,6 @@ int PrefixInfo::set_read_write_status(uint64_t prefix, int status)
 {
   int err = 0;
 
-  tbsys::CWLock lock(&w_lock_);
   if (status == 0)
   {
     err = set_status(prefix, 0);
@@ -52,9 +54,12 @@ int PrefixInfo::set_read_write_status(uint64_t prefix, int status)
   }
   else
   {
-    lock.lock();
+    pthread_rwlock_wrlock(&w_lock_);
     int ori_status = 0;
     err = get_status(prefix, ori_status);
+
+    //TBSYS_LOG(INFO, "prefix=%lu, ori_status=%d", prefix, ori_status);
+
     if (0 != err)
     {
       TBSYS_LOG(WARN, "failed to get ori status, prefix=%lu, err=%d", prefix, err);
@@ -75,7 +80,7 @@ int PrefixInfo::set_read_write_status(uint64_t prefix, int status)
       }
     }
 
-    lock.unlock();
+    pthread_rwlock_unlock(&w_lock_);
   }
   return err;
 }
@@ -86,7 +91,7 @@ int PrefixInfo::set_status(uint64_t prefix, int status)
   assert(NULL != ob_client_);
 
   char ob_sql[2048];
-  sprintf(ob_sql, "replace into %s(rowkey, status) values(0X%016lX, %d)",
+  sprintf(ob_sql, "replace into %s(prefix, stat) values(%lu, %d)",
       PREFIX_STATUS_TABLE_NAME, prefix, status);
   err = ob_client_->exec_update(ob_sql);
   if (OB_SUCCESS != err)
@@ -104,7 +109,7 @@ int PrefixInfo::get_status(uint64_t prefix, int& status)
   assert(NULL != ob_client_);
 
   char ob_sql[2048];
-  sprintf(ob_sql, "select status from %s where rowkey=0X%016lX",
+  sprintf(ob_sql, "select stat from %s where prefix=%lu",
       PREFIX_STATUS_TABLE_NAME, prefix);
   Array array;
   err = ob_client_->exec_query(ob_sql, array);
@@ -141,7 +146,7 @@ int PrefixInfo::set_rule(uint64_t prefix, const char* rule_data)
   assert(NULL != ob_client_);
 
   char ob_sql[2048];
-  sprintf(ob_sql, "replace into %s(rowkey, rule_data) values(0X%016lX, '%s')", PREFIX_STATUS_TABLE_NAME, prefix, rule_data);
+  sprintf(ob_sql, "replace into %s(prefix, rule_data) values(%lu, '%s')", PREFIX_STATUS_TABLE_NAME, prefix, rule_data);
   err = ob_client_->exec_update(ob_sql);
   if (0 != err)
   {
@@ -157,7 +162,7 @@ int PrefixInfo::set_rule_and_row_num(uint64_t prefix, char* rule_data, uint64_t 
   assert(NULL != ob_client_);
 
   char ob_sql[2048];
-  sprintf(ob_sql, "replace into %s(rowkey, rule_data, row_num) values(0X%016lX, '%s', %lu)",
+  sprintf(ob_sql, "replace into %s(prefix, rule_data, row_num) values(%lu, '%s', %lu)",
       PREFIX_STATUS_TABLE_NAME, prefix, rule_data, row_num);
   err = ob_client_->exec_update(ob_sql);
   if (0 != err)
@@ -174,7 +179,7 @@ int PrefixInfo::get_rule(uint64_t prefix, char* rule_data, int64_t rule_size)
   assert(NULL != ob_client_);
 
   char ob_sql[2048];
-  sprintf(ob_sql, "select rule_data from %s where rowkey=0X%016lX",
+  sprintf(ob_sql, "select rule_data from %s where prefix=%lu",
       PREFIX_STATUS_TABLE_NAME, prefix);
   Array array;
   err = ob_client_->exec_query(ob_sql, array);
@@ -210,7 +215,7 @@ int PrefixInfo::set_row_num(uint64_t prefix, uint64_t row_num)
   assert(NULL != ob_client_);
 
   char ob_sql[2048];
-  sprintf(ob_sql, "replace into %s(rowkey, row_num) values(0X%016lX, %lu)",
+  sprintf(ob_sql, "replace into %s(prefix, row_num) values(%lu, %lu)",
       PREFIX_STATUS_TABLE_NAME, prefix, row_num);
   err = ob_client_->exec_update(ob_sql);
   if (OB_SUCCESS != err)
@@ -227,7 +232,7 @@ int PrefixInfo::get_row_num(uint64_t prefix, uint64_t& res_val)
   assert(NULL != ob_client_);
 
   char ob_sql[2048];
-  sprintf(ob_sql, "select row_num from %s where rowkey=0X%016lX",
+  sprintf(ob_sql, "select row_num from %s where prefix=%lu",
       PREFIX_STATUS_TABLE_NAME, prefix);
   Array array;
   err = ob_client_->exec_query(ob_sql, array);
@@ -267,6 +272,7 @@ int PrefixInfo::get_max_prefix(uint64_t client_id, uint64_t& prefix)
         INVALID_PREFIX, err);
   }
 
+  //TBSYS_LOG(INFO, "[get_max_prefix] prefix=%lu, err=%d", prefix, err);
   return err;
 }
 
@@ -279,6 +285,7 @@ int PrefixInfo::set_max_prefix(uint64_t client_id, uint64_t prefix)
     TBSYS_LOG(WARN, "failed to set max prefix, key=%lu, err=%d",
         INVALID_PREFIX, err);
   }
+  //TBSYS_LOG(INFO, "[set_max_prefix] prefix=%lu, err=%d", prefix, err);
   return err;
 }
 

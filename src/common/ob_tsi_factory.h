@@ -2,9 +2,9 @@
  //
  // ob_tsi_factory.h common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2012 Taobao.com, Inc.
  //
- // Created on 2011-01-14 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2011-01-14 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -16,7 +16,7 @@
  // 除宏外 不要调用其他接口
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -43,7 +43,14 @@ namespace oceanbase
       TSI_COMMON_SCAN_PARAM_1,
       TSI_COMMON_SCANNER_1,
       TSI_COMMON_MUTATOR_1,
+      TSI_COMMON_THE_META_1,
       TSI_COMMON_GET_PARAM_1,
+      TSI_COMMON_MULTI_WAKEUP_1,
+      TSI_COMMON_PACKET_TRACE_ID_1,
+      TSI_COMMON_PACKET_SOURCE_CHID_1,
+      TSI_COMMON_PACKET_CHID_1,
+      TSI_COMMON_SEQ_ID_1,
+      TSI_COMMON_OBSERVER_1,
     };
 
     enum TSISSTableType
@@ -53,11 +60,25 @@ namespace oceanbase
       TSI_SSTABLE_MODULE_ARENA_1,
     };
 
+    enum TSICompactSSTableType
+    {
+      TSI_COMPACTSSTABLEV2_BLOCK_INDEX_1 = 9001,
+      TSI_COMPACTSSTABLEV2_FILE_BUFFER_1 = 9002,
+      TSI_COMPACTSSTABLEV2_FILE_BUFFER_2 = 9003,
+      TSI_COMPACTSSTABLEV2_FILE_BUFFER_3 = 9004,
+      TSI_COMPACTSSTABLEV2_THREAD_AIO_BUFFER_MGR_ARRAY_1 = 9005,
+      TSI_COMPACTSSTABLEV2_MODULE_ARENA_1 = 9006,
+      TSI_COMPACTSSTABLEV2_MODULE_ARENA_2 = 9007,
+    };
+
     enum TSIChunkserverType
     {
       TSI_CS_SCANNER_1 = 3001,
+      TSI_CS_NEW_SCANNER_1,
       TSI_CS_GET_PARAM_1,
       TSI_CS_SCAN_PARAM_1,
+      TSI_CS_SQL_SCAN_PARAM_1,
+      TSI_CS_SQL_GET_PARAM_1,
       TSI_CS_TABLET_REPORT_INFO_LIST_1,
       TSI_CS_TABLET_REPORT_INFO_LIST_2,
       TSI_CS_SSTABLE_GETTER_1,
@@ -68,13 +89,17 @@ namespace oceanbase
       TSI_CS_COMPACTSSTABLE_ITERATOR_1,
       TSI_CS_COMPACTSSTABLE_GET_SCANEER_1,
       TSI_CS_COLUMNFILTER_1,
-      TSI_CS_COMPACTSSTABLE_ITERATOR_2,
-      TSI_CS_MULTI_TABLET_MERGER_1,            
+      TSI_CS_QUERY_SERVICE_1,
+      TSI_CS_TABLET_SERVICE_1,
+      TSI_CS_STATIC_DATA_SERVICE_1,
+      TSI_CS_MULTI_TABLET_MERGER_1,
+      TSI_CS_TABLE_IMPORT_INFO_1,
     };
 
     enum TSIUpdateserverType
     {
       TSI_UPS_SCANNER_1 = 4001,
+      TSI_UPS_NEW_SCANNER_1,
       TSI_UPS_GET_PARAM_1,
       TSI_UPS_SCAN_PARAM_1,
       TSI_UPS_MUTATOR_1,
@@ -85,9 +110,11 @@ namespace oceanbase
       TSI_UPS_COLUMN_MAP_1,
       TSI_UPS_TABLE_LIST_1,
       TSI_UPS_ROW_COMPACTION_1,
+      TSI_UPS_ROW_COMPACTION_2,
       TSI_UPS_CLIENT_WRAPPER_TSI_1,
       TSI_UPS_FIXED_SIZE_BUFFER_1,
       TSI_UPS_FIXED_SIZE_BUFFER_2,
+      TSI_UPS_SQL_SCAN_PARAM_1,
     };
 
     enum TSIMergeserverType
@@ -105,27 +132,50 @@ namespace oceanbase
       TSI_MS_ORG_MUTATOR_1,
       TSI_MS_DECODED_MUTATOR_1,
       TSI_MS_UPS_SCANNER_1,
+      TSI_MS_NEW_SCANNER_1,
+      TSI_MS_SQL_SCAN_PARAM_1,
     };
 
     enum TSIOlapDrive
     {
-      TSI_OLAP_SCAN_EXTRA_INFO_1 = 6001, 
-      TSI_OLAP_THREAD_ROW_KEY_1, 
-      TSI_OLAP_GET_PARAM_1, 
-      TSI_OLAP_SCAN_PARAM_1, 
-      TSI_OLAP_SCANNER_1, 
-      TSI_OLAP_MUTATOR_1, 
+      TSI_OLAP_SCAN_EXTRA_INFO_1 = 6001,
+      TSI_OLAP_THREAD_ROW_KEY_1,
+      TSI_OLAP_GET_PARAM_1,
+      TSI_OLAP_SCAN_PARAM_1,
+      TSI_OLAP_SCANNER_1,
+      TSI_OLAP_MUTATOR_1,
     };
+
+    //enum TSIRootserverType
+    //{
+    //  TSI_RS_MS_PROVIDER_1 = 6001,
+    //};
+
 
     enum TSISqlType
     {
       TSI_SQL_GET_PARAM_1 = 7001,
+      TSI_SQL_GET_PARAM_2 = 7002,
+      TSI_SQL_EXPR_STACK_1 = 7003,
+      TSI_SQL_EXPR_EXTRA_PARAMS_1 = 7005,
+      TSI_SQL_TP_ARENA_1 = 7006,
+    };
+
+    enum TSIMySQLType
+    {
+      TSI_MYSQL_CLIENT_WAIT_1 = 8001,
+      TSI_MYSQL_RESULT_SET_1,
+      TSI_MYSQL_PREPARE_RESULT_1,
+      TSI_MYSQL_SESSION_KEY_1,
     };
 
     enum TSIRootserverType
     {
-      TSI_RS_SCANNER_1 = 8001,
+      TSI_RS_SCANNER_1 = 9001,
       TSI_RS_GET_PARAM_1,
+      TSI_RS_MS_PROVIDER_1,
+      TSI_RS_NEW_SCANNER_1,
+      TSI_RS_SQL_SCAN_PARAM_1,
     };
 
     //#define GET_TSI(type) get_tsi_fatcory().get_instance<type,1>()
@@ -172,7 +222,7 @@ namespace oceanbase
     })
     //  GET_TSI(Wrapper<type>) ? (GET_TSI(Wrapper<type>)->get_instance() ? (GET_TSI(Wrapper<type>)->get_instance()) :
     //      (GET_TSI(Wrapper<type>)->get_instance() = new(std::nothrow) type(args))) : NULL
-                                                                                     
+
     class TSINodeBase
     {
       public:
@@ -352,4 +402,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_TSI_FACTORY_H_
-

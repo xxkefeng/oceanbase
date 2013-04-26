@@ -112,9 +112,7 @@ namespace oceanbase
         else if (is_row_changed)
         {
           column_index = 0;
-          fprintf(stderr, "row[%ld]: ", row_index++);
-          hex_dump_rowkey(cell_info->row_key_.ptr(), 
-                          cell_info->row_key_.length(), true);
+          fprintf(stderr, "row[%ld]: %s", row_index++, to_cstring(cell_info->row_key_));
         }
 
         fprintf(stderr, "  cell[%ld]: \n"
@@ -383,7 +381,7 @@ namespace oceanbase
       return ret_val;
     }
 
-    void ObLzQuery::get_start_rowkey_struct(ObRowkey& rowkey, int64_t& day_count)
+    void ObLzQuery::get_start_rowkey_struct(ObLZRowkey& rowkey, int64_t& day_count)
     {
       if (rowkey.cur_unit_id_ == 0)
       {
@@ -408,9 +406,9 @@ namespace oceanbase
     }
 
     void ObLzQuery::get_end_rowkey_struct(
-        const ObRowkey& start_rowkey, 
+        const ObLZRowkey& start_rowkey, 
         const int64_t day_count, 
-        ObRowkey& end_rowkey)
+        ObLZRowkey& end_rowkey)
     {
       end_rowkey.cur_unit_id_ = start_rowkey.cur_unit_id_;
       end_rowkey.cur_date_ = start_rowkey.cur_date_ + day_count - 1;
@@ -456,30 +454,21 @@ namespace oceanbase
     }
 
     int ObLzQuery::build_rowkey(
-        const ObRowkey& rowkey, 
-        char* rowkey_buf, 
-        const int64_t buf_size,
-        ObString& ret_rowkey)
+        const ObLZRowkey& rowkey, 
+        ObObj* rowkey_objs, 
+        ObRowkey& ret_rowkey)
     {
       int ret         = OB_SUCCESS;
-      int64_t pos     = 0;
       int64_t cur_id  = rowkey.cur_key_type_ == 0 
         ? rowkey.cur_key_id_ : rowkey.cur_creative_id_;
 
-      if ((OB_SUCCESS == (ret = encode_i64(rowkey_buf, buf_size, pos, rowkey.cur_unit_id_)))
-          && (OB_SUCCESS == (ret = encode_i64(rowkey_buf, buf_size, pos, rowkey.cur_date_)))
-          && (OB_SUCCESS == (ret = encode_i64(rowkey_buf, buf_size, pos, rowkey.cur_campaign_id_)))
-          && (OB_SUCCESS == (ret = encode_i64(rowkey_buf, buf_size, pos, rowkey.cur_adgroup_id_)))
-          && (OB_SUCCESS == (ret = encode_i8(rowkey_buf, buf_size, pos, static_cast<int8_t>(rowkey.cur_key_type_))))
-          && (OB_SUCCESS == (ret = encode_i64(rowkey_buf, buf_size, pos, cur_id))))
-      {
-        ret_rowkey.assign(rowkey_buf, static_cast<int32_t>(buf_size));
-      }
-      else 
-      {
-        TBSYS_LOG(WARN, "failed to build rowkey");
-        rowkey.display();
-      }
+      rowkey_objs[0].set_int(rowkey.cur_unit_id_);
+      rowkey_objs[1].set_int(rowkey.cur_date_);
+      rowkey_objs[2].set_int(rowkey.cur_campaign_id_);
+      rowkey_objs[3].set_int(rowkey.cur_adgroup_id_);
+      rowkey_objs[4].set_int(rowkey.cur_key_type_);
+      rowkey_objs[5].set_int(cur_id);
+      ret_rowkey.assign(rowkey_objs, MAX_OLAPDRIVE_ROWKEY_COLUMN_COUNT);
 
       return ret;
     }
@@ -488,13 +477,13 @@ namespace oceanbase
     {
       int ret                       = OB_SUCCESS;
       int64_t day_count             = param_.get_read_day_count();
-      ObThreadRowkeyBuf* rowkey_buf = GET_TSI_MULT(ObThreadRowkeyBuf,TSI_OLAP_THREAD_ROW_KEY_1);
-      ObRowkey* start_rowkey        = GET_TSI_MULT(ObRowkey, START_ROWKEY_NO);
-      ObRowkey* end_rowkey          = GET_TSI_MULT(ObRowkey, END_ROWKEY_NO);
-      ObRange range;
+      ObThreadRowkeyObjs* rowkey_objs = GET_TSI_MULT(ObThreadRowkeyObjs,TSI_OLAP_THREAD_ROW_KEY_1);
+      ObLZRowkey* start_rowkey        = GET_TSI_MULT(ObLZRowkey, START_ROWKEY_NO);
+      ObLZRowkey* end_rowkey          = GET_TSI_MULT(ObLZRowkey, END_ROWKEY_NO);
+      ObNewRange range;
       ObString table_name;
 
-      if (NULL == rowkey_buf || NULL == start_rowkey || NULL == end_rowkey)
+      if (NULL == start_rowkey || NULL == end_rowkey)
       {
         TBSYS_LOG(ERROR, "failed to get thread rowkey buffer");
         ret = OB_ERROR;
@@ -507,15 +496,15 @@ namespace oceanbase
         get_start_rowkey_struct(*start_rowkey, day_count);
         get_end_rowkey_struct(*start_rowkey, day_count, *end_rowkey);
 
-        ret = build_rowkey(*start_rowkey, rowkey_buf->start_rowkey_buf_, 
-                           LZ_ROWKEY_SIZE, range.start_key_);
+        ret = build_rowkey(*start_rowkey, rowkey_objs->start_rowkey_objs_, 
+                           range.start_key_);
       }
 
       if (OB_SUCCESS == ret)
       {
         range.border_flag_.set_inclusive_start();
-        ret = build_rowkey(*end_rowkey, rowkey_buf->end_rowkey_buf_, 
-                           LZ_ROWKEY_SIZE, range.end_key_);
+        ret = build_rowkey(*end_rowkey, rowkey_objs->end_rowkey_objs_, 
+                           range.end_key_);
         if (OB_SUCCESS == ret)
         {
           range.border_flag_.set_inclusive_end();
@@ -905,7 +894,7 @@ namespace oceanbase
     int ObLzQuery::get_cur_scan_campaign(ObCampaign& campaign)
     {
       int ret                 = OB_SUCCESS;
-      ObRowkey* start_rowkey  = GET_TSI_MULT(ObRowkey, START_ROWKEY_NO);
+      ObLZRowkey* start_rowkey  = GET_TSI_MULT(ObLZRowkey, START_ROWKEY_NO);
 
       if (NULL == start_rowkey)
       {
@@ -925,8 +914,8 @@ namespace oceanbase
     int ObLzQuery::get_scan_info(ObScanInfo& scan_info)
     {
       int ret                 = OB_SUCCESS;
-      ObRowkey* start_rowkey  = GET_TSI_MULT(ObRowkey, START_ROWKEY_NO);
-      ObRowkey* end_rowkey    = GET_TSI_MULT(ObRowkey, END_ROWKEY_NO);
+      ObLZRowkey* start_rowkey  = GET_TSI_MULT(ObLZRowkey, START_ROWKEY_NO);
+      ObLZRowkey* end_rowkey    = GET_TSI_MULT(ObLZRowkey, END_ROWKEY_NO);
       ObScanExtraInfo* extra_info = GET_TSI_MULT(ObScanExtraInfo,TSI_OLAP_SCAN_EXTRA_INFO_1);
 
       if (NULL == start_rowkey || NULL == end_rowkey || NULL == extra_info)

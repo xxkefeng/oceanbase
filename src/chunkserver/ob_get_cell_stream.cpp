@@ -340,13 +340,12 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       uint64_t table_id = row.get_table_id();
-      ObString row_key  = row.get_row_key();
+      ObRowkey row_key  = row.get_row_key();
       ObString cache_key;
       if ((NULL == row_key.ptr()) || (0 == row_key.length()))
       {
         ret = OB_INPUT_PARAM_ERROR;
-        TBSYS_LOG(ERROR, "check row key failed:table_id[%lu]", table_id);
-        hex_dump(row_key.ptr(), row_key.length(), true);
+        TBSYS_LOG(ERROR, "check row key[%s] failed:table_id[%lu]", to_cstring(row_key), table_id);
       }
     
       if (OB_SUCCESS == ret)
@@ -370,7 +369,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       uint64_t table_id = key.table_id_;
-      ObString row_key = key.row_key_;
+      ObRowkey row_key = key.row_key_;
       if (!is_cached_)
       {
         ret = OB_ENTRY_NOT_EXIST;
@@ -387,7 +386,7 @@ namespace oceanbase
       }
       else if (key.row_key_.length() > OB_MAX_ROW_KEY_LENGTH)
       {
-        TBSYS_LOG(WARN, "rowkey length too big [length:%d, OB_MAX_ROW_KEY_LENGTH:%ld]", 
+        TBSYS_LOG(WARN, "rowkey length too big [length:%ld, OB_MAX_ROW_KEY_LENGTH:%ld]", 
                   key.row_key_.length(), OB_MAX_ROW_KEY_LENGTH);
         ret = OB_INVALID_ARGUMENT;
       }
@@ -409,14 +408,13 @@ namespace oceanbase
             if (OB_SUCCESS != ret)
             {
               result = NULL;
-              TBSYS_LOG(DEBUG, "find this row from cache failed:table_id[%lu], ret[%d]", table_id, ret); 
-              hex_dump(row_key.ptr(), row_key.length(), true);
+              TBSYS_LOG(DEBUG, "find this row[%s] from cache failed:table_id[%lu], ret[%d]", 
+                  to_cstring(row_key), table_id, ret); 
             }
             else
             {
               result = &row_result_;
-              TBSYS_LOG(DEBUG, "find row from cache succ");
-              hex_dump(row_key.ptr(), row_key.length(), true);
+              TBSYS_LOG(DEBUG, "find row[%s] from cache succ", to_cstring(row_key));
             }
           }
           else

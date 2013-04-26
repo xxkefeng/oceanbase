@@ -15,8 +15,8 @@ namespace oceanbase
     static const int32_t DECODED_PARAM_ID = 2;
     static const int32_t RESULT_SCANNER_ID = 3;
     static const int32_t SCHEMA_DECODER_ASSIS_ID = 4;
-    static const int32_t SERVER_COUNTER_ID = 5;
-    //
+    static const int32_t UPS_SCANNER_ID = 5;
+    static const int32_t SERVER_COUNTER_ID = 6; 
     struct ObMSSchemaDecoderAssis
     {
     public:

@@ -39,11 +39,11 @@ int ObUpsFileTable::parse_line(const ObRow *&row)
     {
       if( tokens_[0][0] == '-' )
       {
-        curr_ups_row_.set_delete_row(true);
+        curr_ups_row_.set_is_delete_row(true);
       }
       else
       {
-        curr_ups_row_.set_delete_row(false);
+        curr_ups_row_.set_is_delete_row(false);
       }
 
       if(0 == strcmp(tokens_[i], "NOP"))
@@ -65,7 +65,7 @@ int ObUpsFileTable::parse_line(const ObRow *&row)
         }
         else if(ObVarcharType == column_type_[i-1])
         {
-          str_value.assign_ptr(tokens_[i], strlen(tokens_[i]));
+          str_value.assign_ptr(tokens_[i], (int32_t)strlen(tokens_[i]));
           value.set_varchar(str_value);
         }
         else if(ObExtendType == column_type_[i-1])
@@ -81,7 +81,13 @@ int ObUpsFileTable::parse_line(const ObRow *&row)
 
       if(OB_SUCCESS == ret)
       {
-        ret = curr_ups_row_.set_cell(table_id_, column_ids_[i-1], value);
+        int64_t index = 0;
+        ObRowkeyColumn rk_col;
+        if(OB_SUCCESS == rowkey_info_.get_index(column_ids_[i-1], index , rk_col))
+        {
+          rowkey_obj[index] = value;
+        }
+        curr_ups_row_.set_cell(table_id_, column_ids_[i-1], value);
       }
     }
   }

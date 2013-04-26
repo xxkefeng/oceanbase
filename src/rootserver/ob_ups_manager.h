@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_ups_manager.h
@@ -51,8 +51,8 @@ namespace oceanbase
       int32_t cs_read_percentage_;
       bool did_renew_received_;
       ObUps()
-        :inner_port_(0), stat_(UPS_STAT_OFFLINE), 
-         log_seq_num_(0), lease_(0), 
+        :inner_port_(0), stat_(UPS_STAT_OFFLINE),
+         log_seq_num_(0), lease_(0),
          ms_read_percentage_(0), cs_read_percentage_(0),
          did_renew_received_(false)
       {
@@ -60,17 +60,24 @@ namespace oceanbase
       void reset();
       void convert_to(common::ObUpsInfo &ups_info) const;
     };
+    class ObRootWorker;
+    class ObRootAsyncTaskQueue;
     class ObUpsManager
     {
       public:
-        ObUpsManager(ObRootRpcStub &rpc_stub, ObRootConfig &config, const common::ObiRole &obi_role);
+        ObUpsManager(ObRootRpcStub &rpc_stub, ObRootWorker *worker, const int64_t &revoke_rpc_timeout_us,
+                     int64_t lease_duration, int64_t lease_reserved_us, int64_t waiting_ups_register_duration,
+                     const common::ObiRole &obi_role, const volatile int64_t& schema_version,
+                     const volatile int64_t& config_version);
         virtual ~ObUpsManager();
 
-        int get_ups_master(ObUps &ups_master);
+        int get_ups_master(ObUps &ups_master) const;
+        void set_async_queue(ObRootAsyncTaskQueue * queue);
         void reset_ups_read_percent();
-        void print(char* buf, const int64_t buf_len, int64_t &pos);
-        int get_ups_list(common::ObUpsList &ups_list);
-        int register_ups(const common::ObServer &addr, int32_t inner_port, int64_t log_seq_num, int64_t lease);
+        void print(char* buf, const int64_t buf_len, int64_t &pos) const;
+        int get_ups_list(common::ObUpsList &ups_list) const;
+
+        int register_ups(const common::ObServer &addr, int32_t inner_port, int64_t log_seq_num, int64_t lease, const char *server_version);
         int renew_lease(const common::ObServer &addr, ObUpsStatus stat, const common::ObiRole &obi_role);
         int slave_failure(const common::ObServer &addr, const common::ObServer &slave_addr);
         int set_ups_master(const common::ObServer &master, bool did_force);
@@ -84,14 +91,15 @@ namespace oceanbase
         int check_lease();    // for check thread
         int check_ups_master_exist(); // for check thread
       private:
+        // change the ups status and then log this change
+        void change_ups_stat(const int32_t index, const ObUpsStatus new_stat);
         int find_ups_index(const common::ObServer &addr) const;
         bool did_ups_exist(const common::ObServer &addr) const;
         bool is_ups_master(const common::ObServer &addr) const;
         bool has_master() const;
         bool is_master_lease_valid() const;
         bool need_grant(int64_t now, const ObUps &ups) const;
-        int send_granting_msg(const common::ObServer &addr,
-                                 const common::ObServer& master, int64_t lease);
+        int send_granting_msg(const common::ObServer &addr, common::ObMsgUpsHeartbeat &msg);
         int select_new_ups_master();
         int select_ups_master_with_highest_lsn();
         void update_ups_lsn();
@@ -101,6 +109,8 @@ namespace oceanbase
         const char* ups_stat_to_cstr(ObUpsStatus stat) const;
         void check_all_ups_offline();
         bool is_idx_valid(int ups_idx) const;
+        // push task to queue
+        int server_online(const bool online, const common::ObServer & server, const int32_t inner_port, const char *server_version);
         // disallow copy
         ObUpsManager(const ObUpsManager &other);
         ObUpsManager& operator=(const ObUpsManager &other);
@@ -114,21 +124,28 @@ namespace oceanbase
         friend class ::ObUpsManagerTest_test_read_percent_Test;
         friend class ::ObUpsManagerTest_test_read_percent2_Test;
       private:
-        ObRootConfig *config_;
         static const int32_t MAX_UPS_COUNT = 17;
         static const int64_t MAX_CLOCK_SKEW_US = 200000LL; // 200ms
         // data members
+        ObRootAsyncTaskQueue * queue_;
         ObRootRpcStub &rpc_stub_;
+        ObRootWorker *worker_;
         const common::ObiRole &obi_role_;
-        tbsys::CThreadMutex ups_array_mutex_;
+        const int64_t &revoke_rpc_timeout_us_;
+        mutable tbsys::CThreadMutex ups_array_mutex_;
         ObUps ups_array_[MAX_UPS_COUNT];
+        int64_t lease_duration_us_;
+        int64_t lease_reserved_us_;
         int32_t ups_master_idx_;
+        int64_t waiting_ups_register_duration_;
         int64_t waiting_ups_finish_time_;
+        const volatile int64_t& schema_version_;
+        const volatile int64_t& config_version_;
         int32_t master_master_ups_read_percentage_;
         int32_t slave_master_ups_read_percentage_;
         bool is_flow_control_by_ip_;
     };
-  } // end namespace rootserver
+ } // end namespace rootserver
 } // end namespace oceanbase
 
 #endif /* _OB_UPS_MANAGER_H */

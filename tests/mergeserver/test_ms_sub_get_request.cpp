@@ -37,13 +37,16 @@
 #include "mergeserver/ob_groupby_operator.h"
 #include "mergeserver/ob_read_param_decoder.h"
 #include "mergeserver/ob_ms_tsi.h"
-#include "mergeserver/ob_scan_param_loader.h"
+#include "ob_scan_param_loader.h"
 #include "mergeserver/ob_ms_sub_get_request.h"
+#include "../common/test_rowkey_helper.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
+using namespace oceanbase::mergeserver::test;
 using namespace testing;
 using namespace std;
+static CharArena allocator_;
 
 
 TEST(ObMergerSubGetRequest, param_iterator)
@@ -61,7 +64,7 @@ TEST(ObMergerSubGetRequest, param_iterator)
   {
     cell.table_id_ = i + 1;
     cell.column_id_ = i + 1;
-    cell.row_key_.assign((char*)&i,sizeof(i));
+    cell.row_key_ = make_rowkey((char*)&i, sizeof(i), &allocator_);
     EXPECT_EQ(get_param.add_cell(cell), OB_SUCCESS);
   }
   sub_get_req.set_param(get_param);
@@ -76,8 +79,8 @@ TEST(ObMergerSubGetRequest, param_iterator)
     EXPECT_NE((*cur_get_param)[i/2], (void*)0);
     EXPECT_EQ((*cur_get_param)[i/2]->column_id_, static_cast<uint64_t>(i + 1));
     EXPECT_EQ((*cur_get_param)[i/2]->table_id_, static_cast<uint64_t>(i + 1));
-    ObString rowkey;
-    rowkey.assign((char*)&i, sizeof(i));
+    ObRowkey rowkey;
+    rowkey = make_rowkey((char*)&i, sizeof(i), &allocator_);
     EXPECT_TRUE((*cur_get_param)[i/2]->row_key_ == rowkey);
   }
 
@@ -88,7 +91,7 @@ TEST(ObMergerSubGetRequest, param_iterator)
   {
     cell.table_id_ = i + 1;
     cell.column_id_ = i + 1;
-    cell.row_key_.assign((char*)&i,sizeof(i));
+    cell.row_key_ = make_rowkey((char*)&i, sizeof(i), &allocator_);
     EXPECT_EQ(res_1st.add_cell(cell), OB_SUCCESS);
   }
   EXPECT_EQ(sub_get_req.add_result(res_1st), OB_SUCCESS);
@@ -99,8 +102,8 @@ TEST(ObMergerSubGetRequest, param_iterator)
     EXPECT_NE((*cur_get_param)[(i - first_result_count) /2], (void*)0);
     EXPECT_EQ((*cur_get_param)[(i - first_result_count)/2]->column_id_, static_cast<uint64_t>(i + 1));
     EXPECT_EQ((*cur_get_param)[(i - first_result_count)/2]->table_id_, static_cast<uint64_t>(i + 1));
-    ObString rowkey;
-    rowkey.assign((char*)&i, sizeof(i));
+    ObRowkey rowkey;
+    rowkey = make_rowkey((char*)&i, sizeof(i), &allocator_);
     EXPECT_TRUE((*cur_get_param)[(i - first_result_count)/2]->row_key_ == rowkey);
   }
 
@@ -111,7 +114,7 @@ TEST(ObMergerSubGetRequest, param_iterator)
   {
     cell.table_id_ = i + 1;
     cell.column_id_ = i + 1;
-    cell.row_key_.assign((char*)&i,sizeof(i));
+    cell.row_key_ = make_rowkey((char*)&i, sizeof(i), &allocator_);
     EXPECT_EQ(res_2nd.add_cell(cell), OB_SUCCESS);
   }
   EXPECT_EQ(sub_get_req.add_result(res_2nd), OB_SUCCESS);
@@ -128,8 +131,8 @@ TEST(ObMergerSubGetRequest, param_iterator)
 
     EXPECT_EQ(cell->column_id_, static_cast<uint64_t>(i + 1));
     EXPECT_EQ(cell->table_id_, static_cast<uint64_t>(i + 1));
-    ObString rowkey;
-    rowkey.assign((char*)&i, sizeof(i));
+    ObRowkey rowkey;
+    rowkey = make_rowkey((char*)&i, sizeof(i), &allocator_);
     EXPECT_TRUE(cell->row_key_ == rowkey);
   }
   EXPECT_EQ(sub_get_req.has_next(), OB_ITER_END);

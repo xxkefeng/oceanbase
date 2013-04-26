@@ -10,7 +10,7 @@ port = 2500
 [update_server]
 port = 2700
 ups_inner_port = 2701
-dev_name = bond0
+devname = bond0
 
 # lsync IP/PORT, 如果配了这个地址，备主UPS会从lsync那里取日志，如果没配，备主UPS会从主主UPS那取日志。
 lsync_ip=
@@ -77,7 +77,7 @@ blockcache_size_mb = 2048
 blockindex_cache_size_mb = 1024
 
 #commitlog目录
-log_dir_path = /home/admin/oceanbase/ups_commitlog
+log_dir = /home/admin/oceanbase/ups_commitlog
 #sstable文件存储的根目录
 store_root = /home/admin/oceanbase/ups_data
 
@@ -111,24 +111,26 @@ allow_write_without_token = 1
 #处理RPC时,对端没有提供超时时间情况下,默认的超时时间,等待超过这个时间的包直接丢弃不处理,单位us
 packet_max_timewait = 1000000
 #主机执行一次批处理超过这个时间或备机写本地日志超过这个时间的情况下打印日志,单位us
-transaction_process_time_warning_us = 1000000
+trans_proc_time_warn_us = 1000000
 
+#libeasy 处理io的线程个数
+io_thread_count = 1
 #读线程个数
 read_thread_count = 28
 #转储线程个数
 store_thread_count = 5
 #读任务队列长度
-read_task_queue_size = 10000
+read_queue_size = 10000
 #写任务队列长度
-write_task_queue_size = 10000
+write_queue_size = 10000
 #日志同步任务队列长度
-log_task_queue_size = 10000
+log_queue_size = 10000
 # lease队列的长度
-lease_task_queue_size=100
+lease_queue_size=100
 # 转储sstable任务队列的长度
-store_thread_queue_size=100
+store_queue_size=100
 #一次批处理最多的写任务数
-write_group_commit_num = 1024
+write_thread_batch_num = 1024
 
 # UPS向主UPS或lsync注册的超时时间
 register_timeout_us=3000000
@@ -136,7 +138,7 @@ register_timeout_us=3000000
 log_sync_timeout_us = 500000
 
 #单次keep_alive的有效期
-keep_alive_timeout_us = 5000000
+ups_keep_alive_timeout_us = 5000000
 #主UPS lease提前过期的时间(单位:us)
 lease_timeout_in_advance_us = 500000
 
@@ -152,7 +154,12 @@ log_sync_delay_warn_time_threshold_us=500000
 # 备UPS与主UPS的日志延迟的条数超过了这个值会报警
 max_n_lagged_log_allowed=10000
 # 备UPS与主UPS日志延迟报警的最小时间间隔
-log_sync_delay_warn_time_report_interval_us=10000000
+log_sync_delay_warn_report_interval_us =10000000
+
+# 备机在收到主机推送的commitlog后是否等回放完或刷盘成功后再响应主机: 0表示不等，1表示等回放完，2表示等回放并且刷盘完
+wait_slave_sync_type=0
+# 等回放或刷盘的超时时间
+wait_slave_sync_time_us=100000
 
 # 每次处理网络请求时，以下面概率处理低优先级请求，概率以百分比的形式给出
 low_priv_cur_percent=10
