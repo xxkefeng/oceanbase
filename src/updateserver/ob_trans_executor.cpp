@@ -247,7 +247,7 @@ namespace oceanbase
         case OB_UPS_SHOW_SESSIONS:
         case OB_UPS_KILL_SESSION:
         case OB_END_TRANSACTION:
-          ret = TransHandlePool::push(&task, task.pkt.get_req_sign());
+          ret = TransHandlePool::push(&task);
           break;
         case OB_SEND_LOG:
         case OB_FAKE_WRITE_FOR_KEEP_ALIVE:
@@ -1042,18 +1042,11 @@ namespace oceanbase
           {
             ret = OB_LOG_TOO_LARGE;
             TBSYS_LOG(ERROR, "mutator.size[%ld] too large",
-                      session_ctx->get_ups_mutator().get_serialize_size());
+                session_ctx->get_ups_mutator().get_serialize_size());
           }
           else
           {
             session_ctx->set_trans_id(trans_id);
-          }
-        }
-        if (OB_SUCCESS == ret)
-        {
-          if (OB_SUCCESS != (ret = session_mgr_.precommit(task.sid.descriptor_)))
-          {
-            TBSYS_LOG(ERROR, "precommit(%s)=>%d", to_cstring(task.sid), ret);
           }
         }
       }

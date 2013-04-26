@@ -4,7 +4,7 @@
  //
  // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2012-08-19 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2012-08-19 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -123,7 +123,7 @@ namespace oceanbase
         };
 
         virtual void set_frozen(){}
-        
+
         int64_t get_trans_id() const
         {
           return trans_id_;
@@ -132,7 +132,7 @@ namespace oceanbase
         {
           trans_id_ = trans_id;
         };
-        
+
         int64_t get_session_start_time() const
         {
           return session_start_time_;
@@ -165,7 +165,7 @@ namespace oceanbase
         {
           session_timeout_ = timeout;
         };
-        
+
         int64_t get_stmt_timeout() const
         {
           return stmt_timeout_;
@@ -183,7 +183,7 @@ namespace oceanbase
         {
           session_idle_time_ = time;
         };
-        
+
         int64_t get_last_active_time() const
         {
           return last_active_time_;
@@ -336,12 +336,11 @@ namespace oceanbase
                 const uint32_t max_rp_num,
                 const uint32_t max_rw_num,
                 ISessionCtxFactory *factory);
-        
+
         void destroy();
 
       public:
         int begin_session(const SessionType type, const int64_t start_time, const int64_t timeout, const int64_t idle_time, uint32_t &session_descriptor);
-        int precommit(const uint32_t session_descriptor);
         int end_session(const uint32_t session_descriptor, const bool rollback = true, const bool force = true);
 
         template <class CTX>

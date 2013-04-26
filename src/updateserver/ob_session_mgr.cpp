@@ -4,7 +4,7 @@
  //
  // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2012-08-20 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2012-08-20 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -352,11 +352,6 @@ namespace oceanbase
         }
       }
       return ret;
-    }
-
-    int SessionMgr::precommit(const uint32_t session_descriptor)
-    {
-      return do_end_session(session_descriptor, false, true, false);
     }
 
     int SessionMgr::end_session(const uint32_t session_descriptor, const bool rollback, const bool force)
