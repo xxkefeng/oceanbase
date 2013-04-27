@@ -1,5 +1,5 @@
 ![logo](https://raw.github.com/alibaba/oceanbase/oceanbase_0.3/doc/%E5%9B%BE%E7%89%87%E5%A4%B9/logo.jpg)
-  <p align=“right”>[English Version](https://github.com/alibaba/oceanbase/wiki/Oceanbase)</p>
+<font size=5><b>[English Version](https://github.com/alibaba/oceanbase/wiki/Oceanbase)</b></font>
 
 OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千亿条记录、数百TB数据上的跨行跨表事务，截止到2012年8月为止，支持了收藏夹、直通车报表、天猫评价等OLTP和OLAP在线业务，线上数据量已经超过一千亿条。
 
