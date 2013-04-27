@@ -36,50 +36,92 @@
 
 <h1>发行日志</h1>
 
-<p>2013/03/04，整理提交了V0.3.1代码和相关技术文档。</p>
+<p>2013/04/28，整理提交了V0.4.1代码和相关技术文档。<br>
+2013/03/04，整理提交了V0.3.1代码和相关技术文档。</p>
 
-<h1>特性</h1>
+<h1>0.4.1SQL版本特性</h1>
 
 <ul>
-<li>透明化对动态数据的访问，作为OB集群的数据计算代理层；<br>
+<li>使用libeasy网络框架代替了原来的tbnet，实现更高的网络处理性能</li>
+<li>全面支持mysql协议（支持所有兼容libmysql库的driver，包含终端客户端mysql程序等）</li>
+<li>支持SQL的客户端库
+
+<ul>
+<li>提供了兼容JDBC的obdatasource库，实现OB集群内负载均衡策略</li>
+<li>提供了二进制兼容libmysql的libobsql库，实现OB集群内负载均衡策略</li>
+</ul>
 </li>
-<li>应用事件驱动模型，将跨tablet的查询并发执行降低OLAP请求的延迟；<br>
+<li>全面支持SQL
+
+<ul>
+<li>DML语句：select, insert, replace, delete, update
+
+<ul>
+<li>支持select的大部分常用语法，包括任意复杂单表查询、集合交并差操作、受限的join、受限的子查询等</li>
+<li>支持的数据类型包括int, varchar, timestamp, float, double等</li>
+</ul>
 </li>
-<li>使用新负载均衡算法，消除不均衡访问增强系统整体QPS吞吐量；<br>
+<li>DDL语句：create table, drop table</li>
+<li>支持SQL事务
+
+<ul>
+<li>Start transaction, commit, rollback</li>
+<li>SELECT FOR UPDATE</li>
+<li>实现了READ-COMMITED隔离级别的MVCC并发控制</li>
+</ul>
 </li>
-<li>对大请求支持流式访问接口，提升OLAP大请求的数据吞吐；<br>
+<li>用户权限控制<br><ul>
+<li>Create user, drop user, rename user, alter user, set password等</li>
+<li>Grant, revoke等</li>
+</ul>
 </li>
-<li>支持复杂表达式过滤条件，支持Sum,Count等聚合函数，支持GroupBy、Orderby等运算符；<br>
+<li>服务器端Prepared statement
+
+<ul>
+<li>支持SQL语句prepare, execute, drop prepare等</li>
+<li>支持兼容mysql二进制协议的prepared statement</li>
+</ul>
 </li>
-<li>CS旁路导入<br>
+<li>其他语句
+
+<ul>
+<li>通过set语句支持用户自定义变量</li>
+<li>Show tables, show variables, show grants, show warnings, show columns, describe等</li>
+<li>Explain</li>
+</ul>
 </li>
-<li>tablet合并<br>
+</ul>
 </li>
-<li>线上版本平滑升级(lsyncserver)<br>
+<li>易用性改进
+
+<ul>
+<li>引入了内部表机制，很多SQL功能基于内部表实现
+
+<ul>
+<li>Schema使用内部表管理，废除了schema配置文件</li>
+<li>引入了内部trigger通知机制</li>
+<li>OB自身的配置使用内部表管理</li>
+</ul>
 </li>
-<li>去除对HA的依赖，由rootserver选主<br>
+<li>自监控
+
+<ul>
+<li>OB自身的监控信息可以通过查询内部表获得</li>
+</ul>
 </li>
-<li>实现挂载多台备机<br>
-</li>
-<li>实现准实时备份的主备集群<br>
-</li>
-<li>增加hash+btree双索引机制<br>
-</li>
-<li>优化memtable内存占用<br>
-</li>
-<li>新的负载均衡策略<br>
+</ul>
 </li>
 </ul><h1>资源列表</h1>
 
 <ul>
-<li><a href="https://github.com/alibaba/oceanbase/wiki">OceanBase介绍</a></li>
 <li><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase%E6%9E%B6%E6%9E%84%E4%BB%8B%E7%BB%8D%E5%85%A8%E6%96%87">OceanBase架构</a></li>
-<li><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-Quick-Start-From-Sourcecode">OceanBase安装部署文档</a></li>
-<li><a href="https://github.com/alibaba/oceanbase/tree/master/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3">ChunkServer设计文档</a></li>
-<li><a href="https://github.com/alibaba/oceanbase/tree/master/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3">mergeServer设计文档</a></li>
-<li><a href="https://github.com/alibaba/oceanbase/tree/master/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3">rootServer设计文档</a></li>
-<li><a href="https://github.com/alibaba/oceanbase/tree/master/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3">updateServer设计文档</a></li>
-<li><a href="https://github.com/alibaba/oceanbase/tree/master/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4">运维文档</a></li>
+<li><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-Quick-Start-From-Sourcecode">OceanBase安装部署</a></li>
+<li><a href="https://github.com/alibaba/oceanbase/wiki/%E5%AE%A2%E6%88%B7%E7%AB%AF">OceanBase客户端使用指南</a></li>
+<li><a href="https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3">ChunkServer设计文档</a></li>
+<li><a href="https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3">mergeServer设计文档</a></li>
+<li><a href="https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3">rootServer设计文档</a></li>
+<li><a href="https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3">updateServer设计文档</a></li>
+<li><a href="https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4">运维文档</a></li>
 <li><a href="http://oceanbase.taobao.org/">OceanBase淘宝开源站</a></li>
 <li>
 <a href="https://github.com/alibaba/oceanbase/wiki/Project-Plan">Project Plan</a> 
