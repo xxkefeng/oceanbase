@@ -46,7 +46,7 @@ OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千�
  
 
 <h1>资源列表</h1>
-* [OceanBase架构](https://github.com/alibaba/oceanbase/wiki/OceanBase-Architecture-introduced)
+* [OceanBase架构](https://github.com/alibaba/oceanbase/wiki/OceanBase%E6%9E%B6%E6%9E%84%E4%BB%8B%E7%BB%8D%E5%85%A8%E6%96%87)
 * [OceanBase安装部署](https://github.com/alibaba/oceanbase/wiki/OceanBase-Quick-Start-From-Sourcecode)
 * [OceanBase客户端使用指南](https://github.com/alibaba/oceanbase/wiki/%E5%AE%A2%E6%88%B7%E7%AB%AF)
 * [ChunkServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
