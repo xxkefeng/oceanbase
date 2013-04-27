@@ -18,31 +18,31 @@ OceanBase是阿里集团研发的可扩展的关系数据库，实现了数千�
   - 提供了兼容JDBC的obdatasource库，实现OB集群内负载均衡策略
   - 提供了二进制兼容libmysql的libobsql库，实现OB集群内负载均衡策略
 - 全面支持SQL
-      - DML语句：select, insert, replace, delete, update
+  - DML语句：select, insert, replace, delete, update
        - 支持select的大部分常用语法，包括任意复杂单表查询、集合交并差操作、受限的join、受限的子查询等
        - 支持的数据类型包括int, varchar, timestamp, float, double等
-   - DDL语句：create table, drop table
-   - 支持SQL事务
+  - DDL语句：create table, drop table
+  - 支持SQL事务
        - Start transaction, commit, rollback
        - SELECT FOR UPDATE
        - 实现了READ-COMMITED隔离级别的MVCC并发控制
-   - 用户权限控制  
+  - 用户权限控制  
        - Create user, drop user, rename user, alter user, set password等
        - Grant, revoke等
-   - 服务器端Prepared statement
+  - 服务器端Prepared statement
        - 支持SQL语句prepare, execute, drop prepare等
        - 支持兼容mysql二进制协议的prepared statement
-   - 其他语句
+  - 其他语句
        - 通过set语句支持用户自定义变量
        - Show tables, show variables, show grants, show warnings, show columns, describe等
        - Explain
 - 易用性改进
-    - 引入了内部表机制，很多SQL功能基于内部表实现
-      - Schema使用内部表管理，废除了schema配置文件
-     - 引入了内部trigger通知机制
-     - OB自身的配置使用内部表管理
-    - 自监控
-     - OB自身的监控信息可以通过查询内部表获得
+  - 引入了内部表机制，很多SQL功能基于内部表实现
+       - Schema使用内部表管理，废除了schema配置文件
+       - 引入了内部trigger通知机制
+       - OB自身的配置使用内部表管理
+  - 自监控
+       - OB自身的监控信息可以通过查询内部表获得
 
  
 
