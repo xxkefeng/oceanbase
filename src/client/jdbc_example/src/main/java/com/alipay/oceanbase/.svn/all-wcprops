@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 123
+/repos/oceanbase/!svn/ver/13482/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase
+END
+ObJDBCExample.java
+K 25
+svn:wc:ra_dav:version-url
+V 142
+/repos/oceanbase/!svn/ver/13482/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase/ObJDBCExample.java
+END
+ObDataSourceExample.java
+K 25
+svn:wc:ra_dav:version-url
+V 148
+/repos/oceanbase/!svn/ver/13476/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase/ObDataSourceExample.java
+END
+ObDataSourceSpringExample.java
+K 25
+svn:wc:ra_dav:version-url
+V 154
+/repos/oceanbase/!svn/ver/13476/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase/ObDataSourceSpringExample.java
+END

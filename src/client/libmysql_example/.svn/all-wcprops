@@ -1,0 +1,17 @@
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/12731/branches/0_4_1_release/oceanbase/src/client/libmysql_example
+END
+ob_sql_example.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/libmysql_example/ob_sql_example.cpp
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12731/branches/0_4_1_release/oceanbase/src/client/libmysql_example/Makefile
+END

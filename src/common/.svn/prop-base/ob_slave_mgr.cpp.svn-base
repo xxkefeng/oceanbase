@@ -1,0 +1,6 @@
+K 13
+svn:mergeinfo
+V 146
+/branches/dev/oceanbase/src/common/ob_slave_mgr.cpp:5023-7412
+/branches/developing/trans_mvcc_dev/oceanbase/src/common/ob_slave_mgr.cpp:9273-10180
+END

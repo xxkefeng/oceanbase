@@ -186,6 +186,13 @@
 	AC_SUBST([AM_CFLAGS])
 	AC_SUBST([AM_LDFLAGS])
 
+    AC_ARG_WITH([mysqltest],
+    AS_HELP_STRING([--with-mysqltest],
+    [whether to build mysqltest (default is NO)]),
+    [],
+	[with_mysqltest="no"])
+	AM_CONDITIONAL([WITH_MYSQLTEST], test x$with_mysqltest = xyes)
+
     AC_CONFIG_FILES([\
                      Makefile \
                      tools/Makefile \

@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mixed_test
+END
+mixed_test.schema
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mixed_test/mixed_test.schema
+END
+mixed_test.py
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mixed_test/mixed_test.py
+END
+stress.sh
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mixed_test/stress.sh
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mixed_test/Makefile
+END

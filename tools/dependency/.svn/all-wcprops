@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dependency
+END
+lzo-2.0.3.tar.gz
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dependency/lzo-2.0.3.tar.gz
+END
+libaio_0.3.107.orig.tar.gz
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dependency/libaio_0.3.107.orig.tar.gz
+END
+numactl-2.0.7.tar.gz
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dependency/numactl-2.0.7.tar.gz
+END
+snappy-1.0.3.tar.gz
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dependency/snappy-1.0.3.tar.gz
+END

@@ -1,0 +1,47 @@
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/sqltest
+END
+mysql
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/sqltest/mysql
+END
+sqltest.py
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/sqltest/sqltest.py
+END
+sqlpattern.txt
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/sqltest/sqlpattern.txt
+END
+stress.sh
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/sqltest/stress.sh
+END
+mysql.sql.template
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/sqltest/mysql.sql.template
+END
+sqltest.conf.template
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/sqltest/sqltest.conf.template
+END
+sqltest.schema
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/sqltest/sqltest.schema
+END

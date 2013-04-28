@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/12956/branches/0_4_1_release/oceanbase/tools/deploy/simple_client
+END
+simple_client.schema
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/simple_client/simple_client.schema
+END
+stress.sh
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12956/branches/0_4_1_release/oceanbase/tools/deploy/simple_client/stress.sh
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/simple_client/Makefile
+END
+simple_client.py
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12956/branches/0_4_1_release/oceanbase/tools/deploy/simple_client/simple_client.py
+END

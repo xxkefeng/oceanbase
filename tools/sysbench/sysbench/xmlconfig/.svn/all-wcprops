@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/xmlconfig
+END
+simon_sysbench.xml
+K 25
+svn:wc:ra_dav:version-url
+V 117
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/xmlconfig/simon_sysbench.xml
+END
+simon_sysbench.cc
+K 25
+svn:wc:ra_dav:version-url
+V 116
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/xmlconfig/simon_sysbench.cc
+END
+libsimon_sysbench.a
+K 25
+svn:wc:ra_dav:version-url
+V 118
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/xmlconfig/libsimon_sysbench.a
+END
+simon_sysbench.h
+K 25
+svn:wc:ra_dav:version-url
+V 115
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/xmlconfig/simon_sysbench.h
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/xmlconfig/Makefile
+END
+BlurbSwapper.h
+K 25
+svn:wc:ra_dav:version-url
+V 113
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/xmlconfig/BlurbSwapper.h
+END

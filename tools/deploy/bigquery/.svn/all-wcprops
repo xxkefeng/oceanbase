@@ -1,0 +1,35 @@
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery
+END
+bigquery.conf.template
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/bigquery.conf.template
+END
+bigquery.schema
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/bigquery.schema
+END
+stress.sh
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/stress.sh
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/Makefile
+END
+bigquery.py
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/bigquery.py
+END

@@ -1,0 +1,209 @@
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql
+END
+my_net.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_net.h
+END
+sslopt-case.h
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/sslopt-case.h
+END
+decimal.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/decimal.h
+END
+my_alloc.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_alloc.h
+END
+mysqld_ername.h
+K 25
+svn:wc:ra_dav:version-url
+V 113
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/mysqld_ername.h
+END
+mysql_embed.h
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/mysql_embed.h
+END
+mysql.h
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/mysql.h
+END
+my_xml.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_xml.h
+END
+my_global.h
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_global.h
+END
+sql_common.h
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/sql_common.h
+END
+my_compiler.h
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_compiler.h
+END
+my_list.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_list.h
+END
+my_sys.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_sys.h
+END
+my_no_pthread.h
+K 25
+svn:wc:ra_dav:version-url
+V 113
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_no_pthread.h
+END
+my_pthread.h
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_pthread.h
+END
+sslopt-vars.h
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/sslopt-vars.h
+END
+plugin.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/plugin.h
+END
+sql_state.h
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/sql_state.h
+END
+errmsg.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/errmsg.h
+END
+m_ctype.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/m_ctype.h
+END
+mysql_com.h
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/mysql_com.h
+END
+my_getopt.h
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_getopt.h
+END
+my_attribute.h
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_attribute.h
+END
+typelib.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/typelib.h
+END
+mysql_version.h
+K 25
+svn:wc:ra_dav:version-url
+V 113
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/mysql_version.h
+END
+my_config.h
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_config.h
+END
+keycache.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/keycache.h
+END
+mysqld_error.h
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/mysqld_error.h
+END
+m_string.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/m_string.h
+END
+readline.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/readline.h
+END
+mysql_time.h
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/mysql_time.h
+END
+my_dir.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_dir.h
+END
+my_dbug.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/my_dbug.h
+END
+sslopt-longopts.h
+K 25
+svn:wc:ra_dav:version-url
+V 115
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/include/mysql/sslopt-longopts.h
+END

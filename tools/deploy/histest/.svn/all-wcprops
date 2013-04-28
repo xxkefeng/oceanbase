@@ -1,0 +1,35 @@
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/12996/branches/0_4_1_release/oceanbase/tools/deploy/histest
+END
+histest.conf.template
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/histest/histest.conf.template
+END
+table.sql
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12996/branches/0_4_1_release/oceanbase/tools/deploy/histest/table.sql
+END
+fin.sql
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/histest/fin.sql
+END
+histest.py
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/histest/histest.py
+END
+stress.sh
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12800/branches/0_4_1_release/oceanbase/tools/deploy/histest/stress.sh
+END

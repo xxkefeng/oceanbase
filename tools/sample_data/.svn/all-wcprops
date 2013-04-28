@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sample_data
+END
+scan.ini
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sample_data/scan.ini
+END
+apply.ini
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sample_data/apply.ini
+END
+get.ini
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/sample_data/get.ini
+END

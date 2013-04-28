@@ -1,0 +1,59 @@
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync
+END
+ob_msync_client_main.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync/ob_msync_client_main.h
+END
+ob_mutator_reader.h
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync/ob_mutator_reader.h
+END
+main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync/main.cpp
+END
+msyncclient.conf.template
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync/msyncclient.conf.template
+END
+ob_msync_client.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync/ob_msync_client.cpp
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync/Makefile.am
+END
+ob_msync_client_main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync/ob_msync_client_main.cpp
+END
+ob_msync_client.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync/ob_msync_client.h
+END
+ob_mutator_reader.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/msync/ob_mutator_reader.cpp
+END

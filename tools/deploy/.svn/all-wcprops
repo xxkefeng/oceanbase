@@ -1,0 +1,95 @@
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/repos/oceanbase/!svn/ver/13548/branches/0_4_1_release/oceanbase/tools/deploy
+END
+common.py
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/common.py
+END
+multi_cluster.py
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/multi_cluster.py
+END
+readme.org
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/readme.org
+END
+copy.sh
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/13157/branches/0_4_1_release/oceanbase/tools/deploy/copy.sh
+END
+deploy.py
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/13259/branches/0_4_1_release/oceanbase/tools/deploy/deploy.py
+END
+collect.schema
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/collect.schema
+END
+tpl.py
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/tpl.py
+END
+ob_new_sql_test.schema
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/ob_new_sql_test.schema
+END
+config.py
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/13258/branches/0_4_1_release/oceanbase/tools/deploy/config.py
+END
+gcfg.py
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/gcfg.py
+END
+before-sql.schema
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/before-sql.schema
+END
+fault_test.py
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/fault_test.py
+END
+auto_run.sh
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/auto_run.sh
+END
+makefile
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/makefile
+END
+monitor.py
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/monitor.py
+END

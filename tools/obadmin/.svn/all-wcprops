@@ -1,0 +1,71 @@
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin
+END
+ob_chunk_server_client.h
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/ob_chunk_server_client.h
+END
+ob_update_server_client.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/ob_update_server_client.cpp
+END
+ob_root_server_client.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/ob_root_server_client.cpp
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/Makefile.am
+END
+ob_server_client.h
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/ob_server_client.h
+END
+obadmin.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/obadmin.cpp
+END
+ob_update_server_client.h
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/ob_update_server_client.h
+END
+ob_chunk_server_client.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/ob_chunk_server_client.cpp
+END
+ob_root_server_client.h
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/ob_root_server_client.h
+END
+Flymake.mk
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/Flymake.mk
+END
+ob_admin_utils.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/obadmin/ob_admin_utils.h
+END

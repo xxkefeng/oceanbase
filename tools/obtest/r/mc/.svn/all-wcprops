@@ -1,0 +1,107 @@
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/repos/oceanbase/!svn/ver/13566/branches/0_4_1_release/oceanbase/tools/obtest/r/mc
+END
+c1244_p0_merge_master_ups_down_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_merge_master_ups_down_junyue.result
+END
+c1244_p0_ups_switch_twice_yangxiu.result
+K 25
+svn:wc:ra_dav:version-url
+V 123
+/repos/oceanbase/!svn/ver/13566/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_ups_switch_twice_yangxiu.result
+END
+c1244_p0_recover_merge_switch_ups_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 130
+/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_recover_merge_switch_ups_junyue.result
+END
+c1244_p0_merge_switch_slave_ups_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 128
+/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_merge_switch_slave_ups_junyue.result
+END
+c1244_p0_merge_twice_switch_ups_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 128
+/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_merge_twice_switch_ups_junyue.result
+END
+c1244_p0_ups_switch_master_ups_restart_yangxiu.result
+K 25
+svn:wc:ra_dav:version-url
+V 136
+/repos/oceanbase/!svn/ver/13566/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_ups_switch_master_ups_restart_yangxiu.result
+END
+c1244_p0_ups_switch_master_ups_down_start_yangxiu.result
+K 25
+svn:wc:ra_dav:version-url
+V 139
+/repos/oceanbase/!svn/ver/13566/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_ups_switch_master_ups_down_start_yangxiu.result
+END
+c1244_p0_ups_switch_rs_restart_yangxiu.result
+K 25
+svn:wc:ra_dav:version-url
+V 128
+/repos/oceanbase/!svn/ver/13566/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_ups_switch_rs_restart_yangxiu.result
+END
+c1244_p0_merge_switch_ups_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 122
+/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_merge_switch_ups_junyue.result
+END
+c1244_p0_merge_slave_ups_down_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 126
+/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_merge_slave_ups_down_junyue.result
+END
+c1244_p0_master_ups_switch_slave_ups_down_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 138
+/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_master_ups_switch_slave_ups_down_junyue.result
+END
+c1244_p0_cluster_continual_switch_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 130
+/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_cluster_continual_switch_junyue.result
+END
+c1244_p0_recovery_from_l4_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 122
+/repos/oceanbase/!svn/ver/13504/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_recovery_from_l4_junyue.result
+END
+c1244_p0_ups_switch_slave_ups_restart_yangxiu.result
+K 25
+svn:wc:ra_dav:version-url
+V 135
+/repos/oceanbase/!svn/ver/13566/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_ups_switch_slave_ups_restart_yangxiu.result
+END
+c1244_p0_merge_switch_master_ups_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 129
+/repos/oceanbase/!svn/ver/13562/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_merge_switch_master_ups_junyue.result
+END
+c1244_p0_ups_switch_twice_ups_restart_yangxiu.result
+K 25
+svn:wc:ra_dav:version-url
+V 135
+/repos/oceanbase/!svn/ver/13566/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_ups_switch_twice_ups_restart_yangxiu.result
+END
+c1244_p0_ups_switch_in_master_slave_cluster.result
+K 25
+svn:wc:ra_dav:version-url
+V 133
+/repos/oceanbase/!svn/ver/13566/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_ups_switch_in_master_slave_cluster.result
+END

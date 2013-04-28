@@ -1,0 +1,11 @@
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/repos/oceanbase/!svn/ver/13502/branches/0_4_1_release/oceanbase/src/client
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/12763/branches/0_4_1_release/oceanbase/src/client/Makefile.am
+END

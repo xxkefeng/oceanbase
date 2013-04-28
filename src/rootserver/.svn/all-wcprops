@@ -1,0 +1,599 @@
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver
+END
+ob_ups_heartbeat_runnable.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_ups_heartbeat_runnable.h
+END
+ob_root_admin2.h
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/13411/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_admin2.h
+END
+ob_schema_reader.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_schema_reader.cpp
+END
+ob_root_log_manager.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_log_manager.h
+END
+ob_root_bootstrap.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_bootstrap.h
+END
+ob_root_util.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_util.h
+END
+ob_root_ddl_operator.h
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12994/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_ddl_operator.h
+END
+ob_root_main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_main.cpp
+END
+ob_chunk_server_manager.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_chunk_server_manager.cpp
+END
+ob_root_rpc_stub.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_rpc_stub.h
+END
+ob_root_ups_provider.h
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_ups_provider.h
+END
+ob_ups_check_runnable.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_ups_check_runnable.cpp
+END
+ob_root_reload_config.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_reload_config.cpp
+END
+ob_schema_service_ms_provider.h
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_schema_service_ms_provider.h
+END
+ob_root_callback.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_callback.cpp
+END
+ob_root_server2.h
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_server2.h
+END
+ob_root_table_proxy.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12768/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_table_proxy.h
+END
+ob_root_ms_provider.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_ms_provider.h
+END
+ob_root_monitor_table.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/13184/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_monitor_table.cpp
+END
+ob_ups_manager.h
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_ups_manager.h
+END
+ob_root_sql_proxy.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_sql_proxy.h
+END
+ob_migrate_info.h
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_migrate_info.h
+END
+ob_restart_server.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_restart_server.cpp
+END
+ob_daily_merge_checker.h
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/13250/branches/0_4_1_release/oceanbase/src/rootserver/ob_daily_merge_checker.h
+END
+ob_root_async_task_queue.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_async_task_queue.h
+END
+ob_root_admin2.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/13412/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_admin2.cpp
+END
+ob_root_balancer.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12870/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_balancer.h
+END
+ob_tablet_info_manager.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_tablet_info_manager.cpp
+END
+ob_root_admin2_main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/13031/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_admin2_main.cpp
+END
+ob_root_ddl_operator.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/13200/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_ddl_operator.cpp
+END
+ob_root_table2.h
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/13378/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_table2.h
+END
+ob_root_worker.h
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_worker.h
+END
+ob_root_admin_cmd.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12784/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_admin_cmd.h
+END
+ob_schema_service_ups_provider.h
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_schema_service_ups_provider.h
+END
+ob_rs_stress.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_rs_stress.cpp
+END
+ob_schema_service_ms_provider.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 113
+/repos/oceanbase/!svn/ver/12767/branches/0_4_1_release/oceanbase/src/rootserver/ob_schema_service_ms_provider.cpp
+END
+ob_root_server2.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_server2.cpp
+END
+ob_root_table_proxy.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12754/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_table_proxy.cpp
+END
+ob_chunk_server_manager.h
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/12990/branches/0_4_1_release/oceanbase/src/rootserver/ob_chunk_server_manager.h
+END
+ob_ups_check_runnable.h
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_ups_check_runnable.h
+END
+ob_root_balancer_runnable.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_balancer_runnable.cpp
+END
+ob_rs_after_restart_task.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_rs_after_restart_task.h
+END
+ob_ups_manager.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12755/branches/0_4_1_release/oceanbase/src/rootserver/ob_ups_manager.cpp
+END
+ob_root_sql_proxy.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_sql_proxy.cpp
+END
+ob_root_reload_config.h
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_reload_config.h
+END
+ob_migrate_info.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_migrate_info.cpp
+END
+ob_daily_merge_checker.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/13315/branches/0_4_1_release/oceanbase/src/rootserver/ob_daily_merge_checker.cpp
+END
+ob_rs_trigger_event_util.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_rs_trigger_event_util.h
+END
+ob_root_inner_table_task.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_inner_table_task.h
+END
+test1.ini
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/test1.ini
+END
+ob_restart_server.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_restart_server.h
+END
+ob_root_meta2.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_meta2.h
+END
+ob_schema_service_ups_provider.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 114
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_schema_service_ups_provider.cpp
+END
+ob_root_stat.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/13526/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_stat.h
+END
+ob_tablet_info_manager.h
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_tablet_info_manager.h
+END
+ob_root_stat_key.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/13212/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_stat_key.cpp
+END
+ob_server_balance_info.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_server_balance_info.cpp
+END
+ob_root_fetch_thread.h
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_fetch_thread.h
+END
+ob_heartbeat_checker.h
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/13250/branches/0_4_1_release/oceanbase/src/rootserver/ob_heartbeat_checker.h
+END
+ob_root_table_verifier.h
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_table_verifier.h
+END
+ob_rs_after_restart_task.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_rs_after_restart_task.cpp
+END
+Flymake.mk
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/Flymake.mk
+END
+ob_root_server_config.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_server_config.cpp
+END
+ob_root_log_replay.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/13434/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_log_replay.cpp
+END
+ob_check_point2str.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_check_point2str.cpp
+END
+ob_str2check_point.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_str2check_point.cpp
+END
+main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/main.cpp
+END
+ob_root_balancer_runnable.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_balancer_runnable.h
+END
+ob_rs_trigger_event_util.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_rs_trigger_event_util.cpp
+END
+ob_root_inner_table_task.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_inner_table_task.cpp
+END
+rootserver.conf.template
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/rootserver.conf.template
+END
+ob_root_meta2.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_meta2.cpp
+END
+ob_ups_heartbeat_runnable.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_ups_heartbeat_runnable.cpp
+END
+schema.ini
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/schema.ini
+END
+ob_root_log_manager.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/13434/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_log_manager.cpp
+END
+ob_root_bootstrap.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/13313/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_bootstrap.cpp
+END
+ob_root_util.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_util.cpp
+END
+ob_root_log_worker.h
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/13283/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_log_worker.h
+END
+ob_root_fetch_thread.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_fetch_thread.cpp
+END
+ob_heartbeat_checker.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/13250/branches/0_4_1_release/oceanbase/src/rootserver/ob_heartbeat_checker.cpp
+END
+ob_root_rpc_stub.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12828/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_rpc_stub.cpp
+END
+ob_root_ups_provider.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_ups_provider.cpp
+END
+ob_root_table_verifier.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_table_verifier.cpp
+END
+ob_clist2str.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_clist2str.cpp
+END
+meta_table_schema.ini
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/meta_table_schema.ini
+END
+ob_root_stat_key.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/13212/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_stat_key.h
+END
+ob_server_balance_info.h
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_server_balance_info.h
+END
+ob_root_ms_provider.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12767/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_ms_provider.cpp
+END
+ob_root_main.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_main.h
+END
+ob_root_server_config.h
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_server_config.h
+END
+ob_root_callback.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_callback.h
+END
+ob_root_log_replay.h
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_log_replay.h
+END
+ob_root_monitor_table.h
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_monitor_table.h
+END
+ob_root_async_task_queue.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_async_task_queue.cpp
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/Makefile.am
+END
+ob_root_balancer.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/13334/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_balancer.cpp
+END
+ob_root_table2.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/13474/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_table2.cpp
+END
+ob_root_worker.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_worker.cpp
+END
+ob_root_log_worker.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/13434/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_log_worker.cpp
+END

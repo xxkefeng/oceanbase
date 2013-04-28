@@ -1,0 +1,89 @@
+K 25
+svn:wc:ra_dav:version-url
+V 130
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet
+END
+BaseResponsePacket.java
+K 25
+svn:wc:ra_dav:version-url
+V 154
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/BaseResponsePacket.java
+END
+GetUpdateServerPacket.java
+K 25
+svn:wc:ra_dav:version-url
+V 157
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/GetUpdateServerPacket.java
+END
+BasePacket.java
+K 25
+svn:wc:ra_dav:version-url
+V 146
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/BasePacket.java
+END
+WritePacket.java
+K 25
+svn:wc:ra_dav:version-url
+V 147
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/WritePacket.java
+END
+ObGetUpdateServerInfoResponse.java
+K 25
+svn:wc:ra_dav:version-url
+V 165
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/ObGetUpdateServerInfoResponse.java
+END
+CommandPacket.java
+K 25
+svn:wc:ra_dav:version-url
+V 149
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/CommandPacket.java
+END
+OBIRoleResponseInfo.java
+K 25
+svn:wc:ra_dav:version-url
+V 155
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/OBIRoleResponseInfo.java
+END
+ResponsePacket.java
+K 25
+svn:wc:ra_dav:version-url
+V 150
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/ResponsePacket.java
+END
+GetPacket.java
+K 25
+svn:wc:ra_dav:version-url
+V 145
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/GetPacket.java
+END
+GetSchemaResponsePacket.java
+K 25
+svn:wc:ra_dav:version-url
+V 159
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/GetSchemaResponsePacket.java
+END
+GetSchemaPacket.java
+K 25
+svn:wc:ra_dav:version-url
+V 151
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/GetSchemaPacket.java
+END
+WriteResponse.java
+K 25
+svn:wc:ra_dav:version-url
+V 149
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/WriteResponse.java
+END
+OBIConfigResponseInfo.java
+K 25
+svn:wc:ra_dav:version-url
+V 157
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/OBIConfigResponseInfo.java
+END
+ObScanRequest.java
+K 25
+svn:wc:ra_dav:version-url
+V 149
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/packet/ObScanRequest.java
+END

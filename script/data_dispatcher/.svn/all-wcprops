@@ -1,0 +1,17 @@
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/data_dispatcher
+END
+dispatch.sh
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/data_dispatcher/dispatch.sh
+END
+copy_sstable.py
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/data_dispatcher/copy_sstable.py
+END

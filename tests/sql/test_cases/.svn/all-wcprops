@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/sql/test_cases
+END
+ob_fake_ups_multi_get.ini
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/sql/test_cases/ob_fake_ups_multi_get.ini
+END
+ob_file_table.ini
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/sql/test_cases/ob_file_table.ini
+END
+ob_ups_file_table.ini
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/sql/test_cases/ob_ups_file_table.ini
+END

@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/parsermysql
+END
+CollectRowKey.java
+K 25
+svn:wc:ra_dav:version-url
+V 146
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/parsermysql/CollectRowKey.java
+END
+ParseInfo.java
+K 25
+svn:wc:ra_dav:version-url
+V 142
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/parsermysql/ParseInfo.java
+END
+ParseItem.java
+K 25
+svn:wc:ra_dav:version-url
+V 142
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/parsermysql/ParseItem.java
+END

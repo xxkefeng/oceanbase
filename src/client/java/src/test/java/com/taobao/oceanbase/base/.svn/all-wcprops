@@ -1,0 +1,71 @@
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base
+END
+RowKey.java
+K 25
+svn:wc:ra_dav:version-url
+V 132
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/RowKey.java
+END
+RowKeyHelper.java
+K 25
+svn:wc:ra_dav:version-url
+V 138
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/RowKeyHelper.java
+END
+ColumnTypeEnum.java
+K 25
+svn:wc:ra_dav:version-url
+V 140
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/ColumnTypeEnum.java
+END
+BaseCase.java
+K 25
+svn:wc:ra_dav:version-url
+V 134
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/BaseCase.java
+END
+LogEnum.java
+K 25
+svn:wc:ra_dav:version-url
+V 133
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/LogEnum.java
+END
+ExpectResult.java
+K 25
+svn:wc:ra_dav:version-url
+V 138
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/ExpectResult.java
+END
+CollectColumnEnum.java
+K 25
+svn:wc:ra_dav:version-url
+V 143
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/CollectColumnEnum.java
+END
+RowKeyFactory.java
+K 25
+svn:wc:ra_dav:version-url
+V 139
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/RowKeyFactory.java
+END
+RKey.java
+K 25
+svn:wc:ra_dav:version-url
+V 130
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/RKey.java
+END
+OBTestBase.java
+K 25
+svn:wc:ra_dav:version-url
+V 136
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/OBTestBase.java
+END
+ModifyTypeEnum.java
+K 25
+svn:wc:ra_dav:version-url
+V 140
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/ModifyTypeEnum.java
+END

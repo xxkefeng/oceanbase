@@ -1,0 +1,59 @@
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql
+END
+frame.jar
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/frame.jar
+END
+slf4j-api-1.4.3.jar
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/slf4j-api-1.4.3.jar
+END
+commons-logging-1.1.1.jar
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/commons-logging-1.1.1.jar
+END
+log4j.properties
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/log4j.properties
+END
+log4j-1.2.15.jar
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/log4j-1.2.15.jar
+END
+runtest.sh
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/runtest.sh
+END
+verify.sh
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/verify.sh
+END
+postgresql-9.1-901.jdbc3.jar
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/postgresql-9.1-901.jdbc3.jar
+END
+slf4j-log4j12-1.4.3.jar
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/slf4j-log4j12-1.4.3.jar
+END

@@ -1,0 +1,35 @@
+K 25
+svn:wc:ra_dav:version-url
+V 128
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/mina
+END
+MinaSessionFactory.java
+K 25
+svn:wc:ra_dav:version-url
+V 152
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/mina/MinaSessionFactory.java
+END
+MinaEncoder.java
+K 25
+svn:wc:ra_dav:version-url
+V 145
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/mina/MinaEncoder.java
+END
+MinaSessionAdapter.java
+K 25
+svn:wc:ra_dav:version-url
+V 152
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/mina/MinaSessionAdapter.java
+END
+MinaDecoder.java
+K 25
+svn:wc:ra_dav:version-url
+V 145
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/mina/MinaDecoder.java
+END
+MinaServer.java
+K 25
+svn:wc:ra_dav:version-url
+V 144
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/mina/MinaServer.java
+END

@@ -1,0 +1,65 @@
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b
+END
+report.tpl.org
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/report.tpl.org
+END
+test_runner.py
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/test_runner.py
+END
+findall.py
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/findall.py
+END
+tquery.py
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/tquery.py
+END
+report.py
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/report.py
+END
+profile.py
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/profile.py
+END
+extra.py
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/extra.py
+END
+profile-config.py
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/profile-config.py
+END
+scprun
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/scprun
+END
+scprun.rc
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/b/scprun.rc
+END

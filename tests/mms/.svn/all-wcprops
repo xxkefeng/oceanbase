@@ -1,0 +1,53 @@
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/mms
+END
+mock_server.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/mms/mock_server.cpp
+END
+mock_node_server.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/mms/mock_node_server.cpp
+END
+mock_server.h
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/mms/mock_server.h
+END
+mock_monitor_server.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/mms/mock_monitor_server.cpp
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/mms/Makefile.am
+END
+mock_node_server.h
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/mms/mock_node_server.h
+END
+mock_monitor_server.h
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/mms/mock_monitor_server.h
+END
+test_mms.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/mms/test_mms.cpp
+END

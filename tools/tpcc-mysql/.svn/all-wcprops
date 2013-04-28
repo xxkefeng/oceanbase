@@ -1,0 +1,53 @@
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/tpcc-mysql
+END
+create_table.sql.bk
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/create_table.sql.bk
+END
+drop_cons.sql
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/drop_cons.sql
+END
+count.sql
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/count.sql
+END
+add_fkey_idx.sql
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/add_fkey_idx.sql
+END
+create_table.sql
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/create_table.sql
+END
+load.sh
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/load.sh
+END
+README
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/README
+END
+run.sh
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/run.sh
+END

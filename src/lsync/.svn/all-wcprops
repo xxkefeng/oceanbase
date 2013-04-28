@@ -1,0 +1,95 @@
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync
+END
+ob_lsync_server.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_lsync_server.cpp
+END
+ob_seekable_log_reader2.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_seekable_log_reader2.cpp
+END
+ob_lsync_server_main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_lsync_server_main.cpp
+END
+ob_lsync_server.h
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_lsync_server.h
+END
+ob_seekable_log_reader2.h
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_seekable_log_reader2.h
+END
+ob_lsync_server_main.h
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_lsync_server_main.h
+END
+ob_seekable_log_reader.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_seekable_log_reader.cpp
+END
+ob_lsync_server_param.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_lsync_server_param.cpp
+END
+ob_seekable_log_reader.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_seekable_log_reader.h
+END
+ob_lsync_server_param.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_lsync_server_param.h
+END
+ob_lsync_callback.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_lsync_callback.cpp
+END
+main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/main.cpp
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/Makefile.am
+END
+ob_lsync_callback.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/ob_lsync_callback.h
+END
+lsyncserver.conf.template
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/lsync/lsyncserver.conf.template
+END
