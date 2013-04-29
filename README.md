@@ -5,7 +5,7 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 从模块划分的角度看，OceanBase可以划分为四个模块：主控服务器RootServer、更新服务器UpdateServer、基准数据服务器ChunkServer以及合并服务器MergeServer。OceanBase系统内部按照时间线将数据划分为基准数据和增量数据，基准数据是只读的，所有的修改更新到增量数据中，系统内部通过合并操作定期将增量数据融合到基准数据中。
 
 <h1>发行日志</h1>
-- <b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> 
+- <font color="blue"><b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> </font>
 - 2013/03/04，整理提交了V0.3.1代码和相关技术文档。
 
 <h1>版本特性</h1>
