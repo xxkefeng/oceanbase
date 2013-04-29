@@ -47,7 +47,7 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 
 <h1>资源列表</h1>
 * [OceanBase架构](https://github.com/alibaba/oceanbase/wiki/OceanBase%E6%9E%B6%E6%9E%84%E4%BB%8B%E7%BB%8D)
-* [OceanBase安装部署](https://github.com/alibaba/oceanbase/wiki/OceanBase-Quick-Start-From-Sourcecode)
+* [OceanBase安装部署](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4-%E5%AE%89%E8%A3%85%E6%96%87%E6%A1%A3)
 * [OceanBase SQL 用户参考手册](https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL-%E7%94%A8%E6%88%B7%E5%8F%82%E8%80%83%E6%89%8B%E5%86%8C)
 * [OceanBase SQL管理员手册](https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL%E7%AE%A1%E7%90%86%E5%91%98%E6%89%8B%E5%86%8C)
 * [OceanBase客户端使用指南](https://github.com/alibaba/oceanbase/wiki/%E5%AE%A2%E6%88%B7%E7%AB%AF)
