@@ -1,4 +1,0 @@
-ob_privilege_type.o ob_privilege_type.o: ob_privilege_type.cpp \
-  ob_privilege_type.h
-
-ob_privilege_type.h:

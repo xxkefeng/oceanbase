@@ -1,3 +1,0 @@
-type_name.o type_name.o: type_name.c ob_item_type.h
-
-ob_item_type.h:

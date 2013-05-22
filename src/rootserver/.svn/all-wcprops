@@ -171,18 +171,6 @@ svn:wc:ra_dav:version-url
 V 106
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_tablet_info_manager.cpp
 END
-ob_root_table2.h
-K 25
-svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/13378/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_table2.h
-END
-ob_root_worker.h
-K 25
-svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_worker.h
-END
 ob_root_admin2_main.cpp
 K 25
 svn:wc:ra_dav:version-url
@@ -194,6 +182,18 @@ K 25
 svn:wc:ra_dav:version-url
 V 104
 /repos/oceanbase/!svn/ver/13200/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_ddl_operator.cpp
+END
+ob_root_table2.h
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/13378/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_table2.h
+END
+ob_root_worker.h
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_worker.h
 END
 ob_root_admin_cmd.h
 K 25

@@ -3,17 +3,17 @@ svn:wc:ra_dav:version-url
 V 82
 /repos/oceanbase/!svn/ver/13906/branches/0_4_1_release/oceanbase/tools/obtest/r/mc
 END
-1014_c1233_p0_del_tablet_all_cs_restart_yangxiu.result
-K 25
-svn:wc:ra_dav:version-url
-V 137
-/repos/oceanbase/!svn/ver/13841/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1014_c1233_p0_del_tablet_all_cs_restart_yangxiu.result
-END
 1012_c1244_p0_transaction_rollback_cluster_switch_yangxiu.result
 K 25
 svn:wc:ra_dav:version-url
 V 147
 /repos/oceanbase/!svn/ver/13841/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1012_c1244_p0_transaction_rollback_cluster_switch_yangxiu.result
+END
+1014_c1233_p0_del_tablet_all_cs_restart_yangxiu.result
+K 25
+svn:wc:ra_dav:version-url
+V 137
+/repos/oceanbase/!svn/ver/13841/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1014_c1233_p0_del_tablet_all_cs_restart_yangxiu.result
 END
 2012_c1244_read_from_all_cluster_junyue.result
 K 25
@@ -21,29 +21,29 @@ svn:wc:ra_dav:version-url
 V 129
 /repos/oceanbase/!svn/ver/13870/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/2012_c1244_read_from_all_cluster_junyue.result
 END
-1003_c1244_p0_merge_master_cs_restart_cluster_switch_yangxiu.result
-K 25
-svn:wc:ra_dav:version-url
-V 150
-/repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1003_c1244_p0_merge_master_cs_restart_cluster_switch_yangxiu.result
-END
 1001_c1244_p0_merge_master_ups_restart_cluster_switch_yangxiu.result
 K 25
 svn:wc:ra_dav:version-url
 V 151
 /repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1001_c1244_p0_merge_master_ups_restart_cluster_switch_yangxiu.result
 END
-2014_c1244_sfu_only_read_from_master_junyue.result
+1003_c1244_p0_merge_master_cs_restart_cluster_switch_yangxiu.result
 K 25
 svn:wc:ra_dav:version-url
-V 133
-/repos/oceanbase/!svn/ver/13870/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/2014_c1244_sfu_only_read_from_master_junyue.result
+V 150
+/repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1003_c1244_p0_merge_master_cs_restart_cluster_switch_yangxiu.result
 END
 1006_c1244_p0_merge_slave_rs_restart_cluster_switch_yangxiu.result
 K 25
 svn:wc:ra_dav:version-url
 V 149
 /repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1006_c1244_p0_merge_slave_rs_restart_cluster_switch_yangxiu.result
+END
+2014_c1244_sfu_only_read_from_master_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 133
+/repos/oceanbase/!svn/ver/13870/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/2014_c1244_sfu_only_read_from_master_junyue.result
 END
 1021_c1244_p0_between_two_cluster_switch_master_rs_restart_yangxiu.result
 K 25
@@ -93,17 +93,17 @@ svn:wc:ra_dav:version-url
 V 145
 /repos/oceanbase/!svn/ver/13906/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/2019_c1244_p0_restart_slave_cluster_rs_when_copy_junyue.result
 END
-2011_c1244_read_from_master_ms_junyue.result
-K 25
-svn:wc:ra_dav:version-url
-V 127
-/repos/oceanbase/!svn/ver/13834/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/2011_c1244_read_from_master_ms_junyue.result
-END
 1008_c1244_p0_merge_cluster_switch_merge_again_yangxiu.result
 K 25
 svn:wc:ra_dav:version-url
 V 144
 /repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1008_c1244_p0_merge_cluster_switch_merge_again_yangxiu.result
+END
+2011_c1244_read_from_master_ms_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/repos/oceanbase/!svn/ver/13834/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/2011_c1244_read_from_master_ms_junyue.result
 END
 2002_c1233_p0_provide_service_if_one_cs_crash_junyue.result
 K 25
@@ -183,6 +183,12 @@ svn:wc:ra_dav:version-url
 V 157
 /repos/oceanbase/!svn/ver/13873/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1023_c1244_p0_between_two_cluster_switch_master_ups_restart_yangxiu.result
 END
+2001_c1244_p0_provide_service_if_one_ms_crash_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 142
+/repos/oceanbase/!svn/ver/13720/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/2001_c1244_p0_provide_service_if_one_ms_crash_junyue.result
+END
 c1244_p0_merge_master_ups_down_junyue.result
 K 25
 svn:wc:ra_dav:version-url
@@ -194,12 +200,6 @@ K 25
 svn:wc:ra_dav:version-url
 V 123
 /repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_ups_switch_twice_yangxiu.result
-END
-2001_c1244_p0_provide_service_if_one_ms_crash_junyue.result
-K 25
-svn:wc:ra_dav:version-url
-V 142
-/repos/oceanbase/!svn/ver/13720/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/2001_c1244_p0_provide_service_if_one_ms_crash_junyue.result
 END
 2015_c1244_alter_ddl_flow_junyue.result
 K 25
@@ -231,17 +231,17 @@ svn:wc:ra_dav:version-url
 V 140
 /repos/oceanbase/!svn/ver/13848/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1015_c1233_p0_del_tablet_master_rs_restart_yangxiu.result
 END
-c1244_p0_recover_merge_switch_ups_junyue.result
-K 25
-svn:wc:ra_dav:version-url
-V 130
-/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_recover_merge_switch_ups_junyue.result
-END
 1007_c1244_p0_merge_slave_cluster_restart_cluster_switch_yangxiu.result
 K 25
 svn:wc:ra_dav:version-url
 V 154
 /repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1007_c1244_p0_merge_slave_cluster_restart_cluster_switch_yangxiu.result
+END
+c1244_p0_recover_merge_switch_ups_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 130
+/repos/oceanbase/!svn/ver/13553/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_recover_merge_switch_ups_junyue.result
 END
 1009_c1244_p0_stop_slave_ups_then_start_cluster_switch.result
 K 25
@@ -261,17 +261,17 @@ svn:wc:ra_dav:version-url
 V 138
 /repos/oceanbase/!svn/ver/13834/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/2005_c1244_p0_provide_service_if_rs_crash_junyue.result
 END
-c1244_p0_merge_twice_switch_ups_junyue.result
-K 25
-svn:wc:ra_dav:version-url
-V 128
-/repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_merge_twice_switch_ups_junyue.result
-END
 1011_c1244_p0_stop_slaveups_del_commitlog_restart_cluster_switch_yangxiu.result
 K 25
 svn:wc:ra_dav:version-url
 V 162
 /repos/oceanbase/!svn/ver/13757/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1011_c1244_p0_stop_slaveups_del_commitlog_restart_cluster_switch_yangxiu.result
+END
+c1244_p0_merge_twice_switch_ups_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 128
+/repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_merge_twice_switch_ups_junyue.result
 END
 c1244_p0_ups_switch_master_ups_down_start_yangxiu.result
 K 25
@@ -303,17 +303,17 @@ svn:wc:ra_dav:version-url
 V 144
 /repos/oceanbase/!svn/ver/13841/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1018_c1233_p0_del_tablet_slave_cluster_restart_yangxiu.result
 END
-c1244_p0_master_ups_switch_slave_ups_down_junyue.result
-K 25
-svn:wc:ra_dav:version-url
-V 138
-/repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_master_ups_switch_slave_ups_down_junyue.result
-END
 1016_c1233_p0_del_tablet_slave_rs_restart_yangxiu.result
 K 25
 svn:wc:ra_dav:version-url
 V 139
 /repos/oceanbase/!svn/ver/13841/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/1016_c1233_p0_del_tablet_slave_rs_restart_yangxiu.result
+END
+c1244_p0_master_ups_switch_slave_ups_down_junyue.result
+K 25
+svn:wc:ra_dav:version-url
+V 138
+/repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/r/mc/c1244_p0_master_ups_switch_slave_ups_down_junyue.result
 END
 2007_c1244_p0_forbid_replaying_ups_read_cause_merge_failed_junyue.result
 K 25

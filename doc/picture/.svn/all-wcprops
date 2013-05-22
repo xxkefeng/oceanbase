@@ -9,17 +9,17 @@ svn:wc:ra_dav:version-url
 V 93
 /repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/c_client_2.1.jpg
 END
-c_client_3.2.jpg
-K 25
-svn:wc:ra_dav:version-url
-V 93
-/repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/c_client_3.2.jpg
-END
 delete.jpg
 K 25
 svn:wc:ra_dav:version-url
 V 87
 /repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/delete.jpg
+END
+c_client_3.2.jpg
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/c_client_3.2.jpg
 END
 c_client_5.1.jpg
 K 25
@@ -75,23 +75,17 @@ svn:wc:ra_dav:version-url
 V 94
 /repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/delete_column.jpg
 END
-update.jpg
-K 25
-svn:wc:ra_dav:version-url
-V 87
-/repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/update.jpg
-END
 ps.jpg
 K 25
 svn:wc:ra_dav:version-url
 V 83
 /repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/ps.jpg
 END
-replace_new.jpg
+update.jpg
 K 25
 svn:wc:ra_dav:version-url
-V 92
-/repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/replace_new.jpg
+V 87
+/repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/update.jpg
 END
 Architecture_of_OceanBase_1-1.jpg
 K 25
@@ -99,17 +93,23 @@ svn:wc:ra_dav:version-url
 V 110
 /repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/Architecture_of_OceanBase_1-1.jpg
 END
-select_rep.jpg
+replace_new.jpg
 K 25
 svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/select_rep.jpg
+V 92
+/repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/replace_new.jpg
 END
 Architecture_of_OceanBase_1-2.jpg
 K 25
 svn:wc:ra_dav:version-url
 V 110
 /repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/Architecture_of_OceanBase_1-2.jpg
+END
+select_rep.jpg
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/13573/branches/0_4_1_release/oceanbase/doc/picture/select_rep.jpg
 END
 transaction.jpg
 K 25

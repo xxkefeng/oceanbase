@@ -87,17 +87,17 @@ svn:wc:ra_dav:version-url
 V 102
 /repos/oceanbase/!svn/ver/13273/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/escape.test
 END
-jdbc_autocommit.test
-K 25
-svn:wc:ra_dav:version-url
-V 111
-/repos/oceanbase/!svn/ver/12906/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/jdbc_autocommit.test
-END
 merge_delete2.test
 K 25
 svn:wc:ra_dav:version-url
 V 109
 /repos/oceanbase/!svn/ver/13146/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/merge_delete2.test
+END
+jdbc_autocommit.test
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/12906/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/jdbc_autocommit.test
 END
 ps_affect_rows.test
 K 25
@@ -261,17 +261,17 @@ svn:wc:ra_dav:version-url
 V 102
 /repos/oceanbase/!svn/ver/13155/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/expire.test
 END
-trx_1.test
-K 25
-svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/trx_1.test
-END
 non_reserved_keyword.test
 K 25
 svn:wc:ra_dav:version-url
 V 116
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/non_reserved_keyword.test
+END
+trx_1.test
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/trx_1.test
 END
 join.test
 K 25
@@ -759,17 +759,17 @@ svn:wc:ra_dav:version-url
 V 108
 /repos/oceanbase/!svn/ver/13146/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/merge_insert.test
 END
-null_with_merge.test
-K 25
-svn:wc:ra_dav:version-url
-V 111
-/repos/oceanbase/!svn/ver/13741/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/null_with_merge.test
-END
 serialize_6k_bug.test
 K 25
 svn:wc:ra_dav:version-url
 V 112
 /repos/oceanbase/!svn/ver/13656/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/serialize_6k_bug.test
+END
+null_with_merge.test
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/13741/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/null_with_merge.test
 END
 count_distinct.test
 K 25
