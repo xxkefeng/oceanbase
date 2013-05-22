@@ -314,8 +314,8 @@ drop table t1,t2,t3;
 #select a,count(*) from t1 group by a;
 #drop table t1;
 
-create table t1(a int ,b int, primary key(a,b));
-insert into t1 values(1,1),(1,2),(2,1),(2,2);
+create table t1(a int ,b int, primary key(a,b), c int);
+insert into t1(a,b) values(1,1),(1,2),(2,1),(2,2);
 select * from t1;
 drop table t1;
 #
@@ -355,8 +355,8 @@ drop table t1;
 ## Problem with group by and alias
 ##
 #
-create table t1 (id int not null, qty int not null, primary key(id,qty));
-insert into t1 values (1,2),(1,3),(2,4),(2,5);
+create table t1 (id int not null, qty int not null, primary key(id,qty), extra int);
+insert into t1(id,qty) values (1,2),(1,3),(2,4),(2,5);
 select id, sum(qty) as sqty, count(qty) as cqty from t1 group by id having sum(qty)>2 and cqty>1;
 select id, sum(qty) as sqty from t1 group by id having sqty>2 and count(qty)>1;
 select id, sum(qty) as sqty, count(qty) as cqty from t1 group by id having sqty>2 and cqty>1;
@@ -489,8 +489,8 @@ drop table t1;
 ## Test for bug #8614: GROUP BY 'const' with DISTINCT  
 ##
 #
-CREATE TABLE t1 (a  int, b int, primary key(a,b));
-INSERT INTO t1 VALUES (1,2), (1,3);
+CREATE TABLE t1 (a  int, b int, primary key(a,b),c int);
+INSERT INTO t1(a,b) VALUES (1,2), (1,3);
 SELECT a, b FROM t1 GROUP BY 'const';
 SELECT DISTINCT a, b FROM t1 GROUP BY 'const';
 #
@@ -539,8 +539,8 @@ DROP TABLE t1;
 ## Test for bug #11414: crash on Windows for a simple GROUP BY query 
 ##  
 #                    
-CREATE TABLE t1 (n int primary key);
-INSERT INTO t1 VALUES (1);
+CREATE TABLE t1 (n int primary key, m int);
+INSERT INTO t1(n) VALUES (1);
 SELECT n+1 AS n FROM t1 GROUP BY n;
 DROP TABLE t1;
 #
@@ -609,10 +609,10 @@ DROP TABLE t1;
 ## Bug#11211: Ambiguous column reference in GROUP BY.
 ##
 #
-create table t1 (c1 char(3), c2 char(3), primary key(c1,c2));
-create table t2 (c3 char(3), c4 char(3), primary key(c3,c4));
-insert into t1 values ('aaa', 'bb1'), ('aaa', 'bb2');
-insert into t2 values ('aaa', 'bb1'), ('aaa', 'bb2');
+create table t1 (c1 char(3), c2 char(3), primary key(c1,c2),c3 int);
+create table t2 (c3 char(3), c4 char(3), primary key(c3,c4),c1 int);
+insert into t1(c1,c2) values ('aaa', 'bb1'), ('aaa', 'bb2');
+insert into t2(c3,c4) values ('aaa', 'bb1'), ('aaa', 'bb2');
 #
 ## query with ambiguous column reference 'c2'
 select t1.c1 as c2 from t1, t2 where t1.c2 = t2.c4

@@ -75,19 +75,21 @@ drop table t1;
 create table t1 (
  value64  int ,
  value32  int,
+ extra    int,
  primary key(value64, value32)
 );
 #
 create table t2 (
  value64  int,
  value32  int,
+ extra    int,
  primary key(value64, value32)
 );
 #
-insert into t1 values(17156792991891826145, 1);
-insert into t1 values( 9223372036854775807, 2);
-insert into t2 values(17156792991891826145, 3);
-insert into t2 values( 9223372036854775807, 4);
+insert into t1(value64,value32)  values(17156792991891826145, 1);
+insert into t1(value64,value32)  values( 9223372036854775807, 2);
+insert into t2(value64,value32)  values(17156792991891826145, 3);
+insert into t2(value64,value32)  values( 9223372036854775807, 4);
 #
 select * from t1;
 select * from t2;
@@ -107,8 +109,8 @@ drop table t1, t2;
 ## Test for BUG#30069, can't handle bigint -9223372036854775808 on
 ## x86_64, with some GCC versions and optimizations.
 #
-create table t1 (sint64 int primary key);
-insert into t1 values (-9223372036854775808);
+create table t1 (sint64 int primary key, a int);
+insert into t1(sint64) values (-9223372036854775808);
 select * from t1;
 #
 drop table t1;
@@ -143,9 +145,9 @@ insert into t1 values(
 select * from t1;
 drop table t1;
 #
-create table t1 ( quantity double primary key);
+create table t1 ( quantity double primary key, extra int);
 #insert into t1 values (500), (-500), (~0), (-1);
-insert into t1 values (500), (-500), (0), (-1);
+insert into t1(quantity) values (500), (-500), (0), (-1);
 select * from t1;
 drop table t1;
 #

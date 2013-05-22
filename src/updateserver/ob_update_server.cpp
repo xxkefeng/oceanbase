@@ -1283,7 +1283,12 @@ namespace oceanbase
       else if (OB_SUCCESS != (err = replay_log_src_.prefetch_log())
           && OB_NEED_RETRY != err)
       {
-        TBSYS_LOG(WARN, "replay_log_src.prefetch_log()=>%d", err);
+        TBSYS_LOG(WARN, "replay_log_src.prefetch_log(%s)=>%d", to_cstring(replay_log_src_), err);
+      }
+      else if (OB_NEED_RETRY == err)
+      {
+        TBSYS_LOG(WARN, "fetch_log_from_master(%s): DATA_NOTE_SERVE, need wait master: %dus", to_cstring(replay_log_src_), int(config_.lsync_fetch_timeout));
+        usleep((useconds_t)(config_.lsync_fetch_timeout));
       }
       else
       {
@@ -2637,13 +2642,13 @@ namespace oceanbase
       else if (OB_SUCCESS != (err = log_mgr_.get_log_for_slave_fetch(req, result))
                && OB_DATA_NOT_SERVE != err)
       {
-        TBSYS_LOG(ERROR, "log_mgr_.fetch_log_for_slave(srv=%s, req=%s, result=%s)=>%d", src_addr, to_cstring(req), to_cstring(result), err);
+        TBSYS_LOG(ERROR, "log_mgr_.fetch_log_for_slave(srv=%s, req=%s, result=%s,master_log_id=%ld)=>%d", src_addr, to_cstring(req), to_cstring(result), log_mgr_.get_master_log_seq(), err);
       }
       else if (OB_DATA_NOT_SERVE == err)
       {
         ret_err = OB_NEED_RETRY;
         err = OB_SUCCESS;
-        TBSYS_LOG(WARN, "log_mgr_.fetch_log_for_slave(srv=%s, req=%s, result=%s): DATA_NOT_SERVE", src_addr, to_cstring(req), to_cstring(result));
+        TBSYS_LOG(WARN, "log_mgr_.fetch_log_for_slave(srv=%s, req=%s, result=%s, master_log_id=%ld): DATA_NOT_SERVE", src_addr, to_cstring(req), to_cstring(result), log_mgr_.get_master_log_seq());
       }
       if (packet->get_receive_ts() + (packet->get_source_timeout()?: config_.packet_max_wait_time)
           < tbsys::CTimeUtil::getTime())
@@ -4109,7 +4114,14 @@ namespace oceanbase
       }
       else
       {
-        TBSYS_LOG(INFO, "there is still a warm up duty running, will not schedule another");
+        static int64_t last_log_time = 0;
+        int64_t cur_time = tbsys::CTimeUtil::getTime();
+        int64_t old_time = last_log_time;
+        if ((1000000 + last_log_time) < cur_time
+            && old_time == ATOMIC_CAS(&last_log_time, old_time, cur_time))
+        {
+          TBSYS_LOG(INFO, "there is still a warm up duty running, will not schedule another");
+        }
       }
       return ret;
     }
@@ -5269,7 +5281,7 @@ namespace oceanbase
       return err;
     }
 
-    bool ObUpdateServer::can_serve_read_req(const bool is_consistency_read)
+    bool ObUpdateServer::can_serve_read_req(const bool is_consistency_read, const int64_t query_version)
     {
       bool is_provide_service = false;
       ObConsistencyType::Type consistency_type = static_cast<ObConsistencyType::Type>(
@@ -5287,7 +5299,7 @@ namespace oceanbase
       }
       else
       {
-        if (ObConsistencyType::WEAK_CONSISTENCY == consistency_type)
+        if (ObConsistencyType::WEAK_CONSISTENCY == consistency_type || query_version > 0)
         {
           is_provide_service = true;
         }

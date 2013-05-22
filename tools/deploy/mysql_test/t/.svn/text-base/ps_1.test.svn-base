@@ -89,10 +89,11 @@ execute stmt5 using @nullvar2;
 
 create table t2
 (
-  a int primary key
+  a int primary key,
+  b int
 );
 
-insert into t2 values (0);
+insert into t2(a) values (0);
 
 
 # parameter is NULL
@@ -207,7 +208,7 @@ drop table t1;
 --enable_parsing
 
 
-create table t1(a varchar(2), b varchar(3), primary key(a,b));
+create table t1(a varchar(2), b varchar(3), primary key(a,b), c varchar(4));
 
 
 #prepare stmt1 from select a, b from t1 where (not (a='aa' and b < 'zzz'));
@@ -225,7 +226,7 @@ drop table t1;
 #
 
 
-create table t1 (a varchar(10) primary key) ;
+create table t1 (a varchar(10) primary key, b varchar) ;
 insert into t1 (a) values ('yahoo');
 
 
@@ -241,7 +242,7 @@ drop table t1;
 # rolled back.
 #
 
-create table t1 ( a int primary key );
+create table t1 ( a int primary key , b int);
 
 prepare stmt from select a from t1 where a between ? and ?;
 set @a=1;
@@ -258,11 +259,11 @@ drop table t1;
 
 drop table if exists t1;
 
-create table t1 (c1 int not null, c2 int not null,
+create table t1 (c1 int not null, c2 int not null,c3 int,
              primary key  (c1,c2));
 
-insert into t1 values (200887, 860);
-insert into t1 values (200887, 200887);
+insert into t1(c1,c2) values (200887, 860);
+insert into t1(c1,c2) values (200887, 200887);
 
 select * from t1 where (c1=200887 and c2=200887) or c2=860;
 

@@ -19,8 +19,8 @@ drop table if exists t1,t2;
 ## BUG#8464 decimal AVG returns incorrect result
 ##
 
-CREATE TABLE t1 (col1 double primary key);
-INSERT INTO t1 VALUES (-5.00000000001),(-5.00000000002),(-5.00000000003),(-5.00000000000);
+CREATE TABLE t1 (col1 double primary key, col2 double);
+INSERT INTO t1(col1) VALUES (-5.00000000001),(-5.00000000002),(-5.00000000003),(-5.00000000000);
 #insert into t1 select * from t1;
 select col1,count(col1),sum(col1),avg(col1) from t1 group by col1;
 DROP TABLE t1;
@@ -29,12 +29,12 @@ DROP TABLE t1;
 ## BUG#8465 decimal MIN and MAX return incorrect result
 ##
 #
-create table t1 (col1 double primary key);
-insert into t1 values (-5.00000000001);
-insert into t1 values (-5.00000000002);
+create table t1 (col1 double primary key, col2 double);
+insert into t1(col1) values (-5.00000000001);
+insert into t1(col1) values (-5.00000000002);
 select col1,sum(col1),max(col1),min(col1) from t1 group by col1;
 #delete from t1;
-insert into t1 values (5.00000000003);
-insert into t1 values (5.00000000004);
+insert into t1(col1) values (5.00000000003);
+insert into t1(col1) values (5.00000000004);
 select col1,sum(col1),max(col1),min(col1) from t1 group by col1;
 DROP TABLE t1;

@@ -9,87 +9,87 @@ drop table if exists t1,t2,t3;
 #
 
 # single int
-create table t1(a int primary key);
-insert into t1 values(NULL);
-insert into t1 values(1);
-insert into t1 values(0);
+create table t1(a int primary key, c int);
+insert into t1(a) values(NULL);
+insert into t1(a) values(1);
+insert into t1(a) values(0);
 --error 5024
-insert into t1 values(NULL);
+insert into t1(a) values(NULL);
 select * from t1;
 drop table t1;
 
 # combo int
-create table t1(a int, b int, primary key(a,b));
-insert into t1 values(NULL,NULL);
-insert into t1 values(NULL,1);
-insert into t1 values(1,NULL);
-insert into t1 values(1,1);
+create table t1(a int, b int, primary key(a,b),c int);
+insert into t1(a,b) values(NULL,NULL);
+insert into t1(a,b) values(NULL,1);
+insert into t1(a,b) values(1,NULL);
+insert into t1(a,b) values(1,1);
 --error 5024
-insert into t1 values(NULL,NULL);
+insert into t1(a,b) values(NULL,NULL);
 --error 5024
-insert into t1 values(NULL,1);
+insert into t1(a,b) values(NULL,1);
 --error 5024
-insert into t1 values(1,NULL);
+insert into t1(a,b) values(1,NULL);
 select * from t1;
 drop table t1;
 
 # single char
-create table t1(a varchar(20) primary key);
-insert into t1 values(NULL);
-insert into t1 values('1');
+create table t1(a varchar(20) primary key,b varchar);
+insert into t1(a) values(NULL);
+insert into t1(a) values('1');
 --error 5024
-insert into t1 values(NULL);
+insert into t1(a) values(NULL);
 select * from t1;
 drop table t1;
 
 # combo char
-create table t1(a varchar(20), b varchar(20), primary key(a,b));
-insert into t1 values(NULL,NULL);
-insert into t1 values(NULL,'1');
+create table t1(a varchar(20), b varchar(20), primary key(a,b),c varchar);
+insert into t1(a,b) values(NULL,NULL);
+insert into t1(a,b) values(NULL,'1');
 
-insert into t1 values('1',NULL);
-insert into t1 values('1','1');
-
---error 5024
-insert into t1 values(NULL,NULL);
+insert into t1(a,b) values('1',NULL);
+insert into t1(a,b) values('1','1');
 
 --error 5024
-insert into t1 values(NULL,'1');
+insert into t1(a,b) values(NULL,NULL);
 
 --error 5024
-insert into t1 values('1',NULL);
+insert into t1(a,b) values(NULL,'1');
+
+--error 5024
+insert into t1(a,b) values('1',NULL);
 select * from t1;
 drop table t1;
 
 # single dt
-create table t1(a datetime primary key);
+create table t1(a datetime primary key,b datetime);
 
-insert into t1 values(NULL);
-insert into t1 values('2010-01-01 12:00:00');
+insert into t1(a) values(NULL);
+insert into t1(a) values('2010-01-01 12:00:00');
 
 --error 5024
-insert into t1 values(NULL);
+insert into t1(a) values(NULL);
 select * from t1;
 drop table t1;
 
 # combo dt
-create table t1(a datetime, b datetime, primary key(a,b));
+create table t1(a datetime, b datetime, primary key(a,b), c datetime);
 
-insert into t1 values(NULL,NULL);
+insert into t1(a,b) values(NULL,NULL);
 
-insert into t1 values(NULL,'2010-01-01 12:00:00');
+insert into t1(a,b) values(NULL,'2010-01-01 12:00:00');
 
-insert into t1 values('2010-01-01 12:00:00',NULL);
-insert into t1 values('2010-01-01 12:00:00','2010-01-01 12:00:00');
-
---error 5024
-insert into t1 values(NULL,NULL);
+insert into t1(a,b) values('2010-01-01 12:00:00',NULL);
+insert into t1(a,b) values('2010-01-01 12:00:00','2010-01-01 12:00:00');
 
 --error 5024
-insert into t1 values(NULL,'2010-01-01 12:00:00');
+insert into t1(a,b) values(NULL,NULL);
 
 --error 5024
-insert into t1 values('2010-01-01 12:00:00',NULL);
+insert into t1(a,b) values(NULL,'2010-01-01 12:00:00');
+
+--error 5024
+insert into t1(a,b) values('2010-01-01 12:00:00',NULL);
 select * from t1;
 drop table t1;
 

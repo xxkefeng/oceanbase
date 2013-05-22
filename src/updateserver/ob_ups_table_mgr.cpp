@@ -620,7 +620,6 @@ namespace oceanbase
       }
       else
       {
-        OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_COUNT, 1);
         ret = set_mutator_(ups_mutator);
         if (OB_SUCCESS != ret)
         {

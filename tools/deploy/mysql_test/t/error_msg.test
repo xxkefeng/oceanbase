@@ -17,7 +17,7 @@ connect (conn2,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
 --echo #########################
 connection conn1;
 disconnect conn1;
-create table t1(a int primary key);
+create table t1(a int primary key,b int);
 select * from t1;
 drop table t1;
 --echo #########################
@@ -27,8 +27,8 @@ drop table t1;
 --echo test table exists
 --echo #########################
 connection conn2;
-create table t1(a int primary key);
-create table t1(a int primary key);
+create table t1(a int primary key, b int);
+create table t1(a int primary key, b int);
 drop table t1;
 --echo #########################
 
@@ -67,13 +67,13 @@ create table t1(a int primary key,b int);
 insert into t1(b) values(1);  
 drop table t1;
 
-create table t1(a int primary key);
-insert into t1 values(NULL);  
+create table t1(a int primary key,b int);
+insert into t1(a) values(NULL);  
 drop table t1;
 
-create table t1(a int, b int, primary key(a,b));
-insert into t1 values(NULL,1);
-insert into t1 values(1,NULL);
+create table t1(a int, b int, primary key(a,b), c int);
+insert into t1(a,b) values(NULL,1);
+insert into t1(a,b) values(1,NULL);
 drop table t1;
 --echo #########################
 

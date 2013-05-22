@@ -302,8 +302,8 @@ drop table t1;
 ## Bug#28778: Wrong result of BETWEEN when comparing a DATETIME field with an
 ##            integer constants.
 ##
-create table t1(f1 datetime primary key);
-insert into t1 values('2001-01-01'),('2002-02-02');
+create table t1(f1 datetime primary key, f2 datetime);
+insert into t1(f1) values('2001-01-01'),('2002-02-02');
 select * from t1 where f1 between 20020101 and 20070101000000;
 select * from t1 where f1 between 2002010 and 20070101000000;
 select * from t1 where f1 between 20020101 and 2007010100000;

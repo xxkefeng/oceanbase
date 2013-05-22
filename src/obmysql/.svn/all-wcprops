@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 76
-/repos/oceanbase/!svn/ver/13569/branches/0_4_1_release/oceanbase/src/obmysql
+/repos/oceanbase/!svn/ver/13647/branches/0_4_1_release/oceanbase/src/obmysql
 END
 ob_mysql_result_set.cpp
 K 25
@@ -61,7 +61,7 @@ ob_mysql_server.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 96
-/repos/oceanbase/!svn/ver/13542/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_server.cpp
+/repos/oceanbase/!svn/ver/13647/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_server.cpp
 END
 ob_mysql_row.cpp
 K 25

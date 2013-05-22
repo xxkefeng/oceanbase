@@ -1,0 +1,114 @@
+ob_sql_global.lo ob_sql_global.o: ob_sql_global.cpp ob_sql_global.h \
+  ob_sql_struct.h ob_sql_define.h /usr/local/include/mysql/mysql.h \
+  /usr/include/sys/types.h /usr/include/features.h \
+  /usr/include/sys/cdefs.h /usr/include/bits/wordsize.h \
+  /usr/include/gnu/stubs.h /usr/include/gnu/stubs-64.h \
+  /usr/include/bits/types.h \
+  /usr/lib/gcc/x86_64-redhat-linux/4.1.2/include/stddef.h \
+  /usr/include/bits/typesizes.h /usr/include/time.h /usr/include/endian.h \
+  /usr/include/bits/endian.h /usr/include/sys/select.h \
+  /usr/include/bits/select.h /usr/include/bits/sigset.h \
+  /usr/include/bits/time.h /usr/include/sys/sysmacros.h \
+  /usr/include/bits/pthreadtypes.h \
+  /usr/local/include/mysql/mysql_version.h \
+  /usr/local/include/mysql/mysql_com.h \
+  /usr/local/include/mysql/mysql_time.h \
+  /usr/local/include/mysql/my_list.h /usr/local/include/mysql/typelib.h \
+  /usr/local/include/mysql/my_alloc.h /usr/include/stdint.h \
+  /usr/include/bits/wchar.h ob_sql_list.h ob_sql_server_info.h \
+  ob_sql_cluster_info.h ob_sql_data_source.h /usr/include/pthread.h \
+  /usr/include/sched.h /usr/include/bits/sched.h /usr/include/xlocale.h \
+  /usr/include/signal.h /usr/include/bits/setjmp.h \
+  ob_sql_select_method_impl.h ob_sql_select_method.h \
+  ob_sql_group_data_source.h ob_sql_real_func.h \
+  /usr/lib/gcc/x86_64-redhat-linux/4.1.2/include/stdarg.h
+
+ob_sql_global.h:
+
+ob_sql_struct.h:
+
+ob_sql_define.h:
+
+/usr/local/include/mysql/mysql.h:
+
+/usr/include/sys/types.h:
+
+/usr/include/features.h:
+
+/usr/include/sys/cdefs.h:
+
+/usr/include/bits/wordsize.h:
+
+/usr/include/gnu/stubs.h:
+
+/usr/include/gnu/stubs-64.h:
+
+/usr/include/bits/types.h:
+
+/usr/lib/gcc/x86_64-redhat-linux/4.1.2/include/stddef.h:
+
+/usr/include/bits/typesizes.h:
+
+/usr/include/time.h:
+
+/usr/include/endian.h:
+
+/usr/include/bits/endian.h:
+
+/usr/include/sys/select.h:
+
+/usr/include/bits/select.h:
+
+/usr/include/bits/sigset.h:
+
+/usr/include/bits/time.h:
+
+/usr/include/sys/sysmacros.h:
+
+/usr/include/bits/pthreadtypes.h:
+
+/usr/local/include/mysql/mysql_version.h:
+
+/usr/local/include/mysql/mysql_com.h:
+
+/usr/local/include/mysql/mysql_time.h:
+
+/usr/local/include/mysql/my_list.h:
+
+/usr/local/include/mysql/typelib.h:
+
+/usr/local/include/mysql/my_alloc.h:
+
+/usr/include/stdint.h:
+
+/usr/include/bits/wchar.h:
+
+ob_sql_list.h:
+
+ob_sql_server_info.h:
+
+ob_sql_cluster_info.h:
+
+ob_sql_data_source.h:
+
+/usr/include/pthread.h:
+
+/usr/include/sched.h:
+
+/usr/include/bits/sched.h:
+
+/usr/include/xlocale.h:
+
+/usr/include/signal.h:
+
+/usr/include/bits/setjmp.h:
+
+ob_sql_select_method_impl.h:
+
+ob_sql_select_method.h:
+
+ob_sql_group_data_source.h:
+
+ob_sql_real_func.h:
+
+/usr/lib/gcc/x86_64-redhat-linux/4.1.2/include/stdarg.h:

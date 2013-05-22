@@ -177,12 +177,12 @@ f2
 select f2, f3 from t1 where '01-03-10' between f2 and f3;
 f2	f3
 drop table t1;
-create table t1(f1 datetime primary key);
-insert into t1 values('2001-01-01'),('2002-02-02');
+create table t1(f1 datetime primary key, f2 datetime);
+insert into t1(f1) values('2001-01-01'),('2002-02-02');
 select * from t1 where f1 between 20020101 and 20070101000000;
-f1
+f1	f2
 select * from t1 where f1 between 2002010 and 20070101000000;
-f1
+f1	f2
 select * from t1 where f1 between 20020101 and 2007010100000;
-f1
+f1	f2
 drop table t1;

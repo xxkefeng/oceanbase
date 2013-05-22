@@ -71,7 +71,7 @@ namespace oceanbase
           if (FATAL == state)
           {
             set_client_mgr_err(OB_IN_FATAL_STATE);
-            TBSYS_LOG(WARN, "stop client_mgr, enter FATAL state.");
+            TBSYS_LOG(ERROR, "stop client_mgr, enter FATAL state.");
           }
           // else if (STOP == state)
           // {

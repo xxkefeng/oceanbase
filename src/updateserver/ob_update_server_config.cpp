@@ -147,7 +147,7 @@ void ObUpdateServerConfig::auto_config_memory(const int64_t total_memory_limit_g
   else
   {
     table_available_warn_size.set_value("8GB");
-    table_available_warn_size.set_value("4GB");
+    table_available_error_size.set_value("4GB");
   }
 
   blockcache_size            = (int64_t)(table_memory_limit / 15);

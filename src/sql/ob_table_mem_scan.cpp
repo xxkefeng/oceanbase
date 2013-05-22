@@ -22,7 +22,8 @@ namespace oceanbase
   {
     ObTableMemScan::ObTableMemScan() :
       rename_(), project_(), filter_(), limit_(),
-      has_rename_(false), has_project_(false), has_filter_(false), has_limit_(false)
+      has_rename_(false), has_project_(false), has_filter_(false), has_limit_(false),
+      plan_generated_(false)
     {
     }
 
@@ -33,58 +34,63 @@ namespace oceanbase
     int ObTableMemScan::open()
     {
       int ret = OB_SUCCESS;
-      if (NULL == child_op_)
+
+      if (OB_UNLIKELY(NULL == child_op_))
       {
         ret = OB_NOT_INIT;
       }
-      if (OB_SUCCESS == ret && has_rename_)
+      else if (!plan_generated_)
       {
-        if (OB_SUCCESS != (ret = rename_.set_child(0, *child_op_)))
+        if (OB_SUCCESS == ret && has_rename_)
         {
-          TBSYS_LOG(WARN, "fail to set rename child. ret=%d", ret);
+          if (OB_SUCCESS != (ret = rename_.set_child(0, *child_op_)))
+          {
+            TBSYS_LOG(WARN, "fail to set rename child. ret=%d", ret);
+          }
+          else
+          {
+            child_op_ = &rename_;
+          }
         }
         else
         {
-          child_op_ = &rename_;
+          ret = OB_NOT_INIT;
+          TBSYS_LOG(WARN, "must call set_table() before call open(). ret=%d", ret);
         }
-      }
-      else
-      {
-        ret = OB_NOT_INIT;
-        TBSYS_LOG(WARN, "must call set_table() before call open(). ret=%d", ret);
-      }
-      if (OB_SUCCESS == ret && has_project_)
-      {
-        if (OB_SUCCESS != (ret = project_.set_child(0, *child_op_)))
+        if (OB_SUCCESS == ret && has_project_)
         {
-          TBSYS_LOG(WARN, "fail to set project child. ret=%d", ret);
+          if (OB_SUCCESS != (ret = project_.set_child(0, *child_op_)))
+          {
+            TBSYS_LOG(WARN, "fail to set project child. ret=%d", ret);
+          }
+          else
+          {
+            child_op_ = &project_;
+          }
         }
-        else
+        if (OB_SUCCESS == ret && has_filter_)
         {
-          child_op_ = &project_;
+          if (OB_SUCCESS != (ret = filter_.set_child(0, *child_op_)))
+          {
+            TBSYS_LOG(WARN, "fail to set filter child. ret=%d", ret);
+          }
+          else
+          {
+            child_op_ = &filter_;
+          }
         }
-      }
-      if (OB_SUCCESS == ret && has_filter_)
-      {
-        if (OB_SUCCESS != (ret = filter_.set_child(0, *child_op_)))
+        if (OB_SUCCESS == ret && has_limit_)
         {
-          TBSYS_LOG(WARN, "fail to set filter child. ret=%d", ret);
+          if (OB_SUCCESS != (ret = limit_.set_child(0, *child_op_)))
+          {
+            TBSYS_LOG(WARN, "fail to set limit child. ret=%d", ret);
+          }
+          else
+          {
+            child_op_ = &limit_;
+          }
         }
-        else
-        {
-          child_op_ = &filter_;
-        }
-      }
-      if (OB_SUCCESS == ret && has_limit_)
-      {
-        if (OB_SUCCESS != (ret = limit_.set_child(0, *child_op_)))
-        {
-          TBSYS_LOG(WARN, "fail to set limit child. ret=%d", ret);
-        }
-        else
-        {
-          child_op_ = &limit_;
-        }
+        plan_generated_ = true;
       }
       if (OB_SUCCESS == ret)
       {
@@ -107,6 +113,7 @@ namespace oceanbase
       else
       {
         ret = child_op_->close();
+        
       }
       return ret;
     }

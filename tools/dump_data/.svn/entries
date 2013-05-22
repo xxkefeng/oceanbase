@@ -1,7 +1,7 @@
 10
 
 dir
-13572
+13927
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/dump_data
 http://svn.app.taobao.net/repos/oceanbase
 
@@ -570,40 +570,6 @@ rizhao.ych
 
 10449
 
-merge_tmp.py
-file
-
-
-
-
-2013-04-28T10:54:23.000000Z
-14854d003981ae58c57fc24a42778e32
-2012-04-23T03:13:55.228722Z
-8043
-rizhao.ych
-has-props
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-1648
-
 task_stats.h
 file
 
@@ -637,6 +603,40 @@ rizhao.ych
 
 
 1264
+
+merge_tmp.py
+file
+
+
+
+
+2013-04-28T10:54:23.000000Z
+14854d003981ae58c57fc24a42778e32
+2012-04-23T03:13:55.228722Z
+8043
+rizhao.ych
+has-props
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1648
 
 rpc_stub.h
 file
@@ -672,40 +672,6 @@ xielun
 
 2866
 
-task_output.h
-file
-
-
-
-
-2013-04-28T10:54:23.000000Z
-e772d73bd501595efc4190bd1f218416
-2011-05-31T07:51:22.201986Z
-4580
-xielun
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-622
-
 task_utils.h
 file
 
@@ -740,6 +706,43 @@ rizhao.ych
 
 1070
 
+task_output.h
+file
+
+
+
+
+2013-04-28T10:54:23.000000Z
+e772d73bd501595efc4190bd1f218416
+2011-05-31T07:51:22.201986Z
+4580
+xielun
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+622
+
+data
+dir
+
 task_server.cpp
 file
 
@@ -773,9 +776,6 @@ yushun.swh
 
 
 10458
-
-data
-dir
 
 task_factory.cpp
 file
@@ -879,6 +879,9 @@ rizhao.ych
 
 3033
 
+test
+dir
+
 task_packet.h
 file
 
@@ -912,9 +915,6 @@ xielun
 
 
 393
-
-test
-dir
 
 task_worker_main.cpp
 file
@@ -950,9 +950,6 @@ yushun.swh
 
 5213
 
-log
-dir
-
 ob_task_server.sh
 file
 
@@ -986,6 +983,9 @@ has-props
 
 
 480
+
+log
+dir
 
 task_manager.h
 file

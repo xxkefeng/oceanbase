@@ -49,17 +49,17 @@ SELECT MAX(b) FROM t1;
 MAX(b)
 xxxxbbbb
 DROP TABLE t1;
-create table t2 (ff double primary key);
-insert into t2 values (2.2);
-create table t1 (df double primary key);
-insert into t1 values(1.1);
-insert into t1 values(2.2);
+create table t2 (ff double primary key, i int);
+insert into t2 values (2.2,0);
+create table t1 (df double primary key, i int);
+insert into t1 values(1.1,0);
+insert into t1 values(2.2,0);
 select 1e8 * sum(distinct df) from t1;
 1e8 * sum(distinct df)
 330000000
 select 1e8 * min(df) from t1;
 1e8 * min(df)
 110000000.00000001
-create table t3 (ifl int primary key);
-insert into t3 values(1), (2);
+create table t3 (ifl int primary key, i int);
+insert into t3 values(1,0), (2,0);
 drop table t1, t2, t3;

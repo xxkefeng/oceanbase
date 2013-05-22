@@ -125,7 +125,7 @@ int ObRowDesc::hash_insert(const uint64_t table_id, const uint64_t column_id, co
   ret = hash_map_.insert(desc, index);
   if (OB_DUPLICATE_COLUMN == ret)
   {
-    TBSYS_LOG(ERROR, "duplicated cell desc, tid=%lu cid=%lu new_idx=%ld",
+    TBSYS_LOG(WARN, "duplicated cell desc, tid=%lu cid=%lu new_idx=%ld",
               table_id, column_id, index);
   }
   return ret;
@@ -242,6 +242,3 @@ DEFINE_GET_SERIALIZE_SIZE(ObRowDesc)
   size += encoded_length_vi64(rowkey_cell_count_);
   return size;
 }
-
-
-

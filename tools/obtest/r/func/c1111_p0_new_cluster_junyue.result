@@ -17,5 +17,4 @@ __all_sys_stat
 __all_table_privilege
 __all_trigger_event
 __all_user
-ob1.collect_log
 ob1.stop

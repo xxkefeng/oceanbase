@@ -71,5 +71,3 @@ ob2.check 1,2,select value from (select * from __all_server_stat) tt where svr_t
 ob2.check 2,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version'
 ob2.check 3,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version'
 ob2.check 4,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version'
-ob1.collect_log
-ob2.collect_log

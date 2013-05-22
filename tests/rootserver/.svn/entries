@@ -1,7 +1,7 @@
 10
 
 dir
-13572
+13927
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/rootserver
 http://svn.app.taobao.net/repos/oceanbase
 
@@ -502,17 +502,17 @@ qushan
 
 3674
 
-balance_candidate_test.cpp
+ob_delete_replicas_test_schema.ini
 file
 
 
 
 
 2013-04-28T10:54:38.000000Z
-d41d8cd98f00b204e9800998ecf8427e
-2012-04-23T03:13:55.228722Z
-8043
-rizhao.ych
+9f930d7feb2638d2f7b88055ec1a2a46
+2013-02-05T12:27:14.641743Z
+12040
+rongxuan
 
 
 
@@ -534,7 +534,7 @@ rizhao.ych
 
 
 
-0
+203
 
 ob_new_balance_test.conf
 file
@@ -570,17 +570,17 @@ rizhao.ych
 
 882
 
-ob_delete_replicas_test_schema.ini
+balance_candidate_test.cpp
 file
 
 
 
 
 2013-04-28T10:54:38.000000Z
-9f930d7feb2638d2f7b88055ec1a2a46
-2013-02-05T12:27:14.641743Z
-12040
-rongxuan
+d41d8cd98f00b204e9800998ecf8427e
+2012-04-23T03:13:55.228722Z
+8043
+rizhao.ych
 
 
 
@@ -602,7 +602,7 @@ rongxuan
 
 
 
-203
+0
 
 mock_update_server.cpp
 file
@@ -944,17 +944,17 @@ yubai
 
 0
 
-test_batch_create_table.cpp
+test_root_table2_test.cpp
 file
 
 
 
 
 2013-04-28T10:54:38.000000Z
-a51c3e3aa4b78b9a614e998573c847e8
-2012-12-07T10:06:20.267999Z
-10778
-xiaochu.yh
+826a06f0aa174d4654e35c9c58056953
+2013-04-16T03:52:59.752605Z
+13277
+xielun
 
 
 
@@ -976,7 +976,7 @@ xiaochu.yh
 
 
 
-6023
+9599
 
 chunk_servers_manager_test.cpp
 file
@@ -1012,17 +1012,17 @@ zhuweng.yzf
 
 2331
 
-test_root_table2_test.cpp
+test_batch_create_table.cpp
 file
 
 
 
 
 2013-04-28T10:54:38.000000Z
-826a06f0aa174d4654e35c9c58056953
-2013-04-16T03:52:59.752605Z
-13277
-xielun
+a51c3e3aa4b78b9a614e998573c847e8
+2012-12-07T10:06:20.267999Z
+10778
+xiaochu.yh
 
 
 
@@ -1044,7 +1044,7 @@ xielun
 
 
 
-9599
+6023
 
 test_root_table2.cpp
 file

@@ -21,7 +21,8 @@ c17 MODIFYTIME
 )REPLICA_NUM=3,TABLET_MAX_SIZE=100000000,COMPRESS_METHOD='lzo_1_0',USE_BLOOM_FILTER=true,EXPIRE_INFO='c8=0',TABLET_BLOCK_SIZE=4096, CONSISTENT_MODE=STATIC;
 create table if not exists t1
 (
-c1 TINYINT primary key
+c1 TINYINT primary key,
+c2 int
 );
 show create table t1;
 table_name	table_definition
@@ -45,8 +46,11 @@ c16 CREATETIME
 , c15 VARCHAR
 , PRIMARY KEY(c1)
 ) TABLET_MAX_SIZE = 100000000, TABLET_BLOCK_SIZE = 4096, EXPIRE_INFO = 'c8=0', CONSISTENT_MODE = STATIC, USE_BLOOM_FILTER = TRUE
-
 select table_name,table_id,table_type,load_type,table_def_type,rowkey_column_num,column_num,max_used_column_id,create_mem_version,max_rowkey_length,compress_func_name,is_use_bloomfilter,merge_write_sstable_version,is_pure_update_table,rowkey_split,expire_condition,tablet_block_size,is_read_static from __first_tablet_entry where table_id=3001;
 table_name	table_id	table_type	load_type	table_def_type	rowkey_column_num	column_num	max_used_column_id	create_mem_version	max_rowkey_length	compress_func_name	is_use_bloomfilter	merge_write_sstable_version	is_pure_update_table	rowkey_split	expire_condition	tablet_block_size	is_read_static
 t1	3001	1	1	2	1	NULL	30	1	0	lzo_1_0	1	2	0	0	c8=0	4096	1
 drop table t1;
+create table t1(f1 int primary key);
+ERROR HY000: unknown internal error, errno=2
+create table t1(f1 int,f2 varchar, primary key(f1,f2));
+ERROR HY000: unknown internal error, errno=2

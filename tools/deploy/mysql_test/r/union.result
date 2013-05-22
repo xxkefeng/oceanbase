@@ -118,32 +118,32 @@ pseudo1
 testtt
 tsestset
 drop table t1;
-create table t1 (a int primary key);
-create table t2 (a int primary key);
-insert into t1 values (1),(2),(3),(4),(5);
-insert into t2 values (11),(12),(13),(14),(15);
+create table t1 (a int primary key,b int);
+create table t2 (a int primary key,b int);
+insert into t1(a) values (1),(2),(3),(4),(5);
+insert into t2(a) values (11),(12),(13),(14),(15);
 (select * from t1 limit 2) union (select * from t2 limit 3) limit 4;
-a
-1
-2
-11
-12
+a	b
+1	NULL
+2	NULL
+11	NULL
+12	NULL
 (select * from t1 limit 2) union (select * from t2 limit 3);
-a
-1
-2
-11
-12
-13
+a	b
+1	NULL
+2	NULL
+11	NULL
+12	NULL
+13	NULL
 (select * from t1 limit 2) union (select * from t2 limit 20);
-a
-1
-2
-11
-12
-13
-14
-15
+a	b
+1	NULL
+2	NULL
+11	NULL
+12	NULL
+13	NULL
+14	NULL
+15	NULL
 drop table t1,t2;
 create table t1 (a int not null primary key , b int);
 create table t2 (a int not null primary key , b int);
@@ -181,9 +181,9 @@ user_name	group_name	id
 Tester	Group A	1
 drop table t1, t2, t3;
 create table t1 (mat_id INT  NOT NULL  PRIMARY KEY, matintnum CHAR(6) NOT NULL, test INT );
-create table t2 (mat_id INT  NOT NULL, pla_id INT NOT NULL, primary key(mat_id, pla_id));
+create table t2 (mat_id INT  NOT NULL, pla_id INT NOT NULL, primary key(mat_id, pla_id), extra int);
 insert into t1 values (1, 'a', 1), (2, 'b', 2), (3, 'c', 3), (4, 'd', 4), (5, 'e', 5), (6, 'f', 6), (7, 'g', 7), (8, 'h', 8), (9, 'i', 9);
-insert into t2 values (1, 100), (1, 101), (1, 102), (2, 100), (2, 103), (2, 104), (3, 101), (3, 102), (3, 105);
+insert into t2(mat_id,pla_id) values (1, 100), (1, 101), (1, 102), (2, 100), (2, 103), (2, 104), (3, 101), (3, 102), (3, 105);
 SELECT mp.pla_id, MIN(m1.matintnum) AS matintnum FROM t2 mp INNER JOIN t1 m1 ON mp.mat_id=m1.mat_id GROUP BY mp.pla_id union SELECT 0, 0 from t1;
 pla_id	matintnum
 0	0
@@ -230,24 +230,26 @@ a
 5
 6
 drop table t1;
-create table t1 (i int primary key);
-insert into t1 values (1);
+create table t1 (i int primary key,j int);
+insert into t1(i) values (1);
 select * from t1 UNION select * from t1;
-i
-1
+i	j
+1	NULL
+1	NULL
 select * from t1 UNION ALL select * from t1;
-i
-1
-1
+i	j
+1	NULL
+1	NULL
 select * from t1 UNION select * from t1 UNION ALL select * from t1;
-i
-1
-1
+i	j
+1	NULL
+1	NULL
+1	NULL
 drop table t1;
-create table t1 (a int primary key);
-insert into t1 values (100), (1);
-create table t2 (a int primary key);
-insert into t2 values (100);
+create table t1 (a int primary key,b int);
+insert into t1(a) values (100), (1);
+create table t2 (a int primary key,b int);
+insert into t2(a) values (100);
 select a from t1 union select a from t2 order by a;
 a
 1
@@ -318,8 +320,8 @@ description	f1
 XXXXXXXXXXXXXXXXXXXX	0
 YYYYYYYYYYYYYYYYYYYY	0
 drop table t1;
-CREATE TABLE t1 (a int primary key);
-INSERT INTO t1 VALUES (3),(1),(2),(4);
+CREATE TABLE t1 (a int primary key,b int);
+INSERT INTO t1(a) VALUES (3),(1),(2),(4);
 SELECT a FROM (SELECT a FROM t1 UNION SELECT a FROM t1 ORDER BY a) AS test;
 a
 1

@@ -44,6 +44,7 @@ namespace oceanbase
         int get_log_from_lsync_server(const common::ObServer& server, const common::ObLogCursor& start_cursor,
                                       common::ObLogCursor& end_cursor, char* buf, const int64_t len, int64_t& read_count);
         bool is_using_lsync() const;
+        int64_t to_string(char* buf, const int64_t len) const;
         ObFetchLogReq& copy_req(ObFetchLogReq& req);
         ObFetchLogReq& update_req(ObFetchLogReq& req);
       protected:

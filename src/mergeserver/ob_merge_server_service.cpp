@@ -208,7 +208,6 @@ namespace oceanbase
     // check instance role is right for read master
     bool ObMergeServerService::check_instance_role(const bool read_master) const
     {
-
       bool result = true;
       if ((true == read_master) && (instance_role_.get_role() != ObiRole::MASTER))
       {
@@ -216,8 +215,6 @@ namespace oceanbase
       }
       return result;
     }
-
-
 
     int ObMergeServerService::init_ms_properties_()
     {
@@ -363,8 +360,17 @@ namespace oceanbase
         }
         else
         {
-          service_monitor_->init(merge_server_->get_self());
-          ObStatSingleton::init(service_monitor_);
+          ObServer sql_server;
+          if (!sql_server.set_ipv4_addr(merge_server_->get_self().get_ipv4(), (int32_t)merge_server_->get_config().obmysql_port))
+          {
+            TBSYS_LOG(WARN, "set sql server port for stat manager failed");
+            err = OB_ERROR;
+          }
+          else
+          {
+            service_monitor_->init(sql_server);
+            ObStatSingleton::init(service_monitor_);
+          }
         }
       }
 

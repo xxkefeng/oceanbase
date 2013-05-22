@@ -1,7 +1,7 @@
 10
 
 dir
-13572
+13927
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/mergeserver
 http://svn.app.taobao.net/repos/oceanbase
 
@@ -25,40 +25,6 @@ has-props
 
 
 dd5f2d26-132e-4cc5-bbb5-82d5b530e537
-
-sql_get_merger_test.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-313fa96a860ef029bbce7891c66adb4c
-2013-01-11T01:37:06.856192Z
-11397
-xiaochu.yh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-3744
 
 test_ob_scanner_loader.cpp
 file
@@ -94,6 +60,40 @@ xielun
 
 1112
 
+sql_get_merger_test.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+313fa96a860ef029bbce7891c66adb4c
+2013-01-11T01:37:06.856192Z
+11397
+xiaochu.yh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3744
+
 test_merger_stlmap.cpp
 file
 
@@ -127,74 +127,6 @@ xielun
 
 
 3944
-
-test_mj_client.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-f6d7b49362215bc6cd2b8ce79297f579
-2012-12-07T10:06:20.267999Z
-10778
-xiaochu.yh
-has-props
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-34528
-
-test_merger_tablet_location.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-3a09105034de682ce665508aa724c4ac
-2012-11-22T10:11:55.218935Z
-10559
-xiaochu.yh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-19196
 
 test_ob_ms_scan_event.cpp
 file
@@ -230,6 +162,74 @@ xiaochu.yh
 
 15152
 
+test_merger_tablet_location.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+3a09105034de682ce665508aa724c4ac
+2012-11-22T10:11:55.218935Z
+10559
+xiaochu.yh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+19196
+
+test_mj_client.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+f6d7b49362215bc6cd2b8ce79297f579
+2012-12-07T10:06:20.267999Z
+10778
+xiaochu.yh
+has-props
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+34528
+
 test_merger_scan_1.cpp
 file
 
@@ -264,40 +264,6 @@ xiaochu.yh
 
 8105
 
-test_merger_scan_2.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-fe6ec287a2c9afe9f3c0a1a8bef3a583
-2012-11-22T10:11:55.218935Z
-10559
-xiaochu.yh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-6931
-
 sql_get_request_test.cpp
 file
 
@@ -331,6 +297,40 @@ xiaochu.yh
 
 
 6903
+
+test_merger_scan_2.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+fe6ec287a2c9afe9f3c0a1a8bef3a583
+2012-11-22T10:11:55.218935Z
+10559
+xiaochu.yh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+6931
 
 test_merger_scan_3.cpp
 file
@@ -1049,40 +1049,6 @@ has-props
 
 11777
 
-mock_server.h
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-1c8037a3e14fbb4a5e23c7dc9ce99304
-2012-04-23T03:13:55.228722Z
-8043
-rizhao.ych
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-1645
-
 ob_ms_config_proxy_test.cpp
 file
 
@@ -1116,6 +1082,40 @@ xiaochu.yh
 
 
 2941
+
+mock_server.h
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+1c8037a3e14fbb4a5e23c7dc9ce99304
+2012-04-23T03:13:55.228722Z
+8043
+rizhao.ych
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1645
 
 test_merger_rpc_proxy.cpp
 file
@@ -1321,40 +1321,6 @@ xiaochu.yh
 
 3922
 
-mj.get_param.ini
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-c41c18046f21acbcd8e8b5d384fb035e
-2011-04-02T10:54:02.734430Z
-3949
-jiwushi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-154
-
 ob_location_list_cache_loader.h
 file
 
@@ -1388,6 +1354,40 @@ xiaochu.yh
 
 
 1670
+
+mj.get_param.ini
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+c41c18046f21acbcd8e8b5d384fb035e
+2011-04-02T10:54:02.734430Z
+3949
+jiwushi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+154
 
 ob_scanner_loader.h
 file
@@ -1457,6 +1457,9 @@ xielun
 
 9003
 
+pget_data
+dir
+
 ob_merge_server_params_test.cpp
 file
 
@@ -1490,9 +1493,6 @@ xiaochu.yh
 
 
 1563
-
-pget_data
-dir
 
 test_read_param_modifier.cpp
 file
@@ -1630,40 +1630,6 @@ qushan
 
 19027
 
-test_merger_scan.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-c3628a5afeea207d7c6b29545acb53f6
-2012-11-22T10:11:55.218935Z
-10559
-xiaochu.yh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-11561
-
 test_merger_root_proxy.cpp
 file
 
@@ -1698,17 +1664,17 @@ qushan
 
 8568
 
-test_merger_rpc_event.cpp
+test_merger_scan.cpp
 file
 
 
 
 
 2013-04-28T10:54:37.000000Z
-60767d37e09379d7a0b178d47f497d80
-2012-04-23T03:13:55.228722Z
-8043
-rizhao.ych
+c3628a5afeea207d7c6b29545acb53f6
+2012-11-22T10:11:55.218935Z
+10559
+xiaochu.yh
 
 
 
@@ -1730,7 +1696,7 @@ rizhao.ych
 
 
 
-2344
+11561
 
 test_chunk_server_task_dispatcher.cpp
 file
@@ -1765,6 +1731,40 @@ xiaochu.yh
 
 
 27582
+
+test_merger_rpc_event.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+60767d37e09379d7a0b178d47f497d80
+2012-04-23T03:13:55.228722Z
+8043
+rizhao.ych
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2344
 
 test_merger_reverse_operator.cpp
 file
@@ -1902,40 +1902,6 @@ qushan
 
 7227
 
-test_mutate_client.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-487ddd90bd6009cb65b56cab33f1de0c
-2012-08-23T07:27:09.664894Z
-9223
-zhuweng.yzf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-10355
-
 test_schema.ini
 file
 
@@ -1969,6 +1935,40 @@ rizhao.ych
 
 
 13170
+
+test_mutate_client.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+487ddd90bd6009cb65b56cab33f1de0c
+2012-08-23T07:27:09.664894Z
+9223
+zhuweng.yzf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+10355
 
 schema.ini
 file
@@ -2004,40 +2004,6 @@ qushan
 
 2213
 
-test_ms_get_event_parellel.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-5627d816ea132e7845bb7ff4edd672c0
-2012-11-22T10:11:55.218935Z
-10559
-xiaochu.yh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-19739
-
 test_ms_sub_get_request.cpp
 file
 
@@ -2071,6 +2037,40 @@ xielun
 
 
 4746
+
+test_ms_get_event_parellel.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+5627d816ea132e7845bb7ff4edd672c0
+2012-11-22T10:11:55.218935Z
+10559
+xiaochu.yh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+19739
 
 ob_scanner_loader.cpp
 file

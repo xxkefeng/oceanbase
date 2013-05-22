@@ -113,6 +113,10 @@ int ObRootMonitorTable::insert_all_meta_servers(ServerVector & servers) const
   {
     TBSYS_LOG(WARN, "add root server failed:ret[%d]", ret);
   }
+  else
+  {
+    TBSYS_LOG(DEBUG, "add root server succ:vip[%s]", server.addr.to_cstring());
+  }
   return ret;
 }
 

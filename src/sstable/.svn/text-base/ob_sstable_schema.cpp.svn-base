@@ -88,7 +88,18 @@ namespace oceanbase
       {
         // copy rowkey info
         rowkey_info = table_schema->get_rowkey_info();
-        iret = release_global_sstable_schema_manager(schema);
+      }
+      if (NULL != schema)
+      {
+        int err = release_global_sstable_schema_manager(schema);
+        if (err != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "release global sstable schema failed");
+          if (OB_SUCCESS == iret)
+          {
+            iret = err;
+          }
+        }
       }
       return iret;
     }

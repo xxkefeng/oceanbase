@@ -180,6 +180,7 @@ class Manager:
         if "exclude" not in self.opt:
             self.opt["exclude"] = None
         self.test_set = filter(lambda k: k not in self.opt["exclude"], self.test_set)
+        self.test_set = sorted(self.test_set)
 
     def shrink_errmsg(self, errmsg):
         if type(errmsg) == str:
@@ -230,7 +231,7 @@ class Manager:
     def start(self):
         def is_passed():
             return len(filter(lambda x: x["ret"] != 0, self.result)) == 0
-
+	
         self.check_tests()
         log_file = join(self.opt["log-dir"], \
                         (self.opt["log-temp"] or "obtest-%s.log") %\

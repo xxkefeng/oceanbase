@@ -11,8 +11,8 @@ drop table if exists t1,t2,t3,t4;
 # before we open tables
 #
 
-create table t1 (a varchar(20) primary key); 
-insert into t1 values ('foo');
+create table t1 (a varchar(20) primary key, b int); 
+insert into t1 values ('foo', 1);
 
  
 prepare stmt FROM SELECT length(a) FROM t1; 
@@ -31,8 +31,8 @@ drop table t1;
 # 
 
 
-create table t1 (a int primary key);
-insert into t1 (a) values (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
+create table t1 (a int primary key, b int);
+insert into t1 (a,b) values (1,0), (2,0), (3,0), (4,0), (5,0), (6,0), (7,0), (8,0), (9,0), (10,0);
 
 
 prepare stmt from select * from t1 limit ?, ?;
@@ -116,7 +116,7 @@ DROP TABLE IF EXISTS t1, t2, t3;
 
 
 CREATE TABLE t1 (i INT primary key, j INT);
-CREATE TABLE t2 (i INT primary key);
+CREATE TABLE t2 (i INT primary key, j INT);
 CREATE TABLE t3 (i INT primary key, j INT);
 
 
@@ -140,11 +140,11 @@ DROP TABLE IF EXISTS t1, t2;
 --enable_warnings
 
 
-CREATE TABLE t1 (i INT  primary key);
-CREATE TABLE t2 (i INT primary key);
+CREATE TABLE t1 (i INT primary key, j INT);
+CREATE TABLE t2 (i INT primary key, j INT);
 
-INSERT INTO t1 VALUES (1), (2);
-INSERT INTO t2 VALUES (1);
+INSERT INTO t1 VALUES (1,0), (2,0);
+INSERT INTO t2 VALUES (1,0);
 
 
 PREPARE stmt FROM SELECT t2.i FROM t1 LEFT JOIN t2 ON t2.i = t1.i

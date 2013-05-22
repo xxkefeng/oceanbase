@@ -147,6 +147,11 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
       if(OB_SUCCESS != (ret = tablet_read_->open()))
       {
         TBSYS_LOG(WARN, "open tablet scan fail:ret[%d]", ret);
+        if (OB_DUPLICATE_COLUMN == ret)
+        {
+          TBSYS_LOG(USER_ERROR, "Duplicate entry for key \'PRIMARY\'");
+          ret = OB_ERR_PRIMARY_KEY_DUPLICATE;
+        }
       }
       PROFILE_LOG_TIME(DEBUG, "tablet_read_ open complete ret[%d]", ret);
     }
@@ -325,4 +330,3 @@ void ObTabletService::set_timeout_us(int64_t timeout_us)
 {
   timeout_us_ = timeout_us;
 }
-

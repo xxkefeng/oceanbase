@@ -19,7 +19,7 @@ a	b
 1	1
 2	2
 3	3
-ob1.ups0.force_stop
+ob1.$master_master_ups.force_stop
 create table t3(a int primary key,b int);
 insert into t3 values(1,1),(2,2);
 update t1 set b='d' where a='1';
@@ -29,8 +29,8 @@ a	b
 2	b
 3	c
 drop table t2;
-ob1.ups0.start
-ob1.change_ups_master ups0
+ob1.$master_master_ups.start
+ob1.change_ups_master $a
 select * from t1;
 a	b
 1	d
@@ -42,5 +42,3 @@ a	b
 2	2
 drop table t1;
 drop table t3;
-ob1.collect_log
-ob2.collect_log

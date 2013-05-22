@@ -6318,7 +6318,7 @@ int ObTransformer::cons_table_definition(
     }
     databuff_printf(buf, buf_len, pos,
                     // "REPLICA_NUM = %ld, "
-                    "USE_BLOOM_FILTER = %s\n",
+                    "USE_BLOOM_FILTER = %s",
                     // table_schema.get_replica_num(),
                     table_schema.is_use_bloomfilter() ? "TRUE" : "FALSE");
   }

@@ -126,23 +126,23 @@ DROP TABLE t1;
 ##
 ## decimal-related tests
 ##
-create table t2 (ff double primary key);
-insert into t2 values (2.2);
+create table t2 (ff double primary key, i int);
+insert into t2 values (2.2,0);
 #select cast(sum(distinct ff) as decimal(5,2)) from t2;
 #select cast(sum(distinct ff) as signed) from t2;
 #select cast(variance(ff) as decimal(10,3)) from t2;
 #select cast(min(ff) as decimal(5,2)) from t2;
 #
-create table t1 (df double primary key);
-insert into t1 values(1.1);
-insert into t1 values(2.2);
+create table t1 (df double primary key, i int);
+insert into t1 values(1.1,0);
+insert into t1 values(2.2,0);
 #select cast(sum(distinct df) as signed) from t1;
 #select cast(min(df) as signed) from t1;
 select 1e8 * sum(distinct df) from t1;
 select 1e8 * min(df) from t1;
 #
-create table t3 (ifl int primary key);
-insert into t3 values(1), (2);
+create table t3 (ifl int primary key, i int);
+insert into t3 values(1,0), (2,0);
 #select cast(min(ifl) as decimal(5,2)) from t3;
 #
 drop table t1, t2, t3;

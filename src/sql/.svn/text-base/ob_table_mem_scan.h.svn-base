@@ -93,6 +93,7 @@ namespace oceanbase
         bool has_project_;
         bool has_filter_;
         bool has_limit_;
+        bool plan_generated_;
     };
   } // end namespace sql
 } // end namespace oceanbase

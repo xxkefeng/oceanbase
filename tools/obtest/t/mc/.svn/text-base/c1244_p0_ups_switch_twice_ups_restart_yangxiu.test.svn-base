@@ -60,10 +60,8 @@ if($a == $b)
 select * from t1;
 select * from t3;
 
-deploy ob1.stop;
-deploy ob2.stop;
-deploy ob1.collect_log;
-deploy ob2.collect_log;
+
+
 
 
 

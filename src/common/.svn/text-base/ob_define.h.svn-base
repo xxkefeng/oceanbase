@@ -296,7 +296,7 @@ namespace oceanbase
     const int OB_ERR_HINT_UNKNOWN = -5063;
 
     const int OB_ERR_SQL_END = -5999;
-#define IS_SQL_ERR(e) (OB_ERR_SQL_END >= e && OB_ERR_SQL_START <= e)
+#define IS_SQL_ERR(e) (OB_ERR_SQL_END <= e && OB_ERR_SQL_START >= e)
     //////////////////////////////////////////////////////////////// end of ob error code
 
     typedef int64_t    ObDateTime;

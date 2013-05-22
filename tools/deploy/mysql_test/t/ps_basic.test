@@ -31,8 +31,8 @@ drop table t1;
 # Case2 
 ##
 
-create table t1(pk int primary key);
-insert into t1 values(1),(2),(3);
+create table t1(pk int primary key, b int);
+insert into t1 values(1,0),(2,0),(3,0);
 
 prepare stmt1 from select * from t1 where pk=?;
 prepare stmt2 from select pk from t1 where pk=?;
@@ -50,21 +50,20 @@ drop table t1;
 
 
 
-create table t1(pk int primary key);
-
-prepare stmt1 from insert into t1 values(?);
-prepare stmt2 from replace into t1 values(?),(?);
-set @a=1;
-set @b=2;
-execute stmt1 using @a;
-execute stmt2 using @a,@b;
-execute stmt2 using @a,@a;
-
-
-select * from t1;
+#create table t1(pk int primary key);
+#prepare stmt1 from insert into t1 values(?);
+#prepare stmt2 from replace into t1 values(?),(?);
+#set @a=1;
+#set @b=2;
+#execute stmt1 using @a;
+#execute stmt2 using @a,@b;
+#execute stmt2 using @a,@a;
 
 
-drop table t1;
+#select * from t1;
+
+
+#drop table t1;
 
 ##
 # Case 4

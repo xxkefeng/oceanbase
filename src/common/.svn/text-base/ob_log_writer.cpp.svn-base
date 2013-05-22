@@ -200,11 +200,11 @@ int ObLogWriter::flush_log(TraceLog::LogBuffer &tlog_buffer, const bool sync_to_
       int64_t net_start_time_us = tbsys::CTimeUtil::getTime();
       if (OB_SUCCESS != (send_err = slave_mgr_->post_log_to_slave(buf, len)))
       {
-        TBSYS_LOG(ERROR, "slave_mgr.send_data(buf=%p[%ld], %s)=>%d", buf, len, to_cstring(*this), send_err);
+        TBSYS_LOG(WARN, "slave_mgr.send_data(buf=%p[%ld], %s)=>%d", buf, len, to_cstring(*this), send_err);
       }
       if (OB_SUCCESS != (send_err = slave_mgr_->wait_post_log_to_slave(buf, len)))
       {
-        TBSYS_LOG(ERROR, "slave_mgr.send_data(buf=%p[%ld], %s)=>%d", buf, len, to_cstring(*this), send_err);
+        TBSYS_LOG(ERROR, "slave_mgr.send_data(buf=%p[%ld], cur_write=[%s,%s], %s)=>%d", buf, len, to_cstring(start_cursor), to_cstring(end_cursor), to_cstring(*this), send_err);
       }
       else
       {

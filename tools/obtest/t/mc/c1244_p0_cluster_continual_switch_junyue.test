@@ -30,5 +30,5 @@ deploy ob2.switch_cluster ob1;
 deploy ob1.prepare s 300000;
 deploy ob1.mget 1 200002 400004 500005 600006 700007;
 
-deploy ob1.collect_log;
-deploy ob2.collect_log;
+
+

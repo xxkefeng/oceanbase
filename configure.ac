@@ -186,6 +186,12 @@
 	AC_SUBST([AM_CFLAGS])
 	AC_SUBST([AM_LDFLAGS])
 
+    if test "X${CXXFLAGS}" = "X-g -O2"; then
+        CXXFLAGS=""
+    fi
+    AC_SUBST([CXXFLAGS])
+    AC_MSG_RESULT([CXXFLAGS=${CXXFLAGS}])
+
     AC_ARG_WITH([mysqltest],
     AS_HELP_STRING([--with-mysqltest],
     [whether to build mysqltest (default is NO)]),

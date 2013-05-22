@@ -196,6 +196,7 @@ influx_id	varchar(64),
 inst_account_no	varchar(32),
 gmt_create	datetime,
 virtual_col1	int,
+a               int,
 primary key(influx_id,inst_account_no,gmt_create,virtual_col1)
 );
 # influx_id+inst_account_no+gmt_create+inlux_id主键 ，满足fin_influx_payer的第3种where influx_id=?查询

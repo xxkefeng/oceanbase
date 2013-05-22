@@ -83,12 +83,12 @@ namespace oceanbase
               }
               else
               {
-                TBSYS_LOG(WARN, "wait_replay_retry_num[%ld], replay_cursor[%s] != master_end_cursor[%s], need wait replay",
-                          wait_replay_retry_num, to_cstring(replayed_cursor), to_cstring(master_end_cursor_));
+                // TBSYS_LOG(WARN, "wait_replay_retry_num[%ld], replay_cursor[%s] != master_end_cursor[%s], need wait replay",
+                //           wait_replay_retry_num, to_cstring(replayed_cursor), to_cstring(master_end_cursor_));
                 if (0 == (++wait_replay_retry_num % 1000))
                 {
                   ret = OB_LOG_NOT_SYNC;
-                  TBSYS_LOG(ERROR, "wait_replay_retry too many times[%ld], [%s->%s],end replay anyway!",
+                  TBSYS_LOG(ERROR, "wait_replay_retry too many times[%ld], [%s->%s]",
                             wait_replay_retry_num, to_cstring(replayed_cursor), to_cstring(master_end_cursor_));
                 }
               }

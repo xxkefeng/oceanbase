@@ -1,7 +1,7 @@
 10
 
 dir
-13572
+13927
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/deploy/perf
 http://svn.app.taobao.net/repos/oceanbase
 
@@ -25,40 +25,6 @@ yanran.hfs
 
 
 dd5f2d26-132e-4cc5-bbb5-82d5b530e537
-
-perf.py
-file
-
-
-
-
-2013-04-28T10:54:32.000000Z
-35ea9b782addd12e597be7ec9c1bf181
-2013-03-16T14:22:19.742130Z
-12665
-yanran.hfs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-1164
 
 fin_point.sql
 file
@@ -94,6 +60,40 @@ yanran.hfs
 
 5180
 
+perf.py
+file
+
+
+
+
+2013-04-28T10:54:32.000000Z
+35ea9b782addd12e597be7ec9c1bf181
+2013-03-16T14:22:19.742130Z
+12665
+yanran.hfs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1164
+
 fin_range.sql
 file
 
@@ -127,74 +127,6 @@ yanran.hfs
 
 
 5180
-
-fin_point.create
-file
-
-
-
-
-2013-04-28T10:54:32.000000Z
-469b04a477e5b2c48af16937bf6b4b1f
-2013-03-16T14:22:19.742130Z
-12665
-yanran.hfs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-586
-
-1.py
-file
-
-
-
-
-2013-04-28T10:54:32.000000Z
-b819525055c88973bc935cf4c613511d
-2013-03-25T12:08:02.744173Z
-12843
-yanran.hfs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-4197
 
 simple.sql
 file
@@ -230,16 +162,16 @@ yanran.hfs
 
 1468
 
-range.sql
+1.py
 file
 
 
 
 
 2013-04-28T10:54:32.000000Z
-5561536fd4041ed9ea20896d9926d5ac
-2013-03-25T10:44:23.100597Z
-12841
+b819525055c88973bc935cf4c613511d
+2013-03-25T12:08:02.744173Z
+12843
 yanran.hfs
 
 
@@ -262,18 +194,18 @@ yanran.hfs
 
 
 
-1845
+4197
 
-perf.conf.template
+fin_point.create
 file
 
 
 
 
 2013-04-28T10:54:32.000000Z
-97a0f9c938e79a8af86304c22e172346
-2013-03-15T07:55:37.971594Z
-12650
+469b04a477e5b2c48af16937bf6b4b1f
+2013-03-16T14:22:19.742130Z
+12665
 yanran.hfs
 
 
@@ -296,18 +228,18 @@ yanran.hfs
 
 
 
-1294
+586
 
-obsb.yanran.hfs.schema
+fin_range.create
 file
 
 
 
 
 2013-04-28T10:54:32.000000Z
-e3b01c72c71e18e62c36f985cb5aa231
-2013-03-15T07:55:37.971594Z
-12650
+af986e6491533ae4d1e6b643b69577c9
+2013-03-16T14:22:19.742130Z
+12665
 yanran.hfs
 
 
@@ -330,7 +262,7 @@ yanran.hfs
 
 
 
-105
+604
 
 insert_single_row.sql
 file
@@ -366,16 +298,16 @@ yanran.hfs
 
 1476
 
-fin_range.create
+obsb.yanran.hfs.schema
 file
 
 
 
 
 2013-04-28T10:54:32.000000Z
-af986e6491533ae4d1e6b643b69577c9
-2013-03-16T14:22:19.742130Z
-12665
+e3b01c72c71e18e62c36f985cb5aa231
+2013-03-15T07:55:37.971594Z
+12650
 yanran.hfs
 
 
@@ -398,7 +330,75 @@ yanran.hfs
 
 
 
-604
+105
+
+perf.conf.template
+file
+
+
+
+
+2013-04-28T10:54:32.000000Z
+97a0f9c938e79a8af86304c22e172346
+2013-03-15T07:55:37.971594Z
+12650
+yanran.hfs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1294
+
+range.sql
+file
+
+
+
+
+2013-04-28T10:54:32.000000Z
+5561536fd4041ed9ea20896d9926d5ac
+2013-03-25T10:44:23.100597Z
+12841
+yanran.hfs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1845
 
 simple.create
 file
@@ -468,40 +468,6 @@ has-props
 
 3107
 
-range.create
-file
-
-
-
-
-2013-04-28T10:54:32.000000Z
-161e7e651b683171fd68f625efeddffe
-2013-03-25T10:44:23.100597Z
-12841
-yanran.hfs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-108
-
 insert_single_row.create
 file
 
@@ -535,6 +501,40 @@ yanran.hfs
 
 
 117
+
+range.create
+file
+
+
+
+
+2013-04-28T10:54:32.000000Z
+161e7e651b683171fd68f625efeddffe
+2013-03-25T10:44:23.100597Z
+12841
+yanran.hfs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+108
 
 replace_single_row.sql
 file

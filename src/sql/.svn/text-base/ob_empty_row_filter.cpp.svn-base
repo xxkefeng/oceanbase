@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_empty_row_filter.cpp 
+ * ob_empty_row_filter.cpp
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -38,7 +38,7 @@ int ObEmptyRowFilter::open()
     {
       TBSYS_LOG(DEBUG, "empty row filter row desc[%s] child[%s]", to_cstring(*row_desc), to_cstring(*child_op_));
     }
-    
+
     cur_row_desc_.reset();
     for (int64_t i = 0; OB_SUCCESS == ret && i < row_desc->get_column_num(); i ++)
     {
@@ -120,7 +120,11 @@ int ObEmptyRowFilter::get_row_desc(const common::ObRowDesc *&row_desc) const
 int64_t ObEmptyRowFilter::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
-  databuff_printf(buf, buf_len, pos, "ObEmptyRowFilter()");
+  databuff_printf(buf, buf_len, pos, "ObEmptyRowFilter()\n");
+  if (NULL != child_op_)
+  {
+    pos += child_op_->to_string(buf+pos, buf_len-pos);
+  }
   return pos;
 }
 
@@ -149,7 +153,3 @@ DEFINE_GET_SERIALIZE_SIZE(ObEmptyRowFilter)
 {
   return 0;
 }
-
-
-
-

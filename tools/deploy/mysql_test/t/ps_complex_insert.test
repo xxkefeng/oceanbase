@@ -110,8 +110,8 @@ while($l)
 select * from t1;
 drop table t1;
 
-create table t1(i1 int, f1 float, s1 varchar, d1 datetime,primary key(i1,f1,s1,d1));
-prepare stmt_insert from insert into t1 values(?,?,?,?),(?,?,?,?);
+create table t1(i1 int, f1 float, s1 varchar, d1 datetime, i2 int, primary key(i1,f1,s1,d1));
+prepare stmt_insert from insert into t1 values(?,?,?,?,0),(?,?,?,?,0);
 --let $l=10
 while($l)
 {

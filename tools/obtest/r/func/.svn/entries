@@ -1,15 +1,15 @@
 10
 
 dir
-13572
+13927
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/obtest/r/func
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-04-25T02:32:18.332061Z
-13495
-fff.fanff
+2013-05-08T08:16:47.809785Z
+13678
+xiaojun.chengxj
 
 
 
@@ -26,17 +26,51 @@ fff.fanff
 
 dd5f2d26-132e-4cc5-bbb5-82d5b530e537
 
+c1111_p0_bug_stop_masterups_after_create_table_junyue.result
+file
+
+
+
+
+2013-05-22T10:06:12.000000Z
+80ce2122ded4866b30664654dd35ae59
+2013-05-08T08:16:47.809785Z
+13678
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+147
+
 c1111_p0_new_cluster_junyue.result
 file
 
 
 
 
-2013-04-28T10:54:26.000000Z
-4acfc834550ea41419ae1442c5439357
-2013-04-25T02:32:18.332061Z
-13495
-fff.fanff
+2013-05-22T10:06:12.000000Z
+742fb507df0f4bf56345d64e990df34d
+2013-05-08T08:16:47.809785Z
+13678
+xiaojun.chengxj
 
 
 
@@ -58,5 +92,5 @@ fff.fanff
 
 
 
-323
+307
 

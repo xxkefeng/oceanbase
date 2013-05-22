@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 79
-/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver
+/repos/oceanbase/!svn/ver/13864/branches/0_4_1_release/oceanbase/src/rootserver
 END
 ob_ups_heartbeat_runnable.h
 K 25
@@ -115,7 +115,7 @@ ob_root_monitor_table.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 105
-/repos/oceanbase/!svn/ver/13184/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_monitor_table.cpp
+/repos/oceanbase/!svn/ver/13736/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_monitor_table.cpp
 END
 ob_ups_manager.h
 K 25
@@ -171,18 +171,6 @@ svn:wc:ra_dav:version-url
 V 106
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/rootserver/ob_tablet_info_manager.cpp
 END
-ob_root_admin2_main.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 103
-/repos/oceanbase/!svn/ver/13031/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_admin2_main.cpp
-END
-ob_root_ddl_operator.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 104
-/repos/oceanbase/!svn/ver/13200/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_ddl_operator.cpp
-END
 ob_root_table2.h
 K 25
 svn:wc:ra_dav:version-url
@@ -194,6 +182,18 @@ K 25
 svn:wc:ra_dav:version-url
 V 96
 /repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_worker.h
+END
+ob_root_admin2_main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/13031/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_admin2_main.cpp
+END
+ob_root_ddl_operator.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/13200/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_ddl_operator.cpp
 END
 ob_root_admin_cmd.h
 K 25
@@ -223,7 +223,7 @@ ob_root_server2.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 99
-/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_server2.cpp
+/repos/oceanbase/!svn/ver/13864/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_server2.cpp
 END
 ob_root_table_proxy.cpp
 K 25
@@ -385,7 +385,7 @@ ob_root_log_replay.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 102
-/repos/oceanbase/!svn/ver/13434/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_log_replay.cpp
+/repos/oceanbase/!svn/ver/13576/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_log_replay.cpp
 END
 ob_check_point2str.cpp
 K 25
@@ -541,7 +541,7 @@ ob_root_server_config.h
 K 25
 svn:wc:ra_dav:version-url
 V 103
-/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_server_config.h
+/repos/oceanbase/!svn/ver/13784/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_server_config.h
 END
 ob_root_callback.h
 K 25
@@ -589,7 +589,7 @@ ob_root_worker.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 98
-/repos/oceanbase/!svn/ver/13554/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_worker.cpp
+/repos/oceanbase/!svn/ver/13740/branches/0_4_1_release/oceanbase/src/rootserver/ob_root_worker.cpp
 END
 ob_root_log_worker.cpp
 K 25

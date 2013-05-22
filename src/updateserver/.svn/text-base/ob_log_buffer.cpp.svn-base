@@ -45,7 +45,7 @@ namespace oceanbase
     int ObLogBuffer::reset()
     {
       int err = OB_SUCCESS;
-      TBSYS_LOG(INFO, "reset()");
+      TBSYS_LOG(INFO, "reset(%s)", to_cstring(*this));
       if (OB_SUCCESS != (err = check_state()))
       {
         TBSYS_LOG(ERROR, "check_state()=>%d", err);
@@ -316,14 +316,18 @@ namespace oceanbase
       }
       else if (OB_SUCCESS == err)
       {}
-      else if (OB_DISCONTINUOUS_LOG == err && OB_SUCCESS != (err = log_buf->reset()))
+      else
       {
-        TBSYS_LOG(ERROR, "reset()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = log_buf->append_log(start_id, end_id, buf, len)))
-      {
-        TBSYS_LOG(ERROR, "log_buf->append_log(pos=%ld, range=[%ld, %ld], buf=%p[%ld])=>%d",
-                  log_buf->get_end_pos(), start_id, end_id, buf, len, err);
+        TBSYS_LOG(WARN, "append_to_log_buffer(%s, log_id=[%ld,%ld], buf=%p[%ld])", to_cstring(*log_buf), start_id, end_id, buf, len);
+        if (OB_SUCCESS != (err = log_buf->reset()))
+        {
+          TBSYS_LOG(ERROR, "reset()=>%d", err);
+        }
+        else if (OB_SUCCESS != (err = log_buf->append_log(start_id, end_id, buf, len)))
+        {
+          TBSYS_LOG(ERROR, "log_buf->append_log(pos=%ld, range=[%ld, %ld], buf=%p[%ld])=>%d",
+                    log_buf->get_end_pos(), start_id, end_id, buf, len, err);
+        }
       }
       return err;
     }

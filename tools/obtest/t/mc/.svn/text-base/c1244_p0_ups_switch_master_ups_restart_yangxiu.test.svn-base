@@ -30,8 +30,10 @@ if($a == $b)
 #restart master cluster ups
 sleep 10;
 deploy ob1.$a.force_stop;
+#sleep 3; # add by junyue
 deploy ob1.$a.start;
 deploy ob1.$b.force_stop;
+# sleep 3; # add by junyue
 deploy ob1.$b.start;
 
 #sql
@@ -61,8 +63,8 @@ drop table t1;
 drop table t3;
 deploy ob1.stop;
 deploy ob2.stop;
-deploy ob1.collect_log;
-deploy ob2.collect_log;
+
+
 
 
 

@@ -1,7 +1,7 @@
 10
 
 dir
-13572
+13927
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/updateserver
 http://svn.app.taobao.net/repos/oceanbase
 
@@ -162,40 +162,6 @@ yuanqi.xhf
 
 6243
 
-test_disk_path.cpp
-file
-
-
-
-
-2013-04-28T10:54:38.000000Z
-32c13a1070997a874c1c22432aecdcb0
-2013-03-19T02:48:01.167639Z
-12714
-xiaochu.yh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-3654
-
 ob_mock_ups.h
 file
 
@@ -229,6 +195,40 @@ yuanqi.xhf
 
 
 4572
+
+test_disk_path.cpp
+file
+
+
+
+
+2013-04-28T10:54:38.000000Z
+32c13a1070997a874c1c22432aecdcb0
+2013-03-19T02:48:01.167639Z
+12714
+xiaochu.yh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3654
 
 test_init.h
 file
@@ -298,40 +298,6 @@ rongxuan
 
 2791
 
-test_base.h
-file
-
-
-
-
-2013-04-28T10:54:38.000000Z
-e1f87643d5f1110ce7f89b361df8809e
-2013-03-06T04:12:38.831654Z
-12370
-zhuweng.yzf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-1610
-
 test_ups_mvcc.cpp
 file
 
@@ -365,6 +331,40 @@ zhuweng.yzf
 
 
 68471
+
+test_base.h
+file
+
+
+
+
+2013-04-28T10:54:38.000000Z
+e1f87643d5f1110ce7f89b361df8809e
+2013-03-06T04:12:38.831654Z
+12370
+zhuweng.yzf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1610
 
 test_ups_mutator.cpp
 file
@@ -400,17 +400,17 @@ qushan
 
 5007
 
-test_async_rw_log.cpp
+test_memtable.cpp
 file
 
 
 
 
 2013-04-28T10:54:38.000000Z
-628b7b2f39a95b808bf7c53aa36e6e76
-2012-10-31T08:46:52.461887Z
-10276
-yuanqi.xhf
+8dca320080eac2f31549326463df2137
+2012-08-20T03:06:22.557538Z
+9163
+qushan
 
 
 
@@ -432,7 +432,7 @@ yuanqi.xhf
 
 
 
-9634
+26835
 
 test_apply_with_condition.cpp
 file
@@ -468,17 +468,17 @@ rizhao.ych
 
 26196
 
-test_memtable.cpp
+test_async_rw_log.cpp
 file
 
 
 
 
 2013-04-28T10:54:38.000000Z
-8dca320080eac2f31549326463df2137
-2012-08-20T03:06:22.557538Z
-9163
-qushan
+628b7b2f39a95b808bf7c53aa36e6e76
+2012-10-31T08:46:52.461887Z
+10276
+yuanqi.xhf
 
 
 
@@ -500,7 +500,7 @@ qushan
 
 
 
-26835
+9634
 
 test_utils2.h
 file
@@ -1015,40 +1015,6 @@ yubai
 
 8443
 
-test_helper.h
-file
-
-
-
-
-2013-04-28T10:54:38.000000Z
-96d2043216150f4d84f682bcb89c0ba8
-2012-12-07T10:06:20.267999Z
-10778
-xiaochu.yh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-1824
-
 test_pthread_upscache2.cpp
 file
 
@@ -1082,6 +1048,40 @@ rongxuan
 
 
 3389
+
+test_helper.h
+file
+
+
+
+
+2013-04-28T10:54:38.000000Z
+96d2043216150f4d84f682bcb89c0ba8
+2012-12-07T10:06:20.267999Z
+10778
+xiaochu.yh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1824
 
 mock_server.h
 file
@@ -1222,40 +1222,6 @@ yanran
 
 3915
 
-test.schema
-file
-
-
-
-
-2013-04-28T10:54:38.000000Z
-4a12c456448b8fba8de99742a449eccd
-2012-12-26T13:18:10.998404Z
-11093
-yuanqi.xhf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-490
-
 test1.ini
 file
 
@@ -1289,6 +1255,40 @@ rizhao
 
 
 1803
+
+test.schema
+file
+
+
+
+
+2013-04-28T10:54:38.000000Z
+4a12c456448b8fba8de99742a449eccd
+2012-12-26T13:18:10.998404Z
+11093
+yuanqi.xhf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+490
 
 mock_chunk_server2.h
 file
@@ -1596,40 +1596,6 @@ yubai
 
 10798
 
-test_resource_pool.cpp
-file
-
-
-
-
-2013-04-28T10:54:38.000000Z
-9bd89e39e48f5dea68a668170ffa404f
-2013-01-23T09:41:10.785215Z
-11669
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-1557
-
 mock_server.cpp
 file
 
@@ -1663,6 +1629,40 @@ rizhao
 
 
 6601
+
+test_resource_pool.cpp
+file
+
+
+
+
+2013-04-28T10:54:38.000000Z
+9bd89e39e48f5dea68a668170ffa404f
+2013-01-23T09:41:10.785215Z
+11669
+yubai
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1557
 
 rwt.h
 file
@@ -1800,40 +1800,6 @@ yanran
 
 7311
 
-test_session_mgr.cpp
-file
-
-
-
-
-2013-04-28T10:54:38.000000Z
-9d116eb13b3f072d003099f3432e4c80
-2013-03-27T08:20:36.471954Z
-12878
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-3876
-
 mock_root_server.h
 file
 
@@ -1868,17 +1834,17 @@ yubai
 
 845
 
-test_ob_log_buffer.cpp
+test_session_mgr.cpp
 file
 
 
 
 
 2013-04-28T10:54:38.000000Z
-a1c35c3a7a2b88404dcc3360aa4de8c9
-2012-10-31T08:46:52.461887Z
-10276
-yuanqi.xhf
+9d116eb13b3f072d003099f3432e4c80
+2013-03-27T08:20:36.471954Z
+12878
+yubai
 
 
 
@@ -1900,7 +1866,7 @@ yuanqi.xhf
 
 
 
-10511
+3876
 
 mock_chunk_server2.cpp
 file
@@ -1935,6 +1901,40 @@ rizhao.ych
 
 
 9948
+
+test_ob_log_buffer.cpp
+file
+
+
+
+
+2013-04-28T10:54:38.000000Z
+a1c35c3a7a2b88404dcc3360aa4de8c9
+2012-10-31T08:46:52.461887Z
+10276
+yuanqi.xhf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+10511
 
 test_upscache.cpp
 file
@@ -2004,40 +2004,6 @@ yubai
 
 6063
 
-test_schema.ini
-file
-
-
-
-
-2013-04-28T10:54:38.000000Z
-3c155d2357bd8d2de697948ea73a92db
-2011-05-04T10:05:01.635401Z
-4207
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-2258
-
 test_lock_mgr.cpp
 file
 
@@ -2071,6 +2037,40 @@ zhuweng.yzf
 
 
 2121
+
+test_schema.ini
+file
+
+
+
+
+2013-04-28T10:54:38.000000Z
+3c155d2357bd8d2de697948ea73a92db
+2011-05-04T10:05:01.635401Z
+4207
+yubai
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2258
 
 test_utils.h
 file

@@ -26,7 +26,8 @@ create table if not exists t1
 
 create table if not exists t1
 (
-   c1 TINYINT primary key
+   c1 TINYINT primary key,
+   c2 int
 );
 
 
@@ -37,3 +38,8 @@ select table_name,table_id,table_type,load_type,table_def_type,rowkey_column_num
 
 
 drop table t1;
+
+--error 2
+create table t1(f1 int primary key);
+--error 2
+create table t1(f1 int,f2 varchar, primary key(f1,f2));

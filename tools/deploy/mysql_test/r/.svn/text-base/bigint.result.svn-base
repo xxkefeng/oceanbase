@@ -76,31 +76,33 @@ drop table t1;
 create table t1 (
 value64  int ,
 value32  int,
+extra    int,
 primary key(value64, value32)
 );
 create table t2 (
 value64  int,
 value32  int,
+extra    int,
 primary key(value64, value32)
 );
-insert into t1 values(17156792991891826145, 1);
-insert into t1 values( 9223372036854775807, 2);
-insert into t2 values(17156792991891826145, 3);
-insert into t2 values( 9223372036854775807, 4);
+insert into t1(value64,value32)  values(17156792991891826145, 1);
+insert into t1(value64,value32)  values( 9223372036854775807, 2);
+insert into t2(value64,value32)  values(17156792991891826145, 3);
+insert into t2(value64,value32)  values( 9223372036854775807, 4);
 select * from t1;
-value64	value32
-9223372036854775807	1
-9223372036854775807	2
+value64	value32	extra
+9223372036854775807	1	NULL
+9223372036854775807	2	NULL
 select * from t2;
-value64	value32
-9223372036854775807	3
-9223372036854775807	4
+value64	value32	extra
+9223372036854775807	3	NULL
+9223372036854775807	4	NULL
 drop table t1, t2;
-create table t1 (sint64 int primary key);
-insert into t1 values (-9223372036854775808);
+create table t1 (sint64 int primary key, a int);
+insert into t1(sint64) values (-9223372036854775808);
 select * from t1;
-sint64
--9223372036854775807
+sint64	a
+-9223372036854775807	NULL
 drop table t1;
 create table t1 (a char(100) primary key, b varchar(100), c varchar(256), d varchar(256));
 insert into t1 values(
@@ -111,12 +113,12 @@ select * from t1;
 a	b	c	d
 9223372036854775807	9223372036854775807	9223372036854775807	9223372036854775807
 drop table t1;
-create table t1 ( quantity double primary key);
-insert into t1 values (500), (-500), (0), (-1);
+create table t1 ( quantity double primary key, extra int);
+insert into t1(quantity) values (500), (-500), (0), (-1);
 select * from t1;
-quantity
--500
--1
-0
-500
+quantity	extra
+-500	NULL
+-1	NULL
+0	NULL
+500	NULL
 drop table t1;

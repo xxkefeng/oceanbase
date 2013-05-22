@@ -420,6 +420,16 @@ namespace oceanbase
               TBSYS_LOG(INFO, "delete tablet (version=%ld) on rs succeed. ", tablet->get_data_version());
               tablet->set_merged();
               tablet->set_removed();
+
+              int32_t disk_no = 0;
+              if (OB_SUCCESS != tablet_manager_->get_serving_tablet_image().remove_tablet(
+                tablet->get_range(), tablet->get_data_version(), disk_no))
+              {
+                TBSYS_LOG(WARN, "failed to remove tablet from tablet image, "
+                                "version=%ld, disk=%d, range=%s",
+                          tablet->get_data_version(), tablet->get_disk_no(), 
+                          to_cstring(tablet->get_range()));
+              }
             }
           }
           else if (OB_SUCCESS != (ret = get_tablet_merger(thread_no, merger)))

@@ -549,7 +549,7 @@ def ObInstance():
         opt["host"] = call_(ob, 'ms0.ip')
 
         if "quick" in args or "quicktest" in args:
-            opt["test-set"] = ['create','count_distinct','join_basic','group_by_1','sq_from','compare', 'show','ps_complex','merge_basic']
+            opt["test-set"] = ['create','count_distinct','join_basic','group_by_1','sq_from','compare', 'show','ps_complex','update','merge_basic']
             need_reboot = False
             need_collect = False
         if "record" in args:

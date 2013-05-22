@@ -3,9 +3,9 @@ create table t1 (c_int int, c_ts timestamp, c_vchar varchar(250));
 ERROR HY000: no primary key specified:table_name[t1]
 drop table t1;
 ERROR 42S02: table 't1' does not exist
-create table t1( a int primary key);
-insert into t1 values(1);
-select * from t1;
+create table t1( a int primary key,b int);
+insert into t1 values(1,1);
+select a from t1;
 a
 1
 drop table t1;

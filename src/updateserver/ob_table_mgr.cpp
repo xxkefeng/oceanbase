@@ -1240,7 +1240,10 @@ namespace oceanbase
           else
           {
             SSTableID sst_id = sstable_entity_.get_sstable_id();
-            log_writer.write_replay_point(clog_id_);
+            if (SSTableID::START_MINOR_VERSION == sst_id.minor_version_start)
+            {
+              log_writer.write_replay_point(clog_id_);
+            }
             TBSYS_LOG(INFO, "dump sstable succ ret=%d %s", ret, sst_id.log_str());
             stat_ = DUMPED;
           }

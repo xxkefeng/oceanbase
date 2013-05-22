@@ -75,5 +75,5 @@ deploy ob2.check 4,3,select value from (select * from __all_server_stat) tt wher
 
 select * from t1;
 
-deploy ob1.collect_log;
-deploy ob2.collect_log;
+
+

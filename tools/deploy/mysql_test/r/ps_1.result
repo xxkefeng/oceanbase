@@ -76,15 +76,16 @@ NULL
 NULL
 create table t2
 (
-a int primary key
+a int primary key,
+b int
 );
-insert into t2 values (0);
+insert into t2(a) values (0);
 set @arg00=NULL ;
 prepare stmt1 from select 1 FROM t2 where a=? ;
 execute stmt1 using @arg00 ;
 1
 drop table t1,t2;
-create table t1(a varchar(2), b varchar(3), primary key(a,b));
+create table t1(a varchar(2), b varchar(3), primary key(a,b), c varchar(4));
 prepare stmt1 from select a, b from t1;
 execute stmt1;
 a	b
@@ -92,7 +93,7 @@ execute stmt1;
 a	b
 deallocate prepare stmt1;
 drop table t1;
-create table t1 (a varchar(10) primary key) ;
+create table t1 (a varchar(10) primary key, b varchar) ;
 insert into t1 (a) values ('yahoo');
 prepare stmt from select a from t1 where a like ?;
 set @var='google';
@@ -101,7 +102,7 @@ a
 execute stmt using @var;
 a
 drop table t1;
-create table t1 ( a int primary key );
+create table t1 ( a int primary key , b int);
 prepare stmt from select a from t1 where a between ? and ?;
 set @a=1;
 execute stmt using @a, @a;
@@ -112,24 +113,24 @@ execute stmt using @a, @a;
 a
 drop table t1;
 drop table if exists t1;
-create table t1 (c1 int not null, c2 int not null,
+create table t1 (c1 int not null, c2 int not null,c3 int,
 primary key  (c1,c2));
-insert into t1 values (200887, 860);
-insert into t1 values (200887, 200887);
+insert into t1(c1,c2) values (200887, 860);
+insert into t1(c1,c2) values (200887, 200887);
 select * from t1 where (c1=200887 and c2=200887) or c2=860;
-c1	c2
-200887	860
-200887	200887
+c1	c2	c3
+200887	860	NULL
+200887	200887	NULL
 prepare stmt from select * from t1 where (c1=200887 and c2=200887) or c2=860;
 execute stmt;
-c1	c2
-200887	860
-200887	200887
+c1	c2	c3
+200887	860	NULL
+200887	200887	NULL
 prepare stmt from select * from t1 where (c1=200887 and c2=?) or c2=?;
 set @a=200887;
 set @b=860;
 execute stmt using @a, @b;
-c1	c2
-200887	860
-200887	200887
+c1	c2	c3
+200887	860	NULL
+200887	200887	NULL
 drop table t1;

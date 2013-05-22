@@ -57,5 +57,5 @@ if($new_slave_master == $old_slave_master)
 {
     --echo slave cluster ups switch fail
 }
-deploy ob1.collect_log;
-deploy ob2.collect_log;
+
+

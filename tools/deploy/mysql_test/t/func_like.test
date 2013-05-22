@@ -7,9 +7,9 @@ drop table if exists t1;
 --enable_warnings
 ##
 #--real_sleep 10
-create table t1 (a varchar(10) primary key);
+create table t1 (a varchar(10) primary key, b int default 0);
 #--real_sleep 10
-insert into t1 values ('a'),('abc'),('abcd'),('hello'),('test');
+insert into t1 (a) values ('a'),('abc'),('abcd'),('hello'),('test');
 #explain extended select * from t1 where a like 'abc%';
 #explain extended select * from t1 where a like concat('abc','%');
 select * from t1 where a like 'abc%';
@@ -28,13 +28,13 @@ select * from t1 where a like '%abc\d%';
 drop table t1;
 
 #--real_sleep 10
-create table t1 (a varchar(10) primary key);
+create table t1 (a varchar(10) primary key, b int default 0);
 #--real_sleep 10
 #
 ##
 ## Bug #2231
 ##
-insert into t1 values ('a'), ('a\\b');
+insert into t1 (a) values ('a'), ('a\\b');
 select * from t1 where a like 'a\\%';
 #select * from t1 where a like 'a\\%' escape '#';
 #select * from t1 where a like 'a\\%' escape '#' and a like 'a\\\\b';

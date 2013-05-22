@@ -347,7 +347,7 @@ namespace oceanbase
         int ups_revoke_lease(const common::ObMsgRevokeLease &revoke_info);
         bool is_lease_valid() const;
         bool get_sync_state();
-        bool can_serve_read_req(const bool is_consistency_read);
+        bool can_serve_read_req(const bool is_consistency_read, const int64_t query_version);
         int init_fetch_thread(const common::ObFetchParam &fetch_param);
         int response_result(int32_t ret_code, ObPacket &pkt);
         int response_result(int32_t ret_code, const char *ret_string, ObPacket &pkt);

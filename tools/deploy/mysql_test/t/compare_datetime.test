@@ -3,7 +3,7 @@
 drop table if exists t1;
 --enable_warnings
 
-create table  t1(dt datetime primary key);
+create table  t1(dt datetime primary key, c int);
 
 let $day = 12;
 while ($day <= 14) 
@@ -11,7 +11,7 @@ while ($day <= 14)
   let $hour = 0;
   while( $hour < 24) 
   {
-    eval insert into t1 values('2012-2-$day $hour:00:00');
+    eval insert into t1 values('2012-2-$day $hour:00:00', 1);
     inc $hour;
   }
   inc $day;

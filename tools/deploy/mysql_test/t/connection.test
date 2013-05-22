@@ -9,13 +9,13 @@ connect (conn2,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
 connect (conn3,$OBMYSQL_MS0,admin,admin,test,$OBMYSQL_PORT);
 
 connection conn1;
-create table t1(a int primary key);
+create table t1(a int primary key,b int);
 let $a=1;
 --disable_query_log
 while($a<1000)
 {
 
-  eval insert into t1 values($a);
+  eval insert into t1(a) values($a);
   inc $a;
 }
 --enable_query_log
@@ -27,6 +27,6 @@ drop table t1;
 disconnect conn2;
 
 connection conn3;
-create table t1(a int primary key);
+create table t1(a int primary key,b int);
 drop table t1;
 disconnect conn3;

@@ -1,5 +1,17 @@
 K 25
 svn:wc:ra_dav:version-url
 V 83
-/repos/oceanbase/!svn/ver/13495/branches/0_4_1_release/oceanbase/tools/obtest/t/ups
+/repos/oceanbase/!svn/ver/13893/branches/0_4_1_release/oceanbase/tools/obtest/t/ups
+END
+1002_c1244_p0_select_master_commitlog_is_newer_yangxiu.test
+K 25
+svn:wc:ra_dav:version-url
+V 143
+/repos/oceanbase/!svn/ver/13893/branches/0_4_1_release/oceanbase/tools/obtest/t/ups/1002_c1244_p0_select_master_commitlog_is_newer_yangxiu.test
+END
+1001_c1244_p0_select_master_ups_when_master_ups_restart_yangxiu.test
+K 25
+svn:wc:ra_dav:version-url
+V 152
+/repos/oceanbase/!svn/ver/13874/branches/0_4_1_release/oceanbase/tools/obtest/t/ups/1001_c1244_p0_select_master_ups_when_master_ups_restart_yangxiu.test
 END

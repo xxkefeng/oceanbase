@@ -14,7 +14,7 @@ let $master_master_ups=deploy_get_value(ob1.get_master_ups);
 let $slave_master_ups=deploy_get_value(ob2.get_master_ups);
 --echo $slave_master_ups
 
-#deploy ob1.collect_log;
-#deploy ob2.collect_log;
+#
+#
 
 

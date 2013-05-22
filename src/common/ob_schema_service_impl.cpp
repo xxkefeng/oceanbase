@@ -605,6 +605,7 @@ if(OB_SUCCESS == ret) \
         column, NULL == cell_info ? "nil": print_cellinfo(cell_info)); \
   } \
 }
+
 #define ASSIGN_CREATE_TIME(column, field, type) \
 if(OB_SUCCESS == ret) \
 { \
@@ -1185,7 +1186,7 @@ int ObSchemaServiceImpl::fetch_table_schema(const ObString& table_name, TableSch
     if (!table_schema.is_valid())
     {
       ret = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(ERROR, "table schema is invalid");
+      TBSYS_LOG(ERROR, "check the table schema is invalid:table_name[%s]", table_schema.table_name_);
     }
   }
 

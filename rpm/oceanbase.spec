@@ -25,8 +25,8 @@ Vendor: TaoBao
 Prefix:%{_prefix}
 Source:%{NAME}-%{VERSION}.tar.gz
 BuildRoot: %(pwd)/%{name}-root
-BuildRequires: t-csrd-tbnet-devel >= 1.0.8 lzo >= 2.06 snappy >= 1.0.2 libaio-devel >= 0.3 t_libeasy-devel >= 1.0.12 openssl-devel >= 0.9.8 mysql-devel >= 5.0.77 t-mysql
-Requires: lzo >= 2.06 snappy >= 1.0.2 libaio >= 0.3 openssl >= 0.9.8 perl-DBI
+BuildRequires: t-csrd-tbnet-devel >= 1.0.8 lzo >= 2.06 snappy >= 1.0.2 libaio-devel >= 0.3 t_libeasy-devel >= 1.0.13-186 openssl-devel >= 0.9.8 mysql-devel >= 5.0.77
+Requires: lzo >= 2.06 snappy >= 1.0.2 libaio >= 0.3 openssl >= 0.9.8
 
 %package -n oceanbase-utils
 summary: OceanBase utility programs
@@ -60,7 +60,7 @@ OceanBase client library
 %build
 chmod u+x build.sh
 ./build.sh init
-./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes --with-mysqltest=yes --with-tblib-root=/opt/csr/common --with-easy-root=/usr --with-easy-lib-path=/usr/lib64
+./configure RELEASEID=%{RELEASE} --prefix=%{_prefix} --with-test-case=no --with-release=yes --with-tblib-root=/opt/csr/common --with-easy-root=/usr --with-easy-lib-path=/usr/lib64
 make %{?_smp_mflags}
 
 %install

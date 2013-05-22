@@ -37,17 +37,17 @@ isbn	city	libname	a
 007	Berkeley	Berkeley Public1	2
 000	New York	New York Public Libra	2
 drop table t1, t2, t3;
-create table t1 (f1 int primary key);
-insert into t1 values (1);
+create table t1 (f1 int primary key,f2 int);
+insert into t1 values (1,1);
 create table t2 (f1 int primary key,f2 int);
 drop table t1,t2;
-create table t1 (f int primary key);
+create table t1 (f int primary key,f2 int);
 select count(distinct f) from t1;
 count(distinct f)
 0
 drop table t1;
-create table t1 (a char(3), b char(20), primary key (a, b));
-insert into t1 values ('ABW', 'Dutch'), ('ABW', 'English');
+create table t1 (a char(3), b char(20),c int,primary key (a, b));
+insert into t1(a,b) values ('ABW', 'Dutch'), ('ABW', 'English');
 select count(distinct a) from t1 group by b;
 count(distinct a)
 1

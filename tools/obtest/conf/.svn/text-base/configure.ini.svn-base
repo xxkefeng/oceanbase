@@ -29,3 +29,5 @@ use_static_connection= 0 # only used when no connection created
 md5=bf0c9fcaa3b5c9b0c88376d8900f767f
 
 sysbench=/home/hudson/oceanbase-0.4/sysbench
+
+check_error=0

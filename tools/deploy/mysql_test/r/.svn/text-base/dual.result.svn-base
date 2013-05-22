@@ -56,10 +56,10 @@ select 1 limit 1;
 select 1+1 limit 2;
 1+1
 2
-create table t1(pk int primary key);
+create table t1(pk int primary key,extra int);
 select 1 from (select pk from t1) as t;
 1
-insert into t1 values(1),(2);
+insert into t1(pk) values(1),(2);
 select 1 from (select * from t1) as t;
 1
 1
@@ -107,7 +107,7 @@ select 1 union select 1 from dual;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'union select 1 from dual' at line 1
 select 1 union select 1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'union select 1' at line 1
-create table dual(name varchar primary key);
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'dual(name varchar primary key)' at line 1
+create table dual(name varchar primary key,a int);
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'dual(name varchar primary key,a int)' at line 1
 insert into dual values(1);
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'dual values(1)' at line 1

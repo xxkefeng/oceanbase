@@ -1696,6 +1696,7 @@ namespace oceanbase
         easy_request_t *req = packet->get_request();
         easy_addr_t addr = get_easy_addr(req);
         ObString message = ob_get_err_msg();
+        char msg_buf[64];
         if (message.length() <= 0)
         {
           if (NULL != result && 0 < strlen(result->get_message()))
@@ -1704,7 +1705,8 @@ namespace oceanbase
           }
           else
           {
-            message = ObString::make_string("unknown internal error"); // default error message
+            snprintf(msg_buf, 64, "unknown internal error, errno=%d", -result->get_errcode());
+            message = ObString::make_string(msg_buf); // default error message
           }
         }
         if (OB_SUCCESS == (ret = epacket.set_oberrcode(result->get_errcode()))

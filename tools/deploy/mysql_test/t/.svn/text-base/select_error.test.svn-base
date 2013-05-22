@@ -9,7 +9,7 @@ drop table if exists t1;
 # allowed
 #
 
-create table t1 (a int primary key);
+create table t1 (a int primary key, b int);
 
 --error 5001
 prepare stmt from 'select ??';

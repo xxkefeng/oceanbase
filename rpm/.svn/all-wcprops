@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 68
-/repos/oceanbase/!svn/ver/13560/branches/0_4_1_release/oceanbase/rpm
+/repos/oceanbase/!svn/ver/13647/branches/0_4_1_release/oceanbase/rpm
 END
 scm.xml
 K 25
@@ -25,11 +25,11 @@ oceanbase_test.spec
 K 25
 svn:wc:ra_dav:version-url
 V 88
-/repos/oceanbase/!svn/ver/13560/branches/0_4_1_release/oceanbase/rpm/oceanbase_test.spec
+/repos/oceanbase/!svn/ver/13604/branches/0_4_1_release/oceanbase/rpm/oceanbase_test.spec
 END
 oceanbase.spec
 K 25
 svn:wc:ra_dav:version-url
 V 83
-/repos/oceanbase/!svn/ver/13560/branches/0_4_1_release/oceanbase/rpm/oceanbase.spec
+/repos/oceanbase/!svn/ver/13647/branches/0_4_1_release/oceanbase/rpm/oceanbase.spec
 END

@@ -1,5 +1,5 @@
 drop table if exists t1;
-create table t1 (a int primary key);
+create table t1 (a int primary key, b int);
 prepare stmt from 'select ??';
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near ''select ??'' at line 1
 prepare stmt from 'select ?FROM t1';

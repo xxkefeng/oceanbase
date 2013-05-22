@@ -129,11 +129,17 @@ namespace oceanbase
         ret = this->set_dev_name(config_.devname);
       }
 
+      ObServer vip_addr;
       uint32_t vip = tbsys::CNetUtil::getAddr(config_.root_server_ip);
+      int32_t local_ip = tbsys::CNetUtil::getLocalAddr(dev_name_);
       if (ret == OB_SUCCESS)
       {
-        int32_t local_ip = tbsys::CNetUtil::getLocalAddr(dev_name_);
-        if (!self_addr_.set_ipv4_addr(local_ip, port_))
+        if (!vip_addr.set_ipv4_addr(vip, port_))
+        {
+          TBSYS_LOG(ERROR, "rootserver vip address invalid, ip:%d, port:%d", local_ip, port_);
+          ret = OB_ERROR;
+        }
+        else if (!self_addr_.set_ipv4_addr(local_ip, port_))
         {
           TBSYS_LOG(ERROR, "rootserver address invalid, ip:%d, port:%d", local_ip, port_);
           ret = OB_ERROR;
@@ -142,7 +148,7 @@ namespace oceanbase
 
       if (ret == OB_SUCCESS)
       {
-        stat_manager_.init(self_addr_);
+        stat_manager_.init(vip_addr);
         ObStatSingleton::init(&stat_manager_);
       }
 

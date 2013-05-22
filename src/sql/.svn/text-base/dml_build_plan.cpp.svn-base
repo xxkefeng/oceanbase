@@ -671,8 +671,18 @@ int resolve_expr(
       ret = resolve_expr(result_plan, stmt, node->children_[0], sql_expr, sub_expr, expr_scope_type, true);
       if (ret != OB_SUCCESS)
         break;
+      if (node->type_ == T_OP_POS)
+      {
+        expr = sub_expr;
+      }
+      // T_OP_EXISTS can not has child of type T_OP_EXISTS/T_OP_POS/T_OP_NEG/T_OP_NOT,
+      // so we can do this way
+      else if (node->type_ == sub_expr->get_expr_type())
+      {
+        expr = (dynamic_cast<ObUnaryOpRawExpr*>(sub_expr))->get_op_expr();
+      }
       // only INT/FLOAT/DOUBLE are in consideration
-      if (sub_expr->is_const()
+      else if (node->type_ == T_OP_NEG && sub_expr->is_const()
         && (sub_expr->get_expr_type() == T_INT
         || sub_expr->get_expr_type() == T_FLOAT
         || sub_expr->get_expr_type() == T_DOUBLE))

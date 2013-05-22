@@ -23,7 +23,7 @@ let $master_master_ups=deploy_get_value(ob1.get_master_ups);
 deploy ob1.$master_master_ups.force_stop;
 
 #sql
-sleep 10;
+sleep 20;
 create table t3(a int primary key,b int);
 sleep 60;
 insert into t3 values(1,1),(2,2);
@@ -53,8 +53,8 @@ drop table t1;
 drop table t3;
 #deploy ob1.stop;
 #deploy ob2.stop;
-deploy ob1.collect_log;
-deploy ob2.collect_log;
+
+
 
 
 

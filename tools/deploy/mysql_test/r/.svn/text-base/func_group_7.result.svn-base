@@ -1,6 +1,6 @@
 drop table if exists t1,t2,t3,t4,t5;
-create table t1 (a double primary key);
-insert into t1 values (12345678901234567890);
+create table t1 (a double primary key,b double);
+insert into t1(a) values (12345678901234567890);
 select count(a) from t1;
 count(a)
 1
@@ -40,8 +40,8 @@ MIN(a)	MIN(b)
 SELECT MIN(b), min(c) FROM t4 where a = 2;
 MIN(b)	min(c)
 NULL	2
-CREATE TABLE t5( a INT, b INT, primary KEY( a, b) );
-INSERT INTO t5 VALUES( 1, 1 ), ( 1, 2 );
+CREATE TABLE t5( a INT, b INT, primary KEY( a, b),c int);
+INSERT INTO t5(a,b) VALUES( 1, 1 ), ( 1, 2 );
 SELECT MIN(a), MIN(b) FROM t5 WHERE a = 1;
 MIN(a)	MIN(b)
 1	1
@@ -49,13 +49,13 @@ SELECT MIN(a), MIN(b) FROM t5 WHERE a = 1 and b > 1;
 MIN(a)	MIN(b)
 1	2
 DROP TABLE t1, t2, t3, t4, t5;
-CREATE TABLE t1 (a int, b datetime, primary key (a,b));
+CREATE TABLE t1 (a int, b datetime, primary key (a,b),c int);
 SELECT MIN(b) FROM t1 WHERE a=1 AND b>'2007-08-01';
 MIN(b)
 NULL
 DROP TABLE t1;
-CREATE TABLE t1 (a INT primary key);
-INSERT INTO t1 VALUES (1),(2),(3),(4);
+CREATE TABLE t1 (a INT primary key, b int);
+INSERT INTO t1(a) VALUES (1),(2),(3),(4);
 SELECT a FROM t1 HAVING COUNT(*)>2;
 a
 1
@@ -96,8 +96,8 @@ ORDER BY max;
 max	i
 1	11
 DROP TABLE t1;
-CREATE TABLE t1(a int, primary KEY(a));
-INSERT INTO t1 VALUES (1), (2);
+CREATE TABLE t1(a int, primary KEY(a), b int);
+INSERT INTO t1(a) VALUES (1), (2);
 SELECT 1 FROM t1 ORDER BY AVG(DISTINCT a);
 1
 1

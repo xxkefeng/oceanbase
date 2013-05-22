@@ -1,7 +1,7 @@
 10
 
 dir
-13572
+13927
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/sql
 http://svn.app.taobao.net/repos/oceanbase
 
@@ -60,40 +60,6 @@ jianming.cjq
 
 2831
 
-ob_ups_file_table.h
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-96543b892606b6fdcd1cb7da520f77f1
-2012-07-31T08:16:13.552931Z
-8939
-jianming.cjq
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-926
-
 test_gen_phy_plan.cpp
 file
 
@@ -127,6 +93,40 @@ xielun
 
 
 10381
+
+ob_ups_file_table.h
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+96543b892606b6fdcd1cb7da520f77f1
+2012-07-31T08:16:13.552931Z
+8939
+jianming.cjq
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+926
 
 ob_filter_test.cpp
 file
@@ -162,40 +162,6 @@ jianming.cjq
 
 11232
 
-ob_file_table_test.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-cfa324ec4e464f08f6ba264f40576154
-2012-12-07T10:06:20.267999Z
-10778
-xiaochu.yh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-5322
-
 test_disk_path.cpp
 file
 
@@ -229,6 +195,40 @@ xiaochu.yh
 
 
 5343
+
+ob_file_table_test.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+cfa324ec4e464f08f6ba264f40576154
+2012-12-07T10:06:20.267999Z
+10778
+xiaochu.yh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5322
 
 gen_tablet_scan_test_data.py
 file
@@ -264,17 +264,17 @@ jianming.cjq
 
 5651
 
-ob_union_test.cpp
+ob_except_test.cpp
 file
 
 
 
 
 2013-04-28T10:54:37.000000Z
-78c5e776e7a47957fb106c1b8f8db363
-2013-02-04T02:02:42.678861Z
-11993
-lide.wd
+88e9fb8cbb883da583202927670eaa07
+2012-10-25T12:45:13.690654Z
+10181
+yubai
 
 
 
@@ -296,44 +296,7 @@ lide.wd
 
 
 
-19710
-
-test_utility.h
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-34292c86131cdc4e375bc3802f97eb0e
-2012-08-22T05:50:31.211360Z
-9202
-jianming.cjq
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-1197
-
-SQL_TEST_PHY_PLAN
-dir
+14796
 
 ob_fake_sstable_scan.cpp
 file
@@ -369,51 +332,20 @@ jianming.cjq
 
 3043
 
-ob_except_test.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-88e9fb8cbb883da583202927670eaa07
-2012-10-25T12:45:13.690654Z
-10181
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-14796
+SQL_TEST_PHY_PLAN
+dir
 
-mock_define.h
+test_utility.h
 file
 
 
 
 
 2013-04-28T10:54:37.000000Z
-633b718aa1debb51c0fd0fdfa3091a9c
-2012-07-12T09:22:34.209607Z
-8745
-xiaochu.yh
+34292c86131cdc4e375bc3802f97eb0e
+2012-08-22T05:50:31.211360Z
+9202
+jianming.cjq
 
 
 
@@ -435,7 +367,41 @@ xiaochu.yh
 
 
 
-2791
+1197
+
+ob_union_test.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+78c5e776e7a47957fb106c1b8f8db363
+2013-02-04T02:02:42.678861Z
+11993
+lide.wd
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+19710
 
 ob_result_set_test.cpp
 file
@@ -470,6 +436,40 @@ lide.wd
 
 
 5680
+
+mock_define.h
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+633b718aa1debb51c0fd0fdfa3091a9c
+2012-07-12T09:22:34.209607Z
+8745
+xiaochu.yh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2791
 
 ob_aggregate_function_test.cpp
 file
@@ -1092,40 +1092,6 @@ jianming.cjq
 
 5639
 
-mock_root_server.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-85102cae6eda23822ace199343a83b39
-2012-08-20T03:06:22.557538Z
-9163
-qushan
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-14776
-
 ob_fake_sql_ups_rpc_proxy_test2.cpp
 file
 
@@ -1160,17 +1126,17 @@ yubai
 
 7563
 
-ob_operator_factory_impl.cpp
+mock_root_server.cpp
 file
 
 
 
 
 2013-04-28T10:54:37.000000Z
-7381d36fc91afa4795fe2aaeb0c8f7ee
-2012-08-23T09:36:22.687069Z
-9226
-jianming.cjq
+85102cae6eda23822ace199343a83b39
+2012-08-20T03:06:22.557538Z
+9163
+qushan
 
 
 
@@ -1192,41 +1158,7 @@ jianming.cjq
 
 
 
-877
-
-ob_fake_ups_rpc_stub.h
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-d41d8cd98f00b204e9800998ecf8427e
-2012-10-25T12:45:13.690654Z
-10181
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-0
+14776
 
 test_helper.h
 file
@@ -1262,6 +1194,74 @@ xiaochu.yh
 
 7752
 
+ob_fake_ups_rpc_stub.h
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+d41d8cd98f00b204e9800998ecf8427e
+2012-10-25T12:45:13.690654Z
+10181
+yubai
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+0
+
+ob_operator_factory_impl.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+7381d36fc91afa4795fe2aaeb0c8f7ee
+2012-08-23T09:36:22.687069Z
+9226
+jianming.cjq
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+877
+
 mock_server.h
 file
 
@@ -1295,40 +1295,6 @@ xiaochu.yh
 
 
 1638
-
-ob_merge_groupby_test.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-d9541c0d06e75ea27db9abed60ed4136
-2012-07-16T06:48:00.412322Z
-8770
-zhuweng.yzf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-3131
 
 ob_fake_ups_multi_get_test.cpp
 file
@@ -1364,6 +1330,43 @@ jianming.cjq
 
 4123
 
+ob_merge_groupby_test.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+d9541c0d06e75ea27db9abed60ed4136
+2012-07-16T06:48:00.412322Z
+8770
+zhuweng.yzf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3131
+
+tablet_scan_test_data
+dir
+
 mock_update_server.h
 file
 
@@ -1397,9 +1400,6 @@ xiaochu.yh
 
 
 863
-
-tablet_scan_test_data
-dir
 
 test_sstable_stat.cpp
 file
@@ -1435,40 +1435,6 @@ xiaochu.yh
 
 1663
 
-ob_fake_sql_ups_rpc_proxy2.h
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-0344fb1e54117f2e63af1bb5b0789ae1
-2012-10-25T12:45:13.690654Z
-10181
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-2365
-
 test_sstable_writer.cpp
 file
 
@@ -1502,6 +1468,40 @@ yubai
 
 
 1323
+
+ob_fake_sql_ups_rpc_proxy2.h
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+0344fb1e54117f2e63af1bb5b0789ae1
+2012-10-25T12:45:13.690654Z
+10181
+yubai
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2365
 
 ob_multiple_merge_test.cpp
 file
@@ -1605,40 +1605,6 @@ jianming.cjq
 
 1988
 
-ob_merge_join_test.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-76225cc28f391dd15c4e2e4e6cdabcc2
-2012-08-21T09:06:58.208736Z
-9193
-jianming.cjq
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-25422
-
 ob_add_project_test.cpp
 file
 
@@ -1672,6 +1638,40 @@ zhuweng.yzf
 
 
 2695
+
+ob_merge_join_test.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+76225cc28f391dd15c4e2e4e6cdabcc2
+2012-08-21T09:06:58.208736Z
+9193
+jianming.cjq
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+25422
 
 ob_tablet_scan_test.cpp
 file
@@ -1707,40 +1707,6 @@ xiaochu.yh
 
 14088
 
-ob_single_table_sql_test_schema.ini
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-338417bd01f93a318c5bbf1ed14aa560
-2012-07-25T06:09:33.133060Z
-8876
-zhuweng.yzf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-383
-
 test_sql_query_service.cpp
 file
 
@@ -1774,6 +1740,40 @@ jianming.cjq
 
 
 4690
+
+ob_single_table_sql_test_schema.ini
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+338417bd01f93a318c5bbf1ed14aa560
+2012-07-25T06:09:33.133060Z
+8876
+zhuweng.yzf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+383
 
 ob_fake_ups_rpc_stub2.h
 file
@@ -1809,40 +1809,6 @@ yubai
 
 0
 
-ob_sort_test.cpp
-file
-
-
-
-
-2013-04-28T10:54:37.000000Z
-8cef42310af549880736e15db6ed3831
-2012-09-17T07:34:50.543800Z
-9563
-zhuweng.yzf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-3304
-
 ob_fake_sql_ups_rpc_proxy.h
 file
 
@@ -1876,6 +1842,40 @@ yubai
 
 
 1391
+
+ob_sort_test.cpp
+file
+
+
+
+
+2013-04-28T10:54:37.000000Z
+8cef42310af549880736e15db6ed3831
+2012-09-17T07:34:50.543800Z
+9563
+zhuweng.yzf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3304
 
 gen_test_data.py
 file

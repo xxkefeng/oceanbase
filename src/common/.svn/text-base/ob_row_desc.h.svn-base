@@ -193,7 +193,7 @@ namespace oceanbase
         else
         {
           ret = OB_DUPLICATE_COLUMN;
-          TBSYS_LOG(ERROR, "insert encounters duplicated key");
+          TBSYS_LOG(WARN, "insert encounters duplicated key");
         }
       }
       else
@@ -277,4 +277,3 @@ namespace oceanbase
 } // end namespace oceanbase
 
 #endif /* _OB_ROW_DESC_H */
-

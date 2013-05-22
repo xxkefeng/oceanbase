@@ -540,8 +540,8 @@ select * from t1;
 i1	f1	s1	d1	i2	f2	s2	d2
 12341234	1234.12	1234.1234	2012-03-04 12:03:04	0	0.5	0.abcdefg	2020-02-01 20:00:00
 drop table t1;
-create table t1(i1 int, f1 float, s1 varchar, d1 datetime,primary key(i1,f1,s1,d1));
-prepare stmt_insert from insert into t1 values(?,?,?,?),(?,?,?,?);
+create table t1(i1 int, f1 float, s1 varchar, d1 datetime, i2 int, primary key(i1,f1,s1,d1));
+prepare stmt_insert from insert into t1 values(?,?,?,?,0),(?,?,?,?,0);
 set @i1=10;
 set @f1=10.5;
 set @s1='10[abcdefg]';
@@ -633,25 +633,25 @@ set @s2='0[abcdefg]';
 set @d2=timestamp'2020-02-01 20:00:00';
 execute stmt_insert using @i1,@f1,@s1,@d1,@i2,@f2,@s2,@d2;
 select * from t1;
-i1	f1	s1	d1
-0	0.5	0[abcdefg]	2020-02-01 20:00:00
-1	1.5	1[abcdefg]	2020-02-01 20:00:00
-1	1.5	1[abcdefg]	2020-02-02 20:00:00
-2	2.5	2[abcdefg]	2020-02-01 20:00:00
-2	2.5	2[abcdefg]	2020-02-02 20:00:00
-3	3.5	3[abcdefg]	2020-02-01 20:00:00
-3	3.5	3[abcdefg]	2020-02-02 20:00:00
-4	4.5	4[abcdefg]	2020-02-01 20:00:00
-4	4.5	4[abcdefg]	2020-02-02 20:00:00
-5	5.5	5[abcdefg]	2020-02-01 20:00:00
-5	5.5	5[abcdefg]	2020-02-02 20:00:00
-6	6.5	6[abcdefg]	2020-02-01 20:00:00
-6	6.5	6[abcdefg]	2020-02-02 20:00:00
-7	7.5	7[abcdefg]	2020-02-01 20:00:00
-7	7.5	7[abcdefg]	2020-02-02 20:00:00
-8	8.5	8[abcdefg]	2020-02-01 20:00:00
-8	8.5	8[abcdefg]	2020-02-02 20:00:00
-9	9.5	9[abcdefg]	2020-02-01 20:00:00
-9	9.5	9[abcdefg]	2020-02-02 20:00:00
-10	10.5	10[abcdefg]	2020-02-02 20:00:00
+i1	f1	s1	d1	i2
+0	0.5	0[abcdefg]	2020-02-01 20:00:00	0
+1	1.5	1[abcdefg]	2020-02-01 20:00:00	0
+1	1.5	1[abcdefg]	2020-02-02 20:00:00	0
+2	2.5	2[abcdefg]	2020-02-01 20:00:00	0
+2	2.5	2[abcdefg]	2020-02-02 20:00:00	0
+3	3.5	3[abcdefg]	2020-02-01 20:00:00	0
+3	3.5	3[abcdefg]	2020-02-02 20:00:00	0
+4	4.5	4[abcdefg]	2020-02-01 20:00:00	0
+4	4.5	4[abcdefg]	2020-02-02 20:00:00	0
+5	5.5	5[abcdefg]	2020-02-01 20:00:00	0
+5	5.5	5[abcdefg]	2020-02-02 20:00:00	0
+6	6.5	6[abcdefg]	2020-02-01 20:00:00	0
+6	6.5	6[abcdefg]	2020-02-02 20:00:00	0
+7	7.5	7[abcdefg]	2020-02-01 20:00:00	0
+7	7.5	7[abcdefg]	2020-02-02 20:00:00	0
+8	8.5	8[abcdefg]	2020-02-01 20:00:00	0
+8	8.5	8[abcdefg]	2020-02-02 20:00:00	0
+9	9.5	9[abcdefg]	2020-02-01 20:00:00	0
+9	9.5	9[abcdefg]	2020-02-02 20:00:00	0
+10	10.5	10[abcdefg]	2020-02-02 20:00:00	0
 drop table t1;

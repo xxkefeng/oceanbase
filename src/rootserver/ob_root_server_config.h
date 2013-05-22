@@ -5,7 +5,7 @@
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
  *
- * Time-stamp: <2013-04-23 14:54:38 fufeng.syd>
+ * Time-stamp: <2013-05-15 09:16:27 fufeng.syd>
  * Version: $Id$
  * Filename: ob_root_server_config.h
  *
@@ -45,7 +45,7 @@ namespace oceanbase
         DEF_TIME(safe_lost_one_time, "3600s", "safe duration while lost one copy");
         DEF_TIME(safe_wait_init_time, "60s", "time interval for build  root table");
         DEF_BOOL(create_table_in_init, "False", "create tablet switch while init");
-        DEF_INT(tablet_replicas_num, "3", "[1,]", "tablet replicas num");
+        DEF_INT(tablet_replicas_num, "3", "[1,3]", "tablet replicas num");
         DEF_INT(io_thread_count, "4", "[1,100]", "io thread count");
         DEF_INT(read_thread_count, "20", "[10,100]", "read thread count");
         DEF_INT(read_queue_size, "500", "[10,100000]", "read queue size");

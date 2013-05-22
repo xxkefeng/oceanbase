@@ -109,7 +109,7 @@ namespace oceanbase
       }
       else if (OB_DISCONTINUOUS_LOG == err)
       {
-        TBSYS_LOG(DEBUG, "append_log(log=[%ld,%ld], end_id=%ld):LOG_DISCONTINUOUS", start_id, end_id, get_end_id());
+        TBSYS_LOG(WARN, "append_log(log=[%ld,%ld], end_id=%ld):LOG_DISCONTINUOUS", start_id, end_id, get_end_id());
       }
       return err;
     }

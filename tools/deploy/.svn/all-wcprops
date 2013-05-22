@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 77
-/repos/oceanbase/!svn/ver/13548/branches/0_4_1_release/oceanbase/tools/deploy
+/repos/oceanbase/!svn/ver/13853/branches/0_4_1_release/oceanbase/tools/deploy
 END
 common.py
 K 25
@@ -31,7 +31,7 @@ deploy.py
 K 25
 svn:wc:ra_dav:version-url
 V 87
-/repos/oceanbase/!svn/ver/13259/branches/0_4_1_release/oceanbase/tools/deploy/deploy.py
+/repos/oceanbase/!svn/ver/13653/branches/0_4_1_release/oceanbase/tools/deploy/deploy.py
 END
 collect.schema
 K 25

@@ -1,19 +1,19 @@
 K 25
 svn:wc:ra_dav:version-url
 V 90
-/repos/oceanbase/!svn/ver/13548/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t
+/repos/oceanbase/!svn/ver/13836/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t
 END
 ps_1.test
 K 25
 svn:wc:ra_dav:version-url
 V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_1.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_1.test
 END
 insert.test
 K 25
 svn:wc:ra_dav:version-url
 V 102
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/insert.test
+/repos/oceanbase/!svn/ver/13778/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/insert.test
 END
 trx_complex.test
 K 25
@@ -37,13 +37,13 @@ bigint.test
 K 25
 svn:wc:ra_dav:version-url
 V 102
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/bigint.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/bigint.test
 END
 fin.test
 K 25
 svn:wc:ra_dav:version-url
 V 99
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/fin.test
+/repos/oceanbase/!svn/ver/13768/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/fin.test
 END
 hex_ip.test
 K 25
@@ -67,13 +67,19 @@ ps_complex_insert.test
 K 25
 svn:wc:ra_dav:version-url
 V 113
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_complex_insert.test
+/repos/oceanbase/!svn/ver/13774/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_complex_insert.test
+END
+join_ps_bug.test
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/13790/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/join_ps_bug.test
 END
 func_like.test
 K 25
 svn:wc:ra_dav:version-url
 V 105
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_like.test
+/repos/oceanbase/!svn/ver/13772/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_like.test
 END
 escape.test
 K 25
@@ -81,17 +87,17 @@ svn:wc:ra_dav:version-url
 V 102
 /repos/oceanbase/!svn/ver/13273/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/escape.test
 END
-merge_delete2.test
-K 25
-svn:wc:ra_dav:version-url
-V 109
-/repos/oceanbase/!svn/ver/13146/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/merge_delete2.test
-END
 jdbc_autocommit.test
 K 25
 svn:wc:ra_dav:version-url
 V 111
 /repos/oceanbase/!svn/ver/12906/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/jdbc_autocommit.test
+END
+merge_delete2.test
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/13146/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/merge_delete2.test
 END
 ps_affect_rows.test
 K 25
@@ -127,7 +133,7 @@ union_129.test
 K 25
 svn:wc:ra_dav:version-url
 V 105
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/union_129.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/union_129.test
 END
 lock_user.test
 K 25
@@ -145,7 +151,7 @@ select_error.test
 K 25
 svn:wc:ra_dav:version-url
 V 108
-/repos/oceanbase/!svn/ver/12679/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/select_error.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/select_error.test
 END
 jdbc_ps_insert.test
 K 25
@@ -163,7 +169,7 @@ func_group_3.test
 K 25
 svn:wc:ra_dav:version-url
 V 108
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_3.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_3.test
 END
 set.test
 K 25
@@ -195,17 +201,11 @@ svn:wc:ra_dav:version-url
 V 101
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/trx_4.test
 END
-merge_failed_if_table_has_only_one_column.test
-K 25
-svn:wc:ra_dav:version-url
-V 137
-/repos/oceanbase/!svn/ver/13105/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/merge_failed_if_table_has_only_one_column.test
-END
 ps_3.test
 K 25
 svn:wc:ra_dav:version-url
 V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_3.test
+/repos/oceanbase/!svn/ver/13760/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_3.test
 END
 empty_table.test
 K 25
@@ -217,7 +217,7 @@ limit.test
 K 25
 svn:wc:ra_dav:version-url
 V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/limit.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/limit.test
 END
 alter_table.test
 K 25
@@ -235,13 +235,13 @@ user_privilege.test
 K 25
 svn:wc:ra_dav:version-url
 V 110
-/repos/oceanbase/!svn/ver/13064/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/user_privilege.test
+/repos/oceanbase/!svn/ver/13776/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/user_privilege.test
 END
 dual.test
 K 25
 svn:wc:ra_dav:version-url
 V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/dual.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/dual.test
 END
 user_pwd.test
 K 25
@@ -277,7 +277,7 @@ join.test
 K 25
 svn:wc:ra_dav:version-url
 V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/join.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/join.test
 END
 func_in_2.test
 K 25
@@ -403,7 +403,7 @@ func_group_5.test
 K 25
 svn:wc:ra_dav:version-url
 V 108
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_5.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_5.test
 END
 deadlock_causedby_ups_switch.test
 K 25
@@ -433,7 +433,7 @@ create.test
 K 25
 svn:wc:ra_dav:version-url
 V 102
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/create.test
+/repos/oceanbase/!svn/ver/13708/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/create.test
 END
 replace_null.test
 K 25
@@ -523,7 +523,7 @@ connection.test
 K 25
 svn:wc:ra_dav:version-url
 V 106
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/connection.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/connection.test
 END
 trx_3.test
 K 25
@@ -553,19 +553,19 @@ delete.test
 K 25
 svn:wc:ra_dav:version-url
 V 102
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/delete.test
+/repos/oceanbase/!svn/ver/13752/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/delete.test
 END
 compare_datetime.test
 K 25
 svn:wc:ra_dav:version-url
 V 112
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/compare_datetime.test
+/repos/oceanbase/!svn/ver/13745/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/compare_datetime.test
 END
 ps_2.test
 K 25
 svn:wc:ra_dav:version-url
 V 100
-/repos/oceanbase/!svn/ver/12678/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_2.test
+/repos/oceanbase/!svn/ver/13754/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_2.test
 END
 delete_all_before_merge_by_huating.test
 K 25
@@ -577,13 +577,13 @@ type_float.test
 K 25
 svn:wc:ra_dav:version-url
 V 106
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/type_float.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/type_float.test
 END
 null.test
 K 25
 svn:wc:ra_dav:version-url
 V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/null.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/null.test
 END
 get.test
 K 25
@@ -607,7 +607,7 @@ ps_basic.test
 K 25
 svn:wc:ra_dav:version-url
 V 104
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_basic.test
+/repos/oceanbase/!svn/ver/13764/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_basic.test
 END
 select_without_from.test
 K 25
@@ -625,7 +625,7 @@ union.test
 K 25
 svn:wc:ra_dav:version-url
 V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/union.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/union.test
 END
 alias.test
 K 25
@@ -637,13 +637,13 @@ ps_complex_delete.test
 K 25
 svn:wc:ra_dav:version-url
 V 113
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_complex_delete.test
+/repos/oceanbase/!svn/ver/13802/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_complex_delete.test
 END
 func_group_7.test
 K 25
 svn:wc:ra_dav:version-url
 V 108
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_7.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_7.test
 END
 build_in_func_test.test
 K 25
@@ -655,7 +655,7 @@ error_msg.test
 K 25
 svn:wc:ra_dav:version-url
 V 105
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/error_msg.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/error_msg.test
 END
 many_columns.test
 K 25
@@ -673,7 +673,7 @@ rowkey_is_null.test
 K 25
 svn:wc:ra_dav:version-url
 V 110
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/rowkey_is_null.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/rowkey_is_null.test
 END
 merge_insert2.test
 K 25
@@ -703,13 +703,13 @@ rowkey_is_char.test
 K 25
 svn:wc:ra_dav:version-url
 V 110
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/rowkey_is_char.test
+/repos/oceanbase/!svn/ver/13804/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/rowkey_is_char.test
 END
 group_by_3.test
 K 25
 svn:wc:ra_dav:version-url
 V 106
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/group_by_3.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/group_by_3.test
 END
 privileges.test
 K 25
@@ -727,19 +727,19 @@ create_syntax.test
 K 25
 svn:wc:ra_dav:version-url
 V 109
-/repos/oceanbase/!svn/ver/13097/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/create_syntax.test
+/repos/oceanbase/!svn/ver/13711/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/create_syntax.test
 END
 rowkey_duplicate.test
 K 25
 svn:wc:ra_dav:version-url
 V 112
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/rowkey_duplicate.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/rowkey_duplicate.test
 END
 func_in.test
 K 25
 svn:wc:ra_dav:version-url
 V 103
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_in.test
+/repos/oceanbase/!svn/ver/13794/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_in.test
 END
 type_create_time.test
 K 25
@@ -763,19 +763,25 @@ null_with_merge.test
 K 25
 svn:wc:ra_dav:version-url
 V 111
-/repos/oceanbase/!svn/ver/13107/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/null_with_merge.test
+/repos/oceanbase/!svn/ver/13741/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/null_with_merge.test
+END
+serialize_6k_bug.test
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/repos/oceanbase/!svn/ver/13656/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/serialize_6k_bug.test
 END
 count_distinct.test
 K 25
 svn:wc:ra_dav:version-url
 V 110
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/count_distinct.test
+/repos/oceanbase/!svn/ver/13710/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/count_distinct.test
 END
 bug200820.test
 K 25
 svn:wc:ra_dav:version-url
 V 105
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/bug200820.test
+/repos/oceanbase/!svn/ver/13750/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/bug200820.test
 END
 join_many_table.test
 K 25
@@ -787,19 +793,19 @@ func_group_4.test
 K 25
 svn:wc:ra_dav:version-url
 V 108
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_4.test
+/repos/oceanbase/!svn/ver/13762/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_4.test
 END
 type_datetime.test
 K 25
 svn:wc:ra_dav:version-url
 V 109
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/type_datetime.test
+/repos/oceanbase/!svn/ver/13730/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/type_datetime.test
 END
 join_many_table_single_field.test
 K 25
 svn:wc:ra_dav:version-url
 V 124
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/join_many_table_single_field.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/join_many_table_single_field.test
 END
 bug200747.test
 K 25
@@ -819,17 +825,23 @@ svn:wc:ra_dav:version-url
 V 112
 /repos/oceanbase/!svn/ver/13140/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/null_with_merge2.test
 END
+bug229955_positive_int.test
+K 25
+svn:wc:ra_dav:version-url
+V 118
+/repos/oceanbase/!svn/ver/13836/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/bug229955_positive_int.test
+END
 delete_from_mysql.test
 K 25
 svn:wc:ra_dav:version-url
 V 113
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/delete_from_mysql.test
+/repos/oceanbase/!svn/ver/13803/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/delete_from_mysql.test
 END
 ps_complex_update.test
 K 25
 svn:wc:ra_dav:version-url
 V 113
-/repos/oceanbase/!svn/ver/13258/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_complex_update.test
+/repos/oceanbase/!svn/ver/13802/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/ps_complex_update.test
 END
 jdbc_parallel_trx.test
 K 25
@@ -841,7 +853,7 @@ case.test
 K 25
 svn:wc:ra_dav:version-url
 V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/case.test
+/repos/oceanbase/!svn/ver/13744/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/case.test
 END
 chinese.test
 K 25
@@ -877,7 +889,7 @@ rowkey_is_int.test
 K 25
 svn:wc:ra_dav:version-url
 V 109
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/rowkey_is_int.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/rowkey_is_int.test
 END
 compare.test
 K 25
@@ -889,7 +901,7 @@ func_group_1.test
 K 25
 svn:wc:ra_dav:version-url
 V 108
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_1.test
+/repos/oceanbase/!svn/ver/13725/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/func_group_1.test
 END
 aggr_bug200109.test
 K 25
@@ -901,7 +913,7 @@ range.test
 K 25
 svn:wc:ra_dav:version-url
 V 101
-/repos/oceanbase/!svn/ver/12832/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/range.test
+/repos/oceanbase/!svn/ver/13730/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/t/range.test
 END
 trx_2.test
 K 25

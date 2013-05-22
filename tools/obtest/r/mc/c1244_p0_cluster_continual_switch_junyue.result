@@ -46,5 +46,3 @@ i1	s1	f1	d1	i2	s2	f2	d2
 600006	600006_s1_mmmmmmmmmmmmmmmmmmnnnnnnnnnnnnnnnnnnnnnnoooooooooopppppppppppqqqqqq	600006.0	1970-01-01 08:00:00.600006	600006	600006_s2_mmmmmmmmmmmmmmmmmmnnnnnnnnnnnnnnnnnnnnnnoooooooooopppppppppppqqqqqq	600006.0	1970-01-01 08:00:00.600006
 700007	700007_s1_mmmmmmmmmmmmmmmmmmnnnnnnnnnnnnnnnnnnnnnnoooooooooopppppppppppqqqqqq	700007.0	1970-01-01 08:00:00.700007	700007	700007_s2_mmmmmmmmmmmmmmmmmmnnnnnnnnnnnnnnnnnnnnnnoooooooooopppppppppppqqqqqq	700007.0	1970-01-01 08:00:00.700007
 ob1.mget 1 200002 400004 500005 600006 700007
-ob1.collect_log
-ob2.collect_log

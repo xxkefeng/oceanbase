@@ -203,12 +203,12 @@ namespace oceanbase
         }
         else
         {
-          TBSYS_LOG(ERROR, "wait_write_session_end_and_lock(pkt=%d, timeout=%ld)=>%d", pcode, packet_timewait, ret);
+          TBSYS_LOG(WARN, "wait_write_session_end_and_lock(pkt=%d, timeout=%ld)=>%d", pcode, packet_timewait, ret);
         }
       }
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(ERROR, "handle_pkt fail, ret=%d, pkt=%d", ret, pkt.get_packet_code());
+        TBSYS_LOG(WARN, "handle_pkt fail, ret=%d, pkt=%d", ret, pkt.get_packet_code());
         UPS.response_result(ret, pkt);
       }
     }
@@ -380,8 +380,8 @@ namespace oceanbase
       }
       if (NULL != task)
       {
-        if (OB_SUCCESS != ret
-            || OB_SUCCESS != thread_errno())
+        if ((OB_SUCCESS != ret && !IS_SQL_ERR(ret))
+            || (OB_SUCCESS != thread_errno() && !IS_SQL_ERR(thread_errno())))
         {
           TBSYS_LOG(WARN, "process fail ret=%d pcode=%d src=%s",
                     (OB_SUCCESS != ret) ? ret : thread_errno(), task->pkt.get_packet_code(), inet_ntoa_r(task->src_addr));
@@ -778,10 +778,10 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "deserialize get_param fail ret=%d", ret);
       }
-      else if (!UPS.can_serve_read_req(get_param.get_is_read_consistency()))
+      else if (!UPS.can_serve_read_req(get_param.get_is_read_consistency(), get_param.get_version_range().get_query_version()))
       {
-        TBSYS_LOG(WARN, "the scan request require consistency, ObiRole:%s RoleMgr:%s",
-                  UPS.get_obi_role().get_role_str(), UPS.get_role_mgr().get_role_str());
+        TBSYS_LOG(WARN, "the scan request require consistency, ObiRole:%s RoleMgr:%s, query_version=%ld",
+                  UPS.get_obi_role().get_role_str(), UPS.get_role_mgr().get_role_str(), get_param.get_version_range().get_query_version());
         ret = OB_NOT_MASTER;
       }
       else if (OB_SUCCESS != (ret = session_mgr_.begin_session(ST_READ_ONLY, pkt.get_receive_ts(), process_timeout, process_timeout, session_descriptor)))
@@ -864,10 +864,10 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "deserialize get_param fail ret=%d", ret);
       }
-      else if (!UPS.can_serve_read_req(scan_param.get_is_read_consistency()))
+      else if (!UPS.can_serve_read_req(scan_param.get_is_read_consistency(), scan_param.get_version_range().get_query_version()))
       {
-        TBSYS_LOG(WARN, "the scan request require consistency, ObiRole:%s RoleMgr:%s",
-                  UPS.get_obi_role().get_role_str(), UPS.get_role_mgr().get_role_str());
+        TBSYS_LOG(WARN, "the scan request require consistency, ObiRole:%s RoleMgr:%s, query_version=%ld",
+                  UPS.get_obi_role().get_role_str(), UPS.get_role_mgr().get_role_str(), scan_param.get_version_range().get_query_version());
         ret = OB_NOT_MASTER;
       }
       else if (OB_SUCCESS != (ret = session_mgr_.begin_session(ST_READ_ONLY, pkt.get_receive_ts(), process_timeout, process_timeout, session_descriptor)))
@@ -1319,7 +1319,7 @@ namespace oceanbase
         int64_t cur_ts = tbsys::CTimeUtil::getTime();
         if (OB_SUCCESS != (err = UPS.submit_auto_freeze()))
         {
-          TBSYS_LOG(ERROR, "submit_auto_freeze()=>%d", err);
+          TBSYS_LOG(WARN, "submit_auto_freeze()=>%d", err);
         }
         else
         {

@@ -47,6 +47,7 @@ namespace oceanbase
       }
         int prefetch_log();
         int get_prefetch_cursor(common::ObLogCursor& cursor);
+        int64_t to_string(char* buf, const int64_t len) const;
       protected:
         bool is_inited() const;
         int reset_prefetch_log_buffer();
@@ -59,7 +60,7 @@ namespace oceanbase
         ObPrefetchLogBuffer prefetch_log_buffer_;
         common::IObAsyncTaskSubmitter* prefetch_log_task_submitter_;
         common::ThreadSpecificBuffer log_buffer_for_prefetch_;
-        common::SpinRWLock pc_lock_;
+        mutable common::SpinRWLock pc_lock_;
     };
   }; // end namespace updateserver
 }; // end namespace oceanbase

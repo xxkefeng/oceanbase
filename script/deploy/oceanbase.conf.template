@@ -1,19 +1,21 @@
-#Time-stamp: <2013-04-18 18:37:31 ryan>
+#Time-stamp: <2013-05-03 14:20:41 ryan>
 # Author: 符风 <fufeng.syd@alibaba-inc.com>
 # 集群初始化工具使用的配置文件
 # 所有以#@开始的行有特殊含义不允许当注释删除
 
 #@begin_global
-[setting]
+[settings]
 # rs_admin工具的位置，这个绝大多数情况不用修改
 rs_admin=./bin/rs_admin
+# oceanbase安装的目录
+ob_home=/home/admin/oceanbase
 [public]
 # appname
 appname=dbatest
 # 主集群ID，与后面的集群名称相对应。即以#@begin_cluster_x和#@begin_cluster_x开头的行。
 # 若不指定，则默认使用数字最小的集群为主集群。
 # 注意：ob内部会使用纯数字的ID，这个配置中的数字部分即为ob内部使用的集群ID号。
-master_cluster=cluster_1
+master_cluster_id=cluster_1
 # 网络接口的名字，默认是bond0。放到不同的section下可以单独为那个section中的server进行配置
 devname=bond0
 [rootserver]
@@ -60,6 +62,7 @@ commitlog_dir=/data/log1/ups_commitlog
 #@end_init_config
 
 #@begin_cluster_1
+[public]
 [rootserver]
 # rootserver的vip地址
 vip=10.246.162.160

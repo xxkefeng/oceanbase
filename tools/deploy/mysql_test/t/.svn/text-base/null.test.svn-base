@@ -1,9 +1,9 @@
 --disable_warnings
 drop table if exists t1,t2,t3,t4;
 --enable_warnings
-create table t1(pk int primary key);
+create table t1(pk int primary key,extra int);
 
-insert into t1 values(1),(2);
+insert into t1(pk) values(1),(2);
 
 select * from t1 where null > null;
 select * from t1 where null < null;

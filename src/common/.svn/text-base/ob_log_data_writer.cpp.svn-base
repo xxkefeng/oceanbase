@@ -446,7 +446,7 @@ namespace oceanbase
         result = buf;
         min_file_id_++;
       }
-      TBSYS_LOG(INFO, "select_pool_file(num_file_to_add=%ld, min_file_id=%ld, min_avail_fid=%ld)=>%s",
+      TBSYS_LOG(INFO, "select_pool_file(num_file_to_add=%ld, min_file_id=%ld, max_reusable_fid=%ld)=>%s",
                 num_file_to_add_, min_file_id_, min_avail_file_id_, result);
       return result;
     }

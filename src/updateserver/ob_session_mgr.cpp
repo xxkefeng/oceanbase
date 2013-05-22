@@ -392,17 +392,14 @@ namespace oceanbase
         FILL_TRACE_BUF(ctx->get_tlog_buffer(), "rollback=%s type=%d sd=%u ctx=%p trans_id=%ld trans_timeu=%ld",
                       STR_BOOL(rollback), ctx->get_type(), session_descriptor, ctx, ctx->get_trans_id(),
                       tbsys::CTimeUtil::getTime() - ctx->get_session_start_time());
-        if (!rollback)
-        {
-          OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_COUNT, 1);
-          OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_TIMEU, ctx->get_session_timeu());
-        }
         if (publish)
         {
           if (ST_READ_WRITE == ctx->get_type() && !rollback)
           {
             commited_trans_id_ = ctx->get_trans_id();
             ctx->publish();
+            OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_COUNT, 1);
+            OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_TIMEU, ctx->get_session_timeu());
           }
           PRINT_TRACE_BUF(ctx->get_tlog_buffer());
           bool erase = true;

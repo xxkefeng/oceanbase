@@ -46,7 +46,7 @@ bool TableSchema::is_valid() const
         if (static_cast<int64_t>(columns_.at(i).column_id_) > max_used_column_id_)
         {
           TBSYS_LOG(USER_ERROR, "column id is greater than max_used_column_id, name=%s id=%ld max=%ld",
-                    columns_.at(i).column_name_, columns_.at(i).column_id_, max_used_column_id_);
+              columns_.at(i).column_name_, columns_.at(i).column_id_, max_used_column_id_);
           err = OB_ERR_INVALID_SCHEMA;
           break;
         }
@@ -54,14 +54,19 @@ bool TableSchema::is_valid() const
     }
     if (OB_SUCCESS == err)
     {
-      if (def_rowkey_col == rowkey_column_num_)
+      if (def_rowkey_col == columns_.count())
+      {
+        TBSYS_LOG(WARN, "all columns=%ld are defined as rowkey column=%d, table=%s",
+            columns_.count(), def_rowkey_col, table_name_);
+      }
+      else if (def_rowkey_col == rowkey_column_num_)
       {
         ret = true;
       }
       else
       {
         TBSYS_LOG(WARN, "rowkey_column_num=%d but defined_num=%d, table=%s",
-                  rowkey_column_num_, def_rowkey_col, table_name_);
+            rowkey_column_num_, def_rowkey_col, table_name_);
       }
     }
   }

@@ -57,6 +57,18 @@ namespace oceanbase
       return err;
     }
 
+    int64_t ObReplayLogSrc::to_string(char* buf, const int64_t len) const
+    {
+      int64_t pos = 0;
+      ObLogCursor cursor;
+      {
+        SpinWLockGuard guard(pc_lock_);
+        cursor = (ObLogCursor&)prefetch_log_cursor_;
+      }
+      databuff_printf(buf, len, pos, "ReplayLogSrc(rlog_src=%s, read_pos=%ld, prefetch_cursor=%s)", to_cstring(remote_log_src_), read_pos_, to_cstring(cursor));
+      return pos;
+    }
+
     int ObReplayLogSrc:: reset_prefetch_log_buffer()
     {
       int err = OB_SUCCESS;

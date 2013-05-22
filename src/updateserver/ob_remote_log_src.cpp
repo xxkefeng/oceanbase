@@ -183,6 +183,18 @@ namespace oceanbase
       return err;
     }
 
+    int64_t ObRemoteLogSrc::to_string(char* buf, const int64_t len) const
+    {
+      int64_t pos = 0;
+      ObServer server;
+      if (NULL != server_getter_)
+      {
+        server_getter_->get_server(server);
+      }
+      databuff_printf(buf, len, pos, "RemoteLogSrc(master=%s, req=%s[%ld], timeout=%ld)", to_cstring(server), to_cstring(req_), req_seq_, fetch_timeout_);
+      return pos;
+    }
+
     // start_cursor一定是有效的
     int ObRemoteLogSrc::get_log_from_lsync_server(const ObServer& server, const ObLogCursor& start_cursor,
                                                   ObLogCursor& end_cursor, char* buf, const int64_t len, int64_t& read_count)

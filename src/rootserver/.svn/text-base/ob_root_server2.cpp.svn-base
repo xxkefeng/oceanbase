@@ -776,7 +776,7 @@ int ObRootServer2::do_bootstrap(ObBootstrap & bootstrap)
   // step 4. create schema.ini tables
   if (OB_SUCCESS == ret)
   {
-    if (OB_SUCCESS != bootstrap.bootstrap_ini_tables())
+    if (OB_SUCCESS != (ret = bootstrap.bootstrap_ini_tables()))
     {
       TBSYS_LOG(ERROR, "bootstrap create schmea.ini tables error, err=%d", ret);
     }
@@ -3657,19 +3657,40 @@ int ObRootServer2::alter_table(common::AlterTableSchema &tschema)
 /// for sql api
 int ObRootServer2::create_table(bool if_not_exists, const common::TableSchema &tschema)
 {
+  int ret = OB_SUCCESS;
   TBSYS_LOG(INFO, "create table, if_not_exists=%c table_name=%s",
             if_not_exists?'Y':'N', tschema.table_name_);
-  size_t len = strlen(tschema.table_name_);
-  ObString table_name((int32_t)len, (int32_t)len, tschema.table_name_);
-  bool is_all_merged = false;
-  int ret = check_tablet_version(last_frozen_mem_version_, is_all_merged);
-  if (ret != OB_SUCCESS)
+  // just for pass the schema checking
+  uint64_t old_table_id = tschema.table_id_;
+  if (OB_INVALID_ID == old_table_id)
   {
-    TBSYS_LOG(WARN, "tablet not merged to the last frozen version:ret[%d], version[%ld]",
-        ret, last_frozen_mem_version_);
+    const_cast<TableSchema &> (tschema).table_id_ = OB_APP_MIN_TABLE_ID - 1;
   }
-  else if (true == is_all_merged)
+  if (!tschema.is_valid())
   {
+    TBSYS_LOG(WARN, "table schmea is invalid:table_name[%s]", tschema.table_name_);
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else
+  {
+    bool is_all_merged = false;
+    ret = check_tablet_version(last_frozen_mem_version_, is_all_merged);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "tablet not merged to the last frozen version:ret[%d], version[%ld]",
+          ret, last_frozen_mem_version_);
+    }
+    else if (!is_all_merged)
+    {
+      ret = OB_OP_NOT_ALLOW;
+      TBSYS_LOG(WARN, "check tablet not merged to the last frozen version:ret[%d], version[%ld]",
+          ret, last_frozen_mem_version_);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    size_t len = strlen(tschema.table_name_);
+    ObString table_name((int32_t)len, (int32_t)len, tschema.table_name_);
     bool exist = false;
     int err = OB_SUCCESS;
     // LOCK BLOCK
@@ -3741,12 +3762,7 @@ int ObRootServer2::create_table(bool if_not_exists, const common::TableSchema &t
       }
     }
   }
-  else
-  {
-    ret = OB_OP_NOT_ALLOW;
-    TBSYS_LOG(WARN, "check tablet not merged to the last frozen version:ret[%d], version[%ld]",
-        ret, last_frozen_mem_version_);
-  }
+  const_cast<TableSchema &> (tschema).table_id_ = old_table_id;
   return ret;
 }
 
