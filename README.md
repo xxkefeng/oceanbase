@@ -10,7 +10,7 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 
 - ChunkServer：修复cs多次合并tablet失败后，检查rs有2副本合并到最新版本时删除本地tablet不彻底导致的严重问题
 - SQL：修复from中的子查询不能多次open的bug，这个bug会导致from中有select子查询的query不能以ps方式执行
-- ChunkServer：修复Chuhttps://github.com/alibaba/oceanbase/wiki/%E7%89%88%E6%9C%AC%E5%8F%91%E5%B8%83%E4%BF%A1%E6%81%AFnkServer在switch_schema 返回4004错误问题
+- ChunkServer：修复ChunkServer在switch_schema 返回4004错误问题
 - Common：修复oceanbase.pl脚本中的一些问题
 - Common：修复__all_server_stat表中MergeServer和RootServer的端口号错误
 
