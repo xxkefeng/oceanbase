@@ -5,6 +5,16 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 
 从模块划分的角度看，OceanBase可以划分为四个模块：主控服务器RootServer、更新服务器UpdateServer、基准数据服务器ChunkServer以及合并服务器MergeServer。OceanBase系统内部按照时间线将数据划分为基准数据和增量数据，基准数据是只读的，所有的修改更新到增量数据中，系统内部通过合并操作定期将增量数据融合到基准数据中。
 
+<h1>最新动态</h1>
+2013/05/23，合并最新的bugfix和特性到0.41分支上：
+-ChunkServer：修复cs多次合并tablet失败后，检查rs有2副本合并到最新版本时删除本地tablet不彻底导致的严重问题
+-SQL：修复from中的子查询不能多次open的bug，这个bug会导致from中有select子查询的query不能以ps方式执行
+-ChunkServer：修复ChunkServer在switch_schema 返回4004错误问题
+-Common：修复oceanbase.pl脚本中的一些问题
+-Common：修复__all_server_stat表中MergeServer和RootServer的端口号错误
+...
+[查看详细内容]
+
 <h1>发行日志</h1>
 - <font color=“#F00”><b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> </font>
 - 2013/03/04，整理提交了V0.3.1代码和相关技术文档。
