@@ -8,13 +8,15 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 <h1>最新动态</h1>
 <font color=“#F00”><b>2013/05/23，合并最新的bugfix和特性到0.41分支上：</b> </font>
 
-- ChunkServer：修复cs多次合并tablet失败后，检查rs有2副本合并到最新版本时删除本地tablet不彻底导致的严重问题
-- SQL：修复from中的子查询不能多次open的bug，这个bug会导致from中有select子查询的query不能以ps方式执行
-- ChunkServer：修复ChunkServer在switch_schema 返回4004错误问题
-- Common：修复oceanbase.pl脚本中的一些问题
-- Common：修复__all_server_stat表中MergeServer和RootServer的端口号错误
+- 【重要】ChunkServer：修复cs多次合并tablet失败后，检查rs有2副本合并到最新版本时删除本地tablet不彻底导致的严重问题
 
-[查看历史发布信息](https://github.com/alibaba/oceanbase/wiki/%E7%89%88%E6%9C%AC%E5%8F%91%E5%B8%83%E4%BF%A1%E6%81%AF)
+- 【重要】SQL：往客户端发送数据，序列化问题导致数据移位
+
+- 【重要】UpdateServer：修复UpdateServer支持事务总数20亿（误用int32_t）的bug
+
+- 【重要】UpdateServer：修复update_schema的错误导致主UPS无法变成ACTIVE的错误
+
+[查看发布说明](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4.1-1145%E5%8F%91%E5%B8%83%E8%AF%B4%E6%98%8E)
 
 <h1>发行日志</h1>
 - <font color=“#F00”><b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> </font>
