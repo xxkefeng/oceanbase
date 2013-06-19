@@ -6,17 +6,15 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 从模块划分的角度看，OceanBase可以划分为四个模块：主控服务器RootServer、更新服务器UpdateServer、基准数据服务器ChunkServer以及合并服务器MergeServer。OceanBase系统内部按照时间线将数据划分为基准数据和增量数据，基准数据是只读的，所有的修改更新到增量数据中，系统内部通过合并操作定期将增量数据融合到基准数据中。
 
 <h1>最新动态</h1>
-<font color=“#F00”><b>2013/05/23，合并最新的bugfix和特性到0.41分支上：</b> </font>
+<font color=“#F00”><b>2013/06/19，合并最新的bugfix和特性到0.41分支上：</b> </font>
 
-【重要】ChunkServer：修复cs多次合并tablet失败后，检查rs有2副本合并到最新版本时删除本地tablet不彻底导致的严重问题
+【重要】RootServer: Chunk Server在合并失败后，如果发现其他两个副本已经成功合并，会本地直接删除失败的副本，以前的版本RootServer并没有处理主动删除replica的情况;
 
-【重要】SQL：往客户端发送数据，序列化问题导致数据移位
+SQL: ob_tablet_get.cpp的reset方法没有实现完全，这个bug会导致select * from t1 as z where k1 = 1不断执行时失败；
 
-【重要】UpdateServer：修复UpdateServer支持事务总数20亿（误用int32_t）的bug
+SQL：group_min_max.test执行cs出core，原因是ob_row_store重用时有错，造成sort操作符访问到额外数据，致使比较类型出错，std::sort会core掉; 
 
-【重要】UpdateServer：修复update_schema的错误导致主UPS无法变成ACTIVE的错误
-
-[查看发布说明](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4.1-1145%E5%8F%91%E5%B8%83%E8%AF%B4%E6%98%8E)
+[查看发布说明](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4.1-1209%E5%8F%91%E5%B8%83%E8%AF%B4%E6%98%8E)
 
 <h1>发行日志</h1>
 - <font color=“#F00”><b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> </font>
@@ -63,7 +61,7 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 * [OceanBase安装部署](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97)
 * [OceanBase SQL 用户参考手册](https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL-%E7%94%A8%E6%88%B7%E5%8F%82%E8%80%83%E6%89%8B%E5%86%8C)
 * [OceanBase SQL管理员手册](https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL%E7%AE%A1%E7%90%86%E5%91%98%E6%89%8B%E5%86%8C)
-* [OceanBase客户端使用指南](https://github.com/alibaba/oceanbase/wiki/%E5%AE%A2%E6%88%B7%E7%AB%AF)
+* [OceanBase客户端使用指南](https://github.com/alibaba/oceanbase/wiki/OceanBase%E5%AE%A2%E6%88%B7%E7%AB%AF-%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97)
 * [ChunkServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [mergeServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [rootServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
