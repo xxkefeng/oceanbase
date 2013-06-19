@@ -19,10 +19,10 @@ int HdfsWritableFile::append(const common::ObDataBuffer &data)
   int len = 0;
 
   TBSYS_LOG(DEBUG, "HDFS fs handle = %ld, fd = %ld", (long)env_->fs(), (long)fd_);
-  while (remain > 0)
+  while (remain > 0) 
   {
     int nwrite = hdfsWrite(env_->fs(), fd_, outp, remain);
-    if (nwrite < 0)
+    if (nwrite < 0) 
     {
       TBSYS_LOG(ERROR, "hdfs write error already writen = %d", len);
       len = -1;
@@ -55,7 +55,7 @@ int HdfsWritableFile::close()
   if (fd_ != NULL)
   {
     ret = hdfsCloseFile(env_->fs(), fd_);
-    if (ret != 0)
+    if (ret != 0) 
     {
       TBSYS_LOG(WARN, "hdfsCloseFile error");
     }
@@ -67,7 +67,7 @@ int HdfsWritableFile::close()
 
 HdfsEnv::~HdfsEnv()
 {
-  if (fs_ != NULL)
+  if (fs_ != NULL) 
   {
     assert(fs_counter_ == 1);
     hdfsDisconnect(fs_);
@@ -91,18 +91,18 @@ int HdfsEnv::new_writable_file(const std::string &file_name, WritableFile *&file
   file = NULL;
 
   hdfsFile fd = hdfsOpenFile(fs_, file_name.c_str(), O_WRONLY, buffersize_, replica_, blocksize_);
-  TBSYS_LOG(DEBUG, "file name = %s, buffersize=%ld, replica=%ld,bs=%ld",
+  TBSYS_LOG(DEBUG, "file name = %s, buffersize=%ld, replica=%ld,bs=%ld", 
             file_name.c_str(), buffersize_, replica_, blocksize_);
 
-  if (fd == NULL)
+  if (fd == NULL) 
   {
     TBSYS_LOG(ERROR, "can't open hdfs file, name=%s", file_name.c_str());
     ret = -1;
-  }
-  else
+  } 
+  else 
   {
     file = new(std::nothrow) HdfsWritableFile(this, fd);
-    if (file == NULL)
+    if (file == NULL) 
     {
       TBSYS_LOG(ERROR, "can't allocate memory for HdfsWritableFile");
       ret = -1;
@@ -121,14 +121,14 @@ int HdfsEnv::setup(const Env::Param *param)
   replica_ = hparam->replication;
   TBSYS_LOG(INFO, "host=%s,user=%s, port=%d, group_size=%d", hparam->host, hparam->user, hparam->port, hparam->group_size);
 
-  fs_ = hdfsConnectAsUser("hdpnn", hparam->port, hparam->user,
+  fs_ = hdfsConnectAsUser("hdpnn", hparam->port, hparam->user, 
                           hparam->group, hparam->group_size);
-  if (fs_ == NULL)
+  if (fs_ == NULL) 
   {
     ret = -1;
     TBSYS_LOG(ERROR, "calling hdfsConnectAsUser failed");
-  }
-  else
+  } 
+  else 
   {
     ref();
     valid_ = true;
@@ -142,7 +142,7 @@ static HdfsEnv *__hdfs_env = NULL;
 
 Env *Env::Hadoop()
 {
-  if (__hdfs_env == NULL)
+  if (__hdfs_env == NULL) 
   {
     __hdfs_env = new HdfsEnv();
   }

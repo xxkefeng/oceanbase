@@ -19,7 +19,7 @@ static int init_ms_table()
     if (NULL == config->table_)
     {
       TBSYS_LOG(DEBUG, "alloc mem for ms select table index is %d", index);
-      config->table_ = (ObSQLSelectMsTable*)ob_malloc(sizeof(ObSQLSelectMsTable) + buckets * sizeof(ObSQLHashItem), ObModIds::LIB_OBSQL);
+      config->table_ = (ObSQLSelectMsTable*)ob_malloc(sizeof(ObSQLSelectMsTable) + buckets * sizeof(ObSQLHashItem));
       if (NULL == config->table_)
       {
         TBSYS_LOG(ERROR, "all mem for ObSQLGlobalMsTable failed");
@@ -32,7 +32,7 @@ static int init_ms_table()
       {
         ob_free(config->table_);
         config->table_ = NULL;
-        config->table_ = (ObSQLSelectMsTable*)ob_malloc(sizeof(ObSQLSelectMsTable) + buckets * sizeof(ObSQLHashItem), ObModIds::LIB_OBSQL);
+        config->table_ = (ObSQLSelectMsTable*)ob_malloc(sizeof(ObSQLSelectMsTable) + buckets * sizeof(ObSQLHashItem));
         if (NULL == config->table_)
         {
           TBSYS_LOG(ERROR, "all mem for ObSQLGlobalMsTable failed");

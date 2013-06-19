@@ -5,7 +5,6 @@
 '''
 import sys
 import os
-import common
 import re
 import copy
 from subprocess import Popen, PIPE, STDOUT
@@ -79,6 +78,13 @@ def read(path):
     f.close()
     return content
 
+def safe_read(path):
+    try:
+        return read(path)
+    except IOError,e:
+        print e
+        return str(e)
+
 def wait_child(p, timeout=-1):
     if timeout < 0: return p.wait()
     start_time = time.time()
@@ -130,23 +136,28 @@ def load_single_data_dir(data_dir):
     def query(sql):
         return query_single_data_dir(data_dir, sql).strip().split('\n')[-1].split()
     try:
-        tps, rt, sc = query('select avg(tps),avg(rt),count(tps) from t_client')
-        tps, rt, sc = float(tps) * int(meta.get('client_num')), float(rt) * int(meta.get('trans_size')), float(sc)
+        tps, rt, sc, qps, qrt = query('select avg(tps),avg(rt),count(tps), avg(qps), avg(qrt) from t_client')
+        tps, rt, sc, qps, qrt = float(tps) * int(meta.get('client_num')), float(rt) * int(meta.get('trans_size')), float(sc), float(qps) * int(meta.get('client_num')), float(qrt) * int(meta.get('trans_size'))
     except Exception,e:
         print e
-        tps, rt, sc = 0, 0, 0
+        tps, rt, sc, qps, qrt = 0, 0, 0, 0, 0
     try:
         disk, net, batch = query('select avg(disk),avg(net),avg(end_id-start_id) from t_flush')
         disk, net, batch = float(disk), float(net), float(batch)
     except Exception, e:
         print e
         disk, net, batch = 0, 0, 0
-    img_dict = dict(('%s_img'%(i), make_img_html('%s/%s.png'%(spec, i))) for i in 'rt tps batch disk net'.split())
-    return dict(tps=tps, rt=rt, sc=sc, disk=disk, net=net, batch=batch,
+    try:
+        dml, = query('select avg(tps) from t_dml')
+    except Exception, e:
+        print e
+        dml = 0
+    img_dict = dict(('%s_img'%(i), make_img_html('%s/%s.png'%(spec, i))) for i in 'rt tps qrt qps dml batch disk net'.split())
+    return dict(tps=tps, rt=rt, sc=sc, qps=qps, qrt=qrt, disk=disk, net=net, batch=batch, dml=dml,
                 **dict_updated(meta, **img_dict))
     
 def get_perf_data(data_dir):
-    env = dict(log_dir=data_dir, plot_url='http://10.232.35.40:8001/home/yuanqi.xhf/ob.dev/tools/deploy/%s'%(data_dir))
+    env = dict(test_meta=safe_read('%s/meta'%(data_dir)), log_dir=data_dir, plot_url='http://10.232.35.40:8001/home/yuanqi.xhf/ob.dev/tools/deploy/%s'%(data_dir))
     for d in os.listdir(data_dir):
         if os.path.exists('%s/%s/profile.done'%(data_dir, d)):
             env[d] = Env(load_single_data_dir('%s/%s'%(data_dir, d)))
@@ -207,10 +218,11 @@ def plot_table(spec_list, column):
 
 def plot_all(spec_list):
     avg_columns, img_columns = 'spec rt tps batch net disk:spec rt_img tps_img batch_img net_img disk_img'.split(':')
-    avg_columns, img_columns = 'spec rt tps:spec rt_img tps_img'.split(':')
+    avg_columns, img_columns = 'spec dml tps rt qps qrt:spec dml_img rt_img tps_img'.split(':')
     return '<h3>AVG</h3>%s\n<h3>Plot</h3>%s\n'%(plot_table(spec_list, avg_columns), plot_table(spec_list, img_columns))
 
 if __name__ == '__main__':
+    print ' '.join(sys.argv)
     len(sys.argv) == 4 or show_help() or sys.exit(1)
     perf_data = get_perf_data(sys.argv[1])
     perf_data.update(profile_spec=sys.argv[3])

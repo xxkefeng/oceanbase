@@ -46,7 +46,7 @@ namespace oceanbase
 
       if (NULL != read_param && NULL == *read_param)
       {
-        *read_param = reinterpret_cast<ObOpParam*>(ob_malloc(sizeof(ObOpParam), ObModIds::TEST));
+        *read_param = reinterpret_cast<ObOpParam*>(ob_malloc(sizeof(ObOpParam)));
         if (NULL == *read_param)
         {
           TBSYS_LOG(ERROR, "failed to allocate memory for read param");
@@ -396,7 +396,6 @@ namespace oceanbase
             }
             break;
 
-          case ObSeqType:
           case ObExtendType:
           default:
             TBSYS_LOG(WARN, "invalid cell info type %s",
@@ -508,7 +507,6 @@ namespace oceanbase
             fprintf(stderr, "    type=%s \n"
                 "    ext_type=%ld \n", OBJ_TYPE_STR[type], ext_type);
             break;
-          case ObSeqType:
           case ObMaxType:
           case ObMinType:
             fprintf(stderr, "    type=%s \n", OBJ_TYPE_STR[type]);
@@ -707,7 +705,7 @@ namespace oceanbase
 
       get_param.reset();
       scanner.clear();
-      get_param.set_is_result_cached(false);
+      get_param.set_is_result_cached(read_param.is_result_cached_);
 
       //build get_param
       for (int64_t i = 0; i < read_param.row_count_ && OB_SUCCESS == ret; ++i)
@@ -813,7 +811,7 @@ namespace oceanbase
         scan_param.set_version_range(ver_range);
         scan_param.set(OB_INVALID_ID, read_param.table_name_, range);
         scan_param.set_scan_size(OB_MAX_PACKET_LENGTH);
-        scan_param.set_is_result_cached(false);
+        scan_param.set_is_result_cached(read_param.is_result_cached_);
 
         start_time = tbsys::CTimeUtil::getTime();
         ret = client_.ms_scan(scan_param, scanner);
@@ -855,6 +853,11 @@ namespace oceanbase
 
       if (OB_SUCCESS == init(&read_param) && NULL != read_param)
       {
+        if (OB_SUCCESS != (client_.get_last_frozen_version(read_param->last_frozen_version_)))
+        {
+          TBSYS_LOG(WARN, "get_last_frozen_version error");
+          return;
+        }
         while (!_stop)
         {
           err = read_rule_.get_next_read_param(*read_param);
@@ -959,7 +962,6 @@ namespace oceanbase
       ObNewRange range;
       ObProject project;
       ObOpRowParam* row_param = NULL;
-      int64_t last_frozen_version = 0;
       std::set<uint64_t> column_id_set;
       uint64_t column_id = 0;
 
@@ -970,10 +972,6 @@ namespace oceanbase
         TBSYS_LOG(WARN, "wrong row count for scan, expect 2 row, but row_count=%ld",
             read_param.row_count_);
         ret = OB_ERROR;
-      }
-      else if (OB_SUCCESS != (ret = client_.get_last_frozen_version(last_frozen_version)))
-      {
-        TBSYS_LOG(WARN, "get_last_frozen_version ret=%d", ret);
       }
       else
       {
@@ -1010,9 +1008,9 @@ namespace oceanbase
       {
         //TBSYS_LOG(INFO, "scan range=%s, project=%s", to_cstring(range), to_cstring(project));
         scan_param.set_table_id(read_param.table_id_, read_param.table_id_);
-        scan_param.set_data_version(last_frozen_version);
+        scan_param.set_data_version(read_param.last_frozen_version_);
         scan_param.set_range(range);
-        scan_param.set_is_result_cached(false);
+        scan_param.set_is_result_cached(read_param.is_result_cached_);
         scan_param.set_project(project);
       }
       return ret;
@@ -1023,16 +1021,10 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       ObProject project;
       ObOpRowParam* row_param = NULL;
-      int64_t last_frozen_version = 0;
       ObRowkey rowkey;
 
       get_param.reset();
 
-      if (OB_SUCCESS != (ret = client_.get_last_frozen_version(last_frozen_version)))
-      {
-        TBSYS_LOG(WARN, "get_last_frozen_version ret=%d", ret);
-      }
-      else
       {
         fill_rowkey_project(read_param.table_id_, project, row_desc);
         for (int64_t i = 0; i < read_param.row_count_ && OB_SUCCESS == ret; ++i)
@@ -1040,7 +1032,7 @@ namespace oceanbase
           row_param = &read_param.row_[i];
           rowkey.assign(row_param->rowkey_, row_param->rowkey_len_);
           get_param.add_rowkey(rowkey, false);
-          if (i == 0)
+          if (i == 0) 
           {
             ret = fill_row_project(read_param.table_id_, *row_param, project, row_desc);
           }
@@ -1051,15 +1043,15 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         get_param.set_table_id(read_param.table_id_, read_param.table_id_);
-        get_param.set_data_version(last_frozen_version);
-        get_param.set_is_result_cached(false);
+        get_param.set_data_version(read_param.last_frozen_version_);
+        get_param.set_is_result_cached(read_param.is_result_cached_);
         get_param.set_project(project);
       }
       //TBSYS_LOG(INFO, "get_param tid=%ld, rename tid=%ld", get_param.get_table_id(), get_param.get_renamed_table_id());
       return ret;
     }
 
-    int ObReadWorker::fill_row_project(const int64_t table_id, const ObOpRowParam& row_param,
+    int ObReadWorker::fill_row_project(const int64_t table_id, const ObOpRowParam& row_param, 
         sql::ObProject &project, common::ObRowDesc& row_desc)
     {
       int ret = OB_SUCCESS;
@@ -1154,7 +1146,7 @@ namespace oceanbase
       //check the scan result
       if (OB_SUCCESS == ret && param_.is_check_result())
       {
-        //ret = check_scanner_result(read_param, row_desc, scanner, false);
+        ret = check_scanner_result(read_param, row_desc, scanner, false);
       }
       else if (OB_DATA_NOT_SERVE == ret || OB_RESPONSE_TIME_OUT == ret)
       {
@@ -1192,7 +1184,7 @@ namespace oceanbase
       common::ObRow current_row;
 
       current_row.set_row_desc(row_desc);
-      while (OB_SUCCESS == ret &&
+      while (OB_SUCCESS == ret && 
           OB_SUCCESS == const_cast<ObNewScanner&>(scanner).get_next_row(current_row))
       {
         if (OP_GET == read_param.op_type_)
@@ -1206,7 +1198,7 @@ namespace oceanbase
           row_count++;
         }
 
-        if (OB_SUCCESS != (ret = current_row.get_rowkey(row_key))
+        if (OB_SUCCESS != (ret = current_row.get_rowkey(row_key)) 
             || NULL == row_key || row_key->get_obj_cnt() <= 0)
         {
           TBSYS_LOG(ERROR, "rowkey not correct=%d", ret);
@@ -1224,15 +1216,15 @@ namespace oceanbase
           for (column_index = 0; column_index < row_param->cell_count_ && OB_SUCCESS == ret; column_index += MIN_OP_CELL_COUNT)
           {
             cell_param = &row_param->cell_[column_index];
-            aux_cell_param = &row_param->cell_[column_index + 1];
+            aux_cell_param = &row_param->cell_[column_index + 1]; 
             if (OB_SUCCESS != (ret = current_row.get_cell(read_param.table_id_, cell_param->column_id_, pcell)))
             {
-              TBSYS_LOG(ERROR, "get org cell ,tid=[%ld], cid=[%ld], ret=%d",
+              TBSYS_LOG(ERROR, "get org cell ,tid=[%ld], cid=[%ld], ret=%d", 
                   read_param.table_id_, cell_param->column_id_, ret);
             }
             else if (OB_SUCCESS != (ret = current_row.get_cell(read_param.table_id_, aux_cell_param->column_id_, aux_pcell)))
             {
-              TBSYS_LOG(ERROR, "get aux cell ,tid=[%ld], cid=[%ld], ret=%d",
+              TBSYS_LOG(ERROR, "get aux cell ,tid=[%ld], cid=[%ld], ret=%d", 
                   read_param.table_id_, cell_param->column_id_, ret);
             }
             else
@@ -1249,7 +1241,7 @@ namespace oceanbase
 
               if (OB_SUCCESS != (ret = check_cell(*cell_param, *aux_cell_param, cell_info, aux_cell_info)))
               {
-                TBSYS_LOG(ERROR, "check_cell error, prefix=%ld, cid=%ld, cell=%s",
+                TBSYS_LOG(ERROR, "check_cell error, prefix=%ld, cid=%ld, cell=%s", 
                     prefix, cell_param->column_id_, to_cstring(*pcell));
               }
             }
@@ -1274,11 +1266,13 @@ namespace oceanbase
         {
           stat_.add_get_opt(1);
           stat_.add_get_cell(total_cell_count);
+          stat_.add_get_row(row_count);
           stat_.add_get_cell_fail(read_cell_fail);
         }
         else
         {
           stat_.add_scan_opt(1);
+          stat_.add_scan_row(row_count);
           stat_.add_scan_cell(total_cell_count);
           stat_.add_scan_cell_fail(read_cell_fail);
         }
@@ -1286,6 +1280,94 @@ namespace oceanbase
 
       return ret;
     }
+
+    int build_scan_param(
+        const oceanbase::common::ObNewRange& range,  
+        const int64_t *query_column_array, 
+        const int64_t query_column_size, 
+        const int64_t query_data_version,
+        sql::ObSqlScanParam& scan_param,
+        common::ObRowDesc& row_desc)
+    {
+      int ret = OB_SUCCESS;
+      if (OB_SUCCESS != (ret = fill_scan_project(range.table_id_, 
+              query_column_array, query_column_size, scan_param, row_desc)))
+      {
+        fprintf(stderr, "fill_scan_project error=%d\n", ret);
+      }
+      else
+      {
+        scan_param.set_table_id(range.table_id_, range.table_id_);
+        scan_param.set_data_version(query_data_version);
+        scan_param.set_range(range);
+        scan_param.set_scan_direction(oceanbase::common::ScanFlag::FORWARD);
+        scan_param.set_read_mode(oceanbase::common::ScanFlag::SYNCREAD);
+        scan_param.set_is_result_cached(true);
+
+        fprintf(stderr, "query scan param= %s\n", to_cstring(scan_param));
+
+        if (query_column_size == 1 && query_column_array[0] == 0)
+        {
+          scan_param.set_full_row_scan(true);
+        }
+      }
+      return ret;
+    }
+
+    int fill_project(int64_t table_id, int64_t column_id, sql::ObProject& project)
+    {
+      int ret = OB_SUCCESS;
+      sql::ObSqlExpression sql_expression;
+      sql::ExprItem item;
+
+      item.value_.cell_.tid = table_id;
+      item.value_.cell_.cid = column_id;
+      item.type_ = T_REF_COLUMN;
+      sql_expression.set_tid_cid(table_id, column_id);
+
+      if (OB_SUCCESS != (ret = sql_expression.add_expr_item(item)))
+      {
+        TBSYS_LOG(WARN, "add_expr_item ret=%d, tid=%ld, cid=%ld", ret, table_id, column_id);
+      }
+      else if (OB_SUCCESS != (ret = sql_expression.add_expr_item_end()))
+      {
+        TBSYS_LOG(WARN, "add_expr_item_end ret=%d, tid=%ld, cid=%ld", ret, table_id, column_id);
+      }
+      else if (OB_SUCCESS != (ret = project.add_output_column(sql_expression)))
+      {
+        TBSYS_LOG(WARN, "add_output_column ret=%d, tid=%ld, cid=%ld", ret, table_id, column_id);
+      }
+      return ret;
+    }
+
+    int fill_scan_project(
+        const int64_t table_id, 
+        const int64_t* query_column_array, 
+        const int64_t query_column_size, 
+        ObSqlScanParam& scan_param, 
+        ObRowDesc& row_desc)
+    {
+      int ret = OB_SUCCESS;
+      ObProject project;
+      std::set<uint64_t> column_id_set;
+      uint64_t column_id = 0;
+
+      for (int64_t j = 0; j < query_column_size && OB_SUCCESS == ret; ++j)
+      {
+        column_id = query_column_array[j];
+        if (column_id_set.find(column_id) == column_id_set.end())
+        {
+          fill_project(table_id, column_id, project);
+          row_desc.add_column_desc(table_id, column_id);
+          column_id_set.insert(column_id);
+        }
+      }
+
+      if (OB_SUCCESS == ret) scan_param.set_project(project);
+
+      return ret;
+    }
+
 
   } // end namespace syschecker
 } // end namespace oceanbase

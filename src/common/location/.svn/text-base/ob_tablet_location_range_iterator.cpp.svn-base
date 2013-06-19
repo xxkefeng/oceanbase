@@ -2,6 +2,8 @@
 #include "ob_tablet_location_list.h"
 #include "ob_tablet_location_range_iterator.h"
 
+using namespace oceanbase;
+using namespace oceanbase::common;
 using namespace oceanbase::common;
 
 ObTabletLocationRangeIterator::ObTabletLocationRangeIterator()
@@ -14,7 +16,7 @@ ObTabletLocationRangeIterator::~ObTabletLocationRangeIterator()
 {
 }
 
-int ObTabletLocationRangeIterator::initialize(ObTabletLocationCacheProxy * cache_proxy,
+int ObTabletLocationRangeIterator::initialize(ObTabletLocationCacheProxy * cache_proxy, 
     const ObNewRange * iter_range, ScanFlag::Direction scan_direction, ObStringBuf * range_rowkey_buf)
 {
   int ret = OB_SUCCESS;
@@ -73,7 +75,7 @@ int ObTabletLocationRangeIterator::initialize(ObTabletLocationCacheProxy * cache
 }
 
 
-int ObTabletLocationRangeIterator::range_intersect(const ObNewRange &r1, const ObNewRange& r2,
+int ObTabletLocationRangeIterator::range_intersect(const ObNewRange &r1, const ObNewRange& r2, 
   ObNewRange& r3, ObStringBuf& range_rowkey_buf) const
 {
   int ret = OB_SUCCESS;
@@ -174,10 +176,12 @@ int ObTabletLocationRangeIterator::range_intersect(const ObNewRange &r1, const O
   return ret;
 }
 
-int ObTabletLocationRangeIterator::next(common::ObChunkServerItem * replicas_out,
-  int32_t & replica_count_in_out, ObNewRange & tablet_range_out)
+int ObTabletLocationRangeIterator::next(common::ObChunkServerItem * replicas_out, 
+  int32_t & replica_count_in_out,
+  ObNewRange & tablet_range_out)
 {
   int ret = OB_SUCCESS;
+
   if (!init_)
   {
     ret = OB_NOT_INIT;
@@ -260,7 +264,7 @@ int ObTabletLocationRangeIterator::next(common::ObChunkServerItem * replicas_out
   }
 
   /// ugly implimentation to process the last rowkey of last tablet, which is all '0xff'
-  if ((OB_SUCCESS == ret)
+  if ((OB_SUCCESS == ret) 
     &&  (tablet_range_out.compare_with_endkey2(location_list.get_tablet_range()) == 0)
     &&  (next_range_.end_key_.is_max_row())
     &&  (tablet_range_out.end_key_.length() > 0)
@@ -281,6 +285,6 @@ int ObTabletLocationRangeIterator::next(common::ObChunkServerItem * replicas_out
     tablet_range_out = next_range_;
     is_iter_end_ = true;
     TBSYS_LOG(INFO, "trigger seralizing access cs when backward scan");
-  }
+  } 
   return ret;
 }

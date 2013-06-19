@@ -52,8 +52,7 @@ namespace oceanbase
         virtual int init();
         virtual int merge(ObTablet *tablet, int64_t frozen_version) = 0;
 
-        int update_meta(ObTablet* old_tablet, 
-            const common::ObVector<ObTablet*> & tablet_array, const bool sync_meta);
+        int update_meta(ObTablet* old_tablet, const common::ObVector<ObTablet*> & tablet_array);
         int gen_sstable_file_location(const int32_t disk_no, 
             sstable::ObSSTableId& sstable_id, char* path, const int64_t path_size);
         int64_t calc_tablet_checksum(const int64_t checksum);

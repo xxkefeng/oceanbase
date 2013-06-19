@@ -110,7 +110,7 @@ namespace oceanbase
         common::ObGetParam get_param;
         common::ObScanParam scan_param;
         common::ObScanner scanner;
-        common::ObCellNewScanner new_scanner;
+        common::ObNewScanner new_scanner;
         sql::ObPhysicalPlan phy_plan;
         common::ModulePageAllocator mod;
         common::ModuleArena allocator;
@@ -177,7 +177,7 @@ namespace oceanbase
         bool wait_for_commit_(const int pcode);
 
         int get_session_type(const ObTransID& sid, SessionType& type);
-        bool handle_start_session_(Task &task, common::ObDataBuffer &buffer);
+        void handle_start_session_(Task &task, common::ObDataBuffer &buffer);
         bool handle_end_session_(Task &task, common::ObDataBuffer &buffer);
         bool handle_write_trans_(Task &task, common::ObMutator &mutator, common::ObNewScanner &scanner);
         bool handle_phyplan_trans_(Task &task,
@@ -188,12 +188,12 @@ namespace oceanbase
         void handle_get_trans_(common::ObPacket &pkt,
                               common::ObGetParam &get_param,
                               common::ObScanner &scanner,
-                              common::ObCellNewScanner &new_scanner,
+                              common::ObNewScanner &new_scanner,
                               common::ObDataBuffer &buffer);
         void handle_scan_trans_(common::ObPacket &pkt,
                                 common::ObScanParam &scan_param,
                                 common::ObScanner &scanner,
-                                common::ObCellNewScanner &new_scanner,
+                                common::ObNewScanner &new_scanner,
                                 common::ObDataBuffer &buffer);
         void handle_kill_zombie_();
         void handle_show_sessions_(common::ObPacket &pkt,

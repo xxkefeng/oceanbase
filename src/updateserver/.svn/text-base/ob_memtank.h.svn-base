@@ -2,9 +2,9 @@
  //
  // ob_memtank.h updateserver / Oceanbase
  //
- // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2010-11-23 by Yubai (yubai.lk@taobao.com)
+ // Created on 2010-11-23 by Yubai (yubai.lk@taobao.com) 
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- //
+ // 
  // Change Log
  //
 ////====================================================================
@@ -69,7 +69,7 @@ namespace oceanbase
             extern_mem_total_ptr_(&default_extern_mem_total_)
         {
           int64_t block_size = PAGE_SIZE;
-          block_allocator_.set_mod_id(mod_id);
+          block_allocator_.set_mod(mod_id);
           string_buf_.init(&block_allocator_, block_size);
           allocer_.init(&block_allocator_, block_size);
           tevalue_allocer_.init(&block_allocator_, block_size);
@@ -180,13 +180,13 @@ namespace oceanbase
           }
           return ret;
         };
-        void clear(const bool slow=true)
+        void clear()
         {
-          string_buf_.clear(slow);
-          allocer_.clear(slow);
-          tevalue_allocer_.clear(slow);
-          btree_engine_allocer_.clear(slow);
-          hash_engine_allocer_.clear(slow);
+          string_buf_.clear();
+          allocer_.clear();
+          tevalue_allocer_.clear();
+          btree_engine_allocer_.clear();
+          hash_engine_allocer_.clear();
         };
       public:
         bool mem_over_limit() const
@@ -278,3 +278,4 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_UPDATESERVER_MEMTANK_H_
+

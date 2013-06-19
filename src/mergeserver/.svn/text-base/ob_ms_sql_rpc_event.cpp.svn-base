@@ -17,6 +17,7 @@ ObMsSqlRpcEvent::ObMsSqlRpcEvent()
   client_request_id_ = OB_INVALID_ID;
   client_request_ = NULL;
   timeout_us_ = 0;
+  channel_id_ = 0;
   timestamp_ = 0;
 }
 

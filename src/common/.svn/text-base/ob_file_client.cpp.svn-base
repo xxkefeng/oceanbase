@@ -327,7 +327,7 @@ int ObFileClient::send_file_loop(const int64_t timeout,
 
   if (OB_SUCCESS == ret)
   {
-    block_buffer = reinterpret_cast<char *>(ob_malloc(block_size_, ObModIds::OB_FILE_CLIENT));
+    block_buffer = reinterpret_cast<char *>(ob_malloc(block_size_));
     if (NULL == block_buffer)
     {
       ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -341,8 +341,8 @@ int ObFileClient::send_file_loop(const int64_t timeout,
     struct stat file_stat;
     if (stat(local_path.ptr(), &file_stat) != 0)
     {
-      TBSYS_LOG(WARN, "get file size of %.*s failed: %s",
-          local_path.length(), local_path.ptr(), strerror(errno));
+      TBSYS_LOG(WARN, "get file size of %.*s failed: errno=%u",
+          local_path.length(), local_path.ptr(), errno);
       ret = OB_IO_ERROR;
     } else {
       file_size = file_stat.st_size;
@@ -497,3 +497,6 @@ int ObFileClient::send_file(const int64_t timeout, const int64_t band_limit,
 
   return ret;
 }
+
+
+

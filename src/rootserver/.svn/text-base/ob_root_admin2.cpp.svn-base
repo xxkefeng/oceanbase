@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "common/ob_define.h"
+#include "common/ob_obj_type.h"
 #include "common/ob_version.h"
 #include "common/ob_result.h"
 #include "common/serialization.h"
@@ -62,13 +63,13 @@ namespace oceanbase
       printf("\tlog_move_to_debug\n");
       printf("\tlog_move_to_error\n");
       printf("\tdump_root_table\n");
+      printf("\tclean_root_table\n");
       printf("\tdump_unusual_tablets\n");
       printf("\tdump_server_info\n");
       printf("\tdump_migrate_info\n");
       printf("\tswitch_schema\n");
       printf("\tchange_log_level -o ERROR|WARN|INFO|DEBUG\n");
       printf("\tget_obi_role\n");
-      printf("\tclean_error_msg\n");
       printf("\tset_obi_role -o OBI_SLAVE|OBI_MASTER\n");
       printf("\tget_obi_config\n");
       printf("\tclean_error_msg\n");
@@ -134,6 +135,10 @@ namespace oceanbase
       ,
         {
           "dump_root_table", OB_RS_ADMIN_DUMP_ROOT_TABLE, do_rs_admin
+        }
+      ,
+        {
+          "clean_root_table", OB_RS_ADMIN_CLEAN_ROOT_TABLE, do_rs_admin
         }
       ,
         {
@@ -218,10 +223,6 @@ namespace oceanbase
       ,
         {
           "boot_recover", OB_RS_ADMIN_BOOT_RECOVER, do_rs_admin
-        }
-      ,
-        {
-          "init_cluster", OB_RS_ADMIN_INIT_CLUSTER, do_rs_admin
         }
       ,
         {

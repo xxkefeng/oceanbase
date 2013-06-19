@@ -47,8 +47,8 @@ namespace oceanbase
         case ObVarcharType:
           ret = "varchar";
           break;
-        case ObSeqType:
-          ret = "seq";
+        case ObUnknownType:
+          ret = "unknown";
           break;
         case ObCreateTimeType:
           ret = "createtime";

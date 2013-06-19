@@ -1,0 +1,14 @@
+--disable_warnings
+drop table if exists bin_wei_t1;
+drop table if exists bin_wei_t2;
+drop table if exists bin_wei_t3;
+drop table if exists bin_wei_t4;
+--enable_warnings
+
+create table bin_wei_t1(c1 varchar(10) primary key, c2 varchar(10));
+create table bin_wei_t2(c1 varchar(10) primary key, c2 varchar(10));
+create table bin_wei_t3(c1 varchar(10) primary key, c2 varchar(10));
+create table bin_wei_t4(c1 varchar(10) primary key, c2 varchar(10));
+
+show all tables;
+show tables;

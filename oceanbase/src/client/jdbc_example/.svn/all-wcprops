@@ -1,0 +1,17 @@
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/jdbc_example
+END
+run.sh
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/11442/branches/dev/oceanbase/src/client/jdbc_example/run.sh
+END
+pom.xml
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/jdbc_example/pom.xml
+END

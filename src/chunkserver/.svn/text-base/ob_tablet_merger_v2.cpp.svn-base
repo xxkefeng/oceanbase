@@ -72,8 +72,6 @@ namespace oceanbase
 
       sql_scan_param_.reset();
       tablet_scan_.reset();
-      op_ups_scan_.reset();
-      op_ups_multi_get_.reset();
       writer_.reset();
       return OB_SUCCESS;
     }
@@ -153,8 +151,8 @@ namespace oceanbase
         char path[OB_MAX_FILE_NAME_LENGTH];
         path[0] = '\0';
 
-        if ((tablet->get_sstable_id_list()).count() > 0)
-          sstable_id = (tablet->get_sstable_id_list()).at(0).sstable_file_id_;
+        if (tablet->get_sstable_id().sstable_file_id_ > 0)
+          sstable_id = tablet->get_sstable_id().sstable_file_id_;
 
         if (0 != sstable_id)
         {
@@ -194,8 +192,18 @@ namespace oceanbase
       {
         //This table has been deleted
         TBSYS_LOG(INFO,"table (%lu) has been deleted",tablet->get_range().table_id_);
-        tablet->set_merged();
-        ret = OB_CS_TABLE_HAS_DELETED;
+        if(OB_SUCCESS != (ret = manager_.get_serving_tablet_image().set_tablet_merged(tablet)))
+        {
+          TBSYS_LOG(WARN, "set tablet merged failed, ret=%d", ret);
+        }
+        else if(OB_SUCCESS != (ret = manager_.get_serving_tablet_image().flush_log(OB_LOG_CS_MERGE_TABLET)))
+        {
+          TBSYS_LOG(WARN, "flush log failed, ret=%d", ret);
+        }
+        else
+        {
+          ret = OB_CS_TABLE_HAS_DELETED;
+        }
       }
       else if (OB_SUCCESS != (ret = build_sstable_schema(tablet->get_range().table_id_, sstable_schema_)))
       {
@@ -244,11 +252,12 @@ namespace oceanbase
       int64_t network_timeout = 0;
       //ObFilter filter;
       ObChunkServer & chunkserver = THE_CHUNK_SERVER;
-      network_timeout = chunkserver.get_config().network_timeout;
+      network_timeout = chunkserver.get_config().merge_timeout;
       ScanContext scan_context;
       manager_.build_scan_context(scan_context);
       tablet_scan_.set_scan_context(scan_context);
       tablet_scan_.set_network_timeout(network_timeout);
+      tablet_scan_.set_server_type(common::CHUNK_SERVER);
 
       if (OB_SUCCESS != (ret = build_sql_scan_param(sstable_schema_, sql_scan_param_)))
       {
@@ -305,7 +314,7 @@ namespace oceanbase
         reset();
       }
       else if (unmerge_if_unchanged && !tablet_scan_.has_incremental_data() 
-          && old_tablet_->get_sstable_id_list().count() > 0)
+          && old_tablet_->get_sstable_id().sstable_file_id_ > 0)
       {
         is_tablet_unchanged = true;
         TBSYS_LOG(INFO, "tablet %s has no incremental data, finish.", to_cstring(old_tablet_->get_range()));
@@ -380,7 +389,6 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      bool sync_meta = THE_CHUNK_SERVER.get_config().each_tablet_sync_meta;
       if (OB_SUCCESS != (ret = prepare_merge(tablet, frozen_version)))
       {
         TBSYS_LOG(WARN, "save merge info failed, ret=%d", ret);
@@ -396,7 +404,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "do_merge error, ret=%d", ret);
 
       }
-      else if (OB_SUCCESS != (ret = update_meta(old_tablet_, tablet_array_, sync_meta)))
+      else if (OB_SUCCESS != (ret = update_meta(old_tablet_, tablet_array_)))
       {
         TBSYS_LOG(WARN, "update_meta error, ret=%d", ret);
       }
@@ -419,18 +427,18 @@ namespace oceanbase
 
       for(ObVector<ObTablet *>::iterator it = tablet_array_.begin(); it != tablet_array_.end(); ++it)
       {
-        if ( ((*it) != NULL) && ((*it)->get_sstable_id_list().count() > 0))
+        if ( ((*it) != NULL) && ((*it)->get_sstable_id().sstable_file_id_ > 0))
         {
-          sstable_id = (*it)->get_sstable_id_list().at(0).sstable_file_id_;
+          sstable_id = (*it)->get_sstable_id().sstable_file_id_;
           if (OB_SUCCESS == get_sstable_path(sstable_id,path,sizeof(path)))
           {
             unlink(path);
             TBSYS_LOG(WARN,"cleanup sstable %s",path);
-            manager_.get_disk_manager().add_used_space(
-                static_cast<int32_t>(get_sstable_disk_no(sstable_id_.sstable_file_id_)) , 0);
           }
         }
       }
+      manager_.get_disk_manager().add_used_space(
+          static_cast<int32_t>(get_sstable_disk_no(sstable_id_.sstable_file_id_)) , 0);
       return OB_SUCCESS;
     }
 
@@ -526,8 +534,7 @@ namespace oceanbase
       }
       else if (NULL == (def = schema.get_table_schema(table_id, false, rowvalue_size)))
       {
-        TBSYS_LOG(WARN, "get rowkey schema error, table_id=%ld", table_id);
-        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(WARN, "table %ld has no row value schema.", table_id);
       }
       else if (OB_SUCCESS != (ret = build_project(def, rowvalue_size, project)))
       {
@@ -586,6 +593,7 @@ namespace oceanbase
         {
           scan_param.set_read_mode(ScanFlag::ASYNCREAD);
         }
+        TBSYS_LOG(INFO, "do_merge scan_param:%s", to_cstring(scan_param));
       }
       return ret;
     }
@@ -610,7 +618,7 @@ namespace oceanbase
        * will be decreased. so we can ensure the recycle logical is
        * correct.
        */
-      if (old_tablet_->get_sstable_id_list().count() > 0)
+      if (old_tablet_->get_sstable_id().sstable_file_id_ > 0)
       {
         int32_t disk_no = old_tablet_->get_disk_no();
 
@@ -629,7 +637,7 @@ namespace oceanbase
          * FIXME: current we just support one tablet with only one
          * sstable file
          */
-        old_sstable_id = old_tablet_->get_sstable_id_list().at(0);
+        old_sstable_id = old_tablet_->get_sstable_id();
         if ((ret = get_sstable_path(old_sstable_id, old_path, sizeof(old_path))) != OB_SUCCESS )
         {
           TBSYS_LOG(ERROR, "create_hard_link_sstable: can't get the path of old sstable");
@@ -666,6 +674,7 @@ namespace oceanbase
       if (!is_tablet_unchanged)
       {
         extend_info.check_sum_ = calc_tablet_checksum(writer_.get_sstable_checksum(0));
+        extend_info.row_checksum_ = writer_.get_sstable_row_checksum(0);
         extend_info.row_count_ = writer_.get_sstable_row_count(0);
         extend_info.occupy_size_ = writer_.get_sstable_size(0);
         extend_info.sstable_version_ = SSTableReader::COMPACT_SSTABLE_VERSION;

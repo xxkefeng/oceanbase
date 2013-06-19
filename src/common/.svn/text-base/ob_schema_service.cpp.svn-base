@@ -54,12 +54,7 @@ bool TableSchema::is_valid() const
     }
     if (OB_SUCCESS == err)
     {
-      if (def_rowkey_col == columns_.count())
-      {
-        TBSYS_LOG(WARN, "all columns=%ld are defined as rowkey column=%d, table=%s",
-            columns_.count(), def_rowkey_col, table_name_);
-      }
-      else if (def_rowkey_col == rowkey_column_num_)
+      if (def_rowkey_col == rowkey_column_num_)
       {
         ret = true;
       }
@@ -278,6 +273,10 @@ DEFINE_SERIALIZE(TableSchema)
   else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, tablet_max_size_)))
   {
   }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi32(buf, buf_len, pos, charset_number_)))
+  {
+
+  }
   else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, max_rowkey_length_)))
   {
   }
@@ -288,6 +287,12 @@ DEFINE_SERIALIZE(TableSchema)
   {
   }
   else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, modify_time_column_id_)))
+  {
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, data_table_id_)))
+  {
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, index_status_)))
   {
   }
   else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, columns_.count())))
@@ -379,6 +384,10 @@ DEFINE_DESERIALIZE(TableSchema)
   {
     TBSYS_LOG(WARN, "deserialize error here");
   }
+  else if (OB_SUCCESS != (ret = serialization::decode_vi32(buf, data_len, pos, &charset_number_)))
+  {
+    TBSYS_LOG(WARN, "deserialize error here");
+  }
   else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &max_rowkey_length_)))
   {
     TBSYS_LOG(WARN, "deserialize error here");
@@ -392,6 +401,14 @@ DEFINE_DESERIALIZE(TableSchema)
     TBSYS_LOG(WARN, "deserialize error here");
   }
   else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, reinterpret_cast<int64_t*>(&modify_time_column_id_))))
+  {
+    TBSYS_LOG(WARN, "deserialize error here");
+  }
+  else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, reinterpret_cast<int64_t*>(&data_table_id_))))
+  {
+    TBSYS_LOG(WARN, "deserialize error here");
+  }
+  else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, reinterpret_cast<int64_t*>(&index_status_))))
   {
     TBSYS_LOG(WARN, "deserialize error here");
   }
@@ -496,5 +513,3 @@ DEFINE_DESERIALIZE(AlterTableSchema)
   }
   return ret;
 }
-
-

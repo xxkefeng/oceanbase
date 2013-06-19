@@ -4,7 +4,7 @@ drop table if exists t1,t2,t3;
 
 alter system set merge_delay_interval='1s' server_type=chunkserver;
 alter system set merge_delay_for_lsync='1s' server_type=chunkserver;
-alter system set min_drop_cache_wait_time='10s' server_type=chunkserver;
+alter system set min_drop_cache_wait_time='1s' server_type=chunkserver;
 alter system set merge_thread_per_disk=10 server_type=chunkserver;
 alter system set each_tablet_sync_meta=False server_type=chunkserver;
 --real_sleep 10 
@@ -25,7 +25,7 @@ insert into t1 values(NULL,NULL,NULL,NULL);
 --error 5024
 insert into t1 values(NULL,NULL,NULL,NULL);
 
---error 5047
+--error 5003
 update t1 set i2=1 where i1=NULL and s1=NULL;
 update t1 set i2=1 where i1=NULL and s1=NULL and d1=NULL;
 

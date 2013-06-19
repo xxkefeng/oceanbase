@@ -4,6 +4,34 @@
 #include "common/file_directory_utils.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
+TEST(SchemaTestV2, write_to_file)
+{
+  tbsys::CConfig c1;
+  tbsys::CConfig c2;
+  ObSchemaManagerV2 *schema_manager = new ObSchemaManagerV2();
+  ASSERT_EQ(true, schema_manager->parse_from_file("./schema.ini", c1));
+  schema_manager->write_to_file("./schema_bypass.ini");
+  ObSchemaManagerV2 *schema_manager2 = new ObSchemaManagerV2();
+  ASSERT_EQ(true, schema_manager2->parse_from_file("./schema_bypass.ini", c2));
+  ASSERT_EQ(schema_manager->get_column_count(), schema_manager2->get_column_count());
+  ASSERT_EQ(schema_manager->get_table_count(), schema_manager2->get_table_count());
+  ASSERT_EQ(schema_manager->get_max_table_id(), schema_manager2->get_max_table_id());
+  ASSERT_EQ(schema_manager->get_version(), schema_manager2->get_version());
+  for (int i = 0; i < schema_manager->get_column_count(); i++)
+  {
+    const ObColumnSchemaV2* column = schema_manager->column_begin() + i;
+    const ObColumnSchemaV2* column2 = schema_manager2->get_column_schema(column->get_table_id(), column->get_id());
+    column->print_info();
+    column2->print_info();
+    ASSERT_EQ(true, *column == *column2);
+  }
+  for (int i = 0; i < schema_manager->get_table_count(); i++)
+  {
+    const ObTableSchema* table = schema_manager->table_begin() + i;
+    const ObTableSchema* table2 = schema_manager2->get_table_schema(table->get_table_name());
+    ASSERT_EQ(true, *table == *table2);
+  }
+}
 TEST(SchemaTestV2, basicTest)
 {
   tbsys::CConfig c1;
@@ -33,7 +61,7 @@ TEST(SchemaTestV2, basicTest)
   col = schema_manager->get_column_schema(1002,17,&idx);
   ASSERT_EQ(1,idx);
   ASSERT_TRUE(NULL != col);
-  
+
   col = schema_manager->get_column_schema("collect_info","item_name");
   ASSERT_EQ(col->get_id(),16UL);
 
@@ -100,7 +128,7 @@ TEST(SchemaTestV2, serialize)
 
   ASSERT_EQ((uint64_t)6,schema_manager_1->get_create_time_column_id(1001));
   ASSERT_EQ((uint64_t)7,schema_manager_1->get_modify_time_column_id(1001));
-  
+
   pos = 0;
   schema_manager_1->serialize(buf_2,len,pos);
   ASSERT_EQ(pos,len);
@@ -284,23 +312,23 @@ TEST(SchemaTest, SchemaV2notorder)
   ASSERT_EQ(1, table_schema->get_table_type());
   ASSERT_EQ(0, strcmp("item_info", table_schema->get_table_name()));
   ASSERT_EQ((uint64_t)28, table_schema->get_max_column_id());
-    
-  int32_t table_size = 0; 
+
+  int32_t table_size = 0;
   const ObTableSchema* table = schema_manager.get_table_schema((uint64_t)1001);
   ASSERT_EQ(true, table != NULL);
   ASSERT_EQ((uint64_t)1001, table->get_table_id());
   ASSERT_EQ(80, table->get_block_size());
   ASSERT_EQ(true, table->is_use_bloomfilter());
   ASSERT_EQ(0, strcmp("lalala", table->get_compress_func_name()));
-  
+
   const ObColumnSchemaV2* table_schema_column = schema_manager.get_table_schema((uint64_t)1001, table_size);
   ASSERT_EQ(true, table_schema_column != NULL);
   ASSERT_EQ(26, table_size);
-  
+
 
   int32_t group_size = OB_MAX_COLUMN_GROUP_NUMBER;
   uint64_t column_groups[OB_MAX_COLUMN_GROUP_NUMBER];
-  
+
   int ret = schema_manager.get_column_groups((uint64_t)1001, column_groups, group_size);
   ret++;
   ASSERT_EQ((uint64_t)0, column_groups[0]);
@@ -309,13 +337,13 @@ TEST(SchemaTest, SchemaV2notorder)
   {
     ASSERT_EQ((uint64_t)10+index, column_groups[index]);
   }
-  
+
   const ObColumnSchemaV2* default_group_schema = schema_manager.get_group_schema((uint64_t)1001,(uint64_t) 0, group_size);
   ASSERT_EQ(5, group_size);
   ASSERT_EQ(0, strcmp("user_nick", default_group_schema->get_name()));
   ASSERT_EQ((uint64_t)16, default_group_schema->get_id());
   ASSERT_EQ((uint64_t)1001, default_group_schema->get_table_id());
- 
+
   const ObColumnSchemaV2* first_group_schema = schema_manager.get_group_schema(1001, 11, group_size);
   ASSERT_EQ(3, group_size);
   ASSERT_EQ(0, strcmp("note", first_group_schema->get_name()));
@@ -382,7 +410,7 @@ TEST(SchemaTest, expire_condition)
   ObSchemaManagerV2 *schema_manager_1 = new ObSchemaManagerV2();
   ASSERT_EQ(0,schema_manager_1->deserialize(buf,len,pos));
   ASSERT_EQ(pos,len);
-  
+
   ASSERT_EQ(0, strcmp(schema_manager_1->get_table_schema(1001)->get_expire_condition(), ""));
   ASSERT_EQ(1, schema_manager_1->get_table_schema(1001)->get_expire_frequency());
   ASSERT_EQ(64, schema_manager_1->get_table_schema(1001)->get_block_size());
@@ -410,9 +438,9 @@ TEST(SchemaTest, expire_condition)
   free(buf_2);
   buf_2 = NULL;
 
-  const char* info_expire_cond = 
+  const char* info_expire_cond =
     "(`info_gm_modified` < $SYS_DATE AND (`item_category` = 1 OR `info_status` = 1))";
-  const char* item_expire_cond = 
+  const char* item_expire_cond =
     "(`item_gm_modified` < $SYS_DATE AND (`item_category` = 1 OR `item_status` = 1))";
   tbsys::CConfig c2;
   ObSchemaManagerV2 *schema_manager2 = new ObSchemaManagerV2();
@@ -447,11 +475,50 @@ TEST(SchemaTest, expire_condition)
   ASSERT_EQ(0, strcmp(schema_manager3->get_table_schema(1002)->get_expire_condition(), item_expire_cond));
   ASSERT_EQ(1, schema_manager3->get_table_schema(1002)->get_expire_frequency());
   ASSERT_EQ(65536, schema_manager3->get_table_schema(1002)->get_block_size());
-  ASSERT_EQ(268435456, schema_manager3->get_table_schema(1002)->get_max_sstable_size());  
+  ASSERT_EQ(268435456, schema_manager3->get_table_schema(1002)->get_max_sstable_size());
   delete schema_manager2;
   delete schema_manager3;
   free(buf);
   buf = NULL;
+}
+
+TEST(SchemaTest, index)
+{
+  ObSchemaManagerV2 *schema_mgr = new ObSchemaManagerV2();
+  ObTableSchema table_schema;
+  table_schema.set_table_id(1);
+  table_schema.set_table_name("table1");
+  schema_mgr->add_table(table_schema);
+  table_schema.set_table_id(2);
+  table_schema.set_table_name("table2");
+  schema_mgr->add_table(table_schema);
+
+  ObTableSchema index;
+  index.set_table_id(11);
+  index.set_table_name("index11");
+  index.set_table_type(ObTableSchema::INDEX);
+  index.set_data_table_id(1);
+  schema_mgr->add_table(index);
+  index.set_table_id(12);
+  index.set_table_name("index12");
+  index.set_table_type(ObTableSchema::INDEX);
+  index.set_data_table_id(1);
+  schema_mgr->add_table(index);
+
+  ASSERT_EQ(OB_SUCCESS, schema_mgr->cons_table_to_index_relation());
+
+  uint64_t index_tid_array[128];
+  int64_t size = 128;
+  const ObTableSchema * tschema = schema_mgr->get_table_schema(1);
+  tschema->get_index_tid_array(index_tid_array, size);
+  ASSERT_EQ(2, size);
+  for(int i = 0; i < 2; i ++)
+  {
+    ASSERT_TRUE(index_tid_array[i] == 11 || index_tid_array[i] == 12);
+  }
+  tschema = schema_mgr->get_table_schema(2);
+  tschema->get_index_tid_array(index_tid_array, size);
+  ASSERT_EQ(0, size);
 }
 
 int main(int argc, char **argv)

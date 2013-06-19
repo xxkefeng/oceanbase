@@ -1,0 +1,30 @@
+--disable_abort_on_error
+
+--disable_warnings
+drop table if exists test_table;
+--enable_warnings
+
+alter system set merge_delay_interval='1s' server_type=chunkserver;
+alter system set merge_delay_for_lsync='1s' server_type=chunkserver;
+alter system set min_drop_cache_wait_time='1s' server_type=chunkserver;
+alter system set merge_thread_per_disk=10 server_type=chunkserver;
+alter system set each_tablet_sync_meta=False server_type=chunkserver;
+alter system set index_builder_thread_num='10' server_type=chunkserver;
+alter system set index_sort_mem_limit='1G' server_type=chunkserver;
+#alter system set merge_write_sstable_version='3' server_type=chunkserver;
+--real_sleep 10
+
+create table test_table(id int primary key, name varchar(64), age int, description varchar(64));
+create index test_index_table on test_table(age) storing(name);
+replace into test_table (id, name, age, description) values (1,'name1',30,'rd'),(2,'name2',27,'rd'),(3,'name3',25,'rd'),(4,'name4',24,'rd');
+
+select * from test_table;
+select * from __idx_test_index_table;
+
+exec $LOCAL_DIR/tools/ups_admin  -a $MASTER_UPS_IP -p $MASTER_UPS_PORT -t major_freeze;
+--real_sleep 120
+
+select * from test_table;
+select * from __idx_test_index_table;
+
+drop table test_table;

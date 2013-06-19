@@ -28,43 +28,43 @@ namespace oceanbase
     class ObBlockMembuf
     {
     public:
-      /**
+      /** 
        * BlockMemBuf used in the situation that we
        * do not know how many memory will alloc,
-       * we can alloc some blocks,and linked them.
-       * @param block_size
+       * we can alloc some blocks,and linked them. 
+       * @param block_size 
        */
-      ObBlockMembuf(const int64_t block_size,const int32_t mod_id = common::ObModIds::OB_MEM_BUFFER);
+      ObBlockMembuf(const int64_t block_size,const int32_t mod_id = common::ObModIds::OB_MOD_DEFAULT);
       ~ObBlockMembuf();
 
-      /**
+      /** 
        * copy buf to block
-       *
+       * 
        * @param buf  buffer will write to BlockMemBuf
        * @param size the size of buf
        * @param ret_addr the address of buf in BlockMemBuf
-       *
+       * 
        * @return OB_SUCCESS on success,otherwise on failed.
        */
       int write(const char* buf,const int64_t size,const char** ret_addr = NULL);
 
-      /**
+      /** 
        * get buffer according to offset
        * *NOTE* read is a test helper
-       *
+       * 
        * @param offset offset in BlockMemBuf
-       * @param size
-       *
+       * @param size 
+       * 
        * @return the address of buffer on success,NULL on failed.
        */
       const char* read(const int64_t offset,const int64_t size) const;
-
-      /**
+      
+      /** 
        * dump BlockMemBuf to disk
-       *
+       * 
        * @param filesys file appender
        * @param size the number of bytes dumped
-       *
+       * 
        * @return OB_SUCCESS on success,otherwise on failed.
        */
       int dump(common::ObFileAppender& filesys,int64_t& size);

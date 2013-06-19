@@ -317,10 +317,6 @@ namespace oceanbase
       {
         ret = OB_NOT_INIT;
       }
-      else if (!guard.is_lock_succ())
-      {
-        ret = OB_BEGIN_TRANS_LOCKED;
-      }
       else if (NULL == (ctx = alloc_ctx_(type)))
       {
         TBSYS_LOG(WARN, "alloc ctx fail, type=%d", type);

@@ -18,7 +18,7 @@ sleep 60;
 deploy ob1.check_cs_sstable 600;
 deploy ob2.check_cs_sstable 600;
 
-deploy ob1.mysql alter system set tablet_replicas_num=2 server_type=rootserver;
+alter system set tablet_replicas_num=2 server_type=rootserver;
 
 deploy ob1.cs0.force_stop;
 deploy ob1.cs1.force_stop;

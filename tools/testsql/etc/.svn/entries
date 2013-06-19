@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/testsql/etc
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/testsql/etc
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
+2013-06-19T09:27:08.000000Z
 206dfee0859bb7d1e33077b12bee4418
 2012-07-05T10:26:07.392294Z
 8668

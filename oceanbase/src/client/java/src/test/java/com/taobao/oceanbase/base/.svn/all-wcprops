@@ -1,0 +1,71 @@
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base
+END
+ModifyTypeEnum.java
+K 25
+svn:wc:ra_dav:version-url
+V 129
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/ModifyTypeEnum.java
+END
+RowKey.java
+K 25
+svn:wc:ra_dav:version-url
+V 121
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/RowKey.java
+END
+RowKeyHelper.java
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/RowKeyHelper.java
+END
+ColumnTypeEnum.java
+K 25
+svn:wc:ra_dav:version-url
+V 129
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/ColumnTypeEnum.java
+END
+BaseCase.java
+K 25
+svn:wc:ra_dav:version-url
+V 123
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/BaseCase.java
+END
+LogEnum.java
+K 25
+svn:wc:ra_dav:version-url
+V 122
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/LogEnum.java
+END
+ExpectResult.java
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/ExpectResult.java
+END
+CollectColumnEnum.java
+K 25
+svn:wc:ra_dav:version-url
+V 132
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/CollectColumnEnum.java
+END
+RowKeyFactory.java
+K 25
+svn:wc:ra_dav:version-url
+V 128
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/RowKeyFactory.java
+END
+RKey.java
+K 25
+svn:wc:ra_dav:version-url
+V 119
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/RKey.java
+END
+OBTestBase.java
+K 25
+svn:wc:ra_dav:version-url
+V 125
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/OBTestBase.java
+END

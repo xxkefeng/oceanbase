@@ -11,11 +11,11 @@
 #include "common/ob_record_header_v2.h"
 #include "common/ob_range2.h"
 #include "common/ob_compact_store_type.h"
-#include "ob_sstable_block.h"
 #include "ob_sstable_table.h"
 #include "ob_sstable.h"
 #include "ob_compact_sstable_writer_buffer.h"
 #include "ob_sstable_store_struct.h"
+#include "ob_sstable_block.h"
 
 class TestCompactSSTableWriter_construct_Test;
 class TestCompactSSTableWriter_set_sstable_param1_Test;
@@ -26,10 +26,10 @@ class TestCompactSSTableWriter_set_table_info1_Test;
 class TestCompactSSTableWriter_set_table_info2_Test;
 class TestCompactSSTableWriter_set_sstable_filepath1_Test;
 
-//#define OB_COMPACT_SSTABLE_ALLOW_SCHEMA_CHECK_ROWKEY_
-//#define OB_COMPACT_SSTABLE_ALLOW_TABLE_RANGE_CHECK_ROWKEY_
+#define OB_COMPACT_SSTABLE_ALLOW_SCHEMA_CHECK_ROWKEY_
+#define OB_COMPACT_SSTABLE_ALLOW_TABLE_RANGE_CHECK_ROWKEY_
 //#define OB_COMPACT_SSTABLE_ALLOW_BLOOMFILTER_
-//#define OB_COMPACT_SSTABLE_ALLOW_LAST_CHECK_ROWKEY_
+#define OB_COMPACT_SSTABLE_ALLOW_LAST_CHECK_ROWKEY_
 
 namespace oceanbase
 {
@@ -84,7 +84,7 @@ namespace oceanbase
         sstable_.set_bloomfilter_hashcount(SSTABLE_BLOOMFILTER_HASH_COUNT);
         //table_(construct)
         table_.init(SSTABLE_BLOOMFILTER_HASH_COUNT, SSTABLE_BLOOMFILTER_SIZE);
-        //block_(construct)
+        block_.init();
         //sstable_trailer_offset_(construct)
         //query_struct_(construct)
       }
@@ -113,7 +113,7 @@ namespace oceanbase
        * @param version_range: version range
        * @param row_stroe_type: row store type
        * @param table_count: table count
-       * @param blocksize: block size
+       * @param block_size: block size
        * @param compressor_name: not compress
        *        --none: none compressor
        *        --    : not compressor(no need compress buffer)
@@ -128,7 +128,7 @@ namespace oceanbase
           const ObFrozenMinorVersionRange& version_range,
           const common::ObCompactStoreType& row_store_type,
           const int64_t table_count,
-          const int64_t blocksize,
+          const int64_t block_size,
           const common::ObString& compressor_name,
           const int64_t def_sstable_size,
           const int64_t min_split_sstable_size = 0);
@@ -195,6 +195,16 @@ namespace oceanbase
       inline int64_t get_sstable_row_count(const int64_t flag) const
       {
         return sstable_.get_sstable_row_count(flag);
+      }
+
+      /**
+       * get sstable row checksum which is the sum of the all row checksum
+       * @param flag: 0(get old sstable row checksum)
+       *              1(get cur sstable row checksum)
+       */
+      inline uint64_t get_sstable_row_checksum(const int64_t flag) const
+      {
+        return sstable_.get_sstable_row_checksum(flag);
       }
 
       /**

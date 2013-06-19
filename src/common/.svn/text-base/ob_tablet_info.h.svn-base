@@ -24,6 +24,12 @@ namespace oceanbase
 { 
   namespace common
   {
+    enum ObTabletState
+    {
+      TABLET_AVAILABLE = 0,
+      TABLET_UNAVAILABLE
+    };
+
     struct ObTabletLocation 
     {
       int64_t tablet_version_;
@@ -51,13 +57,14 @@ namespace oceanbase
       int64_t row_count_;
       int64_t occupy_size_;
       uint64_t crc_sum_;
+      uint64_t row_checksum_;
 
-      ObTabletInfo() 
-        : range_(), row_count_(0), occupy_size_(0), crc_sum_(0) {}
-      ObTabletInfo(const ObNewRange& r, const int32_t rc, const int32_t sz, const uint64_t crc_sum = 0)
-        : range_(r), row_count_(rc), occupy_size_(sz), crc_sum_(crc_sum) {}
+      ObTabletInfo()
+        : range_(), row_count_(0), occupy_size_(0), crc_sum_(0), row_checksum_(0){}
+      ObTabletInfo(const ObNewRange& r, const int32_t rc, const int32_t sz, const uint64_t crc_sum = 0, const uint64_t row_checksum = 0)
+        : range_(r), row_count_(rc), occupy_size_(sz), crc_sum_(crc_sum), row_checksum_(row_checksum) {}
 
-      inline bool equal(const ObTabletInfo& tablet) const 
+      inline bool equal(const ObTabletInfo& tablet) const
       {
         return range_.equal(tablet.range_);
       }

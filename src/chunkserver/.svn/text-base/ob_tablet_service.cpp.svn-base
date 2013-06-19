@@ -12,7 +12,6 @@
  */
 
 #include "ob_tablet_service.h"
-#include "common/ob_profile_log.h"
 #include "common/ob_schema_manager.h"
 
 using namespace oceanbase;
@@ -35,6 +34,7 @@ void ObTabletService::reset()
 {
   tablet_get_.reset();
   tablet_scan_.reset();
+  tablet_sstable_scan_.reset();
   rowkey_allocator_.reuse();
   cur_rowkey_ = NULL;
   cur_row_ = NULL;
@@ -51,7 +51,7 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
   const ObSqlScanParam *sql_scan_param = NULL;
   const ObSqlGetParam *sql_get_param = NULL;
 
-  INIT_PROFILE_LOG_TIMER();
+  FILL_TRACE_LOG("tablet_service_open_start");
 
   sql_scan_param = dynamic_cast<const ObSqlScanParam *>(&sql_read_param);
   if (NULL == sql_scan_param)
@@ -84,7 +84,7 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
       ret = OB_ERROR;
       TBSYS_LOG(WARN, "chunk server get schema manager fail:ret[%d]", ret);
     }
-    else if(NULL == (schema_mgr = merger_schema_mgr->get_user_schema(0)))
+    else if(NULL == (schema_mgr = merger_schema_mgr->get_schema((int64_t)0)))
     {
       ret = OB_ERROR;
       TBSYS_LOG(WARN, "get user schema mgr fail:ret[%d]", ret);
@@ -126,21 +126,21 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
     }
   }
 
+  FILL_TRACE_LOG("prepare_work_done");
+
   if(OB_SUCCESS == ret)
   {
 
     tablet_read_->set_join_batch_count(chunk_server_.get_config().join_batch_count);
     tablet_read_->set_is_read_consistency(sql_read_param.get_is_read_consistency());
 
-    PROFILE_LOG_TIME(DEBUG, "begin tablet_read_ create_plan.");
     if (OB_SUCCESS != (ret = tablet_read_->create_plan(*schema_mgr)))
     {
       TBSYS_LOG(WARN, "fail to create plan:ret[%d]", ret);
     }
     else
     {
-      PROFILE_LOG_TIME(DEBUG, "tablet_read_ create_plan complete.");
-      FILL_TRACE_LOG("create_plan done,ret=%d", ret);
+      FILL_TRACE_LOG("create_plan_done");
       if (OB_UNLIKELY(TBSYS_LOGGER._level >= TBSYS_LOG_LEVEL_TRACE))
       {
         TBSYS_LOG(TRACE, "ExecutionPlan: \n%s", to_cstring(tablet_scan_));
@@ -154,7 +154,7 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
           ret = OB_ERR_PRIMARY_KEY_DUPLICATE;
         }
       }
-      PROFILE_LOG_TIME(DEBUG, "tablet_read_ open complete ret[%d]", ret);
+      FILL_TRACE_LOG("tablet_read_open_done");
     }
   }
 
@@ -171,14 +171,44 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
   return ret;
 }
 
+int ObTabletService::open(const sstable::ObSSTableScanParam &scan_param,
+    const int64_t timeout_us)
+{
+  reset();
+
+  int rc = OB_SUCCESS;
+  ScanContext scan_context;
+  ObTabletManager &tablet_mgr = chunk_server_.get_tablet_manager();
+  tablet_mgr.build_scan_context(scan_context);
+
+  set_timeout_us(timeout_us);
+  tablet_sstable_scan_.set_param(scan_param, scan_context);
+
+  tablet_sstable_scan_.set_is_read_consistency(scan_param.get_is_read_consistency());
+
+  // schema manager not used in create_plan
+  if (OB_SUCCESS != (rc = tablet_sstable_scan_.create_plan(*(const ObSchemaManagerV2 *)NULL)))
+  {
+    TBSYS_LOG(ERROR, "tablet sstable scan create plan failed, rc %d", rc);
+  }
+  else if (OB_SUCCESS != (rc = tablet_sstable_scan_.open()))
+  {
+    TBSYS_LOG(ERROR, "open tablet sstable scan operator failed, rc %d", rc);
+  }
+  else
+  {
+    tablet_read_ = &tablet_sstable_scan_;
+  }
+
+  return rc;
+}
+
 int ObTabletService::fill_scan_data(ObNewScanner &new_scanner)
 {
   int ret = OB_SUCCESS;
   int64_t fullfilled_row_num = 0;
   int64_t start_time = 0;
   int64_t timeout = timeout_us_;
-
-  INIT_PROFILE_LOG_TIMER();
 
   if(OB_SUCCESS == ret)
   {
@@ -222,7 +252,7 @@ int ObTabletService::fill_scan_data(ObNewScanner &new_scanner)
 
         if(OB_SUCCESS == ret)
         {
-          if(OB_SUCCESS != (ret = tablet_read_->get_last_rowkey(cur_rowkey_)))
+          if(OB_SUCCESS != (ret = tablet_read_->get_cur_rowkey(cur_rowkey_)))
           {
             TBSYS_LOG(WARN, "get last rowkey fail:ret[%d]", ret);
           }
@@ -285,11 +315,6 @@ int ObTabletService::fill_scan_data(ObNewScanner &new_scanner)
       {
         cur_row_ = NULL;
         fullfilled_row_num ++;
-
-        if (fullfilled_row_num % 1000 == 0)
-        {
-          PROFILE_LOG_TIME(DEBUG, "fill next 1000 row, fullfilled_row_num=%ld", fullfilled_row_num);
-        }
       }
       else
       {
@@ -323,6 +348,11 @@ int ObTabletService::close()
   {
     ret = err;
     TBSYS_LOG(WARN, "close tablet get fail:err[%d]", err);
+  }
+  if (OB_SUCCESS != (err = tablet_sstable_scan_.close()))
+  {
+    ret = err;
+    TBSYS_LOG(WARN, "close tablet sstable scan fail:err[%d]", err);
   }
   return ret;
 }

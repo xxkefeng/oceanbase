@@ -59,6 +59,9 @@ namespace oceanbase
       const static int64_t ES_NEW_ADD           = 4;
       const static int64_t ES_VALID             = 5;
 
+      const static int64_t ET_DEL_ROW           = 5;
+      const static int64_t ET_NEW_ADD           = 6;
+
       uint8_t type_:5;
       uint8_t attr_:3;
 

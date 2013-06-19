@@ -43,7 +43,10 @@ namespace oceanbase
         virtual int add_aggr_column(const ObSqlExpression& expr);
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         void assign(const ObScalarAggregate &other);
-
+        enum ObPhyOperatorType get_type() const
+        {
+          return PHY_SCALAR_AGGREGATE;
+        }
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy

@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/updateserver/sst4test_tablemgr
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tests/updateserver/sst4test_tablemgr
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-05-22T14:08:48.000000Z
+2013-06-19T09:27:16.000000Z
 2142ab11e9e9295e7e0c4f10b1e70ba7
 2012-06-25T10:56:44.413785Z
 8513
@@ -66,7 +66,7 @@ file
 
 
 
-2013-05-22T14:08:48.000000Z
+2013-06-19T09:27:16.000000Z
 2142ab11e9e9295e7e0c4f10b1e70ba7
 2012-06-25T10:56:44.413785Z
 8513
@@ -100,7 +100,7 @@ file
 
 
 
-2013-05-22T14:08:48.000000Z
+2013-06-19T09:27:16.000000Z
 2142ab11e9e9295e7e0c4f10b1e70ba7
 2012-06-25T10:56:44.413785Z
 8513

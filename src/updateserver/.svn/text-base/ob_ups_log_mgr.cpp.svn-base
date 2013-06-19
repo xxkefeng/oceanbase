@@ -142,7 +142,7 @@ int64_t ObUpsLogMgr::FileIdBeforeLastMajorFrozen::get()
   {
     file_id = ups->get_update_server().get_sstable_mgr().get_last_major_frozen_clog_file_id();
   }
-  return (0 < file_id) ? (file_id - 1) : file_id;
+  return file_id - 1;
 }
 
 ObUpsLogMgr::ObUpsLogMgr(): log_buffer_for_fetch_(LOG_BUFFER_SIZE), log_buffer_for_replay_(LOG_BUFFER_SIZE)
@@ -733,27 +733,11 @@ int ObUpsLogMgr::replay_log()
   ObServer server;
   ObLogCursor replay_cursor;
   ThreadSpecificBuffer::Buffer* my_buffer = log_buffer_for_replay_.get_buffer();
-  char* buf = NULL;
-  int64_t len = 0;
+  my_buffer->reset();
+  char* buf = my_buffer->current();
+  int64_t len = my_buffer->remain();
   int64_t read_count = 0;
-
-  if (NULL == my_buffer)
-  {
-    TBSYS_LOG(ERROR, "get thread specific buffer fail");
-    err = OB_ALLOCATE_MEMORY_FAILED;
-  }
-  else
-  {
-    my_buffer->reset();
-    buf = my_buffer->current();
-    len = my_buffer->remain();
-  }
-
-  if (OB_SUCCESS != err)
-  {
-    // do nothing
-  }
-  else if (!is_inited())
+  if (!is_inited())
   {
     err = OB_NOT_INIT;
   }

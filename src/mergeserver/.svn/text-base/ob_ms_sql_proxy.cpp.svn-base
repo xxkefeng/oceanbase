@@ -81,7 +81,7 @@ int ObMsSQLProxy::init_sql_env(ObSqlContext &context, int64_t &schema_version,
   int ret = OB_SUCCESS;
   ObResultSet &result = rs.get_result_set();
   schema_version = schema_mgr_->get_latest_version();
-  context.schema_manager_ = schema_mgr_->get_user_schema(schema_version); // reference count
+  context.schema_manager_ = schema_mgr_->get_schema(schema_version); // reference count
   if (OB_SUCCESS != (ret = result.init()))
   {
     TBSYS_LOG(ERROR, "init result set error, ret = [%d]", ret);

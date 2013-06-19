@@ -20,71 +20,36 @@ namespace oceanbase
     struct Present
     {
       public:
-        enum
-        {
-          PerSecond = 1,
-          Ratio,
-          ShowCurrent,
-        };
-        static const int32_t SERVER_COUNT = 5;
-        static const int64_t SERVER_TYPE_DAILY_MERGE = 5;
-        struct Item
-        {
-          std::string name;
-          int32_t width; // width of showing console
-          int32_t calc_type; // need divide by interval?
-          Item(const std::string &n, const int32_t w, const int32_t stat)
-            : name(n), width(w), calc_type(stat) {}
-        };
-
-        typedef std::vector<Item> ServerInfo;
-        const ServerInfo & get_server_info(const int32_t server_type) const;
+        static const int32_t SERVER_COUNT = common::OB_MAX_MOD_NUMBER;
+        static const int64_t SERVER_TYPE_DAILY_MERGE = SERVER_COUNT;
+        static const char *rs_map[];
+        static const char *ups_map[];
+        static const char *cs_map[];
+        static const char *ms_map[];
+        static const char *common_map[];
+        static const char *sql_map[];
+        static const char *obmysql_map[];
+        static const char *sstable_map[];
 
       public:
+        static const char* field_name(const common::ObStatMod mod, const uint32_t entry) ; 
+        static const int64_t field_width(const common::ObStatMod mod, const uint32_t entry);
+        static const int64_t mod_size(const common::ObStatMod mod);
+        static const char** strmap(const common::ObStatMod mod);
+      public:
         Present();
-        void init();
 
-      private:
-        ServerInfo server_info_[SERVER_COUNT];
     };
 
     // dataserver Access Stat. Info
     class ObServerStats : public Stats
     {
       public:
-        struct Store
-        {
-          oceanbase::common::ObStatManager current;
-          oceanbase::common::ObStatManager prev;
-          oceanbase::common::ObStatManager diff;
-        };
-
-      public:
-        explicit ObServerStats(ObClientRpcStub &stub, const common::ObRole server_type)
+        explicit ObServerStats(ObClientRpcStub &stub, const common::ObStatMod mod)
           : rpc_stub_(stub), show_header_(50), show_date_(1)
         {
-          store_.current.set_server_type(server_type);
-          store_.prev.set_server_type(server_type);
-          store_.diff.set_server_type(server_type);
-          switch (server_type)
-          {
-            case OB_ROOTSERVER:
-              mod_ = OB_STAT_ROOTSERVER;
-              break;
-            case OB_UPDATESERVER:
-              mod_ = OB_STAT_UPDATESERVER;
-              break;
-            case OB_CHUNKSERVER:
-              mod_ = OB_STAT_CHUNKSERVER;
-              break;
-            case OB_MERGESERVER:
-              mod_ = OB_STAT_MERGESERVER;
-              break;
-            default:
-              mod_ = 0;
-              TBSYS_LOG(WARN, "invalid role");
-              break;
-          }
+          //current_.set_server_type(0);
+          mod_ = mod;
         }
 
         virtual ~ObServerStats() {}
@@ -111,20 +76,17 @@ namespace oceanbase
             const int ratio, const int hit, const int miss);
         int calc_div_value(oceanbase::common::ObStat &stat_item,
             const int div, const int time, const int count);
-        int64_t print_value(const Present::ServerInfo & server_info,
-            oceanbase::common::ObStatManager::const_iterator it,
-            const uint32_t index,
-            const int32_t interval) const;
+        int64_t print_value(oceanbase::common::ObStatManager::const_iterator it,
+            const uint32_t index) const;
 
       protected:
         ObClientRpcStub &rpc_stub_;
+        oceanbase::common::ObStatManager current_;
         std::vector<uint32_t> index_filter_;
         std::set<uint64_t> table_filter_;
         int32_t show_header_;
         int32_t show_date_;
-        Store store_;
-        Present present_;
-        uint64_t mod_;
+        common::ObStatMod mod_;
     };
 
 

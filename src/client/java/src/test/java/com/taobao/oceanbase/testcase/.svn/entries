@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/testcase
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/testcase
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -26,13 +26,47 @@ maoqi
 
 dd5f2d26-132e-4cc5-bbb5-82d5b530e537
 
+BatchInterfaceTestCase.java
+file
+
+
+
+
+2013-06-19T09:27:04.000000Z
+b58dd195d0b3bb323321f8fa0efa51d4
+2011-08-10T02:49:12.105410Z
+5267
+maoqi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+37882
+
 RemoveListTestCaseExecuteForJoin.java
 file
 
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 c02875c9729e275515b7a09e64c844a4
 2011-08-10T02:49:12.105410Z
 5267
@@ -60,47 +94,13 @@ maoqi
 
 8394
 
-QueryTestCaseForWhere_01.java
-file
-
-
-
-
-2013-05-22T14:08:24.000000Z
-c0e5a94e5b7102adf5590f89f1c4f8ed
-2011-08-10T02:49:12.105410Z
-5267
-maoqi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-81639
-
 RemoveTestCaseExecuteForJoin.java
 file
 
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 d1374f0729651f7dc9b706a9af8c44a2
 2011-08-10T02:49:12.105410Z
 5267
@@ -128,14 +128,14 @@ maoqi
 
 8336
 
-ColumnGroupTestCase.java
+QueryTestCaseForWhere_01.java
 file
 
 
 
 
-2013-05-22T14:08:24.000000Z
-3c8c6c4d84555a24af001d58c16dcfe8
+2013-06-19T09:27:04.000000Z
+c0e5a94e5b7102adf5590f89f1c4f8ed
 2011-08-10T02:49:12.105410Z
 5267
 maoqi
@@ -160,41 +160,7 @@ maoqi
 
 
 
-33275
-
-InsertListTestCaseExecuteForJoin.java
-file
-
-
-
-
-2013-05-22T14:08:24.000000Z
-3b2b15bee944a3714791aeee12c746ad
-2011-08-10T02:49:12.105410Z
-5267
-maoqi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-45632
+81639
 
 QueryTestCaseForWhere_04.java
 file
@@ -202,7 +168,7 @@ file
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 03b4d23b789e6826d70389d93d67ca6f
 2011-08-10T02:49:12.105410Z
 5267
@@ -230,13 +196,81 @@ maoqi
 
 188198
 
+InsertListTestCaseExecuteForJoin.java
+file
+
+
+
+
+2013-06-19T09:27:04.000000Z
+3b2b15bee944a3714791aeee12c746ad
+2011-08-10T02:49:12.105410Z
+5267
+maoqi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+45632
+
+ColumnGroupTestCase.java
+file
+
+
+
+
+2013-06-19T09:27:04.000000Z
+3c8c6c4d84555a24af001d58c16dcfe8
+2011-08-10T02:49:12.105410Z
+5267
+maoqi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+33275
+
 QueryTestCaseForWhere_05.java
 file
 
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 e108dbf9ed2ac3e0ab52fd06642ad85d
 2011-08-10T02:49:12.105410Z
 5267
@@ -264,47 +298,13 @@ maoqi
 
 27037
 
-GetFunctionTestCaseForJoin.java
-file
-
-
-
-
-2013-05-22T14:08:24.000000Z
-f5d227fdc459f7fe166ae56204faec8a
-2011-08-10T02:49:12.105410Z
-5267
-maoqi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-142925
-
 QueryTestCaseForWhere_06.java
 file
 
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 ccec160fdd9b25c5c7c2f7c2f6332587
 2011-08-10T02:49:12.105410Z
 5267
@@ -332,13 +332,47 @@ maoqi
 
 20117
 
+GetFunctionTestCaseForJoin.java
+file
+
+
+
+
+2013-06-19T09:27:04.000000Z
+f5d227fdc459f7fe166ae56204faec8a
+2011-08-10T02:49:12.105410Z
+5267
+maoqi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+142925
+
 InsertTestCaseExecuteForJoin.java
 file
 
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 6be42aa8f3888315f23847e24c95a05b
 2011-08-10T02:49:12.105410Z
 5267
@@ -366,47 +400,13 @@ maoqi
 
 105211
 
-UpdateListTestCaseExecuteForJoin.java
-file
-
-
-
-
-2013-05-22T14:08:24.000000Z
-1fe9a2e1d9761ba8932d4fb5f418f65f
-2011-08-10T02:49:12.105410Z
-5267
-maoqi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-25916
-
 QueryTestCaseForInfo.java
 file
 
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 6f2829159fd642b892a0ce1823853da6
 2011-08-12T02:18:07.704207Z
 5324
@@ -434,14 +434,14 @@ maoqi
 
 55430
 
-GetTestCaseExecuteForJoin.java
+UpdateListTestCaseExecuteForJoin.java
 file
 
 
 
 
-2013-05-22T14:08:24.000000Z
-ad6251864e8ca3912f2ad3dfd16fd6ed
+2013-06-19T09:27:04.000000Z
+1fe9a2e1d9761ba8932d4fb5f418f65f
 2011-08-10T02:49:12.105410Z
 5267
 maoqi
@@ -466,41 +466,7 @@ maoqi
 
 
 
-26221
-
-QueryTestCaseForWhere_04_XX.java
-file
-
-
-
-
-2013-05-22T14:08:24.000000Z
-04c00f44073a5b25fa3aef23ed91bf07
-2011-08-10T02:49:12.105410Z
-5267
-maoqi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-127216
+25916
 
 RowKeyReverseQueryTestForInfo.java
 file
@@ -508,7 +474,7 @@ file
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 a4a4b1aadc96c5342cf11c77d89ce888
 2011-08-10T02:49:12.105410Z
 5267
@@ -536,13 +502,81 @@ maoqi
 
 23445
 
+QueryTestCaseForWhere_04_XX.java
+file
+
+
+
+
+2013-06-19T09:27:04.000000Z
+04c00f44073a5b25fa3aef23ed91bf07
+2011-08-10T02:49:12.105410Z
+5267
+maoqi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+127216
+
+GetTestCaseExecuteForJoin.java
+file
+
+
+
+
+2013-06-19T09:27:04.000000Z
+ad6251864e8ca3912f2ad3dfd16fd6ed
+2011-08-10T02:49:12.105410Z
+5267
+maoqi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+26221
+
 QueryTestCaseForItem.java
 file
 
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 b77f688927cecf3941aa5b00507f3133
 2011-08-12T02:18:07.704207Z
 5324
@@ -576,7 +610,7 @@ file
 
 
 
-2013-05-22T14:08:24.000000Z
+2013-06-19T09:27:04.000000Z
 27fe153e9ce3fc4f47d47a786d8a352d
 2011-08-10T02:49:12.105410Z
 5267
@@ -603,38 +637,4 @@ maoqi
 
 
 48922
-
-BatchInterfaceTestCase.java
-file
-
-
-
-
-2013-05-22T14:08:24.000000Z
-b58dd195d0b3bb323321f8fa0efa51d4
-2011-08-10T02:49:12.105410Z
-5267
-maoqi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-37882
 

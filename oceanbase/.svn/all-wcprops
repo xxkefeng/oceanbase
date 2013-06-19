@@ -1,0 +1,83 @@
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/repos/oceanbase/!svn/ver/14499/branches/dev/oceanbase
+END
+svn_version.mk
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/repos/oceanbase/!svn/ver/12456/branches/dev/oceanbase/svn_version.mk
+END
+auto_tests.sh
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/auto_tests.sh
+END
+configure.ac
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/configure.ac
+END
+install-dependencies.sh
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/repos/oceanbase/!svn/ver/13223/branches/dev/oceanbase/install-dependencies.sh
+END
+authors
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/authors
+END
+ob-commit
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/repos/oceanbase/!svn/ver/10843/branches/dev/oceanbase/ob-commit
+END
+ChangeLog
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/ChangeLog
+END
+build.sh
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/repos/oceanbase/!svn/ver/10074/branches/dev/oceanbase/build.sh
+END
+COPYING
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/COPYING
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/repos/oceanbase/!svn/ver/13223/branches/dev/oceanbase/Makefile.am
+END
+NEWS
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/NEWS
+END
+README
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/README
+END
+run_tests.sh
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/run_tests.sh
+END

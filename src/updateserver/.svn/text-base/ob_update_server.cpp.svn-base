@@ -3138,7 +3138,7 @@ namespace oceanbase
       ObGetParam *get_param_ptr = GET_TSI_MULT(ObGetParam, TSI_UPS_GET_PARAM_1);
       ObGetParam &get_param = (NULL == get_param_ptr) ? get_param_stack : *get_param_ptr;
       common::ObRowDesc row_desc;
-      common::ObCellNewScanner *new_scanner = GET_TSI_MULT(ObCellNewScanner, TSI_UPS_NEW_SCANNER_1);
+      common::ObNewScanner *new_scanner = GET_TSI_MULT(ObNewScanner, TSI_UPS_NEW_SCANNER_1);
 
       if (version != MY_VERSION)
       {
@@ -3184,13 +3184,13 @@ namespace oceanbase
 
       if(OB_SUCCESS == ret)
       {
-        if(OB_SUCCESS != (ret = ObNewScannerHelper::get_row_desc(get_param, true, row_desc)))
+        if(OB_SUCCESS != (ret = ObNewScannerHelper::get_row_desc(get_param, true, 0, row_desc)))
         {
           TBSYS_LOG(WARN, "get row desc fail:ret[%d]", ret);
         }
         else
         {
-          new_scanner->set_row_desc(row_desc);
+          new_scanner->set_default_row_desc(&row_desc);
         }
       }
 
@@ -3409,7 +3409,7 @@ namespace oceanbase
       ObScanParam &scan_param = (NULL == scan_param_ptr) ? scan_param_stack : *scan_param_ptr;
       common::ObResultCode result_msg;
       common::ObRowDesc row_desc;
-      common::ObCellNewScanner *new_scanner = GET_TSI_MULT(ObCellNewScanner, TSI_UPS_NEW_SCANNER_1);
+      common::ObNewScanner *new_scanner = GET_TSI_MULT(ObNewScanner, TSI_UPS_NEW_SCANNER_1);
 
 
       if (version != MY_VERSION)
@@ -3462,7 +3462,7 @@ namespace oceanbase
         }
         else
         {
-          new_scanner->set_row_desc(row_desc);
+          new_scanner->set_default_row_desc(&row_desc);
         }
       }
 
@@ -3751,9 +3751,7 @@ namespace oceanbase
               {
                 TBSYS_LOG(INFO, "get master_master_ups addr = %s", ups_inst_master_.to_cstring());
                 if (ups_inst_master_ == self_addr_)
-                {
-                  TBSYS_LOG(WARN, "inst_master == self_addr[%s], maybe NOT set_obi_role", to_cstring(self_addr_));
-                }
+                {}
                 else
                 {
                   err = register_to_master_ups(ups_inst_master_);
@@ -4772,16 +4770,6 @@ namespace oceanbase
     }
 
     int ObUpdateServer::response_scanner(int32_t ret_code, ObPacket &pkt, common::ObNewScanner &new_scanner, ObDataBuffer &out_buffer)
-    {
-      int ret = OB_SUCCESS;
-      ret =  response_data_(ret_code, new_scanner, pkt.get_packet_code(), pkt.get_api_version(),
-                            pkt.get_request(), pkt.get_channel_id(), out_buffer);
-      // 忽略前两个字段 trace_id和chid
-      PROFILE_LOG(DEBUG, TRACE_ID SOURCE_CHANNEL_ID UPS_REQ_END_TIME SCANNER_SIZE_BYTES, pkt.get_trace_id(), pkt.get_channel_id(), tbsys::CTimeUtil::getTime(), new_scanner.get_size());
-      return ret;
-    }
-
-    int ObUpdateServer::response_scanner(int32_t ret_code, ObPacket &pkt, common::ObCellNewScanner &new_scanner, ObDataBuffer &out_buffer)
     {
       int ret = OB_SUCCESS;
       ret =  response_data_(ret_code, new_scanner, pkt.get_packet_code(), pkt.get_api_version(),

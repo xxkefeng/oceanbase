@@ -14,5 +14,5 @@ ob1.prepare
 ob1.check_cs_sstable 45
 ob1.cs0.force_stop
 ob1.cs1.force_stop
-ob1.check_cs_sstable 30,2
+ob1.check_cs_sstable 30
 ob1.stop_check

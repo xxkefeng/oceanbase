@@ -7,14 +7,14 @@ namespace oceanbase {
   namespace tools {
     static char body_delima = '\001';
     static char line_delima = '\n';
-    static const char kTabAscii = '\t';
+    static const char kTabAscii = '\t'; 
 
     static void escape_varchar(char *p, int size)
     {
-      for(int i = 0;i < size; i++)
+      for(int i = 0;i < size; i++) 
       {
         if (p[i] == body_delima || p[i] == 0xd ||
-            p[i] == 0xa || p[i] == kTabAscii)
+            p[i] == 0xa || p[i] == kTabAscii) 
         {
           p[i] = 0x20;                              /* replace [ctrl+A], [CR] by space */
         }
@@ -35,7 +35,7 @@ namespace oceanbase {
          break;
        case ObIntType:
          int64_t val;
-         if (cell->value_.get_int(val) != OB_SUCCESS)
+         if (cell->value_.get_int(val) != OB_SUCCESS) 
          {
            TBSYS_LOG(ERROR, "get_int error");
            break;
@@ -46,7 +46,7 @@ namespace oceanbase {
          {
            ObString str;
            if (cell->value_.get_varchar(str) != OB_SUCCESS ||
-               cap < str.length())
+               cap < str.length()) 
            {
              TBSYS_LOG(ERROR, "get_varchar error");
              break;
@@ -60,51 +60,51 @@ namespace oceanbase {
        case ObPreciseDateTimeType:
          {
            int64_t value;
-           if (cell->value_.get_precise_datetime(value) != OB_SUCCESS)
+           if (cell->value_.get_precise_datetime(value) != OB_SUCCESS) 
            {
              TBSYS_LOG(ERROR, "get_precise_datetime error");
              break;
            }
-           len = ObDateTime2MySQLDate(value, type, data + pos, int(cap));
+           len = ObDateTime2MySQLDate(value, type, data + pos, cap);
          }
          break;
        case ObDateTimeType:
          {
            int64_t value;
-           if (cell->value_.get_datetime(value) != OB_SUCCESS)
+           if (cell->value_.get_datetime(value) != OB_SUCCESS) 
            {
              TBSYS_LOG(ERROR, "get_datetime error ");
              break;
            }
-           len = ObDateTime2MySQLDate(value, type, data + pos, int(cap));
+           len = ObDateTime2MySQLDate(value, type, data + pos, cap);
          }
          break;
        case ObModifyTimeType:
          {
            int64_t value;
-           if (cell->value_.get_modifytime(value) != OB_SUCCESS)
+           if (cell->value_.get_modifytime(value) != OB_SUCCESS) 
            {
              TBSYS_LOG(ERROR, "get_modifytime error ");
              break;
            }
-           len = ObDateTime2MySQLDate(value, type, data + pos, int(cap));
+           len = ObDateTime2MySQLDate(value, type, data + pos, cap);
          }
          break;
        case ObCreateTimeType:
          {
            int64_t value;
-           if (cell->value_.get_createtime(value) != OB_SUCCESS)
+           if (cell->value_.get_createtime(value) != OB_SUCCESS) 
            {
              TBSYS_LOG(ERROR, "get_createtime error");
              break;
            }
-           len = ObDateTime2MySQLDate(value, type, data + pos, int(cap));
+           len = ObDateTime2MySQLDate(value, type, data + pos, cap);
          }
          break;
        case ObFloatType:
          {
            float value;
-           if (cell->value_.get_float(value) != OB_SUCCESS)
+           if (cell->value_.get_float(value) != OB_SUCCESS) 
            {
              TBSYS_LOG(ERROR, "get_float error");
              break;
@@ -127,10 +127,10 @@ namespace oceanbase {
          break;
       }
 
-      if (len >= 0 )
+      if (len >= 0 ) 
         buff.get_position() += len;
 
-      return int(len);
+      return len;
     }
     int append_delima(ObDataBuffer &buff)
     {
@@ -172,7 +172,7 @@ namespace oceanbase {
       int len = 0;
       time_t time_sec;
 
-      switch (time_type)
+      switch (time_type) 
       {
        case ObModifyTimeType:
        case ObCreateTimeType:
@@ -187,12 +187,12 @@ namespace oceanbase {
          ret = OB_ERROR;
       }
 
-      if (ret == OB_SUCCESS)
+      if (ret == OB_SUCCESS) 
       {
         struct tm time_tm;
         localtime_r(&time_sec, &time_tm);
 
-        len = (int)strftime(outp, size, "%Y-%m-%d %H:%M:%S", &time_tm);
+        len = strftime(outp, size, "%Y-%m-%d %H:%M:%S", &time_tm);
       }
 
       return len;
@@ -203,7 +203,7 @@ namespace oceanbase {
       int ret = OB_SUCCESS;
 
       char *data = buffer.get_data() + buffer.get_position();
-      int cap = (int)buffer.get_remain();
+      int cap = buffer.get_remain();
       if (cap <= 0)
       {
         ret = OB_ERROR;
@@ -211,11 +211,11 @@ namespace oceanbase {
       else
       {
         int len = snprintf(data, cap, "%ld", value);
-        if (len > 0)
+        if (len > 0) 
         {
           buffer.get_position() += len;
-        }
-        else
+        } 
+        else 
         {
           TBSYS_LOG(ERROR, "append_int64 error");
           ret = OB_ERROR;
@@ -230,16 +230,16 @@ namespace oceanbase {
       int ret = OB_SUCCESS;
 
       char *data = buffer.get_data() + buffer.get_position();
-      int cap = (int)buffer.get_remain();
+      int cap = buffer.get_remain();
 
       if (cap > 0)
       {
         int len = snprintf(data, cap, "%f", value);
-        if (len > 0)
+        if (len > 0) 
         {
           buffer.get_position() += len;
-        }
-        else
+        } 
+        else 
         {
           TBSYS_LOG(ERROR, "append_double error");
           ret = OB_ERROR;
@@ -257,14 +257,14 @@ namespace oceanbase {
     {
       int ret = OB_SUCCESS;
       char *data = buffer.get_data() + buffer.get_position();
-      int cap = (int)buffer.get_remain();
+      int cap = buffer.get_remain();
 
       int len = snprintf(data, cap, "%d", value);
-      if (len > 0)
+      if (len > 0) 
       {
         buffer.get_position() += len;
-      }
-      else
+      } 
+      else 
       {
         ret = OB_ERROR;
       }

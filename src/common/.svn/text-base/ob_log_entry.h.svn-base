@@ -61,8 +61,18 @@ namespace oceanbase
       OB_RT_SYNC_FIRST_META_ROW = 427,
       OB_RT_BATCH_ADD_NEW_TABLET = 428,
       OB_RT_GOT_CONFIG_VERSION = 429,
-      OB_RT_CS_DELETE_REPLICAS = 430,
+      OB_RT_SET_BYPASS_VERSION = 430,
       //// ChunkServer ... 600 - 799 ////
+      OB_LOG_CS_DAILY_MERGE = 600,                //每日合并
+      OB_LOG_CS_SRC_MIGRATE_TABLET = 601,        //源端迁移tablet
+      OB_LOG_CS_DEST_LOAD_TABLET = 602,          //目的端载入tablet
+      OB_LOG_CS_BYPASS_LOAD_TABLET = 603,        //旁路导入
+      OB_LOG_CS_MERGE_TABLET = 604,              //合并tablet
+      OB_LOG_CS_DEL_TABLET = 605,                  //删除tablet
+      OB_LOG_CS_DEL_TABLE=606,                     //删除table
+      OB_LOG_CS_CREATE_TABLET=607,              //创建tablet
+      OB_LOG_CS_DISK_MAINTAIN=608,              //磁盘维护
+
 
       //// Base command ... ////
       OB_LOG_UNKNOWN = 199

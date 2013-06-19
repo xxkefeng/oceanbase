@@ -346,8 +346,8 @@ int ObMergerRequest::wait(const int64_t timeout)
   if (remainder <= 0)
   {
     ret = OB_RESPONSE_TIME_OUT;
-    TBSYS_LOG(WARN, "check remainder < zero:request[%lu], deadline[%ld], timeout[%ld], remainder[%ld]",
-      request_id_, last_timestamp, timeout, remainder);
+    TBSYS_LOG(WARN, "check remainder less than zero:request[%lu], remainder[%ld]",
+      request_id_, remainder);
   }
   return ret;
 }

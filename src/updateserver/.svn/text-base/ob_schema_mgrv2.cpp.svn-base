@@ -405,8 +405,8 @@ namespace oceanbase
                 const CommonTableSchema *table_schema = schema_mgr.get_table_schema(iter->get_table_id());
                 if (NULL != table_schema)
                 {
-                  fprintf(fd, "[TABLE_SCHEMA] table_id=%lu table_type=%d table_name=%s split_pos=%d rowkey_max_length=%d\n",
-                          iter->get_table_id(), table_schema->get_table_type(), table_schema->get_table_name(),
+                  fprintf(fd, "[TABLE_SCHEMA] table_id=%lu table_load_type=%d table_name=%s split_pos=%d rowkey_max_length=%d\n",
+                          iter->get_table_id(), table_schema->get_table_load_type(), table_schema->get_table_name(),
                           table_schema->get_split_pos(), table_schema->get_rowkey_max_length());
                 }
                 else

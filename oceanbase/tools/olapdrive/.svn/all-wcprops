@@ -1,0 +1,305 @@
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/repos/oceanbase/!svn/ver/10037/branches/dev/oceanbase/tools/olapdrive
+END
+ob_platform_pvtype_effect_daily.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_platform_pvtype_effect_daily.cpp
+END
+ob_olapdrive_meta.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/9262/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_meta.cpp
+END
+ob_campaign_effect.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_campaign_effect.cpp
+END
+ob_several_bidword_effect.h
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_several_bidword_effect.h
+END
+ob_campaign_impression.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_campaign_impression.h
+END
+ob_bidword_effect_daily.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_bidword_effect_daily.h
+END
+ob_olapdrive_main.h
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_main.h
+END
+ob_bidword_effect_top10.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_bidword_effect_top10.h
+END
+ob_several_creative_effect.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_several_creative_effect.cpp
+END
+ob_lz_common.h
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/repos/oceanbase/!svn/ver/9262/branches/dev/oceanbase/tools/olapdrive/ob_lz_common.h
+END
+ob_several_adgroup_effect.h
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_several_adgroup_effect.h
+END
+ob_adgroup_effect_daily.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_adgroup_effect_daily.h
+END
+ob_adgroup_effect_top10.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_adgroup_effect_top10.h
+END
+ob_olapdrive_param.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_param.cpp
+END
+ob_platform_pvtype_effect.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_platform_pvtype_effect.cpp
+END
+olapdrive.conf
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/olapdrive.conf
+END
+ob_read_worker.h
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_read_worker.h
+END
+ob_olapdrive_schema.h
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_schema.h
+END
+ob_lz_query.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/9270/branches/dev/oceanbase/tools/olapdrive/ob_lz_query.cpp
+END
+ob_adgroup_impression_count.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_adgroup_impression_count.cpp
+END
+ob_adgroup_bidword_effect_orderby.h
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_adgroup_bidword_effect_orderby.h
+END
+ob_write_worker.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/9262/branches/dev/oceanbase/tools/olapdrive/ob_write_worker.cpp
+END
+ob_olapdrive_stat.h
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_stat.h
+END
+olapdrive_usage.txt
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/olapdrive_usage.txt
+END
+ob_several_bidword_effect.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_several_bidword_effect.cpp
+END
+ob_campaign_impression.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_campaign_impression.cpp
+END
+ob_bidword_effect_daily.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_bidword_effect_daily.cpp
+END
+ob_olapdrive_main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_main.cpp
+END
+ob_bidword_effect_top10.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_bidword_effect_top10.cpp
+END
+ob_olapdrive.h
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive.h
+END
+ob_platform_pvtype_effect_daily.h
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_platform_pvtype_effect_daily.h
+END
+ob_several_adgroup_effect.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_several_adgroup_effect.cpp
+END
+ob_adgroup_effect_daily.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_adgroup_effect_daily.cpp
+END
+ob_campaign_effect.h
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_campaign_effect.h
+END
+ob_olapdrive_meta.h
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/9262/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_meta.h
+END
+ob_adgroup_effect_top10.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_adgroup_effect_top10.cpp
+END
+main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/main.cpp
+END
+ob_several_creative_effect.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_several_creative_effect.h
+END
+ob_read_worker.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_read_worker.cpp
+END
+ob_olapdrive_schema.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_schema.cpp
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/repos/oceanbase/!svn/ver/10037/branches/dev/oceanbase/tools/olapdrive/Makefile.am
+END
+ob_olapdrive_param.h
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_param.h
+END
+ob_platform_pvtype_effect.h
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_platform_pvtype_effect.h
+END
+schema.ini
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/repos/oceanbase/!svn/ver/9262/branches/dev/oceanbase/tools/olapdrive/schema.ini
+END
+ob_adgroup_bidword_effect_orderby.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_adgroup_bidword_effect_orderby.cpp
+END
+ob_lz_query.h
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/repos/oceanbase/!svn/ver/9262/branches/dev/oceanbase/tools/olapdrive/ob_lz_query.h
+END
+ob_olapdrive_stat.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive_stat.cpp
+END
+ob_olapdrive.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_olapdrive.cpp
+END
+ob_adgroup_impression_count.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/tools/olapdrive/ob_adgroup_impression_count.h
+END
+ob_write_worker.h
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/9262/branches/dev/oceanbase/tools/olapdrive/ob_write_worker.h
+END

@@ -1,0 +1,7 @@
+deploy ob1=OBI();
+deploy ob1.reboot;
+sleep 10;
+deploy ob1.create_client;
+show tables;
+
+deploy ob1.stop;

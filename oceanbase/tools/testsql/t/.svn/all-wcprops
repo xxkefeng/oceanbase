@@ -1,0 +1,77 @@
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t
+END
+insert_bind_int_select_notbind_int.test
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_bind_int_select_notbind_int.test
+END
+insert_notbind_int_select_bind_int.test
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_notbind_int_select_bind_int.test
+END
+insert_notbind_int_select_notbind_int.test
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_notbind_int_select_notbind_int.test
+END
+insert_delete_select_bind_timestamp.test
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_delete_select_bind_timestamp.test
+END
+insert_bind_date_select_bind_date.test
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_bind_date_select_bind_date.test
+END
+insert_bind_date_select_notbind_date.test
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_bind_date_select_notbind_date.test
+END
+insert_notbind_date_select_bind_date.test
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_notbind_date_select_bind_date.test
+END
+insert_bind_varchar_select_bind_varchar.test
+K 25
+svn:wc:ra_dav:version-url
+V 114
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_bind_varchar_select_bind_varchar.test
+END
+insert_delete_select_bind_varchar.test
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_delete_select_bind_varchar.test
+END
+insert_delete_select_bind_int.test
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_delete_select_bind_int.test
+END
+insert_delete_select_bind_int_varchar_date.test
+K 25
+svn:wc:ra_dav:version-url
+V 117
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_delete_select_bind_int_varchar_date.test
+END
+insert_bind_int_select_bind_int.test
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/t/insert_bind_int_select_bind_int.test
+END

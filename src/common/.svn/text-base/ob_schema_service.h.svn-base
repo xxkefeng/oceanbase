@@ -66,6 +66,15 @@ namespace oceanbase
         column_name_[0] = '\0';
       }
       NEED_SERIALIZE_AND_DESERIALIZE;
+
+      inline int64_t set_column_name(const ObString& name)
+      {
+        int64_t len = name.length() < OB_MAX_COLUMN_NAME_LENGTH - 1 ?
+                      name.length() : OB_MAX_COLUMN_NAME_LENGTH - 1;
+        memcpy(column_name_, name.ptr(), len);
+        column_name_[len] = '\0';
+        return len;
+      }
     };
 
     /* 表单schema描述，对应于__all_all_table内部表 */
@@ -92,6 +101,15 @@ namespace oceanbase
         USER_DEFINED
       };
 
+
+      enum IndexStatus
+      {
+        UNAVAILABLE = 1,
+        AVAILABLE,
+        INDEX_ERROR
+      };
+
+
       enum SSTableVersion
       {
         OLD_SSTABLE_VERSION = 1,
@@ -116,10 +134,13 @@ namespace oceanbase
       int64_t create_mem_version_;
       int64_t tablet_block_size_;
       int64_t tablet_max_size_;
+      int32_t charset_number_;
       int64_t max_rowkey_length_;
       int64_t merge_write_sstable_version_;
       uint64_t create_time_column_id_;
       uint64_t modify_time_column_id_;
+      uint64_t data_table_id_;
+      IndexStatus index_status_;
       ObArray<ColumnSchema> columns_;
       ObArray<JoinInfo> join_info_;
 
@@ -139,14 +160,37 @@ namespace oceanbase
            create_mem_version_(0),
            tablet_block_size_(OB_DEFAULT_SSTABLE_BLOCK_SIZE),
           tablet_max_size_(OB_DEFAULT_MAX_TABLET_SIZE),
+          charset_number_(OB_DEFAULT_CHARACTER_SET),
           max_rowkey_length_(0),
           merge_write_sstable_version_(DEFAULT_SSTABLE_VERSION),
           create_time_column_id_(OB_CREATE_TIME_COLUMN_ID),
-          modify_time_column_id_(OB_MODIFY_TIME_COLUMN_ID)
+          modify_time_column_id_(OB_MODIFY_TIME_COLUMN_ID),
+          data_table_id_(OB_INVALID_ID),
+          index_status_(UNAVAILABLE)
       {
         table_name_[0] = '\0';
         compress_func_name_[0] = '\0';
         expire_condition_[0] = '\0';
+      }
+
+      inline void set_table_type(TableType table_type)
+      {
+        table_type_ = table_type;
+      }
+
+      inline TableType get_table_type() const
+      {
+        return table_type_;
+      }
+
+      inline void set_data_table_id(uint64_t data_table_id)
+      {
+        data_table_id_ = data_table_id;
+      }
+
+      inline uint64_t get_data_table_id() const
+      {
+        return data_table_id_;
       }
 
       inline void init_as_inner_table()
@@ -161,6 +205,7 @@ namespace oceanbase
         this->create_mem_version_ = 1;
         this->tablet_block_size_ = OB_DEFAULT_SSTABLE_BLOCK_SIZE;
         this->tablet_max_size_ = OB_DEFAULT_MAX_TABLET_SIZE;
+        this->charset_number_ = OB_DEFAULT_CHARACTER_SET;
         strcpy(this->compress_func_name_, OB_DEFAULT_COMPRESS_FUNC_NAME);
         this->is_use_bloomfilter_ = false;
         this->is_pure_update_table_ = false;
@@ -169,6 +214,33 @@ namespace oceanbase
         this->merge_write_sstable_version_ = DEFAULT_SSTABLE_VERSION;
         this->create_time_column_id_ = OB_CREATE_TIME_COLUMN_ID;
         this->modify_time_column_id_ = OB_MODIFY_TIME_COLUMN_ID;
+      }
+
+      inline int64_t set_table_name(const ObString& name)
+      {
+        int64_t len = name.length() < OB_MAX_TABLE_NAME_LENGTH - 1 ?
+                      name.length() : OB_MAX_TABLE_NAME_LENGTH - 1;
+        memcpy(table_name_, name.ptr(), len);
+        table_name_[len] = '\0';
+        return len;
+      }
+
+      inline int64_t set_compress_func_name(const ObString& name)
+      {
+        int64_t len = name.length() < OB_MAX_TABLE_NAME_LENGTH - 1 ?
+                      name.length() : OB_MAX_TABLE_NAME_LENGTH - 1;
+        memcpy(compress_func_name_, name.ptr(), len);
+        compress_func_name_[len] = '\0';
+        return len;
+      }
+
+      inline int64_t set_expire_condition(const ObString& expire_condition)
+      {
+        int64_t len = expire_condition.length() < OB_MAX_EXPIRE_CONDITION_LENGTH - 1 ?
+                      expire_condition.length() : OB_MAX_EXPIRE_CONDITION_LENGTH - 1;
+        memcpy(expire_condition_, expire_condition.ptr(), len);
+        expire_condition_[len] = '\0';
+        return len;
       }
 
       inline int add_column(const ColumnSchema& column)
@@ -316,6 +388,8 @@ namespace oceanbase
         virtual int create_table(const TableSchema& table_schema) = 0;
         virtual int drop_table(const ObString& table_name) = 0;
         virtual int alter_table(const AlterTableSchema& table_schema) = 0;
+        virtual int modify_table_id(const TableSchema& table_schema, const int64_t new_table_id) = 0;
+        virtual int modify_index_table_status(const ObString& index_table_name, const int32_t state) = 0;
         virtual int get_table_id(const ObString& table_name, uint64_t& table_id) = 0;
         virtual int get_table_name(uint64_t table_id, ObString& table_name) = 0;
         virtual int get_max_used_table_id(uint64_t &max_used_tid) = 0;

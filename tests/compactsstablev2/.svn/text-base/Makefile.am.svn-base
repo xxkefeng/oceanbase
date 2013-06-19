@@ -9,6 +9,8 @@ AM_CPPFLAGS = \
 			  -I${top_srcdir}/src/common/compress
 
 LDADD = \
+		${top_builddir}/src/sql/libsql.a \
+		${top_builddir}/src/sstable/libsstable.a \
 		$(top_builddir)/src/compactsstablev2/libcompactsstablev2.a \
 		$(top_builddir)/src/sstable/libsstable.a \
 		libtestdiskpath.a \
@@ -19,18 +21,21 @@ LDADD = \
 		${TBLIB_ROOT}/lib/libtbsys.a
 
 AM_LDFLAGS = -lpthread -lc -g -lm -lrt -lgtest -ldl ${GCOV_LIB} -laio -lssl
-CXXFLAGS += -D__GNU_SOURCE
+CXXFLAGS += -D__GNU_SOURCE -DOB_COMPACT_SSTABLE_ALLOW_BLOOMFILTER_
 if COVERAGE
 CXXFLAGS+=-fprofile-arcs -ftest-coverage
 AM_LDFLAGS+=-lgcov
 endif
 
-bin_PROGRAMS = test_compact_sstable_writer
+bin_PROGRAMS = test_compact_sstable_writer test_compact_sstable_scanner test_compact_sstable_getter compactsstable_benchmark
 
 noinst_LIBRARIES = libtestdiskpath.a
 libtestdiskpath_a_SOURCES = test_disk_path.cpp ob_fileinfo_cache.h ob_fileinfo_cache.cpp
 
-test_compact_sstable_writer_SOURCES = test_compact_sstable_writer.cpp
+test_compact_sstable_writer_SOURCES = test_compact_sstable_writer.cpp test_compact_common.cpp
+test_compact_sstable_scanner_SOURCES = test_compact_sstable_scanner.cpp test_compact_common.cpp
+test_compact_sstable_getter_SOURCES = test_compact_sstable_getter.cpp
+compactsstable_benchmark_SOURCES = compactsstable_benchmark.cpp test_compact_common.cpp
 
 check_SCRIPTS = $(bin_PROGRAMS)
 TESTS = $(check_SCRIPTS)

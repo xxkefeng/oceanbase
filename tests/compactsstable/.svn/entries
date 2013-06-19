@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/compactsstable
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tests/compactsstable
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -26,13 +26,47 @@ zhuweng.yzf
 
 dd5f2d26-132e-4cc5-bbb5-82d5b530e537
 
+test_compact_row.cpp
+file
+
+
+
+
+2013-06-19T09:27:15.000000Z
+0cee5f90c7988cb5a6885f0a5619dfde
+2012-07-31T11:14:07.260364Z
+8943
+maoqi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3741
+
 test_compactsstable_mem.cpp
 file
 
 
 
 
-2013-05-22T14:08:48.000000Z
+2013-06-19T09:27:15.000000Z
 17291c16edca544ca69ff563dc04e64b
 2012-07-31T11:14:07.260364Z
 8943
@@ -66,7 +100,7 @@ file
 
 
 
-2013-05-22T14:08:48.000000Z
+2013-06-19T09:27:15.000000Z
 263ca9f2447e8c249a0fee2f846c40df
 2012-10-19T05:32:56.530991Z
 10037
@@ -100,7 +134,7 @@ file
 
 
 
-2013-05-22T14:08:48.000000Z
+2013-06-19T09:27:15.000000Z
 6d8ffa790a34b568cb03442280511abc
 2012-07-26T10:40:00.573377Z
 8900
@@ -127,38 +161,4 @@ maoqi
 
 
 1859
-
-test_compact_row.cpp
-file
-
-
-
-
-2013-05-22T14:08:48.000000Z
-0cee5f90c7988cb5a6885f0a5619dfde
-2012-07-31T11:14:07.260364Z
-8943
-maoqi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-3741
 

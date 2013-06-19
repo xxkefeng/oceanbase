@@ -155,11 +155,6 @@ namespace oceanbase
             TBSYS_LOG(ERROR, "failed to add bypass tablets into serving tablet image");
             is_load_succ_ = false;
           }
-          else if (OB_SUCCESS != (ret = tablet_manager_->sync_all_tablet_images()))
-          {
-            TBSYS_LOG(WARN, "failed to sync all tablet images after load bypass sstables, "
-                            "import_tables_info=%s", to_cstring(*table_list_));
-          }
         }
 
         if (is_load_succ_)
@@ -170,7 +165,7 @@ namespace oceanbase
            * and the next tablets will be set removed flag, we will 
            * recycle teh unload tablet here 
            */
-          recycle_unload_tablets(true);
+          recycle_unload_tablets();
           //delete all the bypass sstable in bypass directory
           recycle_bypass_dir();
         }
@@ -203,6 +198,12 @@ namespace oceanbase
         TBSYS_LOG(WARN, "no bypass sstable was imported, tablet_count=%d",
           tablet_array_.size());
       }
+
+      if(OB_SUCCESS != (ret = tablet_manager_->get_serving_tablet_image().flush_log(OB_LOG_CS_BYPASS_LOAD_TABLET, OB_SUCCESS == ret)))
+      {
+        TBSYS_LOG(ERROR, "flush log error, ret=%d", ret);
+      }
+
       is_finish_load_ = true;
       TBSYS_LOG(INFO, "finish loading bypass sstables, import_tables_info=%s",
         to_cstring(*table_list_));
@@ -213,81 +214,55 @@ namespace oceanbase
     int ObBypassSSTableLoader::rollback()
     {
       TBSYS_LOG(INFO, "load failed, start rollback, import_tables_info=%s",
-        to_cstring(*table_list_));
+          to_cstring(*table_list_));
 
-      return recycle_unload_tablets();
+      int ret = OB_SUCCESS;
+      ObSSTableId sstable_id;
+      ObTablet* tablet = NULL;
+      tablet_array_mutex_.lock();
+      int32_t disk_no = -1;
+
+      ObVector<ObTablet*>::iterator it = tablet_array_.begin();
+      ObMultiVersionTabletImage& tablet_image = tablet_manager_->get_serving_tablet_image();
+      for (; it != tablet_array_.end(); ++it)
+      {
+        tablet = *it;
+        if (NULL != *it)
+        {
+          sstable_id = tablet->get_sstable_id();
+          if (OB_SUCCESS == tablet_image.include_sstable(sstable_id))
+          {
+            disk_no = tablet->get_disk_no();
+            ret = tablet_image.remove_tablet(tablet->get_range(), tablet->get_data_version(), disk_no);
+            if (OB_SUCCESS != ret)
+            {
+              TBSYS_LOG(WARN, "failed to remove bypass tablet, sstable_id=%lu, range=%s",
+                  sstable_id.sstable_file_id_, to_cstring(tablet->get_range()));
+            }
+          }
+          tablet_image.release_tablet(*it);
+        }
+      }
+      tablet_array_mutex_.unlock();
+      return ret;
     }
 
-    int ObBypassSSTableLoader::recycle_unload_tablets(bool only_recycle_removed_tablet)
+    int ObBypassSSTableLoader::recycle_unload_tablets()
     {
       int ret = OB_SUCCESS;
 
       tablet_array_mutex_.lock();
+      ObMultiVersionTabletImage& tablet_image = tablet_manager_->get_serving_tablet_image();
       ObVector<ObTablet*>::iterator it = tablet_array_.begin();
       for (; it != tablet_array_.end(); ++it)
       {
         if (NULL != *it)
         {
-          ret = recycle_tablet(*it, only_recycle_removed_tablet);
+          tablet_image.release_tablet(*it);
         }
       }
+
       tablet_array_mutex_.unlock();
-
-      return ret;
-    }
-
-    int ObBypassSSTableLoader::recycle_tablet(ObTablet* tablet, bool only_recycle_removed_tablet)
-    {
-      int ret = OB_SUCCESS;
-      int32_t disk_no = 0;
-      ObMultiVersionTabletImage& tablet_image = tablet_manager_->get_serving_tablet_image();
-      ObSSTableId sstable_id;
-
-      if (NULL == tablet)
-      {
-        TBSYS_LOG(WARN, "invalid param, tablet is NULL");
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else if (!only_recycle_removed_tablet 
-               || (only_recycle_removed_tablet && tablet->is_removed()))
-      {
-        tablet->inc_ref(); //increase ref first, avoid another thread destroy this tablet
-        tablet->set_merged();
-        tablet->set_removed();  //avoid another thread read this tablet again
-        //remove tablet if it exists in serving tablet image
-        if (tablet->get_sstable_id_list().count() > 0)
-        {
-          sstable_id = (tablet->get_sstable_id_list().at(0));
-          if (OB_SUCCESS == tablet_image.include_sstable(sstable_id))
-          {
-            //this function doesn't sync the index file
-            ret = tablet_image.remove_tablet(
-              tablet->get_range(), tablet->get_data_version(), disk_no, false);
-            if (OB_SUCCESS != ret)
-            {
-              TBSYS_LOG(WARN, "failed to remove bypass tablet, sstable_id=%lu, range=%s",
-                sstable_id.sstable_file_id_, to_cstring(tablet->get_range()));
-            }
-          }
-        }
-
-        /**
-         * if no another thread hold this tablet, remove the sstable of
-         * the tablet and destroy the tablet, else the last thread which
-         * releases the tablet will destroy the tablet.
-         */
-        if (0 == tablet->dec_ref())
-        {
-          if (OB_SUCCESS == ret
-            && OB_SUCCESS != (ret = tablet_image.get_serving_image().remove_sstable(tablet)))
-          {
-            TBSYS_LOG(WARN, "failed to remove sstable of tablet, range=%s",
-            to_cstring(tablet->get_range()));
-          }
-
-          tablet->~ObTablet();
-        }
-      }
 
       return ret;
     }
@@ -793,7 +768,7 @@ namespace oceanbase
         if (NULL != *it)
         {
           if (OB_SUCCESS != (ret = tablet_image.add_tablet(
-            *it, true, tablet_image.get_serving_version() == 0)))
+            *it, true, tablet_image.get_last_not_merged_version() == 0)))
           {
             TBSYS_LOG(ERROR, "add tablet to tablet image failed, range=%s",
               to_cstring((*it)->get_range()));

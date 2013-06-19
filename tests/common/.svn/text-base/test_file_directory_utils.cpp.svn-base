@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include "file_utils.h"
 #include "file_directory_utils.h"
+#include "ob_define.h"
 using namespace oceanbase::common;
 
 namespace oceanbase
@@ -14,7 +15,7 @@ namespace tests
 namespace common
 {
 
-static const std::string basepath="/home/duanfei/local/oceanbase";
+static const std::string basepath = "/tmp/__tmp__dir__";
 
 class TestFileDirectoryUtils: public ::testing::Test
 {
@@ -34,7 +35,7 @@ TEST_F(TestFileDirectoryUtils, create_full_path)
 {
   EXPECT_EQ(FileDirectoryUtils::create_full_path(basepath.c_str()), true);
   const std::string invalidpath = basepath + "/";
-  EXPECT_EQ(FileDirectoryUtils::create_full_path(invalidpath.c_str()), false);
+  EXPECT_EQ(FileDirectoryUtils::create_full_path(invalidpath.c_str()), true);
   const std::string emptypath = "/";
   EXPECT_EQ(FileDirectoryUtils::create_full_path(emptypath.c_str()), false);
   const std::string path= basepath + "/ invalidpath / test";
@@ -44,6 +45,7 @@ TEST_F(TestFileDirectoryUtils, create_full_path)
 TEST_F(TestFileDirectoryUtils, delete_directory)
 {
   const std::string path = basepath + "/create_directory";
+  FSU::delete_directory_recursively(path.c_str());
   EXPECT_EQ(FileDirectoryUtils::create_full_path(path.c_str()), true);
   EXPECT_EQ(FileDirectoryUtils::delete_directory(path.c_str()), true);
   const std::string delete_dir_path = basepath + "/delete_directory";
@@ -111,6 +113,36 @@ TEST_F(TestFileDirectoryUtils, get_size)
   EXPECT_EQ(FileDirectoryUtils::delete_file(filepath.c_str()), true);
 }
 
+TEST_F(TestFileDirectoryUtils, gen_tmpfile_name)
+{
+  const char *tmpdir = "/tmp";
+  const char *prefix = "cs_sort_tmp_file";
+  char file_name1[OB_MAX_FILE_NAME_LENGTH];
+  char file_name2[OB_MAX_FILE_NAME_LENGTH];
+
+  EXPECT_FALSE(FSU::gen_tmpfile_name(NULL, OB_MAX_FILE_NAME_LENGTH, NULL, NULL));
+  EXPECT_FALSE(FSU::gen_tmpfile_name(file_name1, OB_MAX_FILE_NAME_LENGTH, NULL, NULL));
+  EXPECT_FALSE(FSU::gen_tmpfile_name(file_name1, 0, tmpdir, NULL));
+
+  EXPECT_TRUE(FSU::gen_tmpfile_name(file_name1, OB_MAX_FILE_NAME_LENGTH, tmpdir, NULL));
+  EXPECT_FALSE(FSU::exists(file_name1));
+
+  EXPECT_TRUE(FSU::gen_tmpfile_name(file_name1, OB_MAX_FILE_NAME_LENGTH, tmpdir, prefix));
+  std::string path = std::string(tmpdir) + "/" + prefix;
+  EXPECT_EQ(0, strncmp(file_name1, path.c_str(), path.length()));
+
+  EXPECT_TRUE(FSU::gen_tmpfile_name(file_name1, OB_MAX_FILE_NAME_LENGTH, tmpdir, prefix));
+  EXPECT_TRUE(FSU::gen_tmpfile_name(file_name2, OB_MAX_FILE_NAME_LENGTH, tmpdir, prefix));
+  EXPECT_FALSE(FSU::exists(file_name1));
+  EXPECT_FALSE(FSU::exists(file_name2));
+  EXPECT_STRNE(file_name1, file_name2);
+
+  // buffer not enough test
+  int64_t len = strlen(file_name1);
+  EXPECT_FALSE(FSU::gen_tmpfile_name(file_name1, len, tmpdir, prefix));
+  EXPECT_TRUE(FSU::gen_tmpfile_name(file_name1, len + 1, tmpdir, prefix));
+}
+
 /*TEST_F(TestFileDirectoryUtils, scan_directory_tree)
 {
   std::string fullpath = basepath + "/scandir";
@@ -149,7 +181,7 @@ TEST_F(TestFileDirectoryUtils, delete_direcotry_recursively)
   const std::string filepath = basepath + "/create_directory/test_file";
   EXPECT_GE(files.open(filepath.c_str(), O_RDWR | O_CREAT | O_APPEND | O_LARGEFILE, 0640), 0);
   files.close();
-  EXPECT_EQ(FileDirectoryUtils::delete_direcotry_recursively(basepath.c_str()), true);
+  EXPECT_EQ(FileDirectoryUtils::delete_directory_recursively(basepath.c_str()), true);
   EXPECT_EQ(FileDirectoryUtils::exists(basepath.c_str()), false);
 }
 

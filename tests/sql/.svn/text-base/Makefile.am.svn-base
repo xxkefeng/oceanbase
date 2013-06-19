@@ -1,6 +1,7 @@
 AM_LIBTOOLFLAGS=--preserve-dup-deps
 
 AM_CPPFLAGS = -I${TBLIB_ROOT}/include/tbsys \
+			  -I${TBLIB_ROOT}/include/tbnet \
 			 	-I${EASY_ROOT}/include/easy \
 			  -I${top_srcdir}/include \
 			  -I${top_srcdir}/src \
@@ -22,8 +23,11 @@ LDADD = \
 		${top_builddir}/src/common/compress/libcomp.a \
 		${top_builddir}/src/common/libcommon.a \
 		${top_builddir}/src/sql/libsql.a \
+		${top_builddir}/src/compactsstablev2/libcompactsstablev2.a \
+		${top_builddir}/src/sstable/libsstable.a \
 		$(top_builddir)/src/common/btree/libbtree.a \
 		${EASY_LIB_PATH}/libeasy.a \
+		${TBLIB_ROOT}/lib/libtbnet.a \
 		${TBLIB_ROOT}/lib/libtbsys.a
 
 AM_LDFLAGS=-lpthread -lc -lm -lrt -lgtest -lgmock ${GCOV_LIB} -lnuma -lcrypt -lreadline -lncurses -laio -lssl
@@ -67,6 +71,8 @@ check_programs= \
             ob_result_set_test \
 			test_sstable_block_scanner \
 			test_sstable_scan \
+			test_sstable_getter \
+			test_remote_sstable_scan \
 			ob_union_test\
 			ob_fake_ups_multi_get_test \
 			ob_fake_sql_ups_rpc_proxy_test2 \
@@ -108,6 +114,8 @@ ob_single_table_sql_test_SOURCES = ob_single_table_sql_test.cpp ${pub_source}
 ob_result_set_test_SOURCES = ob_result_set_test.cpp
 test_sstable_block_scanner_SOURCES=test_sstable_block_scanner.cpp test_helper.cpp test_sstable_stat.cpp test_disk_path.cpp
 test_sstable_scan_SOURCES=test_sstable_scan.cpp test_helper.cpp test_sstable_stat.cpp test_disk_path.cpp
+test_remote_sstable_scan_SOURCES=test_remote_sstable_scan.cpp mock_chunk_server.h mock_chunk_server.cpp mock_server.h mock_server.cpp
+test_sstable_getter_SOURCES=test_sstable_getter.cpp test_helper.h test_helper.cpp test_sstable_stat.cpp $(top_builddir)/src/chunkserver/ob_disk_path.cpp
 ob_union_test_SOURCES = ob_union_test.cpp $(pub_source)
 ob_fake_ups_multi_get_test_SOURCES =  ob_fake_ups_multi_get_test.cpp ${pub_source}
 ob_fake_sql_ups_rpc_proxy_test2_SOURCES = ob_fake_sql_ups_rpc_proxy_test2.cpp ${pub_source}

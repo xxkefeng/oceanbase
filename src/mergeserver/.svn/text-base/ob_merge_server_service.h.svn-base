@@ -6,7 +6,6 @@
 #include "common/ob_obi_role.h"
 #include "common/thread_buffer.h"
 #include "common/ob_session_mgr.h"
-#include "common/nb_accessor/ob_nb_accessor.h"
 #include "common/ob_config_manager.h"
 #include "common/ob_version.h"
 #include "ob_ms_schema_task.h"
@@ -168,6 +167,7 @@ namespace oceanbase
           common::ObDataBuffer& in_buffer,
           common::ObDataBuffer& out_buffer,
           const int64_t timeout_us);
+/*
         int ms_sql_scan(
           const int64_t start_time,
           const int32_t version,
@@ -176,7 +176,7 @@ namespace oceanbase
           common::ObDataBuffer& in_buffer,
           common::ObDataBuffer& out_buffer,
           const int64_t timeout_us);
-
+*/
         int ms_accept_schema(
           const int64_t receive_time,
           const int32_t version,
@@ -277,7 +277,6 @@ namespace oceanbase
         ObMergerAsyncRpcStub   *async_rpc_;
         common::ObMergerSchemaManager *schema_mgr_;
         ObMergerSchemaProxy *schema_proxy_;
-        oceanbase::common::nb_accessor::ObNbAccessor *nb_accessor_;
         ObMergerRootRpcProxy * root_rpc_;
         ObMergerUpsTask fetch_ups_task_;
         ObMergerSchemaTask fetch_schema_task_;

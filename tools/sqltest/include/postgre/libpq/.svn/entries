@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/sqltest/include/postgre/libpq
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/sqltest/include/postgre/libpq
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-05-22T14:08:32.000000Z
+2013-06-19T09:27:08.000000Z
 9fb5ec06a5add40ea44285bbeb7f9ae8
 2012-02-28T10:22:38.999964Z
 7493

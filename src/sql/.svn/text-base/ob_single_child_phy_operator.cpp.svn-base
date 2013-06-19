@@ -48,6 +48,10 @@ int ObSingleChildPhyOperator::set_child(int32_t child_idx, ObPhyOperator &child_
   {
     child_op_ = &child_operator;
   }
+  if (OB_SUCCESS == ret)
+  {
+    child_operator.set_parent(this);
+  }
   return ret;
 }
 

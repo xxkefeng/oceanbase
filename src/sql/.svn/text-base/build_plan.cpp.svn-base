@@ -24,12 +24,16 @@
 #include "ob_column_def.h"
 #include "ob_alter_table_stmt.h"
 #include "ob_alter_sys_cnf_stmt.h"
+#include "ob_create_index_stmt.h"
+#include "ob_drop_index_stmt.h"
 #include "parse_malloc.h"
+#include "ob_sql_character_set.h"
 #include "common/ob_define.h"
 #include "common/ob_array.h"
 #include "common/ob_string_buf.h"
 #include "common/utility.h"
 #include "common/ob_schema_service.h"
+#include "ob_table_option.h"
 #include <stdint.h>
 
 using namespace oceanbase::common;
@@ -82,6 +86,18 @@ int resolve_deallocate_stmt(
     ParseNode* node,
     uint64_t& query_id);
 int resolve_alter_sys_cnf_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id);
+int resolve_create_index_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id);
+int resolve_table_options(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    ObTableOption& option);
+int resolve_drop_index_stmt(
     ResultPlan* result_plan,
     ParseNode* node,
     uint64_t& query_id);
@@ -182,9 +198,7 @@ int resolve_explain_stmt(
     else
     {
       explain_stmt = new(explain_stmt) ObExplainStmt();
-      query_id = logical_plan->generate_query_id();
-      explain_stmt->set_query_id(query_id);
-      ret = logical_plan->add_query(explain_stmt);
+      ret = logical_plan->add_query(explain_stmt, &query_id);
       if (ret != OB_SUCCESS)
       {
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
@@ -508,6 +522,73 @@ int resolve_table_elements(
   return ret;
 }
 
+int resolve_table_options(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    ObTableOption& option)
+{
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  if (node)
+  {
+    OB_ASSERT(node->type_ == T_TABLE_OPTION_LIST && node->num_child_ >= 1);
+    ParseNode *option_node = NULL;
+    int32_t char_number = 0;
+    int32_t num = node->num_child_;
+    for (int32_t i = 0; ret == OB_SUCCESS && i < num; i++)
+    {
+      option_node = node->children_[i];
+      switch (option_node->type_)
+      {
+        case T_EXPIRE_INFO:
+          option.expire_info_.assign_ptr(
+              const_cast<char*>(option_node->children_[0]->str_value_),
+              static_cast<int32_t>(option_node->children_[0]->value_));
+          break;
+        case T_TABLET_MAX_SIZE:
+          option.tablet_max_size_ = option_node->children_[0]->value_;
+          break;
+        case T_TABLET_BLOCK_SIZE:
+          option.tablet_block_size_ = option_node->children_[0]->value_;
+          break;
+        case T_REPLICA_NUM:
+          option.replica_num_ = static_cast<int32_t>(option_node->children_[0]->value_);
+          break;
+        case T_COMPRESS_METHOD:
+          option.compress_method_.assign_ptr(
+              const_cast<char*>(option_node->children_[0]->str_value_),
+              static_cast<int32_t>(option_node->children_[0]->value_));
+          break;
+        case T_USE_BLOOM_FILTER:
+          option.use_bloom_filter_ = option_node->children_[0]->value_ ? true : false;
+          break;
+        case T_CONSISTENT_MODE:
+          if (option_node->value_ == 1)
+            option.read_static_ = true;
+          break;
+        case T_CHARSET:
+          char_number = get_char_number_from_name(option_node->children_[0]->str_value_);
+          if (OB_INVALID_CHARACTER_NUM == char_number)
+          {
+            TBSYS_LOG(DEBUG, "invalid char number %d", char_number);
+            snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+                     "Unknown character set: '%s'", option_node->children_[0]->str_value_);
+            ret = OB_ERR_PARSE_SQL;
+          }
+          else
+          {
+            option.character_set_ = char_number;
+          }
+          break;
+        default:
+          /* won't be here */
+          OB_ASSERT(0);
+          break;
+      }
+    }
+  }
+  return ret;
+}
+
 int resolve_create_table_stmt(
     ResultPlan* result_plan,
     ParseNode* node,
@@ -553,9 +634,7 @@ int resolve_create_table_stmt(
     else
     {
       create_table_stmt = new(create_table_stmt) ObCreateTableStmt(name_pool);
-      query_id = logical_plan->generate_query_id();
-      create_table_stmt->set_query_id(query_id);
-      ret = logical_plan->add_query(create_table_stmt);
+      ret = logical_plan->add_query(create_table_stmt, &query_id);
       if (ret != OB_SUCCESS)
       {
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
@@ -592,56 +671,17 @@ int resolve_create_table_stmt(
 
   if (ret == OB_SUCCESS && node->children_[3])
   {
-    OB_ASSERT(node->children_[3]->type_ == T_TABLE_OPTION_LIST);
-    ObString str;
-    ParseNode *option_node = NULL;
-    int32_t num = node->children_[3]->num_child_;
-    for (int32_t i = 0; ret == OB_SUCCESS && i < num; i++)
+    ObTableOption option;
+    if ((ret = resolve_table_options(result_plan, node->children_[3], option)) != OB_SUCCESS)
     {
-      option_node = node->children_[3]->children_[i];
-      switch (option_node->type_)
-      {
-        case T_EXPIRE_INFO:
-          str.assign_ptr(
-              (char*)(option_node->children_[0]->str_value_),
-              static_cast<int32_t>(strlen(option_node->children_[0]->str_value_))
-              );
-          if ((ret = create_table_stmt->set_expire_info(str)) != OB_SUCCESS)
-            snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
-                "Set EXPIRE_INFO failed");
-          break;
-        case T_TABLET_MAX_SIZE:
-          create_table_stmt->set_tablet_max_size(option_node->children_[0]->value_);
-          break;
-        case T_TABLET_BLOCK_SIZE:
-          create_table_stmt->set_tablet_block_size(option_node->children_[0]->value_);
-          break;
-        case T_REPLICA_NUM:
-          create_table_stmt->set_replica_num(static_cast<int32_t>(option_node->children_[0]->value_));
-          break;
-        case T_COMPRESS_METHOD:
-          str.assign_ptr(
-              (char*)(option_node->children_[0]->str_value_),
-              static_cast<int32_t>(strlen(option_node->children_[0]->str_value_))
-              );
-          if ((ret = create_table_stmt->set_compress_method(str)) != OB_SUCCESS)
-            snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
-                "Set EXPIRE_INFO failed");
-          break;
-        case T_USE_BLOOM_FILTER:
-          create_table_stmt->set_use_bloom_filter(option_node->children_[0]->value_ ? true : false);
-          break;
-        case T_CONSISTENT_MODE:
-          if (option_node->value_ == 1)
-            create_table_stmt->set_read_static(true);
-          break;
-        default:
-          /* won't be here */
-          OB_ASSERT(0);
-          break;
-      }
+      // PARSER_LOG("Resolve table options failed, ret=%d", ret);
+    }
+    else if ((ret = create_table_stmt->set_table_option(*result_plan, option)) != OB_SUCCESS)
+    {
+      PARSER_LOG("Set table options failed, ret=%d", ret);
     }
   }
+  
   return ret;
 }
 
@@ -826,9 +866,7 @@ int resolve_drop_table_stmt(
     else
     {
       drp_tab_stmt = new(drp_tab_stmt) ObDropTableStmt(name_pool);
-      query_id = logical_plan->generate_query_id();
-      drp_tab_stmt->set_query_id(query_id);
-      if ((ret = logical_plan->add_query(drp_tab_stmt)) != OB_SUCCESS)
+      if ((ret = logical_plan->add_query(drp_tab_stmt, &query_id)) != OB_SUCCESS)
       {
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
           "Can not add ObDropTableStmt to logical plan");
@@ -856,6 +894,132 @@ int resolve_drop_table_stmt(
       {
         break;
       }
+    }
+  }
+  return ret;
+}
+
+int resolve_create_index_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_CREATE_INDEX && node->num_child_ == 5);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObCreateIndexStmt* crt_idx_stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, crt_idx_stmt)))
+  {
+  }
+  else
+  {
+    crt_idx_stmt->set_name_pool(static_cast<ObStringBuf*>(result_plan->name_pool_));
+    crt_idx_stmt->set_unique(node->value_ == 1);
+    ParseNode *cur_node = NULL;
+    if (ret == OB_SUCCESS)
+    {
+      OB_ASSERT(node->children_[1]);
+      cur_node = node->children_[1];
+      int32_t len = static_cast<int32_t>(cur_node->value_);
+      ObString table_name(len, len, cur_node->str_value_);
+      if ((ret = crt_idx_stmt->set_table_name(*result_plan, table_name)) != OB_SUCCESS)
+      {
+        //PARSER_LOG("Set table name failed, table_name=%.*s, ret=%d", 
+        //           table_name.length(), table_name.ptr(), ret);
+      }
+    }
+    if (ret == OB_SUCCESS)
+    {
+      OB_ASSERT(node->children_[0]);
+      cur_node = node->children_[0];
+      int32_t len = static_cast<int32_t>(cur_node->value_);
+      ObString index_name(len, len, cur_node->str_value_);
+      if ((ret = crt_idx_stmt->set_index_name(*result_plan, index_name)) != OB_SUCCESS)
+      {
+        //PARSER_LOG("Set index name failed, index_name=%.*s, ret=%d", 
+        //          index_name.length(), index_name.ptr(), ret);
+      }
+    }
+    if (ret == OB_SUCCESS)
+    {
+      OB_ASSERT(node->children_[2] && node->children_[2]->type_ == T_INDEX_COLUMN_LIST);
+      for (int32_t i = 0; ret == OB_SUCCESS && i < node->children_[2]->num_child_; i++)
+      {
+        cur_node = node->children_[2]->children_[i];
+        ObColumnSortItem sort_item;
+        sort_item.column_name_.assign_ptr(
+                                  const_cast<char*>(cur_node->children_[0]->str_value_),
+                                  static_cast<int32_t>(cur_node->children_[0]->value_));
+        if ((ret = crt_idx_stmt->add_sort_column(*result_plan, sort_item)) != OB_SUCCESS)
+        {
+          PARSER_LOG("Add index column failed, index_name=%.*s, ret=%d", 
+                     sort_item.column_name_.length(), sort_item.column_name_.ptr(), ret);
+          break;
+        }
+        if (!cur_node->children_[1] || cur_node->children_[0]->type_ == T_SORT_ASC)
+        {
+          sort_item.order_type_ = ObColumnSortItem::ASC;
+        }
+        else
+        {
+          sort_item.order_type_ = ObColumnSortItem::DESC;
+        }
+      }
+    }
+    if (ret == OB_SUCCESS && node->children_[3])
+    {
+      for (int32_t i = 0; ret == OB_SUCCESS && i < node->children_[3]->num_child_; i++)
+      {
+        cur_node = node->children_[3]->children_[i];
+        int32_t len = static_cast<int32_t>(cur_node->value_);
+        ObString column_name(len, len, cur_node->str_value_);
+        if ((ret = crt_idx_stmt->add_storing_column(*result_plan, column_name)) != OB_SUCCESS)
+        {
+          PARSER_LOG("Add storing column failed, index_name=%.*s, ret=%d", 
+                     column_name.length(), column_name.ptr(), ret);
+          break;
+        }
+      }
+    }
+    if (ret == OB_SUCCESS && node->children_[4])
+    {
+      ObTableOption idx_option;
+      if ((ret = resolve_table_options(result_plan, node->children_[4], idx_option)) != OB_SUCCESS)
+      {
+        // PARSER_LOG("Resolve index options failed, ret=%d", ret);
+      }
+      else if ((ret = crt_idx_stmt->set_index_option(*result_plan, idx_option)) != OB_SUCCESS)
+      {
+        PARSER_LOG("Set index options failed, ret=%d", ret);
+      }
+    }
+  }
+  return ret;
+}
+
+int resolve_drop_index_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_DROP_INDEX && node->num_child_ == 1);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObDropIndexStmt* drp_idx_stmt = NULL;
+  if (OB_SUCCESS != (ret = prepare_resolve_stmt(result_plan, query_id, drp_idx_stmt)))
+  {
+  }
+  else
+  {
+    drp_idx_stmt->set_name_pool(static_cast<ObStringBuf*>(result_plan->name_pool_));
+    ParseNode *tab_node = node->children_[0];
+    OB_ASSERT(tab_node);
+    int32_t len = static_cast<int32_t>(tab_node->value_);
+    ObString index_name(len, len, tab_node->str_value_);
+    if ((ret = drp_idx_stmt->set_index_name(*result_plan, index_name)) != OB_SUCCESS)
+    {
+      PARSER_LOG("Set index name faile, index_name=%.*s, ret=%d", 
+                 index_name.length(), index_name.ptr(), ret);
     }
   }
   return ret;
@@ -914,6 +1078,7 @@ int resolve_show_stmt(
           OB_ASSERT(node->num_child_ == 1);
           condition_node = node->children_[0];
           show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_TABLES);
+          show_stmt->set_global_scope(node->value_ == 1 ? true : false);
           sys_table_name.str_value_ = OB_TABLES_SHOW_TABLE_NAME;
           break;
         case T_SHOW_VARIABLES:
@@ -939,6 +1104,13 @@ int resolve_show_stmt(
           show_table_node = node->children_[0];
           show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_CREATE_TABLE);
           sys_table_name.str_value_ = OB_CREATE_TABLE_SHOW_TABLE_NAME;
+          break;
+        case T_SHOW_INDEXES:
+          OB_ASSERT(node->num_child_ == 2);
+          show_table_node = node->children_[0];
+          condition_node = node->children_[1];
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_INDEXES);
+          sys_table_name.str_value_ = OB_INDEXES_SHOW_TABLE_NAME;
           break;
         case T_SHOW_TABLE_STATUS:
           OB_ASSERT(node->num_child_ == 1);
@@ -974,10 +1146,8 @@ int resolve_show_stmt(
         && (ret = resolve_table(result_plan, show_stmt, &sys_table_name, sys_table_id)) == OB_SUCCESS)
       {
         show_stmt->set_sys_table(sys_table_id);
-        query_id = logical_plan->generate_query_id();
-        show_stmt->set_query_id(query_id);
       }
-      if (ret == OB_SUCCESS && (ret = logical_plan->add_query(show_stmt)) != OB_SUCCESS)
+      if (ret == OB_SUCCESS && (ret = logical_plan->add_query(show_stmt, &query_id)) != OB_SUCCESS)
       {
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
           "Can not add ObShowStmt to logical plan");
@@ -994,7 +1164,8 @@ int resolve_show_stmt(
       ret = resolve_table_columns(result_plan, show_stmt, *table_item);
     }
 
-    if (ret == OB_SUCCESS && (node->type_ == T_SHOW_COLUMNS || node->type_ == T_SHOW_CREATE_TABLE))
+    if (ret == OB_SUCCESS && (node->type_ == T_SHOW_COLUMNS
+      || node->type_ == T_SHOW_CREATE_TABLE || node->type_ == T_SHOW_INDEXES))
     {
       OB_ASSERT(show_table_node);
       ObSchemaChecker *schema_checker = static_cast<ObSchemaChecker*>(result_plan->schema_checker_);
@@ -1021,7 +1192,7 @@ int resolve_show_stmt(
     if (ret == OB_SUCCESS && condition_node
       && (node->type_ == T_SHOW_TABLES || node->type_ == T_SHOW_VARIABLES || node->type_ == T_SHOW_COLUMNS
       || node->type_ == T_SHOW_TABLE_STATUS || node->type_ == T_SHOW_SERVER_STATUS
-      || node->type_ == T_SHOW_PARAMETERS))
+      || node->type_ == T_SHOW_PARAMETERS || node->type_ == T_SHOW_INDEXES))
     {
       if (condition_node->type_ == T_OP_LIKE && condition_node->num_child_ == 1)
       {
@@ -1550,6 +1721,7 @@ int resolve(ResultPlan* result_plan, ParseNode* node)
       case T_SHOW_WARNINGS:
       case T_SHOW_GRANTS:
       case T_SHOW_PARAMETERS:
+      case T_SHOW_INDEXES:
       {
         ret = resolve_show_stmt(result_plan, node, query_id);
         break;
@@ -1620,6 +1792,12 @@ int resolve(ResultPlan* result_plan, ParseNode* node)
         break;
       case T_ALTER_SYSTEM:
         ret = resolve_alter_sys_cnf_stmt(result_plan, node, query_id);
+        break;
+      case T_CREATE_INDEX:
+        ret = resolve_create_index_stmt(result_plan, node, query_id);
+        break;
+      case T_DROP_INDEX:
+        ret = resolve_drop_index_stmt(result_plan, node, query_id);
         break;
       default:
         TBSYS_LOG(ERROR, "unknown top node type=%d", node->type_);

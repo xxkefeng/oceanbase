@@ -21,7 +21,7 @@
 #include "common/ob_define.h"
 #include "compactsstablev2/ob_compact_sstable_writer.h"
 #include "compactsstablev2/ob_sstable_schema.h"
-#include "ob_tablet_merger_v1.h"
+#include "ob_tablet_merger_v0.h"
 #include "ob_tablet_merge_filter.h"
 #include "sql/ob_tablet_scan.h"
 
@@ -79,18 +79,8 @@ namespace oceanbase
 
       private:
         compactsstablev2::ObSSTableSchema sstable_schema_;
-
         // for write merged new sstable
         compactsstablev2::ObCompactSSTableWriter writer_;
-        // data filter, discard in merge process.
-        ObTabletMergerFilter tablet_merge_filter_;
-
-        // for read tablet data..
-        sql::ObSqlScanParam sql_scan_param_;
-        sql::ObTabletScan tablet_scan_;
-        sql::ObSSTableScan op_sstable_scan_;
-        sql::ObUpsScan op_ups_scan_;
-        sql::ObUpsMultiGet op_ups_multi_get_;
     };
   } /* chunkserver */
 } /* oceanbase */

@@ -36,7 +36,6 @@ namespace oceanbase
         return &buffer_pool_;
       }
       void reset(void);
-      void reset_local(void);
       inline void set_read_mode(const ScanFlag::SyncMode mode) { scan_flag_.read_mode_ = mode & ScanFlag::SF_MASK_READ_MODE; }
       inline ScanFlag::SyncMode get_read_mode() const { return static_cast<ScanFlag::SyncMode>(scan_flag_.read_mode_); }
 
@@ -57,7 +56,7 @@ namespace oceanbase
 
       inline void set_scan_flag(const ScanFlag flag) { scan_flag_ = flag; }
       inline ScanFlag get_scan_flag() const { return scan_flag_; }
-
+     
       NEED_SERIALIZE_AND_DESERIALIZE;
 
       // dump scan param info, basic version

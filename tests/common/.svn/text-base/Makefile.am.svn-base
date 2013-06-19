@@ -34,7 +34,6 @@ bin_PROGRAMS = limit_array_test                           \
                            test_ob_object                 \
                            test_ob_scanner                \
                            test_probability_random        \
-                           test_ob_scanner                \
                            test_ob_log_dir_scanner        \
                            test_scan_param                \
                            test_ob_slave_mgr              \
@@ -53,17 +52,15 @@ bin_PROGRAMS = limit_array_test                           \
                            test_schema_table              \
                            test_merger                    \
                            test_ring_buffer               \
-                           test_file                      \
+                           test_file_directory_utils      \
                            test_row_compaction            \
                            ob_flag_test                   \
                            ob_array_test                  \
-                           test_nb_accessor               \
                            test_compact_cell              \
                            test_buffer_helper             \
                            ob_number_test                 \
                            ob_expr_obj_test               \
                            test_ob_row_store              \
-                           ob_ups_row_util_test           \
                            ob_row_fuse_test               \
                            test_ob_postfix_expression     \
                            test_rowkey_helper             \
@@ -80,18 +77,19 @@ bin_PROGRAMS = limit_array_test                           \
                            test_ob_file_service           \
                            test_ob_common_param           \
                            ob_obj_cast_test               \
-                           test_cell_new_scanner          \
                            test_ob_privilege              \
                            test_ob_privilege_manager      \
                            ob_sql_get_param_test          \
                            ob_se_array_test               \
                            test_system_config             \
-			   test_ob_log_reader             \
+                           test_ob_log_reader             \
                            ob_row_test                    \
                            test_new_scanner_helper        \
                            test_iterator_adaptor          \
                            test_system_config             \
                            test_ob_config\
+                           test_page_arena\
+						   test_bitmap \
                            test_ob_stat
 
 test_ob_config_SOURCES = test_ob_config.cpp
@@ -124,6 +122,7 @@ test_slab_SOURCES = test_slab.cpp
 test_groupby_param_SOURCES =  test_groupby_param.cpp
 test_kr_SOURCES = test_kr.cpp
 test_file_SOURCES = test_file.cpp
+test_file_directory_utils_SOURCES = test_file_directory_utils.cpp
 test_row_compaction_SOURCES = test_row_compaction.cpp
 test_ob_composite_column_SOURCES = test_ob_composite_column.cpp
 test_ob_composite_column_infix_SOURCES = test_ob_composite_column_infix.cpp
@@ -139,12 +138,10 @@ ob_flag_test_SOURCES = ob_flag_test.cpp
 test_merger_SOURCES = test_merger.cpp
 test_ring_buffer_SOURCES = test_ring_buffer.cpp
 ob_array_test_SOURCES = ob_array_test.cpp
-test_nb_accessor_SOURCES = test_nb_accessor.cpp
 test_compact_cell_SOURCES = test_compact_cell.cpp
 test_buffer_helper_SOURCES = test_buffer_helper.cpp
 ob_number_test_SOURCES = ob_number_test.cpp
 test_new_scanner_helper_SOURCES = test_new_scanner_helper.cpp
-ob_ups_row_util_test_SOURCES = ob_ups_row_util_test.cpp
 ob_row_fuse_test_SOURCES = ob_row_fuse_test.cpp
 ob_expr_obj_test_SOURCES = ob_expr_obj_test.cpp
 test_ob_row_store_SOURCES = test_ob_row_store.cpp
@@ -160,7 +157,6 @@ test_row_util_SOURCES = test_row_util.cpp
 test_ob_new_scanner_SOURCES = test_ob_new_scanner.cpp
 test_ob_file_service_SOURCES = test_ob_file_service.cpp
 test_ob_common_param_SOURCES= test_ob_common_param.cpp
-test_cell_new_scanner_SOURCES = test_cell_new_scanner.cpp
 ob_obj_cast_test_SOURCES=ob_obj_cast_test.cpp
 test_ob_privilege_SOURCES=test_ob_privilege.cpp
 test_iterator_adaptor_SOURCES=test_iterator_adaptor.cpp
@@ -168,6 +164,8 @@ test_ob_privilege_manager_SOURCES=test_ob_privilege_manager.cpp
 ob_row_test_SOURCES=ob_row_test.cpp
 ob_se_array_test_SOURCES=ob_se_array_test.cpp
 ob_sql_get_param_test_SOURCES=ob_sql_get_param_test.cpp
+test_page_arena_SOURCES = test_page_arena.cpp
+test_bitmap_SOURCES = test_bitmap.cpp
 
 SUBDIRS = hash compress
 

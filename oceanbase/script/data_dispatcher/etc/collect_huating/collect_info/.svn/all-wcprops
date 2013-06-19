@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/9289/branches/dev/oceanbase/script/data_dispatcher/etc/collect_huating/collect_info
+END
+sample.conf
+K 25
+svn:wc:ra_dav:version-url
+V 121
+/repos/oceanbase/!svn/ver/8508/branches/dev/oceanbase/script/data_dispatcher/etc/collect_huating/collect_info/sample.conf
+END
+configuration.xml
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/repos/oceanbase/!svn/ver/9289/branches/dev/oceanbase/script/data_dispatcher/etc/collect_huating/collect_info/configuration.xml
+END
+import.ini
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/script/data_dispatcher/etc/collect_huating/collect_info/import.ini
+END
+data_syntax.ini
+K 25
+svn:wc:ra_dav:version-url
+V 125
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/script/data_dispatcher/etc/collect_huating/collect_info/data_syntax.ini
+END
+range.lst
+K 25
+svn:wc:ra_dav:version-url
+V 119
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/script/data_dispatcher/etc/collect_huating/collect_info/range.lst
+END
+schema.ini
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/script/data_dispatcher/etc/collect_huating/collect_info/schema.ini
+END

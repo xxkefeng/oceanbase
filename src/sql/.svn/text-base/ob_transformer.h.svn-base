@@ -64,7 +64,7 @@ namespace oceanbase
             ErrStat& err_stat,
             const uint64_t& query_id = common::OB_INVALID_ID,
             int32_t* index = NULL);
-        int gen_physical_replace(
+        int gen_physical_insert(
             ObLogicalPlan *logical_plan,
             ObPhysicalPlan *physical_plan,
             ErrStat& err_stat,
@@ -355,6 +355,11 @@ namespace oceanbase
             ErrStat& err_stat,
             ObShowStmt *show_stmt,
             ObPhyOperator *&out_op);
+        int gen_phy_show_indexes(
+            ObPhysicalPlan *physical_plan,
+            ErrStat& err_stat,
+            ObShowStmt *show_stmt,
+            ObPhyOperator *&out_op);
         int cons_table_definition(
             const common::ObTableSchema& table_schema,
             char* buf,
@@ -367,6 +372,19 @@ namespace oceanbase
             ErrStat& err_stat,
             const uint64_t& query_id,
             int32_t* index);
+        int gen_physical_create_index(
+            ObLogicalPlan *logical_plan,
+            ObPhysicalPlan *physical_plan,
+            ErrStat& err_stat,
+            const uint64_t& query_id,
+            int32_t* index);
+        int gen_physical_drop_index(
+            ObLogicalPlan *logical_plan,
+            ObPhysicalPlan *physical_plan,
+            ErrStat& err_stat,
+            const uint64_t& query_id,
+            int32_t* index);
+        int check_expire_info(ErrStat& err_stat, TableSchema& table_schema);
       private:
         common::ObIAllocator *mem_pool_;
         ObSqlContext *sql_context_;

@@ -39,23 +39,6 @@ namespace oceanbase
       return ret;
     }
 
-    int set_state_as_active()
-    {
-      int ret = OB_SUCCESS;
-      ObUpdateServerMain *main = ObUpdateServerMain::get_instance();
-      if (NULL == main)
-      {
-        TBSYS_LOG(ERROR, "get updateserver main null pointer");
-        ret = OB_ERROR;
-      }
-      else
-      {
-        ObUpsRoleMgr& role_mgr = main->get_update_server().get_role_mgr();
-        role_mgr.set_state(ObUpsRoleMgr::ACTIVE);
-      }
-      return ret;
-    }
-
     ObEventAccumulator::ObEventAccumulator(): last_event_id_(0), event_counter_(0), attr_accumulator_(0), max_attr_(0)
     {}
 
@@ -196,13 +179,10 @@ namespace oceanbase
                     log_id, master_log_id, mutation_time, now_us);
         }
       }
-      else if (log_id + 1 != master_log_id) // 没追上
-      {}
       else if (catchup_seq_ & 1)
       {
         catchup_seq_++;
-        TBSYS_LOG(INFO, "slave catchup %ld, master_log_id=%ld", catchup_seq_>>1, master_log_id);
-        set_state_as_active();
+        TBSYS_LOG(INFO, "slave catchup %ld", catchup_seq_>>1);
       }
 
       if (last_report_time_us_ + report_interval_us_ < now_us
@@ -210,7 +190,7 @@ namespace oceanbase
           && 1 != catchup_seq_) // 第一次启动时肯定处于not sync状态，但是这时不打印警告
       {
         TBSYS_LOG(WARN, "mutator sync delay warn:"
-                  "delay_warn_time=%ld us, n_lagged_mutator[%ld] - n_lagged_mutator_since_last_report[%ld] = %ld "
+                  "delay_warn_time=%ld us, n_lagged_mutator[%ld] - n_lagged_mutator_since_last_report[%ld] = %ld"
                   "log_id=%ld, master_log_id=%ld",
                   delay_warn_time_us_, n_lagged_mutator_,
                   n_lagged_mutator_since_last_report_, n_lagged_mutator_-n_lagged_mutator_since_last_report_,

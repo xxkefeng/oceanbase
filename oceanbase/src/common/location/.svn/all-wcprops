@@ -1,0 +1,77 @@
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/repos/oceanbase/!svn/ver/13623/branches/dev/oceanbase/src/common/location
+END
+ob_tablet_location_cache_proxy.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/13623/branches/dev/oceanbase/src/common/location/ob_tablet_location_cache_proxy.h
+END
+ob_tablet_location_range_iterator.h
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/repos/oceanbase/!svn/ver/12119/branches/dev/oceanbase/src/common/location/ob_tablet_location_range_iterator.h
+END
+ob_btree_map.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/10557/branches/dev/oceanbase/src/common/location/ob_btree_map.cpp
+END
+ob_ms_cache_table.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/11475/branches/dev/oceanbase/src/common/location/ob_ms_cache_table.h
+END
+ob_tablet_location_list.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/10557/branches/dev/oceanbase/src/common/location/ob_tablet_location_list.cpp
+END
+ob_btree_map.h
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/10557/branches/dev/oceanbase/src/common/location/ob_btree_map.h
+END
+ob_tablet_location_list.h
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/10557/branches/dev/oceanbase/src/common/location/ob_tablet_location_list.h
+END
+ob_tablet_location_cache.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/10557/branches/dev/oceanbase/src/common/location/ob_tablet_location_cache.cpp
+END
+ob_tablet_location_cache_proxy.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/13623/branches/dev/oceanbase/src/common/location/ob_tablet_location_cache_proxy.cpp
+END
+ob_tablet_location_range_iterator.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/repos/oceanbase/!svn/ver/12119/branches/dev/oceanbase/src/common/location/ob_tablet_location_range_iterator.cpp
+END
+ob_ms_cache_table.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/10557/branches/dev/oceanbase/src/common/location/ob_ms_cache_table.cpp
+END
+ob_tablet_location_cache.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/10557/branches/dev/oceanbase/src/common/location/ob_tablet_location_cache.h
+END

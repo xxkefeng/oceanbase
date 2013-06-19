@@ -175,6 +175,7 @@ int PrefixInfo::set_rule_and_row_num(uint64_t prefix, char* rule_data, uint64_t 
 int PrefixInfo::get_rule(uint64_t prefix, char* rule_data, int64_t rule_size)
 {
   int err = 0;
+  UNUSED(rule_size);
 
   assert(NULL != ob_client_);
 

@@ -8,6 +8,7 @@
 
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
+using namespace oceanbase::sql;
 using oceanbase::sql::ObSQLResultSet;
 
 template <typename T>
@@ -76,6 +77,11 @@ int ObClientRpcStub::initialize(const ObServer & remote_server,
   return ret;
 }
 
+int ObClientRpcStub::ups_scan(const ObScanParam& scan_param, ObNewScanner& scanner)
+{
+  return send_1_return_1(remote_server_, DEFAULT_TIMEOUT, OB_NEW_SCAN_REQUEST, DEFAULT_VERSION, scan_param, scanner);
+}
+
 
 int ObClientRpcStub::cs_scan(const ObScanParam& scan_param, ObScanner& scanner)
 {
@@ -94,6 +100,11 @@ int ObClientRpcStub::cs_dump_tablet_image(
 {
   return send_2_return_1(remote_server_, DEFAULT_TIMEOUT, OB_CS_DUMP_TABLET_IMAGE,
       DEFAULT_VERSION, index, disk_no, image_buf);
+}
+
+int ObClientRpcStub::cs_stop_build_index()
+{
+  return send_0_return_0(remote_server_, DEFAULT_TIMEOUT, OB_CS_STOP_BUILD_INDEX, DEFAULT_VERSION);
 }
 
 int ObClientRpcStub::rs_dump_cs_info(ObChunkServerManager &obcsm)
@@ -271,6 +282,7 @@ int ObClientRpcStub::migrate_tablet(const ObServer& dest, const ObNewRange& rang
   return send_3_return_0(remote_server_, DEFAULT_TIMEOUT, OB_CS_MIGRATE, DEFAULT_VERSION, range, dest, keep_src);
 }
 
+
 int ObClientRpcStub::create_tablet(const ObNewRange& range, const int64_t last_frozen_version)
 {
   return send_2_return_0(remote_server_, DEFAULT_TIMEOUT, OB_CS_CREATE_TABLE, DEFAULT_VERSION, range, last_frozen_version);
@@ -290,7 +302,7 @@ int ObClientRpcStub::fetch_update_server_list(ObUpsList & server_list)
 int ObClientRpcStub::fetch_schema(const int64_t version,
     const bool only_core_tables, oceanbase::common::ObSchemaManagerV2& schema)
 {
-  return send_2_return_1(remote_server_, DEFAULT_TIMEOUT, OB_FETCH_SCHEMA, DEFAULT_VERSION, version, only_core_tables, schema);
+  return send_2_return_1(remote_server_, DEFAULT_TIMEOUT, OB_FETCH_SCHEMA, 2, version, only_core_tables, schema);
 }
 
 int ObClientRpcStub::show_param()
@@ -639,4 +651,20 @@ int ObClientRpcStub::fetch_cs_sstable_dist(const ObServer& server, const int64_t
   }
 
   return ret;
+}
+
+int ObClientRpcStub::cs_sql_scan(const oceanbase::sql::ObSqlScanParam & scan_param, oceanbase::common::ObNewScanner& scanner)
+{
+  return send_1_return_1(remote_server_, DEFAULT_TIMEOUT, OB_SQL_SCAN_REQUEST, DEFAULT_VERSION, scan_param, scanner);
+}
+
+int ObClientRpcStub::cs_sql_get(const oceanbase::sql::ObSqlGetParam& get_param, oceanbase::common::ObNewScanner& scanner)
+{
+  return send_1_return_1(remote_server_, DEFAULT_TIMEOUT, OB_SQL_GET_REQUEST, DEFAULT_VERSION, get_param, scanner);
+}
+
+
+int ObClientRpcStub::cs_disk_maintain(const int8_t is_install, const int32_t disk_no)
+{
+  return send_2_return_0(remote_server_, 5 * DEFAULT_TIMEOUT, OB_CS_DISK_MAINTAIN, DEFAULT_VERSION, is_install, disk_no);
 }

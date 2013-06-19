@@ -371,7 +371,7 @@ using namespace oceanbase::chunkserver;
 int main(int argc,char **argv)
 {
   int i = 0;
-  int32_t version = 0;
+  int32_t version = 1;
   const char *file_list = NULL;
   const char *data_dir = NULL;
   const char *app_name = NULL;

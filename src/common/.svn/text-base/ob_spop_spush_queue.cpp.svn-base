@@ -1,11 +1,11 @@
 /**
  * (C) 2010-2011 Taobao Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * ob_spop_spush_queue.cpp for
+ * This program is free software; you can redistribute it and/or 
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation. 
+ *  
+ * ob_spop_spush_queue.cpp for 
  *
  * Authors:
  *   wushi <wushi.ly@taobao.com>
@@ -185,7 +185,7 @@ int oceanbase::common::ObSPopSPushQueue::pop(const int64_t timeout_us, void *&ms
   }
   if (OB_SUCCESS != err)
   {
-    TBSYS_LOG(TRACE,"[pop err:%d]", err);
+    TBSYS_LOG(WARN,"[err:%d]", err);
   }
   return err;
 }

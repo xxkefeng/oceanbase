@@ -34,6 +34,13 @@ namespace oceanbase
         ChildContext() : child_(NULL), row_(NULL), seq_(0)
         {
         }
+
+        void reset()
+        {
+          child_ = NULL;
+          row_ = NULL;
+          seq_ = 0;
+        }
       };
 
       class CmpFunc
@@ -57,7 +64,6 @@ namespace oceanbase
 
       private:
         ChildContext child_context_array_[MAX_CHILD_OPERATOR_NUM];
-        ObRow cur_row_;
         ChildContext last_child_context_;
         int32_t child_context_num_;
         bool is_cur_row_valid_;

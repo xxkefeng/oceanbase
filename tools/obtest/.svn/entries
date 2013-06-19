@@ -1,15 +1,15 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/obtest
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/obtest
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-06-09T10:16:52.693955Z
-14424
-xiaojun.chengxj
+2013-05-23T06:29:23.055479Z
+13944
+zhuweng.yzf
 
 
 
@@ -26,46 +26,6 @@ xiaojun.chengxj
 
 dd5f2d26-132e-4cc5-bbb5-82d5b530e537
 
-obtest
-file
-
-
-
-
-2013-05-22T14:08:33.000000Z
-a87a89172a2b674f13f4902f7aac43e9
-2013-05-21T02:16:26.882487Z
-13877
-fff.fanff
-has-props
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-9676
-
-log
-dir
-
-r
-dir
-
 t
 dir
 
@@ -75,11 +35,11 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
+2013-06-19T09:27:09.000000Z
 a9753f0a7cdbdcb308cedebea9da8489
-2013-04-25T02:11:12.245269Z
-13494
-fff.fanff
+2013-03-22T08:11:52.339622Z
+12798
+zhuweng.yzf
 
 
 
@@ -109,11 +69,11 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
+2013-06-19T09:27:09.000000Z
 bf5e67a851dcaeb9a08d80a3775ab722
-2013-03-23T15:10:25.565460Z
-12810
-xiaojun.chengxj
+2013-03-29T07:17:26.676153Z
+12940
+zhuweng.yzf
 
 
 
@@ -146,11 +106,11 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
+2013-06-19T09:27:09.000000Z
 88f7efea40c0bd0b8cd46456782b5d7d
-2013-04-25T11:01:48.314006Z
-13503
-fff.fanff
+2013-05-06T10:04:21.846941Z
+13626
+zhuweng.yzf
 has-props
 
 
@@ -186,11 +146,11 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
+2013-06-19T09:27:09.000000Z
 21ca5cecc32c57e51d17f05f2a2783cd
-2013-03-23T15:10:25.565460Z
-12810
-xiaojun.chengxj
+2013-03-29T07:17:26.676153Z
+12940
+zhuweng.yzf
 has-props
 
 
@@ -220,11 +180,11 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
+2013-06-19T09:27:09.000000Z
 1ee1d78591191877abec7196de82cda1
-2013-04-26T03:53:42.133571Z
-13511
-fff.fanff
+2013-05-06T10:04:21.846941Z
+13626
+zhuweng.yzf
 
 
 
@@ -247,4 +207,44 @@ fff.fanff
 
 
 2209
+
+obtest
+file
+
+
+
+
+2013-06-19T09:27:09.000000Z
+a87a89172a2b674f13f4902f7aac43e9
+2013-05-23T06:29:23.055479Z
+13944
+zhuweng.yzf
+has-props
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+9676
+
+log
+dir
+
+r
+dir
 

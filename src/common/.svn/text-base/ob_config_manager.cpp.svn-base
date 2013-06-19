@@ -5,7 +5,7 @@
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
  *
- * Time-stamp: <2013-04-23 16:33:12 fufeng.syd>
+ * Time-stamp: <2013-05-21 10:36:30 fufeng.syd>
  * Version: $Id$
  * Filename: ob_config_manager.cpp
  *
@@ -234,12 +234,19 @@ int ObConfigManager::update_local()
       do
       {
         msgbuf.get_position() = 0;
+        common::ObResultCode rc;
         if (OB_SUCCESS !=
-            (ret = rs.deserialize(msgbuf.get_data(), msgbuf.get_capacity(),
+            (ret = rc.deserialize(msgbuf.get_data(), msgbuf.get_capacity(),
                                   msgbuf.get_position())))
         {
-          TBSYS_LOG(ERROR,
-                    "fail to deserialize result buffer, ret = [%d]\n", ret);
+          TBSYS_LOG(WARN, "fail to deserialize result code, ret = [%d]", ret);
+        }
+        /* sql result buffer will send no matter execute succ or not */
+        else if (OB_SUCCESS !=
+                 (ret = rs.deserialize(msgbuf.get_data(), msgbuf.get_capacity(),
+                                  msgbuf.get_position())))
+        {
+          TBSYS_LOG(WARN, "fail to deserialize result buffer, ret = [%d]", ret);
         }
         else if (OB_SUCCESS != rs.get_errno())
         {
@@ -301,7 +308,7 @@ int ObConfigManager::update_local()
     }
     else
     {
-      TBSYS_LOG(WARN, "Read system config from inner table error, ret: [%d]", ret);
+      TBSYS_LOG(ERROR, "Read system config form inner talbe error, ret: [%d]", ret);
     }
   }
   return ret;
@@ -488,10 +495,6 @@ void ObConfigManager::UpdateTask::runTimerTask()
       {
         break;
       }
-    }
-    if (OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(ERROR, "update local config failed:ret[%d]", ret);
     }
   }
 

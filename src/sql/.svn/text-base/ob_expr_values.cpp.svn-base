@@ -19,8 +19,7 @@
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 ObExprValues::ObExprValues()
-  :values_(64*1024, ModulePageAllocator(ObModIds::OB_SQL_ARRAY)),
-   from_deserialize_(false)
+  :from_deserialize_(false)
 {
 }
 

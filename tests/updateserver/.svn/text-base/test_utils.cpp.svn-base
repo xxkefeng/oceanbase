@@ -922,51 +922,6 @@ void prepare_mutator(ObMutator &mutator)
   delete[] buffer;
 }
 
-void prepare_cell_new_scanner(ObCellNewScanner &scanner)
-{
-  int64_t pos = 0;
-  int64_t size = 2 * 1024 * 1024;
-  char *buffer = new char[size];
-  int err = scanner.serialize(buffer, size, pos);
-  if (OB_SUCCESS != err)
-  {
-    TBSYS_LOG(ERROR, "ObCellNewScanner serialize error, err: %d", err);
-  }
-  else
-  {
-    pos = 0;
-    scanner.reuse();
-    err = scanner.deserialize(buffer, size, pos);
-    if (OB_SUCCESS != err)
-    {
-      TBSYS_LOG(ERROR, "ObCellNewScanner deserialize error, err: %d", err);
-    }
-  }
-  delete[] buffer;
-}
-
-void prepare_cell_new_scanner(const ObCellNewScanner &scanner, ObCellNewScanner &out_scanner)
-{
-  int64_t pos = 0;
-  int64_t size = 2 * 1024 * 1024;
-  char *buffer = new char[size];
-  int err = scanner.serialize(buffer, size, pos);
-  if (OB_SUCCESS != err)
-  {
-    TBSYS_LOG(ERROR, "ObCellNewScanner serialize error, err: %d", err);
-  }
-  else
-  {
-    pos = 0;
-    err = out_scanner.deserialize(buffer, size, pos);
-    if (OB_SUCCESS != err)
-    {
-      TBSYS_LOG(ERROR, "ObCellNewScanner deserialize error, err: %d", err);
-    }
-  }
-  delete[] buffer;
-}
-
 void dup_mutator(const ObMutator &src, ObMutator &dest)
 {
   int64_t pos = 0;

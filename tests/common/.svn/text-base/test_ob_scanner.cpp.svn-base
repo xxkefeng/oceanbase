@@ -165,7 +165,7 @@ TEST(TestObScanner, add_cell)
   {
     ObCellInfo ci;
     ASSERT_EQ(OB_SUCCESS, iter.get_cell(ci));
-
+    
     print_cell_info(ci);
   }
   fprintf(stdout, "==============================\n");
@@ -299,7 +299,7 @@ TEST(TestObScanner, add_cell)
       }
     }
     const int64_t buf_len = 1 << 22;
-    char* buff = (char*)ob_malloc(buf_len, ObModIds::TEST);
+    char* buff = (char*)ob_malloc(buf_len);
     int64_t ppos = 0;
     ASSERT_NE(OB_SUCCESS, os3.serialize(buff, 10, ppos));
     ASSERT_EQ(OB_SUCCESS, os3.serialize(buff, buf_len, ppos));
@@ -387,3 +387,4 @@ int main(int argc, char **argv)
   testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
+

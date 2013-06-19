@@ -20,14 +20,28 @@ using namespace oceanbase;
 using namespace sql;
 
 ObMultipleMerge::ObMultipleMerge()
-  :child_num_(0),
-  is_ups_row_(true)
+  :child_num_(0), is_ups_row_(true), cur_rowkey_(NULL)
+
 {
   //memset(child_array_, 0, sizeof(ObPhyOperator *) * MAX_CHILD_OPERATOR_NUM);
 }
 
 ObMultipleMerge::~ObMultipleMerge()
 {
+}
+
+void ObMultipleMerge::reset()
+{
+  allocator_.free();
+  child_num_ = 0;
+  is_ups_row_ = true;
+}
+
+void ObMultipleMerge::reuse()
+{
+  allocator_.reuse();
+  child_num_ = 0;
+  is_ups_row_ = true;
 }
 
 int ObMultipleMerge::get_row_desc(const ObRowDesc *&row_desc) const
@@ -41,6 +55,16 @@ int ObMultipleMerge::get_row_desc(const ObRowDesc *&row_desc) const
   else
   {
     ret = child_array_[0]->get_row_desc(row_desc);
+    if (OB_SUCCESS != ret || NULL == row_desc)
+    {
+      TBSYS_LOG(ERROR, "failed to get row_desc:ret[%d]", ret);
+    }
+    else if (row_desc->get_rowkey_cell_count() <= 0)
+    {
+      ret = OB_ERR_UNEXPECTED;
+      TBSYS_LOG(ERROR, "rowkey count[%ld]  child_array_[0]=%s",
+          row_desc->get_rowkey_cell_count(), to_cstring(*child_array_[0]));
+    }
   }
   return ret;
 }
@@ -61,6 +85,10 @@ int ObMultipleMerge::set_child(int32_t child_idx, ObPhyOperator &child_operator)
   if (OB_SUCCESS == ret)
   {
     child_array_[child_idx] = &child_operator;
+  }
+  if (OB_SUCCESS == ret)
+  {
+    child_operator.set_parent(this);
   }
   return ret;
 }
@@ -157,4 +185,19 @@ DEFINE_GET_SERIALIZE_SIZE(ObMultipleMerge)
 {
   // TODO
   return 0;
+}
+
+int ObMultipleMerge::get_cur_rowkey(const common::ObRowkey *&rowkey) const
+{
+  int ret = OB_SUCCESS;
+  if (NULL == cur_rowkey_)
+  {
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(WARN, "fail to get cur rowkey");
+  }
+  else
+  {
+    rowkey = cur_rowkey_;
+  }
+  return ret;
 }

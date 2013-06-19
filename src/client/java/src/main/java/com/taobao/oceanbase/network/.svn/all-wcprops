@@ -1,23 +1,23 @@
 K 25
 svn:wc:ra_dav:version-url
-V 123
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network
+V 112
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network
 END
 Session.java
 K 25
 svn:wc:ra_dav:version-url
-V 136
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/Session.java
+V 125
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/Session.java
 END
 Server.java
 K 25
 svn:wc:ra_dav:version-url
-V 135
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/Server.java
+V 124
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/Server.java
 END
 SessionFactory.java
 K 25
 svn:wc:ra_dav:version-url
-V 143
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/SessionFactory.java
+V 132
+/repos/oceanbase/!svn/ver/1733/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/SessionFactory.java
 END

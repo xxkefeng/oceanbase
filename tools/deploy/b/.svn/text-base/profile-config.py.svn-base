@@ -17,10 +17,9 @@ log_sync_type = 1
 trace_log_level = 'debug'
 clog_dir = '/data/log1'
 
-load_file('profile.py', 'b/extra.py')
-#profile_spec = ' '.join(expand('c01x001_[mget,mutator,phyplan]01_i01xi01 c08x100_[mget,mutator,phyplan][01,20]_[i01xi01,i04xi04,s01xs01] c08x100_[mutator,phyplan]80_i01xi01'))
-profile_spec = ' '.join(expand('c01x001_[mget,mutator,phyplan]01_i01xi01_dev c08x[010,100]_mutator[01,20]_[i01xi01,i04xi04,s01xs01]_dev c08x[010,100]_mutator01_i01xi01_dev-opt'))
-collected_log_dir = 'L/%s.3' %(popen('date +%y%j').strip())
+load_file('b/profile.py', 'b/extra.py')
+init_sql_file='b/init.sql'
+collected_log_dir = 'L/%s.$profiler_name' %(popen('date +%y%j').strip())
 def make_profiler(server_hosts, client_hosts, profile_spec):
     def make_profile_obi(spec, hosts, clients):
         def expand_host(spec):
@@ -35,16 +34,31 @@ def make_profiler(server_hosts, client_hosts, profile_spec):
             hosts=hosts, replay_checksum_flag = 1,
             clog_src='~/log.dev', wait_slave_sync_time_us=100004, boot_strap_timeout=60000000, profile_duration='600',
             )
-        pat = 'c(\d+)x(\d+)_([a-z]+)(\d+)_(.+)_(.+)'
+        pat = 'c(\d+)x(\d+)_([a-z]+)(\d+)_(.+)_(.+)_(.+)'
         m = re.match(pat, spec)
         if not m: raise Fail('Not Valid Obi Spec for Profile', spec)
-        client_num, thread_num, write_type, trans_size, table_name, ver = m.groups()
+        client_num, thread_num, write_type, trans_size, dist, table_name, ver = m.groups()
         client_num, thread_num, trans_size = int(client_num), int(thread_num), int(trans_size)
+        if write_type == 'muget':
+            write_type = 'mutator'
+            mget_thread_num = thread_num
+        else:
+            mget_thread_num = 0
         return OBI(ct=CT('simple_client.dev', hosts=clients[:client_num], n_transport=4, table=table_name,
-                         write=thread_num, write_type=write_type, write_size=trans_size), run_id=spec,
+                         write=thread_num, write_type=write_type, dist=dist, write_size=trans_size,
+                         mget=mget_thread_num, mget_size=trans_size), run_id=spec,
                    src='~/ob.%s'%(ver), ver='.%s'%(ver), tool_ver='.dev',
                    **online_common_attr)
-    return Profiler(report_file='report.html', **dict([(spec, make_profile_obi(spec, server_hosts, client_hosts)) for spec in profile_spec]))
+    profiler_common_attr = dict(server_hosts=' '.join(server_hosts),
+                                client_hosts=' '.join(client_hosts),
+                                server_threads=22,
+                                profile_spec=' '.join(profile_spec), profile_duration='600')
+    profiler = Profiler(report_file='report.html', **dict([(spec, make_profile_obi(spec, server_hosts, client_hosts)) for spec in profile_spec]))
+    return dict_updated(profiler_common_attr, **profiler)
 online_hosts = expand('172.24.131.[194,193]')
-online_clients = expand('10.246.164.[31,32,33,34,35,36,37,38,39,40]')
-p0 = make_profiler(online_hosts[:1], online_clients, profile_spec.split())
+online_clients = expand('10.246.164.[31,32,33,34,35,37,38,39,40]')
+profile_spec = ' '.join(expand('c01x001_[muget,mutator,phyplan]01_urand_i01xi01_dev c08x010_[mget,mutator,phyplan]01_urand_mix_dev c08x010_mutator01_fixed_mixed_dev'))
+p0 = make_profiler(online_hosts[1:2], online_clients, expand('c08x100_mutator20_urand_i01xi01_dev-cq'))
+p1 = make_profiler(online_hosts[1:2], online_clients, expand('c08x[010,100]_muget01_urand_mix_dev c08x100_muget20_urand_mix_dev'))
+
+print '\n'.join(online_clients)

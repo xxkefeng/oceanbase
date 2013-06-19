@@ -1,0 +1,131 @@
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre
+END
+pgtypes_interval.h
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/pgtypes_interval.h
+END
+libpq-fe.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/libpq-fe.h
+END
+ecpg_config.h
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/ecpg_config.h
+END
+sqlca.h
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/sqlca.h
+END
+pgtypes_error.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/pgtypes_error.h
+END
+sqlda.h
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/sqlda.h
+END
+ecpglib.h
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/ecpglib.h
+END
+sql3types.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/sql3types.h
+END
+libpq-events.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/libpq-events.h
+END
+pgtypes_numeric.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/pgtypes_numeric.h
+END
+pgtypes_timestamp.h
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/pgtypes_timestamp.h
+END
+ecpgtype.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/ecpgtype.h
+END
+ecpgerrno.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/ecpgerrno.h
+END
+sqlda-compat.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/sqlda-compat.h
+END
+postgres_ext.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/postgres_ext.h
+END
+pgtypes_date.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/pgtypes_date.h
+END
+pg_config_manual.h
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/pg_config_manual.h
+END
+sqlda-native.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/sqlda-native.h
+END
+ecpg_informix.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/ecpg_informix.h
+END
+pg_config.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/pg_config.h
+END
+pg_config_os.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/7493/branches/dev/oceanbase/tools/sqltest/include/postgre/pg_config_os.h
+END

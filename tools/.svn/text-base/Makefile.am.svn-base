@@ -94,7 +94,7 @@ if WITH_MYSQLTEST
 MYSQLTEST:=mysqltest
 endif
 
-SUBDIRS=sstable_builder syschecker $(NEWSQLTEST) mixed_test log_tool compactsstablev2 getquerytest profiler_helper dump $(MYSQLTEST)
+SUBDIRS=sstable_builder syschecker bigquerytest $(NEWSQLTEST) mixed_test log_tool compactsstablev2 getquerytest profiler_helper dump $(MYSQLTEST)
 
 clean-local:
 	-rm -f *.gcov *.gcno *.gcda

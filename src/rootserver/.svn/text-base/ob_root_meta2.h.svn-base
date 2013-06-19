@@ -21,11 +21,29 @@ namespace oceanbase
   namespace rootserver 
   {
     class ObTabletInfoManager;
+
+    //only use to serialize and deserialize tablet version with tablet status, 
+    //in order to be compatible with olu serialization format, this implementation
+    //is very ugly
+    //FIXME: find a better solution to do compatibility 
+    union ObTabletStatusVersion
+    {
+      int64_t union_value_;
+      struct
+      {
+        int8_t tablet_status_;
+        int8_t reserved8_;
+        int16_t reserved16_;
+        int32_t tablet_version_;
+      };
+    };
+
     struct ObRootMeta2 
     {
       int32_t tablet_info_index_;
       //index of chunk server manager. so we can find out the server' info by this
-      mutable int32_t server_info_indexes_[common::OB_SAFE_COPY_COUNT];  
+      mutable int32_t server_info_indexes_[common::OB_SAFE_COPY_COUNT];
+      mutable int32_t tablet_status_[common::OB_SAFE_COPY_COUNT];  
       mutable int64_t tablet_version_[common::OB_SAFE_COPY_COUNT];  
       mutable int64_t last_dead_server_time_;
       mutable int64_t last_migrate_time_; // don't serialize

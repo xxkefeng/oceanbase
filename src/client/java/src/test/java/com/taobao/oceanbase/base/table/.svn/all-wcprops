@@ -1,29 +1,29 @@
 K 25
 svn:wc:ra_dav:version-url
-V 126
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table
-END
-ITable.java
-K 25
-svn:wc:ra_dav:version-url
-V 138
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table/ITable.java
+V 115
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table
 END
 ItemInfoTable.java
 K 25
 svn:wc:ra_dav:version-url
-V 145
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table/ItemInfoTable.java
+V 134
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table/ItemInfoTable.java
 END
 Table.java
 K 25
 svn:wc:ra_dav:version-url
-V 137
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table/Table.java
+V 126
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table/Table.java
 END
 CollectInfoTable.java
 K 25
 svn:wc:ra_dav:version-url
-V 148
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table/CollectInfoTable.java
+V 137
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table/CollectInfoTable.java
+END
+ITable.java
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/table/ITable.java
 END

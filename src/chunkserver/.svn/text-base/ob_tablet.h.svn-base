@@ -33,7 +33,11 @@ namespace oceanbase
     {
       int16_t start_key_size_;
       int16_t end_key_size_;
-      int8_t  is_removed_;
+
+      /*is_removed_ not needed again, so substituted with reserved8_
+       *note: when serialized, reserved8_ must before is_merged_,  compatible with before
+       */
+      int8_t reserved8_;
       int8_t is_merged_;
       int8_t is_with_next_brother_;
       int8_t border_flag_;
@@ -52,6 +56,7 @@ namespace oceanbase
       int64_t row_count_;
       int64_t occupy_size_;
       uint64_t check_sum_;
+      uint64_t row_checksum_;
       int64_t last_do_expire_version_;
       int64_t sequence_num_;
       int16_t sstable_version_;
@@ -73,27 +78,26 @@ namespace oceanbase
         ~ObTablet();
       public:
         template <typename Reader>
-          int find_sstable(const common::ObNewRange& range, 
-              Reader* sstable[], int32_t &size) const ;
-        template <typename Reader>
-          int find_sstable(const common::ObRowkey& key, 
-              Reader* sstable[], int32_t &size) const ;
+          int get_sstable_reader(Reader* &sstable) const ;
 
-        int find_sstable(const sstable::ObSSTableId & sstable_id,
-            sstable::ObSSTableReader* &reader) const;
-        int64_t get_max_sstable_file_seq() const;
+        int64_t get_sstable_file_seq() const;
         int64_t get_row_count() const;
         int64_t get_occupy_size() const;
         int64_t get_checksum() const;
+        uint64_t get_row_checksum() const;
       public:
         int include_sstable(const sstable::ObSSTableId& sstable_id) const;
         int add_sstable_by_id(const sstable::ObSSTableId& sstable_id);
-        inline const common::ObArray<sstable::ObSSTableId>& 
-          get_sstable_id_list() const { return sstable_id_list_; }
-        inline const common::ObArray<sstable::SSTableReader*>& 
-          get_sstable_reader_list() const { return sstable_reader_list_; }
+        inline const sstable::ObSSTableId& get_sstable_id() const { return sstable_id_; }
+        inline sstable::SSTableReader* get_sstable_reader() const { return sstable_reader_; }
         int load_sstable(const int64_t tablet_version = 0);
         int dump(const bool dump_sstable = false) const;
+
+      public:
+        bool try_create_local_index(const uint64_t table_id);
+        int set_local_index(ObTablet* local_index);
+        void delete_local_index();  //only for test, don't use it
+        ObTablet* get_local_index() { return local_index_; }
 
       public:
         inline void set_range(const common::ObNewRange& range)
@@ -113,10 +117,6 @@ namespace oceanbase
         {
           return data_version_;
         }
-
-        int64_t get_cache_data_version(void) const;
-
-        const compactsstable::ObFrozenVersionRange* get_cache_version_range() const;
 
         inline int32_t get_disk_no() const 
         { 
@@ -153,19 +153,12 @@ namespace oceanbase
 
         void set_merged(int status = 1);
         inline bool is_merged() const { return merged_ > 0; }
-        inline void set_removed(int status = 1) { removed_ = status; }
-        inline bool is_removed() const { return removed_ > 0; }
         inline void set_with_next_brother(int status = 0) { with_next_brother_ = status; }
         inline bool is_with_next_brother() const { return with_next_brother_ > 0; }
         inline int32_t get_merge_count() const { return merge_count_; }
         inline void inc_merge_count() { ++merge_count_; }
         inline uint32_t inc_ref() { return common::atomic_inc(&ref_count_); }
         inline uint32_t dec_ref() { return common::atomic_dec(&ref_count_); }
-        inline int32_t get_compactsstable_num() {return compactsstable_num_;}
-        int add_compactsstable(compactsstable::ObCompactSSTableMemNode* cache);
-        compactsstable::ObCompactSSTableMemNode* get_compactsstable_list();
-        bool compare_and_set_compactsstable_loading();
-        void clear_compactsstable_flag();
 
         void get_range_info(ObTabletRangeInfo& info) const;
         int set_range_by_info(const ObTabletRangeInfo& info, 
@@ -177,9 +170,11 @@ namespace oceanbase
           extend_info_ = info; 
           extend_info_mutex_.unlock();
         }
-        
+
       public:
         NEED_SERIALIZE_AND_DESERIALIZE;
+        int64_t to_string(char* buffer, const int64_t length) const;
+        
 
       private:
         void destroy();
@@ -189,72 +184,43 @@ namespace oceanbase
         friend class ObTabletImage;
         common::ObNewRange range_;
         mutable int32_t sstable_loaded_;
-        int32_t removed_; //removed in next generation
         int32_t merged_; // merge succeed
         int32_t with_next_brother_; 
         int32_t merge_count_; 
         int32_t disk_no_;
-        int32_t compactsstable_num_;
-        volatile uint32_t compactsstable_loading_;
         volatile uint32_t ref_count_;
         int64_t data_version_;
         ObTabletExtendInfo extend_info_;
         tbsys::CThreadMutex extend_info_mutex_;
         ObTabletImage * image_;
-        compactsstable::ObCompactSSTableMemNode* compact_header_;
-        compactsstable::ObCompactSSTableMemNode* compact_tail_;
-        common::ObArray<sstable::ObSSTableId> sstable_id_list_;
-        common::ObArray<sstable::SSTableReader*> sstable_reader_list_;
+        sstable::ObSSTableId sstable_id_;
+        sstable::SSTableReader* sstable_reader_;
         tbsys::CThreadMutex load_sstable_mutex_;
+
+        enum LocalIndexState
+        {
+          UNAVALIABLE = 0,
+          CREATING,
+          AVALIABLE,
+        };
+        LocalIndexState local_index_state_;
+        ObTablet* local_index_;
     };
 
     template <typename Reader>
-      int ObTablet::find_sstable(const common::ObNewRange& range, 
-          Reader* sstable[], int32_t &size) const 
+      int ObTablet::get_sstable_reader(Reader* &sstable) const
       {
-        UNUSED(range);
         int ret = OB_SUCCESS;
-        int index = 0;
 
         if (OB_SUCCESS != sstable_loaded_)
-          ret = (sstable_loaded_ = const_cast<ObTablet*>(this)->load_sstable()); 
+          ret = (sstable_loaded_ = const_cast<ObTablet*>(this)->load_sstable());
 
-        int64_t sstable_size = sstable_reader_list_.count();
-        if (OB_SUCCESS == ret)
+        if (OB_SUCCESS == ret && NULL != sstable_reader_)
         {
-          for (int64_t i = 0; i < sstable_size; ++i)
+          if(NULL == (sstable = dynamic_cast<Reader*>(sstable_reader_)))
           {
-            sstable::SSTableReader* reader = sstable_reader_list_.at(i);
-            if (index >= size) { ret = OB_SIZE_OVERFLOW; break; }
-            sstable[index++] = dynamic_cast<Reader*>(reader);
+            TBSYS_LOG(WARN, "SSTableReader cast sstable version error, tablet range:%s", to_cstring(range_));
           }
-          if (OB_SUCCESS == ret) size = index;
-        }
-
-        return ret;
-      }
-
-    template <typename Reader>
-      int ObTablet::find_sstable(const common::ObRowkey& key, 
-          Reader* sstable[], int32_t &size) const 
-      {
-        UNUSED(key);
-        int ret = OB_SUCCESS;
-        int index = 0;
-
-        if (OB_SUCCESS != sstable_loaded_)
-          ret = (sstable_loaded_ = const_cast<ObTablet*>(this)->load_sstable()); 
-
-        int64_t sstable_size = sstable_reader_list_.count();
-        if (OB_SUCCESS == ret)
-        {
-          for (int64_t i = 0; i < sstable_size; ++i)
-          {
-            sstable::SSTableReader* reader = sstable_reader_list_.at(i);
-            if (index >= size) { ret = OB_SIZE_OVERFLOW; break; }
-            sstable[index++] = dynamic_cast<Reader*>(reader);
-          }
-          if (OB_SUCCESS == ret) size = index;
         }
 
         return ret;

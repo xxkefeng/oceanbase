@@ -136,7 +136,8 @@ char* Bigquery::to_sql()
   // where
   if (filter_num_ > 0)
   {
-    strcat(sql_, "where /*+rowkey,prefix:8,suffix:8*/ ");
+    //strcat(sql_, "where /*+rowkey,prefix:8,suffix:8*/ ");
+    strcat(sql_, "where ");
     for (int64_t i = 0; i < filter_num_; ++i)
     {
       strcat(sql_, filter_columns_[i].column_name);

@@ -132,6 +132,7 @@ const char* get_type_name(int type)
 	case T_COMPRESS_METHOD : return "T_COMPRESS_METHOD";
 	case T_USE_BLOOM_FILTER : return "T_USE_BLOOM_FILTER";
 	case T_CONSISTENT_MODE : return "T_CONSISTENT_MODE";
+	case T_CHARSET : return "T_CHARSET";
 	case T_DROP_TABLE : return "T_DROP_TABLE";
 	case T_TABLE_LIST : return "T_TABLE_LIST";
 	case T_ALTER_TABLE : return "T_ALTER_TABLE";
@@ -152,6 +153,7 @@ const char* get_type_name(int type)
 	case T_SHOW_CREATE_TABLE : return "T_SHOW_CREATE_TABLE";
 	case T_SHOW_TABLE_STATUS : return "T_SHOW_TABLE_STATUS";
 	case T_SHOW_PARAMETERS : return "T_SHOW_PARAMETERS";
+	case T_SHOW_INDEXES : return "T_SHOW_INDEXES";
 	case T_SHOW_SERVER_STATUS : return "T_SHOW_SERVER_STATUS";
 	case T_SHOW_WARNINGS : return "T_SHOW_WARNINGS";
 	case T_SHOW_GRANTS : return "T_SHOW_GRANTS";
@@ -178,8 +180,14 @@ const char* get_type_name(int type)
 	case T_VARIABLE_SET : return "T_VARIABLE_SET";
 	case T_VAR_VAL : return "T_VAR_VAL";
 	case T_ROLLBACK : return "T_ROLLBACK";
+	case T_INDEX_COLUMN_LIST : return "T_INDEX_COLUMN_LIST";
+	case T_CREATE_INDEX : return "T_CREATE_INDEX";
+	case T_SORT_COLUMN_KEY : return "T_SORT_COLUMN_KEY";
+	case T_STORING_COLUMN_LIST : return "T_STORING_COLUMN_LIST";
+	case T_DROP_INDEX : return "T_DROP_INDEX";
 	case T_HINT_OPTION_LIST : return "T_HINT_OPTION_LIST";
 	case T_READ_STATIC : return "T_READ_STATIC";
+	case T_READ_CONSISTENCY : return "T_READ_CONSISTENCY";
 	case T_MAX : return "T_MAX";
 	default:return "Unknown";
 	}

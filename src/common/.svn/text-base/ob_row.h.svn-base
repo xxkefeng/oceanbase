@@ -67,6 +67,7 @@ namespace oceanbase
          * 设置指定列的值
          */
         int set_cell(const uint64_t table_id, const uint64_t column_id, const common::ObObj &cell);
+
         /**
          * 组成本行的列元素数
          */
@@ -79,6 +80,7 @@ namespace oceanbase
          */
         int raw_get_cell(const int64_t cell_idx, const common::ObObj *&cell,
             uint64_t &table_id, uint64_t &column_id) const;
+        inline int raw_get_cell(const int64_t cell_idx, const common::ObObj* &cell) const;
         inline int raw_get_cell_for_update(const int64_t cell_idx, common::ObObj *&cell);
 
         /// 设置第cell_idx个cell
@@ -163,9 +165,66 @@ namespace oceanbase
       return ret;
     }
 
+    inline int ObRow::raw_get_cell(const int64_t cell_idx, const common::ObObj *&cell) const
+    {
+      int ret = OB_SUCCESS;
+      if (OB_UNLIKELY(cell_idx >= get_column_num()))
+      {
+        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(WARN, "invalid cell_idx=%ld cells_count=%ld", cell_idx, get_column_num());
+      }
+      else
+      {
+        ret = raw_row_.get_cell(cell_idx, cell);
+      }
+      return ret;
+    }
+
     inline const ObObj* ObRow::get_obj_array(int64_t& array_size) const
     {
       return raw_row_.get_obj_array(array_size);
+    }
+
+    inline __attribute__((always_inline)) int ObRow::raw_set_cell(const int64_t cell_idx, const ObObj &cell)
+    {
+      int ret = OB_SUCCESS;
+
+      if (OB_UNLIKELY(NULL == row_desc_))
+      {
+        ret = OB_NOT_INIT;
+        TBSYS_LOG(ERROR, "row_desc_ is NULL");
+      }
+      else if (OB_UNLIKELY(row_desc_->get_column_num() <= cell_idx))
+      {
+        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(WARN, "invalid cell_idx=%ld cells_count=%ld", cell_idx, row_desc_->get_column_num());
+      }
+      else if (OB_UNLIKELY(OB_SUCCESS != (ret = raw_row_.set_cell(cell_idx, cell))))
+      {
+        TBSYS_LOG(WARN, "failed to get cell, err=%d idx=%ld", ret, cell_idx);
+      }
+
+      return ret;
+    }
+
+    inline int ObRow::get_rowkey(const ObRowkey *&rowkey) const
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == row_desc_)
+      {
+        ret = OB_NOT_INIT;
+        TBSYS_LOG(ERROR, "row_desc_ is NULL");
+      }
+      else if (row_desc_->get_rowkey_cell_count() <= 0)
+      {
+        ret = OB_ERR_UNEXPECTED;
+        TBSYS_LOG(WARN, "rowkey count[%ld]", row_desc_->get_rowkey_cell_count());
+      }
+      else
+      {
+        rowkey = &rowkey_;
+      }
+      return ret;
     }
   } // end namespace common
 } // end namespace oceanbase

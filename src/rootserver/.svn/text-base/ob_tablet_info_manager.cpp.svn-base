@@ -1,12 +1,12 @@
 /*===============================================================
 *   (C) 2007-2010 Taobao Inc.
-*   
-*   
+*
+*
 *   Version: 0.1 2010-10-20
-*   
+*
 *   Authors:
 *          daoan(daoan@taobao.com)
-*   
+*
 *
 ================================================================*/
 #include "rootserver/ob_tablet_info_manager.h"
@@ -35,11 +35,11 @@ namespace oceanbase
       int64_t min_version = 0;
       int64_t max_version = 0;
       get_min_max_version(min_version, max_version);
-      if (version > max_version) 
+      if (version > max_version)
       {
         update_crc_sum(min_version, version, crc_sum);
       }
-      else 
+      else
       {
         bool found_same_version = false;
         for (int i = 0; i < MAX_KEEP_HIS_COUNT; i++)
@@ -101,7 +101,7 @@ namespace oceanbase
     }
     DEFINE_DESERIALIZE(ObTabletCrcHistoryHelper)
     {
-      int ret = OB_SUCCESS;      
+      int ret = OB_SUCCESS;
       int64_t tmp_pos = pos;
       for (int i = 0; i < MAX_KEEP_HIS_COUNT; i++)
       {
@@ -135,7 +135,7 @@ namespace oceanbase
     {
       for (int i = 0; i < MAX_KEEP_HIS_COUNT; i++)
       {
-        if (version_[i] == version) 
+        if (version_[i] == version)
         {
           version_[i] = new_version;
           crc_sum_[i] = crc_sum;
@@ -208,13 +208,28 @@ namespace oceanbase
     {
       return begin() + tablet_infos_.get_array_index();
     }
-    ObTabletInfoManager::iterator ObTabletInfoManager::end() 
+    ObTabletInfoManager::iterator ObTabletInfoManager::end()
     {
       return begin() + tablet_infos_.get_array_index();
     }
     int32_t ObTabletInfoManager::get_array_size() const
     {
       return static_cast<int32_t>(tablet_infos_.get_array_index());
+    }
+    void ObTabletInfoManager::clear()
+    {
+      for (int64_t i = 0; i < tablet_infos_.get_array_index(); i++)
+      {
+        allocator_.free(const_cast<char*>(reinterpret_cast<const char*>(tablet_infos_.at(i)->range_.start_key_.ptr())));
+        allocator_.free(const_cast<char*>(reinterpret_cast<const char*>(tablet_infos_.at(i)->range_.end_key_.ptr())));
+        tablet_infos_.at(i)->range_.start_key_.assign(NULL, 0);
+        tablet_infos_.at(i)->range_.end_key_.assign(NULL, 0);
+      }
+      tablet_infos_.clear();
+      for (int64_t i = 0; i < MAX_TABLET_COUNT; i++)
+      {
+        crc_helper_[i].reset();
+      }
     }
 
     ObTabletCrcHistoryHelper *ObTabletInfoManager::get_crc_helper(const int32_t index)
@@ -243,11 +258,11 @@ namespace oceanbase
       {
         data_holder_[index].range_.to_string(row_key_dump_buff, OB_MAX_ROW_KEY_LENGTH * 2);
         TBSYS_LOG(INFO, "%s", row_key_dump_buff);
-        TBSYS_LOG(INFO, "row_count = %ld occupy_size = %ld", 
+        TBSYS_LOG(INFO, "row_count = %ld occupy_size = %ld",
             data_holder_[index].row_count_, data_holder_[index].occupy_size_);
         for (int i = 0; i < ObTabletCrcHistoryHelper::MAX_KEEP_HIS_COUNT; i++)
         {
-          TBSYS_LOG(INFO, "crc_info %d version %ld, crc_sum %lu", 
+          TBSYS_LOG(INFO, "crc_info %d version %ld, crc_sum %lu",
               i, crc_helper_[index].version_[i], crc_helper_[index].crc_sum_[i]);
         }
       }
@@ -262,7 +277,7 @@ namespace oceanbase
       fprintf(stream, "size %d", size);
       for (int64_t i = 0; i < tablet_infos_.get_array_index(); i++)
       {
-        fprintf(stream, "index %ld row_count %ld occupy_size %ld crcinfo %lu ", 
+        fprintf(stream, "index %ld row_count %ld occupy_size %ld crcinfo %lu ",
             i, data_holder_[i].row_count_, data_holder_[i].occupy_size_, data_holder_[i].crc_sum_ );
         for (int crc_i = 0; crc_i < ObTabletCrcHistoryHelper::MAX_KEEP_HIS_COUNT; crc_i++)
         {
@@ -381,7 +396,7 @@ namespace oceanbase
     }
     DEFINE_DESERIALIZE(ObTabletInfoManager)
     {
-      int ret = OB_SUCCESS;      
+      int ret = OB_SUCCESS;
       int64_t tmp_pos = pos;
       int64_t total_size = 0;
       if (OB_SUCCESS == ret)

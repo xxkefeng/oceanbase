@@ -13,7 +13,7 @@ namespace oceanbase
         hash_init_(false)
     {
       memset(&schema_header_, 0, OB_SSTABLE_SCHEMA_HEADER_SIZE);
-      memset(column_def_array_, 0,
+      memset(column_def_array_, 0, 
           OB_MAX_COLUMN_NUMBER * OB_SSTABLE_SCHEMA_COLUMN_DEF_SIZE);
     }
 
@@ -53,8 +53,42 @@ namespace oceanbase
       }
     }
 
+
+    int ObSSTableSchema::get_sub_schema(const uint64_t table_id, ObSSTableSchema& schema)
+    {
+      int ret = OB_SUCCESS;
+      const ObSSTableSchemaColumnDef* def = NULL;
+      int64_t size = 0;
+      schema.reset();
+
+      if (OB_INVALID_ID == table_id || 0 == table_id)
+      {
+        TBSYS_LOG(WARN, "invalid table id: table_id=[%lu]", table_id);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (NULL == (def = get_table_schema(table_id, size)))
+      {
+        TBSYS_LOG(WARN, "get table schema error: table_id=[%lu]", table_id);
+        ret = OB_ERROR;
+      }
+      else
+      {
+        for (int64_t i = 0; i < size; i ++)
+        {
+          if (OB_SUCCESS != (ret = schema.add_column_def(def[i])))
+          {
+            TBSYS_LOG(WARN, "schema add column desc error: ret=[%d], def=[%s]", ret, to_cstring(def[i]));
+            break;
+          }
+        }
+      }
+
+      return ret;
+    }
+
     const ObSSTableSchemaColumnDef* ObSSTableSchema::get_table_schema(
-        const uint64_t table_id, const bool is_rowkey_column,
+        const uint64_t table_id,
+        const bool is_rowkey_column, 
         int64_t& size) const
     {
       ObSSTableSchemaColumnDef* ret = NULL;
@@ -63,10 +97,6 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "table id error:table_id =%lu", table_id);
       }
-      else if (0 == get_column_count())
-      {
-        TBSYS_LOG(WARN, "column count = 0");
-      }
       else if (hash_init_)
       {
         TableKey key;
@@ -74,7 +104,6 @@ namespace oceanbase
         key.is_rowkey_ = is_rowkey_column;
         TableValue value;
         int hash_get = 0;
-        int64_t offset = 0;
         hash_get = table_schema_hashmap_.get(key, value);
         if (-1 == hash_get)
         {
@@ -87,23 +116,85 @@ namespace oceanbase
         else if (hash::HASH_EXIST == hash_get)
         {
           size = value.size_;
-          offset = value.offset_;
-
-          if (0 > offset || get_column_count() <= offset)
-          {
-            TBSYS_LOG(ERROR, "get offset error");
-          }
-
           ret = column_def_ + value.offset_;
         }
         else
         {
-          TBSYS_LOG(ERROR, "can not go there");
+          TBSYS_LOG(WARN, "can not go there");
         }
       }
       else
       {
         TBSYS_LOG(ERROR, "hash is not init");
+      }
+
+      return ret;
+    }
+
+    const ObSSTableSchemaColumnDef* ObSSTableSchema::get_table_schema(
+        const uint64_t table_id,
+        int64_t& size) const
+    {
+      ObSSTableSchemaColumnDef* ret = NULL;
+      size = 0;
+      TableKey key;
+      TableValue value;
+      key.table_id_ = table_id;
+      int64_t offset = 0;
+      int hash_get = 0;
+      int inner_ret = 0;
+
+      if (!hash_init_)
+      {
+        TBSYS_LOG(WARN, "hash table is not init");
+        inner_ret = OB_ERROR;
+      }
+      else if (OB_INVALID_ID == table_id || 0 == table_id)
+      {
+        TBSYS_LOG(WARN, "invalid table id: table_id=[%lu]", table_id);
+        inner_ret = OB_ERROR;
+      }
+
+      //rowkey column array
+      if (OB_SUCCESS == inner_ret)
+      {
+        key.is_rowkey_ = true;
+        if (-1 == (hash_get = table_schema_hashmap_.get(key, value)))
+        {
+          TBSYS_LOG(WARN, "table schema hashmap get key fail: key.table_id=[%lu], key.is_rowkey_=true", key.table_id_);
+          inner_ret = OB_ERROR;
+        }
+        else if (hash::HASH_NOT_EXIST == hash_get)
+        {
+          TBSYS_LOG(INFO, "the hash get value of the key is empty: key.table_id=[%lu], key.is_rowkey_=true", key.table_id_);
+          size = 0;
+          ret = NULL;
+        }
+        else if (hash::HASH_EXIST == hash_get)
+        {
+          size = value.size_;         
+          offset = value.offset_;
+          ret = column_def_ + offset;
+        }
+      }
+
+      //rowvalue column array
+      if (OB_SUCCESS == inner_ret && hash::HASH_EXIST == hash_get)
+      {
+        key.is_rowkey_ = false;
+        if (-1 == (hash_get = table_schema_hashmap_.get(key, value)))
+        {
+          TBSYS_LOG(WARN, "table schema hashmap get key fail: key.table_id=[%lu], key.is_rowkey_=[false]", key.table_id_);
+          inner_ret = OB_ERROR;
+        }
+        else if (hash::HASH_NOT_EXIST == hash_get)
+        {
+          TBSYS_LOG(INFO, "the hash get value of the key is not exist: key.table_id=[%lu], key.is_rowkey_=[false]", key.table_id_);
+        }
+        else if (hash::HASH_EXIST == hash_get)
+        {
+          size += value.size_;
+        }
       }
 
       return ret;
@@ -162,7 +253,7 @@ namespace oceanbase
       return ret;
     }
 
-    bool ObSSTableSchema::is_column_exist(const uint64_t table_id,
+    bool ObSSTableSchema::is_column_exist(const uint64_t table_id, 
         const uint64_t column_id) const
     {
       bool ret = false;
@@ -198,16 +289,6 @@ namespace oceanbase
         }
       }
 
-      if (OB_SUCCESS == ret)
-      {
-        int64_t offset = find_column_offset(def.table_id_, def.column_id_);
-        if (offset >= 0)
-        {
-          TBSYS_LOG(WARN, "find column offset error");
-          ret = OB_ERROR;
-        }
-      }
-
       if (OB_SUCCESS == ret && !hash_init_)
       {
         if (OB_SUCCESS !=(ret = create_hashmaps()))
@@ -218,20 +299,30 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
+        int64_t offset = find_column_offset(def.table_id_, def.column_id_);
+        if (offset >= 0)
+        {
+          TBSYS_LOG(WARN, "find column offset error");
+          ret = OB_ERROR;
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
         if (common::OB_MAX_COLUMN_NUMBER <= size
             && column_def_ == column_def_array_)
         {
-          if (NULL == (column_def_ =
+          if (NULL == (column_def_ = 
                 reinterpret_cast<ObSSTableSchemaColumnDef*>(
-                  ob_malloc(OB_SSTABLE_SCHEMA_COLUMN_DEF_SIZE
-                            * DEFAULT_COLUMN_DEF_ARRAY_CNT, ObModIds::OB_SSTABLE_SCHEMA))))
+                  ob_malloc(OB_SSTABLE_SCHEMA_COLUMN_DEF_SIZE 
+                    * DEFAULT_COLUMN_DEF_ARRAY_CNT))))
           {
             TBSYS_LOG(WARN, "malloc memory error");
             ret = OB_ERROR;
           }
           else
           {
-            memcpy(column_def_, column_def_array_,
+            memcpy(column_def_, column_def_array_, 
                 OB_SSTABLE_SCHEMA_COLUMN_DEF_SIZE * OB_MAX_COLUMN_NUMBER);
           }
         }
@@ -381,94 +472,16 @@ namespace oceanbase
     int ObSSTableSchema::check_row(const uint64_t table_id,
         const ObRowkey& rowkey, const ObRow& rowvalue)
     {
-      int ret = OB_SUCCESS;
-      const int64_t rowkey_obj_cnt = rowkey.length();
-      const int64_t rowvalue_obj_cnt = rowvalue.get_column_num();
-      ObSSTableSchemaColumnDef* def = NULL;
-      int64_t size = 0;
-
-      if (NULL == (def = const_cast<ObSSTableSchemaColumnDef*>(
-              get_table_schema(table_id, true, size))))
-      {
-        TBSYS_LOG(WARN, "get table schema error:table_id=%lu,size=%ld",
-            table_id, size);
-        ret = OB_ERROR;
-      }
-      else if (size != rowkey_obj_cnt)
-      {
-        TBSYS_LOG(WARN, "rowkey obj cnt is not equal:size=%ld,"
-            "rowkey_obj_cnt=%ld", size, rowkey_obj_cnt);
-        ret = OB_ERROR;
-      }
-      else
-      {
-        const ObObj* rowkey_obj_ptr = rowkey.ptr();
-        for (int64_t i = 0; i < rowkey_obj_cnt; i ++)
-        {
-          if (def[i].column_value_type_ != rowkey_obj_ptr[i].get_type())
-          {
-            TBSYS_LOG(WARN, "value type is not match:i=%ld,"
-                "def[i].column_value_type_=%d,rowkey_obj_ptr[i].get_type()=%d",
-                i, def[i].column_value_type_, rowkey_obj_ptr[i].get_type());
-            ret = OB_ERROR;
-            break;
-          }
-        }
-      }
-
-      if (OB_SUCCESS == ret)
-      {
-        if (NULL == (def = const_cast<ObSSTableSchemaColumnDef*>
-              (get_table_schema(table_id, false, size))))
-        {
-          TBSYS_LOG(WARN, "get table schema error:table_id=%lu,size=%ld",
-              table_id, size);
-          ret = OB_ERROR;
-        }
-        else if (size != rowvalue_obj_cnt)
-        {
-          TBSYS_LOG(WARN, "rowvalue obj cnt not match:size=%ld,"
-              "rowvalue_obj_cnt=%ld", size, rowvalue_obj_cnt);
-          ret = OB_ERROR;
-        }
-        else
-        {
-          const ObObj* obj = NULL;
-          uint64_t t_table_id = 0;
-          uint64_t column_id = 0;
-          for (int64_t i = 0; i < rowvalue_obj_cnt; i ++)
-          {
-            if (OB_SUCCESS != (ret = rowvalue.raw_get_cell(
-                    i, obj, t_table_id, column_id)))
-            {
-              TBSYS_LOG(WARN, "rowvalue raw get cell error:ret=%d,i=%ld",
-                  ret, i);
-              break;
-            }
-            else
-            {
-              if (def[i].column_value_type_ != obj->get_type())
-              {
-                TBSYS_LOG(WARN, "rowvalue column value type not match:"
-                    "def[i].column_value_type_=%d,obj->get_type()=%d",
-                    def[i].column_value_type_, obj->get_type());
-                ret = OB_ERROR;
-                break;
-              }
-            }
-          }//end for
-        }
-      }
-
-      return ret;
+      (void) table_id;
+      (void) rowkey;
+      (void) rowvalue;
+      return OB_SUCCESS;
     }
 
-    int ObSSTableSchema::check_row(const uint64_t table_id,
-        const ObRow& row)
+    int ObSSTableSchema::check_row(const uint64_t table_id, const ObRow& row)
     {
       int ret = OB_SUCCESS;
-      const int64_t rowkey_obj_cnt
-        = row.get_row_desc()->get_rowkey_cell_count();
+      const int64_t rowkey_obj_cnt = row.get_row_desc()->get_rowkey_cell_count();
       const int64_t row_obj_cnt = row.get_column_num();
       const int64_t rowvalue_obj_cnt = row_obj_cnt - rowkey_obj_cnt;
       ObSSTableSchemaColumnDef* def = NULL;
@@ -495,13 +508,13 @@ namespace oceanbase
       {
         for (i = 0; i < rowkey_obj_cnt; i ++)
         {
-          if (OB_SUCCESS != (ret = row.raw_get_cell(i, obj,
+          if (OB_SUCCESS != (ret = row.raw_get_cell(i, obj, 
                   t_table_id, column_id)))
           {
             char buf[1024];
             (*obj).to_string(buf, 1024);
             TBSYS_LOG(WARN, "row raw get cell error:ret=%d,i=%ld,obj=%s"
-                "table_id=%lu,column_id=%lu",
+                "table_id=%lu,column_id=%lu", 
                 ret, i, buf, table_id, column_id);
             break;
           }
@@ -522,28 +535,24 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        if (NULL == (def = const_cast<ObSSTableSchemaColumnDef*>
-              (get_table_schema(table_id, false, size))))
+        def = const_cast<ObSSTableSchemaColumnDef*>(get_table_schema(table_id, false, size));
+        if (size != rowvalue_obj_cnt)
         {
-          TBSYS_LOG(WARN, "get table schema error:table_id=%lu,size=%ld",
-              table_id, size);
-          ret = OB_ERROR;
-        }
-        else if (size != rowvalue_obj_cnt)
-        {
-          TBSYS_LOG(WARN, "rowvalue obj cnt not match:size=%ld,"
-              "rowvalue_obj_cnt=%ld", size, rowvalue_obj_cnt);
-          ret = OB_ERROR;
+          if (size != rowvalue_obj_cnt)
+          {
+            TBSYS_LOG(WARN, "get table schema error:table_id=%lu,size=%ld,"
+                            "rowvalue_obj_cnt=%ld",
+                table_id, size, rowvalue_obj_cnt);
+            ret = OB_ERROR;
+          }
         }
         else
         {
           for (i = 0; i < rowvalue_obj_cnt; i ++)
           {
-            if (OB_SUCCESS != (ret = row.raw_get_cell(
-                    i + rowkey_obj_cnt, obj, t_table_id, column_id)))
+            if (OB_SUCCESS != (ret = row.raw_get_cell(i + rowkey_obj_cnt, obj, t_table_id, column_id)))
             {
-              TBSYS_LOG(WARN, "rowvalue raw get cell error:ret=%d,i=%ld",
-                  ret, i);
+              TBSYS_LOG(WARN, "rowvalue raw get cell error:ret=%d,i=%ld", ret, i);
               break;
             }
             else
@@ -613,23 +622,30 @@ namespace oceanbase
       }
       else
       {
-        int hash_get = 0;
-        TableColumnKey key;
-        key.table_id_ = table_id;
-        key.column_id_ = column_id;
-        TableColumnValue value;
-        hash_get = table_column_schema_hashmap_.get(key, value);
-        if (-1 == hash_get)
+        if (hash_init_)
         {
-         // TBSYS_LOG(INFO, "hash get failed:hash_get=%d, key.table_id_=%lu,"
-         //     "key.column_=%lu", hash_get, key.table_id_, key.column_id_);
+          int hash_get = 0;
+          TableColumnKey key;
+          key.table_id_ = table_id;
+          key.column_id_ = column_id;
+          TableColumnValue value;
+          hash_get = table_column_schema_hashmap_.get(key, value);
+          if (-1 == hash_get)
+          {
+           // TBSYS_LOG(INFO, "hash get failed:hash_get=%d, key.table_id_=%lu,"
+           //     "key.column_=%lu", hash_get, key.table_id_, key.column_id_);
+          }
+          else if (hash::HASH_NOT_EXIST == hash_get)
+          {
+          }
+          else if(hash::HASH_EXIST == hash_get)
+          {
+            ret = value.offset_;
+          }
         }
-        else if (hash::HASH_NOT_EXIST == hash_get)
+        else
         {
-        }
-        else if(hash::HASH_EXIST == hash_get)
-        {
-          ret = value.offset_;
+          TBSYS_LOG(INFO, "hashmap not init yet");
         }
       }
 
@@ -697,18 +713,18 @@ namespace oceanbase
         }
 
         int ret_hash = 0;
-        if (0 == size || (NULL != last
+        if (0 == size || (NULL != last 
               && (column_def.table_id_ != last->table_id_
                 || column_def.is_rowkey_column() != last->is_rowkey_column())))
         {
           value.offset_ = size;
           value.size_ = 1;
           ret_hash = table_schema_hashmap_.set(key, value);
-
+          
           if (-1 == ret_hash)
           {
             TBSYS_LOG(WARN, "table schema hash map set error:ret_hash=%d,"
-                "key.table_id_=%lu,key.is_rowkey_=%d, value.offset_=%ld",
+                "key.table_id_=%lu,key.is_rowkey_=%d, value.offset_=%ld", 
                 ret_hash, key.table_id_, key.is_rowkey_, value.offset_);
             ret = OB_ERROR;
           }
@@ -817,7 +833,7 @@ namespace oceanbase
         for (col_index = 0; col_index < rowkey_info.get_size() && OB_SUCCESS == ret; ++col_index)
         {
           column = rowkey_info.get_column(col_index);
-          if (NULL == column)
+          if (NULL == column) 
           {
             TBSYS_LOG(ERROR, "schema internal error, rowkey column %ld not exist.", col_index);
             ret = OB_ERROR;
@@ -860,7 +876,7 @@ namespace oceanbase
       return ret;
     }
 
-    int build_sstable_schema(const uint64_t table_id,
+    int build_sstable_schema(const uint64_t table_id, 
         const common::ObSchemaManagerV2 & schema, ObSSTableSchema& sstable_schema)
     {
       return build_sstable_schema(table_id, table_id, schema, sstable_schema);

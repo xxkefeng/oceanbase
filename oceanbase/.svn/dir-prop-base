@@ -1,0 +1,8 @@
+K 13
+svn:mergeinfo
+V 203
+/branches/0_3_1_release/oceanbase:9434-9479
+/branches/0_4_1_release/oceanbase:12603-13939
+/branches/developing/trans_mvcc_dev/oceanbase:9273-10180
+/branches/rev_0_3_0_ii_dev/oceanbase:9438-9458,9461-9462
+END

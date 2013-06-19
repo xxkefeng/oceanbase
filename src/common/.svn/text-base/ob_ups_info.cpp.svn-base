@@ -171,3 +171,18 @@ void ObUpsList::print(char* buf, const int64_t buf_len, int64_t &pos) const
                     ups_array_[i].cs_read_percentage_);
   }
 }
+
+int64_t ObUpsList::to_string(char* buffer, const int64_t length) const
+{
+  int64_t pos = 0;
+  for (int32_t i = 0; i < ups_count_; ++i)
+  {
+    databuff_printf(buffer, length, pos, "ups[%d]:", i);
+    ups_array_[i].addr_.to_string(buffer+pos, length-pos);
+    databuff_printf(buffer, length, pos, "(%d %hhd %hhd) ", 
+        ups_array_[i].inner_port_, 
+        ups_array_[i].ms_read_percentage_, ups_array_[i].cs_read_percentage_);
+  }
+  return pos;
+}
+

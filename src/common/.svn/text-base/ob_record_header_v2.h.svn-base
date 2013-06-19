@@ -12,8 +12,8 @@ namespace oceanbase
     struct ObRecordHeaderV2
     {
       int16_t magic_;
-      int16_t header_length_;
-      int16_t version_;
+      int8_t header_length_;
+      int8_t version_;
       int16_t header_checksum_;
       int16_t reserved16_;
       int64_t data_length_;
@@ -23,14 +23,14 @@ namespace oceanbase
       ObRecordHeaderV2()
       {
         memset(this, 0, sizeof(ObRecordHeaderV2));
-        header_length_ = sizeof(ObRecordHeaderV2);
+        header_length_ = static_cast<int8_t>(sizeof(ObRecordHeaderV2));
         version_ = 0x2;
       }
 
       inline void reset()
       {
         memset(this, 0, sizeof(ObRecordHeaderV2));
-        header_length_ = sizeof(ObRecordHeaderV2);
+        header_length_ = static_cast<int8_t>(sizeof(ObRecordHeaderV2));
         version_ = 0x2;
       }
 
@@ -38,7 +38,7 @@ namespace oceanbase
 
       int check_header_checksum() const;
 
-      inline int check_magic_num(const int16_t magic) const
+      inline int check_magic_num(const int8_t magic) const
       {
         int ret = OB_SUCCESS;
 

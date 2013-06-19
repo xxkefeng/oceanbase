@@ -192,92 +192,16 @@ namespace oceanbase
                   log_dir, file_size,
                   fsst.f_bsize * fsst.f_bavail, fsst.f_bsize * fsst.f_blocks,
                   du_percent, num_file_to_add_);
-      }
-      return err;
-    }
-
-    int myfallocate_by_append(int fd, int mode, off_t offset, off_t len)
-    {
-      int err = 0;
-      static char buf[1<<20] __attribute__ ((aligned(DIO_ALIGN_SIZE)));
-      int64_t count = 0;
-      UNUSED(mode);
-      if (offset < 0 || len <= 0)
-      {
-        errno = -EINVAL;
-        err = -1;
-      }
-      for(int64_t pos = offset; 0 == err && pos < offset + len; pos += count)
-      {
-        count = min(offset + len - pos, sizeof(buf));
-        if (unintr_pwrite(fd, buf, count, pos) != count)
+        if (0 == min_file_id_)
         {
-          err = -1;
-          TBSYS_LOG(ERROR, "uniter_pwrite(pos=%ld, count=%ld) fail", pos, count);
-          break;
+          min_file_id_ = 1;
         }
-      }
-      return err;
-    }
-# if __linux && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 10))
-    int myfallocate(int fd, int mode, off_t offset, off_t len)
-    {
-      int err = 0;
-      static bool syscall_supported = true;
-      if (syscall_supported && 0 != (err = fallocate(fd, mode, offset, len)))
-      {
-        syscall_supported = false;
-        TBSYS_LOG(WARN, "glibc support fallocate(), but fallocate still fail with %s, fallback to call myfallocate_by_append()", strerror(errno));
-      }
-      if (!syscall_supported)
-      {
-        err = myfallocate_by_append(fd, mode, offset, len);
-      }
-      return err;
-    }
-#else
-    int myfallocate(int fd, int mode, off_t offset, off_t len)
-    {
-      return myfallocate_by_append(fd, mode, offset, len);
-    }
-#endif
-    int file_expand_by_fallocate(const int fd, const int64_t file_size)
-    {
-      int err = OB_SUCCESS;
-      struct stat st;
-      if (fd < 0 || file_size <= 0)
-      {
-        err = OB_INVALID_ARGUMENT;
-      }
-      else if (0 != fstat(fd, &st))
-      {
-        err = OB_IO_ERROR;
-        TBSYS_LOG(ERROR, "fstat(%d):%s", fd, strerror(errno));
-      }
-      else if (0 != (st.st_size & ObLogGenerator::LOG_FILE_ALIGN_MASK)
-               || 0 != (file_size & ObLogGenerator::LOG_FILE_ALIGN_MASK))
-      {
-        err = OB_LOG_NOT_ALIGN;
-        TBSYS_LOG(ERROR, "file_size[%ld] or file_size[%ld] not align by %lx",
-                  st.st_size, file_size, ObLogGenerator::LOG_FILE_ALIGN_MASK);
-      }
-      else if (st.st_size >= file_size)
-      {} //do nothing
-      else if (0 != myfallocate(fd, 0, st.st_size, file_size - st.st_size))
-      {
-        err = OB_IO_ERROR;
-        TBSYS_LOG(ERROR, "fallocate(fd=%d):%s", fd, strerror(errno));
-      }
-      else if (0 != fsync(fd))
-      {
-        err = OB_IO_ERROR;
-        TBSYS_LOG(ERROR, "fsync(fd=%d):%s", fd, strerror(errno));
       }
       return err;
     }
 
     // 文件原来的大小需要512字节对齐
-    int file_expand_by_append(const int fd, const int64_t file_size)
+    static int file_expand_to(const int fd, const int64_t file_size)
     {
       int err = OB_SUCCESS;
       struct stat st;
@@ -406,7 +330,7 @@ namespace oceanbase
           {
             TBSYS_LOG(ERROR, "write_buffer_.flush(fd=%d)=>%d", fd_, err);
           }
-          else if (NULL != min_avail_file_id_getter_ && OB_SUCCESS != (err = file_expand_by_fallocate(fd_, file_size_)))
+          else if (OB_SUCCESS != (err = file_expand_to(fd_, file_size_)))
           {
             TBSYS_LOG(ERROR, "file_expand_to(fd=%d, size=%ld):%s", fd_, file_size_, strerror(errno));
           }
@@ -437,10 +361,6 @@ namespace oceanbase
       else
       {
         cur_file_id_ = file_id;
-        if (0 == min_file_id_)
-        {
-          min_file_id_ = cur_file_id_;
-        }
       }
       return err;
     }
@@ -464,7 +384,7 @@ namespace oceanbase
       else if (0 != rename(pool_file, tmp_pool_file))
       {
         err = OB_IO_ERROR;
-        TBSYS_LOG(WARN, "rename(%s,%s):%s", pool_file, tmp_pool_file, strerror(errno));
+        TBSYS_LOG(ERROR, "rename(%s,%s):%s", pool_file, tmp_pool_file, strerror(errno));
       }
       else if ((fd = open(tmp_pool_file, OPEN_FLAG, OPEN_MODE)) < 0)
       {
@@ -501,11 +421,6 @@ namespace oceanbase
       int64_t len = 0;
       if (NULL == min_avail_file_id_getter_)
       {}
-      else if (0 == min_file_id_)
-      {
-        num_file_to_add_--;
-        TBSYS_LOG(INFO, "min_file_id has not inited, can not reuse file, will create new file num_file_to_add=%ld", num_file_to_add_);
-      }
       else if (min_file_id_ < 0)
       {
         TBSYS_LOG(ERROR, "min_file_id[%ld] < 0", min_file_id_);

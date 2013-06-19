@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/schema2
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/tpcc-mysql/schema2
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-05-22T14:08:36.000000Z
+2013-06-19T09:27:10.000000Z
 3cb9b8e6ad6661bcc94caf07bff05012
 2013-02-06T06:09:33.850707Z
 12053
@@ -66,7 +66,7 @@ file
 
 
 
-2013-05-22T14:08:36.000000Z
+2013-06-19T09:27:10.000000Z
 41107482e32bdcaa2b46b164f2516fad
 2013-02-06T06:09:33.850707Z
 12053
@@ -100,7 +100,7 @@ file
 
 
 
-2013-05-22T14:08:36.000000Z
+2013-06-19T09:27:10.000000Z
 bd168e43322e954aa499e2a8fc14d807
 2013-02-06T06:09:33.850707Z
 12053
@@ -134,7 +134,7 @@ file
 
 
 
-2013-05-22T14:08:36.000000Z
+2013-06-19T09:27:10.000000Z
 dd4ea16fe550afc098ced4e63bbffa7e
 2013-02-06T06:09:33.850707Z
 12053

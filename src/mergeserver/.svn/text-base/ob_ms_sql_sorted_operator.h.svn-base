@@ -15,19 +15,14 @@
 #define MERGESERVER_OB_MS_SQL_SORTED_OPERATOR_H_
 #include "common/ob_row_iterator.h"
 #include "common/ob_row.h"
-#include "ob_ms_request.h"
-#include "common/ob_se_array.h"
+#include "ob_ms_sql_request.h"
+
 namespace oceanbase
 {
-  namespace sql
-  {
-    class ObSqlScanParam;
-  }
   namespace common
   {
     class ObNewScanner;
     class ObNewRange;
-    class ObCellArray;
     class ObRowkey;
   }
   namespace mergeserver
@@ -39,7 +34,7 @@ namespace oceanbase
       virtual ~ObMsSqlSortedOperator();
 
       /// initialize
-      int set_param(const sql::ObSqlScanParam & scan_param);
+      int set_param(const ObNewRange &user_scan_range);
       /// add a subscanrequest's result
       int add_sharding_result(common::ObNewScanner & sharding_res, const common::ObNewRange & query_range, bool &is_finish, ObStringBuf &rowkey_buffer);
       /// finish processing result, like orderby grouped result
@@ -55,7 +50,7 @@ namespace oceanbase
 
       void reset();
 
-      int64_t get_sharding_result_count()const { return sharding_result_arr_.count(); }
+      int64_t get_sharding_result_count()const { return sharding_result_count_; }
       int64_t get_cur_sharding_result_idx()const { return cur_sharding_result_idx_; }
       //inline int64_t get_seamless_result_count() { return seamless_result_count_; }
 
@@ -65,21 +60,24 @@ namespace oceanbase
       struct sharding_result_t
       {
         common::ObNewScanner *sharding_res_;
-        const common::ObNewRange   *sharding_query_range_;
-        const sql::ObSqlScanParam *param_;
-        int64_t                   fullfilled_item_num_;
+        const common::ObNewRange *sharding_query_range_;
+        int64_t fullfilled_item_num_;
         common::ObRowkey last_row_key_;
 
-        void init(common::ObNewScanner & sharding_res, const common::ObNewRange & query_range, const sql::ObSqlScanParam &param,
-          common::ObRowkey & last_proces_rowkey, const int64_t fullfilled_item_num);
+        void init(
+            common::ObNewScanner & sharding_res,
+            const common::ObNewRange & query_range, 
+            common::ObRowkey & last_proces_rowkey,
+            const int64_t fullfilled_item_num);        
         bool operator<(const sharding_result_t & other)const;
       };
-      static const int64_t COMMON_SHARDING_RESULT_COUNT = 4;
-      ObSEArray<sharding_result_t, COMMON_SHARDING_RESULT_COUNT> sharding_result_arr_;
+      static const int64_t MAX_SHARDING_RESULT_COUNT = ObMsSqlRequest::MAX_SUBREQUEST_NUM;
+      sharding_result_t sharding_result_arr_[MAX_SHARDING_RESULT_COUNT];
+      int64_t           sharding_result_count_;
       int64_t           seamless_result_count_;
       int64_t           cur_sharding_result_idx_;
-      const sql::ObSqlScanParam    *scan_param_;
-      common::ObNewRange              scan_range_;
+      // this is the range defined by SQL, not sharding range defined by tablet.
+      common::ObNewRange              user_scan_range_;
       int64_t           total_mem_size_used_;
     };
   }

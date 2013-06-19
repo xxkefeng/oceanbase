@@ -1,3 +1,19 @@
+/**
+ *  (C) 2010-2011 Taobao Inc.
+ *
+ *  This program is free software; you can redistribute it
+ *  and/or modify it under the terms of the GNU General Public
+ *  License version 2 as published by the Free Software
+ *  Foundation.
+ *
+ *  ob_sstable_get_param.h is for compact sstable getter param
+ *
+ *  Authors:
+ *     zian < yunliang.shi@alipay.com >
+ *
+ */
+
+
 #ifndef OCEANBASE_COMPACTSSTABLEV2_OB_COMPACT_SSTABLE_GETTER_H_
 #define OCEANBASE_COMPACTSSTABLEV2_OB_COMPACT_SSTABLE_GETTER_H_
 
@@ -13,162 +29,176 @@
 #include "ob_sstable_scan_column_indexes.h"
 #include "ob_sstable_block_getter.h"
 #include "sstable/ob_sstable_row_cache.h"
+#include "sql/ob_multi_cg_scanner.h"
+#include "sql/ob_sql_get_param.h"
+#include "ob_simple_column_indexes_builder.h"
 
 namespace oceanbase
 {
   namespace compactsstablev2
   {
-    class ObCompactSSTableGetter
+    class ObCompactSSTableGetter : public sql::ObRowkeyIterator
     {
-    public:
       static const int64_t UNCOMP_BUF_SIZE = 1024 * 1024;
       static const int64_t INTERNAL_BUF_SIZE = 1024 * 1024;
-      static const int64_t INVALID_CURSOR = 0xFFFFFFFFFFFFFFFF;
+      static const int32_t TIME_OUT_US = 10 * 1000 * 1000;
 
-    private:
-      enum
+    public:
+      struct ObCompactGetThreadContext
       {
-        ROW_NOT_FOUND = 1,
-        GET_NEXT_ROW,
-        ITERATE_NORMAL,
-        ITERATE_END
+        compactsstablev2::ObSSTableBlockIndexCache* block_index_cache_;
+        compactsstablev2::ObSSTableBlockCache* block_cache_;
+        sstable::ObSSTableRowCache *row_cache_;
+
+        int64_t readers_count_;
+        compactsstablev2::ObCompactSSTableReader* readers_[common::OB_MAX_GET_ROW_NUMBER];
+
+        ObCompactGetThreadContext() : block_index_cache_(NULL),
+        block_cache_(NULL), row_cache_(NULL), readers_count_(0)
+        {
+        }
       };
 
     public:
-      ObCompactSSTableGetter()
-        : inited_(false),
-          get_param_(NULL),
-          sstable_reader_(NULL),
-          table_id_(0),
-          not_exit_col_ret_nop_(false),
-          block_cache_(NULL),
-          block_index_cache_(NULL),
-          row_cache_(NULL),
-          iterate_status_(INVALID_CURSOR),
-          cur_row_index_(0),
-          column_cursor_(0),
-          handled_del_row_(false),
-          bloomfilter_hit_(false),
-          column_cnt_(0),
-          uncomp_buf_(NULL),
-          uncomp_buf_size_(UNCOMP_BUF_SIZE),
-          internal_buf_(NULL),
-          internal_buf_size_(INTERNAL_BUF_SIZE)
+
+      ObCompactSSTableGetter();
+
+      virtual ~ObCompactSSTableGetter() { }
+
+      virtual int get_next_row(const common::ObRowkey *&rowkey, const common::ObRow *&row)
       {
-        memset(rowkey_buf_array_, 0, common::OB_MAX_ROWKEY_COLUMN_NUMBER);
-        memset(column_ids_, 0, common::OB_MAX_COLUMN_NUMBER);
-        memset(column_objs_, 0, common::OB_MAX_COLUMN_NUMBER);
+        UNUSED(rowkey);
+        UNUSED(row);
+        return common::OB_NOT_SUPPORTED;
       }
 
-      ~ObCompactSSTableGetter()
+      /**
+       * get next row
+       * @param row_key: rowkey
+       * @param row_value: rowvalue
+       * @return
+       */
+      virtual int get_next_row(const common::ObRow*& rowvalue);
+
+
+      /**
+       * get row desc
+       * @param row_desc: row_desc of row_value
+       */
+      virtual int get_row_desc(const common::ObRowDesc*& row_desc) const
       {
+        int ret = common::OB_SUCCESS;
+
+        if (NULL == row_desc)
+        {
+          row_desc = &row_desc_;
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "get row desc param error");
+          ret = common::OB_NOT_INIT;
+        }
+
+        return ret;
       }
 
-      inline void reset()
-      {
-        inited_ = false;
-        get_param_ = NULL;
-        sstable_reader_ = NULL;
-        get_column_indexes_.reset();
-        table_id_ = 0;
-        not_exit_col_ret_nop_ = false;
-        block_cache_ = NULL;
-        block_index_cache_ = NULL;
-        row_cache_ = NULL;
-        iterate_status_ = ITERATE_NORMAL;
-        cur_row_index_ = 0;
-        column_cursor_ = 0;
-        column_cnt_ = 0;
-        handled_del_row_ = false;
-        bloomfilter_hit_ = false;
-      }
 
-      int next_row();
-
-      int get_row(common::ObRowkey*& rowkey, common::ObRow*& rowvalue);
-
-      int init(const common::ObGetParam& get_param,
-          const ObCompactSSTableReader& sstable_reader,
-          ObSSTableBlockCache& block_cache, 
-          ObSSTableBlockIndexCache& block_index_cache, 
-          sstable::ObSSTableRowCache& row_cache,
-          bool not_exit_col_ret_nop = false);
+      int initialize(const uint64_t table_id,
+          const ObArray<common::ObRowkey>*  rowkey_list,
+          const uint64_t *columns,
+          const int64_t column_size,
+          const int64_t rowkey_cell_count,
+          const ObCompactGetThreadContext* context,
+          bool is_ups_getter);
 
     private:
-      int initialize(ObSSTableBlockCache& block_cache,
-          ObSSTableBlockIndexCache& block_index_cache,
-          sstable::ObSSTableRowCache& row_cache,
-          const ObCompactSSTableReader& sstable_reader);
-    
+
+      const common::ObRowkey* get_row_key(int64_t idx);
+
+      /* build row desc*/
+      int build_row_desc(const int64_t rowkey_cell_count);
+
+      /* build column index*/
+      int build_column_index(const ObSSTableSchema* const schema);
+
+      /**
+       * alloc buffer from TSI_COMPACTSSTABLEV2_MODULE_ARENA_2
+       * @param buf: buf
+       * @param buf_size: buf_size
+       */
       int alloc_buffer(char*& buf, const int64_t buf_size);
 
-      int load_cur_block();
+      /**
+       * get the row key from rowcache
+       * @return OB_SUCCESS cache hit, SEARCH_NOT_FOUND misS
+       **/
+      int get_row_from_rowcache(const common::ObRow*& row);
 
-      int fetch_block();
+      /**
+       * get the row key from sstable, and put into the row cache
+       **/
+      int get_row_from_sstable(const common::ObRow*& row);
 
-      int init_column_mask();
+      /**
+       * update the row cache
+       **/
+      int update_row_cache(bool found_in_block);
 
-      int switch_row();
+      /**
+       *  load the block index, if asyn read, will advise libaio
+       */
+      int load_block_index();
 
-      inline const common::ObCellInfo* get_cur_param_cell() const
-      {
-        const common::ObCellInfo* cell = NULL;
-        const common::ObGetParam::ObRowIndex* row_index = NULL;
-        row_index = get_param_->get_row_index();
-        cell = (*get_param_)[row_index[cur_row_index_].offset_];
-        if (NULL == cell)
-        {
-          TBSYS_LOG(WARN, "get param error");
-        }
-        return cell;
-      }
+      /**
+       * load the block data, and init the ObSSTableBlockGetter
+       */
+      int load_block_data(const char*& buf, int64_t& buf_size);
 
-      int get_column_index(const int64_t cursor, 
-          ObSSTableScanColumnIndexes::Column& column) const;
+      /**
+       * if the row not exist ,will return not exist row
+       */
+      int get_non_exist_row(const common::ObRowkey &key, const common::ObRow *&row);
 
-      int store_current_cell(const ObSSTableScanColumnIndexes::Column& column);
-
-      int store_dense_column(const ObSSTableScanColumnIndexes::Column& column);
-
-      int store_sparse_column(const ObSSTableScanColumnIndexes::Column& column);
-
-      int get_block_data(const char*& buf, int64_t& buf_size);
+      /**
+       * decide the default obj
+       **/
+      inline bool is_ups_getter() { return is_ups_getter_; }
 
     private:
-      bool inited_;
-      const common::ObGetParam* get_param_;
-      const ObCompactSSTableReader* sstable_reader_;
-      ObSSTableScanColumnIndexes get_column_indexes_;
+      //param
       uint64_t table_id_;
-      bool not_exit_col_ret_nop_;
+      const ObArray<common::ObRowkey>*  rowkey_list_;
+      const uint64_t *columns_;
+      int64_t column_size_;
+      bool is_ups_getter_;
 
-      ObSSTableBlockCache* block_cache_;
-      ObSSTableBlockIndexCache* block_index_cache_;
-      sstable::ObSSTableRowCache* row_cache_;
+      //column index
+      sstable::ObSimpleColumnIndexes column_index_;
 
-      int64_t iterate_status_;
+      //Getter context
+      const ObCompactGetThreadContext *context_;
+
+      //store type
+      ObCompactStoreType row_store_type_;
+
+      //pos info
       int64_t cur_row_index_;
-      int64_t column_cursor_;
-      bool handled_del_row_;
-      bool bloomfilter_hit_;
 
+      /* block location */
       ObBlockPositionInfo block_pos_;
       ObSSTableBlockGetter getter_;
 
-      common::ObRowkey row_key_;
-      common::ObRow row_value_;
       common::ObRowDesc row_desc_;
-      common::ObObj rowkey_buf_array_[common::OB_MAX_ROWKEY_COLUMN_NUMBER];
 
-      uint64_t column_ids_[common::OB_MAX_COLUMN_NUMBER];
-      common::ObObj column_objs_[common::OB_MAX_COLUMN_NUMBER];
-      int64_t column_cnt_;
+      // Row value for key not exist.
+      common::ObRow row_non_exist_;
 
+      //buffer for row
+      ObMemBuf cache_row_buf_;
       char* uncomp_buf_;
       int64_t uncomp_buf_size_;
       char* internal_buf_;
       int64_t internal_buf_size_;
-      common::ObMemBuf row_buf_;
     };
   }//end namespace sstable
 }//end namespace oceanbase

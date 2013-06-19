@@ -16,7 +16,7 @@ static const char *kRecDelima = "rec_delima";
 
 RowkeyWrapper::RowkeyItemType RowkeyWrapper::RowkeyItem::str_to_type(const char *str)
 {
-  if (strcmp("INT8", str) == 0)
+  if (strcmp("INT8", str) == 0) 
     return INT8;
   else if (strcmp("INT16", str) == 0)
     return INT16;
@@ -38,7 +38,7 @@ int RowkeyWrapper::RowkeyItem::parse_from_string(const char *input_str)
 
   int ret = OB_SUCCESS;
   const char *p = NULL;
-  const char *delima = ",";
+  char *delima = ",";
 
   char str[ITEM_BUFFER_SIZE];
   if (strlen(input_str) > ITEM_BUFFER_SIZE)
@@ -55,8 +55,8 @@ int RowkeyWrapper::RowkeyItem::parse_from_string(const char *input_str)
   //parse start_pos
   if (ret == OB_SUCCESS)
   {
-    p = strtok(str, delima);
-    if (p == NULL)
+    p = strtok(str, delima); 
+    if (p == NULL) 
     {
       TBSYS_LOG(ERROR, "can't parse start_pos");
       ret = OB_ERROR;
@@ -72,7 +72,7 @@ int RowkeyWrapper::RowkeyItem::parse_from_string(const char *input_str)
   if (ret == OB_SUCCESS)
   {
     p = strtok(NULL, delima);
-    if (p == NULL)
+    if (p == NULL) 
     {
       TBSYS_LOG(ERROR, "can't parse length");
       ret = OB_ERROR;
@@ -88,7 +88,7 @@ int RowkeyWrapper::RowkeyItem::parse_from_string(const char *input_str)
   if (ret == OB_SUCCESS)
   {
     p = strtok(NULL, delima);
-    if (p == NULL)
+    if (p == NULL) 
     {
       TBSYS_LOG(ERROR, "can't parse type");
       ret = OB_ERROR;
@@ -108,7 +108,7 @@ int RowkeyWrapper::RowkeyItem::parse_from_string(const char *input_str)
   }
 
   //parse rowkey item name
-  if (ret == OB_SUCCESS)
+  if (ret == OB_SUCCESS) 
   {
     p = strtok(NULL, delima);
     if (p == NULL)
@@ -130,11 +130,11 @@ int RowkeyWrapper::load(const std::vector<const char*> &conf)
 {
   int ret = OB_SUCCESS;
 
-  for(size_t i = 0;i < conf.size(); i++)
+  for(size_t i = 0;i < conf.size(); i++) 
   {
     RowkeyItem item;
     ret = item.parse_from_string(conf[i]);
-    if (ret != OB_SUCCESS)
+    if (ret != OB_SUCCESS) 
     {
       TBSYS_LOG(ERROR, "can't parse string");
       break;
@@ -157,16 +157,16 @@ int RowkeyWrapper::encode(const ObString &rowkey, ObDataBuffer &buff, const Reco
     ret = append_rowkey_item(rowkey, *itr, buff);
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(ERROR, "can't append rowkey item, start_pos=%d, type=%d",
-          itr->start_pos, itr->type);
+      TBSYS_LOG(ERROR, "can't append rowkey item, start_pos=%ld, type=%d",
+                itr->start_pos, itr->type);
       break;
     }
 
     ret = append_delima(buff, delima);
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(ERROR, "can't append delima, start_pos=%d, type=%d",
-          itr->start_pos, itr->type);
+      TBSYS_LOG(ERROR, "can't append delima, start_pos=%ld, type=%d",
+                itr->start_pos, itr->type);
       break;
     }
 
@@ -176,100 +176,100 @@ int RowkeyWrapper::encode(const ObString &rowkey, ObDataBuffer &buff, const Reco
   return ret;
 }
 
-int RowkeyWrapper::append_rowkey_item(const ObString &key, const RowkeyItem &item,
+int RowkeyWrapper::append_rowkey_item(const ObString &key, const RowkeyItem &item, 
                                       ObDataBuffer & buffer) const
 {
   int ret = OB_SUCCESS;
   int type = item.type;
 
   switch(type) {
-    case INT64:
-    case INT32:
-    case INT16:
-      {
-        int64_t value;
-        int key_part_len = 8;
-        char val_buf[8];
+   case INT64:
+   case INT32:
+   case INT16:
+     {
+       int64_t value;
+       int key_part_len = 8;
+       char val_buf[8];
 
-        if (type == INT16)
-        {
-          key_part_len = 2;
-        }
-        else if (type == INT32)
-        {
-          key_part_len = 4;
-        }
+       if (type == INT16) 
+       {
+         key_part_len = 2;
+       } 
+       else if (type == INT32)
+       {
+         key_part_len = 4;
+       }
 
-        if (key.length() < (item.start_pos + item.item_len) ||
-            item.item_len != key_part_len)
-        {
-          TBSYS_LOG(ERROR, "rowkey item config error, start_pos=%d, type=%d, key_part_len = %d",
-              item.start_pos, item.type, key_part_len);
-          ret = OB_ERROR;
-          break;
-        }
+       if (key.length() < (item.start_pos + item.item_len) ||
+           item.item_len != key_part_len) 
+       {
+         TBSYS_LOG(ERROR, "rowkey item config error, start_pos=%ld, type=%d, key_part_len = %d", 
+                   item.start_pos, item.type, key_part_len);
+         ret = OB_ERROR;
+         break;
+       }
 
-        memset(val_buf, 0, 8);
-        memcpy(val_buf, key.ptr() + item.start_pos, key_part_len);
-        reverse(val_buf, val_buf + key_part_len);
-        memcpy(&value, val_buf, 8);
+       memset(val_buf, 0, 8);
+       memcpy(val_buf, key.ptr() + item.start_pos, key_part_len);
+       reverse(val_buf, val_buf + key_part_len);
+       memcpy(&value, val_buf, 8);
 
-        ret = append_int64(value, buffer);
-      }
-      break;
-    case INT8:
-      {
-        int8_t value;
-        if (key.length() < (item.start_pos + 1) ||
-            item.item_len != 1)
-        {
-          TBSYS_LOG(ERROR, "rowkey item config error, start_pos=%d, type=%d",
-              item.start_pos, item.type);
-          ret = OB_ERROR;
-          break;
-        }
+       ret = append_int64(value, buffer);
+     }
+     break;
+   case INT8:
+     {
+       int8_t value;
+       if (key.length() < (item.start_pos + 1) ||
+           item.item_len != 1) 
+       {
+         TBSYS_LOG(ERROR, "rowkey item config error, start_pos=%ld, type=%d", 
+                   item.start_pos, item.type);
+         ret = OB_ERROR;
+         break;
+       }
 
-        value = key.ptr()[item.start_pos];
-        ret = append_int8(value, buffer);
-        break;
-      }
-      break;
-    case STR:
-      {
-        if (key.length() < item.start_pos + item.item_len)
-        {
-          TBSYS_LOG(ERROR, "configuration error, item.start_pos=%d, item.item_len=%d",
-              item.start_pos, item.item_len);
-          break;
-        }
+       value = key.ptr()[item.start_pos];
+       ret = append_int8(value, buffer);
+       break;
+     }
+     break;
+   case STR:
+     {
+       if (key.length() < item.start_pos + item.item_len) 
+       {
+         TBSYS_LOG(ERROR, "configuration error, item.start_pos=%ld, item.item_len=%ld",
+                   item.start_pos, item.item_len);
+         break;
+       }
 
-        ret = append_str(key.ptr() + item.start_pos, item.item_len, buffer);
-      }
-      break;
-    case VSTR:
-      {
-        if (key.length() < item.start_pos)
-        {
-          TBSYS_LOG(ERROR, "configuration error, item.start_pos=%d",
-              item.start_pos);
-          break;
-        }
+       ret = append_str(key.ptr() + item.start_pos, item.item_len, buffer);
+     }
+     break;
+   case VSTR:
+     {
+       if (key.length() < item.start_pos)
+       {
+         TBSYS_LOG(ERROR, "configuration error, item.start_pos=%ld",
+                   item.start_pos);
+         break;
+       }
 
-        int64_t len = key.length() - item.start_pos;
-        ret = append_str(key.ptr() + item.start_pos, len, buffer);
-      }
-      break;
-    default:
-      TBSYS_LOG(ERROR, "such type [%d] is not supported now", type);
-      break;
+       int64_t len = key.length() - item.start_pos;
+       ret = append_str(key.ptr() + item.start_pos, len, buffer);
+     }
+     break;
+   default:
+     TBSYS_LOG(ERROR, "such type [%d] is not supported now", type);
+     break;
   }
 
   return ret;
 }
 
-TableConf::TableConf(const std::vector<const char *> &revise_columns,
-                     const std::vector<const char *> &rowkey_items,
-                     const std::vector<const char *> &columns,
+TableConf::TableConf(const std::vector<const char *> &revise_columns, 
+                     const std::vector<const char *> &rowkey_items, 
+                     const std::vector<const char *> &columns, 
                      const char *table_name,
                      int64_t table_id) :
   revise_cols_(revise_columns), table_id_(table_id), delima_(1), rec_delima_(10)
@@ -292,7 +292,7 @@ bool TableConf::is_revise_column(const ObString &col) const
 {
   bool ret = false;
 
-  for(size_t i = 0;i < revise_cols_.size(); i++)
+  for(size_t i = 0;i < revise_cols_.size(); i++) 
   {
     if (col.compare(revise_cols_[i]) == 0)
     {
@@ -316,27 +316,27 @@ int TableConf::revise_column(const ObCellInfo &cell, ObDataBuffer &data) const
     ret = OB_SUCCESS;
   }
 
-  if (ret == OB_SUCCESS)
+  if (ret == OB_SUCCESS) 
   {
     double value = (double)tmp / 100;
 
     ret = append_double(value, data);
-    if (ret != OB_SUCCESS)
+    if (ret != OB_SUCCESS) 
     {
-      // TODO
-      // string column(cell.row_key_.ptr(), cell.row_key_.length());
-      // TBSYS_LOG(ERROR, "append_double error, column:%s", column.c_str());
-    }
-  }
-  else
-  {
-    string column(cell.column_name_.ptr(), cell.column_name_.length());
-    char buf[128];
+      string column(cell.row_key_.ptr(), cell.row_key_.length());
 
-    //hex_to_str will return 0, if buffer size is not enough
-    int len = hex_to_str(cell.row_key_.ptr(), (int)cell.row_key_.length(), buf, 128);
-    buf[2 * len] = 0;
-    TBSYS_LOG(ERROR, "obcellinfo get value failed, column=%s, rowkey=%s, ret=%d" ,column.c_str(), buf, ret);
+      TBSYS_LOG(ERROR, "append_double error, column:%s", column.c_str());
+    }
+  } 
+  else 
+  {
+      string column(cell.column_name_.ptr(), cell.column_name_.length());
+      char buf[128];
+
+      //hex_to_str will return 0, if buffer size is not enough
+      int len = hex_to_str(cell.row_key_.ptr(), cell.row_key_.length(), buf, 128);
+      buf[2 * len] = 0;
+      TBSYS_LOG(ERROR, "obcellinfo get value failed, column=%s, rowkey=%s, ret=%d" ,column.c_str(), buf, ret);
   }
 
   return ret;
@@ -347,9 +347,9 @@ bool TableConf::is_rowkey(const char *column) const
   bool ret = false;
   RowkeyWrapper::Iterator itr = rowkey_wrappper_.begin();
 
-  while (itr != rowkey_wrappper_.end())
+  while (itr != rowkey_wrappper_.end()) 
   {
-    if (strcmp(column, itr->name.c_str()) == 0)
+    if (strcmp(column, itr->name.c_str()) == 0) 
     {
       ret = true;
       break;
@@ -365,28 +365,28 @@ int TableConf::encode_rowkey(const ObString &rowkey, ObDataBuffer &data) const
   return rowkey_wrappper_.encode(rowkey, data, delima_);
 }
 
-int TableConf::append_rowkey_item(const ObString &key, const char *rk_item_name,
+int TableConf::append_rowkey_item(const ObString &key, const char *rk_item_name, 
                        ObDataBuffer & buffer) const
 {
   int ret = OB_SUCCESS;
 
   RowkeyWrapper::Iterator itr = rowkey_wrappper_.begin();
-  while (itr != rowkey_wrappper_.end())
+  while (itr != rowkey_wrappper_.end()) 
   {
-    if (itr->name == rk_item_name)
+    if (itr->name == rk_item_name) 
     {
       break;
     }
     itr++;
   }
 
-  if (itr == rowkey_wrappper_.end())
+  if (itr == rowkey_wrappper_.end()) 
   {
     TBSYS_LOG(ERROR, "No such rowkey column %s, please check it", rk_item_name);
     ret = OB_ERROR;
   }
 
-  if (ret == OB_SUCCESS)
+  if (ret == OB_SUCCESS) 
   {
     ret = rowkey_wrappper_.append_rowkey_item(key, *itr, buffer);
   }
@@ -397,11 +397,11 @@ int TableConf::append_rowkey_item(const ObString &key, const char *rk_item_name,
 int TableConf::loadConf(const char *table_name, TableConf &conf)
 {
   int ret = OB_SUCCESS;
-  vector<const char *> rowkey_items =
+  vector<const char *> rowkey_items = 
     TBSYS_CONFIG.getStringList(table_name, kTabRowkeyItem);
-  vector<const char *> revise_cols =
+  vector<const char *> revise_cols = 
     TBSYS_CONFIG.getStringList(table_name, kTabReviseCol);
-  vector<const char *> columns =
+  vector<const char *> columns = 
     TBSYS_CONFIG.getStringList(table_name, kColumnList);
 
   int64_t table_id = TBSYS_CONFIG.getInt(table_name, kTableId);
@@ -411,14 +411,14 @@ int TableConf::loadConf(const char *table_name, TableConf &conf)
     const char *out = TBSYS_CONFIG.getString(table_name, kTableOutputPath);
     tmp_conf.set_output_path(out);
 
-    const char *str_delima =
+    const char *str_delima = 
       TBSYS_CONFIG.getString(table_name, kDelima);
     if (str_delima != NULL)
     {
       RecordDelima delima;
       const char *end_pos = str_delima + strlen(str_delima);
 
-      if (find(str_delima, end_pos, ',') == end_pos)
+      if (find(str_delima, end_pos, ',') == end_pos) 
       {
         delima = RecordDelima(static_cast<char>(atoi(str_delima)));
       }
@@ -433,7 +433,7 @@ int TableConf::loadConf(const char *table_name, TableConf &conf)
       tmp_conf.set_delima(delima);
     }
 
-    const char *str_rec_delima =
+    const char *str_rec_delima = 
       TBSYS_CONFIG.getString(table_name, kRecDelima);
     if (str_rec_delima != NULL)
     {
@@ -477,7 +477,7 @@ std::string TableConf::DebugString() const
   res += buf;
   res += "rowkey=";
   for(size_t i = 0;i < rowkey_wrappper_.items_.size(); i++) {
-    snprintf(buf, 128, "[start_pos=%d, len=%d, type=%d, name=%s]",
+    snprintf(buf, 128, "[start_pos=%d, len=%d, type=%d, name=%s]", 
              rowkey_wrappper_.items_[i].start_pos,
              rowkey_wrappper_.items_[i].item_len,
              rowkey_wrappper_.items_[i].type,

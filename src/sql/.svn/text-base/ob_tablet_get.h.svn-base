@@ -19,11 +19,11 @@
 
 #include "ob_tablet_read.h"
 #include "ob_sstable_get.h"
-#include "ob_tablet_get_fuse.h"
 #include "ob_project.h"
 #include "ob_limit.h"
 #include "ob_filter.h"
 #include "ob_table_rename.h"
+#include "sql/ob_multiple_get_merge.h"
 #include "sql/ob_sql_get_param.h"
 #include "chunkserver/ob_tablet_manager.h"
 #include "ob_tablet_direct_join.h"
@@ -35,6 +35,10 @@ namespace oceanbase
     class ObTabletGet : public ObTabletRead
     {
       public:
+        ObTabletGet()
+        {
+          op_tablet_get_merge_.set_is_ups_row(false);
+        }
         int create_plan(const ObSchemaManagerV2 &schema_mgr);
         int set_tablet_manager(chunkserver::ObTabletManager *tablet_manager);
     
@@ -43,10 +47,12 @@ namespace oceanbase
         int64_t to_string(char* buf, const int64_t buf_len) const;
 
       private:
-        int need_incremental_data(ObArray<uint64_t> &basic_columns, 
+        int need_incremental_data(const uint64_t *basic_columns, const uint64_t count,
                                   ObTabletJoin::TableJoinInfo &table_join_info, 
+                                  const ObRowkeyInfo *right_table_rowkey_info,
                                   int64_t start_data_version, 
-                                  int64_t end_data_version);
+                                  int64_t end_data_version,
+                                  int64_t rowkey_cell_count);
         bool check_inner_stat() const;
         int add_action_flag_column(ObProject &project);
 
@@ -58,7 +64,7 @@ namespace oceanbase
         ObRowDesc ups_mget_row_desc_;
 
         ObUpsMultiGet op_ups_multi_get_;
-        ObTabletGetFuse op_tablet_get_fuse_;
+        ObMultipleGetMerge op_tablet_get_merge_;
         ObTabletDirectJoin op_tablet_join_;
         ObProject op_project_;
         ObTableRename op_rename_;

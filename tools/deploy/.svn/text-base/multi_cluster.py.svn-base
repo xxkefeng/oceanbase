@@ -1,14 +1,22 @@
 def MultiClusterAttr():
     id = 'all: obi id'
     pid = 'all: obi pid'
-    stop = 'all: obi force_stop'
     reboot = 'all: obi reboot'
+    stop = 'all: obi force_stop'
+    start = 'all: obi start'
+    collect_log = 'all: obi collect_log'
+    update_local_bin = 'all: obi_master update_local_bin'
+    obmysql = 'all: obi_master obmysql'
+    rsync = 'all: obi rsync'
+    force_stop = 'all: obi force_stop'
+    print_schema = 'all: obi_master print_schema'
     return locals()
 
 def MultiCluster(**cfg):
     [v.get('name') or v.update(name=k) for k,v in get_match_child(cfg, 'obi').items()]
     obi_list = [v for (k,v) in sorted(get_match_child(cfg, 'obi').items(), key=lambda (k,v): v.get('obi_idx', 0))]
     if not obi_list: raise Fail('no obi defined!')
+    obi_list[0].update(role='obi_master')
     obi_list[0].update(obi_role='OBI_MASTER')
     for obi in obi_list[1:]:
         obi.update(obi_role='OBI_SLAVE')

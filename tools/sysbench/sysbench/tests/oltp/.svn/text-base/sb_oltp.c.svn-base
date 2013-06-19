@@ -2242,10 +2242,11 @@ int oltp_execute_request(sb_request_t *sb_req, int thread_id)
                     if (rc != SB_DB_ERROR_DEADLOCK)
                     {
                         //log_text(LOG_FATAL, "database error, exiting...");
-                        //log_text(LOG_ALERT, "query failed, omit ...");
-                        /*
+                        log_text(LOG_ALERT, "query failed, omit ...");
+
                         if(rc == 2006 || rc == 2003) 
                         {
+                            /* exiting, forget about allocated memory */
                             log_text(LOG_FATAL, "connect failed, try to reconnect");
                             // sb_globals.error = 1;
                             // return 1; 
@@ -2255,18 +2256,15 @@ int oltp_execute_request(sb_request_t *sb_req, int thread_id)
                                 //return 1;
                             }
                         }
-                        */
-                        
-                        log_text(LOG_ALERT, "rc => %d", rc);
-                        if(rc == 12) {
-                            log_text(LOG_ALERT, "query timeout, omit ...");
-                        }
-                        else {
-                            log_text(LOG_ALERT, "other error, exit ...");
-                            sb_globals.error = 1;
-                            return 1;
-                        }
                     }  
+                    else
+                    {
+                        log_text(LOG_ALERT, "confict failed, omit ...");
+                        //local_deadlocks++;
+                        //retry = 1;
+                        /* exit for loop */
+                        //break;  
+                    }
                     continue;
                 }
 
@@ -3948,7 +3946,7 @@ scale:
             prepare_blurbs[t]->setPrepareLatency(local_latency);
             prepare_blurbs[t]->update();
         }
-        //usleep(2000000);
+        usleep(2000000);
 
         row+=nrows;
         log_text(LOG_NOTICE, "table =>%s reach row => %u",schema.prepare.table_names[t],row);

@@ -1,0 +1,53 @@
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/util
+END
+Crc64.java
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/repos/oceanbase/!svn/ver/2827/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/util/Crc64.java
+END
+NamedThreadFactory.java
+K 25
+svn:wc:ra_dav:version-url
+V 133
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/util/NamedThreadFactory.java
+END
+Const.java
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/repos/oceanbase/!svn/ver/4411/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/util/Const.java
+END
+LRUCache.java
+K 25
+svn:wc:ra_dav:version-url
+V 123
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/util/LRUCache.java
+END
+CheckQueryParams.java
+K 25
+svn:wc:ra_dav:version-url
+V 131
+/repos/oceanbase/!svn/ver/5605/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/util/CheckQueryParams.java
+END
+NavigableCache.java
+K 25
+svn:wc:ra_dav:version-url
+V 129
+/repos/oceanbase/!svn/ver/4335/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/util/NavigableCache.java
+END
+CheckParameter.java
+K 25
+svn:wc:ra_dav:version-url
+V 129
+/repos/oceanbase/!svn/ver/5056/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/util/CheckParameter.java
+END
+Helper.java
+K 25
+svn:wc:ra_dav:version-url
+V 121
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/util/Helper.java
+END

@@ -63,10 +63,10 @@ int main(int argc, char ** argv)
         port = atoi(optarg);
         break;
       case 'f':
-        file_path = optarg;
+        file_path = optarg; 
         break;
       case 'l':
-        log_file = optarg;
+        log_file = optarg; 
         break;
       case 'c':
         config = optarg;
@@ -159,7 +159,7 @@ int main_routine(Env *env, const ObServer & task_server, const char * file_path,
         }
         else
         {
-          TBSYS_LOG(INFO, "finish task succ:task[%ld], file[%s], table_id=%ld",
+          TBSYS_LOG(INFO, "finish task succ:task[%ld], file[%s], table_id=%ld", 
                     task.get_id(), output_file,
                     task.get_table_id());
         }
@@ -186,12 +186,12 @@ int setup_env(const TaskWorkerParam &param, Env **envp)
   int ret = OB_SUCCESS;
   *envp = NULL;
 
-  if (param.task_file_type() == TaskWorkerParam::POSIX_FILE)
+  if (param.task_file_type() == TaskWorkerParam::POSIX_FILE) 
   {
     *envp = Env::Posix();
     ret = (*envp)->setup(NULL);
-  }
-  else
+  } 
+  else 
   {
     *envp = Env::Hadoop();
     if ((*envp)->setup(reinterpret_cast<const Env::Param *>(&param.hdfs_param())) != 0)

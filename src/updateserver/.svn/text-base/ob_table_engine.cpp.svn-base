@@ -161,7 +161,7 @@ namespace oceanbase
       //cci_.init(NULL == cell_info_node_ ? NULL : cell_info_node_->buf);
       if (NULL != cell_info_node_)
       {
-        cci_.init(cell_info_node_->buf);
+        cci_.init(cell_info_node_->buf, SPARSE);
       }
     }
 

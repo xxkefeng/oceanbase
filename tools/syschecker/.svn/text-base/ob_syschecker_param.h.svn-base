@@ -36,6 +36,7 @@ namespace oceanbase
       static const int64_t DEFAULT_STAT_DUMP_INTERVAL   = 0;
       static const int64_t DEFAULT_PERF_TEST            = 0;
       static const int64_t DEFAULT_SQL_READ             = 0;
+      static const int64_t DEFAULT_RESULT_CACHED        = 1;
       static const int64_t DEFAULT_READ_TABLE_TYPE      = 0;
       static const int64_t DEFAULT_WRITE_TABLE_TYPE     = 0;
       static const int64_t DEFAULT_GET_ROW_CNT          = 0;
@@ -113,6 +114,11 @@ namespace oceanbase
         return is_sql_read_;
       }
 
+      inline const bool is_result_cached() const
+      {
+        return is_result_cached_;
+      }
+
       inline const int64_t is_check_result() const
       {
         return (check_result_ == 0) ? false : true;
@@ -166,6 +172,7 @@ namespace oceanbase
       // preformance test param
       int64_t perf_test_;
       int64_t is_sql_read_;
+      int64_t is_result_cached_;
       int64_t check_result_;
       int64_t read_table_type_;
       int64_t write_table_type_;

@@ -41,6 +41,7 @@ namespace oceanbase
         static int add_show_create_table_schema(common::ObSchemaManagerV2& schema_mgr);
         static int add_show_parameters_schema(common::ObSchemaManagerV2& schema_mgr);
         static int add_show_table_status_schema(common::ObSchemaManagerV2& schema_mgr);
+        static int add_show_indexes_schema(common::ObSchemaManagerV2& schema_mgr);
 
       private:        
         static common::ObSchemaManagerV2 *show_schema_mgr_;

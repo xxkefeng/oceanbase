@@ -21,7 +21,7 @@ create table if not exists t1
    c15 VARBINARY,
    c16 CREATETIME,
    c17 MODIFYTIME
-)REPLICA_NUM=3,TABLET_MAX_SIZE=100000000,COMPRESS_METHOD='lzo_1_0',USE_BLOOM_FILTER=true,EXPIRE_INFO='c8=0',TABLET_BLOCK_SIZE=4096, CONSISTENT_MODE=STATIC;
+)REPLICA_NUM=3,TABLET_MAX_SIZE=100000000,COMPRESS_METHOD='lzo_1_0',USE_BLOOM_FILTER=true,EXPIRE_INFO='c8=0',TABLET_BLOCK_SIZE=4096, CONSISTENT_MODE=STATIC, CHARSET='latin1';
 
 
 create table if not exists t1
@@ -33,7 +33,7 @@ create table if not exists t1
 
 show create table t1;
 
-select table_name,table_id,table_type,load_type,table_def_type,rowkey_column_num,column_num,max_used_column_id,create_mem_version,max_rowkey_length,compress_func_name,is_use_bloomfilter,merge_write_sstable_version,is_pure_update_table,rowkey_split,expire_condition,tablet_block_size,is_read_static from __first_tablet_entry where table_id=3001;
+select table_name,table_id,table_type,load_type,table_def_type,rowkey_column_num,column_num,max_used_column_id,create_mem_version,max_rowkey_length,compress_func_name,is_use_bloomfilter,merge_write_sstable_version,is_pure_update_table,rowkey_split,expire_condition,tablet_block_size,is_read_static,character_set from __first_tablet_entry where table_id=3001;
 
 
 

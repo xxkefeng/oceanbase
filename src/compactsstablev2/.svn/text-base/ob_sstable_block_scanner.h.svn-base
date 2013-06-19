@@ -14,18 +14,8 @@ namespace oceanbase
     class ObSSTableBlockScanner
     {
     public:
-      ObSSTableBlockScanner()
-        : is_inited_(false),
-          is_reverse_scan_(false),
-          row_cursor_(NULL),
-          row_start_index_(NULL),
-          row_last_index_(NULL)
-      {
-      }
-
-      ~ObSSTableBlockScanner()
-      {
-      }
+      ObSSTableBlockScanner();
+      ~ObSSTableBlockScanner();
 
       int set_scan_param(const common::ObNewRange& range,
           const bool is_reverse_scan,
@@ -36,13 +26,6 @@ namespace oceanbase
       int get_next_row(common::ObCompactCellIterator*& row);
 
     private:
-      inline int initialize(const bool is_reverse_scan)
-      {
-        int ret = common::OB_SUCCESS;
-        is_reverse_scan_ = is_reverse_scan;
-        return ret;
-      }
-
       int locate_start_pos(const common::ObNewRange& range, 
           ObSSTableBlockReader::const_iterator& start_iterator,
           bool& need_looking_forward);
@@ -51,41 +34,13 @@ namespace oceanbase
           ObSSTableBlockReader::const_iterator& last_iterator,
           bool& need_looking_forward);
 
-      int load_current_row(
-          ObSSTableBlockReader::const_iterator row_index);
+      int load_current_row(ObSSTableBlockReader::const_iterator row_index);
 
-      inline int end_of_block()
-      {
-        bool ret = false;
-        if ((!is_reverse_scan_) && row_cursor_ > row_last_index_)
-        {
-          ret = true;
-        }
-        else if (is_reverse_scan_ && row_cursor_ < row_start_index_)
-        {
-          ret = true;
-        }
-        else
-        {
-          //do nothing
-        }
-        return ret;
-      }
+      int end_of_block();
 
-      inline void next_row()
-      {
-        if (!is_reverse_scan_)
-        {
-          row_cursor_ ++;
-        }
-        else
-        {
-          row_cursor_ --;
-        }
-      }
+      void next_row();
 
     private:
-      bool is_inited_;
       bool is_reverse_scan_;
       ObSSTableBlockReader block_reader_;
 
@@ -95,6 +50,73 @@ namespace oceanbase
 
       common::ObCompactCellIterator row_;
     };
+
+    inline int ObSSTableBlockScanner::load_current_row(ObSSTableBlockReader::const_iterator row_index)
+    {
+      int ret = common::OB_SUCCESS;
+
+      if (row_index < row_start_index_ || row_index > row_last_index_)
+      {
+        TBSYS_LOG(WARN, "invalid row index: row_index=[%p], row_start_index_=[%p], row_last_index_=[%p]",
+            row_index, row_start_index_, row_last_index_);
+        ret = common::OB_ERROR;
+      }
+      else if (common::OB_SUCCESS != (ret = block_reader_.get_row(row_index, row_)))
+      {
+        TBSYS_LOG(WARN, "block reader get row error: ret=[%d], row_index->offset_=[%d], row_index->size_=[%d]",
+            ret, row_index->offset_, row_index->size_);
+        ret = common::OB_ERROR;
+      }
+
+      return ret;
+    }
+
+    inline int ObSSTableBlockScanner::end_of_block()
+    {
+      bool ret = false;
+      if ((!is_reverse_scan_) && row_cursor_ > row_last_index_)
+      {
+        ret = true;
+      }
+      else if (is_reverse_scan_ && row_cursor_ < row_start_index_)
+      {
+        ret = true;
+      }
+      return ret;
+    }
+
+    inline void ObSSTableBlockScanner::next_row()
+    {
+      if (!is_reverse_scan_)
+      {
+        row_cursor_ ++;
+      }
+      else
+      {
+        row_cursor_ --;
+      }
+    }
+
+    inline int ObSSTableBlockScanner::get_next_row(common::ObCompactCellIterator*& row)
+    {
+      int ret = common::OB_SUCCESS;
+
+      if (end_of_block())
+      {
+        ret = common::OB_BEYOND_THE_RANGE;
+      }
+      else if (common::OB_SUCCESS != (ret = load_current_row(row_cursor_)))
+      {
+        TBSYS_LOG(WARN, "load current row error: ret=[%d], offset_=[%d], size_=[%d]", ret, row_cursor_->offset_, row_cursor_->size_);
+      }
+      else
+      {
+        row = &row_;
+        next_row();
+      }
+
+      return ret;
+    }
   }//end namesapce compactsstablev2
 }//end namespace oceanbase
 #endif

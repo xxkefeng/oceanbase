@@ -41,8 +41,8 @@
     column.column_id_ = col_id; \
     column.column_group_id_ = OB_DEFAULT_COLUMN_GROUP_ID; \
     column.rowkey_id_ = rowkey_id; \
-    column.join_table_id_ = OB_INVALID_ID; \
-    column.join_column_id_ = OB_INVALID_ID; \
+    column.join_table_id_ = 0; \
+    column.join_column_id_ = 0; \
     column.data_type_ = data_type;  \
     column.data_length_ = data_len; \
     column.length_in_rowkey_ = rowkey_len; \
@@ -60,7 +60,7 @@
 }
 
 #define ADD_COLUMN_SCHEMA(col_name, col_id, rowkey_id, data_type, data_len, nullable) \
-  ADD_COLUMN_SCHEMA_FULL(col_name, col_id, rowkey_id, data_type, data_len, data_len, 1, nullable);
+  ADD_COLUMN_SCHEMA_FULL(col_name, col_id, rowkey_id, data_type, data_len, data_len, 1, nullable); 
 
 #define ADD_SERVER(num) \
   ADD_COLUMN_SCHEMA("server" #num "_ipv4", /*column_name*/ \

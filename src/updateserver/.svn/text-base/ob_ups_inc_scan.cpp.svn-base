@@ -80,7 +80,7 @@ namespace oceanbase
       }
       if (OB_SUCCESS != err)
       {}
-      else if (OB_SUCCESS != (err = ObNewScannerHelper::get_row_desc(*get_param, true, row_desc_)))
+      else if (OB_SUCCESS != (err = ObNewScannerHelper::get_row_desc(*get_param, true, 0, row_desc_)))
       {
         if (OB_DUPLICATE_COLUMN == err)
         {

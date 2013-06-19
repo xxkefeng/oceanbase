@@ -1,5 +1,5 @@
 --real_sleep 5
-SHOW TABLES like '\\_\\_%';
+SHOW ALL TABLES like '\\_\\_%';
 SHOW VARIABLES like '%increment%';
 SHOW GLOBAL VARIABLES like '%increment%';
 show grants;

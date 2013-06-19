@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector
+END
+Statement.class
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/Statement.class
+END
+StatementType.class
+K 25
+svn:wc:ra_dav:version-url
+V 113
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/StatementType.class
+END
+BaseTest.class
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/BaseTest.class
+END
+Parser.class
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/Parser.class
+END
+Test.class
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/Test.class
+END
+SQLOperation.class
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/SQLOperation.class
+END

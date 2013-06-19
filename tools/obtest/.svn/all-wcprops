@@ -1,41 +1,41 @@
 K 25
 svn:wc:ra_dav:version-url
-V 77
-/repos/oceanbase/!svn/ver/14424/branches/0_4_1_release/oceanbase/tools/obtest
+V 67
+/repos/oceanbase/!svn/ver/13944/branches/dev/oceanbase/tools/obtest
 END
 obtest
 K 25
 svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/13877/branches/0_4_1_release/oceanbase/tools/obtest/obtest
+V 74
+/repos/oceanbase/!svn/ver/13944/branches/dev/oceanbase/tools/obtest/obtest
 END
 copy.sh
 K 25
 svn:wc:ra_dav:version-url
-V 85
-/repos/oceanbase/!svn/ver/13494/branches/0_4_1_release/oceanbase/tools/obtest/copy.sh
+V 75
+/repos/oceanbase/!svn/ver/12798/branches/dev/oceanbase/tools/obtest/copy.sh
 END
 collect.schema
 K 25
 svn:wc:ra_dav:version-url
-V 92
-/repos/oceanbase/!svn/ver/12810/branches/0_4_1_release/oceanbase/tools/obtest/collect.schema
+V 82
+/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/tools/obtest/collect.schema
 END
 mytest
 K 25
 svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/13503/branches/0_4_1_release/oceanbase/tools/obtest/mytest
+V 74
+/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/tools/obtest/mytest
 END
 deploy
 K 25
 svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/12810/branches/0_4_1_release/oceanbase/tools/obtest/deploy
+V 74
+/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/tools/obtest/deploy
 END
 test.sql
 K 25
 svn:wc:ra_dav:version-url
-V 86
-/repos/oceanbase/!svn/ver/13511/branches/0_4_1_release/oceanbase/tools/obtest/test.sql
+V 76
+/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/tools/obtest/test.sql
 END

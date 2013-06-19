@@ -184,7 +184,7 @@ int BigqueryReader::get_bigquery_one_equal_col1(uint64_t prefix, ValueRule& rule
     result.set_value(0, 2, value, Array::INT_TYPE);
     sprintf(value, "%ld", equal_val);
     result.set_value(0, 3, value, Array::INT_TYPE);
-    sprintf(value, "%lf", equal_val * 1.0);
+    sprintf(value, "%lf", static_cast<double> (equal_val) * 1.0);
     result.set_value(0, 4, value, Array::FLOAT_TYPE);
   }
 
@@ -248,7 +248,7 @@ int BigqueryReader::get_bigquery_two_equal_seq_col1(uint64_t prefix, ValueRule& 
     result.set_value(0, 2, value, Array::INT_TYPE);
     sprintf(value, "%ld", start_val + (row_num - 1) * step);
     result.set_value(0, 3, value, Array::INT_TYPE);
-    sprintf(value, "%lf", start_val + (double) ((row_num - 1) * step) / 2.0);
+    sprintf(value, "%lf", (double) start_val + (double) (((double) row_num - 1.0) * (double)step) / 2.0);
     result.set_value(0, 4, value, Array::FLOAT_TYPE);
   }
 
@@ -291,7 +291,7 @@ int BigqueryReader::get_bigquery_two_equal_cycle_col1(uint64_t prefix, ValueRule
     result.set_value(0, 2, value, Array::INT_TYPE);
     sprintf(value, "%ld", start_val + (size_cycle - 1) * step);
     result.set_value(0, 3, value, Array::INT_TYPE);
-    sprintf(value, "%lf", start_val + (double) ((size_cycle - 1) * step) / 2.0);
+    sprintf(value, "%lf", (double) start_val + (double) ((size_cycle - 1) * step) / 2.0);
     result.set_value(0, 4, value, Array::FLOAT_TYPE);
   }
 
@@ -326,21 +326,21 @@ int BigqueryReader::get_bigquery_two_equal_cycle_col2(uint64_t prefix, ValueRule
   query.add_filter("prefix", Bigquery::FILTER_EQ, prefix);
   query.add_filter("suffix", Bigquery::FILTER_LT, row_num);
 
-  err = result.init(size_cycle, 5);
+  err = result.init((int) size_cycle, 5);
   if (0 == err)
   {
     for (int64_t i = 0; i < size_cycle; ++i)
     {
       sprintf(value, "%ld", (start_val + i * step) * num_cycles);
-      result.set_value(i, 0, value, Array::INT_TYPE);
+      result.set_value((int) i, 0, value, Array::INT_TYPE);
       sprintf(value, "%ld", num_cycles);
-      result.set_value(i, 1, value, Array::INT_TYPE);
+      result.set_value((int) i, 1, value, Array::INT_TYPE);
       sprintf(value, "%ld", start_val + i * step);
-      result.set_value(i, 2, value, Array::INT_TYPE);
+      result.set_value((int) i, 2, value, Array::INT_TYPE);
       sprintf(value, "%ld", start_val + i * step);
-      result.set_value(i, 3, value, Array::INT_TYPE);
+      result.set_value((int) i, 3, value, Array::INT_TYPE);
       sprintf(value, "%lf", (double) (start_val + i * step));
-      result.set_value(i, 4, value, Array::FLOAT_TYPE);
+      result.set_value((int) i, 4, value, Array::FLOAT_TYPE);
     }
   }
   return err;

@@ -209,7 +209,7 @@ namespace oceanbase
       public:
         ObConfigStringKey()
         {
-          memset(str_, sizeof (str_), 0);
+          memset(str_, 0, sizeof (str_));
         }
         ObConfigStringKey(const char* str)
         {
@@ -237,7 +237,7 @@ namespace oceanbase
 
     template <class Key, class Value, int num>
     class __ObConfigContainer
-      : public hash::ObHashMap<Key, Value*>
+      : public hash::ObHashMap<Key, Value*, hash::NoPthreadDefendMode>
     {
       public:
         __ObConfigContainer(__ObConfigContainer *&p)

@@ -2,9 +2,9 @@
  //
  // ob_sstable_mgr.cpp updateserver / Oceanbase
  //
- // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2011-03-24 by Yubai (yubai.lk@taobao.com)
+ // Created on 2011-03-24 by Yubai (yubai.lk@taobao.com) 
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- //
+ // 
  // Change Log
  //
 ////====================================================================
@@ -458,7 +458,7 @@ namespace oceanbase
           if (NULL != store_info
               && 0 == store_info->dec_ref_cnt())
           {
-            sstable_mgr_->get_store_allocator().free(store_infos_[i]);
+            sstable_mgr_->get_store_allocator().deallocate(store_infos_[i]);
           }
         }
       }
@@ -491,7 +491,7 @@ namespace oceanbase
         {
           StoreInfo *store_info = NULL;
           if (NULL != sstable_mgr_
-              && NULL != (store_info = sstable_mgr_->get_store_allocator().alloc()))
+              && NULL != (store_info = sstable_mgr_->get_store_allocator().allocate()))
           {
             store_info->init(this, store_handle);
             store_infos_[store_num_++] = store_info;
@@ -525,7 +525,7 @@ namespace oceanbase
               }
               else
               {
-                sstable_mgr_->get_store_allocator().free(store_info);
+                sstable_mgr_->get_store_allocator().deallocate(store_info);
               }
             }
             if ((i + 1) < store_num_)
@@ -684,7 +684,7 @@ namespace oceanbase
         SSTableInfoMap::iterator iter;
         for (iter = sstable_info_map_.begin(); iter != sstable_info_map_.end(); iter++)
         {
-          sstable_allocator_.free(iter->second);
+          sstable_allocator_.deallocate(iter->second);
         }
         store_mgr_.destroy();
         sstable_info_map_.destroy();
@@ -844,7 +844,7 @@ namespace oceanbase
       bool bret = false;
       static const int64_t fpaths_size = 512 * 1024;
       char *fpaths = NULL;
-      if (NULL == (fpaths = (char*)ob_malloc(fpaths_size, ObModIds::OB_UPS_SSTABLE_MGR)))
+      if (NULL == (fpaths = (char*)ob_malloc(fpaths_size)))
       {
         TBSYS_LOG(WARN, "malloc fpaths fail");
       }
@@ -950,7 +950,7 @@ namespace oceanbase
 
         int64_t buf_size = OB_MAX_PACKET_LENGTH;
         int64_t buf_pos = 0;
-        char *buffer = (char*)ob_malloc(buf_size, ObModIds::OB_UPS_SSTABLE_MGR);
+        char *buffer = (char*)ob_malloc(buf_size);
 
         ObFileAppender file;
         bool dio = true;
@@ -1021,7 +1021,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid param sstable_id=%lu clog_id=%lu", sstable_id, clog_id);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (NULL == (sstable_info = sstable_allocator_.alloc()))
+      else if (NULL == (sstable_info = sstable_allocator_.allocate()))
       {
         TBSYS_LOG(WARN, "allocate sstable_info fail sstable_id=%lu", sstable_id);
         ret = OB_ERROR;
@@ -1067,7 +1067,7 @@ namespace oceanbase
       if (OB_SUCCESS != ret
           && NULL != sstable_info)
       {
-        sstable_allocator_.free(sstable_info);
+        sstable_allocator_.deallocate(sstable_info);
       }
       return ret;
     }
@@ -1098,7 +1098,7 @@ namespace oceanbase
           }
           if (0 == sstable_info->dec_ref_cnt())
           {
-            sstable_allocator_.free(sstable_info);
+            sstable_allocator_.deallocate(sstable_info);
             TBSYS_LOG(INFO, "erase sstable succ sstable_id=%lu", sstable_id);
           }
         }
@@ -1136,7 +1136,7 @@ namespace oceanbase
               {
                 sstable_info_map_.erase(sstable_id);
                 deleted_list.push_back(sstable_id);
-                sstable_allocator_.free(sstable_info);
+                sstable_allocator_.deallocate(sstable_info);
               }
             }
           }
@@ -1449,7 +1449,7 @@ namespace oceanbase
       else if (hash::HASH_NOT_EXIST == hash_ret)
       {
         int tmp_ret = OB_SUCCESS;
-        if (NULL == (sstable_info = sstable_allocator_.alloc()))
+        if (NULL == (sstable_info = sstable_allocator_.allocate()))
         {
           TBSYS_LOG(WARN, "allocate sstable_info fail sstable_id=%lu fname=[%s] store_handle=%lu",
                     sstable_id, sstable_id2str(sstable_id, clog_id), store_handle);
@@ -1476,7 +1476,7 @@ namespace oceanbase
         if (!add_succ
             && NULL != sstable_info)
         {
-          sstable_allocator_.free(sstable_info);
+          sstable_allocator_.deallocate(sstable_info);
         }
       }
       map_lock_.unlock();
@@ -1970,11 +1970,11 @@ namespace oceanbase
         SSTableInfo *sstable_info = store_info->get_sstable_info();
         if (0 == store_info->dec_ref_cnt())
         {
-          store_allocator_.free(store_info);
+          store_allocator_.deallocate(store_info);
         }
         if (0 == sstable_info->dec_ref_cnt())
         {
-          sstable_allocator_.free(sstable_info);
+          sstable_allocator_.deallocate(sstable_info);
         }
         map_lock_.unlock();
       }
@@ -2081,3 +2081,4 @@ namespace oceanbase
     }
   }
 }
+

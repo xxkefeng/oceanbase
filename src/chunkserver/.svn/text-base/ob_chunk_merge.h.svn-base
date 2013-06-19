@@ -20,6 +20,7 @@
 #include <Monitor.h>
 #include "common/ob_define.h"
 #include "common/ob_schema.h"
+#include "common/ob_list.h"
 #include "common/ob_vector.h"
 #include "common/thread_buffer.h"
 
@@ -30,6 +31,40 @@ namespace oceanbase
   {
     class ObTabletManager;
     class ObTabletMerger;
+
+    class ObTabletFactory
+    {
+      public:
+        const static int32_t TABLET_COUNT_PER_MERGE = 256;
+        ObTabletFactory();
+        ~ObTabletFactory();
+        int init(ObMultiVersionTabletImage *image , const int64_t frozen_version);
+      public:
+        int get_next_tablet(ObTablet* &tablet, bool & all_tablet_merged);
+        int tablet_merge_done(ObTablet* tablet);
+        // once DONOT fill cache from tablet image, MUST STOP add tablet 
+        // in serving tablet image (by migrate in).
+        inline bool pending_in_upgrade() const { return no_more_tablets_; }
+        inline int64_t get_cache_list_size() const { return cache_list_.size(); }
+      private:
+        int fill_cache(int64_t &add_count);
+        int get_tablet_from_cache_list(ObTablet* &tablet) ;
+        void reset();
+        void destroy();
+      private:
+        typedef common::ObList<ObTablet*> TabletList;
+        typedef TabletList::iterator Iterator;
+      private:
+        ObMultiVersionTabletImage* image_;
+        int64_t frozen_version_;
+        TabletList cache_list_;
+        TabletList merging_list_;
+        // how many parallel merging tablet on every disk.
+        int64_t disk_counter_[common::OB_MAX_DISK_NUMBER];
+        // set true if we donot fetch tablet list from tablet image.
+        bool no_more_tablets_;
+    };
+
     class ObChunkMerge : public tbsys::CDefaultRunnable
     {
       public:
@@ -42,7 +77,7 @@ namespace oceanbase
         /**
          * the new frozen_version come,
          * we will wake up all merge thread to start merge
-         *
+         * 
          */
         int schedule(const int64_t frozen_version);
 
@@ -58,7 +93,7 @@ namespace oceanbase
 
         inline bool is_merge_reported() const
         {
-          return (active_thread_num_ <= 1 && round_end_);
+          return (active_thread_num_ <= 1 && !round_start_);
         }
 
         inline void set_newest_frozen_version(const int64_t frozen_version)
@@ -72,15 +107,13 @@ namespace oceanbase
         bool can_launch_next_round(const int64_t frozen_version);
 
         int create_merge_threads(const int64_t max_merge_thread);
-
+     
       private:
         virtual void run(tbsys::CThread* thread, void *arg);
         void merge_tablets(const int64_t thread_no);
         int get_tablets(ObTablet* &tablet);
 
         bool have_new_version_in_othercs(const ObTablet* tablet);
-        int delete_tablet_on_rootserver(const ObTablet* tablet);
-
         int start_round(const int64_t frozen_version);
         int finish_round(const int64_t frozen_version);
         int fetch_frozen_time_busy_wait(const int64_t frozen_version, int64_t &frozen_time);
@@ -96,7 +129,7 @@ namespace oceanbase
       public:
         bool check_load();
       private:
-        friend class ObTabletMergerV1;
+        friend class ObTabletMergerV0;
         friend class ObTabletMergerV2;
         const static int64_t MAX_MERGE_THREAD = 32;
         const static int32_t TABLET_COUNT_PER_MERGE = 1024;
@@ -106,12 +139,9 @@ namespace oceanbase
         pthread_cond_t cond_;
         pthread_mutex_t mutex_;
 
-        ObTablet *tablet_array_[TABLET_COUNT_PER_MERGE];
-        int64_t tablets_num_;
-        int64_t tablet_index_;
-        int64_t thread_num_;
+        ObTabletFactory factory_;
 
-        volatile int64_t tablets_have_got_;
+        int64_t thread_num_;
         volatile int64_t active_thread_num_;
 
         volatile int64_t frozen_version_; //frozen_version_ in merge
@@ -123,11 +153,8 @@ namespace oceanbase
         volatile int64_t merge_last_end_time_;    //this version merged complete time
 
         volatile bool round_start_;
-        volatile bool round_end_;
         volatile bool pending_in_upgrade_;
 
-
-        volatile uint32_t pending_merge_[common::OB_MAX_DISK_NUMBER]; //use atomic op
 
         int64_t merge_load_high_;
         int64_t request_count_high_;
@@ -143,19 +170,19 @@ namespace oceanbase
 
         ObTabletManager *tablet_manager_;
         ObTabletMerger  *mergers_[MAX_MERGE_THREAD * 2];
-    };
+    }; 
 
     template <typename Merger>
       int ObChunkMerge::create_tablet_mergers(ObTabletMerger** mergers, const int64_t size)
       {
         int ret = OB_SUCCESS;
-        char* ptr = NULL;
+        char* ptr = NULL; 
 
         if (NULL == mergers || 0 >= size)
         {
           ret = OB_INVALID_ARGUMENT;
         }
-        else if (NULL == (ptr = reinterpret_cast<char*>(ob_malloc(sizeof(Merger) * size, ObModIds::OB_CS_MERGER))))
+        else if (NULL == (ptr = reinterpret_cast<char*>(ob_malloc(sizeof(Merger) * size))))
         {
           TBSYS_LOG(WARN, "allocate memrory for merger object error.");
           ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -179,7 +206,7 @@ namespace oceanbase
         }
         return ret;
       }
-
+    
 
   } /* chunkserver */
 } /* oceanbase */

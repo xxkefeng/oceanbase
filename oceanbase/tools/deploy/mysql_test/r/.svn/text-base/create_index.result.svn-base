@@ -1,0 +1,36 @@
+create table t (c1 int, c2 int, c3 int, c4 int, c5 int, primary key(c1, c2, c3));
+create index t_c4 on t (c4) storing(c5);
+show create table __idx_t_c4;
+table_name	table_definition
+__idx_t_c4	CREATE TABLE __idx_t_c4 (
+c4 INT
+, c1 INT
+, c2 INT
+, c3 INT
+, c5 INT
+, PRIMARY KEY(c4, c1, c2, c3)
+) TABLET_MAX_SIZE = 268435456, TABLET_BLOCK_SIZE = 65536, DEFAULT CHARSET = 'gbk', USE_BLOOM_FILTER = FALSE
+
+create index t_c2d on t (c2, c2) storing(c4);
+show create table __idx_t_c2d;
+table_name	table_definition
+__idx_t_c2d	CREATE TABLE __idx_t_c2d (
+c2 INT
+, c1 INT
+, c3 INT
+, c4 INT
+, PRIMARY KEY(c2, c1, c3)
+) TABLET_MAX_SIZE = 268435456, TABLET_BLOCK_SIZE = 65536, DEFAULT CHARSET = 'gbk', USE_BLOOM_FILTER = FALSE
+
+create index t_c5 on t(c5);
+show create table __idx_t_c5;
+table_name	table_definition
+__idx_t_c5	CREATE TABLE __idx_t_c5 (
+c5 INT
+, c1 INT
+, c2 INT
+, c3 INT
+, PRIMARY KEY(c5, c1, c2, c3)
+) TABLET_MAX_SIZE = 268435456, TABLET_BLOCK_SIZE = 65536, DEFAULT CHARSET = 'gbk', USE_BLOOM_FILTER = FALSE
+
+drop table t;

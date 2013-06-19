@@ -22,6 +22,7 @@
 #include "common/ob_base_client.h"
 #include "common/ob_server.h"
 #include "common/ob_rowkey.h"
+#include "chunkserver/ob_sql_rpc_stub.h"
 
 using namespace oceanbase;
 
@@ -50,6 +51,16 @@ enum
   CMD_DELETE_TABLE = 20,
   CMD_LOAD_SSTABLES = 21,
   CMD_DUMP_SSTABLE_DIST = 22,
+  CMD_SCAN = 23,
+  CMD_GET = 24,
+  CMD_SSTABLE_SCAN = 25,
+  CMD_PRINT_SCHEMA = 26,
+  CMD_CELL_SCAN = 27,
+  CMD_CELL_GET = 28,
+  CMD_INSTALL_DISK = 29,
+  CMD_UNINSTALL_DISK = 30,
+  CMD_UPS_SCAN = 31,
+  CMD_STOP_BUILD_INDEX = 32,
   CMD_MAX,
 };
 
@@ -102,11 +113,16 @@ class GFactory
     static GFactory& get_instance() { return instance_; }
     inline ObClientRpcStub& get_rpc_stub() { return rpc_stub_; }
     inline oceanbase::common::ObBaseClient& get_base_client() { return client_; }
+    inline chunkserver::ObSqlRpcStub &get_sql_rpc_stub() { return sql_rpc_stub_; }
+    inline const common::ObServer &get_chunk_server() { return chunk_server_; }
     inline const std::map<std::string, int> & get_cmd_map() const { return cmd_map_; }
   private:
     void init_cmd_map();
     static GFactory instance_;
     ObClientRpcStub rpc_stub_;
+    chunkserver::ObSqlRpcStub sql_rpc_stub_;
+    common::ThreadSpecificBuffer sql_rpc_buffer_;;
+    common::ObServer chunk_server_;
     oceanbase::common::ObBaseClient client_;
     std::map<std::string, int> cmd_map_;
 };

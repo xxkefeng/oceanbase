@@ -211,7 +211,7 @@ user="$OCF_RESKEY_user"
 rsip="$OCF_RESKEY_rsip"
 rsport="$OCF_RESKEY_rsport"
 montool="$OCF_RESKEY_montool"
-[ -z "$montool" ] && montool="$OCF_RESKEY_basedir/ups_mon"
+[ -z "$montool" ] && montool="$OCF_RESKEY_basedir/ob_ping"
 
 ## FIXME: Attributes special meaning to the resource id
 #process="rootserver"
@@ -226,7 +226,7 @@ montool="$OCF_RESKEY_montool"
 #### monitor namserver parameters ########
 #rsip="10.232.36.43"
 #rsport="11030"
-#montool="./ups_mon"
+#montool="./ob_ping"
 ##[ -z "$montool" ] && montool="$OCF_RESKEY_basedir/lib/nshamon"
 
 rootserver_validate() {

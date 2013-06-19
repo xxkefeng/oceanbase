@@ -113,7 +113,8 @@ static char** stats_info_str[] =
 */
 
 //static int stats_size[5] = {0, 4, 14, 14, 26};
-static const char* server_name[] = {"unknown", "rs:table", "cs:table", "ms:table", "ups:table", "dailymerge"};
+static const char* server_name[] = {"rs", "cs", "ms", "ups", "sql", "mysql", "common", "sstable"};
+
 
 namespace oceanbase
 {
@@ -123,125 +124,212 @@ namespace oceanbase
     //---------------------------------------------------------------
     // class Present
     //---------------------------------------------------------------
+
+    const char *Present::rs_map[] = {
+      "succ_get_count",
+      "succ_scan_count",
+      "fail_get_count",
+      "fail_scan_count",
+      "get_obi_role_count",
+      "migrate_count",
+      "copy_count",
+    };
+
+    const char *Present::ups_map[] = {
+      "get_count",
+      "scan_count",
+      "apply_count",
+      "batch_count",
+      "merge_count",
+
+      "get_time",
+      "scan_time",
+      "apply_time",
+      "batch_time",
+      "merge_time",
+
+      "memory_total",
+      "memory_limit",
+      "memtable_total",
+      "memtable_used",
+      "total_line",
+
+      "active_memtable_limit",
+      "active_memtable_total",
+      "active_memtable_used",
+      "active_total_line",
+
+      "frozen_memtable_limit",
+      "frozen_memtable_total",
+      "frozen_memtable_used",
+      "frozen_total_line",
+
+      "apply_fail_count",
+      "tbsys_drop_count",
+      "pakcet_long_wait_count",
+
+    };
+
+    const char *Present::cs_map[] = {
+      "tablets_num",
+      "merge_tablets_num",
+      "merge_merged",
+      "memory_used_default",
+      "memory_used_network",
+      "memory_used_thread_buffer",
+      "memory_used_tablet",
+      "memory_used_bi_cache",
+      "memory_used_block_cache",
+      "memory_used_bi_cache_unserving",
+      "memory_used_block_cache_unserving",
+      "memory_used_join_cache",
+      "memory_used_merge_buffer",
+      "memory_used_merge_split_buffer",
+      "request_count",
+      "request_count_per_second",
+      "request_queue_wait_time",
+
+      "get_count",
+      "scan_count",
+      "get_time",
+      "scan_time",
+    };
+
+    const char *Present::sstable_map[] = {
+      "block_index_cache_hit",
+      "block_index_cache_miss",
+      "block_cache_hit",
+      "block_cache_miss",
+      "get_bytes",
+      "scan_bytes",
+      "disk_io_num",
+      "disk_io_bytes",
+      "sstable_row_cache_hit",
+      "sstable_row_cache_miss",
+    };
+
+    const char *Present::ms_map[] = { 
+      "succ_get_count",
+      "succ_get_time",
+      "fail_get_count",
+      "fail_get_time",
+
+      // scan
+      "succ_scan_count",
+      "succ_scan_time",
+      "fail_scan_count",
+      "fail_scan_time",
+
+      // cache hit
+      "hit_cs_cache_count",
+      "miss_cs_cache_count",
+
+      // cs version error
+      "fail_cs_version_count",
+
+      // local query
+      "local_cs_query_count",
+      "remote_cs_query_count",
+
+    };
+
+    const char *Present::sql_map[] = {
+      "sql_select_count",
+      "sql_insert_count",
+      "sql_replace_count",
+      "sql_update_count",
+      "sql_delete_count",
+      "sql_ps_allocator_count"
+    };
+
+    const char *Present::common_map[] = {
+      "row_desc_slow_find_count",
+    };
+
+    const char *Present::obmysql_map[] = {
+      "sql_succ_query_count",
+      "sql_fail_query_count",
+      "sql_succ_prepare_count",
+      "sql_fail_prepare_count",
+      "sql_succ_exec_count",
+      "sql_fail_exec_count",
+      "sql_succ_close_count",
+      "sql_fail_close_count",
+      "sql_succ_login_count",
+      "sql_fail_login_count",
+    };
+
     Present::Present()
     {
-      init();
     }
 
-    const Present::ServerInfo & Present::get_server_info(const int32_t server_type) const
+    const char** Present::strmap(const common::ObStatMod mod)
     {
-      assert(server_type < SERVER_COUNT+1);
-      return server_info_[server_type-1];
+      switch (mod)
+      {
+        case OB_STAT_ROOTSERVER:
+          return rs_map;
+        case OB_STAT_CHUNKSERVER:
+          return cs_map;
+        case OB_STAT_MERGESERVER:
+          return ms_map;
+        case OB_STAT_UPDATESERVER:
+          return ups_map;
+        case OB_STAT_SQL:
+          return sql_map;
+        case OB_STAT_OBMYSQL:
+          return obmysql_map;
+        case OB_STAT_COMMON:
+          return common_map;
+        case OB_STAT_SSTABLE:
+          return sstable_map;
+        default:
+          return NULL;
+      }
+      return NULL;
     }
 
-    void Present::init()
+    const int64_t Present::mod_size(const common::ObStatMod mod)
     {
-      // rootserver
-      ServerInfo & root_server_info = server_info_[OB_ROOTSERVER - 1];
-      root_server_info.push_back(Item("rs_succ_get_count", 4, ShowCurrent));
-      root_server_info.push_back(Item("rs_succ_scan_count", 4, ShowCurrent));
-      root_server_info.push_back(Item("rs_fail_get_count", 4, ShowCurrent));
-      root_server_info.push_back(Item("rs_fail_scan_count", 4, ShowCurrent));
-      root_server_info.push_back(Item("rs_get_obi_role_count", 4, ShowCurrent));
-      root_server_info.push_back(Item("rs_migrate_count", 4, ShowCurrent));
-      root_server_info.push_back(Item("rs_copy_count", 4, ShowCurrent));
+      switch (mod)
+      {
+        case OB_STAT_ROOTSERVER:
+          return sizeof(rs_map)/sizeof(const char*);
+        case OB_STAT_CHUNKSERVER:
+          return sizeof(cs_map)/sizeof(const char*);
+        case OB_STAT_MERGESERVER:
+          return sizeof(ms_map)/sizeof(const char*);
+        case OB_STAT_UPDATESERVER:
+          return sizeof(ups_map)/sizeof(const char*);
+        case OB_STAT_SQL:
+          return sizeof(sql_map)/sizeof(const char*);
+        case OB_STAT_OBMYSQL:
+          return sizeof(obmysql_map)/sizeof(const char*);
+        case OB_STAT_COMMON:
+          return sizeof(common_map)/sizeof(const char*);
+        case OB_STAT_SSTABLE:
+          return sizeof(sstable_map)/sizeof(const char*);
+        default:
+          return 0;
+      }
+      return 0;
+    }
 
-      // chunkserver
-      ServerInfo & chunk_server_info = server_info_[OB_CHUNKSERVER - 1];
-      chunk_server_info.push_back(Item( "cs_get_count", 4, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_scan_count", 4, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_get_time", 8, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_scan_time", 8, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_block_index_cache_hit", 4, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_block_index_cache_miss", 4, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_block_cache_hit", 4, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_block_cache_miss", 4, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_get_bytes", 8, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_scan_bytes", 8, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_disk_io_num", 4, ShowCurrent));
-      chunk_server_info.push_back(Item( "cs_disk_io_bytes", 8, ShowCurrent));
-      //chunk_server_info.push_back(Item( "cs_block_index_cache_hit_ratio", 3, Ratio));
-      //chunk_server_info.push_back(Item( "cs_block_cache_hit_ratio", 3, Ratio));
-      //chunk_server_info.push_back(Item( "cs_average_get_time", 8, Ratio));
-      //chunk_server_info.push_back(Item( "cs_average_scan_time", 8, Ratio));
+    const char* Present::field_name(const common::ObStatMod mod, const uint32_t entry)  
+    {
+      const char** strs = strmap(mod);
+      if ((int64_t)entry < mod_size(mod))
+      {
+        return strs[entry];
+      }
+      return NULL;
+    }
 
-      // mergeserver
-      ServerInfo & merge_server_info = server_info_[OB_MERGESERVER - 1];
-      merge_server_info.push_back(Item( "ms_succ_get_count", 4, ShowCurrent));
-      merge_server_info.push_back(Item( "ms_succ_get_time", 8, ShowCurrent));
-      merge_server_info.push_back(Item( "ms_fail_get_count", 4, ShowCurrent));
-      merge_server_info.push_back(Item( "ms_fail_get_time", 8, ShowCurrent));
-      // scan
-      merge_server_info.push_back(Item( "ms_succ_scan_count", 4, ShowCurrent));
-      merge_server_info.push_back(Item( "ms_succ_scan_time", 8, ShowCurrent));
-      merge_server_info.push_back(Item( "ms_fail_scan_count", 4, ShowCurrent));
-      merge_server_info.push_back(Item( "ms_fail_scan_time", 8, ShowCurrent));
-      // cache hit
-      merge_server_info.push_back(Item( "ms_cs_cache_hit", 4, ShowCurrent));
-      merge_server_info.push_back(Item( "ms_cs_cache_miss", 4, ShowCurrent));
-      // cs version error
-      merge_server_info.push_back(Item( "ms_fail_cs_version", 4, ShowCurrent));
-      // local query
-      merge_server_info.push_back(Item( "ms_local_cs_query", 4, ShowCurrent));
-      merge_server_info.push_back(Item( "ms_remote_cs_query", 4, ShowCurrent));
-      //merge_server_info.push_back(Item( "ms_cs_cache_hit_ratio", 3, Ratio));
-      //merge_server_info.push_back(Item( "ms_average_succ_get_time", 8, Ratio));
-      //merge_server_info.push_back(Item( "ms_average_succ_scan_time", 8, Ratio));
-
-
-      // updateserver
-      ServerInfo &update_server_info = server_info_[OB_UPDATESERVER - 1];
-      update_server_info.push_back(Item( "min", 0, ShowCurrent));
-      update_server_info.push_back(Item( "ups_get_count", 4, ShowCurrent));
-      update_server_info.push_back(Item( "ups_scan_count", 4, ShowCurrent));
-      update_server_info.push_back(Item( "ups_apply_count",  4, ShowCurrent));
-      update_server_info.push_back(Item( "ups_batch_count", 4, ShowCurrent));
-      update_server_info.push_back(Item( "ups_merge_count", 4, ShowCurrent));
-      update_server_info.push_back(Item( "ups_get_timeu", 8, ShowCurrent));
-      update_server_info.push_back(Item( "ups_scan_timeu", 8, ShowCurrent));
-      update_server_info.push_back(Item( "ups_apply_timeu",  8, ShowCurrent));
-      update_server_info.push_back(Item( "ups_batch_timeu", 8, ShowCurrent));
-      update_server_info.push_back(Item( "ups_merge_timeu", 8, ShowCurrent));
-      //update_server_info.push_back(Item( "ups_average_get_timeu", 8, Ratio));
-      //update_server_info.push_back(Item( "ups_average_scan_timeu", 8, Ratio));
-      //update_server_info.push_back(Item( "ups_average_apply_timeu",  8, Ratio));
-      //update_server_info.push_back(Item( "ups_average_batch_timeu", 8, Ratio));
-      //update_server_info.push_back(Item( "ups_average_merge_timeu", 8, Ratio));
-
-      update_server_info.push_back(Item( "ups_memory_total", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_memory_limit", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_memtable_total", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_memtable_used", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_total_line", 4, ShowCurrent));
-      update_server_info.push_back(Item( "ups_active_memtable_limit", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_active_memtable_total", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_active_memtable_used", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_active_total_line", 4, ShowCurrent));
-      update_server_info.push_back(Item( "ups_frozen_memtable_limit", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_frozen_memtable_total", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_frozen_memtable_used", 12, ShowCurrent));
-      update_server_info.push_back(Item( "ups_frozen_total_line", 4, ShowCurrent));
-      update_server_info.push_back(Item( "ups_apply_fail_count", 4, ShowCurrent));
-      update_server_info.push_back(Item( "ups_tbsys_drop_count", 4, ShowCurrent));
-      update_server_info.push_back(Item( "max", 0, 1));
-
-      // daily merge
-      ServerInfo & daily_merge_info = server_info_[Present::SERVER_COUNT-1];
-      daily_merge_info.push_back(Item( "total_tablet_num", 4, ShowCurrent));
-      daily_merge_info.push_back(Item( "need_merge_num", 4, ShowCurrent));
-      daily_merge_info.push_back(Item( "merged_num", 4, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_default", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_network", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_threadbuffer", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_tablet", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_bi_cache", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_block_cache", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_bi_cache_unserving", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_block_cache_unserving", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_join_cache", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_merge_buffer", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_merge_split_buffer", 8, ShowCurrent));
-      daily_merge_info.push_back(Item( "mu_total", 8, ShowCurrent));
+    const int64_t Present::field_width(const common::ObStatMod mod, const uint32_t entry)
+    {
+      UNUSED(mod);
+      UNUSED(entry);
+      return 8;
     }
 
     //---------------------------------------------------------------
@@ -255,19 +343,14 @@ namespace oceanbase
 
     void ObServerStats::initialize_empty_value()
     {
-      const int64_t server_type = store_.current.get_server_type();
-      const Present::ServerInfo & server_info =
-        present_.get_server_info(static_cast<int32_t>(server_type));
       std::set<uint64_t>::const_iterator it = table_filter_.begin();
       while (it != table_filter_.end())
       {
         uint64_t table_id = *it;
-        for (int i = 0; i < (int)server_info.size(); ++i)
+        for (int i = 0; i < Present::mod_size(mod_); ++i)
         {
 
-          store_.current.set_value(mod_, table_id, i, 0);
-          store_.prev.set_value(mod_, table_id, i, 0);
-          store_.diff.set_value(mod_, table_id, i, 0);
+          current_.set_value(mod_, table_id, i, 0);
         }
         ++it;
       }
@@ -276,7 +359,7 @@ namespace oceanbase
     // retrive data from dataserver.
     int32_t ObServerStats::refresh()
     {
-      int ret = rpc_stub_.fetch_stats(store_.current);
+      int ret = rpc_stub_.fetch_stats(current_);
       return ret;
     }
 
@@ -302,145 +385,64 @@ namespace oceanbase
 
     int32_t ObServerStats::calc()
     {
-      //int ret = store_.current.subtract(store_.prev, store_.diff);
-      int64_t stats_item_size = store_.current.end(mod_) - store_.current.begin(mod_);
-      if (0 == stats_item_size )
-      {
-        //fprintf(stderr, "server has not got any requests, no stats information.\n");
-        initialize_empty_value();
-      }
-      store_.diff = store_.current;
-      store_.diff.subtract(store_.prev);
-      if (store_.diff.get_server_type() == OB_CHUNKSERVER) // chunk server
-      {
-        ObStatManager::const_iterator it = store_.diff.begin(mod_);
-        while (it != store_.diff.end(mod_))
-        {
-          calc_hit_ratio(*const_cast<ObStat*>(it), 12, 4, 5);
-          calc_hit_ratio(*const_cast<ObStat*>(it), 13, 6, 7);
-          calc_div_value(*const_cast<ObStat*>(it), 14, 0, 2);
-          calc_div_value(*const_cast<ObStat*>(it), 15, 1, 3);
-          ++it;
-        }
-      }
-      else if (store_.diff.get_server_type() == OB_MERGESERVER) //mergeserver
-      {
-        ObStatManager::const_iterator it = store_.diff.begin(mod_);
-        while (it != store_.diff.end(mod_))
-        {
-          calc_hit_ratio(*const_cast<ObStat*>(it), 13, 8, 9);
-          calc_div_value(*const_cast<ObStat*>(it), 14, 0, 1);
-          calc_div_value(*const_cast<ObStat*>(it), 15, 4, 5);
-          ++it;
-        }
-      }
-      else if (store_.diff.get_server_type() == OB_UPDATESERVER) //updateserver
-      {
-        ObStatManager::const_iterator it = store_.diff.begin(mod_);
-        while (it != store_.diff.end(mod_))
-        {
-          calc_div_value(*const_cast<ObStat*>(it), 6, 1, 6 );
-          calc_div_value(*const_cast<ObStat*>(it), 7, 2, 7);
-          calc_div_value(*const_cast<ObStat*>(it), 8, 3, 8);
-          calc_div_value(*const_cast<ObStat*>(it), 9, 4, 9);
-          calc_div_value(*const_cast<ObStat*>(it), 10, 5, 10);
-          ++it;
-        }
-      }
-
-      // special case for daily merge
-      if (store_.diff.get_server_type() == OB_CHUNKSERVER
-          && table_filter_.size() == 1 && *table_filter_.begin() == 0)
-      {
-        store_.diff.set_server_type(static_cast<ObRole>(Present::SERVER_COUNT));
-        store_.prev.set_server_type(static_cast<ObRole>(Present::SERVER_COUNT));
-        store_.current.set_server_type(static_cast<ObRole>(Present::SERVER_COUNT));
-
-        int64_t sum_value = 0;
-        ObStatManager::const_iterator it = store_.current.begin(mod_);
-        while (it != store_.current.end(mod_))
-        {
-          if (it->get_table_id() == 0)
-          {
-            for (int index = 3; index <= 13; ++index)
-            {
-              sum_value += const_cast<ObStat*>(it)->get_value(index);
-            }
-            const_cast<ObStat*>(it)->set_value(14, sum_value);
-            break;
-          }
-          ++it;
-        }
-      }
       return 0;
     }
 
     int32_t ObServerStats::save()
     {
-      store_.prev = store_.current;
       return 0;
     }
 
 
     void ObServerStats::output_header()
     {
-      //char** info_str = stats_info_str[store_.diff.get_server_type()];
-      //int32_t show_size = stats_size[store_.diff.get_server_type()];
-      const Present::ServerInfo & server_info =
-        present_.get_server_info(static_cast<int32_t>(store_.diff.get_server_type()));
+      //char** info_str = stats_info_str[current_.get_server_type()];
+      //int32_t show_size = stats_size[current_.get_server_type()];
       if (show_date_) fprintf(stderr, "%18s|", "date      time");
-      fprintf(stderr, "%s|", server_name[store_.diff.get_server_type()]);
+      fprintf(stderr, "%s|", server_name[mod_]);
       if (index_filter_.size() > 0 )
       {
         for (uint32_t i = 0 ; i < index_filter_.size(); ++i)
         {
           uint32_t index = index_filter_[i];
-          if (index >= server_info.size())
+          if (index >= Present::mod_size(mod_))
           {
             fprintf(stderr, "%8s ", "unknown") ;
           }
           else
           {
-            fprintf(stderr, "%8s ", server_info[index].name.c_str()) ;
+            fprintf(stderr, "%8s ", Present::field_name(mod_, index)) ;
           }
         }
       }
       else
       {
-        for (uint32_t i = 0 ; i < server_info.size(); ++i)
+        for (uint32_t i = 0 ; i < Present::mod_size(mod_); ++i)
         {
-          fprintf(stderr, "%8s ", server_info[i].name.c_str()) ;
+          fprintf(stderr, "%8s ", Present::field_name(mod_, i)) ;
         }
       }
       fprintf(stderr, "\n");
     }
 
-    int64_t ObServerStats::print_value(const Present::ServerInfo & server_info,
-        ObStatManager::const_iterator it, const uint32_t index, const int32_t interval) const
+    int64_t ObServerStats::print_value(
+        oceanbase::common::ObStatManager::const_iterator it,
+        const uint32_t index) const
     {
       const int32_t FMT_SIZE = 24;
       char fmt[FMT_SIZE];
       fmt[0] = '%';
-      snprintf(fmt+1, FMT_SIZE-1, "%dld ", server_info[index].width);
+      snprintf(fmt+1, FMT_SIZE-1, "%ldld ", Present::field_width(mod_, index));
       int64_t value = it->get_value(index);
       //fprintf(stderr, "index=%d,interval=%d,value=%ld\n", index,interval, value);
-      if (server_info[index].calc_type == Present::PerSecond)
-      {
-        value /= interval;
-      }
-      else if (server_info[index].calc_type == Present::ShowCurrent)
       {
         // get value from current;
         ObStat *cur_stat = NULL;
-        int ret = store_.current.get_stat(it->get_mod_id(), it->get_table_id(), cur_stat);
+        int ret = current_.get_stat(it->get_mod_id(), it->get_table_id(), cur_stat);
         if (OB_SUCCESS == ret && NULL != cur_stat)
         {
           value = cur_stat->get_value(index);
         }
-      }
-      else if (server_info[index].calc_type == Present::Ratio)
-      {
-        // do nothing
       }
       fprintf(stderr, fmt, value ) ;
       return 0;
@@ -450,10 +452,7 @@ namespace oceanbase
     {
       if (show_header_ > 0 && count % show_header_ == 0) output_header();
       //if (count == 0) return 0;
-
-      const Present::ServerInfo & server_info =
-        present_.get_server_info(static_cast<int32_t>(store_.diff.get_server_type()));
-      int32_t show_size = static_cast<int32_t>(server_info.size());
+      UNUSED(interval);
 
       time_t t;
       time(&t);
@@ -464,17 +463,11 @@ namespace oceanbase
           tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday,
           tm.tm_hour, tm.tm_min, tm.tm_sec);
 
-      ObStatManager::const_iterator it = store_.diff.begin(mod_);
-      while (it != store_.diff.end(mod_))
+      ObStatManager::const_iterator it = current_.begin(mod_);
+      while (it != current_.end(mod_))
       {
         if (table_filter_.size() > 0
             && table_filter_.find(it->get_table_id()) == table_filter_.end())
-        {
-          ++it;
-          continue;
-        }
-        if ((int64_t)store_.diff.get_server_type() != Present::SERVER_TYPE_DAILY_MERGE
-            && it->get_table_id() == 0)
         {
           ++it;
           continue;
@@ -488,21 +481,21 @@ namespace oceanbase
           for (uint32_t i = 0 ; i < index_filter_.size(); ++i)
           {
             uint32_t index = index_filter_[i];
-            if (index >= server_info.size())
+            if (index >= Present::mod_size(mod_))
             {
               fprintf(stderr, "%4ld ", 0L) ;
             }
             else
             {
-              print_value(server_info, it, index, interval);
+              print_value(it, index);
             }
           }
         }
         else
         {
-          for (int i = 0 ; i < show_size  ; ++i)
+          for (int i = 0 ; i < Present::mod_size(mod_); ++i)
           {
-            print_value(server_info, it, i, interval);
+            print_value(it, i);
           }
         }
         fprintf(stderr, "\n");

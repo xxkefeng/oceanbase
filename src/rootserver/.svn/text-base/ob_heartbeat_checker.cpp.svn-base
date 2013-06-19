@@ -72,7 +72,7 @@ void ObHeartbeatChecker::run(tbsys::CThread * thread, void * arg)
               if (root_server_->worker_->get_rpc_stub()
                   .heartbeat_to_cs(tmp_server,
                     root_server_->config_.cs_lease_duration_time,
-                    root_server_->last_frozen_mem_version_,
+                    root_server_->get_frozen_version_for_cs_heartbeat(),
                     root_server_->get_schema_version(),
                     root_server_->get_config_version()) != OB_SUCCESS)
               {
@@ -107,6 +107,9 @@ void ObHeartbeatChecker::run(tbsys::CThread * thread, void * arg)
                 TBSYS_LOG(ERROR, "root_table_for_query_ = NULL, server_index=%ld",
                     it - root_server_->server_manager_.begin());
               }
+            }
+            {
+              root_server_->nr_remove_replicas(cs);
             }
             if (master)
             {

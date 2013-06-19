@@ -45,6 +45,11 @@ namespace oceanbase
         static bool rename (const char *srcfilename, const char *destfilename);
         static int64_t get_size (const char *filename);
 
+        // Generate a unique temporary filename (stored in %tmpfile) in %dir with %prefix.
+        // Caller's responsibility to make sure %dir exists, we don't check it.
+        static bool gen_tmpfile_name(char *tmpfile, const int64_t tmpfile_len,
+            const char *dir, const char *prefix);
+
         static int vsystem(const char* cmd);
         static int cp(const char* src_path, const char* src_name, const char* dst_path, const char* dst_name);
         static int cp_safe(const char* src_path, const char* src_name, const char* dst_path, const char* dst_name);

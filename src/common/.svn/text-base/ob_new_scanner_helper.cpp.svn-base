@@ -20,21 +20,13 @@
 using namespace oceanbase;
 using namespace common;
 
-int ObNewScannerHelper::print_new_scanner(ObNewScanner &new_scanner, ObRow &row, bool has_rowkey /* = false */)
+int ObNewScannerHelper::print_new_scanner(ObNewScanner &new_scanner, ObRow &row)
 {
   int ret = OB_SUCCESS;
-  const ObRowkey *rowkey = NULL;
 
   while (OB_SUCCESS == ret)
   {
-    if (has_rowkey)
-    {
-      ret = new_scanner.get_next_row(rowkey, row);
-    }
-    else
-    {
-      ret = new_scanner.get_next_row(row);
-    }
+    ret = new_scanner.get_next_row(row);
 
     if (OB_ITER_END == ret)
     {
@@ -43,14 +35,7 @@ int ObNewScannerHelper::print_new_scanner(ObNewScanner &new_scanner, ObRow &row,
     }
     else if (OB_SUCCESS == ret)
     {
-      if (has_rowkey)
-      {
-        TBSYS_LOG(INFO, "new scanner rowkey:%s row:%s", to_cstring(*rowkey), to_cstring(row));
-      }
-      else
-      {
-        TBSYS_LOG(INFO, "new scanner row:%s", to_cstring(row));
-      }
+      TBSYS_LOG(INFO, "new scanner row:%s", to_cstring(row));
     }
     else
     {
@@ -62,7 +47,7 @@ int ObNewScannerHelper::print_new_scanner(ObNewScanner &new_scanner, ObRow &row,
 }
 
 int ObNewScannerHelper::add_cell(ObRow &row, const ObCellInfo &cell, bool is_ups_row)
-{
+{ // must make sure action_flag_cell cell of is the last one in the cells of the same row
   int ret = OB_SUCCESS;
   ObObj *action_flag_cell = NULL;
   ObObj *value = NULL;
@@ -78,16 +63,22 @@ int ObNewScannerHelper::add_cell(ObRow &row, const ObCellInfo &cell, bool is_ups
     {
       if (ObExtendType == cell.value_.get_type())
       {
-        if (ObActionFlag::OP_ROW_DOES_NOT_EXIST == cell.value_.get_ext())
+        action_flag_cell->set_ext(cell.value_.get_ext());
+        switch(cell.value_.get_ext())
         {
-          if (OB_SUCCESS != (ret = put_rowkey_to_row(row, cell) ))
-          {
-            TBSYS_LOG(WARN, "fail to put rowkey to row:ret[%d]", ret);
-          }
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "unsupported ext type[%ld]", cell.value_.get_ext());
+          case ObActionFlag::OP_ROW_DOES_NOT_EXIST:
+          case ObActionFlag::OP_DEL_ROW:
+            if (OB_SUCCESS != (ret = put_rowkey_to_row(row, cell)))
+            {
+              TBSYS_LOG(WARN, "fail to put rowkey to row:ret[%d]", ret);
+            }
+            break;
+          case ObActionFlag::OP_VALID:
+          case ObActionFlag::OP_NEW_ADD:
+            break;
+          default:
+            ret = OB_NOT_SUPPORTED;
+            TBSYS_LOG(WARN, "unsupported ext type[%ld]", cell.value_.get_ext());
         }
       }
       else
@@ -172,270 +163,25 @@ int ObNewScannerHelper::put_rowkey_to_row(ObRow &row, const ObCellInfo &cell)
     ret = OB_NOT_INIT;
     TBSYS_LOG(WARN, "row_desc is null");
   }
-  else if(row_desc->get_rowkey_cell_count() > 0)
+  else
   {
-    if (row_desc->get_rowkey_cell_count() != cell.row_key_.length())
+    const int64_t rowkey_cell_count = row_desc->get_rowkey_cell_count();
+    const int64_t cell_row_key_length = cell.row_key_.length();
+    if((rowkey_cell_count > 0 && rowkey_cell_count == cell_row_key_length) ||
+       (0 == rowkey_cell_count && cell_row_key_length <= row_desc->get_column_num()))
     {
-      ret = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(WARN, "rowkey count is wrong row_desc rowkey count [%ld], actual rowkey count[%ld]",
-      row_desc->get_rowkey_cell_count(), 
-      cell.row_key_.length());
-    }
-    else
-    {
-      for (int64_t i = 0; i < cell.row_key_.length(); i ++)
+      for (int64_t i = 0; i < cell_row_key_length; i ++)
       {
         row.raw_set_cell(i, cell.row_key_.ptr()[i]);
       }
     }
-  }
-  return ret;
-}
-
-
-int ObNewScannerHelper::add_ups_cell(ObUpsRow &ups_row, const ObCellInfo &cell, ObStringBuf *str_buf /* = NULL */)
-{
-  int ret = OB_SUCCESS;
-  ObObj value;
-  ObObj stored_value;
-  ObObj *val_ptr = &value;
-  const ObObj *got_cell = NULL;
-
-  if(ObExtendType == cell.value_.get_type())
-  {
-    if(ObActionFlag::OP_DEL_ROW == cell.value_.get_ext())
-    {
-      ups_row.set_is_delete_row(true);
-      if(OB_SUCCESS != (ret = ups_row.reset()))
-      {
-        TBSYS_LOG(WARN, "ups row set all nop fail:ret[%d]", ret);
-      }
-    }
-    else if(ObActionFlag::OP_NOP == cell.value_.get_ext())
-    {
-       //do nothing
-    }
-    else if(ObActionFlag::OP_ROW_DOES_NOT_EXIST == cell.value_.get_ext())
-    {
-       //do nothing
-    }
     else
-    {
-      ret = OB_NOT_SUPPORTED;
-      TBSYS_LOG(WARN, "not support ext value:[%ld]", cell.value_.get_ext());
-    }
-  }
-  else
-  {
-    if(OB_SUCCESS != (ret = ups_row.get_cell(cell.table_id_, cell.column_id_, got_cell)))
-    {
-      TBSYS_LOG(WARN, "ups row get cell fail:ret[%d]", ret);
-    }
-    else
-    {
-      value = *got_cell;
-    }
-
-    if(OB_SUCCESS == ret)
-    {
-      if(OB_SUCCESS != (ret = value.apply(cell.value_)))
-      {
-        TBSYS_LOG(WARN, "obj apply fail:ret[%d]", ret);
-      }
-    }
-
-    if (OB_SUCCESS == ret)
-    {
-      if(NULL != str_buf)
-      {
-        if (OB_SUCCESS != (ret = str_buf->write_obj(value, &stored_value)))
-        {
-          TBSYS_LOG(WARN, "write obj fail:ret[%d]", ret);
-        }
-        else
-        {
-          val_ptr = &stored_value;
-        }
-      }
-    }
-
-    if (OB_SUCCESS == ret)
-    {
-      if(OB_SUCCESS != (ret = ups_row.set_cell(cell.table_id_, cell.column_id_, *val_ptr)))
-      {
-        TBSYS_LOG(WARN, "ups set value fail:ret[%d]", ret);
-      }
-    }
-  }
-  
-  return ret;
-}
-
-//没有处理ups_row全部是OP_NOP的情况，这种情况下还是会当成存在的一行
-int ObNewScannerHelper::convert(ObScanner &scanner, const ObRowDesc *row_desc, ObNewScanner &new_scanner)
-{
-  int ret = OB_SUCCESS;
-  ObCellInfo *cell = NULL;
-  bool is_fullfilled = false;
-  int64_t fullfilled_item_num = 0;
-  int64_t fullfilled_row_num = 0;
-  ObUpsRow ups_row;
-  ObRowkey last_rowkey;
-  ObRowkey last_succ_added_rowkey;
-  bool ups_row_empty = true;
-  bool is_row_changed = false;
-  bool is_size_overflow = false;
-  CharArena allocator;
-
-  if(NULL == row_desc)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "row_desc is null");
-  }
-  else
-  {
-    ups_row.set_row_desc(*row_desc);
-    ups_row.reuse();
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    if(OB_SUCCESS != (ret = scanner.get_is_req_fullfilled(is_fullfilled, fullfilled_item_num)))
-    {
-      TBSYS_LOG(WARN, "get scanner fullfilled fail:ret[%d]", ret);
-    }
-  }
-
-  while(OB_SUCCESS == ret)
-  {
-    ret = scanner.next_cell();
-    if(OB_ITER_END == ret)
-    {
-      ret = OB_SUCCESS;
-      break;
-    }
-    else if(OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(WARN, "scanner next cell fail:ret[%d]", ret);
-    }
-
-    if(OB_SUCCESS == ret)
-    {
-      if(OB_SUCCESS != (ret = scanner.get_cell(&cell, &is_row_changed)))
-      {
-        TBSYS_LOG(WARN, "scanner get cell fail:ret[%d]", ret);
-      }
-    }
-
-    if(OB_SUCCESS == ret)
-    {
-      if(is_row_changed && !ups_row_empty)
-      {
-        ret = new_scanner.add_row(last_rowkey, ups_row);
-        if(OB_SIZE_OVERFLOW == ret)
-        {
-          ret = OB_SUCCESS;
-          is_size_overflow = true;
-          break;
-        }
-        else if(OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "new scanner add row fail:ret[%d]", ret);
-        }
-        else
-        {
-          last_succ_added_rowkey = last_rowkey;
-          ++fullfilled_row_num;
-        }
-
-        if(OB_SUCCESS == ret)
-        {
-          if(OB_SUCCESS != (ret = ups_row.reuse()))
-          {
-            TBSYS_LOG(WARN, "ups row reuse fail:ret[%d]", ret);
-          }
-          else
-          {
-            ups_row_empty = true;
-          }
-        }
-      }
-
-      if(OB_SUCCESS == ret)
-      {
-        if(OB_SUCCESS != (ret = add_ups_cell(ups_row, *cell)))
-        {
-          TBSYS_LOG(WARN, "add cell to ups row fail:ret[%d]", ret);
-        }
-        else
-        {
-          if(is_row_changed)
-          {
-            if(OB_SUCCESS != (ret = cell->row_key_.deep_copy(last_rowkey, allocator)))
-            {
-              TBSYS_LOG(WARN, "rowkey deep copy fail:ret[%d]", ret);
-            }
-            else
-            {
-              ups_row_empty = false;
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  if(OB_SUCCESS == ret && !ups_row_empty && !is_size_overflow)
-  {
-    ret = new_scanner.add_row(last_rowkey, ups_row);
-    if(OB_SUCCESS == ret)
-    {
-      last_succ_added_rowkey = last_rowkey;
-      ++fullfilled_row_num;
-    }
-    else if(OB_SIZE_OVERFLOW != ret)
-    {
-      TBSYS_LOG(WARN, "new scanner add row fail:ret[%d]", ret);
-    }
-    else
-    {
-      ret = OB_SUCCESS;
-      is_size_overflow = true;
-    }
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    if(is_size_overflow)
-    {
-      is_fullfilled = false;
-    }
-
-    if(fullfilled_row_num <= 0 && !is_fullfilled)
     {
       ret = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(WARN, "when not fullfilled, fullfilled row num at least be one");
-    }
-    else if(OB_SUCCESS != (ret = new_scanner.set_is_req_fullfilled(is_fullfilled, fullfilled_row_num)))
-    {
-      TBSYS_LOG(WARN, "new scanner set is req fullfilled fail:ret[%d]", ret);
-    }
-    else if(OB_SUCCESS != (ret = new_scanner.set_last_row_key(last_succ_added_rowkey)))
-    {
-      TBSYS_LOG(WARN, "set last rowkey fail:ret[%d]", ret);
+      TBSYS_LOG(WARN, "unexpected error: rowkey cell count of row desc: %ld, cell row key length: %ld row desc column num: %ld",
+          rowkey_cell_count, cell_row_key_length, row_desc->get_column_num());
     }
   }
-
-  ObNewRange range;
-  if(OB_SUCCESS == ret)
-  {
-    if(OB_SUCCESS == scanner.get_range(range) 
-        && OB_SUCCESS != (ret = new_scanner.set_range(range)))
-    {
-      TBSYS_LOG(WARN, "new scanner set range fail:ret[%d]", ret);
-    }
-  }
-
   return ret;
 }
 
@@ -465,7 +211,8 @@ int ObNewScannerHelper::get_row_desc(const ObScanParam &scan_param, ObRowDesc &r
   return ret;
 }
 
-int ObNewScannerHelper::get_row_desc(const ObGetParam &get_param, bool has_flag_column, ObRowDesc &row_desc)
+int ObNewScannerHelper::get_row_desc(const ObGetParam &get_param, const bool has_flag_column,
+     const int64_t rowkey_cell_count, ObRowDesc &row_desc)
 {
   int ret = OB_SUCCESS;
   ObCellInfo *cell = NULL;
@@ -495,6 +242,19 @@ int ObNewScannerHelper::get_row_desc(const ObGetParam &get_param, bool has_flag_
     if (OB_SUCCESS != (ret = row_desc.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID) ))
     {
       TBSYS_LOG(WARN, "fail to add OB_ACTION_FLAG_COLUMN_ID:ret[%d]", ret);
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    if (rowkey_cell_count < 0)
+    {
+      ret = OB_INVALID_ARGUMENT;
+      TBSYS_LOG(ERROR, "rowkey cell count must > 0, rowkey_cell_count=%ld", rowkey_cell_count);
+    }
+    else
+    {
+      row_desc.set_rowkey_cell_count(rowkey_cell_count);
     }
   }
 

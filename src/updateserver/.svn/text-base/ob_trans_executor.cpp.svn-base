@@ -380,8 +380,8 @@ namespace oceanbase
       }
       if (NULL != task)
       {
-        if ((OB_SUCCESS != ret && !IS_SQL_ERR(ret) && OB_BEGIN_TRANS_LOCKED != ret)
-            || (OB_SUCCESS != thread_errno() && !IS_SQL_ERR(thread_errno()) && OB_BEGIN_TRANS_LOCKED != thread_errno()))
+        if ((OB_SUCCESS != ret && !IS_SQL_ERR(ret))
+            || (OB_SUCCESS != thread_errno() && !IS_SQL_ERR(thread_errno())))
         {
           TBSYS_LOG(WARN, "process fail ret=%d pcode=%d src=%s",
                     (OB_SUCCESS != ret) ? ret : thread_errno(), task->pkt.get_packet_code(), inet_ntoa_r(task->src_addr));
@@ -432,7 +432,6 @@ namespace oceanbase
       SessionGuard session_guard(session_mgr_, lock_mgr_, ret);
       RWSessionCtx *session_ctx = NULL;
       ILockInfo *lock_info = NULL;
-      int64_t pos = task.pkt.get_buffer()->get_position();
       int64_t packet_timewait = (0 == task.pkt.get_source_timeout()) ?
                                 UPS.get_param().packet_max_wait_time :
                                 task.pkt.get_source_timeout();
@@ -450,26 +449,9 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "deserialize mutator fail ret=%d", ret);
       }
-      else
-      {
-        task.pkt.get_buffer()->get_position() = pos;
-      }
-      if (OB_SUCCESS != ret)
-      {}
       else if (OB_SUCCESS != (ret = session_guard.start_session(req, task.sid, session_ctx)))
       {
-        if (OB_BEGIN_TRANS_LOCKED == ret)
-        {
-          int tmp_ret = OB_SUCCESS;
-          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task, task.pkt.get_req_sign())))
-          {
-            ret = tmp_ret;
-          }
-        }
-        else
-        {
-          TBSYS_LOG(ERROR, "start_session()=>%d", ret);
-        }
+        TBSYS_LOG(ERROR, "start_session()=>%d", ret);
       }
       else
       {
@@ -514,20 +496,18 @@ namespace oceanbase
           }
         }
       }
-      if (OB_SUCCESS != ret && OB_BEGIN_TRANS_LOCKED != ret)
+      if (OB_SUCCESS != ret)
       {
         UPS.response_result(ret, task.pkt);
       }
-      return (OB_SUCCESS != ret && OB_BEGIN_TRANS_LOCKED != ret);
+      return (OB_SUCCESS != ret);
     }
 
-    bool TransExecutor::handle_start_session_(Task &task, ObDataBuffer &buffer)
+    void TransExecutor::handle_start_session_(Task &task, ObDataBuffer &buffer)
     {
       int &ret = thread_errno();
-      bool need_free_task = true;
       ret = OB_SUCCESS;
       ObTransReq req;
-      int64_t pos = task.pkt.get_buffer()->get_position();
       SessionGuard session_guard(session_mgr_, lock_mgr_, ret);
       BaseSessionCtx* session_ctx = NULL;
       task.sid.reset();
@@ -538,7 +518,7 @@ namespace oceanbase
       }
       else if (OB_SUCCESS != (ret = req.deserialize(task.pkt.get_buffer()->get_data(),
                                                     task.pkt.get_buffer()->get_capacity(),
-                                                    pos)))
+                                                    task.pkt.get_buffer()->get_position())))
       {
         TBSYS_LOG(WARN, "deserialize session_req fail ret=%d", ret);
       }
@@ -550,33 +530,14 @@ namespace oceanbase
       {}
       else if (OB_SUCCESS != (ret = session_guard.start_session(req, task.sid, session_ctx)))
       {
-        if (OB_BEGIN_TRANS_LOCKED == ret)
-        {
-          int tmp_ret = OB_SUCCESS;
-          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task, task.pkt.get_req_sign())))
-          {
-            ret = tmp_ret;
-          }
-          else
-          {
-            need_free_task = false;
-          }
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "begin session fail ret=%d", ret);
-        }
+        TBSYS_LOG(WARN, "begin session fail ret=%d", ret);
       }
       else
       {
         LOG_SESSION("session start", session_ctx, task);
         PRINT_TRACE_BUF(session_ctx->get_tlog_buffer());
       }
-      if (need_free_task)
-      {
-        UPS.response_trans_id(ret, task.pkt, task.sid, buffer);
-      }
-      return need_free_task;
+      UPS.response_trans_id(ret, task.pkt, task.sid, buffer);
     }
 
     bool TransExecutor::handle_end_session_(Task &task, ObDataBuffer &buffer)
@@ -685,22 +646,7 @@ namespace oceanbase
         phy_plan.get_trans_req().start_time_ = task.pkt.get_receive_ts();
         if (OB_SUCCESS != (ret = session_guard.start_session(phy_plan.get_trans_req(), task.sid, session_ctx)))
         {
-          if (OB_BEGIN_TRANS_LOCKED == ret)
-          {
-            int tmp_ret = OB_SUCCESS;
-            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task, task.pkt.get_req_sign())))
-            {
-              ret = tmp_ret;
-            }
-            else
-            {
-              need_free_task = false;
-            }
-          }
-          else
-          {
-            TBSYS_LOG(ERROR, "start_session()=>%d", ret);
-          }
+          TBSYS_LOG(ERROR, "start_session()=>%d", ret);
         }
         else
         {
@@ -802,7 +748,7 @@ namespace oceanbase
           TBSYS_LOG(DEBUG, "need rollback session %s ret=%d", to_cstring(task.sid), ret);
         }
       }
-      if (OB_SUCCESS != ret && OB_BEGIN_TRANS_LOCKED != ret)
+      if (OB_SUCCESS != ret)
       {
         ret = (OB_ERR_SHARED_LOCK_CONFLICT == ret) ? OB_EAGAIN : ret;
         const char *error_string = ob_get_err_msg().ptr();
@@ -815,7 +761,7 @@ namespace oceanbase
     void TransExecutor::handle_get_trans_(ObPacket &pkt,
                                           ObGetParam &get_param,
                                           ObScanner &scanner,
-                                          ObCellNewScanner &new_scanner,
+                                          ObNewScanner &new_scanner,
                                           ObDataBuffer &buffer)
     {
       int &ret = thread_errno();
@@ -861,14 +807,45 @@ namespace oceanbase
         {
           new_scanner.reuse();
           common::ObRowDesc row_desc;
-          if(OB_SUCCESS != (ret = ObNewScannerHelper::get_row_desc(get_param, true, row_desc)))
+
+          const CommonSchemaManager *schema_mgr = NULL;
+          UpsSchemaMgr &ups_schema_mgr = UPS.get_table_mgr().get_schema_mgr();
+          int64_t rowkey_cell_count = 0;
+          UpsSchemaMgrGuard guard;
+          if (NULL == (schema_mgr = ups_schema_mgr.get_schema_mgr(guard)))
           {
-            TBSYS_LOG(WARN, "get row desc fail:ret[%d]", ret);
+            ret = OB_SCHEMA_ERROR;
+            TBSYS_LOG(WARN, "get schema mgr fail ret=%d", ret);
           }
           else
           {
-            new_scanner.set_row_desc(row_desc);
-            ret = UPS.get_table_mgr().new_get(*session_ctx, get_param, new_scanner, pkt.get_receive_ts(), process_timeout);
+            if (get_param.get_cell_size() < 1)
+            {
+              ret = OB_ERR_UNEXPECTED;
+            }
+            else if (NULL == get_param[0])
+            {
+              ret = OB_ERR_UNEXPECTED;
+            }
+            else
+            {
+              const ObTableSchema *tschema = schema_mgr->get_table_schema(get_param[0]->table_id_);
+              const ObRowkeyInfo &rowkey_info = tschema->get_rowkey_info();
+              rowkey_cell_count = rowkey_info.get_size();
+            }
+          }
+
+          if (OB_SUCCESS == ret)
+          {
+            if(OB_SUCCESS != (ret = ObNewScannerHelper::get_row_desc(get_param, true, rowkey_cell_count, row_desc)))
+            {
+              TBSYS_LOG(WARN, "get row desc fail:ret[%d]", ret);
+            }
+            else
+            {
+              new_scanner.set_default_row_desc(&row_desc);
+              ret = UPS.get_table_mgr().new_get(*session_ctx, get_param, new_scanner, pkt.get_receive_ts(), process_timeout);
+            }
           }
           if (OB_SUCCESS == ret)
           {
@@ -901,7 +878,7 @@ namespace oceanbase
     void TransExecutor::handle_scan_trans_(ObPacket &pkt,
                                           ObScanParam &scan_param,
                                           ObScanner &scanner,
-                                          ObCellNewScanner &new_scanner,
+                                          ObNewScanner &new_scanner,
                                           ObDataBuffer &buffer)
     {
       int &ret = thread_errno();
@@ -947,19 +924,37 @@ namespace oceanbase
         {
           new_scanner.reuse();
           common::ObRowDesc row_desc;
-          if(OB_SUCCESS != (ret = ObNewScannerHelper::get_row_desc(scan_param, row_desc)))
+
+          const CommonSchemaManager *schema_mgr = NULL;
+          UpsSchemaMgr &ups_schema_mgr = UPS.get_table_mgr().get_schema_mgr();
+          UpsSchemaMgrGuard guard;
+          if (NULL == (schema_mgr = ups_schema_mgr.get_schema_mgr(guard)))
           {
-            TBSYS_LOG(WARN, "get row desc fail:ret[%d]", ret);
+            TBSYS_LOG(WARN, "get schema mgr fail ret=%d", ret);
           }
           else
           {
-            new_scanner.set_row_desc(row_desc);
-            ret = UPS.get_table_mgr().new_scan(*session_ctx, scan_param, new_scanner, pkt.get_receive_ts(), process_timeout);
+            const ObTableSchema *tschema = schema_mgr->get_table_schema(scan_param.get_table_id());
+            const ObRowkeyInfo &rowkey_info = tschema->get_rowkey_info();
+            row_desc.set_rowkey_cell_count(rowkey_info.get_size());
+          }
+
+          if (OB_SUCCESS == ret)
+          {
+            if(OB_SUCCESS != (ret = ObNewScannerHelper::get_row_desc(scan_param, row_desc)))
+            {
+              TBSYS_LOG(WARN, "get row desc fail:ret[%d]", ret);
+            }
+            else
+            {
+              new_scanner.set_default_row_desc(&row_desc);
+              ret = UPS.get_table_mgr().new_scan(*session_ctx, scan_param, new_scanner, pkt.get_receive_ts(), process_timeout);
+            }
           }
 #if 0
           if (OB_SUCCESS == ret)
           {
-            ObUpsRow tmp_ups_row;
+            ObRow tmp_ups_row;
             tmp_ups_row.set_row_desc(row_desc);
             if (OB_SUCCESS != (ret = ObNewScannerHelper::print_new_scanner(new_scanner, tmp_ups_row, true)))
             {
@@ -1504,10 +1499,9 @@ namespace oceanbase
 
     bool TransExecutor::thandle_start_session(TransExecutor &host, Task &task, TransParamData &pdata)
     {
-      bool ret = true;
       pdata.buffer.get_position() = 0;
-      ret = host.handle_start_session_(task, pdata.buffer);
-      return ret;
+      host.handle_start_session_(task, pdata.buffer);
+      return true;
     }
 
     bool TransExecutor::thandle_kill_zombie(TransExecutor &host, Task &task, TransParamData &pdata)

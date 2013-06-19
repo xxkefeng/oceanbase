@@ -50,7 +50,7 @@ oceanbase::common::ObAggregateColumn::ObAggregateColumn(ObString & org_column_na
   func_type_ = func_type;
 }
 
-oceanbase::common::ObAggregateColumn::ObAggregateColumn(const int64_t org_column_idx,  const int64_t as_column_idx,
+oceanbase::common::ObAggregateColumn::ObAggregateColumn(const int64_t org_column_idx,  const int64_t as_column_idx, 
   const ObAggregateFuncType & func_type)
 {
   org_column_idx_ = org_column_idx;
@@ -103,7 +103,7 @@ int oceanbase::common::ObAggregateColumn::calc_aggregate_val(ObObj & aggregated_
     }
     break;
   case MIN:
-    if ((ObNullType != new_val.get_type())
+    if ((ObNullType != new_val.get_type()) 
       && ((new_val < aggregated_val) || aggregated_val.get_type() == ObNullType)
       )
     {
@@ -130,7 +130,7 @@ bool oceanbase::common::ObAggregateColumn::operator==(const ObAggregateColumn &o
   return result;
 }
 
-int oceanbase::common::ObAggregateColumn::get_first_aggregate_obj(const ObObj & first_obj,
+int oceanbase::common::ObAggregateColumn::get_first_aggregate_obj(const ObObj & first_obj,  
   ObObj & agg_obj)const
 {
   int err = OB_SUCCESS;
@@ -143,7 +143,7 @@ int oceanbase::common::ObAggregateColumn::get_first_aggregate_obj(const ObObj & 
     break;
   case COUNT:
     agg_obj.set_int(1);
-    break;
+    break; 
   default:
     TBSYS_LOG(WARN,"unsupported aggregate function type [type:%d]", func_type_);
     err = OB_NOT_SUPPORTED;
@@ -164,7 +164,7 @@ int oceanbase::common::ObAggregateColumn::init_aggregate_obj(oceanbase::common::
     break;
   case COUNT:
     agg_obj.set_int(0);
-    break;
+    break; 
   default:
     TBSYS_LOG(WARN,"unsupported aggregate function type [type:%d]", func_type_);
     err = OB_NOT_SUPPORTED;
@@ -207,14 +207,14 @@ int oceanbase::common::ObAggregateColumn::to_str(char *buf, int64_t buf_size, in
     {
       pos += used_len;
     }
-    if ((pos < buf_size)
+    if ((pos < buf_size) 
       && (org_column_idx_ >= 0)
       && ((used_len = snprintf(buf + pos, (buf_size-pos>0)?(buf_size-pos):0, "idx:%ld),", org_column_idx_)) > 0))
     {
       pos += used_len;
     }
-    else if ((pos < buf_size)
-      && ((used_len = snprintf(buf + pos, (buf_size-pos>0)?(buf_size-pos):0, "%.*s) AS %.*s,",
+    else if ((pos < buf_size) 
+      && ((used_len = snprintf(buf + pos, (buf_size-pos>0)?(buf_size-pos):0, "%.*s) AS %.*s,", 
       org_column_name_.length(), org_column_name_.ptr(), as_column_name_.length(), as_column_name_.ptr())) > 0))
     {
       pos += used_len;
@@ -243,7 +243,7 @@ oceanbase::common::ObGroupKey::~ObGroupKey()
   initialize();
 }
 
-int oceanbase::common::ObGroupKey::init(const ObCellArray & cell_array, const ObGroupByParam & param,
+int oceanbase::common::ObGroupKey::init(const ObCellArray & cell_array, const ObGroupByParam & param, 
   const int64_t row_beg, const int64_t row_end, const int32_t type)
 {
   int err = OB_SUCCESS;
@@ -254,12 +254,12 @@ int oceanbase::common::ObGroupKey::init(const ObCellArray & cell_array, const Ob
   }
   if (OB_SUCCESS == err)
   {
-    if (row_beg < 0
-      || row_end < 0
+    if (row_beg < 0 
+      || row_end < 0 
       || row_beg > row_end
       || row_end >= cell_array.get_cell_size())
     {
-      TBSYS_LOG(WARN,"param error [row_beg:%ld,row_end:%ld,cell_array.get_cell_size():%ld]",
+      TBSYS_LOG(WARN,"param error [row_beg:%ld,row_end:%ld,cell_array.get_cell_size():%ld]", 
         row_beg, row_end, cell_array.get_cell_size());
       err = OB_INVALID_ARGUMENT;
     }
@@ -300,7 +300,7 @@ bool oceanbase::common::ObGroupKey::equal_to(const ObGroupKey &other) const
     int64_t this_idx = -1;
     int64_t that_idx = -1;
     ObObj this_obj;
-    const ObArrayHelper<ObGroupByParam::ColumnInfo> &groupby_col =
+    const ObArrayHelper<ObGroupByParam::ColumnInfo> &groupby_col = 
       group_by_param_->get_groupby_columns();
     for (i = 0; i < groupby_col.get_array_index(); i++)
     {
@@ -334,17 +334,17 @@ bool oceanbase::common::ObGroupKey::equal_to(const ObGroupKey &other) const
 
       if (this_idx < 0 || that_idx < 0)
       {
-        TBSYS_LOG(WARN,"unexpected error this_idx=%ld, that_idx=%ld",
+        TBSYS_LOG(WARN,"unexpected error this_idx=%ld, that_idx=%ld", 
           this_idx, that_idx);
         break;
       }
-      else
+      else 
       {
         /**
-         * WARNING: maybe cell_array_ and other.cell_array_ are the same
-         * cell array, the member method operator[] return a const
+         * WARNING: maybe cell_array_ and other.cell_array_ are the same 
+         * cell array, the member method operator[] return a const 
          * internal ObCellInfo instance, if we want to do *+-/ < > == >=
-         * <= !=, we need use a copy of the returned instance.
+         * <= !=, we need use a copy of the returned instance. 
          */
         this_obj = (*cell_array_)[this_idx].value_;
         if (this_obj != (*other.cell_array_)[that_idx].value_)
@@ -379,7 +379,7 @@ int64_t oceanbase::common::ObGroupKey::to_string(char* buffer, const int64_t len
 {
   int64_t pos = 0;
   int64_t max_idx = row_end_ - row_beg_;
-  const ObArrayHelper<ObGroupByParam::ColumnInfo>& group_by_columns
+  const ObArrayHelper<ObGroupByParam::ColumnInfo>& group_by_columns 
     = group_by_param_->get_groupby_columns();
   const ObGroupByParam::ColumnInfo* groupby_col = NULL;
 
@@ -442,7 +442,7 @@ oceanbase::common::ObGroupByParam::~ObGroupByParam()
 
 void oceanbase::common::ObGroupByParam::reset(bool deep_copy_args)
 {
-  column_num_ = 0;
+  column_num_ = 0; 
   group_by_columns_.clear();
   return_columns_.clear();
   aggregate_columns_.clear();
@@ -483,7 +483,7 @@ int oceanbase::common::ObGroupByParam::add_groupby_column(const ObString &column
   {
     group_by_column.as_column_idx_ = column_num_;
     group_by_column.column_name_ = stored_column_name;
-    group_by_column.org_column_idx_ = -1;
+    group_by_column.org_column_idx_ = -1; 
     if (!group_by_columns_.push_back(group_by_column))
     {
       err = OB_ARRAY_OUT_OF_RANGE;
@@ -511,7 +511,7 @@ int oceanbase::common::ObGroupByParam::add_groupby_column(const int64_t column_i
   {
     group_by_column.as_column_idx_ = column_num_;
     group_by_column.column_name_.assign(NULL,0);
-    group_by_column.org_column_idx_ = column_idx;
+    group_by_column.org_column_idx_ = column_idx; 
     if (!group_by_columns_.push_back(group_by_column))
     {
       err =  OB_ARRAY_OUT_OF_RANGE;
@@ -548,7 +548,7 @@ int oceanbase::common::ObGroupByParam::add_return_column(const ObString & column
   {
     return_column.as_column_idx_ = column_num_;
     return_column.column_name_ = stored_column_name;
-    return_column.org_column_idx_ = -1;
+    return_column.org_column_idx_ = -1; 
     if (!return_columns_.push_back(return_column))
     {
       err =  OB_ARRAY_OUT_OF_RANGE;
@@ -576,7 +576,7 @@ int oceanbase::common::ObGroupByParam::add_return_column(const int64_t column_id
   {
     return_column.as_column_idx_ = column_num_;
     return_column.column_name_.assign(NULL,0);
-    return_column.org_column_idx_ = column_idx;
+    return_column.org_column_idx_ = column_idx; 
     if (!return_columns_.push_back(return_column))
     {
       err =  OB_ARRAY_OUT_OF_RANGE;
@@ -650,7 +650,7 @@ int oceanbase::common::ObGroupByParam::add_aggregate_column(const ObString & org
   return err;
 }
 
-int oceanbase::common::ObGroupByParam::add_aggregate_column(const int64_t org_column_idx,
+int oceanbase::common::ObGroupByParam::add_aggregate_column(const int64_t org_column_idx, 
   const ObAggregateFuncType aggregate_func, bool is_return)
 {
   int err = OB_SUCCESS;
@@ -688,16 +688,16 @@ int oceanbase::common::ObGroupByParam::add_aggregate_column(const int64_t org_co
 int oceanbase::common::ObGroupByParam::malloc_composite_columns()
 {
   int err = OB_SUCCESS;
-  groupby_comp_columns_buf_ = reinterpret_cast<ObCompositeColumn*>(ob_malloc(sizeof(ObCompositeColumn)*OB_MAX_COLUMN_NUMBER, ObModIds::OB_OLD_GROUPBY));
+  groupby_comp_columns_buf_ = reinterpret_cast<ObCompositeColumn*>(ob_malloc(sizeof(ObCompositeColumn)*OB_MAX_COLUMN_NUMBER));
   if (NULL == groupby_comp_columns_buf_)
   {
     TBSYS_LOG(WARN,"fail to allocate memory");
-    err = OB_ALLOCATE_MEMORY_FAILED;
+    err = OB_ALLOCATE_MEMORY_FAILED; 
   }
   else
   {
     new(groupby_comp_columns_buf_) ObCompositeColumn[OB_MAX_COLUMN_GROUP_NUMBER];
-    groupby_comp_columns_.init(OB_MAX_COLUMN_NUMBER, groupby_comp_columns_buf_);
+    groupby_comp_columns_.init(OB_MAX_COLUMN_NUMBER, groupby_comp_columns_buf_);  
   }
   return err;
 
@@ -712,13 +712,13 @@ int oceanbase::common::ObGroupByParam::add_column(const ObString & expr, const O
   }
   ObString stored_expr = expr;
   ObString stored_as_name = as_name;
-  if ((OB_SUCCESS == err)
+  if ((OB_SUCCESS == err) 
     && deep_copy_args_
     && (OB_SUCCESS != (err = buffer_pool_.write_string(expr, &stored_expr))))
   {
     TBSYS_LOG(WARN,"fail to copy expr to local buffer [err:%d]", err);
   }
-  if ((OB_SUCCESS == err)
+  if ((OB_SUCCESS == err) 
     && deep_copy_args_
     && (OB_SUCCESS != (err = buffer_pool_.write_string(as_name, &stored_as_name))))
   {
@@ -728,7 +728,7 @@ int oceanbase::common::ObGroupByParam::add_column(const ObString & expr, const O
 
   if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = comp_column.set_expression(stored_expr, stored_as_name))))
   {
-    TBSYS_LOG(WARN,"fail to set expression [err:%d,expr:%.*s, as_name:%.*s]", err,
+    TBSYS_LOG(WARN,"fail to set expression [err:%d,expr:%.*s, as_name:%.*s]", err, 
       stored_expr.length(), stored_expr.ptr(), stored_as_name.length(), stored_as_name.ptr());
   }
   if ((OB_SUCCESS == err) && (!groupby_comp_columns_.push_back(comp_column)))
@@ -842,7 +842,7 @@ int oceanbase::common::ObGroupByParam::calc_group_key_hash_val(const ObGroupKey 
   int err = OB_SUCCESS;
   if (NULL == key.get_cell_array() || NULL == key.get_groupby_param())
   {
-    TBSYS_LOG(WARN,"param error [key.get_cell_array():%p,key.get_groupby_param():%p]",
+    TBSYS_LOG(WARN,"param error [key.get_cell_array():%p,key.get_groupby_param():%p]", 
       key.get_cell_array(), key.get_groupby_param());
     err = OB_INVALID_ARGUMENT;
   }
@@ -851,11 +851,11 @@ int oceanbase::common::ObGroupByParam::calc_group_key_hash_val(const ObGroupKey 
     switch (key.get_key_type())
     {
     case ObGroupKey::AGG_KEY:
-      err = key.get_groupby_param()->calc_agg_group_key_hash_val(*key.get_cell_array(),key.get_row_beg(),
+      err = key.get_groupby_param()->calc_agg_group_key_hash_val(*key.get_cell_array(),key.get_row_beg(), 
         key.get_row_end(),hash_val);
       break;
     case ObGroupKey::ORG_KEY:
-      err = key.get_groupby_param()->calc_org_group_key_hash_val(*key.get_cell_array(),key.get_row_beg(),
+      err = key.get_groupby_param()->calc_org_group_key_hash_val(*key.get_cell_array(),key.get_row_beg(), 
         key.get_row_end(),hash_val);
       break;
     default:
@@ -924,7 +924,7 @@ bool oceanbase::common::ObGroupByParam::is_equal(const ObGroupKey & left, const 
       }
       else
       {
-        if (left.get_cell_array()->operator [](left_idx).value_
+        if (left.get_cell_array()->operator [](left_idx).value_ 
           != right.get_cell_array()->operator [](right_idx).value_)
         {
           result = false;
@@ -987,7 +987,7 @@ int64_t oceanbase::common::ObGroupByParam::get_target_cell_idx(const ObGroupKey 
   return err;
 }
 
-int oceanbase::common::ObGroupByParam::calc_org_group_key_hash_val(const ObCellArray & cells, const int64_t row_beg,
+int oceanbase::common::ObGroupByParam::calc_org_group_key_hash_val(const ObCellArray & cells, const int64_t row_beg, 
   const int64_t row_end, uint32_t &val)const
 {
   uint32_t hash_val = 0;
@@ -1025,7 +1025,7 @@ int oceanbase::common::ObGroupByParam::calc_org_group_key_hash_val(const ObCellA
   return err;
 }
 
-int oceanbase::common::ObGroupByParam::calc_agg_group_key_hash_val(const ObCellArray & cells, const int64_t row_beg,
+int oceanbase::common::ObGroupByParam::calc_agg_group_key_hash_val(const ObCellArray & cells, const int64_t row_beg, 
   const int64_t row_end, uint32_t &val)const
 {
   uint32_t hash_val = 0;
@@ -1065,8 +1065,8 @@ int oceanbase::common::ObGroupByParam::calc_agg_group_key_hash_val(const ObCellA
 
 
 
-int oceanbase::common::ObGroupByParam::aggregate(const ObCellArray & org_cells,  const int64_t org_row_beg,
-  const int64_t org_row_end, ObCellArray & aggregate_cells,
+int oceanbase::common::ObGroupByParam::aggregate(const ObCellArray & org_cells,  const int64_t org_row_beg, 
+  const int64_t org_row_end, ObCellArray & aggregate_cells, 
   const int64_t aggregate_row_beg, const int64_t aggregate_row_end)const
 {
   int err = OB_SUCCESS;
@@ -1079,7 +1079,7 @@ int oceanbase::common::ObGroupByParam::aggregate(const ObCellArray & org_cells, 
   }
   if (aggregate_row_end - aggregate_row_beg + 1 != column_num_)
   {
-    TBSYS_LOG(WARN,"param error [expected_aggregate_row_width:%ld,real_aggregate_row_width:%ld]",
+    TBSYS_LOG(WARN,"param error [expected_aggregate_row_width:%ld,real_aggregate_row_width:%ld]", 
       column_num_, aggregate_row_end - aggregate_row_beg + 1);
     err = OB_INVALID_ARGUMENT;
   }
@@ -1091,7 +1091,7 @@ int oceanbase::common::ObGroupByParam::aggregate(const ObCellArray & org_cells, 
     {
       if (group_by_columns_.at(i)->org_column_idx_ > max_org_idx)
       {
-        TBSYS_LOG(WARN,"unexpected error [groupby_column_idx:%ld,org_column_idx:%ld,max_org_idx:%ld]",
+        TBSYS_LOG(WARN,"unexpected error [groupby_column_idx:%ld,org_column_idx:%ld,max_org_idx:%ld]", 
           i, group_by_columns_.at(i)->org_column_idx_,max_org_idx);
         err = OB_ERR_UNEXPECTED;
       }
@@ -1111,7 +1111,7 @@ int oceanbase::common::ObGroupByParam::aggregate(const ObCellArray & org_cells, 
     {
       if (return_columns_.at(i)->org_column_idx_ > max_org_idx)
       {
-        TBSYS_LOG(WARN,"unexpected error [return_column_idx:%ld,org_column_idx:%ld,max_org_idx:%ld]",
+        TBSYS_LOG(WARN,"unexpected error [return_column_idx:%ld,org_column_idx:%ld,max_org_idx:%ld]", 
           i, return_columns_.at(i)->org_column_idx_,max_org_idx);
         err = OB_ERR_UNEXPECTED;
       }
@@ -1127,12 +1127,12 @@ int oceanbase::common::ObGroupByParam::aggregate(const ObCellArray & org_cells, 
       }
     }
 
-    first_agg_cell = org_cells[org_row_beg];
+    first_agg_cell = org_cells[org_row_beg]; 
     for (int64_t i = 0; OB_SUCCESS == err && i < aggregate_columns_.get_array_index(); i++)
     {
       if (aggregate_columns_.at(i)->get_org_column_idx() > max_org_idx)
       {
-        TBSYS_LOG(WARN,"unexpected error [aggregate_column_idx:%ld,org_column_idx:%ld,max_org_idx:%ld]",
+        TBSYS_LOG(WARN,"unexpected error [aggregate_column_idx:%ld,org_column_idx:%ld,max_org_idx:%ld]", 
           i, aggregate_columns_.at(i)->get_org_column_idx(),max_org_idx);
         err = OB_ERR_UNEXPECTED;
       }
@@ -1167,13 +1167,13 @@ int oceanbase::common::ObGroupByParam::aggregate(const ObCellArray & org_cells, 
       agg_col = &aggregate_columns_buf_[i];
       if (agg_col->get_org_column_idx() > max_org_idx)
       {
-        TBSYS_LOG(WARN,"unexpected error [aggregate_column_idx:%ld,org_column_idx:%ld,max_org_idx:%ld]",
+        TBSYS_LOG(WARN,"unexpected error [aggregate_column_idx:%ld,org_column_idx:%ld,max_org_idx:%ld]", 
           i, agg_col->get_org_column_idx(),max_org_idx);
         err = OB_ERR_UNEXPECTED;
       }
       else
       {
-        ObObj &target_obj = aggregate_cells[aggregate_row_beg + agg_col->get_as_column_idx()].value_;
+        ObObj &target_obj = aggregate_cells[aggregate_row_beg + agg_col->get_as_column_idx()].value_; 
         err =  agg_col->calc_aggregate_val(target_obj,
           org_cells[org_row_beg + agg_col->get_org_column_idx()].value_);
         if (OB_SUCCESS != err)
@@ -1194,7 +1194,7 @@ int oceanbase::common::ObGroupByParam::serialize(char* buf, const int64_t buf_le
   if ((return_infos_.get_array_index() > 0 ) &&
     (return_infos_.get_array_index() != column_num_))
   {
-    TBSYS_LOG(WARN,"return info count not coincident with total columns [return_info_count:%ld, column_num_:%ld]",
+    TBSYS_LOG(WARN,"return info count not coincident with total columns [return_info_count:%ld, column_num_:%ld]", 
       return_infos_.get_array_index(), column_num_);
     err = OB_INVALID_ARGUMENT;
   }
@@ -1494,7 +1494,7 @@ int oceanbase::common::ObGroupByParam::deserialize_return_info(const char *buf, 
   ac_return_infos_.clear();
   cc_return_infos_.clear();
   int64_t gc_count = group_by_columns_.get_array_index();
-  for (int64_t i = 0;
+  for (int64_t i = 0; 
     (i < gc_count) && (OB_SUCCESS == err) && (pos < buf_len);
     i++)
   {
@@ -1521,7 +1521,7 @@ int oceanbase::common::ObGroupByParam::deserialize_return_info(const char *buf, 
   }
 
   int64_t rc_count = return_columns_.get_array_index();
-  for (int64_t i = 0;
+  for (int64_t i = 0; 
     (i < rc_count) && (OB_SUCCESS == err) && (pos < buf_len);
     i++)
   {
@@ -1548,7 +1548,7 @@ int oceanbase::common::ObGroupByParam::deserialize_return_info(const char *buf, 
   }
 
   int64_t ac_count = aggregate_columns_.get_array_index();
-  for (int64_t i = 0;
+  for (int64_t i = 0; 
     (i < ac_count) && (OB_SUCCESS == err) && (pos < buf_len);
     i++)
   {
@@ -1575,7 +1575,7 @@ int oceanbase::common::ObGroupByParam::deserialize_return_info(const char *buf, 
   }
 
   int64_t cc_count = groupby_comp_columns_.get_array_index();
-  for (int64_t i = 0;
+  for (int64_t i = 0; 
     (i < cc_count) && (OB_SUCCESS == err) && (pos < buf_len);
     i++)
   {
@@ -1675,7 +1675,7 @@ int oceanbase::common::ObGroupByParam::deserialize(const char* buf, const int64_
   ///   }
   /// }
   /// Compatible with old client
-  if ((OB_SUCCESS == err )
+  if ((OB_SUCCESS == err ) 
     && (return_infos_.get_array_index() == 0)
     && (column_num_ > 0))
   {
@@ -1714,7 +1714,7 @@ int oceanbase::common::ObGroupByParam::deserialize(const char* buf, const int64_
   }
   if (return_infos_.get_array_index() != column_num_)
   {
-    TBSYS_LOG(WARN,"return info count not coincident with total columns [return_info_count:%ld, column_num_:%ld]",
+    TBSYS_LOG(WARN,"return info count not coincident with total columns [return_info_count:%ld, column_num_:%ld]", 
       return_infos_.get_array_index(), column_num_);
     err = OB_INVALID_ARGUMENT;
   }
@@ -1727,7 +1727,7 @@ int64_t oceanbase::common::ObGroupByParam::get_serialize_size(void) const
   return serialize_helper(NULL, 0, pos);
 }
 
-int64_t oceanbase::common::ObGroupByParam::groupby_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const
+int64_t oceanbase::common::ObGroupByParam::groupby_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const 
 {
   int err = OB_SUCCESS;
   ObString str_val;
@@ -2016,7 +2016,7 @@ int64_t oceanbase::common::ObGroupByParam::comp_columns_get_serialize_size(void)
   return total_len;
 }
 
-int oceanbase::common::ObGroupByParam::return_info_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const
+int oceanbase::common::ObGroupByParam::return_info_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const 
 {
   int err = OB_SUCCESS;
   if (return_infos_.get_array_index() > 0)
@@ -2091,7 +2091,7 @@ int64_t oceanbase::common::ObGroupByParam::having_condition_get_serialize_size(v
   return total_size;
 }
 
-int64_t oceanbase::common::ObGroupByParam::serialize_helper(char* buf, const int64_t buf_len, int64_t& pos) const
+int64_t oceanbase::common::ObGroupByParam::serialize_helper(char* buf, const int64_t buf_len, int64_t& pos) const 
 {
   int err = OB_SUCCESS;
   ObString str_val;
@@ -2220,7 +2220,7 @@ int64_t oceanbase::common::ObGroupByParam::find_column(const oceanbase::common::
       find_column = true;
       break;
     }
-  }
+  } 
   for (uint32_t i = 0; !find_column && i < return_columns_.get_array_index();i ++, idx ++)
   {
     if (return_columns_.at(i)->column_name_ == column_name)
@@ -2294,17 +2294,17 @@ int  oceanbase::common::ObGroupByParam::get_aggregate_column_name(const int64_t 
     {
       column_name = return_columns_.at(c_idx - group_by_columns_.get_array_index())->column_name_;
     }
-    else if (c_idx < group_by_columns_.get_array_index() + return_columns_.get_array_index() +
+    else if (c_idx < group_by_columns_.get_array_index() + return_columns_.get_array_index() + 
       aggregate_columns_.get_array_index())
     {
-      column_name = aggregate_columns_.at(c_idx
-        - group_by_columns_.get_array_index()
+      column_name = aggregate_columns_.at(c_idx 
+        - group_by_columns_.get_array_index() 
         - return_columns_.get_array_index())->get_as_column_name();
     }
     else
     {
-      column_name = groupby_comp_columns_.at(c_idx
-        - group_by_columns_.get_array_index()
+      column_name = groupby_comp_columns_.at(c_idx 
+        - group_by_columns_.get_array_index() 
         - return_columns_.get_array_index()
         - aggregate_columns_.get_array_index())->get_as_column_name();
     }
@@ -2381,3 +2381,4 @@ int64_t ObGroupByParam::get_returned_column_num()
   }
   return counter;
 }
+

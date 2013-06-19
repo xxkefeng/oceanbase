@@ -9,6 +9,7 @@ data_dir = '/home/xiaojun.chengxj/ob1/data/'         # $data_dir/{1..10} should 
 ## comment line below if you want to provide custom schema and server conf template(see ob5's definition for another way)
 ## run: './deploy.py tpl.gensvrcfg' to generate a 'tpl' dir, edit tpl/rootserver.template... as you wish
 tpl = load_dir_vars('tpl.4x')  # template of config file such as rootserver.conf/updateserver.conf...
+#tpl.update(ups_cfg='total_memory_limit=10G,trans_thread_num=14,io_thread_count=4')
 
 ObCfg.all_hosts = '''10.232.36.29 10.232.36.30 10.232.36.31 10.232.23.18  10.232.36.33
  10.232.36.42 10.232.36.171 10.232.36.175 10.232.36.176 10.232.36.177'''.split()
@@ -16,11 +17,11 @@ ObCfg.all_hosts = '''10.232.36.29 10.232.36.30 10.232.36.31 10.232.23.18  10.232
 ObCfg.default_hosts = '10.232.23.17 '.split()
 
 # Use HostPool(2) to alloc 2 host from ObCfg.all_hosts, You need to call ob1.reconfigure to select host
-# ob1 = OBI(hosts=HostPool(2))
+# ob1 = OBI(tpl=dict((ups_cfg='disk_warn_threshold=100ms')), hosts=HostPool(2))
 ob1 = OBI(ct=CT('syschecker'))
 #ob1 = OBI(local_sstable_dir='./sstable')
 #ob2 = OBI('OBI_MASTER', max_sstable_size=4194304, masters = ObCfg.default_hosts[:2], ct=CT('bigquery', hosts = ObCfg.default_hosts[:1]))
-#ob3 = OBI('OBI_MASTER', masters = ObCfg.default_hosts[:1], ct=CT('syschecker', hosts = ObCfg.default_hosts[:1]))
+ob3 = OBI('OBI_MASTER', masters = ObCfg.default_hosts[:1], ct=CT('syschecker', hosts = ObCfg.default_hosts[:1]), tpl = dict(schema_template=read('syschecker/syschecker.schema')))
 mysql = {
 "ip" : "10.232.36.187",
 "port" : "3306",
@@ -28,6 +29,7 @@ mysql = {
 "pass" : "sqltest",
 "db" : ObCfg.usr.replace('.', '_')
 }
+ob6 = OBI(src='/home/qushan/oceanbase/branches/dev/oceanbase',tpl = dict(schema_template=read('ob_new_sql_test.schema')))
 #ob4 = OBI('OBI_MASTER', masters = ObCfg.default_hosts[:2], ct=CT('sqltest', mysql=mysql, hosts = ObCfg.default_hosts[:2]))
 
 # rpm21_url = 'http://upload.yum.corp.taobao.com/taobao/5/x86_64/test/oceanbase/oceanbase-0.2.1-655.el5.x86_64.rpm'
@@ -100,4 +102,3 @@ mysql = {
 #          tpl = load_dir_vars('tpl.3x'),  new_style_config='False',
 #          ct=CT('simple_client.31', write_type='mutator', write=100, write_size=20, hosts=HostsPool(1, '.*')))
 
-ob1=OBI()

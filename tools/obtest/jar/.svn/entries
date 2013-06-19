@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/obtest/jar
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/obtest/jar
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
+2013-06-19T09:27:09.000000Z
 80d7f24fa95ed3fb0bb5382f5ea71dda
 2013-02-21T11:28:32.335428Z
 12192

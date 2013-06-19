@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/9619/branches/dev/oceanbase/tests/sql/tablet_fuse_test_data
+END
+ups_scan.ini
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/9619/branches/dev/oceanbase/tests/sql/tablet_fuse_test_data/ups_scan.ini
+END
+sstable.ini
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/9408/branches/dev/oceanbase/tests/sql/tablet_fuse_test_data/sstable.ini
+END
+result.ini
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/9619/branches/dev/oceanbase/tests/sql/tablet_fuse_test_data/result.ini
+END

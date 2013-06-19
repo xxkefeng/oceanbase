@@ -60,7 +60,7 @@ namespace oceanbase
       {
         err = OB_INVALID_ARGUMENT;
       }
-      else if (NULL == (block_buf_ = (char*)ob_malloc(block_size, ObModIds::OB_UPS_DATA_BLOCK)))
+      else if (NULL == (block_buf_ = (char*)ob_malloc(block_size)))
       {
         err = OB_ALLOCATE_MEMORY_FAILED;
       }

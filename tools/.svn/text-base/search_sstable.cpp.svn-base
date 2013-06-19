@@ -96,7 +96,7 @@ int RowScanOp::open(const int64_t sstable_file_id, const int64_t sstable_version
       TBSYS_LOG(ERROR, "cannot find sstable with scan range: %s, sstable version: %ld",
           to_cstring(param.get_range()), sstable_version);
     }
-    else if (OB_SUCCESS != (ret = scanner_.set_scan_param(param, &scan_context_)))
+    else if (OB_SUCCESS != (ret = scanner_.set_scan_param(&param, &scan_context_)))
     {
       TBSYS_LOG(ERROR, "set_scan_param to scanner error, range: %s, sstable version: %ld",
           to_cstring(param.get_range()), sstable_version);
@@ -127,7 +127,7 @@ int RowScanOp::open(const int64_t sstable_file_id, const int64_t sstable_version
   return ret;
 }
 
-int RowScanOp::get_next_row(const ObRowkey* &row_key, const ObRow *&row_value)
+int RowScanOp::get_next_row(const ObRow *&row_value)
 {
   int ret = OB_SUCCESS;
   if (NULL == iterator_)
@@ -137,7 +137,7 @@ int RowScanOp::get_next_row(const ObRowkey* &row_key, const ObRow *&row_value)
   }
   else 
   {
-    ret = iterator_->get_next_row(row_key, row_value);
+    ret = iterator_->get_next_row(row_value);
   }
 
   return ret;
@@ -253,12 +253,9 @@ int CellScanOp::open(const int64_t sstable_file_id, const int64_t sstable_versio
   return ret;
 }
 
-int CellScanOp::get_next_row(const ObRowkey* &row_key, const ObRow *&row_value)
+int CellScanOp::get_next_row(const ObRow *&row_value)
 {
-  int ret = OB_SUCCESS;
-  ret = row_iter_.get_next_row(row_key, row_value);
-
-  return ret;
+  return row_iter_.get_next_row(row_value);
 }
 
 int scan_sstable_output_cell(const CmdLineParam &clp)
@@ -356,7 +353,7 @@ int parse_cmd(const char* cmd)
 void parse_cmd_line(int argc, char **argv, CmdLineParam &clp)
 {
   int opt = 0;
-  const char* opt_string = "p:s:a:v:t:r:g:c:neyqh";
+  const char* opt_string = "p:s:a:v:t:r:g:c:o:l:neyqh";
   const char* file_path = NULL;
 
   struct option longopts[] =
@@ -369,6 +366,8 @@ void parse_cmd_line(int argc, char **argv, CmdLineParam &clp)
     {"scan_range",1,NULL,'r'},
     {"get_rowkey",1,NULL,'g'},
     {"query_columns",1,NULL,'c'},
+    {"offset",1,NULL,'o'},
+    {"limit",1,NULL,'l'},
     {"disable_output",0,NULL,'n'},
     {"is_result_cached",0,NULL, 'e'},
     {"is_async_read",0,NULL, 'y'},
@@ -379,6 +378,8 @@ void parse_cmd_line(int argc, char **argv, CmdLineParam &clp)
 
   memset(&clp,0,sizeof(clp));
   clp.output = true;
+  clp.offset = 0;
+  clp.limit = INT64_MAX;
   //init clp
   while((opt = getopt_long(argc, argv, opt_string, longopts,NULL)) != -1)
   {
@@ -407,6 +408,12 @@ void parse_cmd_line(int argc, char **argv, CmdLineParam &clp)
         break;
       case 'c':
         clp.query_columns = optarg;
+        break;
+      case 'o':
+        clp.offset = atoi(optarg);
+        break;
+      case 'l':
+        clp.limit = atoi(optarg);
         break;
       case 'n':
         clp.output = false;

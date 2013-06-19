@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/obdatacopy
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/obdatacopy
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-05-22T14:08:34.000000Z
+2013-06-19T09:27:09.000000Z
 872f587778e77e7326685be20bada913
 2013-03-06T05:21:57.855401Z
 12375

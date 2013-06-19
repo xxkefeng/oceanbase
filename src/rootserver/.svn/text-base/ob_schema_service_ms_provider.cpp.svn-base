@@ -85,8 +85,13 @@ int ObSchemaServiceMsProvider::reset()
 
 int ObSchemaServiceMsProvider::get_ms(const ObScanParam &scan_param, const int64_t retry_num, ObServer &ms)
 {
-  int ret = OB_SUCCESS;
   UNUSED(scan_param);
+  return get_ms(retry_num, ms);
+}
+
+int ObSchemaServiceMsProvider::get_ms(const int64_t retry_num, ObServer &ms)
+{
+  int ret = OB_SUCCESS;
   if (0 < retry_num
       && 0 != ms.get_port()
       && 0 != ms.get_ipv4())

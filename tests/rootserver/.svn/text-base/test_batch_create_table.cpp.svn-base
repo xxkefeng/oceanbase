@@ -76,7 +76,7 @@ TEST(TestLog, log)
   }
 
   char* log_data = NULL;
-  log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::TEST));
+  log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
   if (log_data == NULL)
   {
     ret = OB_ALLOCATE_MEMORY_FAILED;

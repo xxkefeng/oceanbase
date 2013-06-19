@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_sql_read_strategy.h
+ * ob_sql_read_strategy.h 
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -52,14 +52,12 @@ namespace oceanbase
         int find_rowkeys_from_in_expr(ObArray<ObRowkey> &rowkey_array, common::PageArena<ObObj,common::ModulePageAllocator> &objs_allocator);
         int find_scan_range(ObNewRange &range, bool &found, bool single_row_only);
       public:
-        static const int32_t USE_METHOD_UNKNOWN = 0;
         static const int32_t USE_SCAN = 1;
         static const int32_t USE_GET = 2;
 
       private:
-        static const int64_t COMMON_FILTER_NUM = 8;
-        ObSEArray<ObSqlExpression, COMMON_FILTER_NUM> simple_in_filter_list_;
-        ObSEArray<ObSqlExpression, COMMON_FILTER_NUM> simple_cond_filter_list_;
+        ObArray<ObSqlExpression> simple_in_filter_list_;
+        ObArray<ObSqlExpression> simple_cond_filter_list_;
         const common::ObRowkeyInfo *rowkey_info_;
         common::ObObj start_key_objs_[OB_MAX_ROWKEY_COLUMN_NUMBER];
         common::ObObj end_key_objs_[OB_MAX_ROWKEY_COLUMN_NUMBER];
@@ -74,3 +72,5 @@ namespace oceanbase
 }
 
 #endif /* _OB_SQL_READ_STRATEGY_H */
+  
+

@@ -27,18 +27,18 @@ sleep 60;
 deploy ob1.source include/migrate.inc;
 
 deploy ob1.prepare;
+deploy ob1.start_check;
 # wait for slave ob create tablet
 sleep 120;
 
 deploy ob1.check_cs_sstable 200;
 deploy ob2.check_cs_sstable 200;
 
-deploy ob1.mysql alter system set tablet_replicas_num=3 server_type=rootserver;
+alter system set tablet_replicas_num=3 server_type=rootserver;
 deploy ob1.cs0.check_log_until_success "begin migrate_tablet";
 deploy ob1.cs0.restart;
 sleep 120;
-deploy ob1.start_check;
 deploy ob1.check_cs_sstable 600;
 deploy ob2.check_cs_sstable 600;
-sleep 30;
+
 deploy ob1.stop_check;

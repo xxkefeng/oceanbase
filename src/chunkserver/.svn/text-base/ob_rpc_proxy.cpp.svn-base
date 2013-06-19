@@ -43,8 +43,6 @@ namespace oceanbase
       cur_finger_print_ = 0;
       fail_count_threshold_ = 100;
       black_list_timeout_ = 60 * 1000 * 1000L;
-      fetch_schema_timestamp_ = 0;
-      schema_manager_ = NULL;
     }
 
     ObMergerRpcProxy::ObMergerRpcProxy(
@@ -61,8 +59,6 @@ namespace oceanbase
       cur_finger_print_ = 0;
       fail_count_threshold_ = 100;
       black_list_timeout_ = 60 * 1000 * 1000L;
-      fetch_schema_timestamp_ = 0;
-      schema_manager_ = NULL;
     }
 
     ObMergerRpcProxy::~ObMergerRpcProxy()
@@ -71,17 +67,17 @@ namespace oceanbase
 
     bool ObMergerRpcProxy::check_inner_stat(void) const
     {
-      return(init_ && (NULL != rpc_stub_) && (NULL != schema_manager_));
+      return(init_ && (NULL != rpc_stub_));
     }
 
     int ObMergerRpcProxy::init(
-        common::ObGeneralRpcStub * rpc_stub, ObSqlRpcStub * sql_rpc_stub, ObMergerSchemaManager * schema)
+        common::ObGeneralRpcStub * rpc_stub, ObSqlRpcStub * sql_rpc_stub)
     {
       int ret = OB_SUCCESS;
-      if ((NULL == rpc_stub) || (NULL == schema) || (NULL == sql_rpc_stub))
+      if ((NULL == rpc_stub) || (NULL == sql_rpc_stub))
       {
         TBSYS_LOG(WARN, "check schema or tablet cache failed:"
-            "rpc[%p], schema[%p], sql_rpc_stub[%p]", rpc_stub, schema, sql_rpc_stub);
+            "rpc[%p], sql_rpc_stub[%p]", rpc_stub, sql_rpc_stub);
         ret = OB_INPUT_PARAM_ERROR;
       }
       else if (true == init_)
@@ -93,7 +89,6 @@ namespace oceanbase
       {
         rpc_stub_ = rpc_stub;
         sql_rpc_stub_ = sql_rpc_stub;
-        schema_manager_ = schema;
         init_ = true;
       }
       return ret;
@@ -172,213 +167,6 @@ namespace oceanbase
           break;
         }
       }
-    }
-
-    int ObMergerRpcProxy::release_schema(const ObSchemaManagerV2 * manager)
-    {
-      int ret = OB_SUCCESS;
-      if (!check_inner_stat() || (NULL == manager))
-      {
-        TBSYS_LOG(WARN, "check inner stat failed");
-        ret = OB_ERROR;
-      }
-      else
-      {
-        ret = schema_manager_->release_schema(manager);
-        if (ret != OB_SUCCESS)
-        {
-          TBSYS_LOG(WARN, "release scheam failed:schema[%p], timestamp[%ld]",
-              manager, manager->get_version());
-        }
-      }
-      return ret;
-    }
-
-    int ObMergerRpcProxy::get_schema(const uint64_t table_id,
-        const int64_t timestamp, const ObSchemaManagerV2 ** manager)
-    {
-      int ret = OB_SUCCESS;
-      if (!check_inner_stat() || (NULL == manager))
-      {
-        TBSYS_LOG(WARN, "check inner stat failed");
-        ret = OB_ERROR;
-      }
-      else if (table_id <= 0 || table_id == OB_INVALID_ID)
-      {
-        TBSYS_LOG(WARN, "get schema error table id =%lu", table_id);
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else
-      {
-        switch (timestamp)
-        {
-        // local newest version
-        case LOCAL_NEWEST:
-          {
-            *manager = schema_manager_->get_schema(table_id);
-            if (NULL == *manager)
-            {
-              ret = get_new_schema(timestamp, manager);
-              TBSYS_LOG(INFO, "force get user schema, ts=%ld err=%d manager=%p", timestamp, ret, *manager);
-            }
-            break;
-          }
-        // get server new version with old timestamp
-        default:
-          {
-            ret = get_new_schema(timestamp, manager);
-          }
-        }
-        // check shema data
-        if ((ret != OB_SUCCESS) || (NULL == *manager))
-        {
-          TBSYS_LOG(DEBUG, "check get schema failed:schema[%p], version[%ld], ret[%d]",
-              *manager, timestamp, ret);
-        }
-      }
-      return ret;
-    }
-
-    int ObMergerRpcProxy::get_new_schema(const int64_t timestamp,
-                                         const ObSchemaManagerV2 ** manager)
-    {
-      int ret = OB_SUCCESS;
-      // check update timestamp LEAST_FETCH_SCHMEA_INTERVAL
-      if (tbsys::CTimeUtil::getTime() - fetch_schema_timestamp_ < LEAST_FETCH_SCHEMA_INTERVAL)
-      {
-        TBSYS_LOG(WARN, "check last fetch schema timestamp is too nearby:version[%ld]", timestamp);
-        ret = OB_OP_NOT_ALLOW;
-      }
-      else
-      {
-        int64_t new_version = 0;
-        ret = rpc_stub_->fetch_schema_version(rpc_timeout_, root_server_, new_version);
-        if (ret != OB_SUCCESS)
-        {
-          TBSYS_LOG(WARN, "fetch schema version from %s failed:ret[%d]", to_cstring(root_server_), ret);
-        }
-        else if (new_version <= timestamp)
-        {
-          TBSYS_LOG(DEBUG, "check local version not older than root version:local[%ld], root[%ld]",
-            timestamp, new_version);
-          ret = OB_NO_NEW_SCHEMA;
-        }
-        else
-        {
-          ret = fetch_new_schema(new_version, manager);
-          if (ret != OB_SUCCESS)
-          {
-            TBSYS_LOG(WARN, "fetch new schema failed:local[%ld], root[%ld], ret[%d]",
-              timestamp, new_version, ret);
-          }
-        }
-      }
-      return ret;
-    }
-
-    int ObMergerRpcProxy::fetch_new_schema(const int64_t timestamp,
-                                           const ObSchemaManagerV2 ** manager)
-    {
-      int ret = OB_SUCCESS;
-      if (NULL == manager)
-      {
-        TBSYS_LOG(WARN, "check shema manager param failed:manager[%p]", manager);
-        ret = OB_INPUT_PARAM_ERROR;
-      }
-      else
-      {
-        tbsys::CThreadGuard lock(&schema_lock_);
-        if (schema_manager_->get_latest_version() >= timestamp)
-        {
-          *manager = schema_manager_->get_user_schema(0);
-          if (NULL == *manager)
-          {
-            TBSYS_LOG(WARN, "get latest but local schema failed:schema[%p], latest[%ld]",
-              *manager, schema_manager_->get_latest_version());
-            ret = OB_INNER_STAT_ERROR;
-          }
-          else
-          {
-            TBSYS_LOG(DEBUG, "get new schema is fetched by other thread:schema[%p], latest[%ld]",
-              *manager, (*manager)->get_version());
-          }
-        }
-        else
-        {
-          char * temp = (char *)ob_malloc(sizeof(ObSchemaManagerV2),ObModIds::OB_MS_RPC);
-          if (NULL == temp)
-          {
-            TBSYS_LOG(ERROR, "check ob malloc failed");
-            ret = OB_ALLOCATE_MEMORY_FAILED;
-          }
-          else
-          {
-            ObSchemaManagerV2 * schema = new(temp) ObSchemaManagerV2;
-            if (NULL == schema)
-            {
-              TBSYS_LOG(ERROR, "check replacement new schema failed:schema[%p]", schema);
-              ret = OB_INNER_STAT_ERROR;
-            }
-            else
-            {
-              ret = rpc_stub_->fetch_schema(rpc_timeout_, root_server_, 0, false, *schema);
-              if (ret != OB_SUCCESS)
-              {
-                TBSYS_LOG(WARN, "rpc fetch schema failed:version[%ld], ret[%d]", timestamp, ret);
-              }
-              else
-              {
-                fetch_schema_timestamp_ = tbsys::CTimeUtil::getTime();
-                ret = schema_manager_->add_schema(*schema, manager);
-                // maybe failed because of timer thread fetch and add it already
-                if (OB_SUCCESS != ret)
-                {
-                  TBSYS_LOG(WARN, "add new schema failed:version[%ld], ret[%d]", schema->get_version(), ret);
-                  ret = OB_SUCCESS;
-                  *manager = schema_manager_->get_user_schema(0);
-                  if (NULL == *manager)
-                  {
-                    TBSYS_LOG(WARN, "get latest schema failed:schema[%p], latest[%ld]",
-                        *manager, schema_manager_->get_latest_version());
-                    ret = OB_INNER_STAT_ERROR;
-                  }
-                }
-                else
-                {
-                  TBSYS_LOG(DEBUG, "fetch and add new schema succ:version[%ld]", schema->get_version());
-                }
-              }
-            }
-            schema->~ObSchemaManagerV2();
-            ob_free(temp);
-            temp = NULL;
-          }
-        }
-      }
-      return ret;
-    }
-
-    int ObMergerRpcProxy::fetch_schema_version(int64_t & timestamp)
-    {
-      int ret = OB_SUCCESS;
-      if (!check_inner_stat())
-      {
-        TBSYS_LOG(WARN, "check inner stat failed");
-        ret = OB_INNER_STAT_ERROR;
-      }
-      else
-      {
-        ret = rpc_stub_->fetch_schema_version(rpc_timeout_, root_server_, timestamp);
-        if (ret != OB_SUCCESS)
-        {
-          TBSYS_LOG(WARN, "fetch schema version failed:ret[%d]", ret);
-        }
-        else
-        {
-          TBSYS_LOG(DEBUG, "fetch schema version succ:version[%ld]", timestamp);
-        }
-      }
-      return ret;
     }
 
     int ObMergerRpcProxy::get_frozen_time(
@@ -825,6 +613,7 @@ namespace oceanbase
           TBSYS_LOG(WARN, "get master update server failed:ret[%d]", ret);
           break;
         }
+        TBSYS_LOG(DEBUG, "[%ld]scan master ups: %s", i, to_cstring(update_server));
         ret = rpc_stub->scan((time_out > 0) ? time_out : rpc_timeout_, update_server, scan_param, scanner);
         if (OB_INVALID_START_VERSION == ret)
         {
@@ -935,6 +724,8 @@ namespace oceanbase
         {
           max_count = server_count;
           cur_index = ObReadUpsBalance::select_server(update_server_list_, server_type);
+          TBSYS_LOG(DEBUG, "update_server_list_=%s,server_type=%d,index=%d", 
+              to_cstring(update_server_list_), server_type, cur_index);
           if (cur_index < 0)
           {
             TBSYS_LOG(WARN, "select server failed:count[%d], index[%d]", server_count, cur_index);
@@ -971,8 +762,8 @@ namespace oceanbase
             }
             update_server = update_server_list_.ups_array_[i%server_count].get_server(server_type);
           }
-          TBSYS_LOG(DEBUG, "select slave update server for scan:index[%d], ip[%d], port[%d]",
-              i, update_server.get_ipv4(), update_server.get_port());
+          TBSYS_LOG(INFO, "select slave update server for scan:index[%d], ups:[%s]",
+              i, to_cstring(update_server));
           ret = rpc_stub->scan((time_out > 0) ? time_out : rpc_timeout_, update_server, scan_param, scanner);
           if (OB_INVALID_START_VERSION == ret)
           {
@@ -1046,16 +837,18 @@ namespace oceanbase
 
     int ObMergerRpcProxy::sql_ups_get(const common::ObGetParam & get_param,
                     common::ObNewScanner & scanner,
+                    common::ObServerType type,
                     const int64_t timeout /* = 0 */)
     {
-      return ups_get_(sql_rpc_stub_, get_param, scanner, common::MERGE_SERVER, timeout);
+      return ups_get_(sql_rpc_stub_, get_param, scanner, type, timeout);
     }
 
     int ObMergerRpcProxy::sql_ups_scan(const common::ObScanParam & scan_param,
                      common::ObNewScanner & scanner,
+                     common::ObServerType type,
                      const int64_t timeout /* = 0 */)
     {
-      return ups_scan_(sql_rpc_stub_, scan_param, scanner, common::MERGE_SERVER, timeout);
+      return ups_scan_(sql_rpc_stub_, scan_param, scanner, type, timeout);
     }
 
   } // end namespace chunkserver

@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/chunkserver/data
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tests/chunkserver/data
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-05-22T14:08:47.000000Z
+2013-06-19T09:27:14.000000Z
 a0e9343c64e70c9706d20ebdc9c548b2
 2011-04-15T08:01:32.952405Z
 4033

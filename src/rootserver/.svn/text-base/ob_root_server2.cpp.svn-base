@@ -39,7 +39,6 @@
 #include "ob_root_util.h"
 #include "ob_root_bootstrap.h"
 #include "ob_root_ms_provider.h"
-#include "ob_root_monitor_table.h"
 #include "ob_rs_trigger_event_util.h"
 #include "ob_root_ups_provider.h"
 #include "ob_root_ddl_operator.h"
@@ -66,6 +65,7 @@ namespace oceanbase
     const char* ROOT_1_IPV6_4 = "1_ipv6_4";
     const char* ROOT_1_IPV4   = "1_ipv4";
     const char* ROOT_1_TABLET_VERSION= "1_tablet_version";
+    const char* ROOT_1_TABLET_STATUS= "1_tablet_status";
 
     const char* ROOT_2_PORT =   "2_port";
     const char* ROOT_2_MS_PORT = "2_ms_port";
@@ -75,6 +75,7 @@ namespace oceanbase
     const char* ROOT_2_IPV6_4 = "2_ipv6_4";
     const char* ROOT_2_IPV4   = "2_ipv4";
     const char* ROOT_2_TABLET_VERSION= "2_tablet_version";
+    const char* ROOT_2_TABLET_STATUS= "2_tablet_status";
 
     const char* ROOT_3_PORT =   "3_port";
     const char* ROOT_3_MS_PORT = "3_ms_port";
@@ -84,6 +85,7 @@ namespace oceanbase
     const char* ROOT_3_IPV6_4 = "3_ipv6_4";
     const char* ROOT_3_IPV4   = "3_ipv4";
     const char* ROOT_3_TABLET_VERSION= "3_tablet_version";
+    const char* ROOT_3_TABLET_STATUS= "3_tablet_status";
 
     const char* ROOT_OCCUPY_SIZE = "occupy_size";
     const char* ROOT_RECORD_COUNT = "record_count";
@@ -96,73 +98,10 @@ namespace oceanbase
   }
 }
 
-ObBootState::ObBootState():state_(OB_BOOT_NO_META)
-{
-}
-
-void ObBootState::set_boot_ok()
-{
-  ObSpinLockGuard guard(lock_);
-  state_ = OB_BOOT_OK;
-}
-
-ObBootState::State ObBootState::get_boot_state() const
-{
-  return state_;
-}
-
-void ObBootState::set_boot_strap()
-{
-  ObSpinLockGuard guard(lock_);
-  state_ = OB_BOOT_STRAP;
-}
-
-void ObBootState::set_boot_recover()
-{
-  ObSpinLockGuard guard(lock_);
-  state_ = OB_BOOT_RECOVER;
-}
-
-bool ObBootState::can_boot_strap() const
-{
-  ObSpinLockGuard guard(lock_);
-  return OB_BOOT_NO_META == state_;
-}
-
-bool ObBootState::can_boot_recover() const
-{
-  ObSpinLockGuard guard(lock_);
-  return OB_BOOT_NO_META == state_;
-}
-
-const char* ObBootState::to_cstring() const
-{
-  ObSpinLockGuard guard(lock_);
-  const char* ret = "UNKNOWN";
-  switch(state_)
-  {
-    case OB_BOOT_NO_META:
-      ret = "BOOT_NO_META";
-      break;
-    case OB_BOOT_OK:
-      ret = "BOOT_OK";
-      break;
-    case OB_BOOT_STRAP:
-      ret = "BOOT_STRAP";
-      break;
-    case OB_BOOT_RECOVER:
-      ret = "BOOT_RECOVER";
-      break;
-    default:
-      break;
-  }
-  return ret;
-}
-
 ////////////////////////////////////////////////////////////////
 const char* ObRootServer2::ROOT_TABLE_EXT = "rtable";
 const char* ObRootServer2::CHUNKSERVER_LIST_EXT = "clist";
-
+const char* ObRootServer2::SCHEMA_FILE_NAME = "./schema_bypass.ini";
 ObRootServer2::ObRootServer2(ObRootServerConfig &config)
   : config_(config),
     worker_(NULL),
@@ -310,7 +249,10 @@ bool ObRootServer2::init(const int64_t now, ObRootWorker* worker)
     worker_ = worker;
     log_worker_ = worker_->get_log_manager()->get_log_worker();
     obi_role_.set_role(ObiRole::INIT); // init as init instance
+    operation_helper_.init(this, &config_, &worker_->get_rpc_stub(), &server_manager_);
     worker_->get_config_mgr().got_version(0);
+    timer_.init();
+    operation_helper_.init(this, &config_, &worker_->get_rpc_stub(), &server_manager_);
     schema_timestamp_ = 0;
     TBSYS_LOG(INFO, "init schema_version=%ld", schema_timestamp_);
     res = false;
@@ -420,6 +362,7 @@ bool ObRootServer2::init(const int64_t now, ObRootWorker* worker)
       ups_manager_->set_ups_config((int32_t)config_.read_master_master_ups_percent,
                                    (int32_t)config_.read_slave_master_ups_percent);
       config_.get_root_server(my_addr_);
+      monitor_table_.init(my_addr_, server_manager_, *ups_manager_);
       // init client helper
       client_helper_.init(worker_->get_client_manager(),
           worker_->get_thread_buffer(), worker_->get_rs_master(),
@@ -506,21 +449,13 @@ int ObRootServer2::start_master_rootserver()
     TBSYS_LOG(INFO, "rootserver alreay bootstrap, set boot ok.");
     boot_state_.set_boot_ok();
     request_cs_report_tablet();
-    // after restart master root server refresh the schema
-    static const int64_t RETRY_TIMES = 3;
-    for (int64_t i = 0; i < RETRY_TIMES; ++i)
+    ret = worker_->schedule_after_restart_task(1000000, false);
+    if (OB_SUCCESS != ret)
     {
-      ret = worker_->schedule_after_restart_task(1000000, false);
-      if (OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(ERROR, "fail to schedule after_restart task, ret=%d", ret);
-      }
-      else
-      {
-        break;
-      }
+      TBSYS_LOG(ERROR, "fail to schedule after_restart task, ret=%d", ret);
     }
   }
+
   privilege_timestamp_ = tbsys::CTimeUtil::getTime();
   TBSYS_LOG(INFO, "set privilege timestamp to %ld", privilege_timestamp_);
   return ret;
@@ -922,8 +857,8 @@ int ObRootServer2::after_restart()
   int err = ret;
   if (OB_SUCCESS != ret)
   {
-    TBSYS_LOG(WARN, "fail to renew user schema try again. err=%d", ret);
     static const int64_t RETRY_TIMES = 3;
+    TBSYS_LOG(WARN, "fail to renew user schema try again. err=%d", ret);
     for (int64_t i = 0; i < RETRY_TIMES; ++i)
     {
       ret = worker_->schedule_after_restart_task(1000000, false);
@@ -941,11 +876,13 @@ int ObRootServer2::after_restart()
   }
   else
   {
-    // renew schema version and config version succ
-    // start service right now
+    // renew schema version and config version
     worker_->get_config_mgr().got_version(tbsys::CTimeUtil::getTime());
     TBSYS_LOG(INFO, "after restart renew schema succ:count[%ld]", table_count);
     TBSYS_LOG(INFO, "[NOTICE] start service now");
+
+    //start building index if there are some index tables to build
+    start_build_index_if_necessary();
   }
   return ret;
 }
@@ -1057,29 +994,22 @@ int ObRootServer2::get_schema(const bool force_update, bool only_core_tables, Ob
       else
       {
         while (OB_SUCCESS == ret
-               && OB_SUCCESS == (ret = tables_id_name.next()))
+               && OB_SUCCESS == (ret = tables_id_name.get_next(&tid_name)))
         {
           TableSchema table_schema;
-          if (OB_SUCCESS != (ret = tables_id_name.get(&tid_name)))
+          if (OB_SUCCESS != (ret = schema_service_->get_table_schema(tid_name->table_name_, table_schema)))
           {
-            TBSYS_LOG(WARN, "failed to get next name, err=%d", ret);
+            TBSYS_LOG(WARN, "failed to get table schema, err=%d, table_name=%.*s", ret,
+                tid_name->table_name_.length(), tid_name->table_name_.ptr());
+            ret = OB_INNER_STAT_ERROR;
           }
           else
           {
-            if (OB_SUCCESS != (ret = schema_service_->get_table_schema(tid_name->table_name_, table_schema)))
-            {
-              TBSYS_LOG(WARN, "failed to get table schema, err=%d, table_name=%.*s", ret,
-                  tid_name->table_name_.length(), tid_name->table_name_.ptr());
-              ret = OB_INNER_STAT_ERROR;
-            }
-            else
-            {
-              // @todo DEBUG
-              table_schema_array.push_back(table_schema);
-              TBSYS_LOG(DEBUG, "get table schema add into shemaManager, tname=%.*s",
-                  tid_name->table_name_.length(), tid_name->table_name_.ptr());
-              ++table_count;
-            }
+            // @todo DEBUG
+            table_schema_array.push_back(table_schema);
+            TBSYS_LOG(DEBUG, "get table schema add into shemaManager, tname=%.*s",
+                tid_name->table_name_.length(), tid_name->table_name_.ptr());
+            ++table_count;
           }
         } // end while
         if (OB_ITER_END == ret)
@@ -1110,7 +1040,7 @@ int ObRootServer2::get_schema(const bool force_update, bool only_core_tables, Ob
             {
               TBSYS_LOG(WARN, "failed to sort columns in schema manager, err=%d", ret);
             }
-            else if (OB_SUCCESS != (ret = switch_schema_manager(out_schema)))
+            else if (OB_SUCCESS != (ret = switch_schema_manager(&out_schema)))
             {
               TBSYS_LOG(WARN, "fail to switch schema. ret=%d", ret);
             }
@@ -1145,17 +1075,18 @@ int64_t ObRootServer2::get_last_frozen_version() const
   return last_frozen_mem_version_;
 }
 
-int ObRootServer2::switch_schema_manager(const ObSchemaManagerV2 & schema_manager)
+int ObRootServer2::switch_schema_manager(ObSchemaManagerV2 *schema_manager)
 {
   int ret = OB_SUCCESS;
-  if (NULL == schema_manager_for_cache_)
+  if (NULL == schema_manager || NULL == schema_manager_for_cache_)
   {
     ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "invalid argument. schema_manager_for_cache_=%p", schema_manager_for_cache_);
+    TBSYS_LOG(WARN, "invalid argument. schema_manager_for_cache_=%p, schema_manager=%p",
+              schema_manager_for_cache_, schema_manager);
   }
-  else
+  if (OB_SUCCESS == ret)
   {
-    *schema_manager_for_cache_ = schema_manager;
+    *schema_manager_for_cache_ = *schema_manager;
   }
   return ret;
 }
@@ -1317,6 +1248,17 @@ void ObRootServer2::dump_root_table() const
   }
 }
 
+int ObRootServer2::dump_root_table(ObNewScanner &scanner) const
+{
+  tbsys::CRLockGuard guard(root_table_rwlock_);
+  TBSYS_LOG(INFO, "dump root table to scanner");
+  if (root_table_ != NULL)
+  {
+    root_table_->dump(scanner, get_server_manager());
+  }
+  return OB_SUCCESS;
+}
+
 bool ObRootServer2::check_root_table(const common::ObServer &expect_cs) const
 {
   bool err = false;
@@ -1424,7 +1366,7 @@ int ObRootServer2::try_create_new_table(int64_t frozen_version, const uint64_t t
   return err;
 }
 
-int ObRootServer2::create_table_tablets(const uint64_t table_id, const ObTabletInfoList & list)
+int ObRootServer2::create_table_tablets(const uint64_t table_id, const ObTabletInfoList & list, bool cs_create)
 {
   int err = OB_SUCCESS;
   int64_t version = -1;
@@ -1436,7 +1378,7 @@ int ObRootServer2::create_table_tablets(const uint64_t table_id, const ObTabletI
   {
     TBSYS_LOG(WARN, "fail get max tablet version. err=%d", err);
   }
-  else if (OB_SUCCESS != (err = create_tablet_with_range(version, list)))
+  else if (OB_SUCCESS != (err = create_tablet_with_range(version, list, cs_create)))
   {
     TBSYS_LOG(ERROR, "fail to create tablet. rt_version=%ld, err=%d", version, err);
   }
@@ -1471,7 +1413,6 @@ int ObRootServer2::check_tablets_legality(const common::ObTabletInfoList &tablet
     TBSYS_LOG(WARN, "tablets has zero tablet_info. tablets size = %ld", tablets.get_tablet_size());
     err = OB_INVALID_ARGUMENT;
   }
-  static char buff[OB_MAX_ROW_KEY_LENGTH * 2];
   if (OB_SUCCESS == err)
   {
     p_tablet_info = tablets.tablet_list.at(0);
@@ -1515,12 +1456,14 @@ int ObRootServer2::check_tablets_legality(const common::ObTabletInfoList &tablet
       else if (!p_tablet_info->range_.is_left_open_right_closed())
       {
         err = OB_INVALID_ARGUMENT;
-        TBSYS_LOG(WARN, "range not legal, should be left open right closed. range=%s", buff);
+        TBSYS_LOG(WARN, "range not legal, should be left open right closed. range=%s", 
+                  to_cstring(p_tablet_info->range_));
       }
       else if (p_tablet_info->range_.start_key_ == p_tablet_info->range_.end_key_)
       {
         err = OB_INVALID_ARGUMENT;
-        TBSYS_LOG(WARN, "range not legal, start_key = end_key; range=%s", buff);
+        TBSYS_LOG(WARN, "range not legal, start_key = end_key; range=%s", 
+                  to_cstring(p_tablet_info->range_));
       }
       else if (0 != p_tablet_info->range_.start_key_.compare(tablets.tablet_list.at(i - 1)->range_.end_key_))
       {
@@ -1667,7 +1610,7 @@ int ObRootServer2::split_table_range(const int64_t frozen_version, const uint64_
   return err;
 }
 
-int ObRootServer2::create_tablet_with_range(const int64_t frozen_version, const ObTabletInfoList& tablets)
+int ObRootServer2::create_tablet_with_range(const int64_t frozen_version, const ObTabletInfoList& tablets, bool cs_create)
 {
   int ret = OB_SUCCESS;
   int64_t index = tablets.tablet_list.get_array_index();
@@ -1722,7 +1665,7 @@ int ObRootServer2::create_tablet_with_range(const int64_t frozen_version, const 
         //通知cs建立tablet
         if (OB_SUCCESS != (ret =
                            create_empty_tablet_with_range(frozen_version, root_table_for_split,
-                                                          *p_table_info, create_count[i], server_index[i])))
+                                                          *p_table_info, create_count[i], server_index[i], cs_create)))
         {
           TBSYS_LOG(WARN, "fail to create tablet, ret =%d, range=%s", ret, to_cstring(p_table_info->range_));
         }
@@ -1774,7 +1717,7 @@ int ObRootServer2::create_tablet_with_range(const int64_t frozen_version, const 
 
 int ObRootServer2::create_empty_tablet_with_range(const int64_t frozen_version,
     ObRootTable2 *root_table, const common::ObTabletInfo &tablet,
-    int32_t& created_count, int* t_server_index)
+    int32_t& created_count, int* t_server_index, bool cs_create)
 {
   int ret = OB_SUCCESS;
   int32_t server_index[OB_SAFE_COPY_COUNT];
@@ -1812,10 +1755,14 @@ int ObRootServer2::create_empty_tablet_with_range(const int64_t frozen_version,
         ObServerStatus* server_status = server_manager_.get_server_status(server_index[i]);
         if (server_status != NULL)
         {
-          common::ObServer server = server_status->server_;
-          server.set_port(server_status->port_cs_);
-          int err = worker_->get_rpc_stub().create_tablet(server, tablet.range_, frozen_version,
-                                                          config_.network_timeout);
+          int err = OB_SUCCESS;
+          if (cs_create)
+          {
+            common::ObServer server = server_status->server_;
+            server.set_port(server_status->port_cs_);
+            err = worker_->get_rpc_stub().create_tablet(server, tablet.range_, frozen_version,
+                                                        config_.network_timeout);
+          }
           if (OB_SUCCESS != err && OB_ENTRY_EXIST != err)
           {
             TBSYS_LOG(WARN, "fail to create tablet replica, server=%d", server_index[i]);
@@ -1842,7 +1789,7 @@ int ObRootServer2::create_empty_tablet_with_range(const int64_t frozen_version,
       {
         sia.push_back(t_server_index[i]);
       }
-      ret = root_table->create_table(tablet, sia, frozen_version);
+      ret = root_table->create_table(tablet, sia, frozen_version, cs_create);
       if (OB_SUCCESS != ret)
       {
         TBSYS_LOG(WARN, "fail to create table.err=%d", ret);
@@ -1945,6 +1892,29 @@ void ObRootServer2::switch_root_table(ObRootTable2 *rt, ObTabletInfoManager *ti)
     }
     tablet_manager_ = ti;
   }
+}
+
+int ObRootServer2::replay_remove_replica(const common::ObTabletReportInfo &replica)
+{
+  int ret = OB_SUCCESS;
+  ObRootTable2::const_iterator start_it;
+  ObRootTable2::const_iterator end_it;
+  tbsys::CThreadGuard mutex_gard(&root_table_build_mutex_);
+  tbsys::CWLockGuard guard(root_table_rwlock_);
+  int find_ret = root_table_->find_range(replica.tablet_info_.range_, start_it, end_it);
+  if (OB_SUCCESS == find_ret && start_it == end_it)
+  {
+    for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
+    {
+      if (OB_INVALID_INDEX != start_it->server_info_indexes_[i]
+          && start_it->server_info_indexes_[i] == replica.tablet_location_.chunkserver_.get_port())
+      {
+        start_it->server_info_indexes_[i] = OB_INVALID_INDEX;
+        break;
+      }
+    }
+  }
+  return ret;
 }
 
 /*
@@ -2215,6 +2185,7 @@ int ObRootServer2::migrate_over(const ObNewRange& range, const common::ObServer&
     }
   }
 
+  nr_migrate_replica(range, tablet_version, src_server, dest_server, keep_src);
   return ret;
 }
 
@@ -2229,6 +2200,7 @@ int ObRootServer2::make_out_cell(ObCellInfo& out_cell, ObRootTable2::const_itera
   static ObString s_root_1_ipv6_4(static_cast<int32_t>(strlen(ROOT_1_IPV6_4)), static_cast<int32_t>(strlen(ROOT_1_IPV6_4)), (char*)ROOT_1_IPV6_4);
   static ObString s_root_1_ipv4(  static_cast<int32_t>(strlen(ROOT_1_IPV4)), static_cast<int32_t>(strlen(ROOT_1_IPV4)), (char*)ROOT_1_IPV4);
   static ObString s_root_1_tablet_version(static_cast<int32_t>(strlen(ROOT_1_TABLET_VERSION)), static_cast<int32_t>(strlen(ROOT_1_TABLET_VERSION)), (char*)ROOT_1_TABLET_VERSION);
+  static ObString s_root_1_tablet_status(static_cast<int32_t>(strlen(ROOT_1_TABLET_STATUS)), static_cast<int32_t>(strlen(ROOT_1_TABLET_STATUS)), (char*)ROOT_1_TABLET_STATUS);
 
   static ObString s_root_2_port(   static_cast<int32_t>(strlen(ROOT_2_PORT)),    static_cast<int32_t>(strlen(ROOT_2_PORT)),    (char*)ROOT_2_PORT);
   static ObString s_root_2_ms_port(static_cast<int32_t>(strlen(ROOT_2_MS_PORT)), static_cast<int32_t>(strlen(ROOT_2_MS_PORT)), (char*)ROOT_2_MS_PORT);
@@ -2238,6 +2210,7 @@ int ObRootServer2::make_out_cell(ObCellInfo& out_cell, ObRootTable2::const_itera
   static ObString s_root_2_ipv6_4( static_cast<int32_t>(strlen(ROOT_2_IPV6_4)),  static_cast<int32_t>(strlen(ROOT_2_IPV6_4)),  (char*)ROOT_2_IPV6_4);
   static ObString s_root_2_ipv4(   static_cast<int32_t>(strlen(ROOT_2_IPV4)),    static_cast<int32_t>(strlen(ROOT_2_IPV4)),    (char*)ROOT_2_IPV4);
   static ObString s_root_2_tablet_version(static_cast<int32_t>(strlen(ROOT_2_TABLET_VERSION)), static_cast<int32_t>(strlen(ROOT_2_TABLET_VERSION)), (char*)ROOT_2_TABLET_VERSION);
+  static ObString s_root_2_tablet_status(static_cast<int32_t>(strlen(ROOT_2_TABLET_STATUS)), static_cast<int32_t>(strlen(ROOT_2_TABLET_STATUS)), (char*)ROOT_2_TABLET_STATUS);
 
   static ObString s_root_3_port(   static_cast<int32_t>(strlen(ROOT_3_PORT)),    static_cast<int32_t>(strlen(ROOT_3_PORT)),    (char*)ROOT_3_PORT);
   static ObString s_root_3_ms_port(static_cast<int32_t>(strlen(ROOT_3_MS_PORT)), static_cast<int32_t>(strlen(ROOT_3_MS_PORT)), (char*)ROOT_3_MS_PORT);
@@ -2247,6 +2220,7 @@ int ObRootServer2::make_out_cell(ObCellInfo& out_cell, ObRootTable2::const_itera
   static ObString s_root_3_ipv6_4( static_cast<int32_t>(strlen(ROOT_3_IPV6_4)),  static_cast<int32_t>(strlen(ROOT_3_IPV6_4)),  (char*)ROOT_3_IPV6_4);
   static ObString s_root_3_ipv4(   static_cast<int32_t>(strlen(ROOT_3_IPV4)),    static_cast<int32_t>(strlen(ROOT_3_IPV4)),    (char*)ROOT_3_IPV4);
   static ObString s_root_3_tablet_version(static_cast<int32_t>(strlen(ROOT_3_TABLET_VERSION)), static_cast<int32_t>(strlen(ROOT_3_TABLET_VERSION)), (char*)ROOT_3_TABLET_VERSION);
+  static ObString s_root_3_tablet_status(static_cast<int32_t>(strlen(ROOT_3_TABLET_STATUS)), static_cast<int32_t>(strlen(ROOT_3_TABLET_STATUS)), (char*)ROOT_3_TABLET_STATUS);
 
   static ObString s_root_occupy_size (static_cast<int32_t>(strlen(ROOT_OCCUPY_SIZE)), static_cast<int32_t>(strlen(ROOT_OCCUPY_SIZE)), (char*)ROOT_OCCUPY_SIZE);
   static ObString s_root_record_count(static_cast<int32_t>(strlen(ROOT_RECORD_COUNT)), static_cast<int32_t>(strlen(ROOT_RECORD_COUNT)), (char*)ROOT_RECORD_COUNT);
@@ -2320,6 +2294,13 @@ int ObRootServer2::make_out_cell(ObCellInfo& out_cell, ObRootTable2::const_itera
       {
         break;
       }
+
+      out_cell.column_name_ = s_root_1_tablet_status;
+      out_cell.value_.set_int(it->tablet_status_[0]);
+      if (OB_SUCCESS != (ret = scanner.add_cell(out_cell)))
+      {
+        break;
+      }
     }
     if (it->server_info_indexes_[1] != OB_INVALID_INDEX &&
         (server_status = server_manager_.get_server_status(it->server_info_indexes_[1])) != NULL)
@@ -2351,6 +2332,13 @@ int ObRootServer2::make_out_cell(ObCellInfo& out_cell, ObRootTable2::const_itera
 
       out_cell.column_name_ = s_root_2_tablet_version;
       out_cell.value_.set_int(it->tablet_version_[1]);
+      if (OB_SUCCESS != (ret = scanner.add_cell(out_cell)))
+      {
+        break;
+      }
+
+      out_cell.column_name_ = s_root_2_tablet_status;
+      out_cell.value_.set_int(it->tablet_status_[1]);
       if (OB_SUCCESS != (ret = scanner.add_cell(out_cell)))
       {
         break;
@@ -2390,6 +2378,13 @@ int ObRootServer2::make_out_cell(ObCellInfo& out_cell, ObRootTable2::const_itera
       {
         break;
       }
+
+      out_cell.column_name_ = s_root_3_tablet_status;
+      out_cell.value_.set_int(it->tablet_status_[2]);
+      if (OB_SUCCESS != (ret = scanner.add_cell(out_cell)))
+      {
+        break;
+      }
     }
 
   } // end for each tablet
@@ -2409,8 +2404,33 @@ int ObRootServer2::find_monitor_table_key(const common::ObGetParam& get_param, c
   }
   else
   {
+    ret = monitor_table_.get(cell->row_key_, scanner);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "get scanner from monitor root table failed:table_id[%lu], ret[%d]",
+          cell->table_id_, ret);
+    }
+  }
+  return ret;
+}
+
+int ObRootServer2::find_rootserver_key(const common::ObGetParam& get_param, common::ObScanner& scanner)
+{
+  int ret = OB_SUCCESS;
+  const ObCellInfo* cell = NULL;
+
+  TBSYS_LOG(DEBUG, "find rootserver key");
+  if (NULL == (cell = get_param[0]))
+  {
+    TBSYS_LOG(WARN, "invalid get_param, cell_size=%ld", get_param.get_cell_size());
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else
+  {
+    common::ObServer rs_addr;
     ObRootMonitorTable monitor_table;
-    monitor_table.init(my_addr_, server_manager_, *ups_manager_);
+    config_.get_root_server(rs_addr);
+    monitor_table.init(rs_addr);
     ret = monitor_table.get(cell->row_key_, scanner);
     if (ret != OB_SUCCESS)
     {
@@ -2546,11 +2566,20 @@ int ObRootServer2::find_root_table_range(const common::ObScanParam& scan_param, 
   const ObString &table_name = scan_param.get_table_name();
   const ObNewRange &key_range = *scan_param.get_range();
   int32_t max_key_len = 0;
-  uint64_t table_id = 0;
-  int ret = get_table_info(table_name, table_id, max_key_len);
-  if (0 == table_id || OB_INVALID_ID == table_id)
+  uint64_t table_id = scan_param.get_table_id();
+  int ret = OB_SUCCESS;
+
+  //support find tablet ranage by table_id or table_name, table name first
+  if (NULL != table_name.ptr() && table_name.length() > 0
+      && OB_SUCCESS != (ret = get_table_info(table_name, table_id, max_key_len)))
   {
-    TBSYS_LOG(WARN,"table name are invaild:%s,%d",table_name.ptr(),table_name.length());
+    TBSYS_LOG(WARN, "failed to get table info from schema, ret=%d, table_name=%s",
+              ret, to_cstring(table_name));
+  }
+  else if (0 == table_id || OB_INVALID_ID == table_id)
+  {
+    TBSYS_LOG(WARN,"table name are invaild:%s,%d, table_id=%lu",
+              table_name.ptr(),table_name.length(), table_id);
     ret = OB_INVALID_ARGUMENT;
   }
   else if (scan_param.get_is_read_consistency() && obi_role_.get_role() != ObiRole::MASTER)
@@ -2601,16 +2630,21 @@ int ObRootServer2::waiting_job_done(const common::ObServer& server, const int64_
   int ret = OB_ENTRY_NOT_EXIST;
   UNUSED(frozen_mem_version);
   ObChunkServerManager::iterator it;
+  int64_t cs_index = get_server_index(server);
   tbsys::CWLockGuard guard(server_manager_rwlock_);
   it = server_manager_.find_by_ip(server);
   if (it != server_manager_.end())
   {
     TBSYS_LOG(INFO, "cs waiting_job_done, status=%d", it->status_);
-    if (is_master())
+    if (is_master() && !is_bypass_process())
     {
       log_worker_->cs_merge_over(server, frozen_mem_version);
     }
-    if (it->status_ == ObServerStatus::STATUS_REPORTING)
+    if (is_bypass_process() && !operation_helper_.is_build_index())
+    {
+      operation_helper_.waiting_job_done(static_cast<int32_t>(cs_index));
+    }
+    else if (it->status_ == ObServerStatus::STATUS_REPORTING)
     {
       it->status_ = ObServerStatus::STATUS_SERVING;
     }
@@ -2654,6 +2688,7 @@ int ObRootServer2::report_tablets(const ObServer& server, const ObTabletReportIn
     return_code = got_reported(tablets, server_index, frozen_mem_version);
     TBSYS_LOG_US(INFO, "got_reported over");
   }
+  nr_report_tablets(server, tablets);
   return return_code;
 }
 /*
@@ -2711,92 +2746,103 @@ int ObRootServer2::got_reported_for_query_table(const ObTabletReportInfoList& ta
   }
   else
   {
-    tbsys::CRLockGuard guard(root_table_rwlock_);
-    ObTabletReportInfo* p_table_info = NULL;
-    ObRootTable2::const_iterator first;
-    ObRootTable2::const_iterator last;
-    int64_t index = tablets.tablet_list_.get_array_index();
-    int find_ret = OB_SUCCESS;
-    common::ObTabletInfo* tablet_info = NULL;
-    int range_pos_type = ObRootTable2::POS_TYPE_ERROR;
-
-    for(have_done_index = 0; have_done_index < index; ++have_done_index)
+    if (state_.get_bypass_flag() && !operation_helper_.is_build_index())
     {
-      p_table_info = tablets.tablet_list_.at(have_done_index);
-      if (p_table_info != NULL)
+      ret = operation_helper_.report_tablets(tablets, server_index, frozen_mem_version);
+       if (OB_SUCCESS != ret)
+       {
+         TBSYS_LOG(WARN, "fail to do bypass report tablet. ret=%d", ret);
+       }
+    }
+    else
+    {
+      tbsys::CRLockGuard guard(root_table_rwlock_);
+      ObTabletReportInfo* p_table_info = NULL;
+      ObRootTable2::const_iterator first;
+      ObRootTable2::const_iterator last;
+      int64_t index = tablets.tablet_list_.get_array_index();
+      int find_ret = OB_SUCCESS;
+      common::ObTabletInfo* tablet_info = NULL;
+      int range_pos_type = ObRootTable2::POS_TYPE_ERROR;
+
+      for(have_done_index = 0; have_done_index < index; ++have_done_index)
       {
-        //TODO(maoqi) check the table of this tablet is exist in schema
-        //if (NULL == schema_manager_->get_table_schema(p_table_info->tablet_info_.range_.table_id_))
-        //  continue;
-        if (!p_table_info->tablet_info_.range_.is_left_open_right_closed())
+        p_table_info = tablets.tablet_list_.at(have_done_index);
+        if (p_table_info != NULL)
         {
-          TBSYS_LOG(WARN, "cs reported illegal tablet, server=%d range=%s", server_index, to_cstring(p_table_info->tablet_info_.range_));
-        }
-        else
-        {
-          TBSYS_LOG(DEBUG, "cs reported  tablet, server=%d range=%s", server_index, to_cstring(p_table_info->tablet_info_.range_));
-        }
-        tablet_info = NULL;
-        find_ret = root_table_->find_range(p_table_info->tablet_info_.range_, first, last);
-        TBSYS_LOG(DEBUG, "root_table_for_query_->find_range ret = %d", find_ret);
-        range_pos_type = ObRootTable2::POS_TYPE_ERROR;
-        if (OB_SUCCESS == find_ret)
-        {
-          tablet_info = root_table_->get_tablet_info(first);
-          if (NULL != tablet_info)
+          //TODO(maoqi) check the table of this tablet is exist in schema
+          //if (NULL == schema_manager_->get_table_schema(p_table_info->tablet_info_.range_.table_id_))
+          //  continue;
+          if (!p_table_info->tablet_info_.range_.is_left_open_right_closed())
           {
-            range_pos_type = root_table_->get_range_pos_type(p_table_info->tablet_info_.range_, first, last);
-            TBSYS_LOG(DEBUG, " range_pos_type = %d", range_pos_type);
+            TBSYS_LOG(WARN, "cs reported illegal tablet, server=%d range=%s", server_index, to_cstring(p_table_info->tablet_info_.range_));
           }
           else
           {
-            TBSYS_LOG(ERROR, "no tablet_info found");
+            TBSYS_LOG(DEBUG, "cs reported  tablet, server=%d range=%s", server_index, to_cstring(p_table_info->tablet_info_.range_));
           }
-        }
-        else if (OB_FIND_OUT_OF_RANGE == find_ret)
-        {
-          range_pos_type = ObRootTable2::POS_TYPE_ADD_RANGE;
-          need_add = true;
-          break;
-        }
-
-        if (range_pos_type == ObRootTable2::POS_TYPE_SPLIT_RANGE)
-        {
-          need_split = true;  //will create a new table to deal with the left
-          break;
-        }
-        else if (range_pos_type == ObRootTable2::POS_TYPE_ADD_RANGE)
-        {
-          need_add = true;
-          break;
-        }
-
-        if (NULL != tablet_info &&
-            (range_pos_type == ObRootTable2::POS_TYPE_SAME_RANGE || range_pos_type == ObRootTable2::POS_TYPE_MERGE_RANGE)
-           )
-        {
-          if (OB_SUCCESS != write_new_info_to_root_table(p_table_info->tablet_info_,
-                p_table_info->tablet_location_.tablet_version_, server_index, first, last, root_table_))
+          tablet_info = NULL;
+          find_ret = root_table_->find_range(p_table_info->tablet_info_.range_, first, last);
+          TBSYS_LOG(DEBUG, "root_table_for_query_->find_range ret = %d", find_ret);
+          range_pos_type = ObRootTable2::POS_TYPE_ERROR;
+          if (OB_SUCCESS == find_ret)
           {
-            TBSYS_LOG(ERROR, "write new tablet error");
-            set_daily_merge_tablet_error();
-            TBSYS_LOG(INFO, "%s", to_cstring(p_table_info->tablet_info_.range_));
-            //p_table_info->tablet_info_.range_.hex_dump(TBSYS_LOG_LEVEL_ERROR);
+            tablet_info = root_table_->get_tablet_info(first);
+            if (NULL != tablet_info)
+            {
+              range_pos_type = root_table_->get_range_pos_type(p_table_info->tablet_info_.range_, first, last);
+              TBSYS_LOG(DEBUG, " range_pos_type = %d", range_pos_type);
+            }
+            else
+            {
+              TBSYS_LOG(ERROR, "no tablet_info found");
+            }
+          }
+          else if (OB_FIND_OUT_OF_RANGE == find_ret)
+          {
+            range_pos_type = ObRootTable2::POS_TYPE_ADD_RANGE;
+            need_add = true;
+            break;
+          }
+
+          if (range_pos_type == ObRootTable2::POS_TYPE_SPLIT_RANGE)
+          {
+            need_split = true;  //will create a new table to deal with the left
+            break;
+          }
+          else if (range_pos_type == ObRootTable2::POS_TYPE_ADD_RANGE)
+          {
+            need_add = true;
+            break;
+          }
+
+          if (NULL != tablet_info &&
+              (range_pos_type == ObRootTable2::POS_TYPE_SAME_RANGE || range_pos_type == ObRootTable2::POS_TYPE_MERGE_RANGE)
+             )
+          {
+            if (OB_SUCCESS != write_new_info_to_root_table(p_table_info->tablet_info_,
+                  p_table_info->tablet_location_.tablet_version_, server_index, first, last, root_table_))
+            {
+              TBSYS_LOG(ERROR, "write new tablet error");
+              set_daily_merge_tablet_error();
+              TBSYS_LOG(INFO, "%s", to_cstring(p_table_info->tablet_info_.range_));
+              //p_table_info->tablet_info_.range_.hex_dump(TBSYS_LOG_LEVEL_ERROR);
+            }
+          }
+          else
+          {
+            TBSYS_LOG(WARN, "can not found range ignore this: tablet_info[%p], range_pos_type[%d] range:%s",
+                tablet_info, range_pos_type, to_cstring(p_table_info->tablet_info_.range_));
+            //p_table_info->tablet_info_.range_.hex_dump(TBSYS_LOG_LEVEL_INFO);
           }
         }
         else
         {
-          TBSYS_LOG(WARN, "can not found range ignore this: tablet_info[%p], range_pos_type[%d] range:%s",
-              tablet_info, range_pos_type, to_cstring(p_table_info->tablet_info_.range_));
-          //p_table_info->tablet_info_.range_.hex_dump(TBSYS_LOG_LEVEL_INFO);
+          TBSYS_LOG(WARN, "null tablet report info in tablet report list, have_done_index[%ld]", have_done_index);
         }
       }
-      else
-      {
-        TBSYS_LOG(WARN, "null tablet report info in tablet report list, have_done_index[%ld]", have_done_index);
-      }
-    }
-  } //end else, release lock
+    } //end else, release lock
+  }
   if (need_split || need_add)
   {
     TBSYS_LOG(INFO, "update ranges: server=%d", server_index);
@@ -3028,6 +3074,8 @@ int ObRootServer2::write_new_info_to_root_table(
         //over write
         atomic_exchange((uint32_t*) &(it->server_info_indexes_[found_it_index]), server_index);
         atomic_exchange((uint64_t*) &(it->tablet_version_[found_it_index]), tablet_version);
+        //CS only report available tablet
+        atomic_exchange((uint32_t*) &(it->tablet_status_[found_it_index]), common::TABLET_AVAILABLE);
         if (p_tablet_write != NULL)
         {
           atomic_exchange((uint64_t*) &(p_tablet_write->row_count_), tablet_info.row_count_);
@@ -3145,112 +3193,6 @@ int ObRootServer2::slave_batch_create_new_table(const common::ObTabletInfoList& 
   return ret;
 }
 
-// just for replay root server remove rplica commit log
-int ObRootServer2::remove_replica(const bool did_replay, const common::ObTabletReportInfo &replica)
-{
-  int ret = OB_SUCCESS;
-  UNUSED(did_replay);
-  ObRootTable2::const_iterator start_it;
-  ObRootTable2::const_iterator end_it;
-  tbsys::CThreadGuard mutex_gard(&root_table_build_mutex_);
-  tbsys::CWLockGuard guard(root_table_rwlock_);
-  int find_ret = root_table_->find_range(replica.tablet_info_.range_, start_it, end_it);
-  if (OB_SUCCESS == find_ret && start_it == end_it)
-  {
-    for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
-    {
-      if (OB_INVALID_INDEX != start_it->server_info_indexes_[i]
-          && start_it->server_info_indexes_[i] == replica.tablet_location_.chunkserver_.get_port())
-      {
-        start_it->server_info_indexes_[i] = OB_INVALID_INDEX;
-        break;
-      }
-    }
-  }
-  return ret;
-}
-
-// delete the replicas that chunk server remove automaticly when daily merge failed
-int ObRootServer2::delete_replicas(const bool did_replay, const common::ObServer & cs, const common::ObTabletReportInfoList & replicas)
-{
-  int ret = OB_SUCCESS;
-  ObRootTable2::const_iterator start_it;
-  ObRootTable2::const_iterator end_it;
-  // step 1. find server index for delete replicas
-  int32_t server_index = get_server_index(cs);
-  if (OB_INVALID_INDEX == server_index)
-  {
-    ret = OB_ERROR;
-    TBSYS_LOG(WARN, "get server index failed:server[%s], ret[%d]", cs.to_cstring(), server_index);
-  }
-  else
-  {
-    common::ObTabletReportInfo * replica = NULL;
-    tbsys::CThreadGuard mutex_gard(&root_table_build_mutex_);
-    tbsys::CWLockGuard guard(root_table_rwlock_);
-    // step 1. modify root table delete replicas
-    for (int64_t i = 0; i < replicas.tablet_list_.get_array_index(); ++i)
-    {
-      replica = replicas.tablet_list_.at(i);
-      if (NULL == replica)
-      {
-        ret = OB_INVALID_ARGUMENT;
-        TBSYS_LOG(WARN, "check replica is null");
-        break;
-      }
-      int find_ret = root_table_->find_range(replica->tablet_info_.range_, start_it, end_it);
-      if (OB_SUCCESS == find_ret && start_it == end_it)
-      {
-        int64_t replica_count = 0;
-        int64_t find_index = OB_INVALID_INDEX;
-        for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
-        {
-          if (start_it->server_info_indexes_[i] != OB_INVALID_INDEX)
-          {
-            ++replica_count;
-            if (server_index == start_it->server_info_indexes_[i])
-            {
-              find_index = i;
-            }
-          }
-        }
-        // find the server
-        if (find_index != OB_INVALID_INDEX)
-        {
-          if (replica_count > 1)
-          {
-            start_it->server_info_indexes_[find_index] = OB_INVALID_INDEX;
-          }
-          else
-          {
-            ret = OB_ERROR;
-            TBSYS_LOG(ERROR, "can not remove this replica not safe:index[%d], server[%s]",
-                server_index, cs.to_cstring());
-          }
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "not find this server in service this tablet:index[%d], server[%s]",
-              server_index, cs.to_cstring());
-        }
-      }
-      else
-      {
-        TBSYS_LOG(WARN, "not find the tablet replica:range[%s]", to_cstring(replica->tablet_info_.range_));
-      }
-    }
-  }
-  // step 2. write commit log if not replay
-  if ((OB_SUCCESS == ret) && (false == did_replay))
-  {
-    if (OB_SUCCESS != (ret = log_worker_->delete_replicas(cs, replicas)))
-    {
-      TBSYS_LOG(WARN, "log_worker remove tablet replicas failed. err=%d", ret);
-    }
-  }
-  return ret;
-}
-
 // @pre root_table_build_mutex_ locked
 // @note Do not remove tablet entries in tablet_manager_ for now.
 int ObRootServer2::delete_tables(const bool did_replay, const common::ObArray<uint64_t> &deleted_tables)
@@ -3296,6 +3238,7 @@ int ObRootServer2::delete_tables(const bool did_replay, const common::ObArray<ui
   {
     OB_DELETE(ObRootTable2, ObModIds::OB_RS_ROOT_TABLE, rt1);
   }
+  nr_remove_tables(deleted_tables);
   return ret;
 }
 
@@ -3509,6 +3452,7 @@ int ObRootServer2::create_empty_tablet(TableSchema &tschema, ObArray<ObServer> &
           TBSYS_LOG(WARN, "create new table failed:table[%lu], ret[%d]", tablet.range_.table_id_, ret);
         }
       }
+      nr_new_table(tablet.range_.table_id_, tschema.create_mem_version_, created_cs);
     }
     if (OB_ENTRY_EXIST == ret)
     {
@@ -3757,7 +3701,7 @@ int ObRootServer2::create_table(bool if_not_exists, const common::TableSchema &t
   }
   if (!tschema.is_valid())
   {
-    TBSYS_LOG(WARN, "table schmea is invalid:table_name[%s]", tschema.table_name_);
+    TBSYS_LOG(WARN, "table schema is invalid:table_name[%s]", tschema.table_name_);
     ret = OB_INVALID_ARGUMENT;
   }
   else
@@ -4008,20 +3952,27 @@ int ObRootServer2::get_master_ups(ObServer &ups_addr, bool use_inner_port)
   return ret;
 }
 
-ObServer ObRootServer2::get_update_server_info(bool use_inner_port) const
+int ObRootServer2::get_update_server_info(bool use_inner_port, ObServer &server) const
 {
-  ObServer server;
+  int ret = OB_SUCCESS;
   ObUps ups_master;
   if (NULL != ups_manager_)
   {
-    ups_manager_->get_ups_master(ups_master);
-    server = ups_master.addr_;
-    if (use_inner_port)
+    ret = ups_manager_->get_ups_master(ups_master);
+    if (OB_SUCCESS == ret)
     {
-      server.set_port(ups_master.inner_port_);
+      server = ups_master.addr_;
+      if (use_inner_port)
+      {
+        server.set_port(ups_master.inner_port_);
+      }
+    }
+    else
+    {
+      TBSYS_LOG(WARN, "no ups master[%d]", ret);
     }
   }
-  return server;
+  return ret;
 }
 
 int ObRootServer2::get_table_info(const common::ObString& table_name, uint64_t& table_id, int32_t& max_row_key_length)
@@ -4200,15 +4151,16 @@ int ObRootServer2::receive_new_frozen_version(const int64_t rt_version, const in
 bool ObRootServer2::check_all_tablet_merged(void) const
 {
   bool ret = false;
+  int64_t cs_heartbeat_frozen_version = get_frozen_version_for_cs_heartbeat();
   // root table is valid
-  int err = check_tablet_version(last_frozen_mem_version_, ret);
+  int err = check_tablet_version(cs_heartbeat_frozen_version, ret);
   if (err != OB_SUCCESS)
   {
-    TBSYS_LOG(WARN, "check tablet merged failed:version[%ld], ret[%d]", last_frozen_mem_version_, err);
+    TBSYS_LOG(WARN, "check tablet merged failed:version[%ld], ret[%d]", cs_heartbeat_frozen_version, err);
   }
   else if (true == ret)
   {
-    TBSYS_LOG(TRACE, "check tablet merged succ:version[%ld]", last_frozen_mem_version_);
+    TBSYS_LOG(TRACE, "check tablet merged succ:version[%ld]", cs_heartbeat_frozen_version);
     tbsys::CRLockGuard guard(root_table_rwlock_);
     if (root_table_ != NULL)
     {
@@ -4219,7 +4171,7 @@ bool ObRootServer2::check_all_tablet_merged(void) const
       }
       else
       {
-        TBSYS_LOG(INFO, "check tablet merged succ:version[%ld], result[%d]", last_frozen_mem_version_, ret);
+        TBSYS_LOG(INFO, "check tablet merged succ:version[%ld], result[%d]", cs_heartbeat_frozen_version, ret);
       }
     }
   }
@@ -4230,7 +4182,7 @@ int ObRootServer2::report_frozen_memtable(const int64_t frozen_version, const in
 {
   int ret = OB_SUCCESS;
   tbsys::CThreadGuard mutex_guard(&frozen_version_mutex_);
-  if ( frozen_version < 0 || frozen_version < last_frozen_mem_version_)
+  if (frozen_version < 0 || frozen_version < last_frozen_mem_version_)
   {
     TBSYS_LOG(WARN, "invalid froze_version, version=%ld last_frozen_version=%ld",
         frozen_version, last_frozen_mem_version_);
@@ -4241,7 +4193,7 @@ int ObRootServer2::report_frozen_memtable(const int64_t frozen_version, const in
     if (!did_replay && is_master() && (!check_all_tablet_merged()))
     {
       TBSYS_LOG(WARN, "merge is too slow, last_version=%ld curr_version=%ld",
-          last_frozen_mem_version_, frozen_version); //just warn
+          last_frozen_mem_version_, frozen_version);
     }
   }
 
@@ -4273,7 +4225,8 @@ int ObRootServer2::get_last_frozen_version_from_ups(const bool did_replay)
 {
   int64_t frozen_version = -1;
   int ret = OB_SUCCESS;
-  ObServer ups = get_update_server_info(false);
+  ObServer ups;
+  ret = get_update_server_info(false, ups);
   if (0 == ups.get_ipv4())
   {
     TBSYS_LOG(INFO, "no ups right now, sleep for next round");
@@ -5042,6 +4995,254 @@ int ObRootServer2::cs_import_tablets(const uint64_t table_id, const int64_t tabl
   return ret;
 }
 
+int ObRootServer2::nr_report_tablets(const ObServer& cs, const ObTabletReportInfoList& tablets)
+{
+  int ret = OB_SUCCESS;
+  if (config_.enable_new_root_table)
+  {
+    if (is_master())
+    {
+      if (NULL == rt_service_)
+      {
+        TBSYS_LOG(ERROR, "root_table_service not init");
+      }
+      else
+      {
+        ObServer ups;
+        ret = get_update_server_info(false, ups);
+        if (OB_SUCCESS == ret)
+        {
+          ObRootMsProvider ms_provider(server_manager_);
+          ObRootUpsProvider ups_provider(ups);
+          ObScanHelperImpl scan_helper;
+          scan_helper.set_ms_provider(&ms_provider);
+          scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
+          scan_helper.set_ups_provider(&ups_provider);
+          scan_helper.set_scan_timeout(config_.network_timeout);
+          scan_helper.set_mutate_timeout(config_.network_timeout);
+          tbsys::CThreadGuard guard(&rt_service_wmutex_);
+          if (OB_SUCCESS != (ret = rt_service_->report_tablets(scan_helper, cs, tablets)))
+          {
+            TBSYS_LOG(WARN, "report tablets failed, err=%d", ret);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "cannot get master ups[%d]", ret);
+        }
+      }
+    }
+  } // end if enable
+  return ret;
+}
+
+int ObRootServer2::nr_remove_replicas(const ObServer &cs)
+{
+  int ret = OB_SUCCESS;
+  if (config_.enable_new_root_table)
+  {
+    if (is_master())
+    {
+      if (NULL == rt_service_)
+      {
+        TBSYS_LOG(ERROR, "root_table_service not init");
+      }
+      else
+      {
+        ObServer ups;
+        ret = get_update_server_info(false, ups);
+        if (OB_SUCCESS == ret)
+        {
+          ObRootMsProvider ms_provider(server_manager_);
+          ObRootUpsProvider ups_provider(ups);
+          ObScanHelperImpl scan_helper;
+          scan_helper.set_ms_provider(&ms_provider);
+          scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
+          scan_helper.set_ups_provider(&ups_provider);
+          scan_helper.set_scan_timeout(config_.network_timeout);
+          scan_helper.set_mutate_timeout(config_.network_timeout);
+          tbsys::CThreadGuard guard(&rt_service_wmutex_);
+          if (OB_SUCCESS != (ret = rt_service_->remove_replicas(scan_helper, cs)))
+          {
+            TBSYS_LOG(WARN, "remove replicas failed, err=%d", ret);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "cannot get master ups[%d]", ret);
+        }
+      }
+    }
+  } // end if enable
+  return ret;
+}
+
+int ObRootServer2::nr_migrate_replica(const ObNewRange &tab, const int64_t version,
+                                      const ObServer &from, const ObServer &to, bool keep_src)
+{
+  int ret = OB_SUCCESS;
+  if (config_.enable_new_root_table)
+  {
+    if (is_master())
+    {
+      if (NULL == rt_service_)
+      {
+        TBSYS_LOG(ERROR, "root_table_service not init");
+      }
+      else
+      {
+        ObServer ups;
+        ret = get_update_server_info(false, ups);
+        if (OB_SUCCESS == ret)
+        {
+          ObRootMsProvider ms_provider(server_manager_);
+          ObRootUpsProvider ups_provider(ups);
+          ObScanHelperImpl scan_helper;
+          scan_helper.set_ms_provider(&ms_provider);
+          scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
+          scan_helper.set_ups_provider(&ups_provider);
+          scan_helper.set_scan_timeout(config_.network_timeout);
+          scan_helper.set_mutate_timeout(config_.network_timeout);
+
+          tbsys::CThreadGuard guard(&rt_service_wmutex_);
+          if (OB_SUCCESS != (ret = rt_service_->migrate_replica(scan_helper, tab, version, from, to, keep_src)))
+          {
+            TBSYS_LOG(WARN, "migrate replica failed, err=%d", ret);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "cannot get master ups[%d]", ret);
+        }
+      }
+    }
+  } // end if enable
+  return ret;
+}
+
+int ObRootServer2::nr_remove_tables(const ObArray<uint64_t> &tables)
+{
+  int ret = OB_SUCCESS;
+  if (config_.enable_new_root_table)
+  {
+    if (is_master())
+    {
+      if (NULL == rt_service_)
+      {
+        TBSYS_LOG(ERROR, "root_table_service not init");
+      }
+      else
+      {
+        ObServer ups;
+        ret = get_update_server_info(false, ups);
+        if (OB_SUCCESS == ret)
+        {
+          ObRootMsProvider ms_provider(server_manager_);
+          ObRootUpsProvider ups_provider(ups);
+          ObScanHelperImpl scan_helper;
+          scan_helper.set_ms_provider(&ms_provider);
+          scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
+          scan_helper.set_ups_provider(&ups_provider);
+          scan_helper.set_scan_timeout(config_.network_timeout);
+          scan_helper.set_mutate_timeout(config_.network_timeout);
+          tbsys::CThreadGuard guard(&rt_service_wmutex_);
+          if (OB_SUCCESS != (ret = rt_service_->remove_tables(scan_helper, tables)))
+          {
+            TBSYS_LOG(WARN, "remove tables failed, err=%d", ret);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "cannot get master ups[%d]", ret);
+        }
+      }
+    }
+  } // end if enable
+  return ret;
+}
+
+int ObRootServer2::nr_search_range(const ObNewRange& range, ObScanner& scanner) const
+{
+  int ret = OB_SUCCESS;
+  if (config_.enable_new_root_table)
+  {
+    if (is_master())
+    {
+      if (NULL == rt_service_)
+      {
+        TBSYS_LOG(ERROR, "root_table_service not init");
+      }
+      else
+      {
+        ObServer ups;
+        ret = get_update_server_info(false, ups);
+        if (OB_SUCCESS == ret)
+        {
+          ObRootMsProvider ms_provider(server_manager_);
+          ObRootUpsProvider ups_provider(ups);
+          ObScanHelperImpl scan_helper;
+          scan_helper.set_ms_provider(&ms_provider);
+          scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
+          scan_helper.set_ups_provider(&ups_provider);
+          scan_helper.set_scan_timeout(config_.network_timeout);
+          scan_helper.set_mutate_timeout(config_.network_timeout);
+          tbsys::CThreadGuard guard(&rt_service_wmutex_);
+          if (OB_SUCCESS != (ret = rt_service_->search_range(scan_helper, range, scanner)))
+          {
+            TBSYS_LOG(WARN, "search range failed, err=%d", ret);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "cannot get master ups[%d]", ret);
+        }
+      }
+    }
+  } // end if enable
+  return ret;
+}
+
+int ObRootServer2::nr_new_table(const uint64_t tid, const int64_t tablet_version, const ObArray<ObServer> &chunkservers)
+{
+  int ret = OB_SUCCESS;
+  if (config_.enable_new_root_table)
+  {
+    if (is_master())
+    {
+      if (NULL == rt_service_)
+      {
+        TBSYS_LOG(ERROR, "root_table_service not init");
+      }
+      else
+      {
+        ObServer ups;
+        ret = get_update_server_info(false, ups);
+        if (OB_SUCCESS == ret)
+        {
+          ObRootMsProvider ms_provider(server_manager_);
+          ObRootUpsProvider ups_provider(ups);
+          ObScanHelperImpl scan_helper;
+          scan_helper.set_ms_provider(&ms_provider);
+          scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
+          scan_helper.set_ups_provider(&ups_provider);
+          scan_helper.set_scan_timeout(config_.network_timeout);
+          scan_helper.set_mutate_timeout(config_.network_timeout);
+          tbsys::CThreadGuard guard(&rt_service_wmutex_);
+          if (OB_SUCCESS != (ret = rt_service_->new_table(scan_helper, tid, tablet_version, chunkservers)))
+          {
+            TBSYS_LOG(WARN, "new table failed, err=%d", ret);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "cannot get master ups[%d]", ret);
+        }
+      }
+    }
+  } // end if enable
+  return ret;
+}
+
 bool ObRootServer2::is_master() const
 {
   return worker_->get_role_manager()->is_master();
@@ -5173,5 +5374,810 @@ int ObRootServer2::force_sync_schema_all_servers(const ObSchemaManagerV2 &schema
       }
     } //end for
   } //end if master
+  return ret;
+}
+//for bypass
+int ObRootServer2::prepare_bypass_process(common::ObBypassTaskInfo &table_name_id)
+{
+  int ret = OB_SUCCESS;
+  tbsys::CWLockGuard guard(schema_manager_rwlock_);
+  uint64_t max_table_id = schema_manager_for_cache_->get_max_table_id();
+  ret = get_new_table_id(max_table_id, table_name_id);
+  if (OB_SUCCESS != ret)
+  {
+    TBSYS_LOG(WARN, "fail to prepare for bypass");
+  }
+  else
+  {
+    ddl_tool_.update_max_table_id(max_table_id);
+    int64_t count = 0;
+    if (OB_SUCCESS != (ret = refresh_new_schema(count)))
+    {
+      TBSYS_LOG(WARN, "refresh new schema manager after modify table_id failed. err=%d", ret);
+    }
+    else
+    {
+      if (OB_SUCCESS != (ret = notify_switch_schema(false)))
+      {
+        TBSYS_LOG(WARN, "switch schema fail:ret[%d]", ret);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "notify switch schema after modify table_id");
+        schema_manager_for_cache_->write_to_file(SCHEMA_FILE_NAME);
+      }
+    }
+  }
+  return ret;
+}
+
+int ObRootServer2:: get_new_table_id(uint64_t &max_table_id, ObBypassTaskInfo &table_name_id)
+{
+  int ret = OB_SUCCESS;
+  if (table_name_id.count() <= 0)
+  {
+    TBSYS_LOG(WARN, "invalid argument. table_name_id.count=%ld", table_name_id.count());
+    ret = OB_INVALID_ARGUMENT;
+  }
+  if (OB_SUCCESS == ret)
+  {
+    for (int64_t i = 0; i < table_name_id.count(); i++)
+    {
+      table_name_id.at(i).second = ++max_table_id;
+    }
+  }
+  return ret;
+}
+int ObRootServer2::clean_root_table()
+{
+  int ret = OB_SUCCESS;
+  ObBypassTaskInfo table_name_id;
+  table_name_id.set_operation_type(CLEAN_ROOT_TABLE);
+  ret = start_bypass_process(table_name_id);
+  if (OB_SUCCESS != ret)
+  {
+    TBSYS_LOG(WARN, "fail to start clean roottable. ret=%d", ret);
+  }
+  return ret;
+}
+int ObRootServer2::start_bypass_process(ObBypassTaskInfo &table_name_id)
+{
+  int ret = OB_SUCCESS;
+  int64_t cs_heartbeat_frozen_version = get_frozen_version_for_cs_heartbeat();
+  //check rs stat
+  if (!check_all_tablet_merged())
+  {
+    TBSYS_LOG(WARN, "rootserer refuse to do bypass process. state=%s", state_.get_state_str());
+    ret = OB_RS_STATE_NOT_ALLOW;
+  }
+  //保证导入汇报的过程中串行进行
+  if (OB_SUCCESS == ret)
+  {
+    if (is_bypass_process())
+    {
+      ret = OB_EAGAIN;
+      TBSYS_LOG(WARN, "already have some bypass task doing. retry later.");
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "bypass process start.");
+      state_.set_bypass_flag(true);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    tbsys::CWLockGuard guard(schema_manager_rwlock_);
+    ret = operation_helper_.start_operation(schema_manager_for_cache_, table_name_id, cs_heartbeat_frozen_version);
+    if (OB_SUCCESS != ret)
+    {
+      state_.set_bypass_flag(false);
+      TBSYS_LOG(WARN, "fail to start bypass process. ,set bypass flag false.ret=%d", ret);
+    }
+    else
+    {
+      TBSYS_LOG(TRACE, "operation_helper start to operaiton success.");
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    //记录当前的frozen_version，防止RS重启后状态丢失，造成CS开始每日合并
+    if (0 >= bypass_process_frozen_men_version_)
+    {
+      bypass_process_frozen_men_version_ = cs_heartbeat_frozen_version;
+      TBSYS_LOG(INFO, "bypass process start. bypass process frozen_mem_version=%ld, operation_type=%d",
+                bypass_process_frozen_men_version_, table_name_id.get_operation_type());
+      log_worker_->set_frozen_version_for_brodcast(bypass_process_frozen_men_version_);
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    operation_duty_.init(worker_);
+    if (OB_SUCCESS != (ret = timer_.schedule(operation_duty_, 30 * 1000 * 1000, false)))
+    {
+      TBSYS_LOG(WARN, "fail to schedule operation duty, ret=%d", ret);
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "start to schedule check_process.");
+    }
+  }
+  return ret;
+}
+
+int ObRootServer2::check_bypass_process()
+{
+  int ret = OB_SUCCESS;
+  if (!state_.get_bypass_flag())
+  {
+    TBSYS_LOG(WARN, "rootserver have no bypass duty now.");
+    ret = OB_ERROR;
+  }
+  OperationType type;
+  if (OB_SUCCESS == ret)
+  {
+    ret = operation_helper_.check_process(type);
+    if (OB_BYPASS_TIMEOUT == ret)
+    {
+      TBSYS_LOG(WARN, "bypass process timeout. check it");
+      bypass_process_frozen_men_version_ = -1;
+      state_.set_bypass_flag(false);
+      //set_root_server_state();
+      log_worker_->set_frozen_version_for_brodcast(bypass_process_frozen_men_version_);
+    }
+    else if (OB_SUCCESS == ret)
+    {
+      TBSYS_LOG(INFO, "operation process finished. operation_type = %d", type);
+      state_.set_bypass_flag(false);
+      //set_root_server_state();
+      bypass_process_frozen_men_version_ = 0;
+      log_worker_->set_frozen_version_for_brodcast(bypass_process_frozen_men_version_);
+      if (INDEX_TABLE == type
+          && OB_SUCCESS != (ret = start_build_index_if_necessary()))
+      {
+        TBSYS_LOG(WARN, "failed to start next build index process, ret=%d", ret);
+      }
+    }
+    else
+    {
+      if (OB_SUCCESS != timer_.schedule(operation_duty_, 30 * 1000 * 1000, false))
+      {
+        TBSYS_LOG(WARN, "fail to schedule operation duty, ret=%d", ret);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "scheule operation_duty success. time=30000000");
+      }
+    }
+  }
+  return ret;
+}
+int ObRootServer2::bypass_meta_data_finished(const OperationType type, ObRootTable2 *root_table,
+    ObTabletInfoManager *tablet_manager, common::ObSchemaManagerV2 *schema_mgr)
+{
+  int ret = OB_SUCCESS;
+  TBSYS_LOG(INFO, "bypass new meta data is ready. try to refresh root_server's");
+  switch(type)
+  {
+    case IMPORT_TABLE:
+      {
+        common::ObArray<uint64_t> delete_tables;
+        if (OB_SUCCESS != (ret = use_new_root_table(root_table, tablet_manager)))
+        {
+          TBSYS_LOG(WARN, "operation over, use new root table fail. ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = switch_bypass_schema(schema_mgr, delete_tables)))
+        {
+          TBSYS_LOG(WARN, "swtich bypass schema fail, ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = operation_helper_.set_delete_table(delete_tables)))
+        {
+          TBSYS_LOG(WARN, "fail to set delete table. ret=%d", ret);
+        }
+      }
+      break;
+     case IMPORT_ALL:
+     case CLEAN_ROOT_TABLE:
+      {
+        if (OB_SUCCESS != (ret = use_new_root_table(root_table, tablet_manager)))
+        {
+          TBSYS_LOG(WARN, "fail to use new root table. ret=%d", ret);
+        }
+      }
+      break;
+    default:
+      TBSYS_LOG(WARN, "invalid type. type=%d", type);
+      break;
+  }
+  return ret;
+}
+const char* ObRootServer2::get_bypass_state() const
+{
+  if (const_cast<ObRootServerState&>(state_).get_bypass_flag())
+  {
+    return "DOING";
+  }
+  else if (!const_cast<ObRootServerState&>(state_).get_bypass_flag() && 0 < bypass_process_frozen_men_version_)
+  {
+    return "RETRY";
+  }
+  else if (0 == bypass_process_frozen_men_version_)
+  {
+    return "DONE";
+  }
+  else if (-1 == bypass_process_frozen_men_version_)
+  {
+    return "INTERRUPT";
+  }
+  else
+  {
+    return "ERROR";
+  }
+}
+int ObRootServer2::switch_bypass_schema(common::ObSchemaManagerV2 *schema_manager, common::ObArray<uint64_t> &delete_tables)
+{
+  int ret = OB_SUCCESS;
+  delete_tables.clear();
+  if (NULL == schema_manager)
+  {
+    TBSYS_LOG(ERROR, "invalid schema_manager. is NULL");
+    ret = OB_ERROR;
+  }
+  ObSchemaManagerV2 * out_schema = OB_NEW(ObSchemaManagerV2, ObModIds::OB_RS_SCHEMA_MANAGER);
+  if (NULL == out_schema)
+  {
+    ret = OB_MEM_OVERFLOW;
+    TBSYS_LOG(ERROR, "allocate new schema failed");
+  }
+  if (OB_SUCCESS == ret)
+  {
+    ret = get_schema(false, false, *out_schema);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "force refresh schema manager failed:ret[%d]", ret);
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    ret = get_deleted_tables(*out_schema, *schema_manager, delete_tables);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "fail to get delete tables. ret=%d", ret);
+    }
+  }
+  common::ObArray<TableSchema> table_schema_array;
+  common::ObArray<TableSchema> new_table_schema;
+  if (OB_SUCCESS == ret)
+  {
+    ret = common::ObSchemaHelper::transfer_manager_to_table_schema(*out_schema, table_schema_array);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "fail to transfer manager to table_schema, ret=%d", ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    ret = common::ObSchemaHelper::transfer_manager_to_table_schema(*schema_manager, new_table_schema);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "fail to transfer manager to table_schema, ret=%d", ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    for(int64_t i = 0; i < delete_tables.count(); i++)
+    {
+      uint64_t new_table_id = 0;
+      uint64_t old_table_id = delete_tables.at(i);
+      int64_t table_index = -1;
+      char* table_name = NULL;
+      for (int64_t j = 0; j < table_schema_array.count(); j++)
+      {
+        if (table_schema_array.at(j).table_id_ == old_table_id)
+        {
+          table_name = table_schema_array.at(j).table_name_;
+          table_index = j;
+          break;
+        }
+      }
+      if (table_index == -1 || table_name == NULL)
+      {
+        TBSYS_LOG(WARN, "fail to find table schema, table_id=%ld, table_name=%p", old_table_id, table_name);
+        ret = OB_ERROR;
+        break;
+      }
+      bool find = false;
+      for (int64_t j = 0; j < new_table_schema.count(); j++)
+      {
+        if (strncmp(new_table_schema.at(j).table_name_, table_name, OB_MAX_TABLE_NAME_LENGTH))
+        {
+          find = true;
+          new_table_id = new_table_schema.at(j).table_id_;
+          break;
+        }
+      }
+      if (find == false)
+      {
+        TBSYS_LOG(WARN, "fail to find new_table_id in schema_manager. table_name=%s", table_name);
+        ret = OB_ERROR;
+        break;
+      }
+      ret = ddl_tool_.modify_table_id(table_schema_array.at(table_index), new_table_id);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "fail to modify table id. table_name=%s", table_name);
+        break;
+      }
+    }
+  }
+  int64_t count = 0;
+  if (OB_SUCCESS != (ret = refresh_new_schema(count)))
+  {
+    TBSYS_LOG(WARN, "refresh new schema manager after modify table_id failed. err=%d", ret);
+  }
+  else
+  {
+    if (OB_SUCCESS != (ret = notify_switch_schema(false)))
+    {
+      TBSYS_LOG(WARN, "switch schema fail:ret[%d]", ret);
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "notify switch schema after modify table_id");
+      schema_manager_for_cache_->write_to_file(SCHEMA_FILE_NAME);
+    }
+  }
+  return ret;
+}
+
+int ObRootServer2::use_new_root_table(ObRootTable2 *root_table, ObTabletInfoManager* tablet_manager)
+{
+  int ret = OB_SUCCESS;
+  if (NULL == root_table || NULL == tablet_manager)
+  {
+    TBSYS_LOG(ERROR, "invalid argument. root_table=%p, tablet_manager=%p",
+        root_table, tablet_manager);
+    ret = OB_ERROR;
+  }
+  if (OB_SUCCESS == ret)
+  {
+    tbsys::CThreadGuard root_guard(&root_table_build_mutex_);
+    switch_root_table(root_table, tablet_manager);
+    make_checkpointing();
+    root_table = NULL;
+    tablet_manager = NULL;
+    dump_root_table();
+  }
+  return ret;
+}
+int ObRootServer2::cs_load_sstable_done(const ObServer &cs,
+    const common::ObTableImportInfoList &table_list, const bool is_load_succ)
+{
+  int32_t cs_index = get_server_index(cs);
+  return operation_helper_.cs_load_sstable_done(cs_index, table_list, is_load_succ);
+}
+
+bool ObRootServer2::is_bypass_process()
+{
+  return state_.get_bypass_flag();
+}
+int ObRootServer2::cs_delete_table_done(const ObServer &cs,
+    const uint64_t table_id, const bool is_succ)
+{
+  int ret = OB_SUCCESS;
+  if (is_bypass_process())
+  {
+    int32_t cs_index = get_server_index(cs);
+    operation_helper_.delete_tables_done(cs_index, table_id, is_succ);
+  }
+  else
+  {
+    ret = OB_ERROR;
+    TBSYS_LOG(WARN, "rootserver not in bypass process.");
+  }
+  return ret;
+}
+void ObRootServer2::set_bypass_version(const int64_t version)
+{
+  bypass_process_frozen_men_version_ = version;
+}
+ObRootOperationHelper* ObRootServer2::get_bypass_operation()
+{
+  return &operation_helper_;
+}
+
+int64_t ObRootServer2::get_frozen_version_for_cs_heartbeat() const
+{
+  int64_t ret = last_frozen_mem_version_;
+  if (bypass_process_frozen_men_version_ > 0)
+  {
+    ret = bypass_process_frozen_men_version_;
+  }
+  else
+  {
+    ret = last_frozen_mem_version_;
+  }
+  return ret;
+}
+
+int ObRootServer2::start_build_index_if_necessary()
+{
+  int ret = OB_SUCCESS;
+  const ObTableSchema* table_schema = NULL;
+  ObBuildIndexInfo build_index_info;
+
+  if (!is_bypass_process() && is_master()
+      && check_all_tablet_merged())
+  {
+    {
+      tbsys::CRLockGuard guard(schema_manager_rwlock_);
+      if (NULL != schema_manager_for_cache_)
+      {
+        for (table_schema = schema_manager_for_cache_->table_begin();
+             table_schema != schema_manager_for_cache_->table_end();
+             table_schema++)
+        {
+          if (need_build_index(*table_schema))
+          {
+            if (OB_SUCCESS != (ret = fill_build_index_info(build_index_info, *table_schema)))
+            {
+              TBSYS_LOG(WARN, "failed to fill build index task info, ret=%d", ret);
+              table_schema = NULL;
+            }
+            break;
+          }
+          else 
+          {
+            continue;
+          }
+        }
+      }
+      if (table_schema == schema_manager_for_cache_->table_end())
+      {
+        table_schema = NULL;
+      }
+    }
+    if (NULL != table_schema
+        && OB_SUCCESS != (ret = start_index_process(build_index_info)))
+    {
+      TBSYS_LOG(WARN, "failed to start sample process, ret=%d", ret);
+    }
+  }
+
+  return ret;
+}
+
+bool ObRootServer2::need_build_index(const ObTableSchema& table_schema) const
+{
+  return (ObTableSchema::INDEX == table_schema.get_table_type()
+          && ObTableSchema::UNAVAILABLE == table_schema.get_index_status()
+          && table_schema.get_create_mem_version() < get_frozen_version_for_cs_heartbeat());
+}
+
+int ObRootServer2::fill_build_index_info(
+   ObBuildIndexInfo& build_index_info, const ObTableSchema& index_table_schema)
+{
+  int ret = OB_SUCCESS;
+  int64_t tablet_count = 0;
+  int64_t data_size = 0;
+  int64_t row_count = 0;
+
+  build_index_info.data_table_id_ = index_table_schema.get_data_table_id();
+  build_index_info.index_table_id_ = index_table_schema.get_table_id();
+  build_index_info.sample_count_ = 1;
+
+  tbsys::CRLockGuard guard(root_table_rwlock_);
+  if (NULL == root_table_)
+  {
+    TBSYS_LOG(WARN, "scan request in initialize phase");
+    ret = OB_NOT_INIT;
+  }
+  else if (root_table_->table_is_exist(build_index_info.index_table_id_))
+  {
+    if (!root_table_->check_table_all_tablets_available(build_index_info.index_table_id_))
+    {
+      //continue build index, needn't build sample again
+      build_index_info.sample_count_ = 0;
+    }
+    else
+    {
+      TBSYS_LOG(WARN, "index table schema status is unavailable, but root table is good, "
+                      "index_table_id=%lu",
+                build_index_info.index_table_id_);
+      ret = OB_ERROR;
+    }
+  }
+  else if (OB_SUCCESS != (ret = root_table_->get_table_tablet_info(
+           index_table_schema.get_data_table_id(), tablet_count, row_count, data_size)))
+  {
+    TBSYS_LOG(WARN, "failed to get table tablet info from root table, table_id=%lu, ret=%d",
+              index_table_schema.get_data_table_id(), ret);
+  }
+  else if (0 == row_count)
+  {
+    build_index_info.sample_count_ = 1;
+    TBSYS_LOG(INFO, "data table is empty, assign sample count to 1");
+  }
+  else
+  {
+    const ObColumnSchemaV2* columns = NULL;
+    int32_t column_count = 0;
+    int64_t estimated_row_size = 0;
+    int64_t split_sstable_count = 0;
+    int64_t max_sstable_size = index_table_schema.get_max_sstable_size();
+
+    if (NULL ==(columns = schema_manager_for_cache_->get_table_schema(
+        index_table_schema.get_table_id(), column_count)) || column_count <= 0)
+    {
+      TBSYS_LOG(WARN, "failed to get tablet schema from schema manager, "
+                "index_table_id_=%lu, table_column_count=%d",
+                index_table_schema.get_table_id(), column_count);
+      ret = OB_ERROR;
+    }
+    else
+    {
+      for (int64_t i = 0; i < column_count && OB_SUCCESS == ret; i++)
+      {
+        estimated_row_size += columns[i].get_size();
+      }
+    }
+
+    if (OB_SUCCESS == ret)
+    {
+      if (estimated_row_size <= 0 || max_sstable_size <= 0)
+      {
+        TBSYS_LOG(WARN, "index table estimated row size is invalid, estimated_row_size=%ld, "
+                  "max_sstable_size=%ld, index_table_id=%lu",
+                  estimated_row_size, max_sstable_size, index_table_schema.get_table_id());
+        ret = OB_ERROR;
+      }
+      else
+      {
+        /**
+         * the index table only store rowkey column, so we only estimate the 
+         * rowkey size, and assume that the compress ratio is 50%, then we can 
+         * known how many sstable to split for this index table 
+         * 
+         * TODO: find a better algorithm to sstable split count 
+         */
+        split_sstable_count = (estimated_row_size * row_count / 2) / max_sstable_size;
+        build_index_info.sample_count_ = split_sstable_count > 0 ? split_sstable_count : 1;
+      }
+    }
+  }
+
+  return ret;
+}
+
+int ObRootServer2::start_index_process(const ObBuildIndexInfo& build_index_info)
+{
+  int ret = OB_SUCCESS;
+
+  ObBypassTaskInfo build_sample_task;
+  build_sample_task.set_operation_type(INDEX_TABLE);
+  build_sample_task.set_build_info(build_index_info);
+  if (OB_SUCCESS != (ret = start_bypass_process(build_sample_task)))
+  {
+    TBSYS_LOG(WARN, "fail to start sample, ret=%d", ret);
+  }
+
+  return ret;
+}
+
+int ObRootServer2::report_samples(const ObServer& server, const ObNewScanner& sample_scanner)
+{
+  int ret = OB_SUCCESS;
+  int server_index = get_server_index(server);
+
+  if (OB_INVALID_INDEX == server_index)
+  {
+    TBSYS_LOG(WARN, "can not find server's info, server=%s", to_cstring(server));
+    ret = OB_ENTRY_NOT_EXIST;
+  }
+  else if (!is_bypass_process())
+  {
+    TBSYS_LOG(WARN, "rootserver not in build index process.");
+    ret = OB_ERROR;
+  }
+  else if (is_master())
+  {
+    TBSYS_LOG(INFO, "[NOTICE] report samples, server=%d, ip=%s, row_count=%ld",
+              server_index, to_cstring(server), sample_scanner.get_row_num());
+    ret = operation_helper_.cs_report_samples(server_index, sample_scanner);
+  }
+
+  return ret;
+}
+
+int ObRootServer2::cs_build_sample_done(
+   const bool is_succ, const ObServer& server, const int64_t index_table_id)
+{
+  int ret = OB_SUCCESS;
+  int server_index = get_server_index(server);
+
+  if (OB_INVALID_INDEX == server_index)
+  {
+    TBSYS_LOG(WARN, "can not find server's info, server=%s", to_cstring(server));
+    ret = OB_ENTRY_NOT_EXIST;
+  }
+  else if (!is_bypass_process())
+  {
+    TBSYS_LOG(WARN, "rootserver not in build index process.");
+    ret = OB_ERROR;
+  }
+  else if (is_master())
+  {
+    ret = operation_helper_.cs_build_sample_done(is_succ, server_index, index_table_id);
+  }
+
+  return ret;
+}
+
+int ObRootServer2::cs_build_index_done(
+   const bool is_succ, const ObServer& server, const int64_t index_table_id)
+{
+  int ret = OB_SUCCESS;
+  int server_index = get_server_index(server);
+
+  if (OB_INVALID_INDEX == server_index)
+  {
+    TBSYS_LOG(WARN, "can not find server's info, server=%s", to_cstring(server));
+    ret = OB_ENTRY_NOT_EXIST;
+  }
+  else if (!is_bypass_process())
+  {
+    TBSYS_LOG(WARN, "rootserver not in build index process.");
+    ret = OB_ERROR;
+  }
+  else if (is_master())
+  {
+    ret = operation_helper_.cs_build_index_done(is_succ, server_index, index_table_id);
+  }
+
+  return ret;
+}
+
+int ObRootServer2::update_index_table_schema_state(const uint64_t index_table_id, int state)
+{
+  int ret = OB_SUCCESS;
+  const ObTableSchema* index_table_schema = NULL;
+  ObString index_table_name;
+  char table_name_str[OB_MAX_TABLE_NAME_LENGTH];
+  int64_t count = 0;
+
+  if (OB_INVALID_ID == index_table_id || state > ObTableSchema::INDEX_ERROR)
+  {
+    TBSYS_LOG(WARN, "invalid param, index_table_id=%lu, state=%d",
+              index_table_id, state);
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else
+  {
+    tbsys::CRLockGuard guard(schema_manager_rwlock_);
+    if (NULL == schema_manager_for_cache_)
+    {
+      TBSYS_LOG(WARN, "schema manager is NULL");
+      ret = OB_INNER_STAT_ERROR;
+    }
+    else if (NULL == (index_table_schema = schema_manager_for_cache_->get_table_schema(index_table_id)))
+    {
+      TBSYS_LOG(WARN, "failed to get index table schema, index_table_id=%lu", 
+                index_table_id);
+      ret = OB_ERROR;
+    }
+    else
+    {
+      strncpy(table_name_str, index_table_schema->get_table_name(), OB_MAX_TABLE_NAME_LENGTH);
+      index_table_name = ObString::make_string(table_name_str);
+    }
+  }
+
+  if (OB_SUCCESS == ret
+      && OB_SUCCESS != (ret = ddl_tool_.modify_index_table_status(index_table_name, state)))
+  {
+    TBSYS_LOG(WARN, "failed to modify index table status, index_table_id=%lu, state=%d",
+              index_table_id, state);
+  }
+  else if (OB_SUCCESS != (ret = renew_user_schema(count)))
+  {
+    TBSYS_LOG(WARN, "refresh new schema manager after modify index "
+                    "table status failed. ret=%d", ret);
+  }
+  else
+  {
+    TBSYS_LOG(INFO, "update index table schema state success, index_table_id=%lu, state=%d",
+              index_table_id, state);
+  }
+
+  return ret;
+}
+
+int ObRootServer2::build_index_root_table()
+{
+  int ret = OB_SUCCESS;
+  ObIndexOperation& index_builder = operation_helper_.get_index_builder();
+  const ObBuildIndexInfo& build_index_info = index_builder.get_build_index_info();
+  bool table_not_exist_in_rt = false;
+  bool is_exist_in_cs = true;
+
+  {
+    tbsys::CRLockGuard guard(schema_manager_rwlock_);
+    if (NULL == schema_manager_for_cache_)
+    {
+      TBSYS_LOG(WARN, "schema manager is NULL");
+      ret = OB_INNER_STAT_ERROR;
+    }
+    else if (OB_SUCCESS != (ret = index_builder.build_sample_result(schema_manager_for_cache_)))
+    {
+      TBSYS_LOG(WARN, "index builder fails to build sample result, ret=%d", ret);
+    }
+  }
+  
+  if (OB_SUCCESS == ret)
+  {
+    TBSYS_LOG(INFO, "build index root table start: index_table_id=%lu", 
+              build_index_info.index_table_id_);
+    tbsys::CThreadGuard mutex_gard(&root_table_build_mutex_);
+    if (NULL == root_table_)
+    {
+      TBSYS_LOG(WARN, "root table is not init; wait another second.");
+      ret = OB_ERROR;
+    }
+    else
+    {
+      {
+        tbsys::CRLockGuard guard(root_table_rwlock_);
+        if(!root_table_->table_is_exist(build_index_info.index_table_id_))
+        {
+          TBSYS_LOG(INFO, "table not exist, index_table_id=%lu", 
+                    build_index_info.index_table_id_);
+          table_not_exist_in_rt = true;
+        }
+      }
+
+      if (table_not_exist_in_rt)
+      {
+        //check cs number
+        if (DEFAULT_SAFE_CS_NUMBER >= get_alive_cs_number())
+        {
+          //check table not exist in chunkserver
+          if (OB_SUCCESS != (ret = table_exist_in_cs(build_index_info.index_table_id_, is_exist_in_cs)))
+          {
+            TBSYS_LOG(WARN, "fail to check table. index_table_id=%lu, ret=%d", 
+                      build_index_info.index_table_id_, ret);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "cs number is too litter. alive_cs_number=%ld", get_alive_cs_number());
+        }
+      }
+
+      if (!is_exist_in_cs)
+      {
+        ObTabletInfoList tablets;
+        bool is_iter_end = false;
+        while (OB_SUCCESS == ret && !is_iter_end)
+        {
+          ret = index_builder.get_next_sample_result(tablets);
+          if (OB_ITER_END == ret)
+          {
+            is_iter_end = true;
+            ret = OB_SUCCESS;
+          }
+          
+          if (OB_SUCCESS == ret && tablets.get_tablet_size() > 0
+              && OB_SUCCESS != (ret = create_table_tablets(build_index_info.index_table_id_, tablets, false)))
+          {
+            TBSYS_LOG(WARN, "fail to create table[%lu] tablets, tablet_count=%ld, "
+                            "is_iter_end=%d, ret=%d", 
+                      build_index_info.index_table_id_, tablets.get_tablet_size(), is_iter_end, ret);
+          }
+        }
+      }
+    }
+  }
+
   return ret;
 }

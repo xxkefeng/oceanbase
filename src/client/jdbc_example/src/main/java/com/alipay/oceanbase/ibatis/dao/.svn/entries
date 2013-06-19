@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase/ibatis/dao
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase/ibatis/dao
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-05-22T14:08:25.000000Z
+2013-06-19T09:27:04.000000Z
 2882187a6c5422ce7edc8bd06ce37f86
 2013-03-07T03:36:28.441410Z
 12406

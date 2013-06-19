@@ -26,7 +26,7 @@ ObTabletRead::ObTabletRead()
   rpc_proxy_(NULL),
   network_timeout_(0),
   join_batch_count_(0),
-  last_rowkey_op_(NULL),
+  cur_rowkey_op_(NULL),
   plan_level_(SSTABLE_DATA)
 {
 }
@@ -78,13 +78,13 @@ int ObTabletRead::get_next_row(const ObRow *&row)
   else
   {
     ret = op_root_->get_next_row(row);
-    if(OB_SUCCESS != ret && OB_ITER_END != ret)
-    {
-      TBSYS_LOG(WARN, "get next row fail:ret[%d]", ret);
-    }
-    if (OB_SUCCESS == ret)
+    if (OB_SUCCESS == ret && NULL != row)
     {
       TBSYS_LOG(DEBUG, "tablet read row[%s]", to_cstring(*row));
+    }
+    else if (OB_ITER_END != ret)
+    {
+      TBSYS_LOG(WARN, "get next row fail:ret[%d]", ret);
     }
   }
   return ret;
@@ -105,17 +105,21 @@ int ObTabletRead::set_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy)
   return ret;
 }
 
-int ObTabletRead::get_last_rowkey(const ObRowkey *&rowkey)
+int ObTabletRead::get_cur_rowkey(const ObRowkey *&rowkey) const
 {
   int ret = OB_SUCCESS;
-  if (NULL != last_rowkey_op_)
-  {
-    ret = last_rowkey_op_->get_last_rowkey(rowkey);
-  }
-  else
+  if (NULL == cur_rowkey_op_)
   {
     ret = OB_NOT_INIT;
     TBSYS_LOG(WARN, "last_rowkey_op_ is null");
+  }
+  else
+  {
+    ret = cur_rowkey_op_->get_cur_rowkey(rowkey);
+    if (OB_SUCCESS != ret || NULL == rowkey)
+    {
+      TBSYS_LOG(WARN, "failed to get cur rowkey, ret[%d]", ret);
+    }
   }
   return ret;
 }

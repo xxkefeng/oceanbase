@@ -448,6 +448,14 @@ namespace oceanbase
       }
     }
 
+    void ObSyscheckerStat::add_get_row(const uint64_t get_row)
+    {
+      if (get_row > 0)
+      {
+        atomic_add(&get_row_, get_row);
+      }
+    }
+
     void ObSyscheckerStat::add_get_cell_fail(const uint64_t get_cell_fail)
     {
       if (get_cell_fail > 0)
@@ -461,6 +469,14 @@ namespace oceanbase
       if (scan_opt > 0)
       {
         atomic_add(&scan_opt_, scan_opt);
+      }
+    }
+
+    void ObSyscheckerStat::add_scan_row(const uint64_t scan_row)
+    {
+      if (scan_row > 0)
+      {
+        atomic_add(&scan_row_, scan_row);
       }
     }
 
@@ -529,9 +545,11 @@ namespace oceanbase
                "delete_row: %lu \n"
                "delete_row_fail: %lu \n"
                "get_opt: %lu \n"
+               "get_row: %lu \n"
                "get_cell: %lu \n"
                "get_cell_fail: %lu \n"
                "scan_opt: %lu \n"
+               "scan_row: %lu \n"
                "scan_cell: %lu \n"
                "scan_cell_fail: %lu \n",
                total_time_,
@@ -555,8 +573,10 @@ namespace oceanbase
                delete_row_fail_,
                get_opt_,
                get_cell_,
+               get_row_,
                get_cell_fail_,
                scan_opt_,
+               scan_row_,
                scan_cell_,
                scan_cell_fail_);
       }

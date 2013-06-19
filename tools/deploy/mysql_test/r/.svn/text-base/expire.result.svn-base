@@ -1,7 +1,7 @@
 case 1: int + 1 row
 alter system set merge_delay_interval='1s' server_type=chunkserver;
 alter system set merge_delay_for_lsync='1s' server_type=chunkserver;
-alter system set min_drop_cache_wait_time='10s' server_type=chunkserver;
+alter system set min_drop_cache_wait_time='1s' server_type=chunkserver;
 alter system set safe_copy_count_in_init = 1 server_type=chunkserver;
 alter system set merge_thread_per_disk=10 server_type=chunkserver;
 alter system set each_tablet_sync_meta=False server_type=chunkserver;

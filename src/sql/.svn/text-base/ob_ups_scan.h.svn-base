@@ -16,7 +16,7 @@
 #ifndef _OB_UPS_SCAN_H
 #define _OB_UPS_SCAN_H 1
 
-#include "ob_rowkey_phy_operator.h"
+#include "ob_phy_operator.h"
 #include "common/ob_string.h"
 #include "common/ob_sql_ups_rpc_proxy.h"
 #include "common/ob_scan_param.h"
@@ -37,7 +37,7 @@ namespace oceanbase
     }
 
     // 用于CS从UPS扫描一批动态数据
-    class ObUpsScan: public ObRowkeyPhyOperator
+    class ObUpsScan: public ObPhyOperator
     {
       friend class test::ObTabletScanTest_create_plan_not_join_Test;
       friend class test::ObTabletScanTest_create_plan_join_Test;
@@ -54,12 +54,13 @@ namespace oceanbase
         virtual int add_column(const uint64_t &column_id);
         virtual int open();
         virtual int close();
-        virtual int get_next_row(const common::ObRowkey *&rowkey, const common::ObRow *&row);
+        virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         /**
          * 设置要扫描的range
          */
         virtual int set_range(const ObNewRange &range);
+        void set_rowkey_cell_count(const int64_t rowkey_cell_count);
         void set_version_range(const ObVersionRange &version_range);
         virtual void reset();
 
@@ -69,6 +70,10 @@ namespace oceanbase
         inline void set_is_read_consistency(bool is_read_consistency)
         {
           is_read_consistency_ = is_read_consistency;
+        }
+        inline void set_server_type(common::ObServerType type)
+        {
+          server_type_ = type;
         }
 
       private:
@@ -85,13 +90,14 @@ namespace oceanbase
         ObNewRange range_;
         ObNewScanner cur_new_scanner_;
         ObScanParam cur_scan_param_;
-        ObUpsRow cur_ups_row_;
+        ObRow cur_row_;
         ObRowDesc row_desc_;
         ObStringBuf range_str_buf_;
         ObSqlUpsRpcProxy *rpc_proxy_;
         int64_t network_timeout_;
         int64_t row_counter_;
         bool is_read_consistency_;
+        common::ObServerType server_type_;
     };
 
     int ObUpsScan::set_network_timeout(int64_t network_timeout)

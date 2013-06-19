@@ -1112,69 +1112,13 @@ int build_expr_values(ObIAllocator* allocator, ObValues& values, ObExprValues& e
   return err;
 }
 
-int build_rne_values(ObValues& target,  ObValues& values)
-{
-  int err = OB_SUCCESS;
-  ObObj rne_obj;
-  const ObRowDesc* row_desc = NULL;
-  ObRowDesc new_row_desc;
-  rne_obj.set_ext(ObActionFlag::OP_ROW_DOES_NOT_EXIST);
-  //rne_obj.set_ext(ObActionFlag::OP_NOP);
-  if (OB_SUCCESS != (err = values.get_row_desc(row_desc)))
-  {
-    TBSYS_LOG(ERROR, "values.get_row_desc()=>%d", err);
-  }
-  else
-  {
-    new_row_desc = *row_desc;
-    new_row_desc.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
-    if (OB_SUCCESS != (err = target.set_row_desc(*row_desc)))
-    {
-      TBSYS_LOG(ERROR, "values.set_row_desc()=>%d", err);
-    }
-  }
-  if (OB_SUCCESS != err)
-  {}
-  // else if (OB_SUCCESS != (err = target.get_row_desc(row_desc_with_rne)))
-  // {
-  //   TBSYS_LOG(ERROR, "target.get_row_desc()=>%d", err);
-  // }
-  else if (OB_SUCCESS != (err = values.open()))
-  {
-    TBSYS_LOG(ERROR, "values.open()=>%d", err);
-  }
-  while(OB_SUCCESS == err)
-  {
-    const ObRow* row = NULL;
-    ObUpsRow new_row;
-    if (OB_SUCCESS != (err = values.get_next_row(row)))
-    {}
-    else
-    {
-      TBSYS_LOG(INFO, "add_new_row()");
-      new_row.assign(*row);
-      new_row.set_is_delete_row(true);
-      if (OB_SUCCESS != (err = target.add_values(new_row)))
-      {
-        TBSYS_LOG(ERROR, "add_values()=>%d", err);
-      }
-    }
-  }
-  if (OB_ITER_END == err)
-  {
-    err = OB_SUCCESS;
-  }
-  values.close();
-  return err;
-}
-
 class SimpleAllocator: public SimpleBufAllocator
 {
   public:
     const static int64_t buf_limit = 1<<21;
   public:
     SimpleAllocator() {
-      void* cbuf = ob_malloc(buf_limit, ObModIds::OB_RS_LOG_WORKER);
+      void* cbuf = ob_malloc(buf_limit);
       buf_.set_data((char*)cbuf, buf_limit);
       SimpleBufAllocator::set_buf(&buf_);
     }
@@ -1279,7 +1223,7 @@ int build_gt0_expr(ObSqlExpression& expr, uint64_t table_id, uint64_t column_id)
   cref.type_ = T_REF_COLUMN;
   cref.value_.cell_.tid = table_id;
   cref.value_.cell_.cid = column_id;
-
+  
   zero.type_ = T_INT;
   zero.value_.int_ = 1;
   if (OB_SUCCESS != (err = expr.add_expr_item(cref)))
@@ -1417,7 +1361,7 @@ class PhyPlanBuilder: public RowBuilder, public ObVersionProvider
     int update_ifgt0(ObPhysicalPlan* plan, ObPhyOperator*& op, int64_t row_count) {
       int err = OB_SUCCESS;
       uint64_t table_id = 0, column_id = 0;
-      ObSqlExpression *gt0_expr = ObSqlExpression::alloc();
+      ObSqlExpression gt0_expr;
       empty_values_.set_row_desc(rowkey_desc_);
       merger_.set_is_ups_row(false);
       ups_modify_.set_phy_plan(plan);
@@ -1434,7 +1378,7 @@ class PhyPlanBuilder: public RowBuilder, public ObVersionProvider
       {
         TBSYS_LOG(ERROR, "get_first_int_col()=>%d", err);
       }
-      else if (OB_SUCCESS != (err = build_gt0_expr(*gt0_expr, table_id, column_id)))
+      else if (OB_SUCCESS != (err = build_gt0_expr(gt0_expr, table_id, column_id)))
       {
         TBSYS_LOG(ERROR, "build_gt0_expr()=>%d", err);
       }

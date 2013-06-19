@@ -101,7 +101,7 @@ int ObInsert::insert_by_mutator()
   ObObj casted_cells[OB_MAX_ROWKEY_COLUMN_NUMBER+1];
   char *varchar_buff = NULL;
 
-  if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH*(OB_MAX_ROWKEY_COLUMN_NUMBER+1), ObModIds::OB_SQL_INSERT)))
+  if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH*(OB_MAX_ROWKEY_COLUMN_NUMBER+1))))
   {
     TBSYS_LOG(ERROR, "no memory");
     ret = OB_ALLOCATE_MEMORY_FAILED;

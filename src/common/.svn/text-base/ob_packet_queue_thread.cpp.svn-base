@@ -86,7 +86,7 @@ void ObPacketQueueThread::setThreadParameter(int thread_count, ObPacketQueueHand
 
   if (NULL == next_packet_buffer_)
   {
-    next_packet_buffer_ = reinterpret_cast<char*>(ob_malloc(thread_count * MAX_PACKET_SIZE, ObModIds::OB_PACKET_QUEUE));
+    next_packet_buffer_ = reinterpret_cast<char*>(ob_malloc(thread_count * MAX_PACKET_SIZE));
   }
 }
 
@@ -262,7 +262,7 @@ bool ObPacketQueueThread::wakeup_next_thread(ObPacket* packet)
       hash_ret = next_wait_map_.set(session_id, wait_object, overwrite);
       if (hash::HASH_OVERWRITE_SUCC != hash_ret)
       {
-        TBSYS_LOG(WARN, "rewrite set session =%ld packet=%p error,hash_ret=%d",
+        TBSYS_LOG(WARN, "rewrite set session =%ld packet=%p error,hash_ret=%d", 
             session_id, wait_object.packet_, hash_ret);
       }
       next_cond_[wait_object.thread_no_].signal();
@@ -296,7 +296,7 @@ int ObPacketQueueThread::prepare_for_next_request(int64_t session_id)
     {
       TBSYS_LOG(ERROR, "insert thread no = %ld, session_id=%ld exist, and packet not null and not end session = %p",
         wait_object.thread_no_, session_id, wait_object.packet_);
-      // impossible , either last wait not set to NULL or next request
+      // impossible , either last wait not set to NULL or next request 
       // reached before pepare..
       ret = OB_ERROR;
     }
@@ -332,7 +332,7 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
   int ret = OB_SUCCESS;
   int hash_ret = 0;
   WaitObject wait_object;
-  next_request = NULL;
+  next_request = NULL; 
   uint64_t oldv = 0;
 
   hash_ret = next_wait_map_.get(session_id, wait_object);
@@ -413,7 +413,7 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
       hash_ret = next_wait_map_.set(session_id, wait_object, overwrite);
       if (hash::HASH_OVERWRITE_SUCC != hash_ret)
       {
-        TBSYS_LOG(WARN, "rewrite clear session =%ld packet=%p error, hash_ret=%d",
+        TBSYS_LOG(WARN, "rewrite clear session =%ld packet=%p error, hash_ret=%d", 
             session_id, next_request, hash_ret);
       }
 
@@ -541,3 +541,4 @@ void ObPacketQueueThread::clear()
   delete[] _thread;
   _thread = NULL;
 }
+

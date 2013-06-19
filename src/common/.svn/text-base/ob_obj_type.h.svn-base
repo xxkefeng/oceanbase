@@ -35,7 +35,7 @@ namespace oceanbase
       ObPreciseDateTimeType,    // =5
 
       ObVarcharType,
-      ObSeqType,
+      ObUnknownType,    // For sql prepare
       ObCreateTimeType,
 
       ObModifyTimeType,

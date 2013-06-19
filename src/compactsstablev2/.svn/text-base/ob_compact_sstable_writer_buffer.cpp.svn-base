@@ -94,30 +94,6 @@ namespace oceanbase
       return ret;
     }
 
-    int ObCompactSSTableWriterBuffer::set_cur_key(const ObRow& row)
-    {
-      int ret = OB_SUCCESS;
-      const ObRowkey* rowkey = NULL;
-      ObMemBufAllocatorWrapper allocator(cur_rowkey_buf_);
-
-      if (OB_SUCCESS != (ret = row.get_rowkey(rowkey)))
-      {
-        char buf[1024];
-        (*rowkey).to_string(buf, 1024);
-        TBSYS_LOG(WARN, "row get rowkey error:ret=%d,rowkey=%s", ret, buf);
-      }
-      else if (OB_SUCCESS != (ret = rowkey->deep_copy(cur_rowkey_, allocator)))
-      {
-        char buf[1024];
-        cur_rowkey_.to_string(buf, 1024);
-        TBSYS_LOG(WARN, "rowkey deep copy error:ret=%d,"
-            "cur_rowkey_buf_.buf_ptr_=%p,cur_rowkey_buf_.buf_size_=%ld,",
-            ret, cur_rowkey_buf_.get_buffer(),
-            cur_rowkey_buf_.get_buffer_size());
-      }
-
-      return ret;
-    }
 
     int ObCompactSSTableWriterBuffer::ensure_uncomp_buf(
         const int64_t buf_size, const bool ptr_flag/*=true*/)
@@ -422,7 +398,7 @@ namespace oceanbase
       record_header_.reserved16_ = 0;
       record_header_.data_length_ = uncomp_buf_data_len_;
       record_header_.data_zlength_ = output_len;
-      record_header_.data_checksum_ = ob_crc64(output_buf, output_len);
+      record_header_.data_checksum_ = ob_crc64_sse42(output_buf, output_len);
       record_header_.set_header_checksum();
     }
   }//end namespace compactsstablev2

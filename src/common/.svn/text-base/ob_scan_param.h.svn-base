@@ -300,11 +300,12 @@ namespace oceanbase
       ObArrayHelper<uint8_t> orderby_order_list_;
       ObSimpleFilter condition_filter_;
       ObGroupByParam group_by_param_;
-        // for range_ store object array.
-        ObObj start_rowkey_obj_array_[OB_MAX_ROWKEY_COLUMN_NUMBER];
-        ObObj end_rowkey_obj_array_[OB_MAX_ROWKEY_COLUMN_NUMBER];
-        const ObSchemaManagerV2* schema_manager_; // rowkey compatible information get from schema
-        bool  is_binary_rowkey_format_;
+
+      // for range_ store object array.
+      ObObj start_rowkey_obj_array_[OB_MAX_ROWKEY_COLUMN_NUMBER];
+      ObObj end_rowkey_obj_array_[OB_MAX_ROWKEY_COLUMN_NUMBER];
+      const ObSchemaManagerV2* schema_manager_; // rowkey compatible information get from schema
+      bool  is_binary_rowkey_format_;
     };
 
   } /* common */

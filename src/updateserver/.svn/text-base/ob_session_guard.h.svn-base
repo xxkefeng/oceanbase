@@ -64,11 +64,7 @@ namespace oceanbase
                                                                    req.idle_time_,
                                                                    session_descriptor_)))
           {
-            if (OB_BEGIN_TRANS_LOCKED != ret
-                || REACH_TIME_INTERVAL(100 * 1000))
-            {
-              TBSYS_LOG(WARN, "begin session fail ret=%d", ret);
-            }
+            TBSYS_LOG(WARN, "begin session fail ret=%d", ret);
           }
           else if (NULL == (session_ctx_ = session_mgr_.fetch_ctx(session_descriptor_)))
           {

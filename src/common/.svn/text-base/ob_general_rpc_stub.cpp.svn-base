@@ -33,6 +33,7 @@
 #include "location/ob_tablet_location_list.h"
 #include "sql/ob_ups_result.h"
 #include "sql/ob_physical_plan.h"
+#include "sql/ob_sql_result_set.h"
 
 namespace oceanbase
 {
@@ -257,6 +258,34 @@ namespace oceanbase
     {
       return send_2_return_0(root_server, timeout, OB_CS_DELETE_TABLETS, DEFAULT_VERSION,
           client_server, tablets);
+    }
+
+    int ObGeneralRpcStub::report_samples(const int64_t timeout, const ObServer & root_server,
+        const bool is_succ, const ObServer &client_server, const uint64_t index_table_id, 
+        const ObNewScanner& result, bool has_more)
+    {
+      int ret = OB_SUCCESS;
+
+      if (is_succ && OB_SUCCESS != (ret = send_2_return_0(root_server, timeout, OB_CS_REPORT_SAMPLES, 
+            DEFAULT_VERSION, client_server, result)))
+      {
+        TBSYS_LOG(WARN, "send report samples message failed, ret=%d", ret);
+      }
+      else if (!has_more)  // at the end of report process
+      {
+        TBSYS_LOG(INFO, "report samples over, send OB_CS_SAMPLE_TABLE_DONE message.");
+        ret = send_3_return_0(root_server, timeout, OB_CS_SAMPLE_TABLE_DONE, DEFAULT_VERSION,
+            is_succ, client_server, static_cast<int64_t>(index_table_id));
+      }
+
+      return ret;
+    }
+
+    int ObGeneralRpcStub::build_index_over(const int64_t timeout, const ObServer & root_server,
+        const bool is_succ, const ObServer &client_server, const uint64_t index_table_id)
+    {
+      return send_3_return_0(root_server, timeout, OB_CS_BUILD_INDEX_DONE, DEFAULT_VERSION,
+              is_succ, client_server, static_cast<int64_t>(index_table_id));
     }
 
     int ObGeneralRpcStub::dest_load_tablet(
@@ -881,6 +910,11 @@ namespace oceanbase
     int ObGeneralRpcStub::execute_sql(const int64_t timeout, const ObServer & ms, const ObString &sql_str) const
     {
       return send_1_return_0(ms, timeout, OB_SQL_EXECUTE, DEFAULT_VERSION, sql_str);
+    }
+    int ObGeneralRpcStub::execute_sql(const int64_t timeout, const ObServer & ms, 
+        const ObString &sql_str, sql::ObSQLResultSet& result) const
+    {
+      return send_1_return_1(ms, timeout, OB_SQL_EXECUTE, DEFAULT_VERSION, sql_str, result);
     }
     int ObGeneralRpcStub::get_master_obi_rs(const int64_t timeout,
                                             const ObServer &rootserver,

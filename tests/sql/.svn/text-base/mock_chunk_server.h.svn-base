@@ -27,6 +27,7 @@ namespace oceanbase
         // do mock request
         int handle_mock_get(ObPacket *ob_packet);
         int handle_mock_scan(ObPacket *ob_packet);
+        int handle_mock_sstable_scan(ObPacket *ob_packet);
       };
     }
   }

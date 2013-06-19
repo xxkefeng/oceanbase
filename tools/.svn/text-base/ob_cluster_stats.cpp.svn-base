@@ -38,7 +38,7 @@ namespace oceanbase
     int32_t ObClusterStats::refresh()
     {
       int ret = 0;
-      ObRole server_type = store_.diff.get_server_type();
+      ObRole server_type = current_.get_server_type();
       if (server_type == OB_ROOTSERVER)
       {
         ret = ObServerStats::refresh();
@@ -55,7 +55,7 @@ namespace oceanbase
         }
         if (OB_SUCCESS == ret)
         {
-          ret = update_stub.fetch_stats(store_.current);
+          ret = update_stub.fetch_stats(current_);
         }
       }
       else if (server_type == OB_CHUNKSERVER
@@ -94,9 +94,9 @@ namespace oceanbase
               //printf("ret=%d, node_stats:%lu\n", ret, node_stats.get_server_type());
               if (OB_SUCCESS != ret) { ++it; continue ;}
               if (alive_server_count == 0)
-                store_.current = node_stats;
+                current_ = node_stats;
               else
-                store_.current.add(node_stats);
+                current_.add(node_stats);
               ++alive_server_count;
             }
             ++it;
@@ -151,7 +151,7 @@ namespace oceanbase
       return ret;
     }
 
-    ObAppStats::ObAppStats(ObClientRpcStub &stub, const ObRole server_type, const char* config_file_name)
+    ObAppStats::ObAppStats(ObClientRpcStub &stub, const ObStatMod server_type, const char* config_file_name)
       : ObServerStats(stub, server_type)
     {
       root_server_array_.init(MAX_SERVER_NUM, root_servers_, 0);
@@ -302,10 +302,10 @@ namespace oceanbase
           fprintf(stderr, "fetch server (%s) stats error\n", addr_string);
           break;
         }
-        if (store_.current.begin(mod_) == store_.current.end(mod_))
-          store_.current = node_stats;
+        if (current_.begin(mod_) == current_.end(mod_))
+          current_ = node_stats;
         else
-          store_.current.add(node_stats);
+          current_.add(node_stats);
       }
 
       return ret;
@@ -314,10 +314,10 @@ namespace oceanbase
     int32_t ObAppStats::refresh()
     {
       int ret = 0;
-      ObRole server_type = store_.diff.get_server_type();
+      ObRole server_type = current_.get_server_type();
 
-      store_.current.reset();
-      store_.current.set_server_type(server_type);
+      current_.reset();
+      current_.set_server_type(server_type);
 
 
       if (server_type == OB_ROOTSERVER)
@@ -366,9 +366,9 @@ namespace oceanbase
         }
 
         // set apply stat. value
-        ObStatManager::const_iterator it = store_.current.begin(mod_);
+        ObStatManager::const_iterator it = current_.begin(mod_);
         ObStat *stat_item = NULL;;
-        while (it != store_.current.end(mod_))
+        while (it != current_.end(mod_))
         {
           for (int index = UPS_MASTER_START_INDEX; index <= UPS_MASTER_END_INDEX; ++index)
           {

@@ -28,7 +28,7 @@ set @a=3;
 execute stmt1 using @a;
 
 # non-existant statement
---error 5043
+--error 5003
 deallocate prepare no_such_statement;
 
 --error 5053
@@ -69,7 +69,7 @@ prepare stmt5 from select ? + a from t1;
 set @a=1;
 execute stmt5 using @a;
 
---error 5044
+--error 5003
 execute stmt5 using @no_such_var;
 
 set @nullvar=1;

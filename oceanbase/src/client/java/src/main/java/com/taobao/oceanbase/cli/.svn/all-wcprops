@@ -1,0 +1,17 @@
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/cli
+END
+OBClient.java
+K 25
+svn:wc:ra_dav:version-url
+V 122
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/cli/OBClient.java
+END
+ObOptions.java
+K 25
+svn:wc:ra_dav:version-url
+V 123
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/cli/ObOptions.java
+END

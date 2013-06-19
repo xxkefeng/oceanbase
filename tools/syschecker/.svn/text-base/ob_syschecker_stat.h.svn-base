@@ -100,10 +100,12 @@ namespace oceanbase
       void add_delete_row_fail(const uint64_t delete_row_fail);
 
       void add_get_opt(const uint64_t get_opt);
+      void add_get_row(const uint64_t get_row);
       void add_get_cell(const uint64_t get_cell);
       void add_get_cell_fail(const uint64_t get_cell_fail);
 
       void add_scan_opt(const uint64_t scan_opt);
+      void add_scan_row(const uint64_t scan_row);
       void add_scan_cell(const uint64_t scan_cell);
       void add_scan_cell_fail(const uint64_t scan_cell_fail);
 
@@ -158,10 +160,12 @@ namespace oceanbase
 
       uint64_t get_opt_;
       uint64_t get_cell_;
+      uint64_t get_row_;
       uint64_t get_cell_fail_;
 
       uint64_t scan_opt_;
       uint64_t scan_cell_;
+      uint64_t scan_row_;
       uint64_t scan_cell_fail_;
 
       uint64_t total_time_;  //unit s

@@ -1,29 +1,29 @@
 K 25
 svn:wc:ra_dav:version-url
-V 87
-/repos/oceanbase/!svn/ver/13206/branches/0_4_1_release/oceanbase/tools/mysqltest/client
-END
-completion_hash.h
-K 25
-svn:wc:ra_dav:version-url
-V 105
-/repos/oceanbase/!svn/ver/13206/branches/0_4_1_release/oceanbase/tools/mysqltest/client/completion_hash.h
-END
-client_priv.h
-K 25
-svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/13206/branches/0_4_1_release/oceanbase/tools/mysqltest/client/client_priv.h
-END
-sql_string.h
-K 25
-svn:wc:ra_dav:version-url
-V 100
-/repos/oceanbase/!svn/ver/13206/branches/0_4_1_release/oceanbase/tools/mysqltest/client/sql_string.h
+V 77
+/repos/oceanbase/!svn/ver/13223/branches/dev/oceanbase/tools/mysqltest/client
 END
 my_readline.h
 K 25
 svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/13206/branches/0_4_1_release/oceanbase/tools/mysqltest/client/my_readline.h
+V 91
+/repos/oceanbase/!svn/ver/13223/branches/dev/oceanbase/tools/mysqltest/client/my_readline.h
+END
+completion_hash.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/13223/branches/dev/oceanbase/tools/mysqltest/client/completion_hash.h
+END
+client_priv.h
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/13223/branches/dev/oceanbase/tools/mysqltest/client/client_priv.h
+END
+sql_string.h
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/13223/branches/dev/oceanbase/tools/mysqltest/client/sql_string.h
 END

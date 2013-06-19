@@ -40,7 +40,6 @@ namespace oceanbase
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
-        enum ObPhyOperatorType get_type() const {return PHY_EXPR_VALUES;}
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // types and constants

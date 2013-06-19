@@ -48,8 +48,10 @@ namespace oceanbase
       private:
         int init_servers_manager();
         int init_rowkey_range();
+        int init_rowkey_range_by_scan();
         int read_rowkey_range(common::ObScanner& scanner);
-        int get_cell_value(const common::ObCellInfo& cell_info, 
+        int read_rowkey_range(const ObRowDesc& row_desc, ObNewScanner& scanner);
+        int get_cell_value(const common::ObObj& cell_info, 
             int64_t& value);
         int write_rowkey_range();
         int set_cell_value(common::ObObj& obj, const common::ObObjType type, 

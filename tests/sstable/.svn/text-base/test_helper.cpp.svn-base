@@ -811,7 +811,7 @@ void set_obj_array(ObObj array[], const int types[], const int64_t values[],  co
         array[i].set_modifytime(values[i]);
         break;
       case ObVarcharType:
-        buf = (char*)ob_malloc(MAX_BUFSIZ, ObModIds::TEST);
+        buf = (char*)ob_malloc(MAX_BUFSIZ);
         snprintf(buf, MAX_BUFSIZ, "%ld", values[i]);
         ob_string.assign(buf, static_cast<int32_t>(strlen(buf)));
         array[i].set_varchar(ob_string);

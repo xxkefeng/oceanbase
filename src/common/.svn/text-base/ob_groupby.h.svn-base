@@ -14,7 +14,7 @@
  *     - some work details if you want
  *
  */
-#ifndef OCEANBASE_COMMON_OB_GROUPBY_H_
+#ifndef OCEANBASE_COMMON_OB_GROUPBY_H_ 
 #define OCEANBASE_COMMON_OB_GROUPBY_H_
 
 #include "ob_string.h"
@@ -33,7 +33,7 @@ namespace oceanbase
   {
     extern const char * GROUPBY_CLAUSE_HAVING_COND_AS_CNAME_PREFIX;
     /// we do not implement avg, because avg can be calculated by client using SUM and COUNT
-    typedef enum
+    typedef enum 
     {
       AGG_FUNC_MIN,
       SUM,
@@ -45,9 +45,9 @@ namespace oceanbase
     /// aggregate column
     class ObAggregateColumn
     {
-    public:
+    public: 
       ObAggregateColumn();
-      ObAggregateColumn(ObString & org_column_name, ObString & as_column_name,
+      ObAggregateColumn(oceanbase::common::ObString & org_column_name, oceanbase::common::ObString & as_column_name,
         const int64_t as_column_idx, const ObAggregateFuncType & func_type);
       ObAggregateColumn(const int64_t org_column_idx, const int64_t as_column_idx, const ObAggregateFuncType & func_type);
       ~ObAggregateColumn();
@@ -73,14 +73,14 @@ namespace oceanbase
       {
         return func_type_;
       }
-      int to_str(char *buf, int64_t buf_size, int64_t &pos)const;
+      int to_str(char *buf, int64_t buf_size, int64_t &pos)const; 
 
       /// calculage aggregate value
       int calc_aggregate_val(oceanbase::common::ObObj & aggregated_val, const oceanbase::common::ObObj & new_val)const;
 
       bool operator==(const ObAggregateColumn &other)const;
 
-      int get_first_aggregate_obj(const oceanbase::common::ObObj & first_obj,
+      int get_first_aggregate_obj(const oceanbase::common::ObObj & first_obj, 
         oceanbase::common::ObObj & agg_obj)const;
       int init_aggregate_obj(oceanbase::common::ObObj & agg_obj)const;
     private:
@@ -105,8 +105,8 @@ namespace oceanbase
       ObGroupKey();
       ~ObGroupKey();
       /// init key
-      int init(const ObCellArray & cell_array, const ObGroupByParam & param,
-        const int64_t row_beg, const int64_t row_end, const int32_t type);
+      int init(const ObCellArray & cell_array, const ObGroupByParam & param, 
+        const int64_t row_beg, const int64_t row_end, const int32_t type); 
       /// get hash value of the key
       inline uint64_t hash() const
       {
@@ -158,7 +158,7 @@ namespace oceanbase
     /// groupby parameter
     class ObGroupByParam
     {
-    public:
+    public:  
       ObGroupByParam(bool deep_copy_args = true);
       ~ObGroupByParam();
       void reset(bool deep_copy_args = true);
@@ -174,7 +174,7 @@ namespace oceanbase
 
       /// add an aggregate column
       static oceanbase::common::ObString COUNT_ROWS_COLUMN_NAME;
-      int add_aggregate_column(const oceanbase::common::ObString & org_column_name,
+      int add_aggregate_column(const oceanbase::common::ObString & org_column_name, 
         const oceanbase::common::ObString & as_column_name, const ObAggregateFuncType  aggregate_func,
         bool is_return = true);
       int add_aggregate_column(const int64_t org_column_idx, const ObAggregateFuncType  aggregate_func, bool is_return = true);
@@ -203,12 +203,12 @@ namespace oceanbase
       /// calculate aggregate result
       /// org_cells [in] result after merge & join  [org_row_beg, org_row_end]
       /// aggregate_cells [in/out] aggregate result row of current group [aggregate_row_beg,aggregate_row_end]
-      int aggregate(const oceanbase::common::ObCellArray & org_cells,  const int64_t org_row_beg,
-        const int64_t org_row_end, oceanbase::common::ObCellArray & aggregate_cells,
+      int aggregate(const oceanbase::common::ObCellArray & org_cells,  const int64_t org_row_beg, 
+        const int64_t org_row_end, oceanbase::common::ObCellArray & aggregate_cells, 
         const int64_t aggregate_row_beg, const int64_t aggregate_row_end)const;
 
-      int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
-      int deserialize(const char* buf, const int64_t data_len, int64_t& pos);
+      int serialize(char* buf, const int64_t buf_len, int64_t& pos) const; 
+      int deserialize(const char* buf, const int64_t data_len, int64_t& pos); 
       int64_t get_serialize_size(void) const;
 
       bool operator == (const ObGroupByParam & other)const;
@@ -306,13 +306,13 @@ namespace oceanbase
 
       int safe_copy(const ObGroupByParam & other);
     private:
-      int64_t serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const;
-      int64_t groupby_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const;
-      int64_t return_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const;
-      int64_t aggregate_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const;
-      int comp_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const;
+      int64_t serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const; 
+      int64_t groupby_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const; 
+      int64_t return_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const; 
+      int64_t aggregate_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const; 
+      int comp_columns_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const; 
       int64_t comp_columns_get_serialize_size(void)const;
-      int return_info_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const;
+      int return_info_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos) const; 
       int64_t return_info_get_serialize_size(void)const;
       int having_condition_serialize_helper(char* buf, const int64_t buf_len, int64_t & pos)const;
       int64_t having_condition_get_serialize_size(void)const;

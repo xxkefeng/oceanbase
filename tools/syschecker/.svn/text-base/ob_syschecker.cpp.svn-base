@@ -12,6 +12,7 @@
  *
  */
 #include "ob_syschecker.h"
+#include "../common_func.h"
 #include "common/ob_malloc.h"
 #include "common/ob_mutator.h"
 #include "common/utility.h"
@@ -125,13 +126,13 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSyschecker::get_cell_value(const ObCellInfo& cell_info, 
+    int ObSyschecker::get_cell_value(const ObObj& obj, 
                                      int64_t& value)
     {
       int ret             = OB_SUCCESS;
       float floatv        = 0.0;
       double doublev      = 0.0;
-      ObObjType cell_type = cell_info.value_.get_type();
+      ObObjType cell_type = obj.get_type();
       ObString varcharv;
 
       if (OB_SUCCESS == ret)
@@ -139,34 +140,34 @@ namespace oceanbase
         switch (cell_type)
         {
         case ObIntType:
-          cell_info.value_.get_int(value);
+          obj.get_int(value);
           break;
 
         case ObFloatType:
-          cell_info.value_.get_float(floatv);
+          obj.get_float(floatv);
           value = static_cast<int64_t>(floatv);
           break;
 
         case ObDoubleType:
-          cell_info.value_.get_double(doublev);
+          obj.get_double(doublev);
           value = static_cast<int64_t>(doublev);
           break;
 
         case ObDateTimeType:
-          cell_info.value_.get_datetime(value);
+          obj.get_datetime(value);
           break;
 
         case ObPreciseDateTimeType:
-          cell_info.value_.get_precise_datetime(value);
+          obj.get_precise_datetime(value);
           break;
 
         case ObVarcharType:
-          cell_info.value_.get_varchar(varcharv);
+          obj.get_varchar(varcharv);
           value = strtoll(varcharv.ptr(), NULL, 10);
           break; 
         
         case ObExtendType:
-          if (cell_info.value_.get_ext() == ObActionFlag::OP_ROW_DOES_NOT_EXIST)
+          if (obj.get_ext() == ObActionFlag::OP_ROW_DOES_NOT_EXIST)
           {
             TBSYS_LOG(WARN, "row doesn't exist for get rowkey range");
             ret = OB_ERROR;
@@ -176,7 +177,6 @@ namespace oceanbase
         case ObCreateTimeType:
         case ObModifyTimeType:
         case ObNullType:
-        case ObSeqType:
         default:
           TBSYS_LOG(WARN, "invalid cell info type %d", cell_type);
           ret = OB_ERROR;
@@ -207,7 +207,7 @@ namespace oceanbase
         {
           if (0 == index)
           {
-            ret = get_cell_value(cell_info, prefix);
+            ret = get_cell_value(cell_info.value_, prefix);
             if (OB_SUCCESS == ret)
             {
               TBSYS_LOG(INFO, "get cur_max_prefix=%ld", prefix);
@@ -216,7 +216,7 @@ namespace oceanbase
           }
           else if (1 == index)
           {
-            ret = get_cell_value(cell_info, suffix);
+            ret = get_cell_value(cell_info.value_, suffix);
             if (OB_SUCCESS == ret)
             {
               TBSYS_LOG(INFO, "get cur_max_suffix=%ld", suffix);
@@ -229,6 +229,45 @@ namespace oceanbase
             ret = OB_ERROR;
           }
         }
+      }
+
+      return ret;
+    }
+
+    int ObSyschecker::read_rowkey_range(const ObRowDesc& row_desc, ObNewScanner& scanner)
+    {
+      int ret         = OB_SUCCESS;
+      common::ObRow current_row;
+      current_row.set_row_desc(row_desc);
+      const ObObj *cell = NULL;
+      uint64_t table_id = 0;
+      uint64_t column_id = 0;
+      int64_t prefix = 0;
+      int64_t suffix = 0;
+      if (OB_SUCCESS != (ret = scanner.get_next_row(current_row)))
+      {
+        TBSYS_LOG(ERROR, "read 0,0 at least return one row, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = current_row.raw_get_cell(0, cell, table_id, column_id)))
+      {
+        TBSYS_LOG(ERROR, "read_rowkey row 0 not exist, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = get_cell_value(*cell, prefix)))
+      {
+        TBSYS_LOG(ERROR, "read_rowkey row 0 not int, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = current_row.raw_get_cell(1, cell, table_id, column_id)))
+      {
+        TBSYS_LOG(ERROR, "read_rowkey row 1 not exist, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = get_cell_value(*cell, suffix)))
+      {
+        TBSYS_LOG(ERROR, "read_rowkey row 1 not int, ret=%d", ret);
+      }
+      else
+      {
+        rule_.add_cur_max_prefix(prefix + param_.get_syschecker_no());
+        rule_.add_cur_max_suffix(suffix + param_.get_syschecker_no());
       }
 
       return ret;
@@ -345,6 +384,89 @@ namespace oceanbase
       return ret; 
     }
 
+    int ObSyschecker::init_rowkey_range_by_scan()
+    {
+      int ret                               = OB_SUCCESS;
+      const ObTableSchema* wt_schema        = NULL;
+      const ObColumnSchemaV2* column_schema = NULL;
+      int32_t column_size                   = 0 ;
+      int32_t query_size                    = 0 ;
+      ObSqlScanParam scan_param;
+      ObNewScanner scanner;
+      ObNewRange scan_range;
+      ObObj rowkey_obj_array[MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT];
+      ObRowkey row_key;
+      ObRowDesc row_desc;
+
+      int64_t query_column_array[16];
+
+      //the row with key 0 in wide table stores row key range
+      for (int i = 0; i < MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT; ++i)
+      {
+        rowkey_obj_array[i].set_int(0);
+      }
+      row_key.assign (rowkey_obj_array, MAX_SYSCHECKER_ROWKEY_COLUMN_COUNT);
+      scan_range.table_id_ = syschecker_schema_.get_wt_schema()->get_table_id();
+      scan_range.start_key_ = row_key;
+      scan_range.end_key_ = row_key;
+      scan_range.border_flag_.set_inclusive_start();
+      scan_range.border_flag_.set_inclusive_end();
+
+      //build get_param
+      wt_schema = syschecker_schema_.get_wt_schema();
+      if (NULL != wt_schema)
+      {
+        column_schema = syschecker_schema_.get_schema_manager().
+          get_table_schema(wt_schema->get_table_id(), column_size);
+        const ObRowkeyInfo& rowkey_info = syschecker_schema_.get_schema_manager()
+          .get_table_schema(wt_schema->get_table_id())->get_rowkey_info();
+
+        for (int64_t i = 0; i < column_size && query_size < 2 && OB_SUCCESS == ret; ++i)
+        {
+          if (rowkey_info.is_rowkey_column(column_schema[i].get_id()))
+          {
+            continue;
+          }
+
+          if (NULL != &column_schema[i])
+          {
+            query_column_array[query_size++] = column_schema[i].get_id();
+          }
+          else
+          {
+            ret = OB_ERROR;
+          }
+        }
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "wide table schema is invalid, wt_schema=%p", 
+                  wt_schema);
+        ret = OB_ERROR;
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        ret = build_scan_param(scan_range, query_column_array, query_size, -2, scan_param, row_desc);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = client_.cs_sql_scan(scan_param, scanner);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "failed to get cell from merge server, ret=%d, rowkey:%s", 
+              ret, to_cstring(row_key));
+        }
+      }     
+
+      if (OB_SUCCESS == ret)
+      {
+        ret = read_rowkey_range(row_desc, scanner);
+      }
+      
+      return ret; 
+    }
+
     int ObSyschecker::init()
     {
       int ret = OB_SUCCESS;
@@ -416,7 +538,7 @@ namespace oceanbase
         }
         else
         {
-          ret = init_rowkey_range();
+          ret = init_rowkey_range_by_scan();
           if (OB_SUCCESS != ret)
           {
             TBSYS_LOG(WARN, "failed to get current key range from oceanbase");
@@ -545,7 +667,6 @@ namespace oceanbase
         }
         break;
       case ObNullType:
-      case ObSeqType:
       case ObCreateTimeType:
       case ObModifyTimeType:
       case ObExtendType:

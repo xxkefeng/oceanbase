@@ -120,6 +120,35 @@ TEST_F(ObRowTest, reset_test)
   ASSERT_TRUE( ObActionFlag::OP_ROW_DOES_NOT_EXIST == value->get_ext() );
 }
 
+TEST_F(ObRowTest, assign_test)
+{
+  ObRow row;
+  ObRowDesc row_desc;
+
+  row_desc.add_column_desc(1001, 8);
+  row_desc.add_column_desc(1001, 9);
+  row_desc.add_column_desc(1001, 10);
+
+  row_desc.set_rowkey_cell_count(2);
+  row.set_row_desc(row_desc);
+
+  const ObRowkey *rowkey = NULL;
+  ASSERT_EQ(OB_SUCCESS, row.get_rowkey(rowkey));
+  ASSERT_TRUE(rowkey);
+  ASSERT_EQ(2, rowkey->get_obj_cnt());
+  ASSERT_TRUE(rowkey->get_obj_ptr());
+
+  ObRow row2 = row;
+
+  ASSERT_EQ(row.get_column_num(), row2.get_column_num());
+
+  rowkey = NULL;
+  ASSERT_EQ(OB_SUCCESS, row2.get_rowkey(rowkey));
+  ASSERT_TRUE(rowkey);
+  ASSERT_EQ(2, rowkey->get_obj_cnt());
+  ASSERT_TRUE(rowkey->get_obj_ptr());
+}
+
 int main(int argc, char **argv)
 {
   ob_init_memory_pool();

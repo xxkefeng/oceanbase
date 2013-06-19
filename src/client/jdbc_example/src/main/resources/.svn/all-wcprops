@@ -1,23 +1,23 @@
 K 25
 svn:wc:ra_dav:version-url
-V 107
-/repos/oceanbase/!svn/ver/13476/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/resources
-END
-applicationContext.xml
-K 25
-svn:wc:ra_dav:version-url
-V 130
-/repos/oceanbase/!svn/ver/13476/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/resources/applicationContext.xml
+V 97
+/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/jdbc_example/src/main/resources
 END
 create_table.sql
 K 25
 svn:wc:ra_dav:version-url
-V 124
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/resources/create_table.sql
+V 114
+/repos/oceanbase/!svn/ver/12406/branches/dev/oceanbase/src/client/jdbc_example/src/main/resources/create_table.sql
 END
 log4j.properties
 K 25
 svn:wc:ra_dav:version-url
-V 124
-/repos/oceanbase/!svn/ver/13476/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/resources/log4j.properties
+V 114
+/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/jdbc_example/src/main/resources/log4j.properties
+END
+applicationContext.xml
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/jdbc_example/src/main/resources/applicationContext.xml
 END

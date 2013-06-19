@@ -113,7 +113,7 @@ namespace oceanbase
       else
       {
         ret = child_op_->close();
-
+        
       }
       return ret;
     }
@@ -179,7 +179,7 @@ namespace oceanbase
     }
 
 
-    int ObTableMemScan::add_filter(ObSqlExpression *expr)
+    int ObTableMemScan::add_filter(const ObSqlExpression& expr)
     {
       int ret = OB_SUCCESS;
       ret = filter_.add_filter(expr);

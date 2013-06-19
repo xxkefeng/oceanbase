@@ -2,9 +2,9 @@
  //
  // ob_bloomfilter.h / common / Oceanbase
  //
- // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2011-01-18 by Yubai (yubai.lk@taobao.com)
+ // Created on 2011-01-18 by Yubai (yubai.lk@taobao.com) 
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- //
+ // 
  // Change Log
  //
 ////====================================================================
@@ -83,7 +83,7 @@ namespace oceanbase
     {
       struct DefaultAllocator
       {
-        void *alloc(const int32_t nbyte) { return ob_malloc(nbyte, common::ObModIds::OB_BLOOM_FILTER); };
+        void *alloc(const int32_t nbyte) { return ob_malloc(nbyte); };
         void free(void *ptr) { ob_free(ptr); };
       };
       struct Element
@@ -464,3 +464,4 @@ namespace oceanbase
 }//end namespace oceanbase
 
 #endif //OCEANBASE_COMMON_BLOOM_FILTER_H_
+

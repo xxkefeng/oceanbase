@@ -31,7 +31,7 @@ namespace common
 
   void get_table_type(const ObTableSchema& table, ObObj& value)
   {
-    value.set_int(static_cast<int64_t>(table.get_table_type()));
+    value.set_int(static_cast<int64_t>(table.get_table_load_type()));
   }
 
   void get_rowkey_len(const ObTableSchema& table, ObObj& value)

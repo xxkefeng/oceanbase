@@ -13,7 +13,7 @@
  */
 #ifndef MERGESERVER_OB_MS_SUB_GET_REQUEST_H_
 #define MERGESERVER_OB_MS_SUB_GET_REQUEST_H_
-#include "sql/ob_sql_get_param.h"
+#include "sql/ob_sql_get_simple_param.h"
 #include "common/ob_new_scanner.h"
 #include "common/ob_row_iterator.h"
 #include "ob_ms_sql_rpc_event.h"
@@ -34,7 +34,7 @@ namespace oceanbase
       void init(common::PageArena<int64_t, common::ModulePageAllocator> & mem_allocator);
       void reset();
 
-      void set_param(sql::ObSqlGetParam & get_param);
+      void set_param(sql::ObSqlGetSimpleParam & get_param);
       inline void set_row_desc(const common::ObRowDesc &desc)
       {
         cur_row_.set_row_desc(desc);
@@ -92,7 +92,7 @@ namespace oceanbase
         return (received_row_count_ >= row_idx_in_org_param_.size());
       }
 
-      inline int get_cur_param(sql::ObSqlGetParam & get_param)const
+      inline int get_cur_param(sql::ObSqlGetSimpleParam & get_param)const
       {
         int err = common::OB_SUCCESS;
         if (common::OB_SUCCESS != (err = get_next_param_(get_param)))
@@ -117,9 +117,9 @@ namespace oceanbase
         return last_session_id_;
       }
     private:
-      int get_next_param_(sql::ObSqlGetParam & get_param)const;
+      int get_next_param_(sql::ObSqlGetSimpleParam & get_param)const;
       //指向整个大请求的指针
-      sql::ObSqlGetParam *pget_param_;
+      sql::ObSqlGetSimpleParam *pget_param_;
       
       /* key data structure of ObMsSqlSubGetRequest */
       typedef common::ObVector<int64_t, common::PageArena<int64_t, common::ModulePageAllocator> > IVec;
@@ -156,7 +156,7 @@ namespace oceanbase
       ~ObSqlGetMerger()
       {
       }
-      int init(SubRequestVector *results, const int64_t res_count, const sql::ObSqlGetParam & get_param);
+      int init(SubRequestVector *results, const int64_t res_count, const sql::ObSqlGetSimpleParam & get_param);
       int get_next_row(common::ObRow &row);
     private:
       static const int64_t MAX_RES_SIZE = 4096;
@@ -171,7 +171,7 @@ namespace oceanbase
         }
       };
       /* rowkey source indexed by cur_row_idx_ */
-      const sql::ObSqlGetParam            *get_param_;
+      const sql::ObSqlGetSimpleParam            *get_param_;
       /* used to find next output row */
       ResInfo               info_heap_[MAX_RES_SIZE];
       int64_t               heap_size_;

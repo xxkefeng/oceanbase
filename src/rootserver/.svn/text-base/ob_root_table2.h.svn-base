@@ -13,7 +13,9 @@
 #define OCEANBASE_ROOTSERVER_OB_ROOTTABLE2_H_
 #include "rootserver/ob_root_meta2.h"
 #include "rootserver/ob_tablet_info_manager.h"
+#include "rootserver/ob_chunk_server_manager.h"
 #include "common/ob_rowkey.h"
+#include "common/ob_new_scanner.h"
 #include "common/ob_schema.h"
 #include "common/ob_tablet_info.h"
 
@@ -58,6 +60,8 @@ namespace oceanbase
         void get_cs_version(const int64_t index, int64_t &version);
         //
         void get_tablet_info(int64_t & tablet_count, int64_t & row_count, int64_t & data_size) const;
+        int get_table_tablet_info(const uint64_t table_id, int64_t& tablet_count, 
+                                  int64_t& row_count, int64_t& data_size) const;
         // find a proper position for insert operation
         // return SUCCESS when same range found or the proper new pos found for insert
         // return OB_FIND_OUT_OF_RANGE when the proper new pos found for insert is end()
@@ -78,6 +82,7 @@ namespace oceanbase
         void server_off_line(const int32_t server_index, const int64_t time_stamp);
 
         void dump() const;
+        void dump(common::ObNewScanner &scanner, const ObChunkServerManager &cs_mgr) const;
         void dump_cs_tablet_info(const int server_index, int64_t &tablet_num)const;
         void dump_unusual_tablets(int64_t current_version, int32_t replicas_num, int32_t &num) const;
 
@@ -87,8 +92,6 @@ namespace oceanbase
 
         static int64_t get_max_tablet_version(const const_iterator& it);
         int64_t get_max_tablet_version();
-        // remove one replica
-        int remove(const const_iterator& it, const int32_t safe_count, const int32_t server_index);
         int modify(const const_iterator& it, const int32_t dest_server_index, const int64_t tablet_version);
         int replace(const const_iterator& it, const int32_t src_server_index, const int32_t dest_server_index, const int64_t tablet_version);
         /*
@@ -99,12 +102,14 @@ namespace oceanbase
         int split_range(const common::ObTabletInfo& tablet_info, const const_iterator& pos, const int64_t tablet_version, const int32_t server_index);
         int add_range(const common::ObTabletInfo& tablet_info, const const_iterator& pos, const int64_t tablet_version, const int32_t server_index);
 
-        int add(const common::ObTabletInfo& tablet, const int32_t server_index, const int64_t tablet_version);
-        int create_table(const common::ObTabletInfo& tablet, const common::ObArray<int32_t> &chunkservers, const int64_t tablet_version);
+        int add(const common::ObTabletInfo& tablet, const int32_t server_index,
+            const int64_t tablet_version, const int64_t tablet_seq = 0);
+        int create_table(const common::ObTabletInfo& tablet, const common::ObArray<int32_t> &chunkservers, const int64_t tablet_version, bool cs_create = true);
         bool add_lost_range();
         bool check_lost_data(const int64_t server_index)const;
         bool check_lost_range();
         bool check_tablet_copy_count(const int32_t copy_count) const;
+        bool check_table_all_tablets_available(const uint64_t table_id);
         void sort();
 
         /*
@@ -118,6 +123,7 @@ namespace oceanbase
         //void remove_old_tablet();
         ObTabletCrcHistoryHelper* get_crc_helper(const const_iterator& it);
         int delete_tables(const common::ObArray<uint64_t> &deleted_tables);
+      void clear();
       public:
         int write_to_file(const char* filename);
         int read_from_file(const char* filename);
@@ -125,8 +131,8 @@ namespace oceanbase
         void read_from_hex(FILE* stream);
 
       private:
-      	const_iterator lower_bound(const common::ObNewRange& range) const;
-      	iterator lower_bound(const common::ObNewRange& range);
+        const_iterator lower_bound(const common::ObNewRange& range) const;
+        iterator lower_bound(const common::ObNewRange& range);
         void merge_one_tablet(ObRootTable2* shrunk_table, const int32_t last_tablet_index,
             const_iterator it, common::ObTabletReportInfo &to_delete);
         bool move_back(const int32_t from_index_inclusive, const int32_t move_step);

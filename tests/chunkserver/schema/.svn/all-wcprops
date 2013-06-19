@@ -1,29 +1,35 @@
 K 25
 svn:wc:ra_dav:version-url
-V 89
-/repos/oceanbase/!svn/ver/12956/branches/0_4_1_release/oceanbase/tests/chunkserver/schema
-END
-schema_with_valid_expire.ini
-K 25
-svn:wc:ra_dav:version-url
-V 118
-/repos/oceanbase/!svn/ver/12956/branches/0_4_1_release/oceanbase/tests/chunkserver/schema/schema_with_valid_expire.ini
-END
-schema_with_expire.ini
-K 25
-svn:wc:ra_dav:version-url
-V 112
-/repos/oceanbase/!svn/ver/12956/branches/0_4_1_release/oceanbase/tests/chunkserver/schema/schema_with_expire.ini
+V 79
+/repos/oceanbase/!svn/ver/13886/branches/dev/oceanbase/tests/chunkserver/schema
 END
 schema_with_invalid_expire.ini
 K 25
 svn:wc:ra_dav:version-url
-V 120
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/chunkserver/schema/schema_with_invalid_expire.ini
+V 109
+/repos/oceanbase/!svn/ver/8848/branches/dev/oceanbase/tests/chunkserver/schema/schema_with_invalid_expire.ini
 END
 schema_without_expire.ini
 K 25
 svn:wc:ra_dav:version-url
-V 115
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/chunkserver/schema/schema_without_expire.ini
+V 104
+/repos/oceanbase/!svn/ver/8454/branches/dev/oceanbase/tests/chunkserver/schema/schema_without_expire.ini
+END
+schema_with_valid_expire.ini
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/13032/branches/dev/oceanbase/tests/chunkserver/schema/schema_with_valid_expire.ini
+END
+index_schema.ini
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/13886/branches/dev/oceanbase/tests/chunkserver/schema/index_schema.ini
+END
+schema_with_expire.ini
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/13032/branches/dev/oceanbase/tests/chunkserver/schema/schema_with_expire.ini
 END

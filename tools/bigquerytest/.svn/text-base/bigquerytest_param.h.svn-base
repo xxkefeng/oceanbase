@@ -71,6 +71,11 @@ class BigqueryTestParam
       return ob_addr_;
     }
 
+    inline int64_t get_row_num()
+    {
+      return row_num_;
+    }
+
     /*
     inline char* get_ob_rs_ip()
     {
@@ -91,6 +96,7 @@ class BigqueryTestParam
     int8_t client_id_;
     int64_t write_thread_count_;
     int64_t read_thread_count_;
+    int64_t row_num_;
     //char ob_ip_[128];
     //int ob_port_;
     //char ob_rs_ip_[128];

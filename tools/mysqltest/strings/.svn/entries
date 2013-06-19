@@ -1,15 +1,15 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/mysqltest/strings
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/mysqltest/strings
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-04-10T14:26:21.356234Z
-13206
-xiaojun.chengxj
+2013-04-11T08:05:37.630872Z
+13223
+zhuweng.yzf
 
 
 
@@ -32,11 +32,11 @@ file
 
 
 
-2013-05-22T14:08:37.000000Z
+2013-06-19T09:27:11.000000Z
 9e6b068c648cece28403e045085afb8c
-2013-04-10T14:26:21.356234Z
-13206
-xiaojun.chengxj
+2013-04-11T08:05:37.630872Z
+13223
+zhuweng.yzf
 
 
 

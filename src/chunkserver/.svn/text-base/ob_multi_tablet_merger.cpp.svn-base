@@ -248,12 +248,11 @@ namespace oceanbase
           TBSYS_LOG(WARN, "failed to load sstable, index=%ld, range=%s", 
             i, range_buf);
         }
-        else if (tablet->get_sstable_reader_list().count() > 0
-                 && NULL == (reader = dynamic_cast<ObSSTableReader*>(tablet->get_sstable_reader_list().at(0))))
+        else if (NULL == (reader = dynamic_cast<ObSSTableReader*>(tablet->get_sstable_reader())))
         {
           tablet_infos[i].tablet_info_.range_.to_string(range_buf, sizeof(range_buf));
           TBSYS_LOG(WARN, "tablet has NULL sstable reader, index=%ld, range=%s", 
-            i, range_buf);
+              i, range_buf);
           ret = OB_ERROR;
         }
         else if (NULL != reader && !sstable_array_.push_back(reader))
@@ -285,8 +284,8 @@ namespace oceanbase
         if (sstable_array_.get_array_index() > 0)
         {
           if (OB_SUCCESS != (ret = sstable_merger_.merge_sstables(sstable_path_, 
-              manager_->get_serving_block_cache(), 
-              manager_->get_serving_block_index_cache(),
+              manager_->get_block_cache(), 
+              manager_->get_block_index_cache(),
               sstable_readers_, sstable_array_.get_array_index(), new_range)))
           {
             TBSYS_LOG(WARN, "failed to merge sstable, ret=%d", ret);
@@ -526,13 +525,13 @@ namespace oceanbase
              * set the removed flag, when release tablet, if the ref_count 
              * is 0, the sstable resource of tablet will be released. 
              */
-            merge_tablets_[i]->set_removed();
-            merge_tablets_[i]->set_merged();
-            ret = tablet_image.release_tablet(merge_tablets_[i]);
-            if (OB_SUCCESS != ret)
+            if(OB_SUCCESS != (ret = tablet_image.set_tablet_merged(merge_tablets_[i])))
             {
-              TBSYS_LOG(ERROR, "failed to release tablet, tablet=%p, err=%d", 
-                        merge_tablets_[i], ret);
+              TBSYS_LOG(ERROR, "failed to set tablet merged, ret=%d", ret);                }
+            else if(OB_SUCCESS != (ret = tablet_image.release_tablet(merge_tablets_[i])))
+            {
+              TBSYS_LOG(ERROR, "failed to release tablet, tablet=%p, err=%d",
+                  merge_tablets_[i], ret);
             }
             else
             {
@@ -547,12 +546,6 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "add new merged tablet into tablet iamge failed, "
                          "new_range=%s", to_cstring(tablet->get_range()));
-      }
-      else if (OB_SUCCESS != (ret = tablet_image.write(
-               tablet->get_data_version(), tablet->get_disk_no())))
-      {
-        TBSYS_LOG(WARN, "write new meta failed version=%ld, disk_no=%d",  
-            tablet->get_data_version(), tablet->get_disk_no());
       }
 
       return ret;

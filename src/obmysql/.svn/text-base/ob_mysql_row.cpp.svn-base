@@ -68,7 +68,7 @@ namespace oceanbase {
         case ObMinType:
         case ObMaxType:
         case ObExtendType:
-        case ObSeqType:
+        case ObUnknownType:
           TBSYS_LOG(WARN, "invalid ob type=%d", obj.get_type());
           // not goto here.
           ret = OB_ERROR;

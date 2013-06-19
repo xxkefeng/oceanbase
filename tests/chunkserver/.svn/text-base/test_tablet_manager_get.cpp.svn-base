@@ -980,38 +980,6 @@ namespace oceanbase
         }
       }
 
-      TEST_F(TestObTabletManagerGet, DISABLED_test_switch_cache)
-      {
-        int ret = OB_SUCCESS;
-        int32_t row_count = 10;
-
-        ret = tablet_mgr.build_unserving_cache();
-        EXPECT_EQ(OB_SUCCESS, ret);
-        ret = tablet_mgr.switch_cache();
-        EXPECT_EQ(OB_SUCCESS, ret);
-        ret = tablet_mgr.drop_unserving_cache();
-        EXPECT_EQ(OB_SUCCESS, ret);
-
-        for (int i = 0; i < ROW_NUM / row_count; i++)
-        {
-          test_adjacent_row_query(row_count * i, row_count, COL_NUM);
-        }
-
-        for (int i = 0; i < ROW_NUM / row_count; i++)
-        {
-          test_full_row_query(row_count * i, row_count);
-        }
-
-        for (int i = 0; i < ROW_NUM / row_count; i++)
-        {
-          test_nonexistent_row_query(row_count * i, row_count, COL_NUM, ROW_NUM, 10, COL_NUM);
-        }
-
-        for (int i = 0; i < ROW_NUM / row_count; i++)
-        {
-          test_nonexistent_full_row_query(row_count * i, row_count, COL_NUM, ROW_NUM, 10);
-        }
-      }
     }//end namespace common
   }//end namespace tests
 }//end namespace oceanbase

@@ -224,7 +224,7 @@ namespace oceanbase
     int ObGetScanProxy::get_compact_scanner(const ObGetParam& get_param,
                                             ObScanner& orig_scanner,ObScanner& compact_scanner)
     {
-      ObTabletManager::ObGetThreadContext*& get_context = tablet_manager_.get_cur_thread_get_contex();
+      ObGetThreadContext*& get_context                  = tablet_manager_.get_cur_thread_get_contex();
       const ObGetParam::ObRowIndex* row_index           = get_param.get_row_index();      
       int64_t row_num                                   = orig_scanner.get_row_num();
       ColumnFilter* cf                                  = GET_TSI_MULT(ColumnFilter,TSI_CS_COLUMNFILTER_1);      

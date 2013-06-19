@@ -21,7 +21,7 @@ a	b
 2	two
 3	three
 deallocate prepare no_such_statement;
-ERROR HY007: Unknown prepared statement handler (no_such_statement) given to DEALLOCATE PREPARE
+ERROR HY000: Unknown prepared statement handler (no_such_statement) given to DEALLOCATE PREPARE
 execute stmt1;
 ERROR HY093: Incorrect arguments number to EXECUTE, need 1 arguments
 prepare stmt2 from prepare nested_stmt from 'select 1';

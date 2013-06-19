@@ -18,13 +18,14 @@
 #include "common/ob_row.h"
 #include "ob_phy_operator_type.h"
 #include "common/ob_define.h"
+#include "sql/ob_multi_cg_scanner.h"
 namespace oceanbase
 {
   namespace sql
   {
     class ObPhysicalPlan;
     /// 物理运算符接口
-    class ObPhyOperator
+    class ObPhyOperator : public ObRowIterator
     {
       public:
         ObPhyOperator();
@@ -43,6 +44,17 @@ namespace oceanbase
         virtual int32_t get_child_num() const
         {
           return 0;
+        }
+
+        inline void set_parent(ObPhyOperator *parent)
+        {
+          OB_ASSERT(NULL != parent);
+          parent_op_ = parent;
+        }
+
+        inline ObPhyOperator *get_parent() const
+        {
+          return parent_op_;
         }
 
         virtual enum ObPhyOperatorType get_type() const
@@ -97,11 +109,13 @@ namespace oceanbase
       protected:
         int64_t magic_;
         ObPhysicalPlan *my_phy_plan_; //< the physical plan object who owns this operator. Use this->my_phy_plan_->my_result_set_->my_session_ to get the environment.
+        ObPhyOperator *parent_op_; //< any operator can find its parent through this clue
     };
 
     inline ObPhyOperator::ObPhyOperator()
       :magic_(0xABCD1986ABCD1986),
-       my_phy_plan_(NULL)
+       my_phy_plan_(NULL),
+       parent_op_(NULL)
     {
     }
 

@@ -36,7 +36,6 @@ namespace oceanbase
         void *alloc(const int64_t sz) {return arena_.alloc(sz);};
         void free(void *ptr) {arena_.free((char*)ptr);};
         void reuse() {arena_.reuse();};
-        void set_mod_id(int32_t mod_id) {mod_.set_mod_id(mod_id);};
       private:
         common::ModulePageAllocator mod_;
         common::ModuleArena arena_;

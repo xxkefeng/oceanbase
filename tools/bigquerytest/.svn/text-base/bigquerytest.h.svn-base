@@ -28,7 +28,7 @@ class BigqueryTest
     MysqlClient client_;
     PrefixInfo prefix_info_;
     BigqueryTestParam bigquerytest_param_;
-    WriteWorker write_worker_;
+    WriteWorker* write_worker_;
     ReadWorker read_worker_;
 };
 

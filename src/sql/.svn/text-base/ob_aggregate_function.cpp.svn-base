@@ -83,10 +83,6 @@ void ObAggregateFunction::destroy()
     ob_free(varchar_buffs_[i]);
     varchar_buffs_[i] = NULL;
   }
-  for (int64_t i = 0; i < OB_ROW_MAX_COLUMNS_COUNT; ++i)
-  {
-    aggr_cells_[i].set_null();
-  }
   varchar_buffs_count_ = 0;
   row_desc_.reset();
   aggr_columns_ = NULL;
@@ -115,7 +111,7 @@ int ObAggregateFunction::clone_expr_cell(const ObExprObj &cell, ObExprObj &cell_
     }
     else
     {
-      char* buff = static_cast<char*>(ob_malloc(OB_MAX_VARCHAR_LENGTH, ObModIds::OB_SQL_AGGR_FUNC));
+      char* buff = static_cast<char*>(ob_malloc(OB_MAX_VARCHAR_LENGTH));
       if (NULL == buff)
       {
         TBSYS_LOG(ERROR, "no memory");
@@ -169,7 +165,7 @@ int ObAggregateFunction::clone_cell(const ObObj &cell, ObObj &cell_clone)
     }
     else
     {
-      char* buff = static_cast<char*>(ob_malloc(OB_MAX_VARCHAR_LENGTH, ObModIds::OB_SQL_AGGR_FUNC));
+      char* buff = static_cast<char*>(ob_malloc(OB_MAX_VARCHAR_LENGTH));
       if (NULL == buff)
       {
         TBSYS_LOG(ERROR, "no memory");
@@ -278,6 +274,7 @@ int ObAggregateFunction::prepare(const ObRow &input_row)
     }
     else
     {
+      TBSYS_LOG(INFO, "dedup row count from desc=%ld", dedup_row.get_column_num());
       for (int64_t i = 0; i < dedup_row.get_column_num(); ++i)
       {
         if (OB_SUCCESS != (ret = dedup_sets_[i].clear()))

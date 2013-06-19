@@ -52,20 +52,20 @@ namespace oceanbase
       else if (!use_dio && -1 == (fd_ = ::open(sstable_fname, FILE_OPEN_NORMAL_RFLAG)))
       {
         TBSYS_LOG(WARN, "normal open sstable file fail errno=%u, error_str=%s, "
-                        "filename=%s",
+                        "filename=%s", 
                   errno, strerror(errno), sstable_fname);
         ret = OB_ERROR;
       }
       else if (use_dio && -1 == (fd_ = ::open(sstable_fname, FILE_OPEN_DIRECT_RFLAG)))
       {
         TBSYS_LOG(WARN, "direct open sstable file fail errno=%u, error_str=%s, "
-                        "filename=%s",
+                        "filename=%s", 
                   errno, strerror(errno), sstable_fname);
         ret = OB_ERROR;
       }
       else
       {
-        TBSYS_LOG(INFO, "open file succ fd=%d, sstable_filename=%s",
+        TBSYS_LOG(INFO, "open file succ fd=%d, sstable_filename=%s", 
                   fd_, sstable_fname);
       }
 
@@ -90,8 +90,8 @@ namespace oceanbase
                                      common::IFileInfoMgr& fileinfo_cache,
                                      tbsys::CThreadMutex* external_arena_mutex)
       : is_opened_(false), enable_bloom_filter_(true), use_external_arena_(true),
-      sstable_size_(0), schema_(NULL), compressor_(NULL), sstable_id_(),
-      mod_(ObModIds::OB_CS_SSTABLE_READER),
+      sstable_size_(0), schema_(NULL), compressor_(NULL), sstable_id_(), 
+      mod_(ObModIds::OB_CS_SSTABLE_READER), 
       own_arena_(ModuleArena::DEFAULT_PAGE_SIZE, mod_),
       external_arena_(arena), external_arena_mutex_(external_arena_mutex), fileinfo_cache_(fileinfo_cache)
     {
@@ -165,7 +165,7 @@ namespace oceanbase
         file_info = fileinfo_cache_.get_fileinfo(sstable_id.sstable_file_id_);
         if (NULL == file_info)
         {
-          TBSYS_LOG(WARN, "get file info fail sstable_id=%lu",
+          TBSYS_LOG(WARN, "get file info fail sstable_id=%lu", 
                     sstable_id.sstable_file_id_);
           ret = OB_ERROR;
         }
@@ -178,14 +178,14 @@ namespace oceanbase
         // read trailer offset
         if (OB_SUCCESS == ret)
         {
-          ret = load_trailer_offset(*file_info, trailer_, sstable_size_,
-                                    trailer_buf, trailer_buf_size,
+          ret = load_trailer_offset(*file_info, trailer_, sstable_size_, 
+                                    trailer_buf, trailer_buf_size, 
                                     trailer_offset, trailer_size);
         }
 
         if (OB_SUCCESS == ret)
         {
-          ret = load_trailer(*file_info, trailer_, trailer_buf, trailer_buf_size,
+          ret = load_trailer(*file_info, trailer_, trailer_buf, trailer_buf_size, 
                              trailer_offset, trailer_size);
         }
 
@@ -199,12 +199,12 @@ namespace oceanbase
         }
 
         /**
-         * for bypass sstable, the tabelt version is 0, when we load
-         * these sstable, we need set the sstable with right tablet
-         * version. otherwise the sstable schema is changed, but all the
-         * bypass sstable with version 0, maybe the sstable schema in
-         * sstable schema cache is existed, new sstable will use the
-         * old sstable schema, it's wrong.
+         * for bypass sstable, the tabelt version is 0, when we load 
+         * these sstable, we need set the sstable with right tablet 
+         * version. otherwise the sstable schema is changed, but all the 
+         * bypass sstable with version 0, maybe the sstable schema in 
+         * sstable schema cache is existed, new sstable will use the 
+         * old sstable schema, it's wrong. 
          */
         if (OB_SUCCESS == ret && 0 == trailer_.get_table_version()
             && version > 0)
@@ -257,7 +257,7 @@ namespace oceanbase
     }
 
     int ObSSTableReader::read_record(const IFileInfo& file_info,
-                                     const int64_t offset,
+                                     const int64_t offset, 
                                      const int64_t size,
                                      const char*& out_buffer)
     {
@@ -286,9 +286,9 @@ namespace oceanbase
         const IFileInfo& file_info,
         ObSSTableTrailer& trailer,
         int64_t sstable_size,
-        const char*& trailer_buf,
-        int64_t& trailer_buf_size,
-        int64_t& trailer_offset,
+        const char*& trailer_buf, 
+        int64_t& trailer_buf_size, 
+        int64_t& trailer_offset, 
         int64_t& trailer_size)
     {
       int ret                         = OB_SUCCESS;
@@ -303,18 +303,18 @@ namespace oceanbase
       trailer_offset = 0;
       trailer_size = 0;
 
-      read_tail_size = sizeof(ObRecordHeader) + trailer.get_serialize_size()
+      read_tail_size = sizeof(ObRecordHeader) + trailer.get_serialize_size() 
                        + TRAILER_OFFSET_SIZE;
-
+      
       // read trailer offset
       if (OB_SUCCESS == ret)
       {
-        ret = read_record(file_info, sstable_size - read_tail_size,
+        ret = read_record(file_info, sstable_size - read_tail_size, 
                           read_tail_size, record_buf);
         if (OB_SUCCESS == ret && NULL != record_buf)
         {
           trailer_offset_buf = record_buf + read_tail_size - TRAILER_OFFSET_SIZE;
-          ret = decode_i64(trailer_offset_buf, TRAILER_OFFSET_SIZE,
+          ret = decode_i64(trailer_offset_buf, TRAILER_OFFSET_SIZE, 
                            pos, &trailer_offset);
         }
 
@@ -334,11 +334,11 @@ namespace oceanbase
     }
 
     int ObSSTableReader::load_trailer(
-        const IFileInfo& file_info,
+        const IFileInfo& file_info, 
         ObSSTableTrailer& trailer,
         const char* trailer_buf,
-        const int64_t trailer_buf_size,
-        const int64_t trailer_offset,
+        const int64_t trailer_buf_size, 
+        const int64_t trailer_offset, 
         const int64_t trailer_size)
     {
       int ret                 = OB_SUCCESS;
@@ -480,7 +480,7 @@ namespace oceanbase
       {
         if (NULL == (schema_ = schema_cache.get_schema(first_table_id, version)))
         {
-          schema_buf = static_cast<char*>(ob_malloc(sizeof(ObSSTableSchema), ObModIds::OB_SSTABLE_READER));
+          schema_buf = static_cast<char*>(ob_malloc(sizeof(ObSSTableSchema)));
           if (NULL == schema_buf)
           {
             TBSYS_LOG(ERROR,"alloc schema buf error");
@@ -536,7 +536,7 @@ namespace oceanbase
                   first_table_id, version, schema_);
               if (NULL == schema_)
               {
-                TBSYS_LOG(WARN, "get schema from sstable schema cache failed, version=%ld",
+                TBSYS_LOG(WARN, "get schema from sstable schema cache failed, version=%ld", 
                           version);
                 ret = OB_ERROR;
               }
@@ -550,7 +550,7 @@ namespace oceanbase
               ob_free(schema_tmp);
               schema_tmp = NULL;
 
-              TBSYS_LOG(WARN, "add schema to sstable schema cache failed, version=%ld",
+              TBSYS_LOG(WARN, "add schema to sstable schema cache failed, version=%ld", 
                         version);
             }
           }
@@ -579,7 +579,7 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "failed to get_global_schema_rowkey_info, ret=%d", ret);
       }
       else if (OB_SUCCESS !=
-          (ret = serialization::decode_vi64(payload_ptr, payload_size,
+          (ret = serialization::decode_vi64(payload_ptr, payload_size, 
                                             pos, reinterpret_cast<int64_t*>(&table_id))))
       {
         TBSYS_LOG(ERROR, "failed to decode table id, payload_ptr=%p, payload_size=%ld, pos=%ld,"
@@ -692,7 +692,7 @@ namespace oceanbase
                   range_offset, range_size);
         ret = OB_INVALID_ARGUMENT;
       }
-      else
+      else 
       {
         ret = read_record(file_info, range_offset, range_size, record_buf);
         if (OB_SUCCESS == ret && NULL != record_buf)
@@ -703,7 +703,7 @@ namespace oceanbase
           {
             if (header.is_compress())
             {
-              // compressed range buf
+              // compressed range buf 
               TBSYS_LOG(ERROR, "range buf is in compressed format, "
                         "but expect uncompressed format");
               ret = OB_ERROR;
@@ -711,8 +711,8 @@ namespace oceanbase
             else
             {
               if (trailer_.get_trailer_version() == ObSSTableTrailer::SSTABLEV2)
-              { // compat for SSTABLEV2
-                ret = load_range_compatible(payload_ptr, payload_size,
+              { // compat for SSTABLEV2 
+                ret = load_range_compatible(payload_ptr, payload_size, 
                     range, start_key_obj_array, end_key_obj_array);
                 if (OB_SUCCESS != ret)
                 {
@@ -870,12 +870,12 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "failed to fetch sstable size, sstable_fname=%s", sstable_fname);
       }
-      else if (OB_SUCCESS != load_trailer_offset(file_info, trailer, sstable_size,
+      else if (OB_SUCCESS != load_trailer_offset(file_info, trailer, sstable_size, 
                trailer_buf, trailer_buf_size, trailer_offset, trailer_size))
       {
         TBSYS_LOG(WARN, "failed to load trailer offset, sstable_fname=%s", sstable_fname);
       }
-      else if (OB_SUCCESS != load_trailer(file_info, trailer, trailer_buf,
+      else if (OB_SUCCESS != load_trailer(file_info, trailer, trailer_buf, 
                trailer_buf_size, trailer_offset, trailer_size))
       {
         TBSYS_LOG(WARN, "failed to load trailer, sstable_fname=%s", sstable_fname);

@@ -223,7 +223,7 @@ namespace oceanbase
 
       TEST_F(TestObSlaveMgr, test_server_node)
       {
-        ObSlaveMgr::ServerNode* item = (ObSlaveMgr::ServerNode*)ob_malloc(sizeof(ObSlaveMgr::ServerNode), ObModIds::TEST);
+        ObSlaveMgr::ServerNode* item = (ObSlaveMgr::ServerNode*)ob_malloc(sizeof(ObSlaveMgr::ServerNode));
         item->reset();
         ASSERT_EQ(item->lease.lease_time, 0);
         ASSERT_EQ(item->lease.lease_interval, 0);

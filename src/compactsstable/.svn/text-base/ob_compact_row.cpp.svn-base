@@ -28,7 +28,7 @@ namespace oceanbase
       uint8_t get_int_type(const int64_t v)
       {
         /*
-         * from yubai.lk
+         * from yubai.lk 
          * 注意 为了减少计算代价 与常规的int类型表示范围不同
          * int8_t 表示范围为 [-127, 127] 而非 [-128, 127]
          * int16_t 表示范围为 [-32767, 32767] 而非 [-32768, 127]
@@ -195,7 +195,7 @@ namespace oceanbase
       /*
        * accroding column meta to get the follow data size
        * if this data have a column id, then include the column id size (2bytes)
-       */
+       */ 
 
       inline int get_follow_size(const ObCompactObjMeta* meta,const char* buf_end,int32_t& follow_size)
       {
@@ -299,7 +299,7 @@ namespace oceanbase
       }
       buf_ = NULL;
     }
-
+    
     int ObCompactRow::add_col(const uint64_t column_id, const ObObj &value)
     {
       int ret = OB_SUCCESS;
@@ -314,7 +314,7 @@ namespace oceanbase
       }
       else if (NULL == buf_)
       {
-        if (NULL == (buf_ = (char*)ob_malloc(MAX_BUF_SIZE, ObModIds::COMPACT_ROW)))
+        if (NULL == (buf_ = (char*)ob_malloc(MAX_BUF_SIZE)))
         {
           ret = OB_ALLOCATE_MEMORY_FAILED;
         }
@@ -383,7 +383,7 @@ namespace oceanbase
           value.get_createtime(v);
           ret = set_value(buf_, MAX_BUF_SIZE, buf_pos, v);
           col_meta->type_ = COMPACT_OBJ_TYPE_CREATE;
-        }
+        }        
         else if (ObModifyTimeType == vtype)
         {
           value.get_modifytime(v);
@@ -405,7 +405,7 @@ namespace oceanbase
           else
           {
             TBSYS_LOG(WARN,"not supported exten:%ld,column id is %lu,buf_pos_ is %d",v,column_id,buf_pos_);
-            hex_dump(buf_, buf_pos_,true,TBSYS_LOG_LEVEL_WARN);
+            hex_dump(buf_, buf_pos_,true,TBSYS_LOG_LEVEL_WARN);            
             ret = OB_NOT_SUPPORTED;
           }
         }
@@ -431,7 +431,7 @@ namespace oceanbase
             *((uint16_t*)(buf_ + buf_pos)) = static_cast<uint16_t>(column_id);
             buf_pos += static_cast<int32_t>(sizeof(uint16_t));
           }
-
+          
           col_num_ += 1;
           buf_pos_ = buf_pos;
 
@@ -510,15 +510,15 @@ namespace oceanbase
         hex_dump(row,static_cast<int32_t>(row_len),true,TBSYS_LOG_LEVEL_WARN);
         ret = OB_ERROR;
       }
-
+      
       return ret;
     }
 
-    /**
+    /** 
      * if rowkey not split,rowkey is the value of column 1
-     *
-     * @param[out] rowkey
-     *
+     * 
+     * @param[out] rowkey 
+     * 
      * @return OB_SUCCESS on success
      */
     int ObCompactRow::get_row_key(ObRowkey& rowkey)
@@ -563,7 +563,7 @@ namespace oceanbase
       }
       return ret;
     }
-
+    
     void ObCompactRow::reset_iter()
     {
       iter_pos_ = 0;
@@ -688,7 +688,7 @@ namespace oceanbase
         case COMPACT_OBJ_TYPE_PRECISE:
         case COMPACT_OBJ_TYPE_TIME:
         case COMPACT_OBJ_TYPE_MODIFY:
-        case COMPACT_OBJ_TYPE_CREATE:
+        case COMPACT_OBJ_TYPE_CREATE:          
           v = *((int64_t *)(col_meta + 1));
           set_time_type(cur_cell_.value_,col_meta->type_,v,is_add);
           follow_size = 8;
@@ -720,7 +720,7 @@ namespace oceanbase
           break;
         }
 
-        if (OB_SUCCESS == ret)
+        if (OB_SUCCESS == ret) 
         {
           if (has_colmnid)
           {
@@ -734,7 +734,7 @@ namespace oceanbase
         }
       }
       return ret;
-    }
+    }    
 
     int ObCompactRow::copy(const ObCompactRow& row)
     {
@@ -743,7 +743,7 @@ namespace oceanbase
 
       if (NULL == buf_)
       {
-        if (NULL == (buf_ = reinterpret_cast<char*>(ob_malloc(MAX_BUF_SIZE, ObModIds::COMPACT_ROW))))
+        if (NULL == (buf_ = reinterpret_cast<char*>(ob_malloc(MAX_BUF_SIZE))))
         {
           ret = OB_ALLOCATE_MEMORY_FAILED;
           TBSYS_LOG(WARN,"alloc mem failed");
@@ -758,7 +758,7 @@ namespace oceanbase
       {
         ret = OB_INVALID_ARGUMENT;
       }
-
+        
       if (OB_SUCCESS == ret)
       {
         memcpy(buf_,row.buf_,row.buf_pos_);
@@ -811,7 +811,7 @@ namespace oceanbase
       }
       return result;
     }
-
+    
 
     int ObCompactRow::copy_key(char* buf,const int64_t buf_len,int64_t& pos,int32_t key_col_nums)
     {
@@ -841,10 +841,10 @@ namespace oceanbase
       return buf_;
     }
 
-    /**
+    /** 
      * get value buffer,include END_MARK
-     *
-     * @return
+     * 
+     * @return 
      */
     const char* ObCompactRow::get_value_buffer(int32_t key_col_nums) const
     {

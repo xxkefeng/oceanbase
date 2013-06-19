@@ -32,6 +32,7 @@
 #include "mergeserver/ob_rs_rpc_proxy.h"
 #include "mergeserver/ob_merge_server_service.h"
 #include "sql/ob_sql_read_strategy.h"
+#include "sql/ob_sql_plan_param.h"
 
 namespace oceanbase
 {
@@ -50,11 +51,13 @@ namespace oceanbase
           UNUSED(child_operator);
           return OB_ERROR;
         }
-        int init(ObSqlContext *context, const common::ObRpcScanHint &hint);
+        int init(ObSqlContext *context);
         virtual int open();
         virtual int close();
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
+        void set_hint(const common::ObRpcScanHint &hint);
+        int create_plan();
         /**
          * 添加一个需输出的column
          *
@@ -81,7 +84,7 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        int add_filter(ObSqlExpression* expr);
+        int add_filter(const ObSqlExpression& expr);
         int add_group_column(const uint64_t tid, const uint64_t cid);
         int add_aggr_column(const ObSqlExpression& expr);
 
@@ -95,61 +98,63 @@ namespace oceanbase
          */
         int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset);
 
-        //void set_data_version(int64_t data_version);
-        int set_scan_range(const ObNewRange &range)
+        void set_data_version(int64_t data_version)
         {
-          UNUSED(range);
-          return OB_ERROR;
+          plan_param_.data_version_ = data_version;
         }
 
         void set_rowkey_cell_count(const int64_t rowkey_cell_count)
         {
           cur_row_desc_.set_rowkey_cell_count(rowkey_cell_count);
         }
+
+        inline void set_is_skip_empty_row(bool is_skip_empty_row)
+        {
+          plan_param_.is_skip_empty_row_ = is_skip_empty_row;
+        }
+
+        inline void set_read_method(int32_t read_method)
+        {
+          plan_param_.read_method_ = read_method;
+        }
+
         int64_t to_string(char* buf, const int64_t buf_len) const;
       private:
         // disallow copy
         ObRpcScan(const ObRpcScan &other);
         ObRpcScan& operator=(const ObRpcScan &other);
-
         // member method
-        void destroy();
-        int cast_range(ObNewRange &range);
-        int create_scan_param(ObSqlScanParam &scan_param);
         int get_next_compact_row(const common::ObRow*& row);
-        int cons_scan_range(ObNewRange &range);
-        int cons_row_desc(const ObSqlGetParam &sql_get_param, ObRowDesc &row_desc);
-        int fill_read_param(ObSqlReadParam &dest_param);
-        int get_min_max_rowkey(const ObArray<ObRowkey> &rowkey_array, ObObj *start_key_objs_, ObObj *end_key_objs_,int64_t rowkey_size);
-
-        int create_get_param(ObSqlGetParam &get_param);
-        int cons_get_rows(ObSqlGetParam &get_param);
-        void set_hint(const common::ObRpcScanHint &hint);
+        // A plan carried most info param info, however, not all info.
+        // dynamic info such as Scan Range, Get Rowkeys is 
+        // injected to plan at runtime
+        // class member layout:
+        // ObSqlScanParam {
+        //    ObPhysicalPlan *plan_;
+        //    ObHuskSSTableScan *sstable_op_ptr_;
+        //    ObNewRange whole_scan_range_;
+        // };
+        //int create_scan_plan(ObSqlScanParam &scan_param);
+        //int create_get_plan(ObSqlGetParam &get_param);
+      private:
+        int cons_row_desc(ObRowDesc &row_desc);
+        int cons_get_rows(ObSqlGetSimpleParam &get_param);
+        int cons_scan_range(ObSqlScanSimpleParam &scan_param);
       private:
         static const int64_t REQUEST_EVENT_QUEUE_SIZE = 8192;
-        // 等待结果返回的超时时间
-        int64_t timeout_us_;
+        ObSqlPlanParam plan_param_;
+        ObSqlPlanContext plan_context_;
         mergeserver::ObMsSqlScanRequest sql_scan_request_;
         mergeserver::ObMsSqlGetRequest sql_get_request_;
-        ObSqlScanParam *scan_param_;
-        ObSqlGetParam *get_param_;
-        ObSqlReadParam *read_param_;
+        ObRow cur_row_;
+        // cur_row_desc_ contains selected columns
+        // get_row_desc_ contains selected columns and a special column
+        // for scan operation, outer and internal can share same row desc
+        // but for get operation, can not share them.
+        // get has a special column due to GET protocol requirement
+        ObRowDesc cur_row_desc_;
         ObRowDesc get_row_desc_;
-        common::ObRowkeyInfo rowkey_info_;
-        common::ObTabletLocationCacheProxy * cache_proxy_;
-        mergeserver::ObMergerAsyncRpcStub * async_rpc_;
-        ObSQLSessionInfo *session_info_;
-        const oceanbase::mergeserver::ObMergeServerService *merge_service_;
-        common::ObRpcScanHint hint_;
-        common::ObObj start_key_objs_[OB_MAX_ROWKEY_COLUMN_NUMBER];
-        common::ObObj end_key_objs_[OB_MAX_ROWKEY_COLUMN_NUMBER];
-        common::ObRow cur_row_;
-        common::ObRowDesc cur_row_desc_;
-        uint64_t table_id_;
-        uint64_t base_table_id_;
-        char* start_key_buf_;
-        char* end_key_buf_;
-        ObSqlReadStrategy sql_read_strategy_;
+        int64_t timeout_us_;        
     };
   } // end namespace sql
 } // end namespace oceanbase

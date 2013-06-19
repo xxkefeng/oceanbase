@@ -1,185 +1,197 @@
 K 25
 svn:wc:ra_dav:version-url
-V 83
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest
-END
-key_generator.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/key_generator.cpp
-END
-bigquerytest_main.h
-K 25
-svn:wc:ra_dav:version-url
-V 103
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquerytest_main.h
-END
-key_generator.h
-K 25
-svn:wc:ra_dav:version-url
-V 99
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/key_generator.h
-END
-read_worker.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 99
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/read_worker.cpp
-END
-bigquerytest_param.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 106
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquerytest_param.cpp
-END
-prefix_info.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 99
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/prefix_info.cpp
-END
-read_worker.h
-K 25
-svn:wc:ra_dav:version-url
-V 97
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/read_worker.h
-END
-bigquery_reader.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 103
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquery_reader.cpp
-END
-bigquerytest_param.h
-K 25
-svn:wc:ra_dav:version-url
-V 104
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquerytest_param.h
-END
-libbigquerytest.a
-K 25
-svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/libbigquerytest.a
-END
-prefix_info.h
-K 25
-svn:wc:ra_dav:version-url
-V 97
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/prefix_info.h
-END
-util.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 92
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/util.cpp
-END
-bigquery_reader.h
-K 25
-svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquery_reader.h
-END
-obsql_client.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/obsql_client.cpp
-END
-util.h
-K 25
-svn:wc:ra_dav:version-url
-V 90
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/util.h
-END
-value_generator.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 103
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/value_generator.cpp
-END
-obsql_client.h
-K 25
-svn:wc:ra_dav:version-url
-V 98
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/obsql_client.h
-END
-bigquery_writer.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 103
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquery_writer.cpp
-END
-write_worker.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/write_worker.cpp
-END
-main.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 92
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/main.cpp
-END
-bigquery.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquery.cpp
+V 73
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest
 END
 bigquerytest.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquerytest.cpp
-END
-value_generator.h
-K 25
-svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/value_generator.h
-END
-write_worker.h
-K 25
-svn:wc:ra_dav:version-url
-V 98
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/write_worker.h
+V 90
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/bigquerytest.cpp
 END
 bigquery_writer.h
 K 25
 svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquery_writer.h
-END
-Makefile.am
-K 25
-svn:wc:ra_dav:version-url
-V 95
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/Makefile.am
+V 91
+/repos/oceanbase/!svn/ver/13080/branches/dev/oceanbase/tools/bigquerytest/bigquery_writer.h
 END
 bigquery.conf
 K 25
 svn:wc:ra_dav:version-url
-V 97
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquery.conf
-END
-bigquerytest_main.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 105
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquerytest_main.cpp
-END
-bigquerytest.h
-K 25
-svn:wc:ra_dav:version-url
-V 98
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquerytest.h
+V 87
+/repos/oceanbase/!svn/ver/12417/branches/dev/oceanbase/tools/bigquerytest/bigquery.conf
 END
 bigquery.h
 K 25
 svn:wc:ra_dav:version-url
+V 83
+/repos/oceanbase/!svn/ver/7978/branches/dev/oceanbase/tools/bigquerytest/bigquery.h
+END
+key_generator.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/key_generator.cpp
+END
+bigquerytest_main.h
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/7980/branches/dev/oceanbase/tools/bigquerytest/bigquerytest_main.h
+END
+mysql_client.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/mysql_client.cpp
+END
+read_worker.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/read_worker.cpp
+END
+bigquerytest_param.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/bigquerytest_param.cpp
+END
+prefix_info.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/prefix_info.cpp
+END
+bigquery_reader.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/bigquery_reader.cpp
+END
+libbigquerytest.a
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/7978/branches/dev/oceanbase/tools/bigquerytest/libbigquerytest.a
+END
+util.h
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/repos/oceanbase/!svn/ver/12417/branches/dev/oceanbase/tools/bigquerytest/util.h
+END
+bigquery_writer.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/bigquery_writer.cpp
+END
+obsql_client.h
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/7978/branches/dev/oceanbase/tools/bigquerytest/obsql_client.h
+END
+main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/repos/oceanbase/!svn/ver/13085/branches/dev/oceanbase/tools/bigquerytest/main.cpp
+END
+value_generator.h
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/13080/branches/dev/oceanbase/tools/bigquerytest/value_generator.h
+END
+bigquery.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/13076/branches/dev/oceanbase/tools/bigquerytest/bigquery.cpp
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/13085/branches/dev/oceanbase/tools/bigquerytest/Makefile.am
+END
+write_worker.h
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/13080/branches/dev/oceanbase/tools/bigquerytest/write_worker.h
+END
+bigquerytest_main.cpp
+K 25
+svn:wc:ra_dav:version-url
 V 94
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/bigquerytest/bigquery.h
+/repos/oceanbase/!svn/ver/7978/branches/dev/oceanbase/tools/bigquerytest/bigquerytest_main.cpp
+END
+bigquerytest.h
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/13080/branches/dev/oceanbase/tools/bigquerytest/bigquerytest.h
+END
+key_generator.h
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/12065/branches/dev/oceanbase/tools/bigquerytest/key_generator.h
+END
+mysql_client.h
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/13085/branches/dev/oceanbase/tools/bigquerytest/mysql_client.h
+END
+read_worker.h
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/12065/branches/dev/oceanbase/tools/bigquerytest/read_worker.h
+END
+bigquerytest_param.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/13080/branches/dev/oceanbase/tools/bigquerytest/bigquerytest_param.h
+END
+util.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/util.cpp
+END
+prefix_info.h
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/12065/branches/dev/oceanbase/tools/bigquerytest/prefix_info.h
+END
+obsql_client.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/repos/oceanbase/!svn/ver/8599/branches/dev/oceanbase/tools/bigquerytest/obsql_client.cpp
+END
+bigquery_reader.h
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/12065/branches/dev/oceanbase/tools/bigquerytest/bigquery_reader.h
+END
+value_generator.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/value_generator.cpp
+END
+write_worker.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/13783/branches/dev/oceanbase/tools/bigquerytest/write_worker.cpp
 END

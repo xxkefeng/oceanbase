@@ -17,6 +17,7 @@
 #include "common/utility.h"
 #include "sstable/ob_block_index_cache.h"
 #include "chunkserver/ob_tablet_image.h"
+#include "chunkserver/index/ob_build_index_thread.h"
 #include "compactsstablev2/ob_compact_sstable_reader.h"
 #include "compactsstablev2/ob_sstable_block_index_cache.h"
 #include "compactsstablev2/ob_sstable_block_cache.h"
@@ -26,7 +27,7 @@ using namespace oceanbase::sql;
 using namespace oceanbase::chunkserver;
 
 ObSSTableScan::ObSSTableScan()
-  : iterator_(NULL), last_rowkey_(NULL), sstable_version_(0), row_counter_(0)
+  : iterator_(NULL), cur_rowkey_(NULL), sstable_version_(0), row_counter_(0)
 {
 }
 
@@ -53,47 +54,71 @@ int64_t ObSSTableScan::to_string(char* buf, const int64_t buf_len) const
 int ObSSTableScan::init_sstable_scanner()
 {
   int ret = OB_SUCCESS;
-  int32_t size = 1;
   ObTablet* tablet = scan_context_.tablet_;
 
   if (NULL == tablet)
   {
     ret = OB_INVALID_ARGUMENT;
   }
-  else if ((sstable_version_ = tablet->get_sstable_version()) < SSTableReader::COMPACT_SSTABLE_VERSION)
+  else if (scan_param_.is_local_index_scan())
   {
-    if (OB_SUCCESS != (ret = tablet->find_sstable(
-            scan_param_.get_range(), &scan_context_.sstable_reader_, size)) )
+    ObTablet *index_tablet = tablet->get_local_index();
+    if (NULL == index_tablet
+        || scan_param_.get_range().table_id_ != index_tablet->get_range().table_id_)
     {
-      TBSYS_LOG(ERROR, "cannot find sstable with scan range: %s, sstable version: %ld",
-          to_cstring(scan_param_.get_range()), sstable_version_);
-    }
-    else if (OB_SUCCESS != (ret = scanner_.set_scan_param(scan_param_, &scan_context_)))
-    {
-      TBSYS_LOG(ERROR, "set_scan_param to scanner error, range: %s, sstable version: %ld",
-          to_cstring(scan_param_.get_range()), sstable_version_);
-    }
-    else
-    {
-      iterator_ = &scanner_;
+      TBSYS_LOG(DEBUG, "tablet local index isn't ready, try to build it now, tablet_range=%s",
+                to_cstring(tablet->get_range()));
+      if (NULL == scan_context_.build_index_thread_)
+      {
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        ret = scan_context_.build_index_thread_->tablet_build_local_index(
+            tablet, scan_param_.get_range().table_id_);
+      }
     }
   }
-  else
+
+  if (OB_SUCCESS == ret)
   {
-    if (OB_SUCCESS != (ret = tablet->find_sstable(
-            scan_param_.get_range(), &scan_context_.compact_context_.sstable_reader_, size)) )
+    if (scan_param_.is_local_index_scan())
     {
-      TBSYS_LOG(ERROR, "cannot find sstable with scan range: %s, sstable version: %ld",
-          to_cstring(scan_param_.get_range()), sstable_version_);
+      tablet = tablet->get_local_index();
     }
-    else if (OB_SUCCESS != (ret = compact_scanner_.set_scan_param(&scan_param_, &scan_context_.compact_context_)))
+    if ((sstable_version_ = tablet->get_sstable_version()) < sstable::SSTableReader::COMPACT_SSTABLE_VERSION)
     {
-      TBSYS_LOG(ERROR, "set_scan_param to scanner error, range: %s, sstable version: %ld",
-          to_cstring(scan_param_.get_range()), sstable_version_);
+      if (OB_SUCCESS != (ret = tablet->get_sstable_reader(scan_context_.sstable_reader_)) )
+      {
+        TBSYS_LOG(ERROR, "cannot find sstable with scan range: %s, sstable version: %ld",
+            to_cstring(scan_param_.get_range()), sstable_version_);
+      }
+      else if (OB_SUCCESS != (ret = scanner_.set_scan_param(&scan_param_, &scan_context_)))
+      {
+        TBSYS_LOG(ERROR, "set_scan_param to scanner error, range: %s, sstable version: %ld",
+            to_cstring(scan_param_.get_range()), sstable_version_);
+      }
+      else
+      {
+        iterator_ = &scanner_;
+      }
     }
     else
     {
-      iterator_ = &compact_scanner_;
+      if (OB_SUCCESS != (ret = tablet->get_sstable_reader(scan_context_.compact_context_.sstable_reader_)) )
+      {
+        TBSYS_LOG(ERROR, "cannot find sstable with scan range: %s, sstable version: %ld",
+            to_cstring(scan_param_.get_range()), sstable_version_);
+      }
+      else if (OB_SUCCESS != (ret = compact_scanner_.set_scan_param(&scan_param_, &scan_context_.compact_context_)))
+      {
+        TBSYS_LOG(ERROR, "set_scan_param to scanner error, range: %s, sstable version: %ld",
+            to_cstring(scan_param_.get_range()), sstable_version_);
+      }
+      else
+      {
+        iterator_ = &compact_scanner_;
+      }
     }
   }
 
@@ -118,11 +143,11 @@ int ObSSTableScan::close()
 {
   int ret = OB_SUCCESS;
   TBSYS_LOG(DEBUG, "sstable scan row count=%ld", row_counter_);
-  scanner_.cleanup();
   // release tablet object.
   if (NULL != scan_context_.tablet_)
   {
     ret = scan_context_.tablet_image_->release_tablet(scan_context_.tablet_);
+    scan_context_.tablet_ = NULL;
   }
   return ret;
 }
@@ -140,31 +165,20 @@ int ObSSTableScan::open_scan_context(const sstable::ObSSTableScanParam& param, c
         to_cstring(scan_param_.get_version_range()));
     ret = OB_ERROR;
   }
-  else if (OB_SUCCESS != (ret = scan_context_.tablet_image_->acquire_tablet(scan_param_.get_range(),
+  else if (OB_SUCCESS != (ret = scan_context_.tablet_image_->acquire_tablet(scan_param_.get_data_range(),
           ObMultiVersionTabletImage::SCAN_FORWARD, query_version, scan_context_.tablet_)))
   {
     TBSYS_LOG(ERROR, "cannot acquire tablet with scan range: %s, version: %ld",
-        to_cstring(scan_param_.get_range()), query_version);
+        to_cstring(scan_param_.get_data_range()), query_version);
   }
-  else if (NULL != scan_context_.tablet_ && scan_context_.tablet_->is_removed())
-  {
-    TBSYS_LOG(INFO, "tablet is removed, can't scan, tablet_range=%s",
-        to_cstring(scan_context_.tablet_->get_range()));
-    ret = scan_context_.tablet_image_->release_tablet(scan_context_.tablet_);
-    if (OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(WARN, "failed to release tablet, tablet=%p, range:%s",
-        scan_context_.tablet_, to_cstring(scan_context_.tablet_->get_range()));
-    }
-    scan_context_.tablet_ = NULL;
-    ret = OB_CS_TABLET_NOT_EXIST;
-  }
+
   return ret;
 }
 
-int ObSSTableScan::get_next_row(const ObRowkey* &row_key, const ObRow *&row_value)
+int ObSSTableScan::get_next_row( const ObRow *&row_value)
 {
   int ret = OB_SUCCESS;
+  const ObRowkey* row_key = NULL;
   if (NULL == iterator_)
   {
     TBSYS_LOG(ERROR, "internal error, iterator_ not set, call init_sstable_scanner");
@@ -172,13 +186,15 @@ int ObSSTableScan::get_next_row(const ObRowkey* &row_key, const ObRow *&row_valu
   }
   else
   {
-    ret = iterator_->get_next_row(row_key, row_value);
+    ret = iterator_->get_next_row(row_value);
   }
 
   if (OB_SUCCESS == ret)
   {
-    last_rowkey_ = row_key;
+    row_value->get_rowkey(row_key);
+    cur_rowkey_ = row_key;
     ++row_counter_;
+    TBSYS_LOG(DEBUG, "sstable get next row:%s", to_cstring(*row_value));
   }
   return ret;
 }
@@ -227,9 +243,9 @@ int ObSSTableScan::get_row_desc(const common::ObRowDesc *&row_desc) const
   return ret;
 }
 
-int ObSSTableScan::get_last_rowkey(const ObRowkey *&rowkey)
+int ObSSTableScan::get_cur_rowkey(const ObRowkey *&rowkey) const
 {
   int ret = OB_SUCCESS;
-  rowkey = last_rowkey_;
+  rowkey = cur_rowkey_;
   return ret;
 }

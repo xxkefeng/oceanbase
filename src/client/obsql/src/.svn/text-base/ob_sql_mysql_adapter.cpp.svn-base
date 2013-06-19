@@ -202,7 +202,7 @@ MYSQL * STDCALL mysql_init(MYSQL *mysql)
   {
     if (NULL == mysql)
     {
-      mysql = (MYSQL *)ob_malloc(sizeof(MYSQL), ObModIds::LIB_OBSQL);
+      mysql = (MYSQL *)ob_malloc(sizeof(MYSQL));
       if (NULL == mysql)
       {
         TBSYS_LOG(ERROR, "alloc mem for MYSQL failed");
@@ -457,7 +457,7 @@ int STDCALL mysql_send_query(MYSQL *mysql, const char *q, unsigned long length)
         ret = OB_SQL_ERROR;
       }
     }
-    if (OB_SQL_SUCCESS == ret &&
+    if (OB_SQL_SUCCESS == ret && 
         OB_SQL_END_TRANSACTION == stype)
     {
       mysql_unset_in_transaction(mysql);
@@ -491,8 +491,8 @@ int STDCALL mysql_real_query(MYSQL *mysql, const char *q, unsigned long length)
       TBSYS_LOG(WARN, "can not find a valid connection");
       ret = OB_SQL_ERROR;
     }
-
-    if (OB_SQL_SUCCESS == ret &&
+    
+    if (OB_SQL_SUCCESS == ret &&     
         OB_SQL_END_TRANSACTION == stype)
     {
       mysql_unset_in_transaction(mysql);
@@ -826,8 +826,8 @@ const char *STDCALL mysql_stmt_error(MYSQL_STMT * stmt)
     CALLSTMTREAL(stmt, mysql_stmt_error);
   }
   else
-  {
-    return "MySQL server has gone away";
+  { 
+    return "MySQL server has gone away";   
   }
 }
 

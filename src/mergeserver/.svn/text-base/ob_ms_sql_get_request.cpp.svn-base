@@ -25,6 +25,7 @@ using namespace oceanbase::mergeserver;
 
 ObMsSqlGetRequest::ObMsSqlGetRequest():
   page_arena_(PageArena<int64_t, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_MS_GET_EVENT))
+
 {
   req_dist_map_inited_ = false;
   reserve_get_param_count_ = 0;
@@ -45,6 +46,8 @@ void ObMsSqlGetRequest::reset()
   finished_sub_request_count_ = 0;
   page_arena_.free();
   get_param_ = NULL;
+  phy_plan_ = NULL;
+  op_tablet_get_ = NULL;
   max_parellel_count_ = 0;
   max_get_rows_per_subreq_ = 0;
   triggered_sub_request_count_ = 0;
@@ -54,46 +57,35 @@ void ObMsSqlGetRequest::reset()
   sealed_ = false;
 }
 
-int ObMsSqlGetRequest::set_request_param(ObSqlGetParam &get_param, const int64_t timeout_us,
-  const int64_t max_parellel_count, const int64_t max_get_rows_per_subreq, const int64_t reserve_get_param_count)
+int ObMsSqlGetRequest::set_request_param(ObSqlPlanParam &plan_param)
 {
   int err = OB_SUCCESS;
-  if (max_parellel_count > 0)
-  {
-    max_parellel_count_ = max_parellel_count;
-  }
-  else
-  {
-    max_parellel_count_ = DEFAULT_MAX_PARELLEL_COUNT;
-  }
-  if (max_get_rows_per_subreq > 0)
-  {
-    max_get_rows_per_subreq_ = max_get_rows_per_subreq;
-  }
-  else
-  {
-    max_get_rows_per_subreq_ = DEFAULT_MAX_GET_ROWS_PER_SUBREQ;
-  }
-  if (reserve_get_param_count >= 0)
-  {
-    reserve_get_param_count_ = reserve_get_param_count;
-  }
-  else
-  {
-    reserve_get_param_count_ = DEFAULT_RESERVE_PARAM_COUNT;
-  }
+  OB_ASSERT(plan_param.max_parallel_count_ > 0);
+  OB_ASSERT(plan_param.initial_timeout_us_ > 0);
+  max_parellel_count_ = plan_param.max_parallel_count_;
+  max_get_rows_per_subreq_ = DEFAULT_MAX_GET_ROWS_PER_SUBREQ; //max_get_rows_per_subreq;
+  reserve_get_param_count_ = DEFAULT_RESERVE_PARAM_COUNT; // reserve_get_param_count;
   // get request的get param
-  get_param_ = &get_param;
-  if (!req_dist_map_inited_ && (OB_SUCCESS == err) && (0 != req_dist_map_.create(HASH_BUCKET_NUM)))
+  get_param_ = &plan_param.get_request_get_param();
+  phy_plan_ = &plan_param.inner_plan_;
+  op_tablet_get_ = plan_param.get_op_tablet_get();
+
+  if (NULL == op_tablet_get_)
+  {
+    TBSYS_LOG(WARN, "plan_param->get_op_sstable_get() is NULL");
+    err = OB_NOT_INIT;
+  }
+  else if (!req_dist_map_inited_ && (OB_SUCCESS == err) && (0 != req_dist_map_.create(HASH_BUCKET_NUM)))
   {
     TBSYS_LOG(WARN,"fail to create hash map for request distribution");
     err = OB_ALLOCATE_MEMORY_FAILED;
   }
-  if (OB_SUCCESS == err)
+  else
   {
     req_dist_map_inited_ = true;
   }
-  timeout_us_ = timeout_us;
+  timeout_us_ = plan_param.initial_timeout_us_;
+  get_param_->set_data_version(plan_param.data_version_); // update every get request
   return err;
 }
 
@@ -289,8 +281,11 @@ int ObMsSqlGetRequest::alloc_sub_request(ObMsSqlSubGetRequest *&sub_req)
 int ObMsSqlGetRequest::send_request(const int32_t sub_req_idx, const int64_t timeout_us)
 {
   int err = OB_SUCCESS;
-  //ObSqlGetParam *cur_get_param = NULL;
-  ObSqlGetParam cur_get_param;
+  // 引用
+  /* inject cur_get_param to physical plan */
+  OB_ASSERT(NULL != op_tablet_get_);
+  ObSqlGetSimpleParam &cur_get_param = op_tablet_get_->get_get_param();
+  
   OB_ASSERT(sub_req_idx < sub_requests_.size());
   ObMsSqlSubGetRequest &sub_request = *sub_requests_[sub_req_idx];
   //从大请求的get param中抽取出子请求的get param
@@ -344,8 +339,12 @@ int ObMsSqlGetRequest::send_request(const int32_t sub_req_idx, const int64_t tim
     // TBSYS_LOG(INFO, "req cs:%s", to_cstring(loc_list[svr_idx].server_.chunkserver_));
     rpc_event->set_server(loc_list[svr_idx].server_.chunkserver_);
     FILL_TRACE_LOG("get_cs=%s", to_cstring(loc_list[svr_idx].server_.chunkserver_));
-    if (OB_SUCCESS != (err = get_rpc()->get(static_cast<int64_t>(timeout_us * get_timeout_percent() / 100),
-            loc_list[svr_idx].server_.chunkserver_,cur_get_param,*rpc_event)))
+       
+    if (OB_SUCCESS != (err = get_rpc()->get(
+            static_cast<int64_t>(timeout_us * get_timeout_percent() / 100),
+            loc_list[svr_idx].server_.chunkserver_,
+            *phy_plan_,
+            *rpc_event)))
     {
       TBSYS_LOG(WARN,"fail to send request to server [request_id:%lu,err:%d]", get_request_id(),err);
     }

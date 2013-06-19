@@ -2,9 +2,9 @@
  //
  // ob_multi_file_utils.cpp / common / Oceanbase
  //
- // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2011-04-28 by Yubai (yubai.lk@taobao.com)
+ // Created on 2011-04-28 by Yubai (yubai.lk@taobao.com) 
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- //
+ // 
  // Change Log
  //
 ////====================================================================
@@ -49,7 +49,7 @@ namespace oceanbase
         {
           ObString fname;
           fname.assign(const_cast<char*>(iter), static_cast<int32_t>(strlen(iter)));
-          ObIFileAppender *file = file_alloc_.alloc();
+          ObIFileAppender *file = file_alloc_.allocate();
           if (NULL == file)
           {
             TBSYS_LOG(WARN, "allocate file appender fail [%s]", iter);
@@ -102,7 +102,7 @@ namespace oceanbase
         {
           ObString fname;
           fname.assign(const_cast<char*>(iter), static_cast<int32_t>(strlen(iter)));
-          ObIFileAppender *file = file_alloc_.alloc();
+          ObIFileAppender *file = file_alloc_.allocate();
           if (NULL == file)
           {
             TBSYS_LOG(WARN, "allocate file appender fail [%s]", iter);
@@ -148,7 +148,7 @@ namespace oceanbase
         if (NULL != file)
         {
           file->close();
-          file_alloc_.free(dynamic_cast<FileAppenderImpl*>(file));
+          file_alloc_.deallocate(dynamic_cast<FileAppenderImpl*>(file)); 
           file = NULL;
         }
       }
@@ -245,3 +245,4 @@ namespace oceanbase
     }
   }
 }
+

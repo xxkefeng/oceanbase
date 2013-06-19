@@ -299,7 +299,7 @@ class Manager:
         else:
             self.log_fp.write('%s INFO: [ %s ] case failed!\n' % (strftime("%Y-%m-%d %X"), result["name"]))
             self.log_fp.write("%s\n" % str(result["errput"]).strip())
-            pfail( strftime('%m/%d/%Y %X') + self.shrink_errmsg(result["errput"]))
+            pfail(self.shrink_errmsg(result["errput"]))
 
         if self.after_one:
             self.after_one(self)

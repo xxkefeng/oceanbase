@@ -240,8 +240,8 @@ namespace oceanbase
                 TBSYS_LOG(WARN, "cannot update value_type=%d", column_schema.get_type());
                 bret = false;
                 break;
-              case ObSeqType:
-                TBSYS_LOG(WARN, "not support seq_type now");
+              case ObUnknownType:
+                TBSYS_LOG(WARN, "not support unknown_type now");
                 bret = false;
                 break;
               default:

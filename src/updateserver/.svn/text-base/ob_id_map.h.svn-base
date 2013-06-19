@@ -2,7 +2,7 @@
  //
  // ob_id_map.h updateserver / Oceanbase
  //
- // Copyright (C) 2010, 2012, 2013 Taobao.com, Inc.
+ // Copyright (C) 2010, 2012 Taobao.com, Inc.
  //
  // Created on 2012-03-23 by Yubai (yubai.lk@taobao.com)
  //
@@ -125,7 +125,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid param num=%lu", (uint64_t)num);
         ret = common::OB_INVALID_ARGUMENT;
       }
-      else if (NULL == (array_ = (Node*)common::ob_malloc((num + 1) * sizeof(Node), common::ObModIds::ID_MAP)))
+      else if (NULL == (array_ = (Node*)common::ob_malloc((num + 1) * sizeof(Node))))
       {
         TBSYS_LOG(WARN, "malloc array fail num=%lu", (uint64_t)(num + 1));
         ret = common::OB_MEM_OVERFLOW;

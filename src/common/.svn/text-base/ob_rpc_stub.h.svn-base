@@ -2,8 +2,8 @@
  * (C) 2007-2010 Alibaba Group Holding Limited.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation. 
  *
  *         ob_rpc_stub.h is for what ...
  *
@@ -62,7 +62,7 @@ namespace oceanbase
         int ret = OB_SUCCESS;
         if (OB_SUCCESS != (ret = serialize_param(data_buffer, arg0)))
         {
-          TBSYS_LOG(WARN, "serialize_param arg0 failed. ret=%d, buffer cap:%ld, pos:%ld",
+          TBSYS_LOG(WARN, "serialize_param arg0 error. ret=%d, buffer cap:%ld, pos:%ld",
               ret, data_buffer.get_capacity(), data_buffer.get_position());
         }
         return ret;
@@ -98,12 +98,12 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (OB_SUCCESS != (ret = deserialize_result_0(data_buffer, pos, rc)))
       {
-        TBSYS_LOG(WARN, "deserialize_result_0 failed. ret:%d, buffer length:%ld, pos:%ld",
+        TBSYS_LOG(WARN, "deserialize_result_0 error. ret:%d, buffer length:%ld, pos:%ld",
             ret, data_buffer.get_position(), pos);
       }
       else if (OB_SUCCESS != (ret = deserialize_result(data_buffer, pos, arg0)))
       {
-        TBSYS_LOG(WARN, "deserialize arg0 failed. ret:%d, buffer length:%ld, pos:%ld",
+        TBSYS_LOG(WARN, "deserialize arg0 error. ret:%d, buffer length:%ld, pos:%ld",
             ret, data_buffer.get_position(), pos);
       }
       return ret;
@@ -117,9 +117,9 @@ namespace oceanbase
 
     // -----------------------------------------------------------
     // this class encapsulates network rpc interface as bottom layer,
-    // and it only take charge of "one" rpc call.
+    // and it only take charge of "one" rpc call. 
     // if u need other operational work, please use rpc_proxy for interaction
-    class ObRpcStub
+    class ObRpcStub 
     {
       public:
         // default cmd version
@@ -141,7 +141,7 @@ namespace oceanbase
         inline bool check_inner_stat(void) const
         {
           // check server and packet version
-          return (init_ && (NULL != rpc_buffer_) && (NULL != rpc_frame_));
+          return (init_ && (NULL != rpc_buffer_) && (NULL != rpc_frame_)); 
         }
 
         // get frame rpc data buffer from the thread buffer
@@ -150,8 +150,8 @@ namespace oceanbase
 
         // serialize parameters in thread specific data buffer one by one.
         /* template <typename Arg0>
-          int send_param_1(ObDataBuffer & data_buffer, const ObServer& server,
-              const int64_t timeout, const int32_t pcode, const int32_t version,
+          int send_param_1(ObDataBuffer & data_buffer, const ObServer& server, 
+              const int64_t timeout, const int32_t pcode, const int32_t version, 
               const Arg0 & arg0) const;*/
 
         SEND_PARAM_DECLARE_0;
@@ -172,9 +172,9 @@ namespace oceanbase
 
         // rpc call for frequently-used prototype
         /* template <typename Arg0, typename Arg1, ...>
-          int send_n_return_m(const ObServer& server, const int64_t timeout,
+          int send_n_return_m(const ObServer& server, const int64_t timeout, 
               const int32_t pcode, const int32_t version, const Arg0 & arg0, ...) const; */
-        int send_0_return_0(const ObServer& server,
+        int send_0_return_0(const ObServer& server, 
             const int64_t timeout, const int32_t pcode, const int32_t version) const;
 
         // 1. send_0_return_(1~6)
@@ -184,7 +184,7 @@ namespace oceanbase
         RPC_CALL_DECLARE_SND_0(4);
         RPC_CALL_DECLARE_SND_0(5);
         RPC_CALL_DECLARE_SND_0(6);
-
+        
         // 2. send_(1~6)_return_0
         RPC_CALL_DECLARE_RT_0(1);
         RPC_CALL_DECLARE_RT_0(2);
@@ -200,7 +200,7 @@ namespace oceanbase
         RPC_CALL_DECLARE(4, 1);
         RPC_CALL_DECLARE(5, 1);
         RPC_CALL_DECLARE(6, 1);
-
+        
         // 4. send_(1~6)_return_2
         RPC_CALL_DECLARE(1, 2);
         RPC_CALL_DECLARE(2, 2);
@@ -225,7 +225,7 @@ namespace oceanbase
     };
 
     /* template <typename Arg0>
-      int ObRpcStub::send_param_1(ObDataBuffer & data_buffer, const ObServer& server,
+      int ObRpcStub::send_param_1(ObDataBuffer & data_buffer, const ObServer& server, 
           const int64_t timeout, const int32_t pcode, const int32_t version, const Arg0 & arg0) const
       {
         int ret = OB_SUCCESS;
@@ -263,7 +263,7 @@ namespace oceanbase
 
     /*
     template <typename Arg0>
-      int ObRpcStub::send_1_return_0(const ObServer& server, const int64_t timeout,
+      int ObRpcStub::send_1_return_0(const ObServer& server, const int64_t timeout, 
           const int32_t pcode, const int32_t version, const Arg0 & arg0) const
       {
         int ret = OB_SUCCESS;
@@ -277,7 +277,7 @@ namespace oceanbase
         else if (OB_SUCCESS != (ret = deserialize_result_0(data_buffer, rc, pos)))
         {
         }
-
+        
         return ret;
       } */
 

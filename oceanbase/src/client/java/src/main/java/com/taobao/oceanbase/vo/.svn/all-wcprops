@@ -1,0 +1,83 @@
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo
+END
+ResultCode.java
+K 25
+svn:wc:ra_dav:version-url
+V 123
+/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/ResultCode.java
+END
+StatsFunc.java
+K 25
+svn:wc:ra_dav:version-url
+V 122
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/StatsFunc.java
+END
+Value.java
+K 25
+svn:wc:ra_dav:version-url
+V 118
+/repos/oceanbase/!svn/ver/4724/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/Value.java
+END
+DeleteMutator.java
+K 25
+svn:wc:ra_dav:version-url
+V 126
+/repos/oceanbase/!svn/ver/4724/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/DeleteMutator.java
+END
+Result.java
+K 25
+svn:wc:ra_dav:version-url
+V 119
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/Result.java
+END
+UpdateMutator.java
+K 25
+svn:wc:ra_dav:version-url
+V 126
+/repos/oceanbase/!svn/ver/4724/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/UpdateMutator.java
+END
+GetParam.java
+K 25
+svn:wc:ra_dav:version-url
+V 121
+/repos/oceanbase/!svn/ver/4275/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/GetParam.java
+END
+InsertMutator.java
+K 25
+svn:wc:ra_dav:version-url
+V 126
+/repos/oceanbase/!svn/ver/4724/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/InsertMutator.java
+END
+Rowkey.java
+K 25
+svn:wc:ra_dav:version-url
+V 119
+/repos/oceanbase/!svn/ver/1585/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/Rowkey.java
+END
+QueryInfo.java
+K 25
+svn:wc:ra_dav:version-url
+V 122
+/repos/oceanbase/!svn/ver/5976/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/QueryInfo.java
+END
+RowData.java
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/repos/oceanbase/!svn/ver/5382/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/RowData.java
+END
+ObMutatorBase.java
+K 25
+svn:wc:ra_dav:version-url
+V 126
+/repos/oceanbase/!svn/ver/4724/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/ObMutatorBase.java
+END
+Option.java
+K 25
+svn:wc:ra_dav:version-url
+V 119
+/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/vo/Option.java
+END

@@ -530,7 +530,7 @@ int get_next_range_for_trivail_scan(const ObNewRange &org_scan_range,
   }
   return err;
 }
-
+/*
 int oceanbase::mergeserver::get_next_range(const oceanbase::sql::ObSqlScanParam &org_scan_param,
   const ObNewScanner &prev_scan_result,
   const int64_t prev_limit_offset,
@@ -588,3 +588,4 @@ int oceanbase::mergeserver::get_next_range(const oceanbase::sql::ObSqlScanParam 
   }
   return err;
 }
+*/

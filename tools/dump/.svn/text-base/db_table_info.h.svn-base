@@ -77,7 +77,7 @@ namespace oceanbase {
             }
 
             inline char* alloc(int64_t sz) {
-              ptr_ = (char *)ob_malloc(sz, ObModIds::TEST);
+              ptr_ = (char *)ob_malloc(sz);
               if (ptr_ != NULL) {
                 ref();
               }
@@ -134,9 +134,9 @@ namespace oceanbase {
 
               void dump_slice(void);
 
-              int get_tablet_location(int idx, TabletSliceLocation &loc);
+              int get_tablet_location(int idx, TabletSliceLocation &loc); 
 
-              int parse_from_record(DbRecord *recp);
+              int parse_from_record(DbRecord *recp); 
 
               int get_one_avail_slice(TabletSliceLocation &loc, const ObRowkey &rowkey);
 

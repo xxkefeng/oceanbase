@@ -5,6 +5,7 @@
 #include "ob_object.h"
 #include "ob_range.h"
 #include "ob_rowkey.h"
+#include "ob_read_param.h"
 
 namespace oceanbase
 {
@@ -44,47 +45,6 @@ namespace oceanbase
       }
     };
 
-    /// @class ObReadParam  OB read parameter, API should not concern these parameters,
-    ///   and mergeserver will directly ignore these parameters
-    class ObReadParam
-    {
-    public:
-      ObReadParam();
-      virtual ~ObReadParam();
-
-      /// @fn get data whose timestamp is newer or as new as the given timestamp,
-      ///   -# when reading cs, if not setted, the result is decided by the server;
-      ///   -# when reading ups, this parameter must be setted
-      void set_version_range(const ObVersionRange & range);
-      ObVersionRange get_version_range(void) const;
-
-      /// @fn when reading cs, indicating whether the result (including intermediate result,
-      /// like sstable block readed from sstable) of this operation should be cached.
-      ///
-      /// ups just ignores this parameter
-      void set_is_result_cached(const bool cached);
-      bool get_is_result_cached()const;
-
-      void set_is_read_consistency(const bool cons);
-      bool get_is_read_consistency()const;
-
-      void reset(void);
-
-      /// serailize or deserialization
-      VIRTUAL_NEED_SERIALIZE_AND_DESERIALIZE;
-
-    protected:
-      // RESERVE_PARAM_FIELD
-      int serialize_reserve_param(char * buf, const int64_t buf_len, int64_t & pos) const;
-      int deserialize_reserve_param(const char * buf, const int64_t data_len, int64_t & pos);
-      int64_t get_reserve_param_serialize_size(void) const;
-
-    protected:
-      int8_t is_read_master_;
-      int8_t is_result_cached_;
-      ObVersionRange version_range_;
-    };
-
     struct ScanFlag
     {
 #define SF_BIT_READ_MODE            2
@@ -93,13 +53,15 @@ namespace oceanbase
 #define SF_BIT_DAILY_MERGE_SCAN     1
 #define SF_BIT_FULL_ROW_SCAN        1
 #define SF_BIT_ROWKEY_COLUMN_COUNT  16
-#define SF_BIT_RESERVED             41
+#define SF_BIT_LOCAL_INDEX_SCAN     1
+#define SF_BIT_RESERVED             40
       static const uint64_t SF_MASK_READ_MODE             = (0x1UL<<SF_BIT_READ_MODE)             - 1;
       static const uint64_t SF_MASK_DIRECTION             = (0x1UL<<SF_BIT_DIRECTION)             - 1;
       static const uint64_t SF_MASK_NOT_EXIT_COL_RET_NOP  = (0x1UL<<SF_BIT_NOT_EXIT_COL_RET_NOP)  - 1;
       static const uint64_t SF_MASK_DAILY_MERGE_SCAN      = (0x1UL<<SF_BIT_DAILY_MERGE_SCAN)      - 1;
       static const uint64_t SF_MASK_FULL_ROW_SCAN         = (0x1UL<<SF_BIT_FULL_ROW_SCAN)         - 1;
       static const uint64_t SF_MASK_ROWKEY_COLUMN_COUNT   = (0x1UL<<SF_BIT_ROWKEY_COLUMN_COUNT)   - 1;
+      static const uint64_t SF_MASK_LOCAL_INDEX_SCAN      = (0x1UL<<SF_BIT_LOCAL_INDEX_SCAN)      - 1;
       static const uint64_t SF_MASK_RESERVED              = (0x1UL<<SF_BIT_RESERVED)              - 1;
       enum Direction
       {
@@ -115,13 +77,14 @@ namespace oceanbase
 
       ScanFlag()
         :  read_mode_(SYNCREAD), direction_(FORWARD), not_exit_col_ret_nop_(0),
-        daily_merge_scan_(0), full_row_scan_(0), rowkey_column_count_(0), reserved_(0)
+        daily_merge_scan_(0), full_row_scan_(0), rowkey_column_count_(0), 
+        local_index_scan_(0), reserved_(0)
       {
       }
       ScanFlag(
           const SyncMode mode, const Direction dir, 
           const bool nop, const bool merge, 
-          const bool full, const int64_t count)
+          const bool full, const int64_t count, const int64_t index = 0)
       {
         flag_ = 0;
         read_mode_            = mode  & SF_MASK_READ_MODE;
@@ -130,6 +93,7 @@ namespace oceanbase
         daily_merge_scan_     = merge & SF_MASK_DAILY_MERGE_SCAN;
         full_row_scan_        = full  & SF_MASK_FULL_ROW_SCAN;
         rowkey_column_count_  = count & SF_MASK_ROWKEY_COLUMN_COUNT;
+        local_index_scan_     = index & SF_MASK_LOCAL_INDEX_SCAN;
         //flag_ |= (mode & 0x3);
         //flag_ |= ((dir & 0x3) << 2);
         //flag_ |= ((nop & 0x1) << 4);
@@ -148,6 +112,7 @@ namespace oceanbase
           uint64_t daily_merge_scan_      : SF_BIT_DAILY_MERGE_SCAN;
           uint64_t full_row_scan_         : SF_BIT_FULL_ROW_SCAN;
           uint64_t rowkey_column_count_   : SF_BIT_ROWKEY_COLUMN_COUNT;
+          uint64_t local_index_scan_      : SF_BIT_LOCAL_INDEX_SCAN;
           uint64_t reserved_              : SF_BIT_RESERVED;
         };
       };

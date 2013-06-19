@@ -82,6 +82,8 @@ namespace oceanbase
         static const int64_t TABLET_LOCATION_FIELD    = 89;
         // add for SQL
         static const int64_t SQL_DATA_VERSION        = 90;
+        // new scanner basic 2
+        static const int64_t NEW_SCANNER_BASIC_PARAM_FIELD_2 = 91;
     };
   } /* common */
 } /* oceanbase */

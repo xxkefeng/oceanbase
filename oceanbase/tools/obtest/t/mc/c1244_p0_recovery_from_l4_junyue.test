@@ -1,0 +1,20 @@
+deploy ob1=OBI(data=4,cluster=1244);
+deploy ob2=OBI(data=4,cluster=1244);
+deploy ob2.rs0.set master=ob1.rs0;
+deploy ob1.recover;
+deploy ob2.recover;
+sleep 30;
+
+deploy ob1.create_client;
+show tables;
+
+let $master_master_ups=deploy_get_value(ob1.get_master_ups);
+--echo $master_master_ups
+
+let $slave_master_ups=deploy_get_value(ob2.get_master_ups);
+--echo $slave_master_ups
+
+#
+#
+
+

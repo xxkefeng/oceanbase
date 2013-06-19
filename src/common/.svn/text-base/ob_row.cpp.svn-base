@@ -92,7 +92,14 @@ int ObRow::reset(bool skip_rowkey, enum ObRow::DefaultValue default_value)
 void ObRow::assign(const ObRow &other)
 {
   this->raw_row_.assign(other.raw_row_);
-  this->row_desc_ = other.row_desc_;
+  if (NULL == other.row_desc_)
+  {
+    this->row_desc_ = NULL;
+  }
+  else
+  {
+    set_row_desc(*other.row_desc_);
+  }
 }
 
 ObRow::ObRow(const ObRow &other)
@@ -151,7 +158,8 @@ int ObRow::set_cell(const uint64_t table_id, const uint64_t column_id, const com
   if (NULL == row_desc_
       || OB_INVALID_INDEX == (cell_idx = row_desc_->get_idx(table_id, column_id)))
   {
-    TBSYS_LOG(WARN, "failed to find cell, tid=%lu cid=%lu row_desc=%s", table_id, column_id, to_cstring(*row_desc_));
+    TBSYS_LOG(WARN, "failed to find cell, tid=%lu cid=%lu row_desc=%s",
+        table_id, column_id, (NULL == row_desc_) ? "NULL" : to_cstring(*row_desc_));
     ret = OB_INVALID_ARGUMENT;
   }
   else if (OB_SUCCESS != (ret = raw_row_.set_cell(cell_idx, cell)))
@@ -186,26 +194,6 @@ int ObRow::raw_get_cell(const int64_t cell_idx, const common::ObObj *&cell, uint
   return ret;
 }
 
-int ObRow::raw_set_cell(const int64_t cell_idx, const common::ObObj &cell)
-{
-  int ret = OB_SUCCESS;
-  int64_t cells_count = get_column_num();
-  if (NULL == row_desc_)
-  {
-    ret = OB_NOT_INIT;
-    TBSYS_LOG(ERROR, "row_desc_ is NULL");
-  }
-  else if (cell_idx >= cells_count)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "invalid cell_idx=%ld cells_count=%ld", cell_idx, cells_count);
-  }
-  else if (OB_SUCCESS != (ret = raw_row_.set_cell(cell_idx, cell)))
-  {
-    TBSYS_LOG(WARN, "failed to get cell, err=%d idx=%ld", ret, cell_idx);
-  }
-  return ret;
-}
 
 void ObRow::dump() const
 {
@@ -253,25 +241,6 @@ int64_t ObRow::to_string(char* buf, const int64_t buf_len) const
   return pos;
 }
 
-int ObRow::get_rowkey(const ObRowkey *&rowkey) const
-{
-  int ret = OB_SUCCESS;
-  if (NULL == row_desc_)
-  {
-    ret = OB_NOT_INIT;
-    TBSYS_LOG(ERROR, "row_desc_ is NULL");
-  }
-  else if (row_desc_->get_rowkey_cell_count() <= 0)
-  {
-    ret = OB_ERR_UNEXPECTED;
-    TBSYS_LOG(WARN, "rowkey count[%ld]", row_desc_->get_rowkey_cell_count());
-  }
-  else
-  {
-    rowkey = &rowkey_;
-  }
-  return ret;
-}
 
 int ObRow::get_is_row_empty(bool &is_row_empty) const
 {

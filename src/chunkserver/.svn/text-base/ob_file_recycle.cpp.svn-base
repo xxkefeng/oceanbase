@@ -35,15 +35,6 @@ namespace oceanbase
       return ret;
     }
 
-    int ObRegularRecycler::recycle(const ObTabletImage& image)
-    {
-      int ret = OB_SUCCESS;
-
-      ret = recycle_tablet_image(image, true, true);
-
-      return ret;
-    }
-
     int ObRegularRecycler::prepare_recycle(const int64_t version)
     {
       int ret = OB_SUCCESS;
@@ -76,8 +67,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObRegularRecycler::recycle_tablet_image(const ObTabletImage& image,
-      const bool do_recycle, const bool only_recycle_removed)
+    int ObRegularRecycler::recycle_tablet_image(const ObTabletImage& image, const bool do_recycle)
     {
       ObTablet* tablet = NULL;
       int ret = OB_SUCCESS;
@@ -100,11 +90,7 @@ namespace oceanbase
           {
             if (do_recycle)
             {
-              if ((only_recycle_removed && tablet->is_removed())
-                  || !only_recycle_removed)
-              {
-                do_recycle_tablet(tablet_image, tablet->get_range());
-              }
+              do_recycle_tablet(tablet_image, tablet->get_range());
             }
             else
             {
@@ -114,7 +100,7 @@ namespace oceanbase
 
           if (NULL != tablet)
           {
-            tablet_image.release_tablet(tablet);
+            tablet->dec_ref();
           }
         }
       }
@@ -166,10 +152,9 @@ namespace oceanbase
         }
       }
 
-      if ( NULL != tablet && OB_SUCCESS != (ret =
-            image.release_tablet(tablet)) )
+      if ( NULL != tablet)
       {
-        TBSYS_LOG(ERROR, "release tablet error.");
+        tablet->dec_ref();
       }
 
       return ret;
@@ -495,7 +480,7 @@ namespace oceanbase
         CThreadGuard guard(&lock_);
         if (!inited_)
         {
-          files_list_ = static_cast<FileList *>(ob_malloc(OB_MAX_DISK_NUMBER * sizeof(*files_list_), ObModIds::OB_CS_FILE_RECYCLE));
+          files_list_ = static_cast<FileList *>(ob_malloc(OB_MAX_DISK_NUMBER * sizeof(*files_list_)));
           if (NULL == files_list_)
           {
             ret = OB_ERROR;

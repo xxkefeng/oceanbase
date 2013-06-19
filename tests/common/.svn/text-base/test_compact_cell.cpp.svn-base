@@ -32,7 +32,7 @@ TEST(TestObCompactCell, decimal)
   ASSERT_TRUE(number1 == n1);
 
   ObCompactCellIterator iterator;
-  iterator.init(buf);
+  iterator.init(buf, SPARSE);
 
   uint64_t column_id = OB_INVALID_ID;
   ObObj get_value;
@@ -361,7 +361,7 @@ TEST(TestObCompactCell, writer)
   printf("writer.size() %ld\n", writer.size());
 
   str.assign_ptr(buf, (int32_t)writer.size());
-  iter.init(str);
+  iter.init(str, SPARSE);
 
   uint64_t column_id_get = 0;
   ObObj value_get;
@@ -402,7 +402,7 @@ TEST(TestObCompactCell, writer)
 
   ASSERT_EQ(OB_ITER_END, iter.next_cell());
 
-  iter.init(row);
+  iter.init(row, SPARSE);
   OK(iter.next_cell());
   OK(iter.get_cell(column_id_get, value_get));
 

@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/tests/obmysql
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/tests/obmysql/Makefile.am
+END
+test_ob_mysql_command_packet.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/tests/obmysql/test_ob_mysql_command_packet.cpp
+END
+test_ob_mysql_dtoa.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/tests/obmysql/test_ob_mysql_dtoa.cpp
+END
+test_ob_mysql_state.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/tests/obmysql/test_ob_mysql_state.cpp
+END

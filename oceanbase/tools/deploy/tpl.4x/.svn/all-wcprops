@@ -1,0 +1,59 @@
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/repos/oceanbase/!svn/ver/10392/branches/dev/oceanbase/tools/deploy/tpl.4x
+END
+mergeserver.template
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/10359/branches/dev/oceanbase/tools/deploy/tpl.4x/mergeserver.template
+END
+proxyserver.template
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/9887/branches/dev/oceanbase/tools/deploy/tpl.4x/proxyserver.template
+END
+updateserver.template
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/10392/branches/dev/oceanbase/tools/deploy/tpl.4x/updateserver.template
+END
+rootserver.template
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/10257/branches/dev/oceanbase/tools/deploy/tpl.4x/rootserver.template
+END
+simple.config.template
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/9887/branches/dev/oceanbase/tools/deploy/tpl.4x/simple.config.template
+END
+chunkserver.template
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/9887/branches/dev/oceanbase/tools/deploy/tpl.4x/chunkserver.template
+END
+lsyncserver.template
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/9887/branches/dev/oceanbase/tools/deploy/tpl.4x/lsyncserver.template
+END
+new.table.template
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/9887/branches/dev/oceanbase/tools/deploy/tpl.4x/new.table.template
+END
+schema.template
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/10277/branches/dev/oceanbase/tools/deploy/tpl.4x/schema.template
+END

@@ -38,6 +38,12 @@ ObRootTable2::~ObRootTable2()
   tablet_info_manager_ = NULL;
   sorted_count_ = 0;
 }
+ void ObRootTable2::clear()
+    {
+      meta_table_.clear();
+      sorted_count_ = 0;
+      tablet_info_manager_->clear();
+    }
 
 bool ObRootTable2::has_been_sorted() const
 {
@@ -337,6 +343,98 @@ void ObRootTable2::dump() const
   return;
 }
 
+void ObRootTable2::dump(common::ObNewScanner &scanner, const ObChunkServerManager &cs_mgr) const
+{
+  bool is_req_fullfill = true;
+  int64_t row_count = 0;
+  ObRowDesc desc;
+  ObRow row;
+  ObObj table_id;
+  ObObj start_key;
+  ObObj end_key;
+  ObString start_key_str;
+  ObString end_key_str;
+  char start_key_buf[OB_MAX_VARCHAR_LENGTH];
+  char end_key_buf[OB_MAX_VARCHAR_LENGTH];
+  char cs_buf[3][OB_IP_STR_BUFF];
+  int32_t start_key_buf_len = 0;
+  int32_t end_key_buf_len = 0;
+  ObObj row_count_obj;
+  ObObj occupy_size_obj;
+  ObObj crc_obj;
+  ObObj svr_info_obj;
+  ObString no_cs_str = ObString::make_string("NULL");
+  ObString cs_str;
+
+  // table id, start_key, end_key, row_count, occupy, crc, rep0, rep1, rep2
+  for (int desc_idx = 0; desc_idx < 9; desc_idx++)
+  {
+    desc.add_column_desc(OB_ROOT_TABLE_TID, OB_APP_MIN_COLUMN_ID + desc_idx);
+  }
+  desc.set_rowkey_cell_count(3);
+  row.set_row_desc(desc);
+
+  ObRootTable2::const_iterator it;
+  const ObTabletInfo* tablet = NULL;
+  // scan the root table
+  for (it = begin(); it != end(); ++it)
+  {
+    tablet = tablet_info_manager_->get_tablet_info(it->tablet_info_index_);
+    if (NULL == tablet)
+    {
+      TBSYS_LOG(ERROR, "no tablet info found in tablet_info_manager_ with tablet_index=%d", it->tablet_info_index_);
+      break;
+    }
+    table_id.set_int(tablet->range_.table_id_);
+    row_count_obj.set_int(tablet->row_count_);
+    occupy_size_obj.set_int(tablet->occupy_size_);
+    crc_obj.set_int(static_cast<int64_t>(tablet->crc_sum_));
+    start_key_buf_len = static_cast<int32_t>(tablet->range_.start_key_.to_string(start_key_buf, OB_MAX_VARCHAR_LENGTH));
+    end_key_buf_len = static_cast<int32_t>(tablet->range_.end_key_.to_string(end_key_buf, OB_MAX_VARCHAR_LENGTH));
+    start_key_str.assign(start_key_buf, start_key_buf_len);
+    end_key_str.assign(end_key_buf, end_key_buf_len);
+    start_key.set_varchar(start_key_str);
+    end_key.set_varchar(end_key_str);
+
+    row.set_cell(OB_ROOT_TABLE_TID, OB_APP_MIN_COLUMN_ID + 0, table_id);
+    row.set_cell(OB_ROOT_TABLE_TID, OB_APP_MIN_COLUMN_ID + 1, start_key);
+    row.set_cell(OB_ROOT_TABLE_TID, OB_APP_MIN_COLUMN_ID + 2, end_key);
+    row.set_cell(OB_ROOT_TABLE_TID, OB_APP_MIN_COLUMN_ID + 3, row_count_obj);
+    row.set_cell(OB_ROOT_TABLE_TID, OB_APP_MIN_COLUMN_ID + 4, occupy_size_obj);
+    row.set_cell(OB_ROOT_TABLE_TID, OB_APP_MIN_COLUMN_ID + 5, crc_obj);
+    for (int idx = 0; idx < common::OB_SAFE_COPY_COUNT && idx < 3; idx++)
+    {
+      const ObServerStatus* cs_status = NULL;
+      if (it->server_info_indexes_[idx] >= 0)
+      {
+        cs_status = cs_mgr.get_server_status(it->server_info_indexes_[idx]);
+      }
+      if (NULL == cs_status)
+      {
+        svr_info_obj.set_varchar(no_cs_str);
+      }
+      else
+      {
+        ObServer server = cs_status->server_;
+        server.set_port(cs_status->port_cs_);
+        int64_t cs_buf_len = server.to_string(cs_buf[idx], OB_IP_STR_BUFF);
+        cs_str.assign(cs_buf[idx], static_cast<int32_t>(cs_buf_len));
+        svr_info_obj.set_varchar(cs_str);
+      }
+      row.set_cell(OB_ROOT_TABLE_TID, OB_APP_MIN_COLUMN_ID + 6 + idx, svr_info_obj);
+    }
+    if (OB_SUCCESS != scanner.add_row(row))
+    {
+      TBSYS_LOG(WARN, "root table info is not fully returned to client. row_count=%ld", row_count);
+      break;
+    }
+    row_count++;
+  }
+  scanner.set_is_req_fullfilled(is_req_fullfill, row_count);
+  return;
+}
+
+
 void ObRootTable2::dump_cs_tablet_info(const int server_index, int64_t &tablet_num)const
 {
   if (NULL != tablet_info_manager_)
@@ -429,9 +527,8 @@ int ObRootTable2::check_tablet_version_merged(const int64_t tablet_version, cons
   }
   if (!is_merged)
   {
-    TBSYS_LOG(INFO, "there are %d tablet not safity the veriosn[%ld] and safe_copy_count[%ld], the mering tablet count=%d",
-        fail_count, tablet_version, safe_count, merging_count);
-
+    TBSYS_LOG(INFO, "already have %d tablet not safely merged to version[%ld], merging_count[%d], safe_count[%ld]",
+        fail_count, tablet_version, merging_count, safe_count);
   }
   return err;
 }
@@ -493,6 +590,53 @@ ObTabletInfo* ObRootTable2::get_tablet_info(const const_iterator& it)
   return tablet_info;
 }
 
+int ObRootTable2::get_table_tablet_info(
+    const uint64_t table_id, int64_t& tablet_count, 
+    int64_t& row_count, int64_t& data_size) const
+{
+  int ret = OB_SUCCESS;
+  const ObTabletInfo* tablet_info = NULL;
+  const_iterator first;
+  const_iterator last;
+  ObNewRange search_range;
+
+  search_range.table_id_ = table_id;
+  search_range.set_whole_range();
+  tablet_count = 0;
+  row_count = 0;
+  data_size = 0;
+
+  if (NULL == tablet_info_manager_)
+  {
+    TBSYS_LOG(WARN, "tablet_info_manager_ is NULL, can't get table tablet info");
+    ret = OB_NOT_INIT;
+  }
+  else if (OB_SUCCESS != (ret = find_range(search_range, first, last)))
+  {
+    TBSYS_LOG(WARN, "cann't find this range %s, ret=%d",
+              to_cstring(search_range), ret);
+  }
+  else
+  {
+    for (const_iterator it = first; it <= last; ++it)
+    {
+      if (NULL == (tablet_info = get_tablet_info(it)))
+      {
+        TBSYS_LOG(WARN, "root table get NULL tablet info");
+        ret = OB_ERROR;
+        break;
+      }
+      else
+      {
+        ++tablet_count;
+        data_size += tablet_info->occupy_size_;
+        row_count += tablet_info->row_count_;
+      }
+    }
+  }
+
+  return ret;
+}
 
 bool ObRootTable2::move_back(const int32_t from_index_inclusive, const int32_t move_step)
 {
@@ -532,7 +676,6 @@ int64_t ObRootTable2::get_max_tablet_version()
   }
   return max_tablet_version;
 }
-
 int64_t ObRootTable2::get_max_tablet_version(const const_iterator& it)
 {
   int64_t max_tablet_version = 0;
@@ -545,45 +688,6 @@ int64_t ObRootTable2::get_max_tablet_version(const const_iterator& it)
   }
   return max_tablet_version;
 }
-
-int ObRootTable2::remove(const const_iterator& it, const int32_t safe_count, const int32_t server_index)
-{
-  int ret = OB_SUCCESS;
-  if (safe_count <= 0)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "check safe count failed:safe_count[%d]", safe_count);
-  }
-  else
-  {
-    int32_t current_count = 0;
-    int32_t found_it_index = OB_INVALID_INDEX;
-    for (int32_t i = 0; i < OB_SAFE_COPY_COUNT; i++)
-    {
-      if (it->server_info_indexes_[i] != OB_INVALID_INDEX)
-      {
-        ++current_count;
-      }
-      if (it->server_info_indexes_[i] == server_index)
-      {
-        found_it_index = i;
-      }
-    }
-    // find and remove the replica
-    if ((OB_INVALID_INDEX != found_it_index) && (current_count - 1 > safe_count))
-    {
-      it->server_info_indexes_[found_it_index] = OB_INVALID_INDEX;
-      ret = OB_SUCCESS;
-    }
-    else
-    {
-      TBSYS_LOG(WARN, "not find the server or safe count failed:server[%d], safe[%d], current[%d]",
-          server_index, safe_count, current_count);
-    }
-  }
-  return ret;
-}
-
 int ObRootTable2::modify(const const_iterator& it, const int32_t dest_server_index, const int64_t tablet_version)
 {
   int32_t found_it_index = OB_INVALID_INDEX;
@@ -620,9 +724,11 @@ int ObRootTable2::replace(const const_iterator& it,
 }
 
 //only used in root server's init process
-int ObRootTable2::add(const common::ObTabletInfo& tablet, const int32_t server_index, const int64_t tablet_version)
+int ObRootTable2::add(const common::ObTabletInfo& tablet, const int32_t server_index,
+    const int64_t tablet_version, const int64_t seq)
 {
   int ret = OB_ERROR;
+  UNUSED(seq);
   if (tablet_info_manager_ != NULL)
   {
     ret = OB_SUCCESS;
@@ -651,7 +757,7 @@ int ObRootTable2::add(const common::ObTabletInfo& tablet, const int32_t server_i
   }
   return ret;
 }
-int ObRootTable2::create_table(const ObTabletInfo &tablet, const ObArray<int32_t> &chunkservers, const int64_t tablet_version)
+int ObRootTable2::create_table(const ObTabletInfo &tablet, const ObArray<int32_t> &chunkservers, const int64_t tablet_version, bool cs_create)
 {
   int ret = OB_ERROR;
   int32_t insert_pos = -1;
@@ -708,6 +814,14 @@ int ObRootTable2::create_table(const ObTabletInfo &tablet, const ObArray<int32_t
       {
         meta.server_info_indexes_[i] = chunkservers.at(i);
         meta.tablet_version_[i] = tablet_version;
+        if (cs_create)
+        {
+          meta.tablet_status_[i] = common::TABLET_AVAILABLE;
+        }
+        else 
+        {
+          meta.tablet_status_[i] = common::TABLET_UNAVAILABLE;
+        }
       }
     }
     if (OB_SUCCESS == ret)
@@ -1220,6 +1334,49 @@ bool ObRootTable2::check_tablet_copy_count(const int32_t copy_count) const
   return ret;
 }
 
+bool ObRootTable2::check_table_all_tablets_available(const uint64_t table_id)
+{
+  bool ret = true;
+
+  if (OB_INVALID_ID == table_id)
+  {
+    TBSYS_LOG(WARN, "invalid table_id=%lu", table_id);
+    ret = false;
+  }
+  else
+  {
+    int err = OB_SUCCESS;
+    const_iterator first;
+    const_iterator last;
+    ObNewRange search_range;
+    search_range.table_id_ = table_id;
+    search_range.set_whole_range();
+
+    if (OB_SUCCESS != (err = find_range(search_range, first, last)))
+    {
+      TBSYS_LOG(WARN, "cann't find this range %s, ret=%d",
+                to_cstring(search_range), ret);
+      ret = false;
+    }
+    else
+    {
+      for (const_iterator it = first; it <= last && ret; ++it)
+      {
+        for (int32_t j = 0; j < OB_SAFE_COPY_COUNT; j++)
+        {
+          if (it->server_info_indexes_[j] != OB_INVALID_INDEX
+              && common::TABLET_UNAVAILABLE == it->tablet_status_[j])
+          {
+            ret = false;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return ret;
+}
 
 void ObRootTable2::merge_one_tablet(ObRootTable2* shrunk_table, int32_t last_tablet_index, const_iterator it, ObTabletReportInfo &to_delete)
 {
@@ -1709,7 +1866,7 @@ int ObRootTable2::write_to_file(const char* filename)
     }
 
     // allocate memory
-    char* data_buffer = static_cast<char*>(ob_malloc(total_size, ObModIds::OB_RS_ROOT_TABLE));
+    char* data_buffer = static_cast<char*>(ob_malloc(total_size));
     if (data_buffer == NULL)
     {
       ret = OB_ERROR;
@@ -1872,7 +2029,7 @@ int ObRootTable2::read_from_file(const char* filename)
   if (ret == OB_SUCCESS)
   {
     size = header.data_length_;
-    data_buffer = static_cast<char*>(ob_malloc(size, ObModIds::OB_RS_ROOT_TABLE));
+    data_buffer = static_cast<char*>(ob_malloc(size));
     if (data_buffer == NULL)
     {
       ret = OB_ERROR;

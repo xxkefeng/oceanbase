@@ -57,8 +57,14 @@ namespace oceanbase
                                        common::ObMsgUpsHeartbeat &msg);
 
         virtual int request_report_tablet(const common::ObServer& chunkserver);
-        virtual int execute_sql(const common::ObServer& ms,
-                                const common::ObString sql, int64_t timeout);
+        virtual int request_cs_load_bypass_tablet(const common::ObServer& chunkserver,
+            const common::ObTableImportInfoList &import_info, const int64_t timeout_us);
+        virtual int request_cs_delete_table(const common::ObServer& chunkserver, const uint64_t table_id, const int64_t timeout_us);
+        virtual int request_cs_build_sample(const common::ObServer& chunkserver, const int64_t timeout_us,
+                const int64_t frozen_version, const uint64_t data_table_id, const uint64_t index_table_id, const int64_t sample_count);
+        virtual int request_cs_build_index(const common::ObServer& chunkserver, const int64_t timeout_us,
+                const int64_t frozen_version, const uint64_t data_table_id, const uint64_t index_table_id);
+
       private:
         int get_thread_buffer_(common::ObDataBuffer& data_buffer);
       private:

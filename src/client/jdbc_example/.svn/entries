@@ -1,15 +1,15 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/client/jdbc_example
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/client/jdbc_example
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-04-24T09:16:24.750935Z
-13482
-yongle.xh
+2013-05-06T10:04:21.846941Z
+13626
+zhuweng.yzf
 
 
 
@@ -35,11 +35,11 @@ file
 
 
 
-2013-05-22T14:08:25.000000Z
+2013-06-19T09:27:04.000000Z
 4953f3967be79a8a9e4ea0bbf3616a77
-2013-04-24T06:33:11.706284Z
-13476
-yongle.xh
+2013-05-06T10:04:21.846941Z
+13626
+zhuweng.yzf
 
 
 
@@ -69,7 +69,7 @@ file
 
 
 
-2013-05-22T14:08:25.000000Z
+2013-06-19T09:27:04.000000Z
 49441a3f23d40712527967a417b845b6
 2013-01-13T05:13:24.502873Z
 11442

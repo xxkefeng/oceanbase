@@ -2,7 +2,6 @@
 #include "ob_root_server2.h"
 #include "common/ob_range.h"
 #include "common/ob_schema_service.h"
-#include "common/ob_schema_service_impl.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
@@ -52,12 +51,27 @@ int ObRootDDLOperator::create_table(const TableSchema & table_schema)
   }
   if (OB_SUCCESS == ret)
   {
-    // step 3. select cs for create empty tablet
-    ret = create_empty_tablet(table_schema);
-    if (ret != OB_SUCCESS)
+    if (TableSchema::INDEX != table_schema.get_table_type()) // index table should not create empty tablet
     {
-      TBSYS_LOG(WARN, "create empty tablet failed:table_name[%s], table_id[%lu], ret[%d]",
-          table_schema.table_name_, table_schema.table_id_, ret);
+      // step 3. select cs for create empty tablet
+      ret = create_empty_tablet(table_schema);
+      if (ret != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "create empty tablet failed:table_name[%s], table_id[%lu], ret[%d]",
+            table_schema.table_name_, table_schema.table_id_, ret);
+      }
+    }
+    else
+    {
+      int64_t mem_version = 0;
+      if (OB_SUCCESS != (ret = root_server_->fetch_mem_version(mem_version)))
+      {
+        TBSYS_LOG(WARN, "fail to get mem_version. ret=%d", ret);
+      }
+      else
+      {
+        const_cast<TableSchema &>(table_schema).create_mem_version_ = mem_version;
+      }
     }
   }
   if (OB_SUCCESS == ret)
@@ -73,6 +87,16 @@ int ObRootDDLOperator::create_table(const TableSchema & table_schema)
     {
       TBSYS_LOG(INFO, "update inner table for schema succ:table_name[%s], table_id[%lu]",
           table_schema.table_name_, table_schema.table_id_);
+    }
+  }
+  if (OB_SUCCESS != ret)
+  {
+    // rollback for root table modify
+    int err = delete_root_table(table_schema.table_id_);
+    if (err != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "rollback delete root table failed:table_id[%lu], ret[%d]",
+          table_schema.table_id_, err);
     }
   }
   return ret;
@@ -201,7 +225,10 @@ int ObRootDDLOperator::modify_table_schema(const uint64_t table_id, TableSchema 
   table_schema.table_id_ = table_id;
   ColumnSchema * column = NULL;
   uint64_t column_id = OB_APP_MIN_COLUMN_ID;
-  table_schema.max_used_column_id_ = column_id;
+  if (TableSchema::INDEX != table_schema.table_type_)
+  {
+    table_schema.max_used_column_id_ = column_id;
+  }
   for (int64_t i = 0; i < table_schema.get_column_count(); ++i)
   {
     column = table_schema.get_column_schema(i);
@@ -246,8 +273,11 @@ int ObRootDDLOperator::modify_table_schema(const uint64_t table_id, TableSchema 
     }
     else
     {
-      table_schema.max_used_column_id_ = column_id;
-      column->column_id_ = column_id++;
+      if (TableSchema::INDEX != table_schema.table_type_)
+      {
+        table_schema.max_used_column_id_ = column_id;
+        column->column_id_ = column_id++;
+      }
     }
   }
   return ret;
@@ -530,5 +560,59 @@ int ObRootDDLOperator::set_column_info(const TableSchema & old_schema, const cha
       alter_column.column_.column_id_ = ++max_column_id;
     }
   }
+  return ret;
+}
+int ObRootDDLOperator::modify_table_id(const common::TableSchema &table_schema, const int64_t new_table_id)
+{
+  int ret = OB_SUCCESS;
+  if (!check_inner_stat())
+  {
+    ret = OB_ERROR;
+    TBSYS_LOG(WARN, "check inner stat failed");
+  }
+  if (OB_SUCCESS == ret)
+  {
+    tbsys::CThreadGuard lock(&mutex_lock_);
+    ObString table_name;
+    int ret = schema_client_->get_table_name(new_table_id, table_name);
+    if (ret != OB_ENTRY_NOT_EXIST)
+    {
+      TBSYS_LOG(WARN, "table id is already been used. table_id=%ld, table_name=%s",
+          new_table_id, to_cstring(table_name));
+      ret = OB_ERROR;
+    }
+    else
+    {
+      ret = schema_client_->modify_table_id(table_schema, new_table_id);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "fail to modify table id. new_table_id=%ld", new_table_id);
+      }
+    }
+  }
+  return ret;
+}
+
+int ObRootDDLOperator::modify_index_table_status(
+   const ObString& index_table_name, const int32_t state)
+{
+  int ret = OB_SUCCESS;
+
+  if (!check_inner_stat())
+  {
+    ret = OB_ERROR;
+    TBSYS_LOG(WARN, "check inner stat failed");
+  }
+  else
+  {
+    tbsys::CThreadGuard lock(&mutex_lock_);
+    ret = schema_client_->modify_index_table_status(index_table_name, state);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "fail to modify index table status, index_table_name=%s, state=%d", 
+                to_cstring(index_table_name), state);
+    }
+  }
+
   return ret;
 }

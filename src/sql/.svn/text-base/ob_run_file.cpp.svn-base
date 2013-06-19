@@ -375,7 +375,7 @@ int ObRunFile::parse_row(const char* buf, const int64_t buf_len, ObString &compa
   ObCompactCellIterator cell_reader;
   ObString input_buffer;
   input_buffer.assign_ptr(const_cast<char*>(buf), static_cast<int32_t>(buf_len));
-  cell_reader.init(input_buffer);
+  cell_reader.init(input_buffer, SPARSE);
   uint64_t column_id = OB_INVALID_ID;
   ObObj cell;
   bool is_row_finished = false;

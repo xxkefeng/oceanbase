@@ -1118,7 +1118,7 @@ namespace oceanbase
         /*DateTime -> XXX*/
         not_support/*Null*/, datetime_int, datetime_float,
         datetime_double, identity, datetime_pdatetime,
-        datetime_varchar, not_support/*Seq*/, datetime_ctime,
+        datetime_varchar, not_support/*Unknown*/, datetime_ctime,
         datetime_mtime, not_support/*Extend*/, datetime_bool,
         datetime_decimal
       }
@@ -1127,7 +1127,7 @@ namespace oceanbase
         /*PreciseDateTime -> XXX*/
         not_support/*Null*/, pdatetime_int, pdatetime_float,
         pdatetime_double, pdatetime_datetime, identity,
-        pdatetime_varchar, not_support/*Seq*/,pdatetime_ctime,
+        pdatetime_varchar, not_support/*Unknown*/,pdatetime_ctime,
         pdatetime_mtime, not_support/*Extend*/,pdatetime_bool,
         pdatetime_decimal
       }
@@ -1136,13 +1136,13 @@ namespace oceanbase
         /*Varchar -> XXX*/
         not_support/*Null*/, varchar_int, varchar_float,
         varchar_double, varchar_datetime, varchar_pdatetime,
-        identity, not_support/*Seq*/, varchar_ctime,
+        identity, not_support/*Unknown*/, varchar_ctime,
         varchar_mtime, not_support/*Extend*/, varchar_bool,
         varchar_decimal
       }
       ,
       {
-        /*Seq -> XXX*/
+        /*Unknown -> XXX*/
         not_support, not_support, not_support,
         not_support, not_support, not_support,
         not_support, not_support, not_support,
@@ -1154,7 +1154,7 @@ namespace oceanbase
         /*CreateTime -> XXX*/
         not_support/*Null*/, ctime_int, ctime_float,
         ctime_double, ctime_datetime, ctime_pdatetime,
-        ctime_varchar, not_support/*Seq*/, identity,
+        ctime_varchar, not_support/*Unknown*/, identity,
         ctime_mtime, not_support/*Extend*/, ctime_bool,
         ctime_decimal
       }
@@ -1163,7 +1163,7 @@ namespace oceanbase
         /*ModifyTime -> XXX*/
         not_support/*Null*/, mtime_int, mtime_float,
         mtime_double, mtime_datetime, mtime_pdatetime,
-        mtime_varchar, not_support/*Seq*/, mtime_ctime,
+        mtime_varchar, not_support/*Unknown*/, mtime_ctime,
         identity, not_support/*Extend*/, mtime_bool,
         mtime_decimal
       }
@@ -1181,7 +1181,7 @@ namespace oceanbase
         /*Bool -> XXX*/
         not_support/*Null*/, bool_int, bool_float,
         bool_double, bool_datetime, bool_pdatetime,
-        bool_varchar, not_support/*Seq*/, bool_ctime,
+        bool_varchar, not_support/*Unknown*/, bool_ctime,
         bool_mtime, not_support/*Extend*/, identity,
         bool_decimal
       }
@@ -1190,7 +1190,7 @@ namespace oceanbase
         /*Decimal -> XXX*/
         not_support/*Null*/, decimal_int, decimal_float,
         decimal_double, decimal_datetime, decimal_pdatetime,
-        decimal_varchar, not_support/*Seq*/, decimal_ctime,
+        decimal_varchar, not_support/*Unknown*/, decimal_ctime,
         decimal_mtime, not_support/*Extend*/, decimal_bool,
         identity
       }

@@ -76,10 +76,12 @@ namespace oceanbase
         ObTabletManager & get_tablet_manager() ;
         //ObRootServerRpcStub & get_rs_rpc_stub();
         common::ObGeneralRpcStub & get_rpc_stub();
+        ObSqlRpcStub &get_sql_rpc_stub(void) { return sql_rpc_stub_; }
         ObMergerRpcProxy* get_rpc_proxy();
+        void set_rpc_proxy(ObMergerRpcProxy *rpc_proxy);
         common::ObFileClient& get_file_client();
         common::ObFileService& get_file_service();
-        common::ObMergerSchemaManager* get_schema_manager();
+        common::ObMergerSchemaManager*& get_schema_manager();
         int init_merge_join_rpc();
 
       private:

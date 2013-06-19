@@ -443,12 +443,12 @@ int resolve_expr(
     case T_QUESTIONMARK:
     {
       ObObj val;
-      val.set_int(logical_plan->inc_question_mark());
+      val.set_unknown(reinterpret_cast<const ObObj *>(logical_plan->inc_question_mark()));
       ObConstRawExpr *c_expr = NULL;
       if (CREATE_RAW_EXPR(c_expr, ObConstRawExpr, result_plan) == NULL)
         break;
       c_expr->set_expr_type(T_QUESTIONMARK);
-      c_expr->set_result_type(ObIntType);
+      c_expr->set_result_type(ObUnknownType);
       c_expr->set_value(val);
       expr = c_expr;
       break;
@@ -1180,6 +1180,13 @@ int resolve_expr(
       uint64_t query_id = OB_INVALID_ID;
       if ((ret = resolve_select_stmt(result_plan, node, query_id)) != OB_SUCCESS)
         break;
+      else if ((ret = stmt->add_subquery_index(
+                                 logical_plan->get_bit_index_by_qid(query_id)
+                                 )) != OB_SUCCESS)
+      {
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+            "Add sub-query index failed");
+      }
       if (sub_query_results_scalar)
       {
         ObBasicStmt *sub_stmt = logical_plan->get_query(query_id);
@@ -2510,10 +2517,7 @@ int resolve_select_stmt(
   if (ret == OB_SUCCESS)
   {
     select_stmt = new(select_stmt) ObSelectStmt(name_pool);
-    query_id = logical_plan->generate_query_id();
-    select_stmt->set_query_id(query_id);
-    ret = logical_plan->add_query(select_stmt);
-    if (ret != OB_SUCCESS)
+    if ((ret = logical_plan->add_query(select_stmt, &query_id)) != OB_SUCCESS)
     {
        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
           "Can not add ObSelectStmt to logical plan");
@@ -2724,6 +2728,12 @@ int resolve_hints(
         case T_READ_STATIC:
           query_hint.read_static_ = true;
           break;
+        case T_READ_CONSISTENCY:
+          if (hint_node->value_ == 1)
+            query_hint.read_consistency_ = ObQueryHint::STRONG;
+          else
+            query_hint.read_consistency_ = ObQueryHint::WEAK;
+          break;
         default:
           ret = OB_ERR_HINT_UNKNOWN;
           snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
@@ -2781,9 +2791,7 @@ int resolve_delete_stmt(
     else
     {
       delete_stmt = new(delete_stmt) ObDeleteStmt(name_pool);
-      query_id = logical_plan->generate_query_id();
-      delete_stmt->set_query_id(query_id);
-      ret = logical_plan->add_query(delete_stmt);
+      ret = logical_plan->add_query(delete_stmt, &query_id);
       if (ret != OB_SUCCESS)
       {
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
@@ -2993,9 +3001,7 @@ int resolve_insert_stmt(
     else
     {
       insert_stmt = new(insert_stmt) ObInsertStmt(name_pool);
-      query_id = logical_plan->generate_query_id();
-      insert_stmt->set_query_id(query_id);
-      ret = logical_plan->add_query(insert_stmt);
+      ret = logical_plan->add_query(insert_stmt, &query_id);
       if (ret != OB_SUCCESS)
       {
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
@@ -3110,9 +3116,7 @@ int resolve_update_stmt(
     else
     {
       update_stmt = new(update_stmt) ObUpdateStmt(name_pool);
-      query_id = logical_plan->generate_query_id();
-      update_stmt->set_query_id(query_id);
-      ret = logical_plan->add_query(update_stmt);
+      ret = logical_plan->add_query(update_stmt, &query_id);
       if (ret != OB_SUCCESS)
       {
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,

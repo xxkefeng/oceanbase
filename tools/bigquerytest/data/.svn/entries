@@ -1,8 +1,8 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/bigquerytest/data
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/bigquerytest/data
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-05-22T14:08:28.000000Z
+2013-06-19T09:27:06.000000Z
 402ffe3bde40a5eb04580c642f13541a
 2012-04-18T08:01:20.923220Z
 8013

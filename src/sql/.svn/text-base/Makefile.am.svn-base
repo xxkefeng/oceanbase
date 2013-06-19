@@ -24,13 +24,19 @@ endif
 sql_parser_sources=                                    \
   build_plan.h                build_plan.cpp           \
   dml_build_plan.h            dml_build_plan.cpp       \
+	ob_sql_plan_param.h         ob_sql_plan_param.cpp   \
+	ob_cs_plan_builder.h        ob_cs_plan_builder.cpp   \
+	ob_cs_scan_plan_builder.h   ob_cs_scan_plan_builder.cpp \
+	ob_cs_get_plan_builder.h    ob_cs_get_plan_builder.cpp \
   ob_alter_table_stmt.h       ob_alter_table_stmt.cpp  \
   ob_alter_sys_cnf_stmt.h     ob_alter_sys_cnf_stmt.cpp \
   ob_basic_stmt.h                                      \
   ob_column_def.h                                      \
+  ob_create_index_stmt.h      ob_create_index_stmt.cpp \
   ob_create_table_stmt.h      ob_create_table_stmt.cpp \
   ob_deallocate_stmt.h        ob_deallocate_stmt.cpp   \
   ob_delete_stmt.h            ob_delete_stmt.cpp       \
+  ob_drop_index_stmt.h        ob_drop_index_stmt.cpp   \
   ob_drop_table_stmt.h        ob_drop_table_stmt.cpp   \
   ob_dual_table_scan.h                                 \
   ob_execute_stmt.h           ob_execute_stmt.cpp      \
@@ -50,6 +56,7 @@ sql_parser_sources=                                    \
   ob_show_stmt.h              ob_show_stmt.cpp         \
   ob_stmt.h                   ob_stmt.cpp              \
   ob_sys_params_mgr.h         ob_sys_params_mgr.cpp    \
+  ob_table_option.h                                    \
   ob_transformer.h            ob_transformer.cpp       \
   ob_update_stmt.h            ob_update_stmt.cpp       \
   ob_variable_set_stmt.h      ob_variable_set_stmt.cpp \
@@ -68,14 +75,16 @@ sql_parser_sources=                                    \
   ob_start_trans_stmt.h\
   ob_end_trans_stmt.h\
   ob_non_reserved_keywords.h  ob_non_reserved_keywords.c \
-	ob_priv_executor.h ob_priv_executor.cpp
+	ob_priv_executor.h ob_priv_executor.cpp \
+  ob_sql_character_set.h ob_sql_character_set.cpp
 
 operators_sources=                                                       \
   ob_add_project.h                   ob_add_project.cpp                  \
   ob_aggregate_function.h            ob_aggregate_function.cpp           \
   ob_alter_sys_cnf.h                 ob_alter_sys_cnf.cpp                \
   ob_alter_table.h                   ob_alter_table.cpp                  \
-  ob_column_group_scanner.h          ob_column_group_scanner.cpp         \
+  ob_noncg_sstable_scanner.h         ob_noncg_sstable_scanner.cpp        \
+  ob_create_index.h                  ob_create_index.cpp                 \
   ob_create_table.h                  ob_create_table.cpp                 \
   ob_create_user_stmt.h ob_create_user_stmt.cpp                          \
   ob_deallocate.h                    ob_deallocate.cpp                   \
@@ -105,7 +114,6 @@ operators_sources=                                                       \
   ob_project.h                       ob_project.cpp                      \
   ob_rename.h                        ob_rename.cpp                       \
   ob_result_set.h                    ob_result_set.cpp                   \
-  ob_rowkey_phy_operator.h           ob_rowkey_phy_operator.cpp          \
   ob_rpc_scan.h                      ob_rpc_scan.cpp                     \
   ob_run_file.h                      ob_run_file.cpp                     \
   ob_scalar_aggregate.h              ob_scalar_aggregate.cpp             \
@@ -119,27 +127,36 @@ operators_sources=                                                       \
   ob_sql_read_param.h                ob_sql_read_param.cpp               \
   ob_sql_scan_param.h                ob_sql_scan_param.cpp               \
   ob_sql_get_param.h                 ob_sql_get_param.cpp                \
+  ob_sql_scan_simple_param.h         ob_sql_scan_simple_param.cpp        \
+  ob_sql_get_simple_param.h          ob_sql_get_simple_param.cpp         \
+  ob_sql_read_simple_param.h         ob_sql_read_simple_param.cpp        \
   ob_sql_session_info.h              ob_sql_session_info.cpp             \
   ob_sstable_block_scanner.h         ob_sstable_block_scanner.cpp        \
   ob_sstable_scan.h                  ob_sstable_scan.cpp                 \
-  ob_sstable_scanner.h               ob_sstable_scanner.cpp              \
+  ob_remote_sstable_scan.h           ob_remote_sstable_scan.cpp          \
   ob_table_mem_scan.h                ob_table_mem_scan.cpp               \
   ob_table_rename.h                  ob_table_rename.cpp                 \
   ob_table_rpc_scan.h                ob_table_rpc_scan.cpp               \
   ob_table_scan.h                                                        \
-  ob_tablet_fuse.h                                                       \
   ob_tablet_join.h                   ob_tablet_join.cpp                  \
   ob_tablet_cache_join.h             ob_tablet_cache_join.cpp            \
   ob_tablet_direct_join.h            ob_tablet_direct_join.cpp           \
   ob_tablet_scan.h                   ob_tablet_scan.cpp                  \
+  ob_tablet_sstable_scan.h           ob_tablet_sstable_scan.cpp          \
+	ob_plan_context.h                                                      \
+	ob_tablet_get_v2.h                 ob_tablet_get_v2.cpp                \
+	ob_tablet_scan_v2.h                ob_tablet_scan_v2.cpp               \
+	ob_tablet_read_v2.h                ob_tablet_read_v2.cpp               \
   ob_ups_multi_get.h                 ob_ups_multi_get.cpp                \
+  ob_husk_tablet_scan_v2.h           ob_husk_tablet_scan_v2.cpp          \
+  ob_husk_tablet_get_v2.h            ob_husk_tablet_get_v2.cpp           \
   ob_ups_scan.h                      ob_ups_scan.cpp                     \
   ob_values.h                        ob_values.cpp                       \
   ob_variable_set.h                  ob_variable_set.cpp                 \
   ob_ups_modify.h                                                        \
   ob_inc_scan.h                      ob_inc_scan.cpp                     \
   ob_update.h                        ob_update.cpp                       \
-  ob_phy_operator_type.h             ob_phy_operator_type.cpp            \
+  ob_phy_operator_type.h                                                 \
   ob_mem_sstable_scan.h              ob_mem_sstable_scan.cpp             \
   ob_multiple_merge.h                ob_multiple_merge.cpp               \
   ob_inc_scan.h ob_inc_scan.cpp                                          \
@@ -148,17 +165,19 @@ operators_sources=                                                       \
   ob_phy_operator_factory.h          ob_phy_operator_factory.cpp         \
   ob_husk_filter.h                   ob_husk_phy_operator.h              \
   ob_lock_filter.h                   ob_lock_filter.cpp                  \
+  ob_interval_sample.h               ob_interval_sample.cpp              \
   ob_ups_executor.h ob_ups_executor.cpp\
   ob_start_trans.h ob_start_trans.cpp\
   ob_last_rowkey_interface.h\
   ob_end_trans.h\
   ob_expr_values.h ob_expr_values.cpp \
   ob_sstable_get.h ob_sstable_get.cpp \
-  ob_tablet_get_fuse.h ob_tablet_get_fuse.cpp \
-  ob_tablet_scan_fuse.h ob_tablet_scan_fuse.cpp \
+  ob_sstable_getter.h ob_sstable_getter.cpp \
+  ob_sstable_block_getter.h ob_sstable_block_getter.cpp \
   ob_tablet_read.h ob_tablet_read.cpp \
   ob_tablet_get.h ob_tablet_get.cpp \
   ob_sql_read_param.h ob_sql_read_param.cpp \
+	ob_sql_read_simple_param.h ob_sql_read_simple_param.cpp \
   ob_multiple_scan_merge.h ob_multiple_scan_merge.cpp \
   ob_multiple_get_merge.h ob_multiple_get_merge.cpp \
   ob_empty_row_filter.h ob_empty_row_filter.cpp \

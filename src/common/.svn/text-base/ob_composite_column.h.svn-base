@@ -39,7 +39,7 @@ namespace oceanbase
         int set_expression(const ObString &expr,
                            const ObString &as_column_name);
         /* 用于cs */
-        int set_expression(const ObObj *expr, ObStringBuf  & data_buf);
+        int set_expression(const ObObj *expr, oceanbase::common::ObStringBuf  & data_buf);
 
         /* 计算本复合列的值 */
         int calc_composite_val(ObObj &composite_val,
@@ -86,8 +86,8 @@ namespace oceanbase
           int64_t used_len = 0;
           if(USE_INFIX == state)
           {
-            used_len = snprintf(buf+pos, (buf_size-pos>0)?(buf_size-pos):0, "%.*s AS %.*s,",
-              infix_.get_expression().length(), infix_.get_expression().ptr(),
+            used_len = snprintf(buf+pos, (buf_size-pos>0)?(buf_size-pos):0, "%.*s AS %.*s,", 
+              infix_.get_expression().length(), infix_.get_expression().ptr(), 
               as_column_name_.length(), as_column_name_.ptr());
           }
           else
@@ -107,7 +107,7 @@ namespace oceanbase
         NEED_SERIALIZE_AND_DESERIALIZE;
 
       private:
-        enum
+        enum 
         {
           NOT_INIT = 0,
           USE_INFIX,
@@ -121,3 +121,4 @@ namespace oceanbase
 }// namespace oceanbae
 
 #endif
+

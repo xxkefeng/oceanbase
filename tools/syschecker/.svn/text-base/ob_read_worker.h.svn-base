@@ -23,6 +23,21 @@ namespace oceanbase
 { 
   namespace syschecker
   {
+
+    int build_scan_param(
+        const oceanbase::common::ObNewRange& range,  
+        const int64_t *query_column_array, 
+        const int64_t query_column_size, 
+        const int64_t query_data_version,
+        sql::ObSqlScanParam& scan_param,
+        common::ObRowDesc& row_desc);
+    int fill_project(int64_t table_id, int64_t column_id, sql::ObProject& project);
+    int fill_scan_project(const int64_t table_id, 
+        const int64_t *query_column_array, 
+        const int64_t query_column_size, 
+        sql::ObSqlScanParam& scan_param, 
+        common::ObRowDesc& row_desc);
+
     class ObReadWorker : public tbsys::CDefaultRunnable
     {
     public:

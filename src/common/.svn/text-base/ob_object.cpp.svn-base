@@ -344,7 +344,7 @@ int ObObj::apply(const ObObj &mutation)
   ObModifyTime modify_time = 0;
   bool is_add = false;
   bool org_is_add = false;
-  if (ObSeqType == mut_type
+  if (ObUnknownType == mut_type
       || ObMinType >= mut_type
       || ObMaxType <= mut_type)
   {
@@ -595,7 +595,7 @@ int ObObj::apply(const ObObj &mutation)
           break;
         }
       default:
-        /* case ObSeqType: */
+        /* case ObUnknownType: */
         TBSYS_LOG(ERROR,"unsupported type [type:%d]", mut_type);
         err = OB_INVALID_ARGUMENT;
         break;
@@ -619,6 +619,7 @@ void ObObj::dump(const int32_t log_level /*=TBSYS_LOG_LEVEL_DEBUG*/) const
   double double_val = 0.0f;
   ObString str_val;
   ObNumber num;
+  const ObObj *unknown_val = NULL;
   char num_buf[ObNumber::MAX_PRINTABLE_SIZE];
   switch (get_type())
   {
@@ -656,8 +657,10 @@ void ObObj::dump(const int32_t log_level /*=TBSYS_LOG_LEVEL_DEBUG*/) const
       TBSYS_LOGGER.logMessage(TBSYS_LOG_NUM_LEVEL(log_level),
           "[%ld] type:ObPreciseDateTime(microseconds), val:%ld,is_add:%s",pthread_self(),int_val,is_add ? "true" : "false");
       break;
-    case ObSeqType:
-      //TODO
+    case ObUnknownType:
+      get_unknown(unknown_val);
+      TBSYS_LOGGER.logMessage(TBSYS_LOG_NUM_LEVEL(log_level),
+          "[%ld] type:ObUnknown, val:%p",pthread_self(),unknown_val);
       break;
     case ObCreateTimeType:
       get_createtime(int_val);
@@ -724,8 +727,8 @@ void ObObj::print_value(FILE* fd)
     case ObCreateTimeType:
       fprintf(fd, "%s", time2str(value_.createtime_val));
       break;
-    case ObSeqType:
-      fprintf(fd, "seq");
+    case ObUnknownType:
+      fprintf(fd, "%p", value_.unknown_val);
       break;
     case ObExtendType:
       fprintf(fd, "%lde", value_.ext_val);
@@ -759,7 +762,7 @@ const char* ObObj::get_sql_type(ObObjType type)
     "DATETIME",
     "DATETIME",
     "VARCHAR",
-    "SEQENCE",
+    "UNKNOWN",
     "CREATETIME",
     "MODIFYTIME",
     "INT",
@@ -789,7 +792,7 @@ int64_t ObObj::to_string(char* buffer, const int64_t length) const
     "datetime",
     "precisedatetime",
     "varchar",
-    "seq",
+    "unknown",
     "createtime",
     "modifytime",
     "extend",
@@ -802,6 +805,7 @@ int64_t ObObj::to_string(char* buffer, const int64_t length) const
   double double_val = 0.0;
   bool is_add = false;
   ObString str_val;
+  const ObObj *unknown_val = NULL;
   int32_t type = meta_.type_;
   int64_t pos = 0;
 
@@ -811,7 +815,7 @@ int64_t ObObj::to_string(char* buffer, const int64_t length) const
   }
   else
   {
-    databuff_printf(buffer, length, pos, "%s", "unknown");
+    databuff_printf(buffer, length, pos, "%s", "invalid");
   }
 
   {
@@ -843,8 +847,9 @@ int64_t ObObj::to_string(char* buffer, const int64_t length) const
         get_precise_datetime(int_val,is_add);
         databuff_printf(buffer, length, pos, "%s%ld",  is_add ? "+" : "", int_val);
         break;
-      case ObSeqType:
-        //TODO
+      case ObUnknownType:
+        get_unknown(unknown_val);
+        databuff_printf(buffer, length, pos, "%p", unknown_val);
         break;
       case ObCreateTimeType:
         get_createtime(int_val);
@@ -926,9 +931,6 @@ DEFINE_SERIALIZE(ObObj)
       case ObCreateTimeType:
         ret = serialization::encode_createtime_type(buf,buf_len,tmp_pos,value_.createtime_val);
         break;
-      case ObSeqType:
-        //TODO
-        break;
       case ObExtendType:
         ret = serialization::encode_extend_type(buf,buf_len,tmp_pos,value_.ext_val);
         break;
@@ -949,6 +951,10 @@ DEFINE_SERIALIZE(ObObj)
               meta_.dec_scale_, meta_.dec_vscale_, static_cast<int8_t>(meta_.dec_nwords_ + 1),
               value_.dec_words_);
         }
+        break;
+      case ObUnknownType: // should not serialize
+        TBSYS_LOG(ERROR, "ObUnknownType should not serialize");
+        ret = OB_ERR_UNEXPECTED;
         break;
       default:
         TBSYS_LOG(ERROR, "invalid obj_type=%d", type);
@@ -1155,7 +1161,7 @@ DEFINE_GET_SERIALIZE_SIZE(ObObj)
     case ObCreateTimeType:
       len += serialization::encoded_length_createtime(value_.createtime_val);
       break;
-    case ObSeqType:
+    case ObUnknownType:
       //TODO (maoqi)
       break;
     case ObExtendType:
@@ -1187,8 +1193,8 @@ uint32_t ObObj::murmurhash2(const uint32_t hash) const
   ObObjType type = get_type();
   ObObjMeta meta;
   memset(&meta, 0, sizeof(meta));
-  meta.type_ = meta.type_;
-  meta.op_flag_ = meta.op_flag_;
+  meta.type_ = meta_.type_;
+  meta.op_flag_ = meta_.op_flag_;
 
   result = ::murmurhash2(&meta,sizeof(meta),result);
   switch (type)
@@ -1219,7 +1225,7 @@ uint32_t ObObj::murmurhash2(const uint32_t hash) const
     case ObCreateTimeType:
       result = ::murmurhash2(&value_.createtime_val,sizeof(value_.createtime_val),result);
       break;
-    case ObSeqType:
+    case ObUnknownType:
       //TODO (maoqi)
       break;
     case ObExtendType:
@@ -1289,8 +1295,9 @@ int64_t ObObj::checksum(const int64_t current) const
     case ObCreateTimeType:
       ret = ob_crc64(ret, &value_.createtime_val, sizeof(value_.createtime_val));
       break;
-    case ObSeqType:
+    case ObUnknownType:
       //TODO (maoqi)
+      //Only used in Mergeserver
       break;
     case ObExtendType:
       ret = ob_crc64(ret, &value_.ext_val, sizeof(value_.ext_val));
@@ -1356,7 +1363,7 @@ void ObObj::checksum(ObBatchChecksum &bc) const
     case ObCreateTimeType:
       bc.fill(&value_.createtime_val, sizeof(value_.createtime_val));
       break;
-    case ObSeqType:
+    case ObUnknownType:
       //TODO (maoqi)
       break;
     case ObExtendType:

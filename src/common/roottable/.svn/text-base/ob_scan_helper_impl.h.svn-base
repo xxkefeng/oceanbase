@@ -41,6 +41,8 @@ namespace oceanbase
       public:
         virtual int scan(const ObScanParam& scan_param, ObScanner &out) const;
         virtual int mutate(ObMutator& mutator);
+        virtual int query(const char* sql, sql::ObSQLResultSet& result) const ;
+        virtual int modify(const char* sql) ;
       private:
         bool check_inner_stat(void) const;
       private:

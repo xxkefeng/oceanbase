@@ -12,7 +12,7 @@
 using namespace oceanbase::common;
 struct BufHolder
 {
-  BufHolder(int64_t limit) { buf_ = (char*)ob_malloc(limit, ObModIds::TEST); }
+  BufHolder(int64_t limit) { buf_ = (char*)ob_malloc(limit); }
   ~BufHolder() { ob_free((void*)buf_); }
   char* buf_;
 };

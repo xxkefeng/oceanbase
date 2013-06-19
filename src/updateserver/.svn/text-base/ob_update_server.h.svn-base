@@ -354,7 +354,6 @@ namespace oceanbase
         int response_trans_id(int32_t ret_code, ObPacket &pkt, common::ObTransID &id, ObDataBuffer &out_buffer);
         int response_scanner(int32_t ret_code, ObPacket &pkt, common::ObScanner &scanner, ObDataBuffer &out_buffer);
         int response_scanner(int32_t ret_code, ObPacket &pkt, common::ObNewScanner &new_scanner, ObDataBuffer &out_buffer);
-        int response_scanner(int32_t ret_code, ObPacket &pkt, common::ObCellNewScanner &new_scanner, ObDataBuffer &out_buffer);
         int response_buffer(int32_t ret_code, ObPacket &pkt, common::ObDataBuffer &buffer);
       private:
         //add:

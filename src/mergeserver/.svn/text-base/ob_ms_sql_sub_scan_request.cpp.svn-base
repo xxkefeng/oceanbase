@@ -20,7 +20,7 @@ namespace oceanbase
     }
 
 
-    int ObMsSqlSubScanRequest::init(sql::ObSqlScanParam *scan_param,
+    int ObMsSqlSubScanRequest::init(
       ObNewRange & query_range,
       const int64_t limit_offset,
       const int64_t limit_count,
@@ -44,9 +44,9 @@ namespace oceanbase
         err = OB_INVALID_ARGUMENT;
       }
 
-      if (NULL == scan_param || NULL == buffer_pool)
+      if (NULL == buffer_pool)
       {
-        TBSYS_LOG(WARN, "null pointer error! [scan_param=%p][bufffer_pool=%p]", scan_param, buffer_pool);
+        TBSYS_LOG(WARN, "null pointer error! [bufffer_pool=%p]", buffer_pool);
         err = OB_INVALID_ARGUMENT;
       }
 
@@ -64,7 +64,6 @@ namespace oceanbase
         }
         /// no need to deep copy query_range
         query_range_ = query_range;
-        scan_param_ = scan_param;
         buffer_pool_ = buffer_pool;
 
         /// for request time estimation
@@ -89,7 +88,6 @@ namespace oceanbase
     void ObMsSqlSubScanRequest::reset()
     {
       query_range_.reset();
-      scan_param_ = NULL;
       buffer_pool_ = NULL;
       result_ = NULL;
 

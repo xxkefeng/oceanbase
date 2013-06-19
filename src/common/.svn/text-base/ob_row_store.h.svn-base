@@ -22,8 +22,7 @@
 #include "common/ob_array.h"
 #include "common/ob_string.h"
 #include "common/ob_tc_malloc.h"
-#include "ob_ups_row.h"
-#include "ob_ups_row_util.h"
+#include "common/ob_compact_cell_writer.h"
 
 namespace oceanbase
 {
@@ -78,23 +77,12 @@ namespace oceanbase
          */
         int add_row(const ObRow &row, int64_t &cur_size_counter);
 
-        int add_row(const ObRowkey &rowkey, const ObRow &row, int64_t &cur_size_counter);
-        int add_row(const ObRowkey &rowkey, const ObRow &row, const StoredRow *&stored_row);
-
-        int add_ups_row(const ObUpsRow &row, const StoredRow *&stored_row);
-        int add_ups_row(const ObUpsRow &row, int64_t &cur_size_counter);
-
-        //stored_row包含rowkey和row的内容
-        int add_ups_row(const ObRowkey &rowkey, const ObUpsRow &row, const StoredRow *&stored_row);
-        int add_ups_row(const ObRowkey &rowkey, const ObUpsRow &row, int64_t &cur_size_counter);
+        int get_last_stored_row(const StoredRow *&stored_row) const;
 
         bool is_empty() const;
         int64_t get_used_mem_size() const;
 
         int get_next_row(ObRow &row, common::ObString *compact_row = NULL);
-        int get_next_row(const ObRowkey *&rowkey, ObRow &row, common::ObString *compact_row = NULL);
-        int get_next_ups_row(ObUpsRow &row, common::ObString *compact_row = NULL);
-        int get_next_ups_row(const ObRowkey *&rowkey, ObUpsRow &row, common::ObString *compact_row = NULL);
         void reset_iterator();
 
         int64_t to_string(char* buf, const int64_t buf_len) const;
@@ -106,12 +94,12 @@ namespace oceanbase
         int new_block();
         int64_t get_reserved_cells_size(const int64_t reserved_columns_count) const;
         int64_t get_compact_row_min_size(const int64_t row_columns_count) const;
-        int add_row(const ObRowkey *rowkey, const ObRow &row, const StoredRow *&stored_row, int64_t &cur_size_counter);
+        int add_row(const ObRow &row, const StoredRow *&stored_row, int64_t &cur_size_counter);
 
         // @return OB_SIZE_OVERFLOW if buffer not enough
-        int append_row(const ObRowkey *rowkey, const ObRow &row, BlockInfo &block, StoredRow &stored_row);
+        int append_row(const ObRow &row, BlockInfo &block, StoredRow &stored_row);
 
-        int get_next_row(ObRowkey *rowkey, ObObj *rowkey_obj, ObRow &row, common::ObString *compact_row);
+        inline int append_extend_cell(ObCompactCellWriter& cell_writer, const ObObj& cell);
 
       private:
         common::ObArray<std::pair<uint64_t, uint64_t> > reserved_columns_;
@@ -121,6 +109,8 @@ namespace oceanbase
         int64_t block_count_;
         int64_t cur_size_counter_;
         bool got_first_next_;
+        int64_t last_prev_row_store_size_;
+        int64_t last_row_store_size_;
         int64_t cur_iter_pos_;
         BlockInfo *cur_iter_block_;
         int64_t rollback_iter_pos_;

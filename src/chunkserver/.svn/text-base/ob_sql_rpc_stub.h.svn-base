@@ -24,6 +24,11 @@ namespace oceanbase
 {
   using namespace common;
 
+  namespace sstable
+  {
+    class ObSSTableScanParam;
+  }
+
   namespace chunkserver
   {
     class ObSqlRpcStub : public common::ObRpcStub
@@ -34,7 +39,19 @@ namespace oceanbase
 
         int get(const int64_t timeout, const ObServer & server, const ObGetParam & get_param, ObNewScanner & new_scanner) const;
         int scan(const int64_t timeout, const ObServer & server, const ObScanParam & scan_param, ObNewScanner & new_scanner) const;
- 
+
+        // sstable scan, %session_id save the session id for next session.
+        virtual int sstable_scan(const int64_t timeout, const ObServer &server,
+            const sstable::ObSSTableScanParam &param, ObNewScanner &new_scanner,
+            int64_t &session_id) const;
+        // Get next session's scanner.
+        virtual int get_next_session_scanner(const int64_t timeout, const ObServer &server,
+            const int64_t session_id, ObNewScanner &new_scanner) const;
+
+        // Terminate next session
+        virtual int end_next_session(const int64_t timeout, ObServer &server,
+            const int64_t session_id) const;
+
     };
   }
 }

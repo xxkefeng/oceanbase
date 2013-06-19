@@ -39,14 +39,10 @@ namespace oceanbase
          */
         int recycle(const int64_t version);
 
-        /**
-         *  recycle removed tablet in specified tablet image
-         */
-        int recycle(const ObTabletImage& image);
 
         /**
-         * recycle specific tablet of %range 
-         * 
+         * recycle specific tablet of %range
+         *
          * @param range of tablet
          * @param version must equal to version of prepare_recycle
          */
@@ -60,10 +56,9 @@ namespace oceanbase
       private:
         int load_all_tablets(const int64_t version);
         int load_tablet(const int64_t version, const int32_t disk_no);
-        int recycle_tablet_image(const ObTabletImage& image, const bool do_recycle, 
-          const bool only_recycle_removed = false);
+        int recycle_tablet_image(const ObTabletImage& image, const bool do_recycle_tablet);
         int do_recycle_tablet(const ObTabletImage& image, const common::ObNewRange & range);
-        
+
       private:
         ObTabletImage expired_image_;
         ObTabletManager& manager_;

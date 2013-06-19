@@ -1,15 +1,15 @@
 10
 
 dir
-14512
-http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/deploy/conf
+14505
+http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/deploy/conf
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-06-09T10:16:52.693955Z
-14424
-xiaojun.chengxj
+2013-03-14T07:30:34.825258Z
+12623
+fff.fanff
 
 
 
@@ -32,10 +32,10 @@ file
 
 
 
-2013-06-19T08:29:39.000000Z
-e6bf83c411516ec55f8f92817b27a118
-2013-06-09T10:16:52.693955Z
-14424
+2013-06-19T09:27:12.000000Z
+c8d204d851d779ac8a14fd0d5325dfc0
+2013-02-20T07:17:12.652414Z
+12155
 xiaojun.chengxj
 
 
@@ -58,7 +58,7 @@ xiaojun.chengxj
 
 
 
-552
+420
 
 log4j.properties
 file
@@ -66,11 +66,11 @@ file
 
 
 
-2013-05-22T14:08:39.000000Z
-8f94f999a71144ef67dab28041e04f4e
-2013-04-15T05:02:43.907059Z
-13258
-xiaojun.chengxj
+2013-06-19T09:27:12.000000Z
+0045c08a81af4b463a208fad371b7890
+2013-03-14T07:30:34.825258Z
+12623
+fff.fanff
 has-props
 
 
@@ -92,5 +92,5 @@ has-props
 
 
 
-741
+742
 

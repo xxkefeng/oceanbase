@@ -37,6 +37,8 @@
 #include "ob_ups_log_utils.h"
 #include "ob_sessionctx_factory.h"
 #include "common/ob_new_scanner.h"
+#include "sql/ob_multiple_get_merge.h"
+#include "sql/ob_multiple_scan_merge.h"
 
 namespace oceanbase
 {
@@ -244,18 +246,18 @@ namespace oceanbase
                 const int64_t start_time,
                 const int64_t timeout);
 
-        int new_get(const common::ObGetParam& get_param, common::ObCellNewScanner& scanner, const int64_t start_time, const int64_t timeout);
+        int new_get(const common::ObGetParam& get_param, common::ObNewScanner& scanner, const int64_t start_time, const int64_t timeout);
         int new_get(BaseSessionCtx &session_ctx,
                     const common::ObGetParam& get_param,
-                    common::ObCellNewScanner& scanner,
+                    common::ObNewScanner& scanner,
                     const int64_t start_time,
                     const int64_t timeout,
                     const sql::ObLockFlag lock_flag = sql::LF_NONE);
 
-        int new_scan(const common::ObScanParam& scan_param, common::ObCellNewScanner& scanner, const int64_t start_time, const int64_t timeout);
+        int new_scan(const common::ObScanParam& scan_param, common::ObNewScanner& scanner, const int64_t start_time, const int64_t timeout);
         int new_scan(BaseSessionCtx &session_ctx,
                     const common::ObScanParam &scan_param,
-                    common::ObCellNewScanner &scanner,
+                    common::ObNewScanner &scanner,
                     const int64_t start_time,
                     const int64_t timeout);
 
@@ -307,10 +309,15 @@ namespace oceanbase
 
         template<class T>
         int scan_(const common::ObScanParam& scan_param, T& scanner, const int64_t start_time, const int64_t timeout);
-        template<class T>
         int scan_(const BaseSessionCtx &session_ctx,
                   const common::ObScanParam& scan_param,
-                  T& scanner,
+                  ObScanner& scanner,
+                  const int64_t start_time,
+                  const int64_t timeout);
+
+        int scan_(const BaseSessionCtx &session_ctx,
+                  const common::ObScanParam& scan_param,
+                  ObNewScanner& scanner,
                   const int64_t start_time,
                   const int64_t timeout);
 
@@ -330,19 +337,33 @@ namespace oceanbase
         int get_row_(TableList &table_list, const int64_t first_cell_idx, const int64_t last_cell_idx,
             const common::ObGetParam& get_param, T& scanner,
             const int64_t start_time, const int64_t timeout);
-        template<class T>
+
         int get_row_(const BaseSessionCtx &session_ctx,
                     TableList &table_list,
                     const int64_t first_cell_idx,
                     const int64_t last_cell_idx,
                     const common::ObGetParam& get_param,
-                    T& scanner,
+                    ObScanner& scanner,
                     const int64_t start_time,
                     const int64_t timeout,
                     const sql::ObLockFlag lock_flag);
 
-        template<class T>
-        int add_to_scanner_(common::ObIterator& ups_merger, T& scanner,
+        int get_row_(const BaseSessionCtx &session_ctx,
+                    TableList &table_list,
+                    const int64_t first_cell_idx,
+                    const int64_t last_cell_idx,
+                    const common::ObGetParam& get_param,
+                    ObNewScanner& scanner,
+                    const int64_t start_time,
+                    const int64_t timeout,
+                    const sql::ObLockFlag lock_flag);
+
+
+        int add_to_scanner_(common::ObIterator& ups_merger, ObScanner& scanner,
+            int64_t& row_count, const int64_t start_time, const int64_t timeout, const int64_t result_limit_size = UINT64_MAX);
+        int add_to_scanner_(common::ObIterator& ups_merger, ObNewScanner& scanner,
+            int64_t& row_count, const int64_t start_time, const int64_t timeout, const int64_t result_limit_size = UINT64_MAX);
+        int add_to_scanner_(sql::ObMultipleMerge &multiple_merge, ObNewScanner& scanner,
             int64_t& row_count, const int64_t start_time, const int64_t timeout, const int64_t result_limit_size = UINT64_MAX);
       private:
         int check_permission_(common::ObMutator &mutator, const common::IToken &token);
@@ -363,6 +384,7 @@ namespace oceanbase
         bool check_checksum_;
         bool has_started_;
         uint64_t last_bypass_checksum_;
+        ObResourcePool<ObRowIterAdaptor> row_iter_adaptor_rp_;
     };
   }
 }

@@ -124,53 +124,6 @@ void ObDeleteReplicasTest::heartbeat_cs(int32_t cs_num)
   }
 }
 
-TEST_F(ObDeleteReplicasTest, delete_cs_replica)
-{
-  server_->get_boot()->set_boot_ok();
-  register_cs(4);
-  char* startkey = (char*)"A";
-  char* endkey = (char*)"Z";
-  ObTabletReportInfo tablet;
-  tablet.tablet_info_.range_.set_whole_range();
-  tablet.tablet_info_.range_.table_id_ = 10001;
-  tablet.tablet_info_.range_.start_key_ = make_rowkey(startkey, &allocator_);
-  tablet.tablet_info_.range_.end_key_ = make_rowkey(endkey, &allocator_);
-  tablet.tablet_info_.row_count_ = 100;
-  tablet.tablet_info_.occupy_size_ = 1024;
-  tablet.tablet_info_.crc_sum_ = 3456;
-  tablet.tablet_location_.tablet_version_ = 1;
-  ObTabletReportInfoList tablet_list;
-  for (int i = 0; i < 3; ++i)
-  {
-    tablet_list.reset();
-    tablet.tablet_location_.chunkserver_ = get_addr(i);
-    ASSERT_EQ(OB_SUCCESS, tablet_list.add_tablet(tablet));
-    ASSERT_EQ(OB_SUCCESS, server_->report_tablets(get_addr(i), tablet_list, 1));
-  }
-  // int delete_replicas(const bool did_replay, const common::ObServer & cs, const common::ObTabletReportInfoList & replicas);
-  for (int i = 0; i < 8; ++i)
-  {
-    heartbeat_cs(4);
-    sleep(1);
-  }
-  // remove two replicas
-  int ret = server_->delete_replicas(true, get_addr(1), tablet_list);
-  EXPECT_TRUE(ret == OB_SUCCESS);
-  ret = server_->delete_replicas(true, get_addr(1), tablet_list);
-  EXPECT_TRUE(ret == OB_SUCCESS);
-  ret = server_->delete_replicas(true, get_addr(2), tablet_list);
-  EXPECT_TRUE(ret == OB_SUCCESS);
-  ret = server_->delete_replicas(true, get_addr(2), tablet_list);
-  EXPECT_TRUE(ret == OB_SUCCESS);
-  // not safe
-  ret = server_->delete_replicas(true, get_addr(0), tablet_list);
-  EXPECT_TRUE(ret != OB_SUCCESS);
-  ret = server_->delete_replicas(true, get_addr(0), tablet_list);
-  EXPECT_TRUE(ret != OB_SUCCESS);
-  exit(0);
-}
-
-
 
 TEST_F(ObDeleteReplicasTest, delete_in_init)
 {
@@ -253,6 +206,53 @@ TEST_F(ObDeleteReplicasTest, delete_when_rereplication)
   }
 }
 
+//TEST_F(ObDeleteReplicasTest, delete_when_report)
+//{
+//  register_cs(4);
+//  char* startkey = (char*)"A";
+//  char* endkey = (char*)"Z";
+//  ObTabletReportInfo tablet;
+//  tablet.tablet_info_.range_.border_flag_.set_min_value();
+//  tablet.tablet_info_.range_.border_flag_.set_max_value();
+//  tablet.tablet_info_.range_.table_id_ = 10001;
+//  tablet.tablet_info_.range_.start_key_.assign_ptr(startkey, static_cast<int32_t>(strlen(startkey)));
+//  tablet.tablet_info_.range_.end_key_.assign_ptr(endkey, static_cast<int32_t>(strlen(endkey)));
+//  tablet.tablet_info_.row_count_ = 100;
+//  tablet.tablet_info_.occupy_size_ = 1024;
+//  tablet.tablet_info_.crc_sum_ = 3456;
+//  tablet.tablet_location_.tablet_version_ = 1;
+//  ObTabletReportInfoList tablet_list;
+//  for (int i = 0; i < 3; ++i)
+//  {
+//    tablet_list.reset();
+//    tablet.tablet_location_.chunkserver_ = get_addr(i);
+//    ASSERT_EQ(OB_SUCCESS, tablet_list.add_tablet(tablet));
+//    ASSERT_EQ(OB_SUCCESS, server_->report_tablets(get_addr(i), tablet_list, 1));
+//  }
+//  for (int i = 0; i < 8; ++i)
+//  {
+//    heartbeat_cs(4);
+//    sleep(1);
+//  }
+//  tablet.tablet_location_.chunkserver_ = get_addr(0);
+//  tablet_list.reset();
+//  ASSERT_EQ(OB_SUCCESS, tablet_list.add_tablet(tablet));
+//  EXPECT_CALL(worker_.rpc_, delete_tablets(get_addr(0),Eq(tablet_list),_))
+//    .Times(AtLeast(1));
+//
+//  // new cs
+//  tablet.tablet_location_.chunkserver_ = get_addr(3);
+//  tablet.tablet_location_.tablet_version_ = 2;
+//  tablet_list.reset();
+//  ASSERT_EQ(OB_SUCCESS, tablet_list.add_tablet(tablet));
+//  ASSERT_EQ(OB_SUCCESS, server_->report_tablets(get_addr(3), tablet_list, 1));
+//  for (int i = 0; i < 8; ++i)
+//  {
+//    heartbeat_cs(4);
+//    sleep(1);
+//  }
+//}
+//
 int main(int argc, char **argv)
 {
   ob_init_memory_pool();

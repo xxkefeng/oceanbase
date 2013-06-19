@@ -30,8 +30,8 @@ namespace oceanbase
   {
     namespace chunkserver
     {
-      static ObTabletManager tablet_manager;
-      static TabletManagerIniter manager_initer(tablet_manager);
+      static ObTabletManager* tablet_manager = NULL;
+      static TabletManagerIniter manager_initer;
 
       class TestTabletManager : public ::testing::Test
       {
@@ -39,6 +39,8 @@ namespace oceanbase
         static void SetUpTestCase()
         {
           int err = OB_SUCCESS;
+          tablet_manager = &THE_CHUNK_SERVER.get_tablet_manager();
+          manager_initer.set_tablet_manager(*tablet_manager);
           err = manager_initer.init(true);
           ASSERT_EQ(OB_SUCCESS, err);
         }
@@ -274,9 +276,9 @@ namespace oceanbase
 
         for (int i = 0; i < MultSSTableBuilder::SSTABLE_NUM; i++)
         {
-          tablet_scan_and_check(tablet_manager, i);
+          tablet_scan_and_check(*tablet_manager, i);
           tablet_scan_and_check(tablet_mgr, i);
-          tablet_get_and_check(tablet_manager, i);
+          tablet_get_and_check(*tablet_manager, i);
           tablet_get_and_check(tablet_mgr, i);
         }
       }
@@ -298,58 +300,13 @@ namespace oceanbase
         err = tablet_mgr.load_tablets(disk_no_array, MultSSTableBuilder::DISK_NUM);
         ASSERT_EQ(OB_SUCCESS, err);
 
-        tablet_get_with_mult_tablets(tablet_manager, 0, 1);
-        tablet_get_with_mult_tablets(tablet_manager, SSTableBuilder::ROW_NUM / 2, 1);
-        tablet_get_with_mult_tablets(tablet_manager, SSTableBuilder::ROW_NUM - 1, 1);
+        tablet_get_with_mult_tablets(*tablet_manager, 0, 1);
+        tablet_get_with_mult_tablets(*tablet_manager, SSTableBuilder::ROW_NUM / 2, 1);
+        tablet_get_with_mult_tablets(*tablet_manager, SSTableBuilder::ROW_NUM - 1, 1);
 
         tablet_get_with_mult_tablets(tablet_mgr, 0, 1);
         tablet_get_with_mult_tablets(tablet_mgr, SSTableBuilder::ROW_NUM / 2, 1);
         tablet_get_with_mult_tablets(tablet_mgr, SSTableBuilder::ROW_NUM - 1, 1);
-      }
-
-      TEST_F(TestTabletManager, test_report_tablets)
-      {
-        int err = OB_SUCCESS;
-        ObTabletManager tablet_mgr;
-        const char* dst_addr = "localhost";
-        TabletManagerIniter initer(tablet_mgr);
-        int32_t disk_no_array[MultSSTableBuilder::DISK_NUM];
-
-        err = initer.init();
-        ASSERT_EQ(OB_SUCCESS, err);
-        for (int i = 0; i < MultSSTableBuilder::DISK_NUM; i++)
-        {
-          disk_no_array[i] = i + 1;
-        }
-        err = tablet_mgr.load_tablets(disk_no_array, MultSSTableBuilder::DISK_NUM);
-        ASSERT_EQ(OB_SUCCESS, err);
-
-        ObChunkServerMain* cm = ObChunkServerMain::get_instance();
-        ObChunkServer& cs = cm->get_chunk_server();
-        cs.initialize();
-        cs.get_config().root_server_ip.set_value(dst_addr);
-        cs.get_config().root_server_port = MOCK_SERVER_LISTEN_PORT;
-
-        /* init global root server */
-        ObServer root_server = cs.get_root_server();
-
-        // init global client manager
-        ObBaseClient client_manager ;
-        EXPECT_EQ(OB_SUCCESS, client_manager.initialize(root_server));
-
-        cs.get_rpc_stub().init(cs.get_thread_specific_rpc_buffer(),
-                               &client_manager.get_client_mgr());
-
-        tbsys::CThread test_root_server_thread;
-        MockRootServerRunner test_root_server;
-        test_root_server_thread.start(&test_root_server, NULL);
-
-        sleep(1);
-
-        err = tablet_mgr.report_tablets();
-        EXPECT_EQ(0, err);
-
-        client_manager.destroy();
       }
 
       TEST_F(TestTabletManager, test_merge_tablets)
@@ -407,6 +364,51 @@ namespace oceanbase
           ASSERT_EQ(OB_SUCCESS, err);
           ASSERT_EQ(j + 1, tablet_list.tablets_[0].tablet_location_.tablet_seq_);
         }
+      }
+
+      TEST_F(TestTabletManager, test_report_tablets)
+      {
+        int err = OB_SUCCESS;
+        ObTabletManager tablet_mgr;
+        const char* dst_addr = "localhost";
+        TabletManagerIniter initer(tablet_mgr);
+        int32_t disk_no_array[MultSSTableBuilder::DISK_NUM];
+
+        err = initer.init();
+        ASSERT_EQ(OB_SUCCESS, err);
+        for (int i = 0; i < MultSSTableBuilder::DISK_NUM; i++)
+        {
+          disk_no_array[i] = i + 1;
+        }
+        err = tablet_mgr.load_tablets(disk_no_array, MultSSTableBuilder::DISK_NUM);
+        ASSERT_EQ(OB_SUCCESS, err);
+
+        ObChunkServerMain* cm = ObChunkServerMain::get_instance();
+        ObChunkServer& cs = cm->get_chunk_server();
+        cs.initialize();
+        cs.get_config().root_server_ip.set_value(dst_addr);
+        cs.get_config().root_server_port = MOCK_SERVER_LISTEN_PORT;
+
+        /* init global root server */
+        ObServer root_server = cs.get_root_server();
+
+        // init global client manager
+        ObBaseClient client_manager ;
+        EXPECT_EQ(OB_SUCCESS, client_manager.initialize(root_server));
+
+        cs.get_rpc_stub().init(cs.get_thread_specific_rpc_buffer(),
+                               &client_manager.get_client_mgr());
+
+        tbsys::CThread test_root_server_thread;
+        MockRootServerRunner test_root_server;
+        test_root_server_thread.start(&test_root_server, NULL);
+
+        sleep(1);
+
+        err = tablet_mgr.report_tablets();
+        EXPECT_EQ(0, err);
+
+        client_manager.destroy();
       }
 
     } // end namespace chunkserver

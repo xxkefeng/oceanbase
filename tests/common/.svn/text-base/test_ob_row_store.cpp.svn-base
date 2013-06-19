@@ -84,6 +84,8 @@ TEST_F(ObRowStoreTest, rowkey)
   }
 
   ObRow row;
+  const int64_t rowkey_cell_count = 2;
+  row_desc.set_rowkey_cell_count(rowkey_cell_count);
   row.set_row_desc(row_desc);
 
   ObObj cell;
@@ -100,35 +102,39 @@ TEST_F(ObRowStoreTest, rowkey)
   {
     rowkey_obj[0].set_int(j);
     rowkey_obj[1].set_int(j * 10);
-    rowkey.assign(rowkey_obj, 2);
+    rowkey.assign(rowkey_obj, rowkey_cell_count);
+    cell.set_int(j);
+    OK(row.raw_set_cell(0, cell));
+    cell.set_int(j*10);
+    OK(row.raw_set_cell(1, cell));
 
-    for(int64_t i=0;i<10;i++)
+    for(int64_t i=rowkey_cell_count;i<10;i++)
     {
+      TBSYS_LOG(DEBUG, "raw_set_cell %ld", i);
       cell.set_int(j * 1000 + i);
       OK(row.raw_set_cell(i, cell));
     }
-    OK(row_store.add_row(rowkey, row, stored_row));
+    OK(row_store.add_row(row, stored_row));
 
-    OK(cell_reader.init(stored_row->get_compact_row(), DENSE_SPARSE));
+    OK(cell_reader.init(stored_row->get_compact_row(), SPARSE));
 
-    for(int64_t i=0;i<2;i++)
+    for(int64_t i=0;i<rowkey_cell_count;i++)
     {
       OK(cell_reader.next_cell());
-      OK(cell_reader.get_cell(value));
+      OK(cell_reader.get_cell(column_id, value));
 
       rk_obj[i] = *value;
     }
 
-    rk.assign(rk_obj, 2);
+    rk.assign(rk_obj, rowkey_cell_count);
     ASSERT_TRUE( rowkey == rk );
 
-    OK(cell_reader.next_cell());
-
-    for(int64_t i=0;i<10;i++)
+    for(int64_t i=rowkey_cell_count;i<10;i++)
     {
       OK(cell_reader.next_cell());
       OK(cell_reader.get_cell(column_id, value));
       value->get_int(int_value);
+      TBSYS_LOG(DEBUG, "i=%ld column_id=%ld value=%ld", i, column_id, int_value);
       ASSERT_EQ(j * 1000 + i, int_value);
     }
   }
@@ -137,15 +143,16 @@ TEST_F(ObRowStoreTest, rowkey)
   const ObRowkey *rk_ptr = NULL;
   for(int64_t j=0;j<9;j++)
   {
-    OK(row_store.get_next_row(rk_ptr, row));
+    OK(row_store.get_next_row(row));
+    ASSERT_EQ(0, row.get_rowkey(rk_ptr));
 
     rowkey_obj[0].set_int(j);
     rowkey_obj[1].set_int(j * 10);
-    rowkey.assign(rowkey_obj, 2);
+    rowkey.assign(rowkey_obj, rowkey_cell_count);
 
-    ASSERT_TRUE( rowkey == *rk_ptr );
+    ASSERT_TRUE(rowkey == *rk_ptr );
 
-    for(int64_t i=0;i<10;i++)
+    for(int64_t i=rowkey_cell_count;i<10;i++)
     {
       OK(row.raw_get_cell(i, value, table_id, column_id));
       value->get_int(int_value);
@@ -158,7 +165,7 @@ TEST_F(ObRowStoreTest, op_nop)
 {
   ObRowStore row_store;
 
-  ObUpsRow ups_row;
+  ObRow row;
 
   ObRowDesc row_desc;
   for(uint64_t i=1;i<=8;i++)
@@ -166,24 +173,24 @@ TEST_F(ObRowStoreTest, op_nop)
     OK(row_desc.add_column_desc(TABLE_ID, i));
   }
 
-  ups_row.set_row_desc(row_desc);
-  OK(ups_row.reset());
+  row.set_row_desc(row_desc);
+  OK(row.reset(true, ObRow::DEFAULT_NOP));
 
   const ObRowStore::StoredRow *stored_row = NULL;
-  OK(row_store.add_ups_row(ups_row, stored_row));
+  OK(row_store.add_row(row, stored_row));
 
-  ObUpsRow got_ups_row;
-  got_ups_row.set_row_desc(row_desc);
+  ObRow got_row;
+  got_row.set_row_desc(row_desc);
 
   ObObj value;
   value.set_int(1);
 
   for(int64_t i=0;i<8;i++)
   {
-    got_ups_row.raw_set_cell(0, value);
+    got_row.raw_set_cell(0, value);
   }
 
-  row_store.get_next_ups_row(got_ups_row);
+  row_store.get_next_row(got_row);
 
   const ObObj *cell = NULL;
   uint64_t table_id = OB_INVALID_ID;
@@ -191,14 +198,14 @@ TEST_F(ObRowStoreTest, op_nop)
 
   for(int64_t i=0;i<8;i++)
   {
-    got_ups_row.raw_get_cell(i, cell, table_id, column_id);
+    got_row.raw_get_cell(i, cell, table_id, column_id);
     ASSERT_EQ(ObExtendType, cell->get_type());
     ASSERT_TRUE( ObActionFlag::OP_NOP == cell->get_ext() );
   }
 
 }
 
-TEST_F(ObRowStoreTest, ups_row_test)
+TEST_F(ObRowStoreTest, row_test)
 {
   ObRowStore row_store;
   int64_t cur_size_counter = 0;
@@ -209,12 +216,24 @@ TEST_F(ObRowStoreTest, ups_row_test)
   row_desc.add_column_desc(TABLE_ID, 3);
   row_desc.add_column_desc(TABLE_ID, 4);
   row_desc.add_column_desc(TABLE_ID, 5);
+  row_desc.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
 
-  ObUpsRow row;
+  ObRow row;
   row.set_row_desc(row_desc);
+  ObObj del_flag_cell;
+  ObObj valid_flag_cell;
+  del_flag_cell.set_ext(ObActionFlag::OP_DEL_ROW);
+  valid_flag_cell.set_ext(ObActionFlag::OP_VALID);
 
   #define ADD_ROW(is_delete, num1, num2, num3, num4, num5) \
-  row.set_is_delete_row(is_delete); \
+  if (is_delete) \
+  { \
+    row.set_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, del_flag_cell); \
+  } \
+  else \
+  { \
+    row.set_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, valid_flag_cell); \
+  } \
   row.set_cell(TABLE_ID, 1, gen_int_obj(num1, false)); \
   row.set_cell(TABLE_ID, 2, gen_int_obj(num2, false)); \
   row.set_cell(TABLE_ID, 3, gen_int_obj(num3, false)); \
@@ -223,8 +242,9 @@ TEST_F(ObRowStoreTest, ups_row_test)
   row_store.add_row(row, cur_size_counter);
 
 
-  ObUpsRow get_row;
+  ObRow get_row;
   get_row.set_row_desc(row_desc);
+  const ObObj *flag_cell = NULL; \
 
   #define CHECK_CELL(column_id, num) \
   { \
@@ -237,7 +257,16 @@ TEST_F(ObRowStoreTest, ups_row_test)
 
   #define CHECK_ROW(is_delete, num1, num2, num3, num4, num5) \
   row_store.get_next_row(get_row); \
-  ASSERT_TRUE( get_row.get_is_delete_row() == is_delete ); \
+  get_row.get_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, flag_cell);\
+  ASSERT_TRUE(NULL != flag_cell); \
+  if (is_delete) \
+  { \
+    ASSERT_EQ(del_flag_cell, *flag_cell);\
+  }\
+  else\
+  {\
+    ASSERT_EQ(valid_flag_cell, *flag_cell);\
+  }\
   CHECK_CELL(1, num1); \
   CHECK_CELL(2, num2); \
   CHECK_CELL(3, num3); \
@@ -383,6 +412,55 @@ TEST_F(ObRowStoreTest, row_store_reset_test)
     row_store.reuse();
     ASSERT_EQ(used_mem_size, row_store.get_used_mem_size());
   }
+}
+
+TEST_F(ObRowStoreTest, get_last_stored_row_test)
+{
+  ObRowStore row_store;
+  ObObj cell;
+  ObRow row;
+  ObRowDesc row_desc;
+  const int64_t COLUMN_NUM = 8;
+
+  for (int i=0;i<COLUMN_NUM;i++)
+  {
+    row_desc.add_column_desc(TABLE_ID, i + OB_APP_MIN_COLUMN_ID);
+  }
+  row_desc.set_rowkey_cell_count(2);
+  row.set_row_desc(row_desc);
+
+  for (int i=0;i<COLUMN_NUM;i++)
+  {
+    cell.set_int(i);
+    row.set_cell(TABLE_ID, i + OB_APP_MIN_COLUMN_ID, cell);
+  }
+
+  const ObRowStore::StoredRow *stored_row1 = NULL;
+
+  for (int i=0;i<10000;i++)
+  {
+    OK(row_store.add_row(row, stored_row1));
+  }
+
+  const ObRowStore::StoredRow *stored_row2 = NULL;
+  row_store.get_last_stored_row(stored_row2);
+
+  ASSERT_EQ(stored_row1, stored_row2);
+
+  ObRowStore row_store2;
+  const int64_t buf_len = 1024 * 1024 * 3;
+  char buf[buf_len];
+  int64_t pos = 0;
+
+  OK(row_store.serialize(buf, buf_len, pos));
+  int64_t data_len = pos;
+
+  pos = 0;
+  OK(row_store2.deserialize(buf, data_len, pos));
+
+  OK(row_store2.get_last_stored_row(stored_row2));
+
+  ASSERT_EQ(stored_row1->compact_row_size_, stored_row2->compact_row_size_);
 }
 
 int main(int argc, char **argv)

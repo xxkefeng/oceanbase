@@ -80,6 +80,13 @@ namespace oceanbase
         DEF_TIME(tablet_migrate_disabling_period, "60s", "cs can participate in balance after regist");
         DEF_BOOL(enable_new_root_table, "False", "new root table switch");
         DEF_INT(obconnector_port, "5433", "obconnector port");
+        DEF_TIME(delete_table_time, "10m", "time for cs to delete one table while bypass");
+        DEF_TIME(load_sstable_time, "20m", "time for cs to load one table while bypass");
+        DEF_TIME(report_tablet_time, "5m", "time for cs to report tablets while bypass");
+        DEF_TIME(build_root_table_time, "5m", "time for cs to build new root_table while bypass");
+        DEF_TIME(build_sample_time, "10m", "time for cs to build sample of one table");
+        DEF_TIME(build_index_time, "30m", "time for cs to build index of one table");
+
         DEF_BOOL(enable_cache_schema, "True", "cache schema switch");
         DEF_BOOL(is_import, "False", "is import application");
         DEF_BOOL(is_ups_flow_control, "False", "ups flow control switch");

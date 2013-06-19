@@ -2,9 +2,9 @@
  //
  // ob_thread_objpool.h common / Oceanbase
  //
- // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2011-03-08 by Yubai (yubai.lk@taobao.com)
+ // Created on 2011-03-08 by Yubai (yubai.lk@taobao.com) 
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- //
+ // 
  // Change Log
  //
 ////====================================================================
@@ -49,7 +49,7 @@ namespace oceanbase
           BaseNode *ret = (BaseNode*)ob_malloc(sizeof(BaseNode), ALLOC_MOD);
           if (NULL != ret)
           {
-            ret = new(ret) BaseNode();
+            ret = new(ret) BaseNode();         
           }
           return ret;
         };
@@ -152,7 +152,7 @@ namespace oceanbase
             ret = cur_node_array_->alloc();
             if (NULL != ret)
             {
-              ret = new(ret) BaseNode();
+              ret = new(ret) BaseNode();         
               break;
             }
             else
@@ -365,7 +365,7 @@ namespace oceanbase
               tail_ = head_;
             }
             atomic_inc((uint64_t*)&free_num_);
-
+            
             Node *iter = tail_;
             while (free_num_ > thread_max_free_num
                   && NULL != iter)
@@ -418,7 +418,7 @@ namespace oceanbase
         };
         void inc_ref() {};
         void dec_ref() {};
-        T *alloc()
+        T *allocate()
         {
           T *ret = NULL;
           ObjPool *pool = GET_TSI_MULT(ObjPool, TSI_COMMON_OBJPOOL_1);
@@ -428,7 +428,7 @@ namespace oceanbase
           }
           return ret;
         };
-        void free(T *ptr)
+        void deallocate(T *ptr)
         {
           ObjPool *pool = GET_TSI_MULT(ObjPool, TSI_COMMON_OBJPOOL_1);
           if (NULL != pool)
@@ -445,3 +445,4 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_THREAD_OBJPOOL_H_
+

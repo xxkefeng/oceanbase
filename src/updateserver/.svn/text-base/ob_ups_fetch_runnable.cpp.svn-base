@@ -245,7 +245,7 @@ int ObUpsFetchRunnable::remote_cp_sst_(const char* name, const char* src_path, c
   int ret = OB_SUCCESS;
   char *cmd = NULL;
 
-  cmd = static_cast<char*>(ob_malloc(OB_MAX_FETCH_CMD_LENGTH, ObModIds::OB_UPS_COMMON));
+  cmd = static_cast<char*>(ob_malloc(OB_MAX_FETCH_CMD_LENGTH));
   if (NULL == cmd)
   {
     TBSYS_LOG(WARN, "ob_malloc error, OB_MAX_FETCH_CMD_LENGTH=%ld", OB_MAX_FETCH_CMD_LENGTH);
@@ -363,3 +363,4 @@ int ObUpsFetchRunnable::get_sstable_()
 
   return ret;
 }
+
