@@ -9,12 +9,21 @@ using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
 ObSQLSessionInfo::ObSQLSessionInfo()
-  : session_id_(OB_INVALID_ID), user_id_(OB_INVALID_ID), next_stmt_id_(0), cur_result_set_(NULL),
-    name_pool_(ObModIds::OB_SQL_SESSION, OB_COMMON_MEM_BLOCK_SIZE),
-    parser_mem_pool_(ObModIds::OB_SQL_PARSER, OB_COMMON_MEM_BLOCK_SIZE),
-    is_autocommit_(true),
-    version_provider_(NULL),
-    arena_pointers_(sizeof(ObArenaAllocator))
+  :session_id_(OB_INVALID_ID),
+   user_id_(OB_INVALID_ID),
+   next_stmt_id_(0),
+   cur_result_set_(NULL),
+   is_autocommit_(true),
+   version_provider_(NULL),
+   block_allocator_(SMALL_BLOCK_SIZE, common::OB_MALLOC_BLOCK_SIZE, ObMalloc(ObModIds::OB_SQL_SESSION_SBLOCK)),
+   name_pool_(ObModIds::OB_SQL_SESSION, OB_COMMON_MEM_BLOCK_SIZE),
+   parser_mem_pool_(ObModIds::OB_SQL_PARSER, OB_COMMON_MEM_BLOCK_SIZE),
+   id_plan_map_allocer_(SMALL_BLOCK_SIZE, ObWrapperAllocator(&block_allocator_)),
+   stmt_name_id_map_allocer_(SMALL_BLOCK_SIZE, ObWrapperAllocator(&block_allocator_)),
+  var_name_val_map_allocer_(SMALL_BLOCK_SIZE, ObWrapperAllocator(&block_allocator_)),
+  sys_var_val_map_allocer_(SMALL_BLOCK_SIZE, ObWrapperAllocator(&block_allocator_)),
+  arena_pointers_(sizeof(ObArenaAllocator), SMALL_BLOCK_SIZE, ObWrapperAllocator(&block_allocator_)),
+  result_set_pool_(SMALL_BLOCK_SIZE, ObWrapperAllocator(&block_allocator_))
 {
 }
 
@@ -33,19 +42,27 @@ int64_t ObSQLSessionInfo::to_string(char *buffer, const int64_t length) const
 int ObSQLSessionInfo::init(common::DefaultBlockAllocator &block_allocator)
 {
   int ret = OB_SUCCESS;
-  if (OB_SUCCESS != (ret = id_plan_map_.create(hash::cal_next_prime(OB_MAX_PREPARE_STMT_NUM_PER_SESSION))))
+  if (OB_SUCCESS != (ret = id_plan_map_.create(hash::cal_next_prime(128),
+                                               &id_plan_map_allocer_,
+                                               &block_allocator_)))
   {
     TBSYS_LOG(WARN, "init id-plan map failed, ret=%d", ret);
   }
-  else if(OB_SUCCESS != (ret = stmt_name_id_map_.create(hash::cal_next_prime(OB_MAX_PREPARE_STMT_NUM_PER_SESSION))))
+  else if(OB_SUCCESS != (ret = stmt_name_id_map_.create(hash::cal_next_prime(16),
+                                               &stmt_name_id_map_allocer_,
+                                               &block_allocator_)))
   {
     TBSYS_LOG(WARN, "init name-id map failed, ret=%d", ret);
   }
-  else if(OB_SUCCESS != (ret = var_name_val_map_.create(hash::cal_next_prime(OB_MAX_VAR_NUM_PER_SESSION))))
+  else if(OB_SUCCESS != (ret = var_name_val_map_.create(hash::cal_next_prime(16),
+                                               &var_name_val_map_allocer_,
+                                               &block_allocator_)))
   {
     TBSYS_LOG(WARN, "init var_value map failed, ret=%d", ret);
   }
-  else if (OB_SUCCESS != (ret = sys_var_val_map_.create(hash::cal_next_prime(OB_MAX_VAR_NUM_PER_SESSION))))
+  else if (OB_SUCCESS != (ret = sys_var_val_map_.create(hash::cal_next_prime(64),
+                                               &sys_var_val_map_allocer_,
+                                               &block_allocator_)))
   {
     TBSYS_LOG(WARN, "init sys_var_value map failed, ret=%d", ret);
   }
@@ -55,14 +72,14 @@ int ObSQLSessionInfo::init(common::DefaultBlockAllocator &block_allocator)
   }
   else
   {
-    block_allocator.set_mod(ObModIds::OB_SQL_TRANSFORMER);
+    block_allocator.set_mod_id(ObModIds::OB_SQL_TRANSFORMER);
   }
   return ret;
 }
 
 void ObSQLSessionInfo::destroy()
 {
-  common::hash::ObHashMap<uint64_t, ObResultSet*>::iterator iter;
+  IdPlanMap::iterator iter;
   for (iter = id_plan_map_.begin(); iter != id_plan_map_.end(); iter++)
   {
     ObResultSet* result_set = NULL;
@@ -72,8 +89,7 @@ void ObSQLSessionInfo::destroy()
     }
     else
     {
-      result_set->~ObResultSet();
-      ob_free(result_set);
+      result_set_pool_.free(result_set);
       id_plan_map_.erase(iter->first);
     }
   }
@@ -125,8 +141,7 @@ int ObSQLSessionInfo::store_plan(const ObString& stmt_name, ObResultSet& result_
       ret = OB_ERROR;
       TBSYS_LOG(ERROR, "fail to save statement <name, id> pair");
     }
-    else if ((new_res_set = (ObResultSet*)ob_malloc(sizeof(ObResultSet))) == NULL
-      || (new_res_set = new(new_res_set) ObResultSet()) == NULL)
+    else if ((new_res_set = result_set_pool_.alloc()) == NULL)
     {
       TBSYS_LOG(ERROR, "ob malloc for ObResultSet failed");
       ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -140,7 +155,7 @@ int ObSQLSessionInfo::store_plan(const ObString& stmt_name, ObResultSet& result_
       TBSYS_LOG(ERROR, "fail to save prepared plan");
       if (name.length() > 0)
         stmt_name_id_map_.erase(name);
-      ob_free(new_res_set);
+      result_set_pool_.free(new_res_set);
     }
   }
   if (ret == OB_SUCCESS && new_res_set != NULL)
@@ -188,8 +203,7 @@ int ObSQLSessionInfo::remove_plan(const uint64_t& stmt_id)
     }
     if (ret == OB_SUCCESS)
     {
-      result_set->~ObResultSet(); // will free the ps_transformer_allocator to the session
-      ob_free(result_set);
+      result_set_pool_.free(result_set); // will free the ps_transformer_allocator to the session
     }
   }
   return ret;
@@ -461,7 +475,7 @@ ObArenaAllocator* ObSQLSessionInfo::get_transformer_mem_pool_for_ps()
     }
     else
     {
-      ret = new(ptr) ObArenaAllocator(ObModIds::OB_SQL_TRANSFORMER);
+      ret = new(ptr) ObArenaAllocator(ObModIds::OB_SQL_PS_TRANS);
       TBSYS_LOG(DEBUG, "new allocator, addr=%p session_id=%ld", ret, session_id_);
       OB_STAT_INC(SQL, SQL_PS_ALLOCATOR_COUNT);
     }

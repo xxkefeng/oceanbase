@@ -175,7 +175,7 @@ int ObCSCreatePlan::get_basic_column_and_join_info(
           {
             //do nothing
           }
-          else if (!column_ids_.add_member((int32_t)column_id))
+          else if (!column_ids_.add_member((int32_t)left_column_id))
           {
             ret = OB_ERROR;
             TBSYS_LOG(WARN, "fail to add member[%lu]", column_id);

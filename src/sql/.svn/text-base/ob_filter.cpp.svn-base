@@ -18,17 +18,24 @@
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
+#define destroy_sql_expression_dlist(expr_list)\
+  dlist_for_each_del(p, expr_list)\
+  {\
+    ObSqlExpression::free(dynamic_cast<ObSqlExpression*>(p));\
+  }
+
 ObFilter::ObFilter()
 {
 }
 
 ObFilter::~ObFilter()
 {
+  destroy_sql_expression_dlist(filters_);
 }
 
 void ObFilter::reset()
 {
-  filters_.clear();
+  destroy_sql_expression_dlist(filters_);
 }
 
 void ObFilter::clear()
@@ -37,13 +44,13 @@ void ObFilter::clear()
   reset();
 }
 
-int ObFilter::add_filter(const ObSqlExpression& expr)
+int ObFilter::add_filter(ObSqlExpression* expr)
 {
   int ret = OB_SUCCESS;
-  if (OB_SUCCESS != (ret = filters_.push_back(expr)))
+  if (!filters_.add_last(expr))
   {
-    //@todo to_cstring(expr)
-    TBSYS_LOG(WARN, "failed to add column, err=%d", ret);
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(ERROR, "failed to add column");
   }
   return ret;
 }
@@ -90,10 +97,9 @@ int ObFilter::get_next_row(const common::ObRow *&row)
           && OB_SUCCESS == (ret = child_op_->get_next_row(input_row)))
     {
       did_output = true;
-      for (int32_t i = 0; i < filters_.count(); ++i)
+      dlist_for_each(ObSqlExpression, p, filters_)
       {
-        ObSqlExpression &expr = filters_.at(i);
-        if (OB_SUCCESS != (ret = expr.calc(*input_row, result)))
+        if (OB_SUCCESS != (ret = p->calc(*input_row, result)))
         {
           TBSYS_LOG(WARN, "failed to calc expression, err=%d", ret);
           break;
@@ -118,14 +124,10 @@ int64_t ObFilter::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
   databuff_printf(buf, buf_len, pos, "Filter(filters=[");
-  for (int32_t i = 0; i < filters_.count(); ++i)
+  dlist_for_each_const(ObSqlExpression, p, filters_)
   {
-    int64_t pos2 = filters_.at(i).to_string(buf+pos, buf_len-pos);
-    pos += pos2;
-    if (i != filters_.count() -1)
-    {
-      databuff_printf(buf, buf_len, pos, ",");
-    }
+    pos += p->to_string(buf+pos, buf_len-pos);
+    databuff_printf(buf, buf_len, pos, ",");
   }
   databuff_printf(buf, buf_len, pos, "])\n");
   if (NULL != child_op_)
@@ -142,27 +144,26 @@ DEFINE_SERIALIZE(ObFilter)
   int ret = OB_SUCCESS;
   ObObj obj;
 
-  obj.set_int(filters_.count());
-  if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
+  obj.set_int(filters_.get_size());
+  if (0 >= filters_.get_size())
+  {
+    ret = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(ERROR, "no column for output");
+  }
+  else if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
   {
     TBSYS_LOG(WARN, "fail to serialize filter expr count. ret=%d", ret);
   }
   else
   {
-    for (int64_t i = 0; i < filters_.count(); ++i)
+    dlist_for_each_const(ObSqlExpression, p, filters_)
     {
-      const ObSqlExpression &expr = filters_.at(i);
-      if (ret == OB_SUCCESS && (OB_SUCCESS != (ret = expr.serialize(buf, buf_len, pos))))
+      if (OB_SUCCESS != (ret = p->serialize(buf, buf_len, pos)))
       {
         TBSYS_LOG(WARN, "filter expr serialize fail. ret=%d", ret);
         break;
       }
     } // end for
-  }
-  if (0 >= filters_.count())
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(ERROR, "no column for output");
   }
   return ret;
 }
@@ -172,12 +173,11 @@ DEFINE_GET_SERIALIZE_SIZE(ObFilter)
 {
   int64_t size = 0;
   ObObj obj;
-  obj.set_int(filters_.count());
+  obj.set_int(filters_.get_size());
   size += obj.get_serialize_size();
-  for (int64_t i = 0; i < filters_.count(); ++i)
+  dlist_for_each_const(ObSqlExpression, p, filters_)
   {
-    const ObSqlExpression &expr = filters_.at(i);
-    size += expr.get_serialize_size();
+    size += p->get_serialize_size();
   }
   return size;
 }
@@ -200,19 +200,23 @@ DEFINE_DESERIALIZE(ObFilter)
   {
     for (i = 0; i < expr_count; i++)
     {
-      ObSqlExpression expr;
-      if (OB_SUCCESS != (ret = expr.deserialize(buf, data_len, pos)))
+      ObSqlExpression *expr = ObSqlExpression::alloc();
+      if (NULL == expr)
       {
-        TBSYS_LOG(WARN, "fail to deserialize expression. ret=%d", ret);
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(WARN, "no memory");
         break;
       }
-      else
+      else if (OB_SUCCESS != (ret = expr->deserialize(buf, data_len, pos)))
       {
-        if (OB_SUCCESS != (ret = add_filter(expr)))
-        {
-          TBSYS_LOG(WARN, "fail to add expression to filter.ret=%d, buf=%p, data_len=%ld, pos=%ld", ret, buf, data_len, pos);
-          break;
-        }
+        ObSqlExpression::free(expr);
+        TBSYS_LOG(WARN, "fail to deserialize expression. ret=%d i=%ld count=%ld", ret, i, expr_count);
+        break;
+      }
+      else if (OB_SUCCESS != (ret = add_filter(expr)))
+      {
+        TBSYS_LOG(WARN, "fail to add expression to filter.ret=%d, buf=%p, data_len=%ld, pos=%ld", ret, buf, data_len, pos);
+        break;
       }
     }
   }
@@ -221,11 +225,23 @@ DEFINE_DESERIALIZE(ObFilter)
 
 void ObFilter::assign(const ObFilter &other)
 {
-  filters_ = other.filters_;
+  dlist_for_each_const(ObSqlExpression, p, other.filters_)
+  {
+    ObSqlExpression *expr = ObSqlExpression::alloc();
+    if (NULL == expr)
+    {
+      TBSYS_LOG(WARN, "no memory");
+      break;
+    }
+    else
+    {
+      *expr = *p;
+      filters_.add_last(expr);
+    }
+  }
 }
 
 ObPhyOperatorType ObFilter::get_type() const
 {
   return PHY_FILTER;
 }
-

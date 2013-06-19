@@ -3751,7 +3751,9 @@ namespace oceanbase
               {
                 TBSYS_LOG(INFO, "get master_master_ups addr = %s", ups_inst_master_.to_cstring());
                 if (ups_inst_master_ == self_addr_)
-                {}
+                {
+                  TBSYS_LOG(WARN, "inst_master == self_addr[%s], maybe NOT set_obi_role", to_cstring(self_addr_));
+                }
                 else
                 {
                   err = register_to_master_ups(ups_inst_master_);

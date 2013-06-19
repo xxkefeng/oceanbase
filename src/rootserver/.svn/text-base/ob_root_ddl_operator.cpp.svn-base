@@ -15,7 +15,7 @@ ObRootDDLOperator::~ObRootDDLOperator()
 {
 }
 
-void ObRootDDLOperator::init(ObRootServer2 * server, ObSchemaServiceImpl * impl)
+void ObRootDDLOperator::init(ObRootServer2 * server, ObSchemaService * impl)
 {
   root_server_ = server;
   schema_client_ = impl;
@@ -73,16 +73,6 @@ int ObRootDDLOperator::create_table(const TableSchema & table_schema)
     {
       TBSYS_LOG(INFO, "update inner table for schema succ:table_name[%s], table_id[%lu]",
           table_schema.table_name_, table_schema.table_id_);
-    }
-  }
-  if (OB_SUCCESS != ret)
-  {
-    // rollback for root table modify
-    int err = delete_root_table(table_schema.table_id_);
-    if (err != OB_SUCCESS)
-    {
-      TBSYS_LOG(WARN, "rollback delete root table failed:table_id[%lu], ret[%d]",
-          table_schema.table_id_, err);
     }
   }
   return ret;

@@ -42,10 +42,19 @@ namespace oceanbase
       PHY_MULTIPLE_GET_MERGE,
       PHY_VALUES,
       PHY_EMPTY_ROW_FILTER,
+      PHY_EXPR_VALUES,
+      PHY_UPS_EXECUTOR,
 
       PHY_END /* end of phy operator type */
     };
+
+    void ob_print_phy_operator_stat();
+    const char* ob_phy_operator_type_str(ObPhyOperatorType type);
+    void ob_inc_phy_operator_stat(ObPhyOperatorType type);
+    void ob_dec_phy_operator_stat(ObPhyOperatorType type);
   }
 }
+
+#define OB_PHY_OP_INC(type) oceanbase::sql::ob_inc_phy_operator_stat(ObPhyOperatorType type)
 
 #endif /* _OB_PHY_OPERATOR_TYPE_H */

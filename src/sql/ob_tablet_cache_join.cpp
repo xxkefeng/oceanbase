@@ -64,7 +64,7 @@ int ObTabletCacheJoin::open()
 
   if(OB_SUCCESS == ret)
   {
-    void *tmp = ob_malloc(sizeof(CacheHandle) * batch_count_);
+    void *tmp = ob_malloc(sizeof(CacheHandle) * batch_count_, ObModIds::OB_SQL_TABLET_CACHE_JOIN);
     if(NULL == tmp)
     {
       ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -166,8 +166,8 @@ int ObTabletCacheJoin::fetch_ups_row(const ObGetParam &get_param)
   ObString compact_row; //用于存储ObRow的紧缩格式，内存已经分配好
   const ObRowkey *rowkey = NULL;
   ThreadSpecificBuffer::Buffer *buffer = NULL;
-  
-  TBSYS_LOG(DEBUG, "fetch join ups_row param: %ld, %s", get_param.get_cell_size(), 
+
+  TBSYS_LOG(DEBUG, "fetch join ups_row param: %ld, %s", get_param.get_cell_size(),
       get_param.get_cell_size() < 10 ? to_cstring(get_param) : "..");
 
   if(OB_SUCCESS == ret)
@@ -213,7 +213,7 @@ int ObTabletCacheJoin::fetch_ups_row(const ObGetParam &get_param)
       {
         if (row_count++ < 10)
         {
-          TBSYS_LOG(DEBUG, "fetch join ups row(%ld): key:%s, row:%s", 
+          TBSYS_LOG(DEBUG, "fetch join ups row(%ld): key:%s, row:%s",
               row_count, to_cstring(*rowkey), to_cstring(*tmp_row_ptr));
         }
         ups_row = dynamic_cast<const ObUpsRow *>(tmp_row_ptr);
@@ -302,7 +302,7 @@ int ObTabletCacheJoin::compose_next_get_param(ObGetParam &next_get_param, int64_
   {
     row.set_row_desc(*row_desc);
   }
-  
+
   if(OB_SUCCESS == ret)
   {
     next_get_param.reset(true);
@@ -456,4 +456,3 @@ int ObTabletCacheJoin::gen_get_param(ObGetParam &get_param, const ObRow &fused_r
   }
   return ret;
 }
-

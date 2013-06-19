@@ -1094,17 +1094,9 @@ namespace oceanbase
             to_cstring(rowkey), to_cstring(split_rowkey_), split_pos);
       }
 
-      if (split_pos > 0)
+      if (split_pos > 0 && split_pos < split_rowkey_.get_obj_cnt())
       {
-        if ( split_rowkey_.get_obj_cnt() < split_pos)
-        {
-          TBSYS_LOG(ERROR,"rowkey is too short");
-          ret = OB_ERROR;
-        }
-        else
-        {
-          const_cast<ObObj*>(split_rowkey_.get_obj_ptr()+split_pos-1)->set_max_value();
-        }
+        const_cast<ObObj*>(split_rowkey_.get_obj_ptr()+split_pos)->set_max_value();
       }
 
       if (OB_SUCCESS == ret)

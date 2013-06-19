@@ -380,8 +380,8 @@ namespace oceanbase
       }
       if (NULL != task)
       {
-        if ((OB_SUCCESS != ret && !IS_SQL_ERR(ret))
-            || (OB_SUCCESS != thread_errno() && !IS_SQL_ERR(thread_errno())))
+        if ((OB_SUCCESS != ret && !IS_SQL_ERR(ret) && OB_BEGIN_TRANS_LOCKED != ret)
+            || (OB_SUCCESS != thread_errno() && !IS_SQL_ERR(thread_errno()) && OB_BEGIN_TRANS_LOCKED != thread_errno()))
         {
           TBSYS_LOG(WARN, "process fail ret=%d pcode=%d src=%s",
                     (OB_SUCCESS != ret) ? ret : thread_errno(), task->pkt.get_packet_code(), inet_ntoa_r(task->src_addr));
@@ -432,6 +432,7 @@ namespace oceanbase
       SessionGuard session_guard(session_mgr_, lock_mgr_, ret);
       RWSessionCtx *session_ctx = NULL;
       ILockInfo *lock_info = NULL;
+      int64_t pos = task.pkt.get_buffer()->get_position();
       int64_t packet_timewait = (0 == task.pkt.get_source_timeout()) ?
                                 UPS.get_param().packet_max_wait_time :
                                 task.pkt.get_source_timeout();
@@ -449,9 +450,26 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "deserialize mutator fail ret=%d", ret);
       }
+      else
+      {
+        task.pkt.get_buffer()->get_position() = pos;
+      }
+      if (OB_SUCCESS != ret)
+      {}
       else if (OB_SUCCESS != (ret = session_guard.start_session(req, task.sid, session_ctx)))
       {
-        TBSYS_LOG(ERROR, "start_session()=>%d", ret);
+        if (OB_BEGIN_TRANS_LOCKED == ret)
+        {
+          int tmp_ret = OB_SUCCESS;
+          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task, task.pkt.get_req_sign())))
+          {
+            ret = tmp_ret;
+          }
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "start_session()=>%d", ret);
+        }
       }
       else
       {
@@ -496,18 +514,20 @@ namespace oceanbase
           }
         }
       }
-      if (OB_SUCCESS != ret)
+      if (OB_SUCCESS != ret && OB_BEGIN_TRANS_LOCKED != ret)
       {
         UPS.response_result(ret, task.pkt);
       }
-      return (OB_SUCCESS != ret);
+      return (OB_SUCCESS != ret && OB_BEGIN_TRANS_LOCKED != ret);
     }
 
-    void TransExecutor::handle_start_session_(Task &task, ObDataBuffer &buffer)
+    bool TransExecutor::handle_start_session_(Task &task, ObDataBuffer &buffer)
     {
       int &ret = thread_errno();
+      bool need_free_task = true;
       ret = OB_SUCCESS;
       ObTransReq req;
+      int64_t pos = task.pkt.get_buffer()->get_position();
       SessionGuard session_guard(session_mgr_, lock_mgr_, ret);
       BaseSessionCtx* session_ctx = NULL;
       task.sid.reset();
@@ -518,7 +538,7 @@ namespace oceanbase
       }
       else if (OB_SUCCESS != (ret = req.deserialize(task.pkt.get_buffer()->get_data(),
                                                     task.pkt.get_buffer()->get_capacity(),
-                                                    task.pkt.get_buffer()->get_position())))
+                                                    pos)))
       {
         TBSYS_LOG(WARN, "deserialize session_req fail ret=%d", ret);
       }
@@ -530,14 +550,33 @@ namespace oceanbase
       {}
       else if (OB_SUCCESS != (ret = session_guard.start_session(req, task.sid, session_ctx)))
       {
-        TBSYS_LOG(WARN, "begin session fail ret=%d", ret);
+        if (OB_BEGIN_TRANS_LOCKED == ret)
+        {
+          int tmp_ret = OB_SUCCESS;
+          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task, task.pkt.get_req_sign())))
+          {
+            ret = tmp_ret;
+          }
+          else
+          {
+            need_free_task = false;
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "begin session fail ret=%d", ret);
+        }
       }
       else
       {
         LOG_SESSION("session start", session_ctx, task);
         PRINT_TRACE_BUF(session_ctx->get_tlog_buffer());
       }
-      UPS.response_trans_id(ret, task.pkt, task.sid, buffer);
+      if (need_free_task)
+      {
+        UPS.response_trans_id(ret, task.pkt, task.sid, buffer);
+      }
+      return need_free_task;
     }
 
     bool TransExecutor::handle_end_session_(Task &task, ObDataBuffer &buffer)
@@ -646,7 +685,22 @@ namespace oceanbase
         phy_plan.get_trans_req().start_time_ = task.pkt.get_receive_ts();
         if (OB_SUCCESS != (ret = session_guard.start_session(phy_plan.get_trans_req(), task.sid, session_ctx)))
         {
-          TBSYS_LOG(ERROR, "start_session()=>%d", ret);
+          if (OB_BEGIN_TRANS_LOCKED == ret)
+          {
+            int tmp_ret = OB_SUCCESS;
+            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task, task.pkt.get_req_sign())))
+            {
+              ret = tmp_ret;
+            }
+            else
+            {
+              need_free_task = false;
+            }
+          }
+          else
+          {
+            TBSYS_LOG(ERROR, "start_session()=>%d", ret);
+          }
         }
         else
         {
@@ -748,7 +802,7 @@ namespace oceanbase
           TBSYS_LOG(DEBUG, "need rollback session %s ret=%d", to_cstring(task.sid), ret);
         }
       }
-      if (OB_SUCCESS != ret)
+      if (OB_SUCCESS != ret && OB_BEGIN_TRANS_LOCKED != ret)
       {
         ret = (OB_ERR_SHARED_LOCK_CONFLICT == ret) ? OB_EAGAIN : ret;
         const char *error_string = ob_get_err_msg().ptr();
@@ -1450,9 +1504,10 @@ namespace oceanbase
 
     bool TransExecutor::thandle_start_session(TransExecutor &host, Task &task, TransParamData &pdata)
     {
+      bool ret = true;
       pdata.buffer.get_position() = 0;
-      host.handle_start_session_(task, pdata.buffer);
-      return true;
+      ret = host.handle_start_session_(task, pdata.buffer);
+      return ret;
     }
 
     bool TransExecutor::thandle_kill_zombie(TransExecutor &host, Task &task, TransParamData &pdata)

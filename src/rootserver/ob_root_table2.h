@@ -87,6 +87,8 @@ namespace oceanbase
 
         static int64_t get_max_tablet_version(const const_iterator& it);
         int64_t get_max_tablet_version();
+        // remove one replica
+        int remove(const const_iterator& it, const int32_t safe_count, const int32_t server_index);
         int modify(const const_iterator& it, const int32_t dest_server_index, const int64_t tablet_version);
         int replace(const const_iterator& it, const int32_t src_server_index, const int32_t dest_server_index, const int64_t tablet_version);
         /*

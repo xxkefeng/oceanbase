@@ -493,7 +493,7 @@ int ObBootstrap::init_all_cluster()
     ObRootMsProvider ms_provider(root_server_.get_server_manager());
     for (int64_t i = 0; i < config.retry_times; i++)
     {
-      if (OB_SUCCESS != (ret = ms_provider.get_ms(i, server)))
+      if (OB_SUCCESS != (ret = ms_provider.get_ms(server)))
       {
         TBSYS_LOG(WARN, "get merge server to init all_cluster table failed:ret[%d]", ret);
       }

@@ -31,8 +31,9 @@ using namespace oceanbase::mergeserver;
 
 ObRpcScan::ObRpcScan() :
   timeout_us_(0),
-  read_method_(0),
-  read_param_(),
+  scan_param_(NULL),
+  get_param_(NULL),
+  read_param_(NULL),
   cache_proxy_(NULL),
   async_rpc_(NULL),
   session_info_(NULL),
@@ -42,8 +43,7 @@ ObRpcScan::ObRpcScan() :
   table_id_(OB_INVALID_ID),
   base_table_id_(OB_INVALID_ID),
   start_key_buf_(NULL),
-  end_key_buf_(NULL),
-  is_skip_empty_row_(true)
+  end_key_buf_(NULL)
 {
   sql_read_strategy_.set_rowkey_info(rowkey_info_);
 }
@@ -55,7 +55,7 @@ ObRpcScan::~ObRpcScan()
 }
 
 
-int ObRpcScan::init(ObSqlContext *context)
+int ObRpcScan::init(ObSqlContext *context, const common::ObRpcScanHint &hint)
 {
   int ret = OB_SUCCESS;
   if (NULL == context)
@@ -96,6 +96,59 @@ int ObRpcScan::init(ObSqlContext *context)
       // copy
       rowkey_info_ = schema->get_rowkey_info();
     }
+  }
+  this->set_hint(hint);
+  if (hint_.read_method_ == ObSqlReadStrategy::USE_SCAN)
+  {
+    OB_ASSERT(NULL == scan_param_);
+    scan_param_ = OB_NEW(ObSqlScanParam, ObModIds::OB_SQL_SCAN_PARAM);
+    if (NULL == scan_param_)
+    {
+      TBSYS_LOG(WARN, "no memory");
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    }
+    else
+    {
+      read_param_ = scan_param_;
+    }
+  }
+  else if (hint_.read_method_ == ObSqlReadStrategy::USE_GET)
+  {
+    OB_ASSERT(NULL == get_param_);
+    get_param_ = OB_NEW(ObSqlGetParam, ObModIds::OB_SQL_GET_PARAM);
+    if (NULL == get_param_)
+    {
+      TBSYS_LOG(WARN, "no memory");
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    }
+    else
+    {
+      read_param_ = get_param_;
+    }
+    if (OB_SUCCESS == ret && hint_.is_get_skip_empty_row_)
+    {
+      ObSqlExpression special_column;
+      special_column.set_tid_cid(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
+      if (OB_SUCCESS != (ret = ObSqlExpressionUtil::make_column_expr(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, special_column)))
+      {
+        TBSYS_LOG(WARN, "fail to create column expression. ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = get_param_->add_output_column(special_column)))
+      {
+        TBSYS_LOG(WARN, "fail to add special is-row-empty-column to project. ret=%d", ret);
+      }
+      else
+      {
+        TBSYS_LOG(DEBUG, "add special column to read param");
+      }
+    }
+
+
+  }
+  else
+  {
+    ret = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(WARN, "read method must be either scan or get. method=%d", hint_.read_method_);
   }
   return ret;
 }
@@ -165,7 +218,7 @@ int ObRpcScan::create_scan_param(ObSqlScanParam &scan_param)
   int ret = OB_SUCCESS;
   ObNewRange range;
   // until all columns and filters are set, we could know the exact range
-  if (OB_SUCCESS != (ret = fill_read_param(read_param_, scan_param)))
+  if (OB_SUCCESS != (ret = fill_read_param(scan_param)))
   {
     TBSYS_LOG(WARN, "fail to fill read param to scan param. ret=%d", ret);
   }
@@ -181,6 +234,7 @@ int ObRpcScan::create_scan_param(ObSqlScanParam &scan_param)
   int64_t end_create_scan_param = tbsys::CTimeUtil::getTime();
   PROFILE_LOG(DEBUG, CREATE_SCAN_PARAM, end_create_scan_param - start_create_scan_param);
   TBSYS_LOG(INFO, "dump scan range: %s", to_cstring(range));
+  TBSYS_LOG(DEBUG, "scan_param=%s", to_cstring(scan_param));
   return ret;
 }
 
@@ -188,28 +242,10 @@ int ObRpcScan::create_scan_param(ObSqlScanParam &scan_param)
 int ObRpcScan::create_get_param(ObSqlGetParam &get_param)
 {
   int ret = OB_SUCCESS;
-  ObSqlExpression speical_column;
 
-  if (OB_SUCCESS != (ret = fill_read_param(read_param_, get_param)))
+  if (OB_SUCCESS != (ret = fill_read_param(get_param)))
   {
     TBSYS_LOG(WARN, "fail to fill read param to scan param. ret=%d", ret);
-  }
-
-  if (OB_SUCCESS == ret && is_skip_empty_row_)
-  {
-    speical_column.set_tid_cid(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
-    if (OB_SUCCESS != (ret = ObSqlExpressionUtil::make_column_expr(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, speical_column)))
-    {
-      TBSYS_LOG(WARN, "fail to create column expression. ret=%d", ret);
-    }
-    else if (OB_SUCCESS != (ret = get_param.add_output_column(speical_column)))
-    {
-      TBSYS_LOG(WARN, "fail to add special is-row-empty-column to project. ret=%d", ret);
-    }
-    else
-    {
-      TBSYS_LOG(DEBUG, "add special column to read param");
-    }
   }
 
   if (OB_SUCCESS == ret)
@@ -219,17 +255,16 @@ int ObRpcScan::create_get_param(ObSqlGetParam &get_param)
       TBSYS_LOG(WARN, "fail to construct scan range. ret=%d", ret);
     }
   }
-
+  TBSYS_LOG(DEBUG, "get_param=%s", to_cstring(get_param));
   return ret;
 }
 
-int ObRpcScan::fill_read_param(const ObSqlReadParam &read_param, ObSqlReadParam &dest_param)
+int ObRpcScan::fill_read_param(ObSqlReadParam &dest_param)
 {
   int ret = OB_SUCCESS;
   ObObj val;
   int64_t read_consistency_val = 0;
   OB_ASSERT(NULL != session_info_);
-  dest_param = read_param;
   if (OB_SUCCESS != (ret = session_info_->get_sys_variable_value(ObString::make_string("ob_read_consistency"), val)))
   {
     const ObMergeServerService &service
@@ -254,7 +289,7 @@ int ObRpcScan::fill_read_param(const ObSqlReadParam &read_param, ObSqlReadParam 
       TBSYS_LOG(WARN, "fail to set table id and scan range. ret=%d", ret);
     }
   }
-    
+
   return ret;
 }
 
@@ -262,35 +297,24 @@ int64_t ObRpcScan::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
   databuff_printf(buf, buf_len, pos, "RpcScan(");
-  pos += read_param_.to_string(buf+pos, buf_len-pos);
+  pos += read_param_->to_string(buf+pos, buf_len-pos);
   databuff_printf(buf, buf_len, pos, ")");
   return pos;
 }
 
 void ObRpcScan::set_hint(const common::ObRpcScanHint &hint)
 {
+  hint_ = hint;
   // max_parallel_count
-  if (hint.max_parallel_count <= 0)
+  if (hint_.max_parallel_count <= 0)
   {
     hint_.max_parallel_count = 20;
   }
-  else
-  {
-    hint_.max_parallel_count = hint.max_parallel_count;
-  }
   // max_memory_limit
-  if (hint.max_memory_limit < 1024 * 1024 * 2)
+  if (hint_.max_memory_limit < 1024 * 1024 * 2)
   {
     hint_.max_memory_limit = 1024 * 1024 * 2;
   }
-  else
-  {
-    hint_.max_memory_limit = hint.max_memory_limit;
-  }
-
-  hint_.timeout_us = hint.timeout_us;
-  hint_.only_frozen_version_data_ = hint.only_frozen_version_data_;
-  hint_.only_static_data_ = hint.only_static_data_;
 }
 
 int ObRpcScan::open()
@@ -303,10 +327,10 @@ int ObRpcScan::open()
   if (hint_.only_frozen_version_data_)
   {
     ObVersion frozen_version = my_phy_plan_->get_curr_frozen_version();
-    this->set_data_version(frozen_version);
+    read_param_->set_data_version(frozen_version);
     FILL_TRACE_LOG("static_data_version=%s", to_cstring(frozen_version));
   }
-  read_param_.set_is_only_static_data(hint_.only_static_data_);
+  read_param_->set_is_only_static_data(hint_.only_static_data_);
   FILL_TRACE_LOG("only_static=%c", hint_.only_static_data_?'Y':'N');
   if (NULL == cache_proxy_ || NULL == async_rpc_)
   {
@@ -316,14 +340,13 @@ int ObRpcScan::open()
 
   if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(DEBUG, "read_method_ [%s]", read_method_ == ObSqlReadStrategy::USE_SCAN ? "SCAN" : "GET");
+    TBSYS_LOG(DEBUG, "read_method_ [%s]", hint_.read_method_ == ObSqlReadStrategy::USE_SCAN ? "SCAN" : "GET");
     // common initialization
     cur_row_.set_row_desc(cur_row_desc_);
     FILL_TRACE_LOG("open %s", to_cstring(cur_row_desc_));
   }
-
   // Scan
-  if (OB_SUCCESS == ret && read_method_ == ObSqlReadStrategy::USE_SCAN)
+  if (OB_SUCCESS == ret && hint_.read_method_ == ObSqlReadStrategy::USE_SCAN)
   {
     int64_t start_cons_scan = tbsys::CTimeUtil::getTime();
     if (OB_SUCCESS != (ret = sql_scan_request_.initialize()))
@@ -337,7 +360,7 @@ int ObRpcScan::open()
       {
         TBSYS_LOG(WARN, "fail to init sql_scan_event. ret=%d", ret);
       }
-      else if (OB_SUCCESS != (ret = create_scan_param(scan_param_)))
+      else if (OB_SUCCESS != (ret = create_scan_param(*scan_param_)))
       {
         TBSYS_LOG(WARN, "fail to create scan param. ret=%d", ret);
       }
@@ -346,7 +369,7 @@ int ObRpcScan::open()
     if (OB_SUCCESS == ret)
     {
       sql_scan_request_.set_timeout_percent((int32_t)merge_service_->get_config().timeout_percent);
-      if(OB_SUCCESS != (ret = sql_scan_request_.set_request_param(scan_param_, hint_)))
+      if(OB_SUCCESS != (ret = sql_scan_request_.set_request_param(*scan_param_, hint_)))
       {
         TBSYS_LOG(WARN, "fail to set request param. max_parallel=%ld, ret=%d",
             hint_.max_parallel_count, ret);
@@ -356,7 +379,7 @@ int ObRpcScan::open()
     PROFILE_LOG(DEBUG, CONS_SQL_SCAN_REQUEST, end_cons_scan - start_cons_scan);
   }
   // Get
-  if (OB_SUCCESS == ret && read_method_ == ObSqlReadStrategy::USE_GET)
+  if (OB_SUCCESS == ret && hint_.read_method_ == ObSqlReadStrategy::USE_GET)
   {
     int64_t start_cons_get = tbsys::CTimeUtil::getTime();
     get_row_desc_.reset();
@@ -365,11 +388,11 @@ int ObRpcScan::open()
     {
       TBSYS_LOG(WARN, "fail to init sql_scan_event. ret=%d", ret);
     }
-    else if (OB_SUCCESS != (ret = create_get_param(get_param_)))
+    else if (OB_SUCCESS != (ret = create_get_param(*get_param_)))
     {
       TBSYS_LOG(WARN, "fail to create scan param. ret=%d", ret);
     }
-    else if (OB_SUCCESS != (ret = cons_row_desc(get_param_, get_row_desc_)))
+    else if (OB_SUCCESS != (ret = cons_row_desc(*get_param_, get_row_desc_)))
     {
       TBSYS_LOG(WARN, "fail to get row desc:ret[%d]", ret);
     }
@@ -377,7 +400,7 @@ int ObRpcScan::open()
     {
       TBSYS_LOG(WARN, "fail to set row desc:ret[%d]", ret);
     }
-    else if(OB_SUCCESS != (ret = sql_get_request_.set_request_param(get_param_, timeout_us_)))
+    else if(OB_SUCCESS != (ret = sql_get_request_.set_request_param(*get_param_, timeout_us_)))
     {
       TBSYS_LOG(WARN, "fail to set request param. max_parallel=%ld, ret=%d",
           hint_.max_parallel_count, ret);
@@ -413,19 +436,35 @@ void ObRpcScan::destroy()
     ob_free(end_key_buf_, ObModIds::OB_SQL_RPC_SCAN);
     end_key_buf_ = NULL;
   }
+  if (NULL != get_param_)
+  {
+    get_param_->~ObSqlGetParam();
+    ob_free(get_param_);
+    get_param_ = NULL;
+  }
+  if (NULL != scan_param_)
+  {
+    scan_param_->~ObSqlScanParam();
+    ob_free(scan_param_);
+    scan_param_ = NULL;
+  }
 }
 
 int ObRpcScan::close()
 {
   int ret = OB_SUCCESS;
-  //释放资源等;
-  this->destroy();
   sql_scan_request_.close();
   sql_scan_request_.reset();
-  scan_param_.reset();
+  if (NULL != scan_param_)
+  {
+    scan_param_->reset_local();
+  }
   sql_get_request_.close();
   sql_get_request_.reset();
-  get_param_.reset();
+  if (NULL != get_param_)
+  {
+    get_param_->reset_local();
+  }
   return ret;
 }
 
@@ -447,17 +486,17 @@ int ObRpcScan::get_row_desc(const common::ObRowDesc *&row_desc) const
 int ObRpcScan::get_next_row(const common::ObRow *&row)
 {
   int ret = OB_SUCCESS;
-  if (ObSqlReadStrategy::USE_SCAN == read_method_)
+  if (ObSqlReadStrategy::USE_SCAN == hint_.read_method_)
   {
     ret = get_next_compact_row(row); // 可能需要等待CS返回
   }
-  else if (ObSqlReadStrategy::USE_GET == read_method_)
+  else if (ObSqlReadStrategy::USE_GET == hint_.read_method_)
   {
     ret = sql_get_request_.get_next_row(cur_row_);
   }
   else
   {
-    TBSYS_LOG(WARN, "not init. read_method_=%d", read_method_);
+    TBSYS_LOG(WARN, "not init. read_method_=%d", hint_.read_method_);
     ret = OB_NOT_INIT;
   }
   row = &cur_row_;
@@ -516,7 +555,7 @@ int ObRpcScan::get_next_compact_row(const common::ObRow *&row)
     else
     {
       // encounter an unexpected error or
-      TBSYS_LOG(WARN, "Unexprected error. ret=%d, cur_row_desc[%s], read_method_[%d]", ret, to_cstring(cur_row_desc_), read_method_);
+      TBSYS_LOG(WARN, "Unexprected error. ret=%d, cur_row_desc[%s], read_method_[%d]", ret, to_cstring(cur_row_desc_), hint_.read_method_);
       can_break = true;
     }
   }while(false == can_break);
@@ -542,7 +581,7 @@ int ObRpcScan::add_output_column(const ObSqlExpression& expr)
   else if ((OB_SUCCESS == (ret = expr.is_column_index_expr(is_cid)))  && (true == is_cid))
   {
     // 添加基本列
-    if (OB_SUCCESS != (ret = read_param_.add_output_column(expr)))
+    if (OB_SUCCESS != (ret = read_param_->add_output_column(expr)))
     {
       TBSYS_LOG(WARN, "fail to add output column ret=%d", ret);
     }
@@ -550,7 +589,7 @@ int ObRpcScan::add_output_column(const ObSqlExpression& expr)
   else
   {
     // 添加复合列
-    if (OB_SUCCESS != (ret = read_param_.add_output_column(expr)))
+    if (OB_SUCCESS != (ret = read_param_->add_output_column(expr)))
     {
       TBSYS_LOG(WARN, "fail to add output column ret=%d", ret);
     }
@@ -588,7 +627,7 @@ int ObRpcScan::cons_get_rows(ObSqlGetParam &get_param)
   ObArray<ObRowkey> rowkey_array;
   // TODO lide.wd: rowkey obj storage needed. varchar use orginal buffer, will be copied later
   PageArena<ObObj,ModulePageAllocator> rowkey_objs_allocator(
-      PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_MOD_DEFAULT));
+      PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_SQL_COMMON));
   // try  'where (k1,k2,kn) in ((a,b,c), (e,f,g))'
   if (OB_SUCCESS != (ret = sql_read_strategy_.find_rowkeys_from_in_expr(rowkey_array, rowkey_objs_allocator)))
   {
@@ -669,14 +708,14 @@ int ObRpcScan::get_min_max_rowkey(const ObArray<ObRowkey> &rowkey_array, ObObj *
   return ret;
 }
 
-int ObRpcScan::add_filter(const ObSqlExpression& expr)
+int ObRpcScan::add_filter(ObSqlExpression* expr)
 {
   int ret = OB_SUCCESS;
-  if (OB_SUCCESS != (ret = sql_read_strategy_.add_filter(expr)))
+  if (OB_SUCCESS != (ret = sql_read_strategy_.add_filter(*expr)))
   {
     TBSYS_LOG(WARN, "fail to add filter to sql read strategy:ret[%d]", ret);
   }
-  if (OB_SUCCESS == ret && OB_SUCCESS != (ret = read_param_.add_filter(expr)))
+  if (OB_SUCCESS == ret && OB_SUCCESS != (ret = read_param_->add_filter(expr)))
   {
     TBSYS_LOG(WARN, "fail to add composite column to scan param. ret=%d", ret);
   }
@@ -685,7 +724,7 @@ int ObRpcScan::add_filter(const ObSqlExpression& expr)
 
 int ObRpcScan::add_group_column(const uint64_t tid, const uint64_t cid)
 {
-  return read_param_.add_group_column(tid, cid);
+  return read_param_->add_group_column(tid, cid);
 }
 
 int ObRpcScan::add_aggr_column(const ObSqlExpression& expr)
@@ -702,7 +741,7 @@ int ObRpcScan::add_aggr_column(const ObSqlExpression& expr)
   {
     TBSYS_LOG(WARN, "Failed to add column desc, err=%d", ret);
   }
-  else if ((ret = read_param_.add_aggr_column(expr)) != OB_SUCCESS)
+  else if ((ret = read_param_->add_aggr_column(expr)) != OB_SUCCESS)
   {
     TBSYS_LOG(WARN, "Failed to add aggregate column desc, err=%d", ret);
   }
@@ -711,7 +750,7 @@ int ObRpcScan::add_aggr_column(const ObSqlExpression& expr)
 
 int ObRpcScan::set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset)
 {
-  return read_param_.set_limit(limit, offset);
+  return read_param_->set_limit(limit, offset);
 }
 
 int ObRpcScan::cons_row_desc(const ObSqlGetParam &sql_get_param, ObRowDesc &row_desc)

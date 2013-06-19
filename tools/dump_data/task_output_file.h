@@ -2,7 +2,7 @@
 #define  __TASK_OUTPUT_FILE_H__
 
 #include "task_env.h"
-#include "common/ob_scanner.h"
+#include "common/ob_new_scanner.h"
 #include "common/data_buffer.h"
 #include "common/ob_malloc.h"
 #include "task_worker_param.h"
@@ -10,9 +10,12 @@
 
 #include <vector>
 
-namespace oceanbase {
-  namespace tools {
-    class TaskOutputFile {
+namespace oceanbase
+{
+  namespace tools
+  {
+    class TaskOutputFile
+    {
       public:
         TaskOutputFile();
 
@@ -49,10 +52,8 @@ namespace oceanbase {
         //when true, append rowkey info to each line
         bool split_rowkey_;
         const TableConf *conf_;
-
         RecordDelima delima_;
         RecordDelima rec_delima_;
-//        RowkeyItem rowkey_item_;
     };
   }
 }

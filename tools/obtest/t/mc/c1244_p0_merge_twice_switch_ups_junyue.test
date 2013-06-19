@@ -62,16 +62,10 @@ select * from t1;
 deploy ob1.major_freeze;
 
 # check merge
-deploy ob1.check 1,3,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob1.check 2,3,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob1.check 3,3,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob1.check 4,3,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
+deploy ob1.check_cs_version 3;
 
 # check merge
-deploy ob2.check 1,3,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob2.check 2,3,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob2.check 3,3,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob2.check 4,3,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
+deploy ob2.check_cs_version 3;
 
 select * from t1;
 

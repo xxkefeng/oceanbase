@@ -2,8 +2,8 @@
  * (C) 2007-2010 Alibaba Group Holding Limited.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
  *
  *         convert_idx_file.cpp is for what ...
  *
@@ -40,8 +40,8 @@ class ObTabletImageMod : public ObTabletImage
         const int32_t disk_no, const char* buf, const int64_t data_len, int64_t& pos);
     int read_with_schema(const ObSchemaManagerV2& schema, const char* idx_path, const int32_t disk_no);
   private:
-    static int binary2rowkey( const ObSchemaManagerV2 &schema, 
-        const ObTabletRangeInfo& info, ObTabletRangeInfo& rkinfo, 
+    static int binary2rowkey( const ObSchemaManagerV2 &schema,
+        const ObTabletRangeInfo& info, ObTabletRangeInfo& rkinfo,
         const char* binary_stream, const int64_t binary_length,
         char* rowkey_stream, int64_t rowkey_length);
     CharArena  arena_;
@@ -70,8 +70,8 @@ ObTablet* ObTabletImageMod::alloc_empty_tablet()
   return tablet;
 }
 
-int ObTabletImageMod::binary2rowkey( const ObSchemaManagerV2 &schema, 
-    const ObTabletRangeInfo& info, ObTabletRangeInfo& rkinfo, 
+int ObTabletImageMod::binary2rowkey( const ObSchemaManagerV2 &schema,
+    const ObTabletRangeInfo& info, ObTabletRangeInfo& rkinfo,
     const char* binary_stream, const int64_t binary_length,
     char* rowkey_stream, int64_t rowkey_length)
 {
@@ -90,7 +90,7 @@ int ObTabletImageMod::binary2rowkey( const ObSchemaManagerV2 &schema,
 
   if (info.start_key_size_ + info.end_key_size_ > binary_length)
   {
-    fprintf(stderr, "sk size =%d + end size=%d > binary_length=%ld\n", 
+    fprintf(stderr, "sk size =%d + end size=%d > binary_length=%ld\n",
         info.start_key_size_, info.end_key_size_, binary_length);
     ret = OB_SIZE_OVERFLOW;
   }
@@ -157,7 +157,7 @@ int ObTabletImageMod::binary2rowkey( const ObSchemaManagerV2 &schema,
   return ret;
 }
 
-int ObTabletImageMod::deserialize_with_schema(const ObSchemaManagerV2& schema, 
+int ObTabletImageMod::deserialize_with_schema(const ObSchemaManagerV2& schema,
     const int32_t disk_no, const char* buf, const int64_t data_len, int64_t& pos)
 {
   UNUSED(disk_no);
@@ -183,7 +183,7 @@ int ObTabletImageMod::deserialize_with_schema(const ObSchemaManagerV2& schema,
     }
     else if (get_data_version() != meta_header.data_version_)
     {
-      fprintf(stderr, "data_version_=%ld != header.version=%ld", 
+      fprintf(stderr, "data_version_=%ld != header.version=%ld",
           get_data_version(), meta_header.data_version_);
       ret = OB_ERROR;
     }
@@ -195,8 +195,8 @@ int ObTabletImageMod::deserialize_with_schema(const ObSchemaManagerV2& schema,
   if (OB_SUCCESS == ret)
   {
     if (origin_payload_pos
-        + meta_header.row_key_stream_offset_ 
-        + meta_header.row_key_stream_size_ 
+        + meta_header.row_key_stream_offset_
+        + meta_header.row_key_stream_size_
         > data_len)
     {
       ret = OB_SIZE_OVERFLOW;
@@ -213,14 +213,14 @@ int ObTabletImageMod::deserialize_with_schema(const ObSchemaManagerV2& schema,
       }
       else
       {
-        memcpy(row_key_buf, row_key_stream_ptr, 
+        memcpy(row_key_buf, row_key_stream_ptr,
             meta_header.row_key_stream_size_);
       }
     }
   }
 
   const char* tablet_extend_buf = NULL;
-  if (OB_SUCCESS == ret 
+  if (OB_SUCCESS == ret
       && meta_header.tablet_extend_info_offset_ > 0
       && meta_header.tablet_extend_info_size_ > 0)
   {
@@ -260,9 +260,9 @@ int ObTabletImageMod::deserialize_with_schema(const ObSchemaManagerV2& schema,
         fprintf(stderr, "deserialize tablet err len=%ld, pos=%ld\n", data_len, pos);
       }
       else if (OB_SUCCESS != (ret = binary2rowkey(
-              schema, info, rkinfo, 
-              row_key_buf + row_key_cur_offset, 
-              meta_header.row_key_stream_size_ - row_key_cur_offset, 
+              schema, info, rkinfo,
+              row_key_buf + row_key_cur_offset,
+              meta_header.row_key_stream_size_ - row_key_cur_offset,
               rowkey_buffer, rowkey_max_size)))
       {
         fprintf(stderr, "binary2rowkey error, cur offset=%ld, size=%ld\n",
@@ -281,7 +281,7 @@ int ObTabletImageMod::deserialize_with_schema(const ObSchemaManagerV2& schema,
 
       // set extend info if extend info exist
       if (OB_SUCCESS == ret && NULL != tablet_extend_buf
-          && OB_SUCCESS == (ret = extend_info.deserialize(tablet_extend_buf, 
+          && OB_SUCCESS == (ret = extend_info.deserialize(tablet_extend_buf,
               meta_header.tablet_extend_info_size_, tablet_extend_cur_pos)))
       {
         tablet->set_extend_info(extend_info);
@@ -340,7 +340,7 @@ int ObTabletImageMod::read_with_schema(const ObSchemaManagerV2& schema, const ch
 
     if (OB_SUCCESS == ret)
     {
-      file_buf = static_cast<char*>(ob_malloc(file_size)); 
+      file_buf = static_cast<char*>(ob_malloc(file_size, ObModIds::TEST));
       if (NULL == file_buf)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -509,18 +509,18 @@ int main(int argc, char** argv)
   }
   else
   {
-    fprintf(stderr, "name %s not regular idx file name, use command line:v:%ld,d:%d\n", 
+    fprintf(stderr, "name %s not regular idx file name, use command line:v:%ld,d:%d\n",
         name, version, disk_no);
   }
 
   ObTabletImageMod image;
   image.set_data_version(version);
   int ret = image.read_with_schema(schema, idx_path, disk_no);
-  if (!ret && dump) 
+  if (!ret && dump)
   {
     image.dump();
   }
-  if (!ret && dst_file) 
+  if (!ret && dst_file)
   {
     directory = name = NULL;
     parse_path(dst_file, directory, name);
@@ -529,4 +529,3 @@ int main(int argc, char** argv)
   }
   return ret;
 }
-

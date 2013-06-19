@@ -27,7 +27,6 @@ namespace oceanbase
   {
     class ObString;
     class TableSchema;
-    class ObSchemaServiceImpl;
   }
   namespace rootserver
   {
@@ -38,7 +37,7 @@ namespace oceanbase
       ObRootDDLOperator();
       virtual ~ObRootDDLOperator();
     public:
-      void init(ObRootServer2 * server, common::ObSchemaServiceImpl * impl);
+      void init(ObRootServer2 * server, common::ObSchemaService * service);
       // create a new table
       int create_table(const common::TableSchema & table_schema);
       // delete a exist table
@@ -73,7 +72,7 @@ namespace oceanbase
       // not support parallel ddl operation
       tbsys::CThreadMutex mutex_lock_;
       // schema inner table operator tool
-      common::ObSchemaServiceImpl * schema_client_;
+      common::ObSchemaService * schema_client_;
       // select cs and create tablet tool
       // root table operator tool
       ObRootServer2 * root_server_;

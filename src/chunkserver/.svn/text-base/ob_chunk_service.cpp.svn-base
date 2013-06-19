@@ -236,7 +236,7 @@ namespace oceanbase
       char temp_buf[OB_MAX_VARCHAR_LENGTH];
       ObCompressor* compressor = NULL;
       char* ptr = NULL;
-      
+
       if (NULL == compress_name_buf)
       {
         TBSYS_LOG(ERROR, "compress name buf is NULL");
@@ -248,7 +248,7 @@ namespace oceanbase
         rc = OB_INVALID_ARGUMENT;
       }
       else
-      { 
+      {
         memcpy(temp_buf, compress_name_buf, strlen(compress_name_buf) + 1);
       }
 
@@ -889,6 +889,7 @@ namespace oceanbase
         const int64_t timeout_time)
     {
       sql::ObSqlScanParam *sql_scan_param_ptr = GET_TSI_MULT(sql::ObSqlScanParam, TSI_CS_SQL_SCAN_PARAM_1);
+      FILL_TRACE_LOG("start_cs_sql_scan");
       return cs_sql_read(version, channel_id, req, in_buffer, out_buffer, timeout_time, sql_scan_param_ptr);
     }
 
@@ -901,6 +902,7 @@ namespace oceanbase
         const int64_t timeout_time)
     {
       sql::ObSqlGetParam *sql_get_param_ptr = GET_TSI_MULT(sql::ObSqlGetParam, TSI_CS_SQL_GET_PARAM_1);
+      FILL_TRACE_LOG("start_cs_sql_get");
       return cs_sql_read(version, channel_id, req, in_buffer, out_buffer, timeout_time, sql_get_param_ptr);
     }
 
@@ -966,6 +968,7 @@ namespace oceanbase
         const ObSqlScanParam *sql_scan_param_ptr = dynamic_cast<const ObSqlScanParam *>(sql_read_param_ptr);
         is_scan = (NULL != sql_scan_param_ptr);
         table_id = sql_read_param_ptr->get_table_id();
+        FILL_TRACE_LOG("deserialize_param_done, is_scan=%d,table_id=%ld", is_scan, table_id);
         if (table_id == OB_ALL_SERVER_STAT_TID)
         {
           if (NULL == sql_scan_param_ptr)
@@ -979,6 +982,7 @@ namespace oceanbase
             new_scanner->set_range(*sql_scan_param_ptr->get_range());
             ObStatSingleton::get_instance()->get_scanner(*new_scanner);
           }
+          FILL_TRACE_LOG("get_server_stat_done");
         }
         else
         {
@@ -1016,6 +1020,7 @@ namespace oceanbase
             {
               TBSYS_LOG(WARN, "open query service fail:err[%d]", rc.result_code_);
             }
+            FILL_TRACE_LOG("open sql_query_service done rc=%d", rc.result_code_);
           }
 
           if(OB_SUCCESS == rc.result_code_)
@@ -1026,6 +1031,11 @@ namespace oceanbase
               is_last_packet = true;
               rc.result_code_ = OB_SUCCESS;
             }
+            if (OB_SUCCESS != rc.result_code_)
+            {
+              TBSYS_LOG(WARN, "failed to fill_scan_date:err[%d]", rc.result_code_);
+            }
+            FILL_TRACE_LOG("first fill_data_done, is_last_packet=%d, rc=%d", is_last_packet, rc.result_code_);
           }
         }
       }
@@ -1040,7 +1050,7 @@ namespace oceanbase
       }
 
       PROFILE_LOG_TIME(DEBUG, "first fill scan data, #row=%ld,  is_last_packet=%d, "
-          "is_fullfilled=%ld, ret=%d, session_id=%ld.", fullfilled_num,  
+          "is_fullfilled=%ld, ret=%d, session_id=%ld.", fullfilled_num,
           is_last_packet, is_fullfilled, rc.result_code_, session_id);
 
       do
@@ -1085,7 +1095,7 @@ namespace oceanbase
           chunk_server_->send_response(
               is_last_packet ? OB_SESSION_END : OB_SQL_SCAN_RESPONSE, CS_SCAN_VERSION,
               out_buffer, req, response_cid, session_id);
-          PROFILE_LOG_TIME(DEBUG, "send response, #packet=%ld, is_last_packet=%d, session_id=%ld", 
+          PROFILE_LOG_TIME(DEBUG, "send response, #packet=%ld, is_last_packet=%d, session_id=%ld",
               packet_cnt, is_last_packet, session_id);
           packet_cnt++;
         }
@@ -1131,7 +1141,7 @@ namespace oceanbase
             }
             new_scanner->get_is_req_fullfilled(is_fullfilled, fullfilled_num);
             PROFILE_LOG_TIME(DEBUG, "next fill scan data, #row=%ld,  is_last_packet=%d, "
-                "is_fullfilled=%ld, ret=%d, session_id=%ld.", fullfilled_num,  
+                "is_fullfilled=%ld, ret=%d, session_id=%ld.", fullfilled_num,
                 is_last_packet, is_fullfilled, rc.result_code_, session_id);
           }
         }
@@ -1141,6 +1151,9 @@ namespace oceanbase
           break;
         }
       } while (true);
+
+      FILL_TRACE_LOG("send response, packet_cnt=%ld, session_id=%ld, io stat: %s, ret=%d",
+          packet_cnt, session_id, get_io_stat_str(), rc.result_code_);
 
       int64_t consume_time = tbsys::CTimeUtil::getTime() - start_time;
       if (is_scan)
@@ -1176,6 +1189,10 @@ namespace oceanbase
         sql_query_service->close();
       }
       reset_internal_status(release_tablet);
+
+      FILL_TRACE_LOG("end");
+      PRINT_TRACE_LOG();
+      CLEAR_TRACE_LOG();
 
       return rc.result_code_;
     }
@@ -1934,7 +1951,7 @@ namespace oceanbase
       ObTabletManager & tablet_manager = chunk_server_->get_tablet_manager();
       if (OB_SUCCESS == rc.result_code_ && num_file > 0)
       {
-        path_buf = static_cast<char*>(ob_malloc(num_file*OB_MAX_FILE_NAME_LENGTH));
+        path_buf = static_cast<char*>(ob_malloc(num_file*OB_MAX_FILE_NAME_LENGTH, ObModIds::OB_CS_COMMON));
         if ( NULL == path_buf )
         {
           TBSYS_LOG(ERROR, "failed to allocate memory for path array.");
@@ -2354,8 +2371,8 @@ namespace oceanbase
       ObTabletManager & tablet_manager = chunk_server_->get_tablet_manager();
       char (*dest_path)[OB_MAX_FILE_NAME_LENGTH] = NULL;
       char (*src_path)[OB_MAX_FILE_NAME_LENGTH] = NULL;
-      char *dest_path_buf = static_cast<char*>(ob_malloc(ObTablet::MAX_SSTABLE_PER_TABLET*OB_MAX_FILE_NAME_LENGTH));
-      char *src_path_buf  = static_cast<char*>(ob_malloc(ObTablet::MAX_SSTABLE_PER_TABLET*OB_MAX_FILE_NAME_LENGTH));
+      char *dest_path_buf = static_cast<char*>(ob_malloc(ObTablet::MAX_SSTABLE_PER_TABLET*OB_MAX_FILE_NAME_LENGTH, ObModIds::OB_CS_COMMON));
+      char *src_path_buf  = static_cast<char*>(ob_malloc(ObTablet::MAX_SSTABLE_PER_TABLET*OB_MAX_FILE_NAME_LENGTH, ObModIds::OB_CS_COMMON));
       if ( NULL == src_path_buf || NULL == dest_path_buf)
       {
         TBSYS_LOG(ERROR, "migrate_tablet failed to allocate memory for path array.");
@@ -2626,7 +2643,7 @@ namespace oceanbase
             "disk_no=%d", disk_no);
         rc.result_code_ = OB_INVALID_ARGUMENT;
       }
-      else if (NULL == (dump_buf = static_cast<char*>(ob_malloc(dump_size))))
+      else if (NULL == (dump_buf = static_cast<char*>(ob_malloc(dump_size, ObModIds::OB_CS_COMMON))))
       {
         rc.result_code_ = OB_ALLOCATE_MEMORY_FAILED;
         TBSYS_LOG(ERROR, "allocate memory for serialization failed.");

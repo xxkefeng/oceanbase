@@ -62,15 +62,8 @@ if($a == $b)
 
 select * from t1;
 
-deploy ob1.check 1,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob1.check 2,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob1.check 3,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob1.check 4,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-
-deploy ob2.check 1,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob2.check 2,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob2.check 3,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
-deploy ob2.check 4,2,select value from (select * from __all_server_stat) tt where svr_type='chunkserver' and name = 'serving_version';
+deploy ob1.check_cs_version 2;
+deploy ob2.check_cs_version 2;
 
 
 

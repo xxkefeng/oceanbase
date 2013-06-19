@@ -119,6 +119,7 @@ namespace oceanbase
       private:
         // types and constants
         static const int64_t MSG_SIZE = 512;
+        static const int64_t SMALL_BLOCK_SIZE = 8*1024LL;
       private:
         // disallow copy
         ObResultSet(const ObResultSet &other);
@@ -131,6 +132,7 @@ namespace oceanbase
         int64_t warning_count_;
         common::ObString statement_name_;
         char message_[MSG_SIZE]; // null terminated message string
+        common::ObArenaAllocator block_allocator_;
         common::ObArray<Field> field_columns_;
         common::ObArray<Field> param_columns_;
         common::ObArray<common::ObObj*> params_;
@@ -161,6 +163,11 @@ namespace oceanbase
     inline ObResultSet::ObResultSet()
       :statement_id_(common::OB_INVALID_ID),
        affected_rows_(0), warning_count_(0),
+       block_allocator_(common::ObModIds::OB_SQL_RESULT_SET_DYN),
+       field_columns_(SMALL_BLOCK_SIZE, common::ModulePageAllocator(block_allocator_)),
+       param_columns_(SMALL_BLOCK_SIZE, common::ModulePageAllocator(block_allocator_)),
+       params_(SMALL_BLOCK_SIZE, common::ModulePageAllocator(block_allocator_)),
+       params_type_(SMALL_BLOCK_SIZE, common::ModulePageAllocator(block_allocator_)),
        physical_plan_(NULL),
        own_physical_plan_(false),
        stmt_type_(ObBasicStmt::T_NONE),
@@ -371,7 +378,7 @@ namespace oceanbase
     {
       return stmt_type_;
     }
-    
+
     inline ObBasicStmt::StmtType ObResultSet::get_inner_stmt_type() const
     {
       return inner_stmt_type_;

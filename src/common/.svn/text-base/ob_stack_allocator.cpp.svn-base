@@ -20,7 +20,7 @@ namespace oceanbase
 {
   namespace common
   {
-    DefaultBlockAllocator::DefaultBlockAllocator(): mod_(ObModIds::OB_MOD_DEFAULT), limit_(INT64_MAX), allocated_(0)
+    DefaultBlockAllocator::DefaultBlockAllocator(): mod_(ObModIds::BLOCK_ALLOC), limit_(INT64_MAX), allocated_(0)
     {}
 
     DefaultBlockAllocator::~DefaultBlockAllocator()
@@ -31,11 +31,9 @@ namespace oceanbase
       }
     }
 
-    int DefaultBlockAllocator::set_mod(const int mod)
+    void DefaultBlockAllocator::set_mod_id(int32_t mod)
     {
-      int err = OB_SUCCESS;
       mod_ = mod;
-      return err;
     }
 
     int DefaultBlockAllocator::set_limit(const int64_t limit)
@@ -177,14 +175,14 @@ namespace oceanbase
     //   return err;
     // }
 
-    int StackAllocator::clear()
+    int StackAllocator::clear(const bool slow)
     {
       int err = OB_SUCCESS;
       if (NULL == allocator_)
       {
         err = OB_NOT_INIT;
       }
-      else if (OB_SUCCESS != (err = restore_top(0)))
+      else if (OB_SUCCESS != (err = restore_top(0, slow)))
       {
         TBSYS_LOG(ERROR, "restore_top(0)=>%d", err);
       }
@@ -371,7 +369,7 @@ namespace oceanbase
     int StackAllocator::end_batch_alloc(const bool rollback)
     {
       int err = OB_SUCCESS;
-      if (rollback && OB_SUCCESS != (err = restore_top(saved_top_)))
+      if (rollback && OB_SUCCESS != (err = restore_top(saved_top_, false)))
       {
         TBSYS_LOG(ERROR, "restor_top(saved_top=%ld)=>%d", saved_top_, err);
       }
@@ -396,9 +394,11 @@ namespace oceanbase
       return err;
     }
 
-    int StackAllocator::restore_top(const int64_t top)
+    int StackAllocator::restore_top(const int64_t top, const bool slow)
     {
       int err = OB_SUCCESS;
+      int64_t last_top = top_;
+      int64_t BATCH_FREE_LIMIT = 1<<30;
       if (top < 0 || top > top_)
       {
         err = OB_INVALID_ARGUMENT;
@@ -423,6 +423,11 @@ namespace oceanbase
         {
           head_->pos_ -= top_ - top;
           top_ = top;
+        }
+        if (slow && last_top > top_ + BATCH_FREE_LIMIT)
+        {
+          last_top = top_;
+          usleep(10000);
         }
       }
       return err;
@@ -459,21 +464,25 @@ namespace oceanbase
       return err;
     }
 
-    int TSIStackAllocator::clear()
+    int TSIStackAllocator::clear(const bool slow)
     {
       int err = OB_SUCCESS;
-      AllocatorNode* head = head_;
-      while(OB_SUCCESS == err && head != NULL)
+      while(OB_SUCCESS == err && head_ != NULL)
       {
-        err = head->allocator_.clear();
-        head = head->next_;
+        err = head_->allocator_.clear(slow);
+        head_ = head_->next_;
       }
       if (OB_SUCCESS != err)
       {
-        TBSYS_LOG(ERROR, "clear()=>%d", err);
+        TBSYS_LOG(ERROR, "clear thread_local stack allocator fail, err=%d", err);
+      }
+      else if (OB_SUCCESS != (err = inst_allocator_.clear()))
+      {
+        TBSYS_LOG(ERROR, "clear StackAllocatorAllocator fail, err=%d", err);
       }
       else
       {
+        container_.clear();
         TBSYS_LOG(TRACE, "clear() OK");
       }
       return err;

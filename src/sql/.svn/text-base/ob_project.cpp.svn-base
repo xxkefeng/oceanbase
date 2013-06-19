@@ -19,7 +19,9 @@
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
-ObProject::ObProject() : rowkey_cell_count_(0)
+ObProject::ObProject()
+  :columns_(common::OB_MALLOC_BLOCK_SIZE, ModulePageAllocator(ObModIds::OB_SQL_ARRAY)),
+   rowkey_cell_count_(0)
 {
 }
 
@@ -279,4 +281,3 @@ ObPhyOperatorType ObProject::get_type() const
 {
   return PHY_PROJECT;
 }
-

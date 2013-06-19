@@ -34,7 +34,7 @@ namespace oceanbase
     BaseMain::BaseMain(const bool daemon)
       : cmd_cluster_id_(0), cmd_rs_port_(0), cmd_master_rs_port_(0), cmd_port_(0),
         cmd_inner_port_(0), cmd_obmysql_port_(0), pid_dir_(DEFAULT_PID_DIR),
-        log_dir_(DEFAULT_LOG_DIR), server_name_(NULL), use_deamon_(daemon)
+        log_dir_(DEFAULT_LOG_DIR), server_name_(NULL), use_daemon_(daemon)
     {
       memset(config_, 0, sizeof (config_));
       memset(cmd_rs_ip_, 0, sizeof (cmd_rs_ip_));
@@ -197,7 +197,7 @@ namespace oceanbase
             print_usage(basename(argv[0]));
             exit(1);
           case 'N':
-            use_deamon_ = false;
+            use_daemon_ = false;
             break;
           default:
             break;
@@ -376,12 +376,16 @@ namespace oceanbase
       {
         bool start_ok = true;
 
-        if (use_deamon_)
+        if (use_daemon_)
         {
           start_ok = (tbsys::CProcess::startDaemon(pid_file, log_file) == 0);
         }
         if(start_ok)
         {
+          if (use_daemon_)
+          {
+            bt("enable_preload_bt") = 1;
+          }
           signal(SIGPIPE, SIG_IGN);
           signal(SIGHUP, SIG_IGN);
           add_signal_catched(SIGINT);

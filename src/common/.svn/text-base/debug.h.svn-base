@@ -4,6 +4,14 @@ oceanbase::common::ObRoleMgr* __role_mgr = NULL;
 oceanbase::common::ObiRole* __obi_role = NULL;
 #define __debug_init__() __rs = &root_server_; __role_mgr = &role_mgr_;  __obi_role = (typeof(__obi_role))&root_server_.get_obi_role();
 #endif
+
+#ifdef __ms_debug__
+oceanbase::mergeserver::ObMergeServer * __ms = NULL;
+oceanbase::common::ObMergerSchemaManager * __ms_schema = NULL;
+oceanbase::mergeserver::ObMergeServerService * __ms_service = NULL;
+#define __debug_init__() __ms = merge_server_; __ms_schema = schema_mgr_; __ms_service =  this;
+#endif
+
 #ifdef __ups_debug__
 oceanbase::updateserver::ObUpdateServer* __ups = NULL;
 oceanbase::updateserver::ObUpsRoleMgr* __role_mgr = NULL;

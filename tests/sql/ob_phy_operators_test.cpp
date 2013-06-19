@@ -97,23 +97,23 @@ TEST_F(ObPhyOperatorsTest, basic_test)
   static const uint64_t C5 = OB_APP_MIN_COLUMN_ID+5;
   // filter c5 % 2 = 0
   {
-    ObSqlExpression sexpr;
+    ObSqlExpression *sexpr = ObSqlExpression::alloc();
     ExprItem expr_item;
     expr_item.type_ = T_INT;
     expr_item.value_.int_ = 0;
-    sexpr.add_expr_item(expr_item);
+    sexpr->add_expr_item(expr_item);
     expr_item.type_ = T_REF_COLUMN;
     expr_item.value_.cell_.tid = AS_TID;
     expr_item.value_.cell_.cid = C5; // c5
-    sexpr.add_expr_item(expr_item);
+    sexpr->add_expr_item(expr_item);
     expr_item.type_ = T_INT;
     expr_item.value_.int_ = 2;
-    sexpr.add_expr_item(expr_item);
+    sexpr->add_expr_item(expr_item);
     expr_item.type_ = T_OP_MOD;
-    sexpr.add_expr_item(expr_item);
+    sexpr->add_expr_item(expr_item);
     expr_item.type_ = T_OP_EQ;
-    sexpr.add_expr_item(expr_item);
-    sexpr.add_expr_item_end();
+    sexpr->add_expr_item(expr_item);
+    sexpr->add_expr_item_end();
     ASSERT_EQ(OB_SUCCESS, table_scan.add_filter(sexpr));
   }
   // group by C5
@@ -194,23 +194,23 @@ TEST_F(ObPhyOperatorsTest, basic_test)
   ASSERT_EQ(OB_SUCCESS, filter.set_child(0, *root_op));
   root_op = &filter;
   {
-    ObSqlExpression sexpr;
+    ObSqlExpression *sexpr = ObSqlExpression::alloc();
     ExprItem expr_item;
     expr_item.type_ = T_INT;
     expr_item.value_.int_ = 0;
-    sexpr.add_expr_item(expr_item);
+    sexpr->add_expr_item(expr_item);
     expr_item.type_ = T_REF_COLUMN;
     expr_item.value_.cell_.tid = OB_INVALID_ID;
     expr_item.value_.cell_.cid = SUM_C4_CID;
-    sexpr.add_expr_item(expr_item);
+    sexpr->add_expr_item(expr_item);
     expr_item.type_ = T_INT;
     expr_item.value_.int_ = 2;
-    sexpr.add_expr_item(expr_item);
+    sexpr->add_expr_item(expr_item);
     expr_item.type_ = T_OP_MOD;
-    sexpr.add_expr_item(expr_item);
+    sexpr->add_expr_item(expr_item);
     expr_item.type_ = T_OP_EQ;
-    sexpr.add_expr_item(expr_item);
-    sexpr.add_expr_item_end();
+    sexpr->add_expr_item(expr_item);
+    sexpr->add_expr_item_end();
     ASSERT_EQ(OB_SUCCESS, filter.add_filter(sexpr));
   }
   // DISTINCT c1, max(c5), count(c2), sum(c2+c3)

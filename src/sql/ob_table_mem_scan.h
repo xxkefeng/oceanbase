@@ -66,7 +66,7 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        int add_filter(const ObSqlExpression& expr);
+        int add_filter(ObSqlExpression *expr);
 
         /**
          * 指定limit/offset

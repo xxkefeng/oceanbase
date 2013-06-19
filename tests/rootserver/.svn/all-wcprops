@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 81
-/repos/oceanbase/!svn/ver/13561/branches/0_4_1_release/oceanbase/tests/rootserver
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/tests/rootserver
 END
 rt_press_client.cpp
 K 25
@@ -19,7 +19,7 @@ ob_delete_replicas_test.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 109
-/repos/oceanbase/!svn/ver/13561/branches/0_4_1_release/oceanbase/tests/rootserver/ob_delete_replicas_test.cpp
+/repos/oceanbase/!svn/ver/14339/branches/0_4_1_release/oceanbase/tests/rootserver/ob_delete_replicas_test.cpp
 END
 ob_delete_replicas_test.conf
 K 25
@@ -73,7 +73,7 @@ ob_new_balance_test.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 105
-/repos/oceanbase/!svn/ver/13561/branches/0_4_1_release/oceanbase/tests/rootserver/ob_new_balance_test.cpp
+/repos/oceanbase/!svn/ver/14339/branches/0_4_1_release/oceanbase/tests/rootserver/ob_new_balance_test.cpp
 END
 mock_server.cpp
 K 25
@@ -87,11 +87,11 @@ svn:wc:ra_dav:version-url
 V 110
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/rootserver/test_tablet_info_manager.cpp
 END
-balance_candidate_test.cpp
+ob_new_balance_test.conf
 K 25
 svn:wc:ra_dav:version-url
-V 108
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/rootserver/balance_candidate_test.cpp
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/rootserver/ob_new_balance_test.conf
 END
 ob_delete_replicas_test_schema.ini
 K 25
@@ -99,11 +99,11 @@ svn:wc:ra_dav:version-url
 V 116
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/rootserver/ob_delete_replicas_test_schema.ini
 END
-ob_new_balance_test.conf
+balance_candidate_test.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 106
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/rootserver/ob_new_balance_test.conf
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/rootserver/balance_candidate_test.cpp
 END
 mock_update_server.cpp
 K 25
@@ -165,11 +165,11 @@ svn:wc:ra_dav:version-url
 V 103
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/rootserver/mock_chunk_server.cpp
 END
-test_batch_create_table.cpp
+test_root_table2_test.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 109
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/rootserver/test_batch_create_table.cpp
+V 107
+/repos/oceanbase/!svn/ver/13277/branches/0_4_1_release/oceanbase/tests/rootserver/test_root_table2_test.cpp
 END
 chunk_servers_manager_test.cpp
 K 25
@@ -177,11 +177,11 @@ svn:wc:ra_dav:version-url
 V 112
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/rootserver/chunk_servers_manager_test.cpp
 END
-test_root_table2_test.cpp
+test_batch_create_table.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 107
-/repos/oceanbase/!svn/ver/13277/branches/0_4_1_release/oceanbase/tests/rootserver/test_root_table2_test.cpp
+V 109
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/tests/rootserver/test_batch_create_table.cpp
 END
 test_root_table2.cpp
 K 25

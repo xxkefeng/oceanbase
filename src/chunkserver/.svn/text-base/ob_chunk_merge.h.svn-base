@@ -42,7 +42,7 @@ namespace oceanbase
         /**
          * the new frozen_version come,
          * we will wake up all merge thread to start merge
-         * 
+         *
          */
         int schedule(const int64_t frozen_version);
 
@@ -72,7 +72,7 @@ namespace oceanbase
         bool can_launch_next_round(const int64_t frozen_version);
 
         int create_merge_threads(const int64_t max_merge_thread);
-     
+
       private:
         virtual void run(tbsys::CThread* thread, void *arg);
         void merge_tablets(const int64_t thread_no);
@@ -80,7 +80,7 @@ namespace oceanbase
 
         bool have_new_version_in_othercs(const ObTablet* tablet);
         int delete_tablet_on_rootserver(const ObTablet* tablet);
-        
+
         int start_round(const int64_t frozen_version);
         int finish_round(const int64_t frozen_version);
         int fetch_frozen_time_busy_wait(const int64_t frozen_version, int64_t &frozen_time);
@@ -143,19 +143,19 @@ namespace oceanbase
 
         ObTabletManager *tablet_manager_;
         ObTabletMerger  *mergers_[MAX_MERGE_THREAD * 2];
-    }; 
+    };
 
     template <typename Merger>
       int ObChunkMerge::create_tablet_mergers(ObTabletMerger** mergers, const int64_t size)
       {
         int ret = OB_SUCCESS;
-        char* ptr = NULL; 
+        char* ptr = NULL;
 
         if (NULL == mergers || 0 >= size)
         {
           ret = OB_INVALID_ARGUMENT;
         }
-        else if (NULL == (ptr = reinterpret_cast<char*>(ob_malloc(sizeof(Merger) * size))))
+        else if (NULL == (ptr = reinterpret_cast<char*>(ob_malloc(sizeof(Merger) * size, ObModIds::OB_CS_MERGER))))
         {
           TBSYS_LOG(WARN, "allocate memrory for merger object error.");
           ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -179,7 +179,7 @@ namespace oceanbase
         }
         return ret;
       }
-    
+
 
   } /* chunkserver */
 } /* oceanbase */

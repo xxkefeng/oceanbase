@@ -186,8 +186,8 @@ namespace oceanbase
             }
             else
             {
-              column_schema.join_table_id_ = 0;
-              column_schema.join_column_id_ = 0;
+              column_schema.join_table_id_ = OB_INVALID_ID;
+              column_schema.join_column_id_ = OB_INVALID_ID;
             }
             memcpy(column_schema.column_name_, column->get_name(), strlen(column->get_name()) + 1);
             TBSYS_LOG(DEBUG, "column_name=%s", column->get_name());

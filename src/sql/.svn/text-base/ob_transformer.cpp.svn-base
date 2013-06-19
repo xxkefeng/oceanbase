@@ -114,6 +114,10 @@ using namespace oceanbase::sql;
   { \
     TRANS_LOG("Add physical operator failed");  \
   } \
+  else\
+  {\
+    ob_inc_phy_operator_stat(op->get_type());\
+  }\
   } \
   op;})
 
@@ -235,18 +239,15 @@ int ObTransformer::generate_physical_plan(
           break;
         case ObBasicStmt::T_DELETE:
           ret = gen_physical_delete_new(logical_plan, physical_plan, err_stat, query_id, index);
-          //ret = gen_physical_delete(logical_plan, physical_plan, err_stat, query_id, index);
           break;
         case ObBasicStmt::T_INSERT:
           ret = gen_physical_insert_new(logical_plan, physical_plan, err_stat, query_id, index);
-          //ret = gen_physical_insert(logical_plan, physical_plan, err_stat, query_id, index);
           break;
         case ObBasicStmt::T_REPLACE:
-          ret = gen_physical_insert(logical_plan, physical_plan, err_stat, query_id, index);
+          ret = gen_physical_replace(logical_plan, physical_plan, err_stat, query_id, index);
           break;
         case ObBasicStmt::T_UPDATE:
           ret = gen_physical_update_new(logical_plan, physical_plan, err_stat, query_id, index);
-          //ret = gen_physical_update(logical_plan, physical_plan, err_stat, query_id, index);
           break;
         case ObBasicStmt::T_EXPLAIN:
           ret = gen_physical_explain(logical_plan, physical_plan, err_stat, query_id, index);
@@ -598,13 +599,14 @@ int ObTransformer::gen_physical_select(
             ret == OB_SUCCESS && cnd_it != remainder_cnd_list.end();
             cnd_it++)
         {
-          ObSqlExpression filter;
-          if ((ret = (*cnd_it)->fill_sql_expression(
-                                    filter,
+          ObSqlExpression *filter = ObSqlExpression::alloc();
+          if (NULL == filter
+              || (ret = (*cnd_it)->fill_sql_expression(
+                                    *filter,
                                     this,
                                     logical_plan,
                                     physical_plan)) != OB_SUCCESS
-            || (ret = filter_op->add_filter(filter)) != OB_SUCCESS)
+              || (ret = filter_op->add_filter(filter)) != OB_SUCCESS)
           {
             TRANS_LOG("Add filters to filter plan failed");
             break;
@@ -680,13 +682,14 @@ int ObTransformer::gen_physical_select(
         {
           having_expr = logical_plan->get_expr(select_stmt->get_having_expr_id(i));
           OB_ASSERT(NULL != having_expr);
-          ObSqlExpression having_filter;
-          if ((ret = having_expr->fill_sql_expression(
-                                      having_filter,
+          ObSqlExpression *having_filter = ObSqlExpression::alloc();
+          if (NULL == having_filter
+              || (ret = having_expr->fill_sql_expression(
+                                      *having_filter,
                                       this,
                                       logical_plan,
                                       physical_plan)) != OB_SUCCESS
-            || (ret = having_op->add_filter(having_filter)) != OB_SUCCESS)
+              || (ret = having_op->add_filter(having_filter)) != OB_SUCCESS)
           {
             TRANS_LOG("Add filters to having plan failed");
             break;
@@ -1852,13 +1855,32 @@ int ObTransformer::gen_phy_table(
 {
   int& ret = err_stat.err_code_ = OB_SUCCESS;
   TableItem* table_item = NULL;
-  int32_t read_method = ObSqlReadStrategy::USE_SCAN;
   ObSqlReadStrategy sql_read_strategy;
+  ObBitSet<> table_bitset;
+  int32_t num = 0;
 
   if (table_id == OB_INVALID_ID || (table_item = stmt->get_table_item_by_id(table_id)) == NULL)
   {
     ret = OB_ERR_ILLEGAL_ID;
     TRANS_LOG("Wrong table id");
+  }
+
+  ObRpcScanHint hint;
+  if (OB_SUCCESS == ret)
+  {
+    const ObTableSchema *table_schema = NULL;
+    if (NULL == (table_schema = sql_context_->schema_manager_->get_table_schema(table_item->ref_id_)))
+    {
+      ret = OB_ERROR;
+      TRANS_LOG("Fail to get table schema for table[%ld]", table_item->ref_id_);
+    }
+    else
+    {
+      if (stmt->get_query_hint().read_static_)
+        hint.only_static_data_ = true;
+      else
+        hint.only_static_data_ = !table_schema->is_merge_dynamic_data();
+    }
   }
 
   ObTableScan *table_scan_op = NULL;
@@ -1877,7 +1899,67 @@ int ObTransformer::gen_phy_table(
         {
           TRANS_LOG("ObTableRpcScan set table faild");
         }
-        if (ret == OB_SUCCESS && (ret = table_rpc_scan_op->init(sql_context_)) != OB_SUCCESS)
+
+        /// determin request type: scan/get
+        if (ret == OB_SUCCESS)
+        {
+          int32_t bit_index = stmt->get_table_bit_index(table_item->table_id_);
+          table_bitset.add_member(bit_index);
+        }
+        if (OB_SUCCESS == ret)
+        {
+          const ObTableSchema *table_schema = NULL;
+          if (NULL == (table_schema = sql_context_->schema_manager_->get_table_schema(table_item->ref_id_)))
+          {
+            ret = OB_ERROR;
+            TRANS_LOG("Fail to get table schema for table[%ld]", table_item->ref_id_);
+          }
+          else
+          {
+            sql_read_strategy.set_rowkey_info(table_schema->get_rowkey_info());
+          }
+        }
+        num = stmt->get_condition_size();
+        for (int32_t i = 0; ret == OB_SUCCESS && i < num; i++)
+        {
+          ObSqlRawExpr *cnd_expr = logical_plan->get_expr(stmt->get_condition_id(i));
+          if (cnd_expr && table_bitset.is_superset(cnd_expr->get_tables_set()))
+          {
+            cnd_expr->set_applied(true);
+            ObSqlExpression filter;
+            if ((ret = cnd_expr->fill_sql_expression(filter, this, logical_plan, physical_plan)) != OB_SUCCESS)
+            {
+              TRANS_LOG("Add table filter condition faild");
+              break;
+            }
+            else if (OB_SUCCESS != (ret = sql_read_strategy.add_filter(filter)))
+            {
+              TBSYS_LOG(WARN, "fail to add filter:ret[%d]", ret);
+            }
+          }
+        }
+        if ( OB_SUCCESS == ret)
+        {
+          int32_t read_method = ObSqlReadStrategy::USE_SCAN;
+          // Determine Scan or Get?
+          ObArray<ObRowkey> rowkey_array;
+          // TODO: rowkey obj storage needed. varchar use orginal buffer, will be copied later
+          PageArena<ObObj,ModulePageAllocator> rowkey_objs_allocator(
+              PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_MOD_DEFAULT));
+          // ObObj rowkey_objs[OB_MAX_ROWKEY_COLUMN_NUMBER];
+
+          if (OB_SUCCESS != (ret = sql_read_strategy.get_read_method(rowkey_array, rowkey_objs_allocator, read_method)))
+          {
+            TBSYS_LOG(WARN, "fail to get read method:ret[%d]", ret);
+          }
+          else
+          {
+            TBSYS_LOG(DEBUG, "use [%s] method", read_method == ObSqlReadStrategy::USE_SCAN ? "SCAN" : "GET");
+          }
+          hint.read_method_ = read_method;
+        }
+
+        if (ret == OB_SUCCESS && (ret = table_rpc_scan_op->init(sql_context_, hint)) != OB_SUCCESS)
         {
           TRANS_LOG("ObTableRpcScan init faild");
         }
@@ -1914,77 +1996,26 @@ int ObTransformer::gen_phy_table(
     }
   }
 
-  // set filters
-  int32_t num = stmt->get_condition_size();
-  ObBitSet<> table_bitset;
-  if (ret == OB_SUCCESS)
-  {
-    int32_t bit_index = stmt->get_table_bit_index(table_item->table_id_);
-    table_bitset.add_member(bit_index);
-  }
-
-  ObRpcScanHint hint;
-  if (OB_SUCCESS == ret)
-  {
-    const ObTableSchema *table_schema = NULL;
-    if (NULL == (table_schema = sql_context_->schema_manager_->get_table_schema(table_item->ref_id_)))
-    {
-      ret = OB_ERROR;
-      TRANS_LOG("Fail to get table schema for table[%ld]", table_item->ref_id_);
-    }
-    else
-    {
-      sql_read_strategy.set_rowkey_info(table_schema->get_rowkey_info());
-      if (stmt->get_query_hint().read_static_)
-        hint.only_static_data_ = true;
-      else
-        hint.only_static_data_ = !table_schema->is_merge_dynamic_data();
-    }
-  }
-
+  num = stmt->get_condition_size();
   for (int32_t i = 0; ret == OB_SUCCESS && i < num; i++)
   {
     ObSqlRawExpr *cnd_expr = logical_plan->get_expr(stmt->get_condition_id(i));
     if (cnd_expr && table_bitset.is_superset(cnd_expr->get_tables_set()))
     {
       cnd_expr->set_applied(true);
-      ObSqlExpression filter;
-      if ((ret = cnd_expr->fill_sql_expression(filter, this, logical_plan, physical_plan)) != OB_SUCCESS
+      ObSqlExpression *filter = ObSqlExpression::alloc();
+      if (NULL == filter)
+      {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        TRANS_LOG("no memory");
+        break;
+      }
+      else if ((ret = cnd_expr->fill_sql_expression(*filter, this, logical_plan, physical_plan)) != OB_SUCCESS
         || (ret = table_scan_op->add_filter(filter)) != OB_SUCCESS)
       {
         TRANS_LOG("Add table filter condition faild");
         break;
       }
-      else if (OB_SUCCESS != (ret = sql_read_strategy.add_filter(filter)))
-      {
-        TBSYS_LOG(WARN, "fail to add filter:ret[%d]", ret);
-      }
-    }
-  }
-
-  if ( OB_SUCCESS == ret && (table_item->type_ == TableItem::BASE_TABLE || table_item->type_ == TableItem::ALIAS_TABLE) )
-  {
-    // Determine Scan or Get?
-            ObArray<ObRowkey> rowkey_array;
-    // TODO: rowkey obj storage needed. varchar use orginal buffer, will be copied later
-    PageArena<ObObj,ModulePageAllocator> rowkey_objs_allocator(
-        PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_MOD_DEFAULT));
-    // ObObj rowkey_objs[OB_MAX_ROWKEY_COLUMN_NUMBER];
-
-    ObTableRpcScan *table_rpc_scan_op = dynamic_cast<ObTableRpcScan *>(table_scan_op);
-    if (NULL == table_rpc_scan_op)
-    {
-      // pass
-    }
-    else if (OB_SUCCESS != (ret = sql_read_strategy.get_read_method(rowkey_array, rowkey_objs_allocator, read_method)))
-    {
-      TBSYS_LOG(WARN, "fail to get read method:ret[%d]", ret);
-    }
-    else
-    {
-      table_rpc_scan_op->set_read_method(read_method);
-      table_rpc_scan_op->set_hint(hint);
-      TBSYS_LOG(DEBUG, "use [%s] method", read_method == ObSqlReadStrategy::USE_SCAN ? "SCAN" : "GET");
     }
   }
 
@@ -2050,7 +2081,7 @@ int ObTransformer::gen_phy_table(
   bool group_down = false;
   bool limit_down = false;
 
-  if (read_method == ObSqlReadStrategy::USE_SCAN)
+  if (hint.read_method_ == ObSqlReadStrategy::USE_SCAN)
   {
     /* Try to push down aggregations */
     if (ret == OB_SUCCESS && group_agg_push_down_param_ && select_stmt)
@@ -2426,7 +2457,7 @@ int ObTransformer::gen_phy_values(
   return ret;
 }
 
-int ObTransformer::gen_physical_insert(
+int ObTransformer::gen_physical_replace(
     ObLogicalPlan *logical_plan,
     ObPhysicalPlan *physical_plan,
     ErrStat& err_stat,
@@ -2435,87 +2466,74 @@ int ObTransformer::gen_physical_insert(
 {
   int ret = err_stat.err_code_ = OB_SUCCESS;
   ObInsertStmt *insert_stmt = NULL;
-  ObInsert     *insert_op = NULL;
+  ObPhysicalPlan* inner_plan = NULL;
+  ObUpsModify *ups_modify = NULL;
+  ObSEArray<int64_t, 64> row_desc_map;
+  ObRowDesc row_desc;
+  ObRowDescExt row_desc_ext;
+  const ObRowkeyInfo *rowkey_info = NULL;
 
-  /* get statement */
-  if (OB_SUCCESS != (ret = get_stmt(logical_plan, err_stat, query_id, insert_stmt)))
+  if (OB_SUCCESS != (ret = wrap_ups_executor(physical_plan, query_id, inner_plan, index, err_stat)))
+  {
+    TBSYS_LOG(WARN, "err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = get_stmt(logical_plan, err_stat, query_id, insert_stmt)))
   {
     TRANS_LOG("Fail to get statement");
   }
-  /* generate operator */
-  if (ret == OB_SUCCESS)
+  else if (NULL == CREATE_PHY_OPERRATOR(ups_modify, ObUpsModify, inner_plan, err_stat))
   {
-    CREATE_PHY_OPERRATOR(insert_op, ObInsert, physical_plan, err_stat);
-    if (ret == OB_SUCCESS)
-    {
-      ret = add_phy_query(logical_plan, physical_plan, err_stat, query_id, insert_stmt, insert_op, index);
-    }
+    ret = OB_ALLOCATE_MEMORY_FAILED;
   }
+  else if (OB_SUCCESS != (ret = inner_plan->add_phy_query(ups_modify, NULL, true))) // always main query
+  {
+    TRANS_LOG("Failed to add phy query, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = cons_row_desc(insert_stmt->get_table_id(), insert_stmt, row_desc_ext, row_desc, rowkey_info, row_desc_map, err_stat)))
+  {
+    TRANS_LOG("Failed to cons row desc, err=%d", ret);
+  }
+  else
+  {
+    // check primary key columns
+    uint64_t tid = insert_stmt->get_table_id();
+    uint64_t cid = OB_INVALID_ID;
+    for (int64_t i = 0; OB_SUCCESS == ret && i < rowkey_info->get_size(); ++i)
+    {
+      if (OB_SUCCESS != (ret = rowkey_info->get_column_id(i, cid)))
+      {
+        TBSYS_LOG(USER_ERROR, "primary key can not be empty");
+        ret = OB_ERR_INSERT_NULL_ROWKEY;
+        break;
+      }
+      else if (OB_INVALID_INDEX == row_desc.get_idx(tid, cid))
+      {
+        TBSYS_LOG(USER_ERROR, "primary key can not be empty");
+        ret = OB_ERR_INSERT_NULL_ROWKEY;
+        break;
+      }
+    } // end for
 
-  ObRowDesc row_desc;
-  ObRowDescExt row_desc_ext;
-  const ObTableSchema *table_schema = NULL;
-  if (OB_SUCCESS == ret)
-  {
-    if (NULL == (table_schema = sql_context_->schema_manager_->get_table_schema(insert_stmt->get_table_id())))
+    if (OB_LIKELY(OB_SUCCESS == ret))
     {
-      ret = OB_ERROR;
-      TRANS_LOG("Fail to get table schema for table[%ld]", insert_stmt->get_table_id());
-    }
-  }
-  FILL_TRACE_LOG("get_schema");
-  if (ret == OB_SUCCESS)
-  {
-    insert_op->set_table_id(insert_stmt->get_table_id());
-    insert_op->set_replace(insert_stmt->is_replace());
-    insert_op->set_rpc_stub(sql_context_->merger_rpc_proxy_);
-    insert_op->set_rowkey_info(table_schema->get_rowkey_info());
-    row_desc.set_rowkey_cell_count(table_schema->get_rowkey_info().get_size()); // @bug
-    int32_t num = insert_stmt->get_column_size();
-    for (int32_t i = 0; ret == OB_SUCCESS && i < num; i++)
-    {
-      const ColumnItem* column_item = insert_stmt->get_column_item(i);
-      if (column_item == NULL)
-      {
-        ret = OB_ERR_ILLEGAL_ID;
-        TRANS_LOG("Get column item failed");
-        break;
-      }
-      const ObColumnSchemaV2* column_schema = sql_context_->schema_manager_->get_column_schema(
-        column_item->table_id_, column_item->column_id_);
-      if (NULL == column_schema)
-      {
-        ret = OB_ERR_COLUMN_NOT_FOUND;
-        TRANS_LOG("Get column item failed");
-        break;
-      }
-      else if (column_schema->get_type() == ObCreateTimeType || column_schema->get_type() == ObModifyTimeType)
-      {
-        ret = OB_ERR_CREAT_MODIFY_TIME_COLUMN;
-        TRANS_LOG("Column '%s' of type ObCreateTimeType/ObModifyTimeType can not be inserted",
-            column_schema->get_name());
-        break;
-      }
+      // check column data type
       ObObj data_type;
-      data_type.set_type(column_schema->get_type());
-      ret = row_desc_ext.add_column_desc(column_item->table_id_, column_item->column_id_, data_type);
-      if (ret != OB_SUCCESS)
+      for (int i = 0; i < row_desc_ext.get_column_num(); ++i)
       {
-        TRANS_LOG("Add column '%.*s' to descriptor faild",
-            column_item->column_name_.length(), column_item->column_name_.ptr());
-        break;
-      }
-      ret = row_desc.add_column_desc(column_item->table_id_, column_item->column_id_);
-      if (ret != OB_SUCCESS)
-      {
-        TRANS_LOG("Add column '%.*s' to descriptor faild",
-            column_item->column_name_.length(), column_item->column_name_.ptr());
-        break;
-      }
-    }
-    if (ret == OB_SUCCESS && (ret = insert_op->set_columns_desc(row_desc_ext)) != OB_SUCCESS)
-    {
-      TRANS_LOG("Set descriptor of insert operator failed");
+        if (OB_SUCCESS != (ret = row_desc_ext.get_by_idx(i, tid, cid, data_type)))
+        {
+          TBSYS_LOG(ERROR, "failed to get type, err=%d", ret);
+          ret = OB_ERR_UNEXPECTED;
+          break;
+        }
+        else if (data_type.get_type() == ObCreateTimeType
+                 || data_type.get_type() == ObModifyTimeType)
+        {
+          ret = OB_ERR_CREAT_MODIFY_TIME_COLUMN;
+          TRANS_LOG("Column of type ObCreateTimeType/ObModifyTimeType can not be inserted");
+          break;
+        }
+      } // end for
     }
   }
   FILL_TRACE_LOG("cons_row_desc");
@@ -2525,7 +2543,7 @@ int ObTransformer::gen_physical_insert(
     {
       ObExprValues *value_op = NULL;
       CREATE_PHY_OPERRATOR(value_op, ObExprValues, physical_plan, err_stat);
-      if (ret == OB_SUCCESS && (ret = insert_op->set_child(0, *value_op)) != OB_SUCCESS)
+      if (ret == OB_SUCCESS && (ret = ups_modify->set_child(0, *value_op)) != OB_SUCCESS)
       {
         TRANS_LOG("Set child of insert operator failed");
       }
@@ -2534,26 +2552,17 @@ int ObTransformer::gen_physical_insert(
         TRANS_LOG("Set descriptor of value operator failed");
       }
       if (ret == OB_SUCCESS)
-        ret = gen_phy_values(logical_plan, physical_plan, err_stat, insert_stmt, row_desc, row_desc_ext, NULL, *value_op);
-      sql_context_->session_info_->get_current_result_set()->set_affected_rows(insert_stmt->get_value_row_size());
+        ret = gen_phy_values(logical_plan, physical_plan, err_stat, insert_stmt,
+                             row_desc, row_desc_ext, &row_desc_map, *value_op);
       FILL_TRACE_LOG("gen_phy_values");
     }
     else
     {
-      int32_t sub_idx = OB_INVALID_INDEX;
-      if ((ret = gen_physical_select(
-                logical_plan,
-                physical_plan,
-                err_stat,
-                insert_stmt->get_insert_query_id(),
-                &sub_idx)) == OB_SUCCESS
-         && (ret = insert_op->set_child(0, *(physical_plan->get_phy_query(sub_idx)))) != OB_SUCCESS)
-      {
-        TRANS_LOG("Set child of insert operator failed");
-      }
+      // replace ... select
+      TRANS_LOG("REPLACE INTO ... SELECT is not supported yet");
+      ret = OB_NOT_SUPPORTED;
     }
   }
-
   return ret;
 }
 
@@ -3043,7 +3052,7 @@ int ObTransformer::gen_physical_create_table(
   {
     TableSchema& table_schema = crt_tab_op->get_table_schema();
     // check expire condition
-    void *ptr = ob_malloc(sizeof(ObSchemaManagerV2));
+    void *ptr = ob_malloc(sizeof(ObSchemaManagerV2), ObModIds::OB_SCHEMA);
     if (NULL == ptr)
     {
       TRANS_LOG("no memory");
@@ -3545,8 +3554,8 @@ int ObTransformer::gen_phy_show_variables(
       }
       uint64_t table_id = OB_INVALID_ID;
       uint64_t column_id = OB_INVALID_ID;
-      hash::ObHashMap<ObString, std::pair<ObObj*, ObObjType> >::const_iterator it_begin;
-      hash::ObHashMap<ObString, std::pair<ObObj*, ObObjType> >::const_iterator it_end;
+      ObSQLSessionInfo::SysVarNameValMap::const_iterator it_begin;
+      ObSQLSessionInfo::SysVarNameValMap::const_iterator it_end;
       it_begin = sql_context_->session_info_->get_sys_var_val_map().begin();
       it_end = sql_context_->session_info_->get_sys_var_val_map().end();
       for(; ret == OB_SUCCESS && it_begin != it_end; it_begin++)
@@ -3587,6 +3596,8 @@ int ObTransformer::gen_phy_show_variables(
     {
       ObProject *project_op = NULL;
       ObTableRpcScan *rpc_scan_op = NULL;
+      ObRpcScanHint hint;
+      hint.read_method_ = ObSqlReadStrategy::USE_SCAN;
       if (CREATE_PHY_OPERRATOR(project_op, ObProject, physical_plan, err_stat) == NULL)
       {
         ret = OB_ERR_PARSER_MALLOC_FAILED;
@@ -3601,7 +3612,7 @@ int ObTransformer::gen_phy_show_variables(
       {
         TRANS_LOG("ObTableRpcScan set table faild");
       }
-      else if ((ret = rpc_scan_op->init(sql_context_)) != OB_SUCCESS)
+      else if ((ret = rpc_scan_op->init(sql_context_, hint)) != OB_SUCCESS)
       {
         TRANS_LOG("ObTableRpcScan init faild");
       }
@@ -3611,7 +3622,6 @@ int ObTransformer::gen_phy_show_variables(
       }
       else
       {
-        rpc_scan_op->set_read_method(ObSqlReadStrategy::USE_SCAN);
         const ObSchemaManagerV2 *schema = sql_context_->schema_manager_;
         const ObColumnSchemaV2* none_concern_keys[1];
         const ObColumnSchemaV2 *name_column = NULL;
@@ -3642,17 +3652,25 @@ int ObTransformer::gen_phy_show_variables(
                                   none_concern_keys[i]->get_id(),
                                   &equal_op);
           ObSqlExpression output_col;
-          ObSqlExpression filter;
-          if ((ret = col_expr.fill_sql_expression(output_col)) != OB_SUCCESS)
+          ObSqlExpression *filter = ObSqlExpression::alloc();
+          if (NULL == filter)
           {
+            ret = OB_ALLOCATE_MEMORY_FAILED;
+            TRANS_LOG("no memory");
+          }
+          else if ((ret = col_expr.fill_sql_expression(output_col)) != OB_SUCCESS)
+          {
+            ObSqlExpression::free(filter);
             TRANS_LOG("Generate output column of TableScan faild, ret = %d", ret);
           }
           else if ((ret = rpc_scan_op->add_output_column(output_col)) != OB_SUCCESS)
           {
+            ObSqlExpression::free(filter);
             TRANS_LOG("Add output column to TableScan faild, ret = %d", ret);
           }
-          else if ((ret = equal_expr.fill_sql_expression(filter)) != OB_SUCCESS)
+          else if ((ret = equal_expr.fill_sql_expression(*filter)) != OB_SUCCESS)
           {
+            ObSqlExpression::free(filter);
             TRANS_LOG("Generate filter faild, ret = %d", ret);
           }
           else if ((ret = rpc_scan_op->add_filter(filter)) != OB_SUCCESS)
@@ -4137,16 +4155,19 @@ int ObTransformer::gen_physical_show(
         like_op_expr.set_result_type(ObBoolType);
         ObSqlRawExpr raw_like_expr(OB_INVALID_ID, col_expr.get_first_ref_id(),
                                    col_expr.get_second_ref_id(), &like_op_expr);
-        ObSqlExpression like_expr;
-        if ((ret = raw_like_expr.fill_sql_expression(like_expr, this, logical_plan, physical_plan)) != OB_SUCCESS)
+        ObSqlExpression *like_expr = ObSqlExpression::alloc();
+        if (NULL == like_expr
+            || (ret = raw_like_expr.fill_sql_expression(*like_expr, this, logical_plan, physical_plan)) != OB_SUCCESS)
         {
           TRANS_LOG("Gen like filter failed!");
         }
         else if (CREATE_PHY_OPERRATOR(filter_op, ObFilter, physical_plan, err_stat) == NULL)
         {
+          ObSqlExpression::free(like_expr);
         }
         else if ((ret = filter_op->set_child(0, *result_op)) != OB_SUCCESS)
         {
+          ObSqlExpression::free(like_expr);
           TRANS_LOG("Add child of filter plan failed");
         }
         else if ((ret = filter_op->add_filter(like_expr)) != OB_SUCCESS)
@@ -4161,18 +4182,28 @@ int ObTransformer::gen_physical_show(
       for (int32_t i = 0; ret == OB_SUCCESS && i < show_stmt->get_condition_size(); i++)
       {
         ObSqlRawExpr *cnd_expr = logical_plan->get_expr(show_stmt->get_condition_id(i));
-        ObSqlExpression filter;
         if (cnd_expr->is_apply() == true)
         {
           continue;
         }
-        else if ((ret = cnd_expr->fill_sql_expression(filter, this, logical_plan, physical_plan)) != OB_SUCCESS
-          || (ret = filter_op->add_filter(filter)) != OB_SUCCESS)
+        else
         {
-          TRANS_LOG("Add table filter condition faild");
-          break;
+          ObSqlExpression *filter = ObSqlExpression::alloc();
+          if (NULL == filter)
+          {
+            ret = OB_ALLOCATE_MEMORY_FAILED;
+            TBSYS_LOG(ERROR, "no memory");
+            break;
+          }
+          else if ((ret = cnd_expr->fill_sql_expression(*filter, this, logical_plan, physical_plan)) != OB_SUCCESS
+                   || (ret = filter_op->add_filter(filter)) != OB_SUCCESS)
+          {
+            ObSqlExpression::free(filter);
+            TRANS_LOG("Add table filter condition faild");
+            break;
+          }
         }
-      }
+      } // end for
       if (ret == OB_SUCCESS && (ret = filter_op->set_child(0, *result_op))!= OB_SUCCESS)
       {
         TRANS_LOG("Add child of filter plan failed");
@@ -4491,7 +4522,12 @@ int ObTransformer::gen_phy_static_data_scan(
   int& ret = err_stat.err_code_ = OB_SUCCESS;
   OB_ASSERT(logical_plan);
   OB_ASSERT(insert_stmt);
-  ObSqlExpression rows_filter;
+  ObSqlExpression *rows_filter = ObSqlExpression::alloc();
+  if (NULL == rows_filter)
+  {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+    TBSYS_LOG(WARN, "no memory");
+  }
   ObSqlExpression column_ref;
   // construct left operand of IN operator
   // the same order with row_desc
@@ -4500,7 +4536,7 @@ int ObTransformer::gen_phy_static_data_scan(
   expr_item.value_.cell_.tid = table_id;
   int64_t rowkey_column_num = rowkey_info.get_size();
   uint64_t tid = OB_INVALID_ID;
-  for (int i = 0; i < row_desc.get_column_num(); ++i)
+  for (int i = 0; OB_SUCCESS == ret && i < row_desc.get_column_num(); ++i)
   {
     if (OB_UNLIKELY(OB_SUCCESS != (ret = row_desc.get_tid_cid(i, tid, expr_item.value_.cell_.cid))))
     {
@@ -4510,7 +4546,7 @@ int ObTransformer::gen_phy_static_data_scan(
     {
       column_ref.reset();
       column_ref.set_tid_cid(table_id, expr_item.value_.cell_.cid);
-      if (OB_SUCCESS != (ret = rows_filter.add_expr_item(expr_item)))
+      if (OB_SUCCESS != (ret = rows_filter->add_expr_item(expr_item)))
       {
         TBSYS_LOG(WARN, "failed to add expr item, err=%d", ret);
         break;
@@ -4548,13 +4584,9 @@ int ObTransformer::gen_phy_static_data_scan(
   }
   if (OB_LIKELY(OB_SUCCESS == ret))
   {
-    table_scan.set_read_method(ObSqlReadStrategy::USE_GET);
-  }
-  if (OB_LIKELY(OB_SUCCESS == ret))
-  {
     expr_item.type_ = T_OP_ROW;
     expr_item.value_.int_ = rowkey_column_num;
-    if (OB_SUCCESS != (ret = rows_filter.add_expr_item(expr_item)))
+    if (OB_SUCCESS != (ret = rows_filter->add_expr_item(expr_item)))
     {
       TRANS_LOG("Failed to add expr item, err=%d", ret);
     }
@@ -4564,7 +4596,7 @@ int ObTransformer::gen_phy_static_data_scan(
     expr_item.type_ = T_OP_LEFT_PARAM_END;
     // a in (a,b,c) => 1 Dim;  (a,b) in ((a,b),(c,d)) =>2 Dim; ((a,b),(c,d)) in (...) =>3 Dim
     expr_item.value_.int_ = 2;
-    if (OB_SUCCESS != (ret = rows_filter.add_expr_item(expr_item)))
+    if (OB_SUCCESS != (ret = rows_filter->add_expr_item(expr_item)))
     {
       TBSYS_LOG(WARN, "failed to add expr item, err=%d", ret);
     }
@@ -4593,7 +4625,7 @@ int ObTransformer::gen_phy_static_data_scan(
         else if (rowkey_info.is_rowkey_column(column_id))
         {
           // add right oprands of the IN operator
-          if (OB_SUCCESS != (ret = value_expr->get_expr()->fill_sql_expression(rows_filter, this, logical_plan, physical_plan)))
+          if (OB_SUCCESS != (ret = value_expr->get_expr()->fill_sql_expression(*rows_filter, this, logical_plan, physical_plan)))
           {
             TRANS_LOG("Failed to fill expr, err=%d", ret);
           }
@@ -4605,7 +4637,7 @@ int ObTransformer::gen_phy_static_data_scan(
         {
           expr_item.type_ = T_OP_ROW;
           expr_item.value_.int_ = rowkey_column_num;
-          if (OB_SUCCESS != (ret = rows_filter.add_expr_item(expr_item)))
+          if (OB_SUCCESS != (ret = rows_filter->add_expr_item(expr_item)))
           {
             TRANS_LOG("Failed to add expr item, err=%d", ret);
           }
@@ -4620,15 +4652,15 @@ int ObTransformer::gen_phy_static_data_scan(
       ExprItem expr_in;
       expr_in.type_ = T_OP_IN;
       expr_in.value_.int_ = 2;
-      if (OB_SUCCESS != (ret = rows_filter.add_expr_item(expr_item)))
+      if (OB_SUCCESS != (ret = rows_filter->add_expr_item(expr_item)))
       {
         TRANS_LOG("Failed to add expr item, err=%d", ret);
       }
-      else if (OB_SUCCESS != (ret = rows_filter.add_expr_item(expr_in)))
+      else if (OB_SUCCESS != (ret = rows_filter->add_expr_item(expr_in)))
       {
         TRANS_LOG("Failed to add expr item, err=%d", ret);
       }
-      else if (OB_SUCCESS != (ret = rows_filter.add_expr_item_end()))
+      else if (OB_SUCCESS != (ret = rows_filter->add_expr_item_end()))
       {
         TRANS_LOG("Failed to add expr item end, err=%d", ret);
       }
@@ -4673,11 +4705,6 @@ int ObTransformer::wrap_ups_executor(
     {
       ret = OB_NOT_INIT;
       TBSYS_LOG(WARN, "merge_service_ is null");
-    }
-    else if (OB_INVALID_VERSION == sql_context_->merge_service_->get_frozen_version())
-    {
-      ret = OB_ERROR;
-      TBSYS_LOG(WARN, "invalid frozen version");
     }
     else
     {
@@ -4789,6 +4816,10 @@ int ObTransformer::gen_physical_insert_new(
       ObTableRpcScan *table_scan = NULL;
       if (OB_LIKELY(OB_SUCCESS == ret))
       {
+        ObRpcScanHint hint;
+        hint.read_method_ = ObSqlReadStrategy::USE_GET;
+        hint.is_get_skip_empty_row_ = false;
+        hint.only_frozen_version_data_ = true;
         CREATE_PHY_OPERRATOR(table_scan, ObTableRpcScan, inner_plan, err_stat);
         if (OB_UNLIKELY(OB_SUCCESS != ret))
         {
@@ -4797,7 +4828,7 @@ int ObTransformer::gen_physical_insert_new(
         {
           TRANS_LOG("failed to set table id, err=%d", ret);
         }
-        else if (OB_SUCCESS != (ret = table_scan->init(sql_context_)))
+        else if (OB_SUCCESS != (ret = table_scan->init(sql_context_, hint)))
         {
           TRANS_LOG("failed to init table scan, err=%d", ret);
         }
@@ -4809,12 +4840,7 @@ int ObTransformer::gen_physical_insert_new(
         }
         else
         {
-          ObRpcScanHint hint;
-          hint.only_frozen_version_data_ = true;
-          table_scan->set_hint(hint);
           table_scan->set_rowkey_cell_count(row_desc.get_rowkey_cell_count());
-          table_scan->set_is_skip_empty_row(false);
-          table_scan->set_read_method(ObSqlReadStrategy::USE_GET);
         }
       }
       ObValues *tmp_table = NULL;
@@ -4951,6 +4977,10 @@ int ObTransformer::gen_phy_table_for_update(
   cell_info.row_key_.assign(rowkey_objs, rowkey_info.get_size());
 
   bool has_other_cond = false;
+  ObRpcScanHint hint;
+  hint.read_method_ = ObSqlReadStrategy::USE_GET;
+  hint.only_frozen_version_data_ = true;
+  hint.is_get_skip_empty_row_ = false;
 
   if (table_id == OB_INVALID_ID
       || (table_item = stmt->get_table_item_by_id(table_id)) == NULL
@@ -4967,7 +4997,7 @@ int ObTransformer::gen_phy_table_for_update(
   {
     TRANS_LOG("ObTableRpcScan set table failed");
   }
-  else if (OB_SUCCESS != (ret = table_rpc_scan_op->init(sql_context_)))
+  else if (OB_SUCCESS != (ret = table_rpc_scan_op->init(sql_context_, hint)))
   {
     TRANS_LOG("ObTableRpcScan init failed");
   }
@@ -5019,9 +5049,6 @@ int ObTransformer::gen_phy_table_for_update(
     static_data->set_tmp_table(tmp_table);
 
     table_rpc_scan_op->set_rowkey_cell_count(row_desc.get_rowkey_cell_count());
-    ObRpcScanHint hint;
-    hint.only_frozen_version_data_ = true;
-    table_rpc_scan_op->set_hint(hint);
 
     get_param_values->set_row_desc(row_desc, row_desc_ext);
     // set filters
@@ -5036,34 +5063,45 @@ int ObTransformer::gen_phy_table_for_update(
       ObSqlRawExpr *cnd_expr = logical_plan->get_expr(stmt->get_condition_id(i));
       OB_ASSERT(cnd_expr);
       cnd_expr->set_applied(true);
-      ObSqlExpression filter;
-      if (OB_SUCCESS != (ret = cnd_expr->fill_sql_expression(filter, this, logical_plan, physical_plan)))
+      ObSqlExpression *filter = ObSqlExpression::alloc();
+      if (NULL == filter)
       {
+        TRANS_LOG("no memory");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        break;
+      }
+      else if (OB_SUCCESS != (ret = cnd_expr->fill_sql_expression(*filter, this, logical_plan, physical_plan)))
+      {
+        ObSqlExpression::free(filter);
         TRANS_LOG("Failed to fill expression, err=%d", ret);
         break;
       }
-      else if (filter.is_simple_condition(false, cid, cond_op, cond_val)
+      else if (filter->is_simple_condition(false, cid, cond_op, cond_val)
                && (T_OP_EQ == cond_op || T_OP_IS == cond_op)
                && rowkey_info.is_rowkey_column(cid))
       {
         if (OB_SUCCESS != (ret = table_rpc_scan_op->add_filter(filter)))
         {
+          ObSqlExpression::free(filter);
           TRANS_LOG("Failed to add filter, err=%d", ret);
           break;
         }
         else if (OB_SUCCESS != (ret = rowkey_col_map.add_column_desc(OB_INVALID_ID, cid)))
         {
+          ObSqlExpression::free(filter);
           TRANS_LOG("Failed to add column desc, err=%d", ret);
           break;
         }
         else if (OB_SUCCESS != (ret = rowkey_info.get_index(cid, rowkey_idx, rowkey_col)))
         {
+          ObSqlExpression::free(filter);
           TRANS_LOG("Unexpected branch");
           ret = OB_ERR_UNEXPECTED;
           break;
         }
         else if (OB_SUCCESS != (ret = ob_write_obj(rowkey_alloc, cond_val, rowkey_objs[rowkey_idx]))) // deep copy
         {
+          ObSqlExpression::free(filter);
           TRANS_LOG("failed to copy cell, err=%d", ret);
         }
         else
@@ -5198,12 +5236,6 @@ int ObTransformer::gen_phy_table_for_update(
     {
       TBSYS_LOG(WARN, "failed to add output column, err=%d", ret);
     }
-  }
-
-  if (OB_LIKELY(OB_SUCCESS == ret))
-  {
-    table_rpc_scan_op->set_is_skip_empty_row(false);
-    table_rpc_scan_op->set_read_method(ObSqlReadStrategy::USE_GET);
   }
 
   if (ret == OB_SUCCESS)
@@ -6018,6 +6050,8 @@ int ObTransformer::gen_phy_show_parameters(
   int& ret = err_stat.err_code_ = OB_SUCCESS;
   ObTableRpcScan *table_op = NULL;
   ObProject *project_op = NULL;
+  ObRpcScanHint hint;
+  hint.read_method_ = ObSqlReadStrategy::USE_SCAN;
   if (CREATE_PHY_OPERRATOR(table_op, ObTableRpcScan, physical_plan, err_stat) == NULL)
   {
   }
@@ -6035,7 +6069,7 @@ int ObTransformer::gen_phy_show_parameters(
   {
     TRANS_LOG("ObTableRpcScan set table faild, table id = %lu", OB_ALL_SYS_CONFIG_STAT_TID);
   }
-  else if ((ret = table_op->init(sql_context_)) != OB_SUCCESS)
+  else if ((ret = table_op->init(sql_context_, hint)) != OB_SUCCESS)
   {
     TRANS_LOG("ObTableRpcScan init faild");
   }
@@ -6117,7 +6151,6 @@ int ObTransformer::gen_phy_show_parameters(
   }
   if (ret == OB_SUCCESS)
   {
-    table_op->set_read_method(ObSqlReadStrategy::USE_SCAN);
     out_op = project_op;
   }
   return ret;

@@ -46,7 +46,7 @@ int main(int argc, char ** argv)
         conf = optarg;
         break;
       case 't':
-        tables.insert(std::string(optarg)); 
+        tables.insert(std::string(optarg));
         break;
       case 'h':
       default:
@@ -68,8 +68,9 @@ int main(int argc, char ** argv)
   else
   {
     if (param.get_log_name() != NULL)
+    {
       TBSYS_LOGGER.setFileName(param.get_log_name());
-
+    }
     TBSYS_LOGGER.setLogLevel(param.get_log_level());
     TBSYS_LOGGER.setMaxFileSize(param.get_max_log_size() * 1024L * 1024L);
     signal(SIGPIPE, SIG_IGN);
@@ -84,12 +85,11 @@ int main_routine(const set<string> & tables, const TaskServerParam & param)
 {
   int ret = OB_SUCCESS;
   ObServer root_server(ObServer::IPV4, param.get_root_server_ip(), param.get_root_server_port());
-  TaskServer server(param.get_result_file(), param.get_timeout_times(), param.get_max_visit_count(), 
+  TaskServer server(param.get_result_file(), param.get_timeout_times(), param.get_max_visit_count(),
       param.get_network_timeout(), root_server);
-
   RpcStub rpc(server.get_client(), server.get_buffer());
+  rpc.set_base_server(&server);
   TaskFactory & task_factory = server.get_task_factory();
-
   task_factory.add_table_confs(&param.get_all_conf());
 
   set<string>::const_iterator it;
@@ -107,7 +107,7 @@ int main_routine(const set<string> & tables, const TaskServerParam & param)
   tbsys::CThread server_thread;
   if (OB_SUCCESS == ret)
   {
-    ret = server.init(param.get_thread_count(), param.get_queue_size(), &rpc, 
+    ret = server.init(param.get_thread_count(), param.get_queue_size(), &rpc,
         param.get_dev_name(), param.get_task_server_port());
     if (ret != OB_SUCCESS)
     {
@@ -118,28 +118,19 @@ int main_routine(const set<string> & tables, const TaskServerParam & param)
       server_thread.start(&server_run, NULL);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     /// sleep for server thread init
     usleep(SLEEP_TIME);
-    ret = server.init_service();
-    if (ret != OB_SUCCESS)
+    server.dump_task_info(param.get_tablet_list_file());
+    if (0 == server.get_task_manager().get_count())
     {
-      TBSYS_LOG(ERROR, "check init service failed:ret[%d]", ret);
+      TBSYS_LOG(INFO, "%s", "check no task for doing");
     }
     else
     {
-      server.dump_task_info(param.get_tablet_list_file());
-
-      if (0 == server.get_task_manager().get_count())
-      {
-        TBSYS_LOG(INFO, "%s", "check no task for doing");
-      }
-      else
-      {
-        server_thread.join();
-      }
+      server_thread.join();
     }
   }
 

@@ -458,6 +458,7 @@ int ObRootBalancer::nb_del_copy(ObRootTable2::const_iterator it, const ObTabletI
     ObTabletReportInfo to_delete;
     to_delete.tablet_info_ = *tablet;
     to_delete.tablet_location_.tablet_version_ = it->tablet_version_[delete_idx];
+    // set port to server index
     to_delete.tablet_location_.chunkserver_.set_port(it->server_info_indexes_[delete_idx]);
     if (OB_SUCCESS != (ret = delete_list_.add_tablet(to_delete)))
     {

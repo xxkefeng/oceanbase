@@ -229,7 +229,7 @@ int ObLogWriter::flush_log(TraceLog::LogBuffer &tlog_buffer, const bool sync_to_
   {
     TBSYS_LOG(ERROR, "write_log_hook(log_id=[%ld,%ld))=>%d", start_cursor.log_id_, end_cursor.log_id_, ret);
   }
-  else
+  else if (len > 0)
   {
     last_flush_log_time_ = tbsys::CTimeUtil::getTime();
   }
@@ -330,10 +330,10 @@ int ObLogWriter::write_checkpoint_log(uint64_t &cur_log_file_id)
 
 void ObLogWriter::set_disk_warn_threshold_us(const int64_t warn_us)
 {
-  net_warn_threshold_us_ = warn_us;
+  disk_warn_threshold_us_ = warn_us;
 }
 
 void ObLogWriter::set_net_warn_threshold_us(const int64_t warn_us)
 {
-  disk_warn_threshold_us_ = warn_us;
+  net_warn_threshold_us_ = warn_us;
 }

@@ -69,7 +69,7 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "failed to init memtable list, err=%d", err);
       }
-      else if (NULL == (log_buffer_ = (char*)ob_malloc(LOG_BUFFER_SIZE)))
+      else if (NULL == (log_buffer_ = (char*)ob_malloc(LOG_BUFFER_SIZE, ObModIds::OB_UPS_COMMON)))
       {
         TBSYS_LOG(WARN, "malloc log_buffer fail size=%ld", LOG_BUFFER_SIZE);
         err = OB_ERROR;
@@ -217,7 +217,14 @@ namespace oceanbase
       uint64_t new_version = 0;
       uint64_t new_log_file_id = 0;
       int64_t freeze_time_stamp = 0;
-      if (OB_SUCCESS == (ret = table_mgr_.try_freeze_memtable(freeze_type, new_version, frozen_version,
+      ThreadSpecificBuffer my_thread_buffer;
+      ThreadSpecificBuffer::Buffer *my_buffer = my_thread_buffer.get_buffer();
+      if (NULL == my_buffer)
+      {
+        TBSYS_LOG(ERROR, "get thread specific buffer fail");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else if (OB_SUCCESS == (ret = table_mgr_.try_freeze_memtable(freeze_type, new_version, frozen_version,
                                                               new_log_file_id, freeze_time_stamp, report_version_changed)))
       {
         ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
@@ -225,8 +232,6 @@ namespace oceanbase
         ObMutatorCellInfo mutator_cell_info;
         CurFreezeParam freeze_param;
         CommonSchemaManagerWrapper schema_manager;
-        ThreadSpecificBuffer my_thread_buffer;
-        ThreadSpecificBuffer::Buffer *my_buffer = my_thread_buffer.get_buffer();
         ObDataBuffer out_buff(my_buffer->current(), my_buffer->remain());
 
         freeze_param.param.active_version = new_version;
@@ -1005,7 +1010,7 @@ namespace oceanbase
       static int64_t last_report_ts = 0;
       if (1 == (ATOMIC_ADD(&counter, 1) % mod))
       {
-        int64_t cur_ts = tbsys::CTimeUtil::getTime(); 
+        int64_t cur_ts = tbsys::CTimeUtil::getTime();
         TBSYS_LOG(INFO, "DML total=%lu, TPS=%ld", counter, 1000000 * mod/(cur_ts - last_report_ts));
         last_report_ts = cur_ts;
         log_table_info();
@@ -1070,7 +1075,7 @@ namespace oceanbase
       }
     }
 
-    int ObUpsTableMgr :: set_schemas(const CommonSchemaManagerWrapper &schema_manager) 
+    int ObUpsTableMgr :: set_schemas(const CommonSchemaManagerWrapper &schema_manager)
     {
       int ret = OB_SUCCESS;
       ObSpinLockGuard guard(schema_lock_);
@@ -1554,14 +1559,8 @@ namespace oceanbase
       int64_t cell_size = get_param.get_cell_size();
       const ObCellInfo* cell = NULL;
       ColumnFilter *column_filter = NULL;
-      ObRowCompaction *row_compaction = GET_TSI_MULT(ObRowCompaction, TSI_UPS_ROW_COMPACTION_1);
 
-      if (NULL == row_compaction)
-      {
-        TBSYS_LOG(WARN, "get tsi row_compaction fail");
-        ret = OB_ERROR;
-      }
-      else if (first_cell_idx > last_cell_idx)
+      if (first_cell_idx > last_cell_idx)
       {
         TBSYS_LOG(WARN, "invalid param, first_cell_idx=%ld, last_cell_idx=%ld",
             first_cell_idx, last_cell_idx);
@@ -2507,7 +2506,7 @@ namespace oceanbase
       }
       return ret;
     }
-    
+
     template<class T>
     int ObUpsTableMgr :: get_(TableList &table_list, const ObGetParam& get_param, T& scanner,
                               const int64_t start_time, const int64_t timeout)
@@ -2635,14 +2634,8 @@ namespace oceanbase
       int64_t cell_size = get_param.get_cell_size();
       const ObCellInfo* cell = NULL;
       ColumnFilter *column_filter = NULL;
-      ObRowCompaction *row_compaction = GET_TSI_MULT(ObRowCompaction, TSI_UPS_ROW_COMPACTION_1);
 
-      if (NULL == row_compaction)
-      {
-        TBSYS_LOG(WARN, "get tsi row_compaction fail");
-        ret = OB_ERROR;
-      }
-      else if (first_cell_idx > last_cell_idx)
+      if (first_cell_idx > last_cell_idx)
       {
         TBSYS_LOG(WARN, "invalid param, first_cell_idx=%ld, last_cell_idx=%ld",
             first_cell_idx, last_cell_idx);

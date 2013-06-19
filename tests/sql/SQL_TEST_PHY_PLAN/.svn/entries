@@ -1,7 +1,7 @@
 10
 
 dir
-13930
+14512
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/sql/SQL_TEST_PHY_PLAN
 http://svn.app.taobao.net/repos/oceanbase
 
@@ -434,40 +434,6 @@ tianguan.dgb
 
 5760
 
-sql_sub_query_8.input
-file
-
-
-
-
-2013-05-22T14:08:47.000000Z
-581be5f4d1ec285528917084458bebca
-2012-07-17T08:56:28.870584Z
-8783
-tianguan.dgb
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-5918
-
 sql_filter_1.input
 file
 
@@ -501,6 +467,40 @@ tianguan.dgb
 
 
 2249
+
+sql_sub_query_8.input
+file
+
+
+
+
+2013-05-22T14:08:47.000000Z
+581be5f4d1ec285528917084458bebca
+2012-07-17T08:56:28.870584Z
+8783
+tianguan.dgb
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5918
 
 sql_filter_3.input
 file
@@ -1182,40 +1182,6 @@ tianguan.dgb
 
 2620
 
-sql_alias_1.input
-file
-
-
-
-
-2013-05-22T14:08:47.000000Z
-c5df0227b96d99093ecab0fe3f77b00d
-2012-07-17T08:56:28.870584Z
-8783
-tianguan.dgb
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-3338
-
 sql_aggregate_4.input
 file
 
@@ -1249,6 +1215,40 @@ tianguan.dgb
 
 
 5294
+
+sql_alias_1.input
+file
+
+
+
+
+2013-05-22T14:08:47.000000Z
+c5df0227b96d99093ecab0fe3f77b00d
+2012-07-17T08:56:28.870584Z
+8783
+tianguan.dgb
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3338
 
 sql_alias_3.input
 file
@@ -1624,40 +1624,6 @@ tianguan.dgb
 
 5938
 
-sql_sub_query_9.input
-file
-
-
-
-
-2013-05-22T14:08:47.000000Z
-67f893fb44ba3aea3b7832ad3723d7a0
-2012-07-17T08:56:28.870584Z
-8783
-tianguan.dgb
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-5935
-
 sql_filter_2.input
 file
 
@@ -1691,6 +1657,40 @@ tianguan.dgb
 
 
 4973
+
+sql_sub_query_9.input
+file
+
+
+
+
+2013-05-22T14:08:47.000000Z
+67f893fb44ba3aea3b7832ad3723d7a0
+2012-07-17T08:56:28.870584Z
+8783
+tianguan.dgb
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5935
 
 sql_sort_1.input
 file
@@ -1896,40 +1896,6 @@ tianguan.dgb
 
 3609
 
-sql_sort_7.input
-file
-
-
-
-
-2013-05-22T14:08:47.000000Z
-e633f6b7494b423ce906ffb71b0e5fc7
-2012-07-17T08:56:28.870584Z
-8783
-tianguan.dgb
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-2604
-
 sql_group_2.input
 file
 
@@ -1964,14 +1930,14 @@ tianguan.dgb
 
 351
 
-sql_sort_9.input
+sql_sort_7.input
 file
 
 
 
 
 2013-05-22T14:08:47.000000Z
-b78784867de2f9199385605317d40720
+e633f6b7494b423ce906ffb71b0e5fc7
 2012-07-17T08:56:28.870584Z
 8783
 tianguan.dgb
@@ -1996,7 +1962,7 @@ tianguan.dgb
 
 
 
-308
+2604
 
 sql_group_4.input
 file
@@ -2031,6 +1997,40 @@ tianguan.dgb
 
 
 2598
+
+sql_sort_9.input
+file
+
+
+
+
+2013-05-22T14:08:47.000000Z
+b78784867de2f9199385605317d40720
+2012-07-17T08:56:28.870584Z
+8783
+tianguan.dgb
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+308
 
 sql_project_2.input
 file

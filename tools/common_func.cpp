@@ -144,7 +144,7 @@ int parse_string(const char* src, const char del, const char* dst[], int64_t& si
   int ret = OB_SUCCESS;
   int64_t obj_index = 0;
 
-  char *str = (char*)ob_malloc(OB_MAX_FILE_NAME_LENGTH);
+  char *str = (char*)ob_malloc(OB_MAX_FILE_NAME_LENGTH, ObModIds::TEST);
   strcpy(str, src);
   str[strlen(src)] = 0;
 

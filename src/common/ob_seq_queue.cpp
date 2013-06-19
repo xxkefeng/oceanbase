@@ -141,6 +141,7 @@ namespace oceanbase
       SeqItem* pitem = NULL;
       int64_t end_time_us = tbsys::CTimeUtil::getTime() + timeout_us;
       int64_t wait_time_us = timeout_us;
+      int wait_time_ms = (int)(wait_time_us/1000LL);
       tbsys::CThreadCond* cond = NULL;
       seq = seq_;
       cond = get_cond(seq);
@@ -156,7 +157,7 @@ namespace oceanbase
       else
       {
         cond->lock();
-        while(OB_EAGAIN == err && wait_time_us > 0)
+        while(OB_EAGAIN == err)
         {
           if (seq != seq_)
           {
@@ -164,8 +165,15 @@ namespace oceanbase
           }
           if ((pitem = items_ + seq % limit_)->seq_ != seq)
           {
-            cond->wait((int)(wait_time_us/1000LL));
-            wait_time_us = end_time_us - tbsys::CTimeUtil::getTime();
+            if ((wait_time_ms = (int)(wait_time_us/1000LL)) <= 0)
+            {
+              break;
+            }
+            else
+            {
+              cond->wait(wait_time_ms);
+              wait_time_us = end_time_us - tbsys::CTimeUtil::getTime();
+            }
           }
           else if (__sync_bool_compare_and_swap(&seq_, seq, seq + 1))
           {

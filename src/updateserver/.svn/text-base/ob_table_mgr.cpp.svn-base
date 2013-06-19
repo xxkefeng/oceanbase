@@ -2,7 +2,7 @@
  //
  // ob_table_mgr.cpp updateserver / Oceanbase
  //
- // Copyright (C) 2010, 2012 Taobao.com, Inc.
+ // Copyright (C) 2010, 2012, 2013 Taobao.com, Inc.
  //
  // Created on 2011-03-24 by Yubai (yubai.lk@taobao.com)
  //
@@ -1413,7 +1413,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "have already inited");
         ret = OB_INIT_TWICE;
       }
-      else if (NULL == (active_table_item_ = table_allocator_.allocate()))
+      else if (NULL == (active_table_item_ = table_allocator_.alloc()))
       {
         TBSYS_LOG(WARN, "allocate table item fail");
         ret = OB_ERROR;
@@ -1421,7 +1421,7 @@ namespace oceanbase
       else if (OB_SUCCESS != (ret = active_table_item_->get_memtable().init(get_memtable_hash_buckets_size())))
       {
         TBSYS_LOG(WARN, "init memtable fail ret=%d", ret);
-        table_allocator_.deallocate(active_table_item_);
+        table_allocator_.free(active_table_item_);
       }
       else
       {
@@ -1461,7 +1461,7 @@ namespace oceanbase
             {
               if (NULL != table_item)
               {
-                table_allocator_.deallocate(table_item);
+                table_allocator_.free(table_item);
               }
             }
           }
@@ -1470,7 +1470,7 @@ namespace oceanbase
         if (NULL != active_table_item_
             && !sstable_scan_finished_)
         {
-          table_allocator_.deallocate(active_table_item_);
+          table_allocator_.free(active_table_item_);
           active_table_item_ = NULL;
         }
         inited_ = false;
@@ -1492,7 +1492,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid param sstable_id=%lu", sstable_id);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (NULL == (table_item = table_allocator_.allocate()))
+      else if (NULL == (table_item = table_allocator_.alloc()))
       {
         TBSYS_LOG(WARN, "allocate table item fail");
         ret = OB_ERROR;
@@ -1511,7 +1511,7 @@ namespace oceanbase
         if (OB_SUCCESS != (ret = table_item->init_sstable_meta()))
         {
           TBSYS_LOG(WARN, "init sstable meta fail ret=%d sstable_id=%lu", ret, sstable_id);
-          table_allocator_.deallocate(table_item);
+          table_allocator_.free(table_item);
         }
         else
         {
@@ -1536,7 +1536,7 @@ namespace oceanbase
                 tmp_table_item->init_sstable_meta();
               }
             }
-            table_allocator_.deallocate(table_item);
+            table_allocator_.free(table_item);
           }
           else
           {
@@ -1599,7 +1599,7 @@ namespace oceanbase
             TBSYS_LOG(INFO, "erase sstable, remove from map %s", sst_id.log_str());
             if (0 == table_item->dec_ref_cnt())
             {
-              table_allocator_.deallocate(table_item);
+              table_allocator_.free(table_item);
               TBSYS_LOG(INFO, "erase sstable, delete table_item=%p %s", table_item, sst_id.log_str());
             }
           }
@@ -2240,7 +2240,7 @@ namespace oceanbase
             SSTableID sst_id = table_item->get_sstable_id();
             if (0 == table_entity->get_table_item().dec_ref_cnt())
             {
-              table_allocator_.deallocate(table_item);
+              table_allocator_.free(table_item);
               TBSYS_LOG(INFO, "erase sstable, delete table_item=%p %s", &table_item, sst_id.log_str());
             }
             map_lock_.unlock();
@@ -2301,7 +2301,7 @@ namespace oceanbase
         map_lock_.rdlock();
         if (0 == table_item->dec_ref_cnt())
         {
-          table_allocator_.deallocate(table_item);
+          table_allocator_.free(table_item);
           TBSYS_LOG(INFO, "erase sstable, delete table_item=%p %s", table_item, sst_id.log_str());
         }
         map_lock_.unlock();
@@ -2315,6 +2315,7 @@ namespace oceanbase
                                         const int64_t time_stamp)
     {
       int ret = OB_SUCCESS;
+      bool is_first_freeze = false;
       if (!inited_)
       {
         TBSYS_LOG(WARN, "have not inited this=%p", this);
@@ -2343,6 +2344,7 @@ namespace oceanbase
           {
             active_table_item_->set_sstable_id(frozen_version);
           }
+          is_first_freeze = true;
           sstable_scan_finished_ = true;
           TBSYS_LOG(INFO, "first replay frozen log %s btree_ret=%d", sst_id.log_str(), btree_ret);
         }
@@ -2356,13 +2358,13 @@ namespace oceanbase
         {
           // 对于大小为0的table直接删除
           SSTableID sst_id = table_item2freeze->get_sstable_id();
-          if (0 == sst_id.id)
+          if (0 == sst_id.id || is_first_freeze)
           {
             int btree_ret = table_map_.remove(sst_id);
             bool deallocated = false;
             if (0 == table_item2freeze->dec_ref_cnt())
             {
-              table_allocator_.deallocate(table_item2freeze);
+              table_allocator_.free(table_item2freeze);
               deallocated = true;
             }
             table_item2freeze = NULL;
@@ -2402,7 +2404,7 @@ namespace oceanbase
           map_lock_.rdlock();
           if (0 == table_item2freeze->dec_ref_cnt())
           {
-            table_allocator_.deallocate(table_item2freeze);
+            table_allocator_.free(table_item2freeze);
             TBSYS_LOG(INFO, "erase sstable, delete table_item=%p %s", table_item2freeze, sst_id.log_str());
           }
           map_lock_.unlock();
@@ -2518,7 +2520,7 @@ namespace oceanbase
           map_lock_.rdlock();
           if (0 == table_item2freeze->dec_ref_cnt())
           {
-            table_allocator_.deallocate(table_item2freeze);
+            table_allocator_.free(table_item2freeze);
             TBSYS_LOG(INFO, "erase sstable, delete table_item=%p %s", table_item2freeze, sst_id.log_str());
           }
           map_lock_.unlock();
@@ -2531,7 +2533,7 @@ namespace oceanbase
     TableItem *TableMgr::freeze_active_(const uint64_t new_version)
     {
       TableItem *table_item2freeze = NULL;
-      TableItem *tmp_table_item = table_allocator_.allocate();
+      TableItem *tmp_table_item = table_allocator_.alloc();
       if (NULL != tmp_table_item)
       {
         int tmp_ret = OB_SUCCESS;
@@ -2564,7 +2566,7 @@ namespace oceanbase
         }
         if (NULL == table_item2freeze)
         {
-          table_allocator_.deallocate(tmp_table_item);
+          table_allocator_.free(tmp_table_item);
         }
       }
       return table_item2freeze;
@@ -2613,7 +2615,7 @@ namespace oceanbase
           SSTableID sst_id = table_item2dump->get_sstable_id();
           if (0 == table_item2dump->dec_ref_cnt())
           {
-            table_allocator_.deallocate(table_item2dump);
+            table_allocator_.free(table_item2dump);
             TBSYS_LOG(INFO, "erase sstable, delete table_item=%p %s", table_item2dump, sst_id.log_str());
           }
         }
@@ -2680,7 +2682,7 @@ namespace oceanbase
           SSTableID sst_id = table_item2drop->get_sstable_id();
           if (0 == table_item2drop->dec_ref_cnt())
           {
-            table_allocator_.deallocate(table_item2drop);
+            table_allocator_.free(table_item2drop);
             TBSYS_LOG(INFO, "erase sstable, delete table_item=%p %s", table_item2drop, sst_id.log_str());
           }
         }
@@ -3189,7 +3191,7 @@ namespace oceanbase
         for (iter = table_list2add_.begin(); OB_SUCCESS == ret && iter != table_list2add_.end(); iter++)
         {
           TableItem *table_item = NULL;
-          if (NULL == (table_item = table_allocator_.allocate()))
+          if (NULL == (table_item = table_allocator_.alloc()))
           {
             TBSYS_LOG(WARN, "allocate table item fail");
             ret = OB_ERROR;
@@ -3210,12 +3212,12 @@ namespace oceanbase
             if (OB_SUCCESS != (ret = table_item->init_sstable_meta()))
             {
               TBSYS_LOG(WARN, "init sstable meta fail ret=%d %s", ret, sst_id.log_str());
-              table_allocator_.deallocate(table_item);
+              table_allocator_.free(table_item);
             }
             else if (ERROR_CODE_OK != (btree_ret = table_map_.put(write_handle, sst_id, table_item, false)))
             {
               TBSYS_LOG(WARN, "put table item fail btree_ret=%d %s", btree_ret, sst_id.log_str());
-              table_allocator_.deallocate(table_item);
+              table_allocator_.free(table_item);
               ret = OB_ERROR;
             }
             else
@@ -3232,7 +3234,7 @@ namespace oceanbase
           for (uncommited_iter = uncommited_list.begin(); uncommited_iter != uncommited_list.end(); uncommited_iter++)
           {
             SSTableID sst_id = (*uncommited_iter)->get_sstable_id();
-            table_allocator_.deallocate(*uncommited_iter);
+            table_allocator_.free(*uncommited_iter);
             TBSYS_LOG(WARN, "load fail %s", sst_id.log_str());
           }
         }
@@ -3412,4 +3414,3 @@ namespace oceanbase
     }
   }
 }
-

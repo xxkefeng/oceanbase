@@ -32,7 +32,7 @@ namespace oceanbase
     void ob_mod_usage_update(const int64_t delta, const int32_t mod_id);
     /// @fn 从全局内存池中分配nbyte的缓冲区
     void *ob_malloc(void *ptr, size_t size); //alloc mem for libeasy easy_pool
-    void *ob_malloc(const int64_t nbyte, const int32_t mod_id = 0, int64_t *got_size = NULL);
+    void *ob_malloc(const int64_t nbyte, const int32_t mod_id, int64_t *got_size = NULL);
     void *ob_malloc_emergency(const int64_t nbyte, const int32_t mod_id = 0, int64_t *got_size = NULL);
 
     /// @fn 释放通过ob_malloc获取的内存

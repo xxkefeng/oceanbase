@@ -7,12 +7,12 @@
  *
  *
  * Version:  ob_trigger_event.h,  12/17/2012 11:23:00 AM xiaochu Exp $
- * 
- * Author:  
+ *
+ * Author:
  *   xiaochu.yh <xiaochu.yh@taobao.com>
- * Description:  
- *   
- * 
+ * Description:
+ *
+ *
  */
 #ifndef __OCEANBASE_COMMON_OB_TRIGGER_EVENT_H__
 #define __OCEANBASE_COMMON_OB_TRIGGER_EVENT_H__
@@ -56,17 +56,16 @@ namespace oceanbase
         int execute_sql(ObString &sql_str)
         {
           int ret = OB_SUCCESS;
-          int retry_num = 0;
-          ObServer ms;
           if (NULL == ms_provider_ || NULL ==rpc_stub_)
           {
             ret = OB_NOT_INIT;
           }
-          if (OB_SUCCESS == ret)
+          else
           {
-            if (OB_SUCCESS != (ret = ms_provider_->get_ms(retry_num, ms)))
+            ObServer ms;
+            if (OB_SUCCESS != (ret = ms_provider_->get_ms(ms)))
             {
-              TBSYS_LOG(WARN, "fail to get ms from ms_provider. retry_num=%d, ret=%d", retry_num, ret);
+              TBSYS_LOG(WARN, "fail to get ms from ms_provider. ret=%d", ret);
             }
             else if (OB_SUCCESS != (ret = rpc_stub_->execute_sql(timeout, ms, sql_str)))
             {

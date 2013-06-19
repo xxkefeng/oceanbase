@@ -46,7 +46,7 @@ namespace oceanbase
 
       if (NULL != read_param && NULL == *read_param)
       {
-        *read_param = reinterpret_cast<ObOpParam*>(ob_malloc(sizeof(ObOpParam)));
+        *read_param = reinterpret_cast<ObOpParam*>(ob_malloc(sizeof(ObOpParam), ObModIds::TEST));
         if (NULL == *read_param)
         {
           TBSYS_LOG(ERROR, "failed to allocate memory for read param");
@@ -1040,7 +1040,7 @@ namespace oceanbase
           row_param = &read_param.row_[i];
           rowkey.assign(row_param->rowkey_, row_param->rowkey_len_);
           get_param.add_rowkey(rowkey, false);
-          if (i == 0) 
+          if (i == 0)
           {
             ret = fill_row_project(read_param.table_id_, *row_param, project, row_desc);
           }
@@ -1059,7 +1059,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObReadWorker::fill_row_project(const int64_t table_id, const ObOpRowParam& row_param, 
+    int ObReadWorker::fill_row_project(const int64_t table_id, const ObOpRowParam& row_param,
         sql::ObProject &project, common::ObRowDesc& row_desc)
     {
       int ret = OB_SUCCESS;
@@ -1192,7 +1192,7 @@ namespace oceanbase
       common::ObRow current_row;
 
       current_row.set_row_desc(row_desc);
-      while (OB_SUCCESS == ret && 
+      while (OB_SUCCESS == ret &&
           OB_SUCCESS == const_cast<ObNewScanner&>(scanner).get_next_row(current_row))
       {
         if (OP_GET == read_param.op_type_)
@@ -1206,7 +1206,7 @@ namespace oceanbase
           row_count++;
         }
 
-        if (OB_SUCCESS != (ret = current_row.get_rowkey(row_key)) 
+        if (OB_SUCCESS != (ret = current_row.get_rowkey(row_key))
             || NULL == row_key || row_key->get_obj_cnt() <= 0)
         {
           TBSYS_LOG(ERROR, "rowkey not correct=%d", ret);
@@ -1224,15 +1224,15 @@ namespace oceanbase
           for (column_index = 0; column_index < row_param->cell_count_ && OB_SUCCESS == ret; column_index += MIN_OP_CELL_COUNT)
           {
             cell_param = &row_param->cell_[column_index];
-            aux_cell_param = &row_param->cell_[column_index + 1]; 
+            aux_cell_param = &row_param->cell_[column_index + 1];
             if (OB_SUCCESS != (ret = current_row.get_cell(read_param.table_id_, cell_param->column_id_, pcell)))
             {
-              TBSYS_LOG(ERROR, "get org cell ,tid=[%ld], cid=[%ld], ret=%d", 
+              TBSYS_LOG(ERROR, "get org cell ,tid=[%ld], cid=[%ld], ret=%d",
                   read_param.table_id_, cell_param->column_id_, ret);
             }
             else if (OB_SUCCESS != (ret = current_row.get_cell(read_param.table_id_, aux_cell_param->column_id_, aux_pcell)))
             {
-              TBSYS_LOG(ERROR, "get aux cell ,tid=[%ld], cid=[%ld], ret=%d", 
+              TBSYS_LOG(ERROR, "get aux cell ,tid=[%ld], cid=[%ld], ret=%d",
                   read_param.table_id_, cell_param->column_id_, ret);
             }
             else
@@ -1249,7 +1249,7 @@ namespace oceanbase
 
               if (OB_SUCCESS != (ret = check_cell(*cell_param, *aux_cell_param, cell_info, aux_cell_info)))
               {
-                TBSYS_LOG(ERROR, "check_cell error, prefix=%ld, cid=%ld, cell=%s", 
+                TBSYS_LOG(ERROR, "check_cell error, prefix=%ld, cid=%ld, cell=%s",
                     prefix, cell_param->column_id_, to_cstring(*pcell));
               }
             }

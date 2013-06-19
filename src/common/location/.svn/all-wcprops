@@ -1,13 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 84
-/repos/oceanbase/!svn/ver/13432/branches/0_4_1_release/oceanbase/src/common/location
-END
-ob_btree_map.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/common/location/ob_btree_map.cpp
+/repos/oceanbase/!svn/ver/14428/branches/0_4_1_release/oceanbase/src/common/location
 END
 ob_ms_cache_table.h
 K 25
@@ -49,13 +43,7 @@ ob_tablet_location_range_iterator.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 122
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/common/location/ob_tablet_location_range_iterator.cpp
-END
-ob_ms_cache_table.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 106
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/common/location/ob_ms_cache_table.cpp
+/repos/oceanbase/!svn/ver/14428/branches/0_4_1_release/oceanbase/src/common/location/ob_tablet_location_range_iterator.cpp
 END
 ob_tablet_location_cache.h
 K 25

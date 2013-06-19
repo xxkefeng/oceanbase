@@ -1,25 +1,25 @@
 K 25
 svn:wc:ra_dav:version-url
 V 80
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data
+/repos/oceanbase/!svn/ver/14060/branches/0_4_1_release/oceanbase/tools/dump_data
 END
 task_factory.h
 K 25
 svn:wc:ra_dav:version-url
 V 95
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_factory.h
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_factory.h
 END
 base_server.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 96
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/base_server.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/base_server.cpp
 END
 task_worker.h
 K 25
 svn:wc:ra_dav:version-url
 V 94
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_worker.h
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_worker.h
 END
 hdfs_env.h
 K 25
@@ -27,11 +27,23 @@ svn:wc:ra_dav:version-url
 V 91
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/hdfs_env.h
 END
+Makefile.in
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/14060/branches/0_4_1_release/oceanbase/tools/dump_data/Makefile.in
+END
 tablet_location.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 100
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/tablet_location.cpp
+END
+task_server_callback.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_server_callback.cpp
 END
 hdfs_ext.h
 K 25
@@ -43,19 +55,19 @@ base_client.h
 K 25
 svn:wc:ra_dav:version-url
 V 94
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/base_client.h
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/base_client.h
 END
 task_info.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 94
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_info.cpp
+/repos/oceanbase/!svn/ver/14037/branches/0_4_1_release/oceanbase/tools/dump_data/task_info.cpp
 END
 task_server_param.h
 K 25
 svn:wc:ra_dav:version-url
 V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_server_param.h
+/repos/oceanbase/!svn/ver/14037/branches/0_4_1_release/oceanbase/tools/dump_data/task_server_param.h
 END
 parse_file.h
 K 25
@@ -67,19 +79,19 @@ task_table_conf.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 100
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_table_conf.cpp
+/repos/oceanbase/!svn/ver/14037/branches/0_4_1_release/oceanbase/tools/dump_data/task_table_conf.cpp
 END
 posix_env.h
 K 25
 svn:wc:ra_dav:version-url
 V 92
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/posix_env.h
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/posix_env.h
 END
 dump2str.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 93
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/dump2str.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/dump2str.cpp
 END
 task_worker_param.h
 K 25
@@ -91,19 +103,13 @@ task_output_file.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_output_file.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_output_file.cpp
 END
 test_hdfs.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 94
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/test_hdfs.cpp
-END
-merge_tmp.py
-K 25
-svn:wc:ra_dav:version-url
-V 93
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/merge_tmp.py
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/test_hdfs.cpp
 END
 task_stats.h
 K 25
@@ -111,17 +117,17 @@ svn:wc:ra_dav:version-url
 V 93
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_stats.h
 END
+merge_tmp.py
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/merge_tmp.py
+END
 rpc_stub.h
 K 25
 svn:wc:ra_dav:version-url
 V 91
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/rpc_stub.h
-END
-task_output.h
-K 25
-svn:wc:ra_dav:version-url
-V 94
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_output.h
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/rpc_stub.h
 END
 task_utils.h
 K 25
@@ -129,29 +135,35 @@ svn:wc:ra_dav:version-url
 V 93
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_utils.h
 END
+task_output.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_output.h
+END
 task_server.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 96
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_server.cpp
+/repos/oceanbase/!svn/ver/14037/branches/0_4_1_release/oceanbase/tools/dump_data/task_server.cpp
 END
 task_factory.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 97
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_factory.cpp
+/repos/oceanbase/!svn/ver/14037/branches/0_4_1_release/oceanbase/tools/dump_data/task_factory.cpp
 END
 task_worker.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 96
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_worker.cpp
+/repos/oceanbase/!svn/ver/14037/branches/0_4_1_release/oceanbase/tools/dump_data/task_worker.cpp
 END
 hdfs_env.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 93
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/hdfs_env.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/hdfs_env.cpp
 END
 task_packet.h
 K 25
@@ -163,7 +175,7 @@ task_worker_main.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_worker_main.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_worker_main.cpp
 END
 ob_task_server.sh
 K 25
@@ -177,23 +189,23 @@ svn:wc:ra_dav:version-url
 V 95
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_manager.h
 END
-hdfs_ext.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 93
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/hdfs_ext.cpp
-END
 ob_task_slave.sh
 K 25
 svn:wc:ra_dav:version-url
 V 97
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/ob_task_slave.sh
 END
+hdfs_ext.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/hdfs_ext.cpp
+END
 base_server.h
 K 25
 svn:wc:ra_dav:version-url
 V 94
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/base_server.h
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/base_server.h
 END
 merge_tmp.sh
 K 25
@@ -211,13 +223,13 @@ base_client.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 96
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/base_client.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/base_client.cpp
 END
 task_server_param.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 102
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_server_param.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_server_param.cpp
 END
 server.conf
 K 25
@@ -229,7 +241,13 @@ parse_file.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 95
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/parse_file.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/parse_file.cpp
+END
+task_server_callback.h
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_server_callback.h
 END
 posix_env.cpp
 K 25
@@ -247,7 +265,7 @@ restart.sh
 K 25
 svn:wc:ra_dav:version-url
 V 91
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/restart.sh
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/restart.sh
 END
 check.awk
 K 25
@@ -271,31 +289,31 @@ task_stats.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 95
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_stats.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_stats.cpp
 END
 rpc_stub.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 93
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/rpc_stub.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/rpc_stub.cpp
 END
 task_info.h
 K 25
 svn:wc:ra_dav:version-url
 V 92
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_info.h
+/repos/oceanbase/!svn/ver/14037/branches/0_4_1_release/oceanbase/tools/dump_data/task_info.h
 END
 task_output.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 96
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_output.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_output.cpp
 END
 task_utils.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 95
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_utils.cpp
+/repos/oceanbase/!svn/ver/14037/branches/0_4_1_release/oceanbase/tools/dump_data/task_utils.cpp
 END
 kill.sh
 K 25
@@ -313,13 +331,13 @@ task_output_file.h
 K 25
 svn:wc:ra_dav:version-url
 V 99
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_output_file.h
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_output_file.h
 END
 Makefile.am
 K 25
 svn:wc:ra_dav:version-url
 V 92
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/Makefile.am
+/repos/oceanbase/!svn/ver/14039/branches/0_4_1_release/oceanbase/tools/dump_data/Makefile.am
 END
 hdfs.h
 K 25
@@ -337,17 +355,17 @@ task_manager.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 97
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_manager.cpp
+/repos/oceanbase/!svn/ver/14037/branches/0_4_1_release/oceanbase/tools/dump_data/task_manager.cpp
 END
 task_server_main.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 101
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_server_main.cpp
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_server_main.cpp
 END
 task_server.h
 K 25
 svn:wc:ra_dav:version-url
 V 94
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/dump_data/task_server.h
+/repos/oceanbase/!svn/ver/14034/branches/0_4_1_release/oceanbase/tools/dump_data/task_server.h
 END

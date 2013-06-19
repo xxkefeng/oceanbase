@@ -29,6 +29,7 @@
 #include "rootserver/ob_root_admin_cmd.h"
 #include "rootserver/ob_root_util.h"
 #include "rootserver/ob_root_stat_key.h"
+#include "rootserver/ob_root_bootstrap.h"
 #include "common/ob_rs_ups_message.h"
 #include "common/ob_strings.h"
 #include "common/ob_log_cursor.h"
@@ -733,51 +734,37 @@ namespace oceanbase
             ps = false;
           }
           break;
-        case OB_RENEW_LEASE_REQUEST:
-          //ps = true;
-          //if (ObRoleMgr::MASTER == role_mgr_.get_role())
-          //{
-          //  ThreadSpecificBuffer::Buffer* my_buffer = my_thread_buffer.get_buffer();
-          //  ObDataBuffer thread_buffer(my_buffer->current(), my_buffer->remain());
-          //  int return_code = rt_renew_lease(packet->get_api_version(),
-          //                                   *packet->get_buffer(),
-          //                                   packet->get_request(),
-          //                                   packet->get_channel_id(),
-          //                                   thread_buffer);
-          //  if (OB_SUCCESS != return_code)
-          //  {
-          //    TBSYS_LOG(WARN, "response slave rs renew lease error."
-          //              " return code is %d", return_code);
-          //  }
-          //}
-          //break;
-        case OB_SLAVE_QUIT:
-          if (ObRoleMgr::MASTER == role_mgr_.get_role())
-          {
-            ps = read_thread_queue_.push(packet, (int32_t)config_.read_queue_size, false);
-          }
-          else
-          {
-            ps = false;
-          }
-          break;
-        case OB_SET_CONFIG:
+        // read queue
+        case OB_RS_STAT:
         case OB_GET_CONFIG:
+        case OB_GET_MASTER_OBI_RS:
+        case OB_GET_OBI_ROLE:
+        case OB_GET_UPS:
+        case OB_GET_CS_LIST:
+        case OB_GET_MS_LIST:
+        case OB_GET_MASTER_UPS_CONFIG:
+        case OB_DUMP_CS_INFO:
+        case OB_FETCH_STATS:
+        case OB_GET_REQUEST:
+        case OB_SCAN_REQUEST:
+        case OB_SQL_SCAN_REQUEST:
+        // master or slave can set
+        case OB_SET_CONFIG:
+        case OB_CHANGE_LOG_LEVEL:
           ps = read_thread_queue_.push(packet, (int32_t)config_.read_queue_size, false);
           break;
+        case OB_REPORT_TABLETS:
+        case OB_SERVER_REGISTER:
+        case OB_MERGE_SERVER_REGISTER:
+        case OB_MIGRATE_OVER:
         case OB_CREATE_TABLE:
         case OB_ALTER_TABLE:
         case OB_DROP_TABLE:
-        case OB_REPORT_TABLETS:
-        case OB_MERGE_SERVER_REGISTER:
-        case OB_SERVER_REGISTER:
-        case OB_MIGRATE_OVER:
         case OB_REPORT_CAPACITY_INFO:
         case OB_SLAVE_REG:
         case OB_WAITING_JOB_DONE:
         case OB_CS_DELETE_TABLETS:
         case OB_UPDATE_SERVER_REPORT_FREEZE:
-        case OB_RS_INNER_MSG_DELETE_TABLET:
           //the packet will cause write to b+ tree
           if (ObRoleMgr::MASTER == role_mgr_.get_role())
           {
@@ -788,45 +775,25 @@ namespace oceanbase
             ps = false;
           }
           break;
-        case OB_GET_MASTER_OBI_RS:
-        case OB_GET_OBI_ROLE:
+        case OB_RENEW_LEASE_REQUEST:
+        case OB_SLAVE_QUIT:
         case OB_SET_OBI_ROLE:
-        case OB_RS_GET_LAST_FROZEN_VERSION:
-        case OB_SQL_SCAN_REQUEST:
-          if (ObRoleMgr::MASTER == role_mgr_.get_role())
-          {
-            ps = read_thread_queue_.push(packet, (int32_t)config_.read_queue_size, false);
-          }
-          else
-          {
-            ps = false;
-          }
-          break;
         case OB_FETCH_SCHEMA:
         case OB_FETCH_SCHEMA_VERSION:
-        case OB_GET_REQUEST:
-        case OB_SCAN_REQUEST:
+        case OB_RS_GET_LAST_FROZEN_VERSION:
         case OB_HEARTBEAT:
-        case OB_DUMP_CS_INFO:
-        case OB_FETCH_STATS:
-        case OB_GET_UPDATE_SERVER_INFO:
-        case OB_GET_UPDATE_SERVER_INFO_FOR_MERGE:
-        case OB_CHANGE_LOG_LEVEL:
-        case OB_RS_ADMIN:
-        case OB_RS_DUMP_CS_TABLET_INFO:
+        case OB_GET_PROXY_LIST:
         case OB_RS_CHECK_ROOTTABLE:
-        case OB_RS_STAT:
-        case OB_GET_MASTER_UPS_CONFIG:
+        case OB_GET_UPDATE_SERVER_INFO:
+        case OB_RS_DUMP_CS_TABLET_INFO:
+        case OB_GET_UPDATE_SERVER_INFO_FOR_MERGE:
+        case OB_RS_ADMIN:
         case OB_RS_UPS_HEARTBEAT_RESPONSE:
         case OB_RS_UPS_REGISTER:
         case OB_RS_UPS_SLAVE_FAILURE:
-        case OB_GET_UPS:
         case OB_SET_UPS_CONFIG:
         case OB_SET_MASTER_UPS_CONFIG:
         case OB_CHANGE_UPS_MASTER:
-        case OB_GET_CS_LIST:
-        case OB_GET_MS_LIST:
-        case OB_GET_PROXY_LIST:
         case OB_CS_IMPORT_TABLETS:
         case OB_RS_SHUTDOWN_SERVERS:
         case OB_RS_RESTART_SERVERS:
@@ -876,9 +843,7 @@ namespace oceanbase
         if (OB_FETCH_STATS != packet_code)
         {
           TBSYS_LOG(ERROR, "packet %d can not be distribute to queue, role=%d rqueue_size=%ld wqueue_size=%ld",
-              packet_code, role_mgr_.get_role(),
-              read_thread_queue_.size(),
-              write_thread_queue_.size());
+              packet_code, role_mgr_.get_role(), read_thread_queue_.size(), write_thread_queue_.size());
         }
         ret = OB_ERROR;
       }
@@ -1813,12 +1778,40 @@ namespace oceanbase
         easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       static const int MY_VERSION = 1;
-      int ret = OB_SUCCESS;
-      // @todo
       UNUSED(version);
-      UNUSED(in_buff);
+      int ret = OB_SUCCESS;
+      ObServer server;
+      ObTabletReportInfoList tablet_list;
       common::ObResultCode result_msg;
-      result_msg.result_code_ = OB_SUCCESS;
+      if (OB_SUCCESS == ret)
+      {
+        ret = server.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(ERROR, "server.deserialize error");
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = tablet_list.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(ERROR, "tablet_list.deserialize error");
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = root_server_.delete_replicas(false, server, tablet_list);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "delete all the replicas failed:server[%s], ret[%d]", server.to_cstring(), ret);
+        }
+        else
+        {
+          TBSYS_LOG(DEBUG, "delete all the replicas succ:server[%s]", server.to_cstring());
+        }
+      }
+      result_msg.result_code_ = ret;
       ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
       if (ret != OB_SUCCESS)
       {
@@ -2424,7 +2417,8 @@ namespace oceanbase
         }
         else
         {
-          TBSYS_LOG(INFO, "update report a new froze version : [%ld]",frozen_version);
+          TBSYS_LOG(INFO, "update report a new froze version:ups[%s], version[%ld]",
+              update_server.to_cstring(), frozen_version);
         }
       }
 
@@ -3101,6 +3095,13 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         case OB_RS_ADMIN_DEC_LOG_LEVEL:
           TBSYS_LOGGER._level--;
           break;
+        case OB_RS_ADMIN_INIT_CLUSTER:
+          {
+            TBSYS_LOG(INFO, "start init cluster table");
+            ObBootstrap bootstrap(root_server_);
+            ret = bootstrap.init_all_cluster();
+            break;
+          }
         case OB_RS_ADMIN_BOOT_STRAP:
           TBSYS_LOG(INFO, "start to boot strap");
           ret = root_server_.boot_strap();
@@ -4069,10 +4070,16 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       bool if_not_exists = false;
       TableSchema tschema;
       ObString user_name;
+      common::ObiRole::Role role = root_server_.get_obi_role().get_role();
       if (MY_VERSION != version)
       {
         TBSYS_LOG(WARN, "un-supported rpc version=%d", version);
         res.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else if (role != common::ObiRole::MASTER)
+      {
+        res.result_code_ = OB_OP_NOT_ALLOW;
+        TBSYS_LOG(WARN, "ddl operation not allowed in slave cluster");
       }
       else
       {
@@ -4126,10 +4133,16 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       static const int MY_VERSION = 1;
       common::ObResultCode res;
       AlterTableSchema tschema;
+      common::ObiRole::Role role = root_server_.get_obi_role().get_role();
       if (MY_VERSION != version)
       {
         TBSYS_LOG(WARN, "un-supported rpc version=%d", version);
         res.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else if (role != common::ObiRole::MASTER)
+      {
+        res.result_code_ = OB_OP_NOT_ALLOW;
+        TBSYS_LOG(WARN, "ddl operation not allowed in slave cluster");
       }
       else
       {
@@ -4176,10 +4189,16 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       int ret = OB_SUCCESS;
       static const int MY_VERSION = 1;
       common::ObResultCode res;
+      common::ObiRole::Role role = root_server_.get_obi_role().get_role();
       if (MY_VERSION != version)
       {
         TBSYS_LOG(WARN, "un-supported rpc version=%d", version);
         res.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else if (role != common::ObiRole::MASTER)
+      {
+        res.result_code_ = OB_OP_NOT_ALLOW;
+        TBSYS_LOG(WARN, "ddl operation not allowed in slave cluster");
       }
       else
       {

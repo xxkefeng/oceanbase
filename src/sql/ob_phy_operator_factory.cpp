@@ -67,6 +67,7 @@ ObPhyOperator *ObPhyOperatorFactory::get_one(ObPhyOperatorType phy_operator_type
     CASE_CLAUSE(PHY_MULTIPLE_SCAN_MERGE, ObMultipleScanMerge);
     CASE_CLAUSE(PHY_MULTIPLE_GET_MERGE, ObMultipleGetMerge);
     CASE_CLAUSE(PHY_EMPTY_ROW_FILTER, ObEmptyRowFilter);
+    CASE_CLAUSE(PHY_EXPR_VALUES, ObExprValues);
     default:
       break;
   }

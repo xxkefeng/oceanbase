@@ -1,6 +1,6 @@
 /*
  *  (C) 2007-2010 Taobao Inc.
- *  
+ *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
  *  published by the Free Software Foundation.
@@ -30,9 +30,9 @@ using namespace oceanbase::common::serialization;
 using namespace oceanbase::sstable;
 
 
-namespace oceanbase 
-{ 
-  namespace chunkserver 
+namespace oceanbase
+{
+  namespace chunkserver
   {
 
     //----------------------------------------
@@ -43,19 +43,19 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       int64_t serialize_size = get_serialize_size();
 
-      if((NULL == buf) || (serialize_size + pos > buf_len)) 
+      if((NULL == buf) || (serialize_size + pos > buf_len))
       {
         ret = OB_INVALID_ARGUMENT;
       }
 
-      if (OB_SUCCESS == ret 
+      if (OB_SUCCESS == ret
           && (OB_SUCCESS == encode_i64(buf, buf_len, pos, tablet_count_))
           && (OB_SUCCESS == encode_i64(buf, buf_len, pos, data_version_))
           && (OB_SUCCESS == encode_i32(buf, buf_len, pos, row_key_stream_offset_))
           && (OB_SUCCESS == encode_i32(buf, buf_len, pos, row_key_stream_size_))
           && (OB_SUCCESS == encode_i32(buf, buf_len, pos, tablet_extend_info_offset_))
           && (OB_SUCCESS == encode_i32(buf, buf_len, pos, tablet_extend_info_size_)))
-      { 
+      {
         ret = OB_SUCCESS;
       }
       else
@@ -71,12 +71,12 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       int64_t serialize_size = get_serialize_size();
 
-      if (NULL == buf || serialize_size > data_len) 
+      if (NULL == buf || serialize_size > data_len)
       {
         ret = OB_INVALID_ARGUMENT;
       }
 
-      if (OB_SUCCESS == ret 
+      if (OB_SUCCESS == ret
           && (OB_SUCCESS == decode_i64(buf, data_len, pos, &tablet_count_))
           && (OB_SUCCESS == decode_i64(buf, data_len, pos, &data_version_))
           && (OB_SUCCESS == decode_i32(buf, data_len, pos, &row_key_stream_offset_))
@@ -89,17 +89,17 @@ namespace oceanbase
       else
       {
         ret = OB_DESERIALIZE_ERROR;
-      }        
+      }
 
       return ret;
     }
 
     DEFINE_GET_SERIALIZE_SIZE(ObTabletMetaHeader)
     {
-      return (encoded_length_i64(tablet_count_) 
-          + encoded_length_i64(data_version_) 
-          + encoded_length_i32(row_key_stream_offset_) 
-          + encoded_length_i32(row_key_stream_size_) 
+      return (encoded_length_i64(tablet_count_)
+          + encoded_length_i64(data_version_)
+          + encoded_length_i32(row_key_stream_offset_)
+          + encoded_length_i32(row_key_stream_size_)
           + encoded_length_i32(tablet_extend_info_offset_)
           + encoded_length_i32(tablet_extend_info_size_));
     }
@@ -130,24 +130,24 @@ namespace oceanbase
       int64_t new_buf_size = 0;
       char* new_buf = NULL;
 
-      if (NULL == buf_ || (NULL != buf_ && size > buf_size_ - data_size_)) 
+      if (NULL == buf_ || (NULL != buf_ && size > buf_size_ - data_size_))
       {
         if (NULL == buf_)
         {
           new_buf_size = size > buf_size_ ? size : buf_size_;
         }
-        else 
+        else
         {
           if (buf_size_ * 2 - data_size_ >= size)
           {
             new_buf_size = buf_size_ * 2;
           }
-          else 
+          else
           {
             new_buf_size = buf_size_ + size;
           }
         }
-        new_buf = static_cast<char*>(ob_malloc(new_buf_size));
+        new_buf = static_cast<char*>(ob_malloc(new_buf_size, ObModIds::OB_CS_TABLET_IMAGE));
         if (NULL == new_buf)
         {
           TBSYS_LOG(ERROR, "failed to alloc memory, new_buffer=%p", new_buf);
@@ -180,7 +180,7 @@ namespace oceanbase
     int ObTabletRowkeyBuilder::append_range(const common::ObNewRange& range)
     {
       int ret = OB_SUCCESS;
-      int64_t row_key_size = 
+      int64_t row_key_size =
         range.start_key_.get_serialize_objs_size() + range.end_key_.get_serialize_objs_size();
 
       if (OB_SUCCESS != (ret = ensure_space(row_key_size)))
@@ -227,15 +227,15 @@ namespace oceanbase
     //----------------------------------------
     // class ObTabletImage
     //----------------------------------------
-    ObTabletImage::ObTabletImage() 
+    ObTabletImage::ObTabletImage()
       : tablet_list_(DEFAULT_TABLET_NUM), sstable_list_(DEFAULT_TABLET_NUM),
       delete_table_tablet_list_(DEFAULT_TABLE_TABLET_NUM),
       report_tablet_list_(DEFAULT_TABLET_NUM),
-      hash_map_inited_(false), data_version_(0), 
-      max_sstable_file_seq_(0), 
+      hash_map_inited_(false), data_version_(0),
+      max_sstable_file_seq_(0),
       ref_count_(0), cur_iter_idx_(INVALID_ITER_INDEX),
       merged_tablet_count_(0),
-      mod_(ObModIds::OB_CS_TABLET_IMAGE), 
+      mod_(ObModIds::OB_CS_TABLET_IMAGE),
       allocator_(ModuleArena::DEFAULT_PAGE_SIZE, mod_),
       fileinfo_cache_(NULL),
       disk_manager_(NULL)
@@ -256,15 +256,15 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "ObTabletImage still been used ref=%d, "
                          "cannot destory..", ref_count_);
         /**
-         * FIXME: sometime the ref count is not zero when doing destroy, 
+         * FIXME: sometime the ref count is not zero when doing destroy,
          * it's a bug, but we review the code again and again, we don't
-         * find the reason. if the tablet image can't be destroyed, 
-         * daily merge can't start. so now we just ignore the error and 
-         * destroy the tablet image. there is a risk that someone is 
-         * using the tablet image and the tablet image destroyed. after 
-         * switch to new tablet image, we only allow destroy the old 
-         * tablet image after several minutes. so the risk is very 
-         * small. 
+         * find the reason. if the tablet image can't be destroyed,
+         * daily merge can't start. so now we just ignore the error and
+         * destroy the tablet image. there is a risk that someone is
+         * using the tablet image and the tablet image destroyed. after
+         * switch to new tablet image, we only allow destroy the old
+         * tablet image after several minutes. so the risk is very
+         * small.
          */
         ret = OB_SUCCESS;
       }
@@ -305,7 +305,7 @@ namespace oceanbase
       return OB_SUCCESS;
     }
 
-    int ObTabletImage::find_tablet(const ObSSTableId& sstable_id, 
+    int ObTabletImage::find_tablet(const ObSSTableId& sstable_id,
       ObTablet* &tablet) const
     {
       int ret = OB_SUCCESS;
@@ -335,7 +335,7 @@ namespace oceanbase
         ObSortedVector<ObTablet*>::iterator it = tablet_list_.begin();
         for (; it != tablet_list_.end(); ++it)
         {
-          if (OB_SUCCESS == (*it)->include_sstable(sstable_id)) 
+          if (OB_SUCCESS == (*it)->include_sstable(sstable_id))
           {
             break;
           }
@@ -382,7 +382,7 @@ namespace oceanbase
         ObSortedVector<ObTablet*>::iterator it = tablet_list_.begin();
         for (; it != tablet_list_.end(); ++it)
         {
-          if (OB_SUCCESS == (*it)->include_sstable(sstable_id)) 
+          if (OB_SUCCESS == (*it)->include_sstable(sstable_id))
           {
             ret = OB_SUCCESS;
             break;
@@ -404,7 +404,7 @@ namespace oceanbase
 
       if (OB_INVALID_ID == table_id)
       {
-        TBSYS_LOG(WARN, "tablet image acquire_tablets, invalid table_id=%lu", 
+        TBSYS_LOG(WARN, "tablet image acquire_tablets, invalid table_id=%lu",
           table_id);
         ret = OB_INVALID_ARGUMENT;
       }
@@ -413,7 +413,7 @@ namespace oceanbase
         ObSortedVector<ObTablet*>::iterator it = tablet_list_.begin();
         for (; it != tablet_list_.end(); ++it)
         {
-          if (0 == table_id || (*it)->get_range().table_id_ == table_id) 
+          if (0 == table_id || (*it)->get_range().table_id_ == table_id)
           {
             atomic_inc((atomic_t*) &ref_count_);
             (*it)->inc_ref();
@@ -478,7 +478,7 @@ namespace oceanbase
         for (; it != tablet_list_.end(); ++it)
         {
           cur_table_id = (*it)->get_range().table_id_;
-          if (cur_table_id == table_id) 
+          if (cur_table_id == table_id)
           {
             (*it)->set_merged();
             (*it)->set_removed();
@@ -565,12 +565,12 @@ namespace oceanbase
         if (disk_num > 0 && NULL != disk_no_array)
         {
           /**
-           * ignore the write fail status, we just ensure flush meta file 
-           * of each disk once 
+           * ignore the write fail status, we just ensure flush meta file
+           * of each disk once
            */
           for (int32_t i = 0; i < disk_num; ++i)
           {
-            ret = get_meta_path(data_version_, disk_no_array[i], true, 
+            ret = get_meta_path(data_version_, disk_no_array[i], true,
               idx_path, OB_MAX_FILE_NAME_LENGTH);
             if (OB_SUCCESS == ret)
             {
@@ -583,7 +583,7 @@ namespace oceanbase
                 ret = write_meta(idx_path, disk_no_array[i]);
               }
             }
-            else 
+            else
             {
               TBSYS_LOG(WARN, "failed to sync tablet image, disk_no=%d", disk_no_array[i]);
             }
@@ -645,7 +645,7 @@ namespace oceanbase
       ObNewRange copy_range;
       alloc_mutex_.lock();
 
-      int ret = OB_SUCCESS; 
+      int ret = OB_SUCCESS;
       if ( OB_SUCCESS != (ret = deep_copy_range(allocator_, range, copy_range)) )
       {
         TBSYS_LOG(ERROR, "copy range failed.");
@@ -768,7 +768,7 @@ namespace oceanbase
       return ret;
     }
 
-    bool check_border_inclusive(const ObRowkey& key, const ObBorderFlag& border_flag, 
+    bool check_border_inclusive(const ObRowkey& key, const ObBorderFlag& border_flag,
         const int32_t scan_direction, const ObTablet& tablet)
     {
       // %tablet.range.end_key_ must >= %key
@@ -800,12 +800,12 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletImage::find_tablet(const common::ObNewRange& range, 
+    int ObTabletImage::find_tablet(const common::ObNewRange& range,
         const int32_t scan_direction, ObTablet* &tablet) const
     {
       int ret = OB_SUCCESS;
       tablet = NULL;
-      ObRowkey lookup_key = (ObMultiVersionTabletImage::SCAN_FORWARD == scan_direction) 
+      ObRowkey lookup_key = (ObMultiVersionTabletImage::SCAN_FORWARD == scan_direction)
         ? range.start_key_ : range.end_key_;
 
       if (tablet_list_.size() <= 0)
@@ -813,12 +813,12 @@ namespace oceanbase
         TBSYS_LOG(WARN, "chunkserver has no tablets, cannot find tablet.");
         ret = OB_CS_TABLET_NOT_EXIST;
       }
-      else if (range.empty() || NULL == lookup_key.ptr() || 0 >= lookup_key.length()) 
+      else if (range.empty() || NULL == lookup_key.ptr() || 0 >= lookup_key.length())
       {
         TBSYS_LOG(WARN, "find invalid range:%s", to_cstring(range));
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (OB_SUCCESS != (ret = find_tablet(range.table_id_, 
+      else if (OB_SUCCESS != (ret = find_tablet(range.table_id_,
               lookup_key, range.get_rowkey_info(), range.border_flag_, scan_direction, tablet)))
       {
         TBSYS_LOG(WARN, "cannot find range :%s", to_cstring(range));
@@ -833,9 +833,9 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletImage::find_tablet( const uint64_t table_id, 
-        const common::ObRowkey& key, const ObRowkeyInfo* ri, 
-        const ObBorderFlag& border_flag, 
+    int ObTabletImage::find_tablet( const uint64_t table_id,
+        const common::ObRowkey& key, const ObRowkeyInfo* ri,
+        const ObBorderFlag& border_flag,
         const int32_t scan_direction, ObTablet* &tablet) const
     {
       int ret = OB_SUCCESS;
@@ -853,12 +853,12 @@ namespace oceanbase
       if (it == tablet_list_.end())
       {
         //                       start_key
-        //                        |-------------- 
-        // |--| |--| |---------| 
-        
+        //                        |--------------
+        // |--| |--| |---------|
+
         //                       end_key
         //              ----------|
-        // |--| |--| |---------| 
+        // |--| |--| |---------|
 
         if (ObMultiVersionTabletImage::SCAN_BACKWARD == scan_direction)
         {
@@ -890,14 +890,14 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletImage::acquire_tablet(const ObSSTableId& sstable_id, 
+    int ObTabletImage::acquire_tablet(const ObSSTableId& sstable_id,
         ObTablet* &tablet) const
     {
       int ret = find_tablet(sstable_id, tablet);
 
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(INFO, "find sstable sstable_id=%ld failed, ret=%d", 
+        TBSYS_LOG(INFO, "find sstable sstable_id=%ld failed, ret=%d",
             sstable_id.sstable_file_id_, ret);
       }
       else if (NULL == tablet)
@@ -935,15 +935,15 @@ namespace oceanbase
         {
           sstable_id = (tablet->get_sstable_id_list().at(i));
           // destroy file info cache if exist.
-          const FileInfo * fileinfo = 
+          const FileInfo * fileinfo =
             fileinfo_cache->get_cache_fileinfo(sstable_id.sstable_file_id_);
-          if (NULL != fileinfo) 
+          if (NULL != fileinfo)
           {
             const_cast<FileInfo*>(fileinfo)->destroy();
             fileinfo_cache->revert_fileinfo(fileinfo);
           }
 
-          if (OB_SUCCESS != (ret = get_sstable_path(sstable_id, 
+          if (OB_SUCCESS != (ret = get_sstable_path(sstable_id,
             sstable_path, OB_MAX_FILE_NAME_LENGTH)))
           {
             TBSYS_LOG(WARN, "failed to get sstable path, sstable_id=%lu",
@@ -970,7 +970,7 @@ namespace oceanbase
           {
             disk_manager_->release_space(
               static_cast<int32_t>(get_sstable_disk_no(sstable_id.sstable_file_id_)), sstable_size);
-            TBSYS_LOG(INFO, "recycle tablet version = %ld, recycle sstable file = %s", 
+            TBSYS_LOG(INFO, "recycle tablet version = %ld, recycle sstable file = %s",
               tablet->get_data_version(), sstable_path);
           }
           sstable_path[0] = '\0';
@@ -1022,7 +1022,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletImage::acquire_tablet(const common::ObNewRange& range, 
+    int ObTabletImage::acquire_tablet(const common::ObNewRange& range,
         const int32_t scan_direction, ObTablet* &tablet) const
     {
       int ret =  find_tablet(range, scan_direction, tablet);
@@ -1077,8 +1077,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletImage::serialize(const int32_t disk_no, 
-        char* buf, const int64_t buf_len, int64_t& pos, 
+    int ObTabletImage::serialize(const int32_t disk_no,
+        char* buf, const int64_t buf_len, int64_t& pos,
         ObTabletRowkeyBuilder& builder, ObTabletExtendBuilder& extend)
     {
       int ret = OB_SUCCESS;
@@ -1163,14 +1163,14 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletImage::deserialize(const bool load_sstable, 
+    int ObTabletImage::deserialize(const bool load_sstable,
         const int32_t disk_no, const char* buf, const int64_t data_len, int64_t& pos)
     {
       UNUSED(disk_no);
 
       int ret = OB_SUCCESS;
       int64_t origin_payload_pos = 0;
-      ret = ObRecordHeader::nonstd_check_record(buf + pos, data_len, 
+      ret = ObRecordHeader::nonstd_check_record(buf + pos, data_len,
           ObTabletMetaHeader::TABLET_META_MAGIC);
       if (OB_SUCCESS != ret)
       {
@@ -1189,7 +1189,7 @@ namespace oceanbase
         }
         else if (data_version_ != meta_header.data_version_)
         {
-          TBSYS_LOG(ERROR, "data_version_=%ld != header.version=%ld", 
+          TBSYS_LOG(ERROR, "data_version_=%ld != header.version=%ld",
               data_version_, meta_header.data_version_);
           ret = OB_ERROR;
         }
@@ -1201,8 +1201,8 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         if (origin_payload_pos
-            + meta_header.row_key_stream_offset_ 
-            + meta_header.row_key_stream_size_ 
+            + meta_header.row_key_stream_offset_
+            + meta_header.row_key_stream_size_
             > data_len)
         {
           ret = OB_SIZE_OVERFLOW;
@@ -1221,14 +1221,14 @@ namespace oceanbase
           }
           else
           {
-            memcpy(row_key_buf, row_key_stream_ptr, 
+            memcpy(row_key_buf, row_key_stream_ptr,
                 meta_header.row_key_stream_size_);
           }
         }
       }
 
       const char* tablet_extend_buf = NULL;
-      if (OB_SUCCESS == ret 
+      if (OB_SUCCESS == ret
           && meta_header.tablet_extend_info_offset_ > 0
           && meta_header.tablet_extend_info_size_ > 0)
       {
@@ -1263,8 +1263,8 @@ namespace oceanbase
             ret = tablet->deserialize(buf, data_len, pos);
             if (OB_SUCCESS == ret)
             {
-              ret = tablet->set_range_by_info(info, 
-                  row_key_buf + row_key_cur_offset, 
+              ret = tablet->set_range_by_info(info,
+                  row_key_buf + row_key_cur_offset,
                   meta_header.row_key_stream_size_ - row_key_cur_offset);
             }
 
@@ -1275,7 +1275,7 @@ namespace oceanbase
 
             // set extend info if extend info exist
             if (OB_SUCCESS == ret && NULL != tablet_extend_buf
-                && OB_SUCCESS == (ret = extend_info.deserialize(tablet_extend_buf, 
+                && OB_SUCCESS == (ret = extend_info.deserialize(tablet_extend_buf,
                   meta_header.tablet_extend_info_size_, tablet_extend_cur_pos)))
             {
               tablet->set_extend_info(extend_info);
@@ -1307,11 +1307,11 @@ namespace oceanbase
 
     }
 
-    int ObTabletImage::serialize(const int32_t disk_no, char* buf, 
+    int ObTabletImage::serialize(const int32_t disk_no, char* buf,
         const int64_t buf_len, int64_t &pos)
     {
       int ret = OB_SUCCESS;
-      ObThreadMetaWriter* writer = 
+      ObThreadMetaWriter* writer =
         GET_TSI_MULT(ObThreadMetaWriter, TSI_CS_THEEAD_META_WRITER_1);
 
       if (NULL == buf || buf_len <= 0 || pos >= buf_len)
@@ -1344,7 +1344,7 @@ namespace oceanbase
         if (pos + writer->builder_.get_data_size() + writer->extend_.get_data_size() > buf_len)
         {
           TBSYS_LOG(ERROR, "size overflow, "
-              "pos=%ld,builder.datasize=%ld, extend.datasize=%ld, buf_len=%ld", 
+              "pos=%ld,builder.datasize=%ld, extend.datasize=%ld, buf_len=%ld",
               pos, writer->builder_.get_data_size(), writer->extend_.get_data_size(), buf_len);
           ret = OB_SIZE_OVERFLOW;
         }
@@ -1360,7 +1360,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletImage::deserialize(const int32_t disk_no, 
+    int ObTabletImage::deserialize(const int32_t disk_no,
         const char* buf, const int64_t buf_len, int64_t &pos)
     {
       return deserialize(false, disk_no, buf, buf_len, pos);
@@ -1369,15 +1369,15 @@ namespace oceanbase
     int64_t ObTabletImage::get_max_serialize(const int32_t disk_no) const
     {
       UNUSED(disk_no);
-      int64_t max_serialize_size = 
+      int64_t max_serialize_size =
         OB_RECORD_HEADER_LENGTH + sizeof(ObTabletMetaHeader);
-      max_serialize_size += 
+      max_serialize_size +=
         ( sizeof(ObTabletRangeInfo) + sizeof(int64_t) * 2
-          + sizeof(ObSSTableId) * ObTablet::MAX_SSTABLE_PER_TABLET ) 
+          + sizeof(ObSSTableId) * ObTablet::MAX_SSTABLE_PER_TABLET )
         * tablet_list_.size();
       return max_serialize_size;
     }
-        
+
     int32_t ObTabletImage::get_tablets_num() const
     {
       return tablet_list_.size();
@@ -1435,7 +1435,7 @@ namespace oceanbase
 
         if (OB_SUCCESS == ret)
         {
-          file_buf = static_cast<char*>(ob_malloc(file_size)); 
+          file_buf = static_cast<char*>(ob_malloc(file_size, ObModIds::OB_CS_TABLET_IMAGE));
           if (NULL == file_buf)
           {
             ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -1479,7 +1479,7 @@ namespace oceanbase
       char path[OB_MAX_FILE_NAME_LENGTH];
       ret = get_meta_path(disk_no, true, path, OB_MAX_FILE_NAME_LENGTH);
       if (OB_SUCCESS == ret)
-      {  
+      {
         ret = write(path, disk_no);
       }
       return ret;
@@ -1495,7 +1495,7 @@ namespace oceanbase
       {
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (OB_SUCCESS != (ret = get_tmp_meta_path(disk_no, 
+      else if (OB_SUCCESS != (ret = get_tmp_meta_path(disk_no,
               tmp_idx_file, OB_MAX_FILE_NAME_LENGTH)))
       {
         // use old backup meta path as tmp idx file;
@@ -1504,16 +1504,16 @@ namespace oceanbase
       }
       else
       {
-        TBSYS_LOG(INFO, "write meta index file path=%s, disk_no=%d, tmp_file=%s", 
+        TBSYS_LOG(INFO, "write meta index file path=%s, disk_no=%d, tmp_file=%s",
             idx_path, disk_no, tmp_idx_file);
       }
 
       if (OB_SUCCESS == ret)
-      {  
+      {
         int64_t max_serialize_size = get_max_serialize(disk_no);
 
         ObString fname(0, static_cast<int32_t>(strlen(tmp_idx_file)), tmp_idx_file);
-        ObThreadMetaWriter* writer = 
+        ObThreadMetaWriter* writer =
           GET_TSI_MULT(ObThreadMetaWriter, TSI_CS_THEEAD_META_WRITER_1);
 
         if (NULL == writer)
@@ -1534,7 +1534,7 @@ namespace oceanbase
 
         if (OB_SUCCESS == ret)
         {
-          if (OB_SUCCESS != (ret = serialize(disk_no, writer->meta_buf_.get_buffer(), 
+          if (OB_SUCCESS != (ret = serialize(disk_no, writer->meta_buf_.get_buffer(),
             max_serialize_size, pos, writer->builder_, writer->extend_)))
           {
             TBSYS_LOG(ERROR, "serialize error, disk_no=%d", disk_no);
@@ -1583,7 +1583,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       int64_t max_serialize_size = get_max_serialize(disk_no);
-      ObThreadMetaWriter* writer = 
+      ObThreadMetaWriter* writer =
         GET_TSI_MULT(ObThreadMetaWriter, TSI_CS_THEEAD_META_WRITER_1);
 
       if (NULL == writer)
@@ -1606,7 +1606,7 @@ namespace oceanbase
       {
         int64_t pos = 0;
 
-        if (OB_SUCCESS != (ret = serialize(disk_no, writer->meta_buf_.get_buffer(), 
+        if (OB_SUCCESS != (ret = serialize(disk_no, writer->meta_buf_.get_buffer(),
           max_serialize_size, pos, writer->builder_, writer->extend_)))
         {
           TBSYS_LOG(ERROR, "serialize error, disk_no=%d", disk_no);
@@ -1629,7 +1629,7 @@ namespace oceanbase
       {
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (OB_SUCCESS != (ret = get_tmp_meta_path(disk_no, 
+      else if (OB_SUCCESS != (ret = get_tmp_meta_path(disk_no,
               tmp_idx_file, OB_MAX_FILE_NAME_LENGTH)))
       {
         // use old backup meta path as tmp idx file;
@@ -1638,14 +1638,14 @@ namespace oceanbase
       }
       else
       {
-        TBSYS_LOG(INFO, "write meta file, index file path=%s, disk_no=%d, tmp_file=%s", 
+        TBSYS_LOG(INFO, "write meta file, index file path=%s, disk_no=%d, tmp_file=%s",
             idx_path, disk_no, tmp_idx_file);
       }
 
       if (OB_SUCCESS == ret)
-      {  
+      {
         ObString fname(0, static_cast<int32_t>(strlen(tmp_idx_file)), tmp_idx_file);
-        ObThreadMetaWriter* writer = 
+        ObThreadMetaWriter* writer =
           GET_TSI_MULT(ObThreadMetaWriter, TSI_CS_THEEAD_META_WRITER_1);
 
         if (NULL == writer)
@@ -1828,7 +1828,7 @@ namespace oceanbase
 
     int ObTabletImage::dump(const bool dump_sstable) const
     {
-      TBSYS_LOG(INFO, "ref_count_=%d, cur_iter_idx_=%d, memory usage=%ld", 
+      TBSYS_LOG(INFO, "ref_count_=%d, cur_iter_idx_=%d, memory usage=%ld",
           ref_count_, cur_iter_idx_, allocator_.total());
 
       TBSYS_LOG(INFO, "----->begin dump tablets in image<--------");
@@ -1847,7 +1847,7 @@ namespace oceanbase
     // class ObMultiVersionTabletImage
     //----------------------------------------
     ObMultiVersionTabletImage::ObMultiVersionTabletImage(IFileInfoMgr& fileinfo_cache)
-      : newest_index_(0), service_index_(-1), iterator_(*this), 
+      : newest_index_(0), service_index_(-1), iterator_(*this),
       fileinfo_cache_(fileinfo_cache), disk_manager_(NULL)
     {
       memset(image_tracker_, 0, sizeof(image_tracker_));
@@ -1905,7 +1905,7 @@ namespace oceanbase
       int64_t index = newest_index_;
       do
       {
-        if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+        if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
         {
           break;
         }
@@ -1940,9 +1940,9 @@ namespace oceanbase
     }
 
     int ObMultiVersionTabletImage::acquire_tablet(
-        const common::ObNewRange &range, 
-        const ScanDirection scan_direction, 
-        const int64_t version, 
+        const common::ObNewRange &range,
+        const ScanDirection scan_direction,
+        const int64_t version,
         ObTablet* &tablet) const
     {
       return acquire_tablet_all_version(
@@ -1950,33 +1950,33 @@ namespace oceanbase
     }
 
     int ObMultiVersionTabletImage::acquire_tablet_all_version(
-        const common::ObNewRange &range, 
-        const ScanDirection scan_direction, 
-        const ScanPosition from_index, 
-        const int64_t version, 
+        const common::ObNewRange &range,
+        const ScanDirection scan_direction,
+        const ScanPosition from_index,
+        const int64_t version,
         ObTablet* &tablet) const
     {
       int ret = OB_SUCCESS;
-      if (range.empty() || 0 > version 
+      if (range.empty() || 0 > version
           || (from_index != FROM_SERVICE_INDEX && from_index != FROM_NEWEST_INDEX))
       {
         TBSYS_LOG(WARN, "acquire_tablet invalid argument, "
-            "range(%s) is emtpy(%d) or version=%ld < 0, or from_index =%d illegal", 
+            "range(%s) is emtpy(%d) or version=%ld < 0, or from_index =%d illegal",
             to_cstring(range), range.empty(), version, from_index);
         ret = OB_INVALID_ARGUMENT;
       }
-      else 
+      else
       {
         ret = OB_CS_TABLET_NOT_EXIST;
 
         tbsys::CRLockGuard guard(lock_);
 
-        int64_t start_index = 
+        int64_t start_index =
           (from_index == FROM_SERVICE_INDEX) ? service_index_ : newest_index_;
         int64_t index = start_index;
         int64_t serving_version = 0;
 
-        if (service_index_ >= 0 && service_index_ < MAX_RESERVE_VERSION_COUNT 
+        if (service_index_ >= 0 && service_index_ < MAX_RESERVE_VERSION_COUNT
             && has_tablet(service_index_))
         {
           serving_version = image_tracker_[service_index_]->data_version_;
@@ -1984,7 +1984,7 @@ namespace oceanbase
 
         do
         {
-          if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+          if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
           {
             TBSYS_LOG(WARN, "image (index=%ld) not initialized, has no tablets", index);
             break;
@@ -2007,7 +2007,7 @@ namespace oceanbase
               // search from oldest tablet
               ret = image_tracker_[index]->acquire_tablet(range, scan_direction, tablet);
             }
-            else 
+            else
             {
               // query tablet version not exist
             }
@@ -2037,7 +2037,7 @@ namespace oceanbase
         }
         else if (!has_match_version(tablet->get_data_version()))
         {
-          TBSYS_LOG(WARN, "release_tablet version=%ld dont match", 
+          TBSYS_LOG(WARN, "release_tablet version=%ld dont match",
               tablet->get_data_version());
           ret = OB_INVALID_ARGUMENT;
         }
@@ -2056,18 +2056,18 @@ namespace oceanbase
     }
 
     int ObMultiVersionTabletImage::acquire_tablet(
-        const sstable::ObSSTableId& sstable_id, 
-        const int64_t version, 
+        const sstable::ObSSTableId& sstable_id,
+        const int64_t version,
         ObTablet* &tablet) const
     {
-      return acquire_tablet_all_version(sstable_id, 
+      return acquire_tablet_all_version(sstable_id,
           FROM_SERVICE_INDEX, version, tablet);
     }
 
     int ObMultiVersionTabletImage::acquire_tablet_all_version(
-        const sstable::ObSSTableId& sstable_id, 
+        const sstable::ObSSTableId& sstable_id,
         const ScanPosition from_index,
-        const int64_t version, 
+        const int64_t version,
         ObTablet* &tablet) const
     {
       int ret = OB_SUCCESS;
@@ -2079,19 +2079,19 @@ namespace oceanbase
             "version=%ld < 0", version);
         ret = OB_INVALID_ARGUMENT;
       }
-      else 
+      else
       {
         ret = OB_ENTRY_NOT_EXIST;
         tablet = NULL;
 
         tbsys::CRLockGuard guard(lock_);
-        int64_t start_index = 
+        int64_t start_index =
           (from_index == FROM_SERVICE_INDEX) ? service_index_ : newest_index_;
         int64_t index = start_index;
 
         do
         {
-          if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+          if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
           {
             TBSYS_LOG(WARN, "image (index=%ld) not initialized, has no tablets", index);
             break;
@@ -2128,7 +2128,7 @@ namespace oceanbase
             "sstable file id = %ld ", sstable_id.sstable_file_id_);
         ret = OB_INVALID_ARGUMENT;
       }
-      else 
+      else
       {
         ret = OB_ENTRY_NOT_EXIST;
 
@@ -2138,7 +2138,7 @@ namespace oceanbase
 
         do
         {
-          if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+          if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
           {
             TBSYS_LOG(WARN, "image (index=%ld) not initialized, has no tablets", index);
             break;
@@ -2159,7 +2159,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiVersionTabletImage::remove_tablet(const common::ObNewRange& range, 
+    int ObMultiVersionTabletImage::remove_tablet(const common::ObNewRange& range,
         const int64_t version, int32_t &disk_no, bool sync)
     {
       int ret = OB_SUCCESS;
@@ -2192,9 +2192,9 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiVersionTabletImage::add_tablet(ObTablet *tablet, 
+    int ObMultiVersionTabletImage::add_tablet(ObTablet *tablet,
         const bool load_sstable /* = false */,
-        const bool for_create /* = false */) 
+        const bool for_create /* = false */)
     {
       int ret = OB_SUCCESS;
 
@@ -2204,7 +2204,7 @@ namespace oceanbase
             "tablet=%p or version<0", tablet);
         ret = OB_INVALID_ARGUMENT;
       }
-      else 
+      else
       {
         // load_sstable first
         if (load_sstable)
@@ -2220,7 +2220,7 @@ namespace oceanbase
         {
           TBSYS_LOG(ERROR, "prepare new version = %ld image error.", new_version);
         }
-        else if ( OB_SUCCESS != (ret = 
+        else if ( OB_SUCCESS != (ret =
               get_image(new_version).add_tablet(tablet)) )
         {
           TBSYS_LOG(ERROR, "add tablet error with new version = %ld.", new_version);
@@ -2246,11 +2246,11 @@ namespace oceanbase
           || old_tablet->is_merged())
       {
         TBSYS_LOG(WARN, "upgrade_tablet invalid argument, "
-            "old_tablet=%p or new_tablet=%p, old merged=%d", 
+            "old_tablet=%p or new_tablet=%p, old merged=%d",
             old_tablet, new_tablet, old_tablet->is_merged());
         ret = OB_INVALID_ARGUMENT;
       }
-      else 
+      else
       {
         int64_t new_version = new_tablet->get_data_version();
         char range_buf[OB_RANGE_STR_BUFSIZ];
@@ -2265,7 +2265,7 @@ namespace oceanbase
         {
           TBSYS_LOG(ERROR, "prepare new version = %ld image error.", new_version);
         }
-        else if ( OB_SUCCESS != (ret = 
+        else if ( OB_SUCCESS != (ret =
               get_image(new_version).add_tablet(new_tablet)) )
         {
           TBSYS_LOG(ERROR, "add tablet error with new version = %ld.", new_version);
@@ -2284,20 +2284,20 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiVersionTabletImage::upgrade_tablet(ObTablet *old_tablet, 
-        ObTablet *new_tablets[], const int32_t split_size, 
+    int ObMultiVersionTabletImage::upgrade_tablet(ObTablet *old_tablet,
+        ObTablet *new_tablets[], const int32_t split_size,
         const bool load_sstable)
     {
       int ret = OB_SUCCESS;
-      if (NULL == old_tablet || old_tablet->is_merged() 
+      if (NULL == old_tablet || old_tablet->is_merged()
           || NULL == new_tablets || 0 >= split_size)
       {
         TBSYS_LOG(WARN, "upgrade_tablet invalid argument, "
-            "old_tablet=%p or old merged=%d new_tablet=%p, split_size=%d", 
+            "old_tablet=%p or old merged=%d new_tablet=%p, split_size=%d",
             old_tablet, old_tablet->is_merged(), new_tablets, split_size);
         ret = OB_INVALID_ARGUMENT;
       }
-      else 
+      else
       {
         int64_t new_version = new_tablets[0]->get_data_version();
 
@@ -2314,7 +2314,7 @@ namespace oceanbase
               new_version, old_tablet->get_data_version());
           ret = OB_INVALID_ARGUMENT;
         }
-        else if ( OB_SUCCESS != (ret = prepare_tablet_image(new_version, true)) ) 
+        else if ( OB_SUCCESS != (ret = prepare_tablet_image(new_version, true)) )
         {
           TBSYS_LOG(ERROR, "prepare new version = %ld image error.", new_version);
         }
@@ -2322,9 +2322,9 @@ namespace oceanbase
         for (int32_t i = 0; i < split_size && OB_SUCCESS == ret; ++i)
         {
           // each tablet will store the info that whether the next tablet is its brother,
-          // last tablet splited from the same parents tablet will set the falg of 
-          // with_next_brother to 0, the other tablet will set the falg to 1, so when 
-          // doing report tablets to rootserver, we can know which tablets are with 
+          // last tablet splited from the same parents tablet will set the falg of
+          // with_next_brother to 0, the other tablet will set the falg to 1, so when
+          // doing report tablets to rootserver, we can know which tablets are with
           // same parents tablet, and we can report the tablets in one packet
           if (i == split_size - 1)
           {
@@ -2337,12 +2337,12 @@ namespace oceanbase
 
           if (new_tablets[i]->get_data_version() != new_version)
           {
-            TBSYS_LOG(ERROR, "split tablet i=%d, version =%ld <> fisrt tablet version =%ld", 
+            TBSYS_LOG(ERROR, "split tablet i=%d, version =%ld <> fisrt tablet version =%ld",
                 i, new_tablets[i]->get_data_version(), new_version);
             ret = OB_INVALID_ARGUMENT;
             break;
           }
-          else if ( OB_SUCCESS != (ret = 
+          else if ( OB_SUCCESS != (ret =
                 get_image(new_version).add_tablet(new_tablets[i])) )
           {
             TBSYS_LOG(ERROR, "add tablet error with new version = %ld.", new_version);
@@ -2382,8 +2382,8 @@ namespace oceanbase
       tbsys::CWLockGuard guard(lock_);
       int64_t new_version = image_tracker_[newest_index_]->data_version_;
       int64_t service_version = 0;
-      if (service_index_ >= 0 
-          && service_index_ < MAX_RESERVE_VERSION_COUNT 
+      if (service_index_ >= 0
+          && service_index_ < MAX_RESERVE_VERSION_COUNT
           && has_tablet(service_index_))
       {
         service_version = image_tracker_[service_index_]->data_version_;
@@ -2396,14 +2396,14 @@ namespace oceanbase
       }
       else if (new_version <= service_version)
       {
-        TBSYS_LOG(WARN, "service version =%ld >= newest version =%ld, cannot upgrade.", 
+        TBSYS_LOG(WARN, "service version =%ld >= newest version =%ld, cannot upgrade.",
             service_version, new_version);
         ret = OB_ERROR;
       }
-      else 
+      else
       {
         // TODO check service_version merged complete?
-        TBSYS_LOG(INFO, "upgrade service version =%ld to new version =%ld", 
+        TBSYS_LOG(INFO, "upgrade service version =%ld to new version =%ld",
             service_version, new_version);
         service_index_ = newest_index_;
       }
@@ -2431,7 +2431,7 @@ namespace oceanbase
         {
           TBSYS_LOG(ERROR, "prepare new version = %ld image error.", version);
         }
-        else if ( OB_SUCCESS != (ret = 
+        else if ( OB_SUCCESS != (ret =
               get_image(version).alloc_tablet_object(range, tablet)) )
         {
           TBSYS_LOG(ERROR, "cannot alloc tablet object new version = %ld", version);
@@ -2451,7 +2451,7 @@ namespace oceanbase
 
       if (0 >= version)
       {
-        TBSYS_LOG(WARN, "alloc_tablet_object invalid argument, version=%ld < 0", 
+        TBSYS_LOG(WARN, "alloc_tablet_object invalid argument, version=%ld < 0",
           version);
         ret = OB_INVALID_ARGUMENT;
       }
@@ -2482,7 +2482,7 @@ namespace oceanbase
       tbsys::CWLockGuard guard(lock_);
       return prepare_tablet_image(version, true);
     }
-    
+
     bool ObMultiVersionTabletImage::has_tablets_for_merge(const int64_t version) const
     {
       bool ret = false;
@@ -2515,7 +2515,7 @@ namespace oceanbase
       int64_t merge_count = 0;
       do
       {
-        if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+        if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
         {
           ret = OB_ERROR;
           break;
@@ -2554,7 +2554,7 @@ namespace oceanbase
         ret = OB_INVALID_ARGUMENT;
         TBSYS_LOG(ERROR, "invalid version = %ld", version);
       }
-      else 
+      else
       {
         tbsys::CWLockGuard guard(lock_);
 
@@ -2578,7 +2578,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       int64_t index = get_index(version);
-      if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+      if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
       {
         TBSYS_LOG(ERROR, "index=%ld out of range.", index);
         ret = OB_ERROR;
@@ -2613,7 +2613,7 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         image_tracker_[index]->data_version_ = version;
-        if (!has_tablet(newest_index_) 
+        if (!has_tablet(newest_index_)
             || version > image_tracker_[newest_index_]->data_version_)
         {
           newest_index_ = index;
@@ -2627,7 +2627,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       char range_buf[OB_RANGE_STR_BUFSIZ];
-      if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+      if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
       {
         ret = OB_ERROR;
       }
@@ -2653,7 +2653,7 @@ namespace oceanbase
     int ObMultiVersionTabletImage::destroy(const int64_t index)
     {
       int ret = OB_SUCCESS;
-      if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+      if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
       {
         ret = OB_ERROR;
       }
@@ -2672,7 +2672,7 @@ namespace oceanbase
         if (NULL != image_tracker_[i])
         {
           ret = image_tracker_[i]->destroy();
-          if (OB_SUCCESS == ret) 
+          if (OB_SUCCESS == ret)
           {
             delete image_tracker_[i];
             image_tracker_[i] = NULL;
@@ -2682,7 +2682,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiVersionTabletImage::write(const int64_t version, 
+    int ObMultiVersionTabletImage::write(const int64_t version,
         const int32_t disk_no)
     {
       int ret = OB_SUCCESS;
@@ -2716,7 +2716,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiVersionTabletImage::write(const char* idx_path, 
+    int ObMultiVersionTabletImage::write(const char* idx_path,
         const int64_t version, const int32_t disk_no)
     {
       int ret = OB_SUCCESS;
@@ -2745,7 +2745,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiVersionTabletImage::sync_all_images(const int32_t* disk_no_array, 
+    int ObMultiVersionTabletImage::sync_all_images(const int32_t* disk_no_array,
       const int32_t size)
     {
       int ret = OB_SUCCESS;
@@ -2768,7 +2768,7 @@ namespace oceanbase
           // TODO write failed on one disk.
           if (OB_SUCCESS != ret)
           {
-            TBSYS_LOG(WARN, "write eldest meta info to disk=%d failed, version=%ld", 
+            TBSYS_LOG(WARN, "write eldest meta info to disk=%d failed, version=%ld",
               disk_no_array[i], eldest_version);
             continue;
           }
@@ -2783,7 +2783,7 @@ namespace oceanbase
             // TODO write failed on one disk.
             if (OB_SUCCESS != ret)
             {
-              TBSYS_LOG(WARN, "write newest meta info to disk=%d failed, version=%ld", 
+              TBSYS_LOG(WARN, "write newest meta info to disk=%d failed, version=%ld",
                 disk_no_array[i], newest_version);
               continue;
             }
@@ -2794,7 +2794,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMultiVersionTabletImage::read(const char* idx_path, 
+    int ObMultiVersionTabletImage::read(const char* idx_path,
         const int64_t version, const int32_t disk_no, const bool load_sstable)
     {
       int ret = OB_SUCCESS;
@@ -2811,34 +2811,34 @@ namespace oceanbase
       else if (OB_SUCCESS != (ret = get_image(version).read(
               idx_path, disk_no, load_sstable)) )
       {
-        TBSYS_LOG(ERROR, "read idx file = %s , disk_no = %d, version = %ld error", 
+        TBSYS_LOG(ERROR, "read idx file = %s , disk_no = %d, version = %ld error",
             idx_path, disk_no, version);
       }
       return ret;
     }
 
-    int ObMultiVersionTabletImage::read(const int64_t version, 
+    int ObMultiVersionTabletImage::read(const int64_t version,
         const int32_t disk_no, const bool load_sstable)
     {
       int ret = OB_SUCCESS;
       char idx_path[OB_MAX_FILE_NAME_LENGTH];
 
-      if ( OB_SUCCESS != (ret = get_meta_path(version, 
-              disk_no, true, idx_path, OB_MAX_FILE_NAME_LENGTH)) ) 
+      if ( OB_SUCCESS != (ret = get_meta_path(version,
+              disk_no, true, idx_path, OB_MAX_FILE_NAME_LENGTH)) )
       {
-        TBSYS_LOG(ERROR, "get meta file path version = %ld, disk_no = %d error", 
+        TBSYS_LOG(ERROR, "get meta file path version = %ld, disk_no = %d error",
             version, disk_no);
       }
-      else if ( OB_SUCCESS != (ret = read(idx_path, 
+      else if ( OB_SUCCESS != (ret = read(idx_path,
               version, disk_no, load_sstable)) )
       {
-        TBSYS_LOG(ERROR, "read idx file =%s version = %ld, disk_no = %d error", 
+        TBSYS_LOG(ERROR, "read idx file =%s version = %ld, disk_no = %d error",
             idx_path, version, disk_no);
       }
       return ret;
     }
 
-    int ObMultiVersionTabletImage::load_tablets(const int32_t* disk_no_array, 
+    int ObMultiVersionTabletImage::load_tablets(const int32_t* disk_no_array,
         const int32_t size, const bool load_sstable)
     {
       int ret = OB_SUCCESS;
@@ -2903,7 +2903,7 @@ namespace oceanbase
 
       } // end else
 
-      if (OB_CS_EAGAIN == ret) 
+      if (OB_CS_EAGAIN == ret)
       {
         // ignore OB_CS_EAGAIN error.
         // there's old meta index file remains sstable dir
@@ -2925,7 +2925,7 @@ namespace oceanbase
         }
         else if (has_tablet(service_index_))
         {
-          TBSYS_LOG(INFO, "current service tablet version=%ld", 
+          TBSYS_LOG(INFO, "current service tablet version=%ld",
               image_tracker_[service_index_]->data_version_);
         }
       }
@@ -2944,7 +2944,7 @@ namespace oceanbase
 
       do
       {
-        if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+        if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
         {
           service_index_ = -1;
           break;
@@ -2968,11 +2968,11 @@ namespace oceanbase
       ObTablet* tablet = NULL;
 
       /**
-       * if chunkserver is killed in daily merge stage, maybe the two 
-       * version index file isn't consistent. for example, the 
-       * is_merged flag is true in eldest version index file, but 
-       * there is no new corresponding tablet in newest version index 
-       * file, this function will handle this case. 
+       * if chunkserver is killed in daily merge stage, maybe the two
+       * version index file isn't consistent. for example, the
+       * is_merged flag is true in eldest version index file, but
+       * there is no new corresponding tablet in newest version index
+       * file, this function will handle this case.
        */
       if (service_index_ >= 0 && service_index_ < MAX_RESERVE_VERSION_COUNT
           && service_index_ != newest_index_
@@ -2990,7 +2990,7 @@ namespace oceanbase
             {
               image_tracker_[newest_index_]->release_tablet(tablet);
             }
-            else 
+            else
             {
               (*it)->set_merged(0);
               TBSYS_LOG(WARN, "maybe chunkserver is killed in daily merge stage, "
@@ -3045,7 +3045,7 @@ namespace oceanbase
         if (OB_SUCCESS == ret)
         {
           tablet = iterator_.get_tablet();
-          if (NULL == tablet) 
+          if (NULL == tablet)
           {
             ret = OB_ERROR;
           }
@@ -3093,7 +3093,7 @@ namespace oceanbase
       int64_t index = eldest_index;
       do
       {
-        if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT) 
+        if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT)
         {
           break;
         }
@@ -3151,7 +3151,7 @@ namespace oceanbase
         }
         else if (OB_SUCCESS != (ret = prepare_tablet_image(meta_header.data_version_, false)))
         {
-          TBSYS_LOG(ERROR, "prepare_tablet_image header.version=%ld error", 
+          TBSYS_LOG(ERROR, "prepare_tablet_image header.version=%ld error",
               meta_header.data_version_);
           ret = OB_ERROR;
         }
@@ -3186,7 +3186,7 @@ namespace oceanbase
           ret = OB_ITER_END;
         }
       }
-      else 
+      else
       {
         ret = OB_ITER_END;
       }
@@ -3227,16 +3227,16 @@ namespace oceanbase
       int64_t tablet_num = 0;
       int64_t merged_num = 0;
 
-      pos += snprintf(buf + pos, STAT_BUF_SIZE - pos, 
+      pos += snprintf(buf + pos, STAT_BUF_SIZE - pos,
                       "\n\t==========> print tablet image status, merge process start <==========\n"
-                      "\t%10s %20s %20s %15s\n", 
+                      "\t%10s %20s %20s %15s\n",
                       "version", "total_tablet_count", "merged_tablet_count", "merge_process");
       if (has_tablet(eldest_index))
       {
         tablet_num = image_tracker_[eldest_index]->get_tablets_num();
         merged_num = image_tracker_[eldest_index]->get_merged_tablet_count();
         pos += snprintf(buf + pos, STAT_BUF_SIZE - pos,
-                        "\t%10ld %20ld %20ld %15.2f%%\n", 
+                        "\t%10ld %20ld %20ld %15.2f%%\n",
                         image_tracker_[eldest_index]->get_data_version(),
                         tablet_num, merged_num,
                         (double)merged_num / (double)tablet_num * 100);
@@ -3244,7 +3244,7 @@ namespace oceanbase
       if (eldest_index != newest_index_ && has_tablet(newest_index_))
       {
         pos += snprintf(buf + pos, STAT_BUF_SIZE - pos,
-                        "\t%10ld %20d %20ld\n", 
+                        "\t%10ld %20d %20ld\n",
                         image_tracker_[newest_index_]->get_data_version(),
                         image_tracker_[newest_index_]->get_tablets_num(),
                         image_tracker_[newest_index_]->get_merged_tablet_count());
@@ -3279,16 +3279,16 @@ namespace oceanbase
 
       if (OB_INVALID_ID == table_id)
       {
-        TBSYS_LOG(WARN, "delete_table invalid argument, table_id = %lu", 
+        TBSYS_LOG(WARN, "delete_table invalid argument, table_id = %lu",
           table_id);
         ret = OB_INVALID_ARGUMENT;
       }
-      else 
+      else
       {
         {
           tbsys::CRLockGuard guard(lock_);
           index = service_index_;
-          if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT || !has_tablet(index)) 
+          if (index < 0 || index >= MAX_RESERVE_VERSION_COUNT || !has_tablet(index))
           {
             TBSYS_LOG(WARN, "image (index=%ld) not initialized, has no tablets", index);
             index = -1;
@@ -3306,4 +3306,3 @@ namespace oceanbase
 
   } // end namespace chunkserver
 } // end namespace oceanbase
-

@@ -37,6 +37,7 @@ namespace oceanbase
   {
     class ObUpsManager;
     class ObChunkServerManager;
+    // not thread safe virtual memory table
     class ObRootMonitorTable
     {
     public:

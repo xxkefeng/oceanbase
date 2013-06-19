@@ -177,7 +177,7 @@ namespace oceanbase
         bool wait_for_commit_(const int pcode);
 
         int get_session_type(const ObTransID& sid, SessionType& type);
-        void handle_start_session_(Task &task, common::ObDataBuffer &buffer);
+        bool handle_start_session_(Task &task, common::ObDataBuffer &buffer);
         bool handle_end_session_(Task &task, common::ObDataBuffer &buffer);
         bool handle_write_trans_(Task &task, common::ObMutator &mutator, common::ObNewScanner &scanner);
         bool handle_phyplan_trans_(Task &task,

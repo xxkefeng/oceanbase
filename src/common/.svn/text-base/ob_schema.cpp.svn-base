@@ -2684,7 +2684,6 @@ namespace oceanbase
         err = id_hash_map_.get(k,v);
         if ( -1 == err || hash::HASH_NOT_EXIST == err)
         {
-          TBSYS_LOG(WARN,"get (%lu,%lu) failed",table_id,column_id);
         }
         else
         {
@@ -2720,7 +2719,6 @@ namespace oceanbase
         err = id_hash_map_.get(k,v);
         if ( -1 == err || hash::HASH_NOT_EXIST == err)
         {
-          TBSYS_LOG(WARN,"get (%lu,%lu) failed",table_id,column_id);
         }
         else if (v.head_ != NULL)
         {
@@ -2769,8 +2767,6 @@ namespace oceanbase
       err = column_hash_map_.get(k,v);
       if (-1 == err|| hash::HASH_NOT_EXIST  == err)
       {
-        TBSYS_LOG(WARN,"%.*s.%.*s not found. schema_ver[%ld], ret[%d]", table_name.length(), table_name.ptr(),
-            column_name.length(), column_name.ptr(), get_version(), err);
       }
       else if (v.head_  != NULL)
       {
@@ -3138,7 +3134,6 @@ namespace oceanbase
         ret = id_hash_map_.get(key,info);
         if (-1 == ret || hash::HASH_NOT_EXIST  == ret)
         {
-          TBSYS_LOG(WARN,"%lu:%lu not found [%d]",table_id,column_id,ret);
         }
         else
         {
@@ -3198,7 +3193,6 @@ namespace oceanbase
         ret = column_hash_map_.get(key,info);
         if (-1 == ret || hash::HASH_NOT_EXIST  == ret)
         {
-          TBSYS_LOG(WARN,"%s:%s not found [%d]",table_name.ptr(),column_name.ptr(),ret);
         }
         else
         {
@@ -3221,9 +3215,9 @@ namespace oceanbase
       bool compatible = true;
 
       /**
-       * schema compatible check based on table id, column id, column 
-       * type and max column id, doesn't care the table name and 
-       * column name. 
+       * schema compatible check based on table id, column id, column
+       * type and max column id, doesn't care the table name and
+       * column name.
        */
       if (strncmp(app_name_, schema_manager.get_app_name(), OB_MAX_APP_NAME_LENGTH) != 0)
       {
@@ -3252,7 +3246,7 @@ namespace oceanbase
         {
           TBSYS_LOG(INFO, "column is delete. table_name=%s, table_id=%lu, "
                           "column_name=%s, column_id=%lu",
-              left_table_schema->get_table_name(), left_table_id, 
+              left_table_schema->get_table_name(), left_table_id,
               column_left->get_name(), column_left->get_id());
           continue;
         }
@@ -3304,14 +3298,14 @@ namespace oceanbase
         const ObColumnSchemaV2 *left_column = get_column_schema(right_column->get_table_id(), right_column->get_id());
         if (NULL == left_table_schema)
         {
-          TBSYS_LOG(INFO, "new table add. table_name=%s, table_id=%lu", 
+          TBSYS_LOG(INFO, "new table add. table_name=%s, table_id=%lu",
                     right_table_schema->get_table_name(), right_column->get_table_id());
           continue;
         }
         if (NULL == left_column)
         {
           TBSYS_LOG(INFO, "table add new column. table_name=%s, table_id=%lu, "
-                          "column_name=%s, column_id=%lu", 
+                          "column_name=%s, column_id=%lu",
                     right_table_schema->get_table_name(), right_column->get_table_id(),
                     right_column->get_name(), right_column->get_id());
           if (right_column->get_id() <= left_table_schema->get_max_column_id())

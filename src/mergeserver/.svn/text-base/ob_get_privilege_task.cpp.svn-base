@@ -40,7 +40,7 @@ void ObGetPrivilegeTask::runTimerTask()
   //ObString get_privilege_version = ObString::make_string("SELECT value1 FROM __all_sys_stat where name='ob_current_privilege_version'");
 
   TBSYS_LOG(INFO, "GET PRIVILEGE NOW");
-  ObPrivilege *p_privilege = (reinterpret_cast<ObPrivilege*>(ob_malloc(sizeof(ObPrivilege))));
+  ObPrivilege *p_privilege = (reinterpret_cast<ObPrivilege*>(ob_malloc(sizeof(ObPrivilege), ObModIds::OB_SQL_PRIVILEGE)));
   if (NULL == p_privilege)
   {
     ret = OB_ALLOCATE_MEMORY_FAILED;

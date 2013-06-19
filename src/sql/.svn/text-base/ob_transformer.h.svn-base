@@ -64,7 +64,7 @@ namespace oceanbase
             ErrStat& err_stat,
             const uint64_t& query_id = common::OB_INVALID_ID,
             int32_t* index = NULL);
-        int gen_physical_insert(
+        int gen_physical_replace(
             ObLogicalPlan *logical_plan,
             ObPhysicalPlan *physical_plan,
             ErrStat& err_stat,

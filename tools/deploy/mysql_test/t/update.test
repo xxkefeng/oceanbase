@@ -12,7 +12,7 @@ insert into t1 values(NULL),(NULL);
 --error 5024
 insert into t1 values(NULL,1),(NULL,2);
 update t1 set b=3 where a = NULL;
---error 5003
+--error 5047
 update t1 set b=2 where b =1;
 select * from t1;
 drop table t1;
@@ -48,7 +48,7 @@ update t1 set a=0 where pk=1;
 update t1 set a=2 where pk=1 and a=0;
 update t1 set a=3 where pk=1 and a=0;
 
---error 5003
+--error 5047
 update t1 set a=0 where pk=2 or a=1;
 update t1 set a=0 where pk=2 and a=1;
 
@@ -64,5 +64,3 @@ update t1 set a=10 where pk=4 and (a=2 or a=0);
 select * from t1;
 
 drop table t1;
-
-

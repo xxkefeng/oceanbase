@@ -237,9 +237,10 @@ namespace oceanbase
     };
 
     ObPostfixExpression::ObPostfixExpression()
-      :stack_(NULL),
+      :expr_(64*1024, ModulePageAllocator(ObModIds::OB_SQL_EXPR)),
+       stack_(NULL),
        did_int_div_as_double_(false),
-       str_buf_(0, DEF_STRING_BUF_SIZE)
+       str_buf_(ObModIds::OB_SQL_EXPR, DEF_STRING_BUF_SIZE)
     {
     }
 

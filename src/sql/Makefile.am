@@ -139,7 +139,7 @@ operators_sources=                                                       \
   ob_ups_modify.h                                                        \
   ob_inc_scan.h                      ob_inc_scan.cpp                     \
   ob_update.h                        ob_update.cpp                       \
-  ob_phy_operator_type.h                                                 \
+  ob_phy_operator_type.h             ob_phy_operator_type.cpp            \
   ob_mem_sstable_scan.h              ob_mem_sstable_scan.cpp             \
   ob_multiple_merge.h                ob_multiple_merge.cpp               \
   ob_inc_scan.h ob_inc_scan.cpp                                          \

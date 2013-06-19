@@ -33,7 +33,7 @@
 #include "common/roottable/ob_root_table_service.h"
 #include "common/roottable/ob_first_tablet_entry_meta.h"
 #include "common/roottable/ob_scan_helper_impl.h"
-#include "common/ob_schema_service_impl.h"
+#include "common/ob_schema_service.h"
 #include "common/ob_spin_lock.h"
 #include "common/ob_strings.h"
 #include "ob_chunk_server_manager.h"
@@ -49,7 +49,6 @@
 #include "ob_daily_merge_checker.h"
 #include "ob_heartbeat_checker.h"
 #include "ob_root_server_config.h"
-#include "ob_root_monitor_table.h"
 #include "ob_root_ms_provider.h"
 #include "ob_rs_after_restart_task.h"
 #include "ob_schema_service_ms_provider.h"
@@ -197,7 +196,6 @@ namespace oceanbase
         int find_root_table_range(const common::ObScanParam& scan_param, common::ObScanner& scanner);
         virtual int report_tablets(const common::ObServer& server, const common::ObTabletReportInfoList& tablets,
             const int64_t time_stamp);
-        int replay_remove_replica(const common::ObTabletReportInfo &replica);
         int receive_hb(const common::ObServer& server,common::ObRole role);
         common::ObServer get_update_server_info(bool use_inner_port) const;
         int get_master_ups(common::ObServer &ups_addr, bool use_inner_port);
@@ -279,7 +277,9 @@ namespace oceanbase
         void cancel_restart_all_cs();
         int cancel_shutdown_cs(const common::ObArray<common::ObServer> &servers, enum ShutdownOperation op);
         void reset_hb_time();
+        int remove_replica(const bool did_replay, const common::ObTabletReportInfo &replica);
         int delete_tables(const bool did_replay, const common::ObArray<uint64_t> &deleted_tables);
+        int delete_replicas(const bool did_replay, const common::ObServer & cs, const common::ObTabletReportInfoList & replicas);
         int create_table(const bool if_not_exists, const common::TableSchema &tschema);
         int alter_table(common::AlterTableSchema &tschema);
         int drop_tables(const bool if_exists, const common::ObStrings &tables);
@@ -344,16 +344,6 @@ namespace oceanbase
             ObRootTable2::const_iterator end, common::ObScanner& scanner, const int32_t max_row_count,
             const int32_t max_key_len) const;
 
-        // new root table service
-        int nr_report_tablets(const common::ObServer& cs, const common::ObTabletReportInfoList& tablets);
-        int nr_remove_replicas(const common::ObServer &cs);
-        int nr_migrate_replica(const common::ObNewRange &tab, const int64_t version,
-            const common::ObServer &from, const common::ObServer &to, bool keep_src);
-        int nr_remove_tables(const common::ObArray<uint64_t> &tables);
-        int nr_search_range(const common::ObNewRange& range, common::ObScanner& scanner) const;
-        int nr_new_table(const uint64_t tid, const int64_t tablet_version,
-            const common::ObArray<common::ObServer> &chunkservers);
-
         // stat related functions
         void do_stat_start_time(char *buf, const int64_t buf_len, int64_t& pos);
         void do_stat_local_time(char *buf, const int64_t buf_len, int64_t& pos);
@@ -375,7 +365,7 @@ namespace oceanbase
 
         int make_checkpointing();
         void switch_root_table(ObRootTable2 *rt, ObTabletInfoManager *ti);
-        int switch_schema_manager(common::ObSchemaManagerV2 *schema_manager);
+        int switch_schema_manager(const common::ObSchemaManagerV2 & schema_manager);
         /*
          * 在一个tabelt的各份拷贝中, 寻找合适的备份替换掉
          */
@@ -410,7 +400,6 @@ namespace oceanbase
         ObTabletInfoManager* tablet_manager_;
         mutable tbsys::CRWLock root_table_rwlock_; //every query root table should rlock this
         common::ObTabletReportInfoList delete_list_;
-        ObRootMonitorTable monitor_table_;
         bool have_inited_;
         bool first_cs_had_registed_;
         volatile bool receive_stop_;
@@ -439,7 +428,7 @@ namespace oceanbase
         static const int64_t CORE_SCHEMA_VERSION = 1984;
         int64_t schema_timestamp_;
         int64_t privilege_timestamp_;
-        common::ObSchemaServiceImpl *schema_service_;
+        common::ObSchemaService *schema_service_;
         common::ObScanHelperImpl *schema_service_scan_helper_;
         ObSchemaServiceMsProvider *schema_service_ms_provider_;
         ObSchemaServiceUpsProvider *schema_service_ups_provider_;
@@ -461,7 +450,7 @@ namespace oceanbase
         //to load local schema.ini file, only use the first_time
         common::ObSchemaManagerV2* local_schema_manager_;
         //used for cache
-        common::ObSchemaManagerV2* schema_manager_for_cache_;
+        common::ObSchemaManagerV2 * schema_manager_for_cache_;
         mutable tbsys::CRWLock schema_manager_rwlock_;
     };
   }

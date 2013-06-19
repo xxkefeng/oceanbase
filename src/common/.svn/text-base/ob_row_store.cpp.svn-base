@@ -93,20 +93,19 @@ int ObRowStore::add_reserved_column(uint64_t tid, uint64_t cid)
 
 void ObRowStore::reuse()
 {
-  block_list_head_ = block_list_tail_;
-  if(NULL != block_list_head_)
-  {
-    block_list_head_->curr_data_pos_ = 0;
-  }
-  cur_size_counter_ = 0;
-  got_first_next_ = false;
-  cur_iter_pos_ = 0;
-  cur_iter_block_ = NULL;
-  rollback_iter_pos_ = -1;
-  rollback_block_list_ = NULL;
+  clear();
 }
 
 void ObRowStore::clear()
+{
+  clear_rows();
+  reserved_columns_.clear();
+}
+
+// method for ObAggregateFunction::prepare()
+// prepare need to reuse ObRowStore for WRITE,
+// it needs to reuse reserved_columns_ which should not be cleared
+void ObRowStore::clear_rows()
 {
   while(NULL != block_list_tail_)
   {
@@ -125,7 +124,6 @@ void ObRowStore::clear()
   rollback_iter_pos_ = -1;
   rollback_block_list_ = NULL;
 }
-
 
 int ObRowStore::rollback_last_row()
 {
@@ -584,7 +582,14 @@ DEFINE_SERIALIZE(ObRowStore)
       }
     }
     // serialize next block
-    block = block->next_block_;
+    if (block == block_list_head_)
+    {
+      block = NULL; // do not serialize non-used empty block(s)
+    }
+    else
+    {
+      block = block->next_block_;
+    }
     TBSYS_LOG(DEBUG, "serialize next block");
   }
   if (OB_SUCCESS == ret)

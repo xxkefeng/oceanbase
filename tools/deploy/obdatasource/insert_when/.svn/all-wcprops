@@ -1,0 +1,11 @@
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/insert_when
+END
+transaction.xml.template
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/insert_when/transaction.xml.template
+END

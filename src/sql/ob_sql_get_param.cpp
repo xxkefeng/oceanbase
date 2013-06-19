@@ -23,11 +23,11 @@ using namespace oceanbase::common;
 
 namespace oceanbase
 {
-  namespace sql 
+  namespace sql
   {
     ObSqlGetParam::ObSqlGetParam() :
       max_row_capacity_(MAX_ROW_CAPACITY),
-      rowkey_list_(), 
+      rowkey_list_(),
       buffer_pool_(ObModIds::OB_SQL_GET_PARAM, DEFAULT_ROW_BUF_SIZE)
     {
     }
@@ -45,8 +45,13 @@ namespace oceanbase
 
     void ObSqlGetParam::reset()
     {
-      rowkey_list_.clear();
       ObSqlReadParam::reset(); //call parent reset()
+      reset_local();
+    }
+
+    void ObSqlGetParam::reset_local()
+    {
+      rowkey_list_.clear();
       // if memory inflates too large, free.
       if (buffer_pool_.total() > DEFAULT_ROW_BUF_SIZE)
       {
@@ -57,7 +62,7 @@ namespace oceanbase
         buffer_pool_.reuse();
       }
     }
-   
+
     int ObSqlGetParam::destroy()
     {
       rowkey_list_.clear();
@@ -107,7 +112,7 @@ namespace oceanbase
         //ensure there are enough space to store this cell
         if (rowkey_list_.count() < max_row_capacity_)
         {
-            //store rowkey 
+            //store rowkey
             if (OB_SUCCESS != (ret = rowkey_list_.push_back(stored_rowkey)))
             {
               TBSYS_LOG(WARN, "fail to push rowkey to list. ret=%d", ret);
@@ -136,7 +141,7 @@ namespace oceanbase
     /////////////////////////////////////////////////////////////////////////////
     //////////////////// SERIALIZE & DESERIALIZE ////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////
-    
+
     int ObSqlGetParam::serialize_flag(char* buf, const int64_t buf_len, int64_t& pos,
         const int64_t flag) const
     {
@@ -148,7 +153,7 @@ namespace oceanbase
 
       return ret;
     }
-    
+
     int ObSqlGetParam::serialize_int(char* buf, const int64_t buf_len, int64_t& pos,
         const int64_t value) const
     {
@@ -160,7 +165,7 @@ namespace oceanbase
 
       return ret;
     }
- 
+
     int ObSqlGetParam::deserialize_int(const char* buf, const int64_t data_len, int64_t& pos,
         int64_t& value) const
     {
@@ -201,7 +206,7 @@ namespace oceanbase
 
       return obj.get_serialize_size();
     }
- 
+
     int ObSqlGetParam::serialize_basic_field(char* buf,
       const int64_t buf_len,
       int64_t& pos) const
@@ -266,7 +271,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        //serialize row keys        
+        //serialize row keys
         if (OB_SUCCESS != (ret = serialize_flag(buf, buf_len, pos, ObActionFlag::FORMED_ROW_KEY_FIELD)))
         {
           TBSYS_LOG(WARN, "fail to serialize flag. ret=%d", ret);

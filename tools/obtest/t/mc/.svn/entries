@@ -1,14 +1,14 @@
 10
 
 dir
-13930
+14512
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/obtest/t/mc
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-05-22T05:40:04.970103Z
-13915
+2013-06-08T10:19:46.635811Z
+14397
 fff.fanff
 
 
@@ -66,10 +66,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-595d0c31a8a105a0c63210b0d62b39c8
-2013-05-08T08:16:47.809785Z
-13678
+2013-06-19T08:29:39.000000Z
+3ce2277bf18d9e1ab9647dd1c8262f04
+2013-06-08T03:33:42.144242Z
+14357
 xiaojun.chengxj
 
 
@@ -92,7 +92,7 @@ xiaojun.chengxj
 
 
 
-2217
+1199
 
 c1244_p0_ups_switch_twice_yangxiu.test
 file
@@ -202,10 +202,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-66d5b0e1675b0fddabe611fa62aad8a9
-2013-05-16T11:55:32.292856Z
-13841
+2013-06-19T08:29:39.000000Z
+ab6bf2b2584879d672cc0524ac596a0b
+2013-05-30T03:32:30.645300Z
+14082
 fff.fanff
 
 
@@ -228,7 +228,41 @@ fff.fanff
 
 
 
-800
+817
+
+1026_c1244_p0_all_cluster_restart_yangxiu.test
+file
+
+
+
+
+2013-06-19T08:29:39.000000Z
+3b1ef8db91a4a3af7e210e0cbc51f9b6
+2013-06-06T08:58:30.637582Z
+14286
+fff.fanff
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+947
 
 1019_c1233_p0_del_tablet_merge_yangxiu.test
 file
@@ -332,40 +366,6 @@ xiaojun.chengxj
 
 1032
 
-c1244_p0_recover_merge_switch_ups_junyue.test
-file
-
-
-
-
-2013-05-22T14:08:33.000000Z
-cfc2d0831e0255ff5a0ae95f0c26c0d4
-2013-04-26T03:53:42.133571Z
-13511
-fff.fanff
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-3749
-
 1009_c1244_p0_stop_slave_ups_then_start_cluster_switch.test
 file
 
@@ -434,6 +434,74 @@ xiaojun.chengxj
 
 1577
 
+2026_c1244_p0_ups_flow_1v1_junyue.test
+file
+
+
+
+
+2013-06-19T08:29:39.000000Z
+cbb8fe7d73e70f676c4d0d54197e3e68
+2013-06-08T08:10:35.479523Z
+14385
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2361
+
+1027_c1244_p0_slave_cluster_all_ups_down_yangxiu.test
+file
+
+
+
+
+2013-06-19T08:29:39.000000Z
+d02ff3851c2827874e5bdf2e180f6756
+2013-06-08T10:19:46.635811Z
+14397
+fff.fanff
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+909
+
 2005_c1244_p0_provide_service_if_rs_crash_junyue.test
 file
 
@@ -474,10 +542,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-c8daf78b75e52ae9c2bd69cafe0bc3fe
-2013-05-14T10:20:04.716305Z
-13757
+2013-06-19T08:29:39.000000Z
+32b86ca5656e2d9f40b6605953b59576
+2013-05-29T09:13:52.295459Z
+14071
 fff.fanff
 
 
@@ -500,7 +568,7 @@ fff.fanff
 
 
 
-887
+927
 
 c1244_p0_merge_twice_switch_ups_junyue.test
 file
@@ -508,10 +576,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-0dfd1a47c079acc2f99c8a2275b2f0ee
-2013-05-08T08:16:47.809785Z
-13678
+2013-06-19T08:29:39.000000Z
+5b1f0d0526bab7a0a6236e40fc95e2c0
+2013-06-08T03:33:42.144242Z
+14357
 xiaojun.chengxj
 
 
@@ -534,7 +602,7 @@ xiaojun.chengxj
 
 
 
-2648
+1630
 
 c1244_p0_ups_switch_master_ups_down_start_yangxiu.test
 file
@@ -644,10 +712,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-2a8de7cdb93e59b72478643999aaf106
-2013-05-08T08:16:47.809785Z
-13678
+2013-06-19T08:29:39.000000Z
+6efe91d2705d95e26bf30214a0028bbf
+2013-06-08T03:33:42.144242Z
+14357
 xiaojun.chengxj
 
 
@@ -670,7 +738,7 @@ xiaojun.chengxj
 
 
 
-3732
+1695
 
 1018_c1233_p0_del_tablet_slave_cluster_restart_yangxiu.test
 file
@@ -706,6 +774,40 @@ fff.fanff
 
 786
 
+c1244_p0_master_ups_switch_slave_ups_down_junyue.test
+file
+
+
+
+
+2013-06-19T08:29:39.000000Z
+9780b047bd48db2d0012f3aec80f0d71
+2013-06-08T03:33:42.144242Z
+14357
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1373
+
 1016_c1233_p0_del_tablet_slave_rs_restart_yangxiu.test
 file
 
@@ -739,74 +841,6 @@ fff.fanff
 
 
 799
-
-c1244_p0_master_ups_switch_slave_ups_down_junyue.test
-file
-
-
-
-
-2013-05-22T14:08:33.000000Z
-6463ae9737efe5475342bd59969ce1fd
-2013-05-08T08:16:47.809785Z
-13678
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-2392
-
-2007_c1244_p0_forbid_replaying_ups_read_cause_merge_failed_junyue.test
-file
-
-
-
-
-2013-05-22T14:08:33.000000Z
-05abc5f23f31fcd7ba9d5534dbd50586
-2013-05-16T09:58:40.432684Z
-13834
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-566
 
 2004_c1244_p0_provide_service_if_slave_ups_crash_junyue.test
 file
@@ -842,14 +876,14 @@ xiaojun.chengxj
 
 668
 
-2008_c1244_p0_inc_rpl_merge_junyue.test
+2007_c1244_p0_forbid_replaying_ups_read_cause_merge_failed_junyue.test
 file
 
 
 
 
 2013-05-22T14:08:33.000000Z
-c238a1c26e272d5fab21ab68414f6910
+05abc5f23f31fcd7ba9d5534dbd50586
 2013-05-16T09:58:40.432684Z
 13834
 xiaojun.chengxj
@@ -874,19 +908,19 @@ xiaojun.chengxj
 
 
 
-703
+566
 
-1005_c1244_p0_merge_master_rs_restart_cluster_switch_yangxiu.test
+2020_c1244_p0_restart_master_cluster_when_copy_junyue.test
 file
 
 
 
 
-2013-05-22T14:08:33.000000Z
-fc88d74106ff1842daa0cdead309b0b9
-2013-05-08T08:16:47.809785Z
-13678
-xiaojun.chengxj
+2013-06-19T08:29:39.000000Z
+6fc9e1da14bd706b265ac6dc4719cd3b
+2013-05-30T03:32:30.645300Z
+14082
+fff.fanff
 
 
 
@@ -908,7 +942,7 @@ xiaojun.chengxj
 
 
 
-1037
+1285
 
 2013_c1244_cluster_switch_read_master_junyue.test
 file
@@ -944,16 +978,16 @@ xiaojun.chengxj
 
 3774
 
-2020_c1244_p0_restart_master_cluster_when_copy_junyue.test
+1005_c1244_p0_merge_master_rs_restart_cluster_switch_yangxiu.test
 file
 
 
 
 
 2013-05-22T14:08:33.000000Z
-7fc58dc50ac1957dcb8b5a4ec1fb5b02
-2013-05-22T02:39:42.773806Z
-13906
+fc88d74106ff1842daa0cdead309b0b9
+2013-05-08T08:16:47.809785Z
+13678
 xiaojun.chengxj
 
 
@@ -976,7 +1010,41 @@ xiaojun.chengxj
 
 
 
-1268
+1037
+
+2008_c1244_p0_inc_rpl_merge_junyue.test
+file
+
+
+
+
+2013-05-22T14:08:33.000000Z
+c238a1c26e272d5fab21ab68414f6910
+2013-05-16T09:58:40.432684Z
+13834
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+703
 
 1010_c1244_p0_stop_masterups_del_commitlog_restart_cluster_switch_yangxiu.test
 file
@@ -984,10 +1052,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-955f501e4733d237eb65e7b268281d79
-2013-05-14T10:20:04.716305Z
-13757
+2013-06-19T08:29:39.000000Z
+6c4fddfbba2d135a2985321baecd3264
+2013-05-29T09:13:52.295459Z
+14071
 fff.fanff
 
 
@@ -1010,7 +1078,7 @@ fff.fanff
 
 
 
-887
+927
 
 c1244_p0_ups_switch_twice_ups_restart_yangxiu.test
 file
@@ -1052,10 +1120,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-ef4967877b547e5eaec308ca723724e4
-2013-05-16T11:55:32.292856Z
-13841
+2013-06-19T08:29:39.000000Z
+446513aba6790b80f35482f2b471cd92
+2013-05-30T03:32:30.645300Z
+14082
 fff.fanff
 
 
@@ -1078,7 +1146,7 @@ fff.fanff
 
 
 
-895
+912
 
 1012_c1244_p0_transaction_rollback_cluster_switch_yangxiu.test
 file
@@ -1358,10 +1426,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-91acc8bc690796b44a07a2211baafa97
-2013-05-08T08:16:47.809785Z
-13678
+2013-06-19T08:29:39.000000Z
+6d2d3f4c4db9a988f43b99cf398a7d71
+2013-06-08T03:33:42.144242Z
+14357
 xiaojun.chengxj
 
 
@@ -1384,7 +1452,7 @@ xiaojun.chengxj
 
 
 
-2243
+1224
 
 2017_c1244_p0_all_server_crash_when_copy_junyue.test
 file
@@ -1392,11 +1460,11 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-96517e856ef7fd46f67d540ae52a46c1
-2013-05-22T02:39:42.773806Z
-13906
-xiaojun.chengxj
+2013-06-19T08:29:39.000000Z
+c250da023fd27a44bf41f70082fd55e4
+2013-05-30T03:32:30.645300Z
+14082
+fff.fanff
 
 
 
@@ -1418,7 +1486,7 @@ xiaojun.chengxj
 
 
 
-1392
+1409
 
 c1244_p0_ups_switch_master_ups_restart_yangxiu.test
 file
@@ -1494,10 +1562,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-ef46e230ad0d70ca043a8f25a9fce9b7
-2013-05-08T08:16:47.809785Z
-13678
+2013-06-19T08:29:39.000000Z
+17547eaf9fd3115cb5477dd5364cba1d
+2013-06-08T03:33:42.144242Z
+14357
 xiaojun.chengxj
 
 
@@ -1520,7 +1588,7 @@ xiaojun.chengxj
 
 
 
-2210
+1191
 
 2019_c1244_p0_restart_slave_cluster_rs_when_copy_junyue.test
 file
@@ -1760,6 +1828,40 @@ xiaojun.chengxj
 
 1256
 
+2027_c1244_p0_trx_send_to_master_junyue.test
+file
+
+
+
+
+2013-06-19T08:29:39.000000Z
+ab66d825820bec23989b7cbddaa6e8f0
+2013-06-08T08:10:35.479523Z
+14385
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1071
+
 2009_c1233_p0_target_cs_crash_when_copy_junyue.test
 file
 
@@ -1862,51 +1964,17 @@ fff.fanff
 
 673
 
-c1244_p0_recovery_from_l4_junyue.test
-file
-
-
-
-
-2013-05-22T14:08:33.000000Z
-a417da0cf686f6e8e70778ee5021d106
-2013-05-08T08:16:47.809785Z
-13678
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-380
-
 2010_c1244_p0_source_cs_crash_when_copy_junyue.test
 file
 
 
 
 
-2013-05-22T14:08:33.000000Z
-b6016f26f629239de57560060e0aa19e
-2013-05-16T09:58:40.432684Z
-13834
-xiaojun.chengxj
+2013-06-19T08:29:39.000000Z
+988f53cc0aad813998e24bc201d79d08
+2013-05-30T03:32:30.645300Z
+14082
+fff.fanff
 
 
 
@@ -1928,7 +1996,7 @@ xiaojun.chengxj
 
 
 
-1199
+1225
 
 c1244_p0_merge_switch_master_ups_junyue.test
 file
@@ -1936,10 +2004,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-5a13d395b0880c400cc08de7eb9a6ab0
-2013-05-08T08:16:47.809785Z
-13678
+2013-06-19T08:29:39.000000Z
+8cd6fe6ab1cd52fda501ac1d9896bb5e
+2013-06-08T03:33:42.144242Z
+14357
 xiaojun.chengxj
 
 
@@ -1962,7 +2030,7 @@ xiaojun.chengxj
 
 
 
-2247
+1228
 
 c1244_p0_ups_switch_slave_ups_restart_yangxiu.test
 file
@@ -2004,10 +2072,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-58d6a5be3e9ea27a5870655976dbe350
-2013-05-13T11:35:57.183346Z
-13720
+2013-06-19T08:29:39.000000Z
+3cf98e2128b424c4a39db40124890f7a
+2013-06-08T03:33:42.144242Z
+14357
 xiaojun.chengxj
 
 
@@ -2030,7 +2098,7 @@ xiaojun.chengxj
 
 
 
-723
+725
 
 1023_c1244_p0_between_two_cluster_switch_master_ups_restart_yangxiu.test
 file
@@ -2038,10 +2106,10 @@ file
 
 
 
-2013-05-22T14:08:33.000000Z
-1d63d3408bf4b7ee408778e2c64264c7
-2013-05-22T05:40:04.970103Z
-13915
+2013-06-19T08:29:39.000000Z
+a2a1d72dc37f14dbdbf922609ea72c38
+2013-05-23T06:00:57.397866Z
+13938
 fff.fanff
 
 
@@ -2064,5 +2132,5 @@ fff.fanff
 
 
 
-853
+859
 

@@ -37,7 +37,6 @@ namespace oceanbase
       scan_param_ = NULL;
       cs_result_mem_size_used_ = 0;
       sharding_limit_count_ = 0;
-      cur_row_cell_cnt_ = 0;
     }
 
     ObMsSqlScanRequest::~ObMsSqlScanRequest()
@@ -69,7 +68,7 @@ namespace oceanbase
         else
         {
           int ret = OB_SUCCESS;
-          if ( NULL == (ptr = ob_malloc(sizeof(ObMsSqlSubScanRequest))))
+          if ( NULL == (ptr = ob_malloc(sizeof(ObMsSqlSubScanRequest), ObModIds::OB_MS_SUB_SCAN_REQUEST)))
           {
             TBSYS_LOG(WARN, "ob malloc failed, ret=%d", OB_ALLOCATE_MEMORY_FAILED);
           }
@@ -194,7 +193,7 @@ namespace oceanbase
         *(sub_req->get_scan_param()),
         *rpc_event))))
       {
-        TBSYS_LOG(WARN, "fail to scan cs %s. event id %ld [err=%d]", 
+        TBSYS_LOG(WARN, "fail to scan cs %s. event id %ld [err=%d]",
             to_cstring(selected_server.addr_), rpc_event->get_event_id(), err);
         /// @Exception  scan failed, no failure packet would return to the framework
         ///             so, we need to release rpc_event manually here
@@ -267,7 +266,7 @@ namespace oceanbase
       if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = async_rpc_stub->get_session_next(timeout_us,
         only_replica.addr_, prev_rpc_event.get_session_id(), prev_rpc_event.get_req_type(), *new_rpc_event))))
       {
-        TBSYS_LOG(WARN,"fail to get session next from %s [err:%d,session_id:%ld,req_id:%lu]", 
+        TBSYS_LOG(WARN,"fail to get session next from %s [err:%d,session_id:%ld,req_id:%lu]",
             to_cstring(only_replica.addr_), err, prev_rpc_event.get_session_id(),get_request_id());
       }
       if (OB_SUCCESS == err)
@@ -930,7 +929,7 @@ namespace oceanbase
       // in ps mode, should reset everything first
       reset();
 
-      if (NULL == (ptr = ob_malloc(sizeof(ObMsSqlSubScanRequest))))
+      if (NULL == (ptr = ob_malloc(sizeof(ObMsSqlSubScanRequest), ObModIds::OB_MS_SUB_SCAN_REQUEST)))
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
         TBSYS_LOG(WARN, "ob malloc failed, ret=%d", ret);
@@ -974,7 +973,6 @@ namespace oceanbase
       scan_param_ = NULL;
       cs_result_mem_size_used_ = 0;
       sharding_limit_count_ = 0;
-      cur_row_cell_cnt_ = 0;
     }
 
     int ObMsSqlScanRequest::get_next_row(oceanbase::common::ObRow &row)

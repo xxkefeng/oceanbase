@@ -50,12 +50,11 @@ namespace oceanbase
           UNUSED(child_operator);
           return OB_ERROR;
         }
-        int init(ObSqlContext *context);
+        int init(ObSqlContext *context, const common::ObRpcScanHint &hint);
         virtual int open();
         virtual int close();
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
-        void set_hint(const common::ObRpcScanHint &hint);
         /**
          * 添加一个需输出的column
          *
@@ -82,7 +81,7 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        int add_filter(const ObSqlExpression& expr);
+        int add_filter(ObSqlExpression* expr);
         int add_group_column(const uint64_t tid, const uint64_t cid);
         int add_aggr_column(const ObSqlExpression& expr);
 
@@ -96,11 +95,7 @@ namespace oceanbase
          */
         int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset);
 
-        void set_data_version(int64_t data_version)
-        {
-          read_param_.set_data_version(data_version);
-        }
-
+        //void set_data_version(int64_t data_version);
         int set_scan_range(const ObNewRange &range)
         {
           UNUSED(range);
@@ -111,17 +106,6 @@ namespace oceanbase
         {
           cur_row_desc_.set_rowkey_cell_count(rowkey_cell_count);
         }
-
-        inline void set_is_skip_empty_row(bool is_skip_empty_row)
-        {
-          is_skip_empty_row_ = is_skip_empty_row;
-        }
-
-        inline void set_read_method(int32_t read_method)
-        {
-          read_method_ = read_method;
-        }
-
         int64_t to_string(char* buf, const int64_t buf_len) const;
       private:
         // disallow copy
@@ -135,23 +119,22 @@ namespace oceanbase
         int get_next_compact_row(const common::ObRow*& row);
         int cons_scan_range(ObNewRange &range);
         int cons_row_desc(const ObSqlGetParam &sql_get_param, ObRowDesc &row_desc);
-        int fill_read_param(const ObSqlReadParam &read_param, ObSqlReadParam &dest_param);
+        int fill_read_param(ObSqlReadParam &dest_param);
         int get_min_max_rowkey(const ObArray<ObRowkey> &rowkey_array, ObObj *start_key_objs_, ObObj *end_key_objs_,int64_t rowkey_size);
 
         int create_get_param(ObSqlGetParam &get_param);
         int cons_get_rows(ObSqlGetParam &get_param);
+        void set_hint(const common::ObRpcScanHint &hint);
       private:
         static const int64_t REQUEST_EVENT_QUEUE_SIZE = 8192;
         // 等待结果返回的超时时间
         int64_t timeout_us_;
-        // user scan or get
-        int32_t read_method_;
         mergeserver::ObMsSqlScanRequest sql_scan_request_;
         mergeserver::ObMsSqlGetRequest sql_get_request_;
-        ObSqlScanParam scan_param_;
-        ObSqlGetParam get_param_;
+        ObSqlScanParam *scan_param_;
+        ObSqlGetParam *get_param_;
+        ObSqlReadParam *read_param_;
         ObRowDesc get_row_desc_;
-        ObSqlReadParam read_param_;
         common::ObRowkeyInfo rowkey_info_;
         common::ObTabletLocationCacheProxy * cache_proxy_;
         mergeserver::ObMergerAsyncRpcStub * async_rpc_;
@@ -166,8 +149,6 @@ namespace oceanbase
         uint64_t base_table_id_;
         char* start_key_buf_;
         char* end_key_buf_;
-        bool is_read_consistency_;
-        bool is_skip_empty_row_;
         ObSqlReadStrategy sql_read_strategy_;
     };
   } // end namespace sql

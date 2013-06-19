@@ -1,0 +1,9 @@
+ob1//chunkserver.log:ERROR ups_scan_ (ob_rpc_proxy.cpp)  scan from master ups failed:ret[-12]
+ob1//mergeserver.log:ERROR ms_sql_execute (ob_merge_server_service.cpp)  open sql result set error, ret = [-12]
+ob1//updateserver.log:ERROR runTimerTask (ob_config_manager.cpp)  update local config failed:ret[-6]
+ob1//mergeserver.log:ERROR send_sql_response (ob_merge_server_service.cpp)  serilize result buffer error, ret = [-12]
+ob1//mergeserver.log:ERROR ms_sql_execute (ob_merge_server_service.cpp)  send sql result error, sql: [select * from __all_sys_config], ret: [-12]
+ob1//mergeserver.log:ERROR serialize (ob_sql_result_set.cpp)  fail to serialize scanner, ret = [-12]
+ob1//mergeserver.log:ERROR ms_sql_execute (ob_merge_server_service.cpp)  open sql result set error, ret = [-38]
+ob1//updateserver.log:ERROR update_local (ob_config_manager.cpp)  failed to send request, err = [-12]
+ob1//mergeserver.log:ERROR load_user_table (ob_get_privilege_task.cpp)  failed to get next row, ret=-12

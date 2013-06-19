@@ -136,6 +136,9 @@ namespace oceanbase
 
         int submit_session_delete_task(ObMySQLSessionKey key);
         bool has_too_many_sessions() const;
+        typedef common::ObPooledAllocator<sql::ObSQLSessionInfo, ObMalloc, ObSpinLock> SessionPool;
+        SessionPool& get_session_pool() {return session_pool_;};
+
       private:
         int initialize();
 
@@ -449,7 +452,6 @@ namespace oceanbase
           return ret;
         }
 
-
       private:
         static const int64_t SEQ_OFFSET = 3; /* offset of seq in MySQL packet */
       private:
@@ -478,7 +480,8 @@ namespace oceanbase
 
         // environment of mergeserver
         MergeServerEnv env_;
-
+        // session info pool
+        SessionPool session_pool_;
         // session manager
         common::hash::ObHashMap<ObMySQLSessionKey, sql::ObSQLSessionInfo*> session_mgr_;
         // global block allocator

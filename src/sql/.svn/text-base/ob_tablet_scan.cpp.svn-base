@@ -64,9 +64,9 @@ bool ObTabletScan::has_incremental_data() const
 }
 
 int ObTabletScan::need_incremental_data(
-    ObArray<uint64_t> &basic_columns, 
-    ObTabletJoin::TableJoinInfo &table_join_info, 
-    int64_t start_data_version, 
+    ObArray<uint64_t> &basic_columns,
+    ObTabletJoin::TableJoinInfo &table_join_info,
+    int64_t start_data_version,
     int64_t end_data_version)
 
 {
@@ -198,7 +198,7 @@ int ObTabletScan::need_incremental_data(
       }
       else
       {
-        op_root_ = op_rename; 
+        op_root_ = op_rename;
       }
     }
   }
@@ -209,18 +209,18 @@ bool ObTabletScan::check_inner_stat() const
 {
   bool ret = false;
 
-  ret = join_batch_count_ > 0 
+  ret = join_batch_count_ > 0
   && NULL != sql_scan_param_
   && network_timeout_ > 0
   && NULL != rpc_proxy_;
- 
+
   if (!ret)
   {
     TBSYS_LOG(WARN, "join_batch_count_[%ld], "
     "sql_scan_param_[%p], "
     "network_timeout_[%ld], "
     "rpc_proxy_[%p]",
-    join_batch_count_, 
+    join_batch_count_,
     sql_scan_param_,
     network_timeout_,
     rpc_proxy_);
@@ -239,11 +239,11 @@ int64_t ObTabletScan::to_string(char* buf, const int64_t buf_len) const
   return pos;
 }
 
-int ObTabletScan::build_sstable_scan_param(ObArray<uint64_t> &basic_columns, 
+int ObTabletScan::build_sstable_scan_param(ObArray<uint64_t> &basic_columns,
     const ObSqlScanParam &sql_scan_param, sstable::ObSSTableScanParam &sstable_scan_param) const
 {
   int ret = OB_SUCCESS;
-
+  TBSYS_LOG(DEBUG, "sql_scan_param=%s", to_cstring(sql_scan_param));
   sstable_scan_param.set_range(*sql_scan_param.get_range());
   sstable_scan_param.set_is_result_cached(sql_scan_param.get_is_result_cached());
   sstable_scan_param.set_not_exit_col_ret_nop(false);
@@ -274,13 +274,13 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
   int64_t data_version;
   bool is_need_incremental_data = true;
   INIT_PROFILE_LOG_TIMER();
-  
+
   if (OB_SUCCESS != (ret = get_basic_column_and_join_info(
-                               sql_scan_param_->get_project(), 
-                               schema_mgr, 
-                               table_id, 
-                               renamed_table_id, 
-                               basic_columns, 
+                               sql_scan_param_->get_project(),
+                               schema_mgr,
+                               table_id,
+                               renamed_table_id,
+                               basic_columns,
                                table_join_info)))
   {
     TBSYS_LOG(WARN, "fail to get basic column and join info:ret[%d]", ret);
@@ -314,9 +314,9 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
     else
     {
       op_sstable_scan_.get_tablet_data_version(data_version);
-      FILL_TRACE_LOG("request data version[%ld], cs serving data version[%ld]", 
+      FILL_TRACE_LOG("request data version[%ld], cs serving data version[%ld]",
         sql_scan_param_->get_data_version(), data_version);
-      PROFILE_LOG_TIME(DEBUG, "op_sstable_scan_ open context complete, data version[%ld] , range=%s", 
+      PROFILE_LOG_TIME(DEBUG, "op_sstable_scan_ open context complete, data version[%ld] , range=%s",
           data_version, to_cstring(*sql_scan_param_->get_range()));
       if (sql_scan_param_->get_data_version() != OB_NEWEST_DATA_VERSION)
       {
@@ -344,9 +344,9 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
     if (is_need_incremental_data)
     {
       if (OB_SUCCESS != (ret = need_incremental_data(
-                             basic_columns, 
-                             table_join_info, 
-                             data_version, 
+                             basic_columns,
+                             table_join_info,
+                             data_version,
                              sql_scan_param_->get_data_version())))
       {
         TBSYS_LOG(WARN, "fail to add ups operator:ret[%d]", ret);
@@ -375,12 +375,12 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
     }
   }
 
-  // daily merge scan no need project operator, 
+  // daily merge scan no need project operator,
   // there is no composite columns but plain column scan.
-  // ObProject is container of query columns and set 
+  // ObProject is container of query columns and set
   // ObSSTableScanParam put into ObSSTableScan.
-  if (OB_SUCCESS == ret 
-      && basic_columns.count() != sql_scan_param_->get_project().get_output_columns().count() 
+  if (OB_SUCCESS == ret
+      && basic_columns.count() != sql_scan_param_->get_project().get_output_columns().count()
       && sql_scan_param_->has_project())
   {
     op_project = &op_project_;
@@ -397,7 +397,7 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
       }
     }
   }
-  if (OB_SUCCESS == ret 
+  if (OB_SUCCESS == ret
     && (sql_scan_param_->has_scalar_agg() || sql_scan_param_->has_group()))
   {
     if (sql_scan_param_->has_scalar_agg() && sql_scan_param_->has_group())
@@ -478,6 +478,3 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
 
   return ret;
 }
-
-
-

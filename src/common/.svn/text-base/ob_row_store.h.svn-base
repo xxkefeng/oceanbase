@@ -50,6 +50,10 @@ namespace oceanbase
         void clear();
         void reuse();
         /**
+         * clear rows only, keep reserved columns info
+         */
+        void clear_rows();
+        /**
          * rollback last added row
          * NOTE: can only be called once.
          * must NOT called continuously, otherwise will return err

@@ -13,7 +13,7 @@ namespace oceanbase
         hash_init_(false)
     {
       memset(&schema_header_, 0, OB_SSTABLE_SCHEMA_HEADER_SIZE);
-      memset(column_def_array_, 0, 
+      memset(column_def_array_, 0,
           OB_MAX_COLUMN_NUMBER * OB_SSTABLE_SCHEMA_COLUMN_DEF_SIZE);
     }
 
@@ -54,7 +54,7 @@ namespace oceanbase
     }
 
     const ObSSTableSchemaColumnDef* ObSSTableSchema::get_table_schema(
-        const uint64_t table_id, const bool is_rowkey_column, 
+        const uint64_t table_id, const bool is_rowkey_column,
         int64_t& size) const
     {
       ObSSTableSchemaColumnDef* ret = NULL;
@@ -88,7 +88,7 @@ namespace oceanbase
         {
           size = value.size_;
           offset = value.offset_;
-          
+
           if (0 > offset || get_column_count() <= offset)
           {
             TBSYS_LOG(ERROR, "get offset error");
@@ -162,7 +162,7 @@ namespace oceanbase
       return ret;
     }
 
-    bool ObSSTableSchema::is_column_exist(const uint64_t table_id, 
+    bool ObSSTableSchema::is_column_exist(const uint64_t table_id,
         const uint64_t column_id) const
     {
       bool ret = false;
@@ -221,17 +221,17 @@ namespace oceanbase
         if (common::OB_MAX_COLUMN_NUMBER <= size
             && column_def_ == column_def_array_)
         {
-          if (NULL == (column_def_ = 
+          if (NULL == (column_def_ =
                 reinterpret_cast<ObSSTableSchemaColumnDef*>(
-                  ob_malloc(OB_SSTABLE_SCHEMA_COLUMN_DEF_SIZE 
-                    * DEFAULT_COLUMN_DEF_ARRAY_CNT))))
+                  ob_malloc(OB_SSTABLE_SCHEMA_COLUMN_DEF_SIZE
+                            * DEFAULT_COLUMN_DEF_ARRAY_CNT, ObModIds::OB_SSTABLE_SCHEMA))))
           {
             TBSYS_LOG(WARN, "malloc memory error");
             ret = OB_ERROR;
           }
           else
           {
-            memcpy(column_def_, column_def_array_, 
+            memcpy(column_def_, column_def_array_,
                 OB_SSTABLE_SCHEMA_COLUMN_DEF_SIZE * OB_MAX_COLUMN_NUMBER);
           }
         }
@@ -462,12 +462,12 @@ namespace oceanbase
 
       return ret;
     }
-    
-    int ObSSTableSchema::check_row(const uint64_t table_id, 
+
+    int ObSSTableSchema::check_row(const uint64_t table_id,
         const ObRow& row)
     {
       int ret = OB_SUCCESS;
-      const int64_t rowkey_obj_cnt 
+      const int64_t rowkey_obj_cnt
         = row.get_row_desc()->get_rowkey_cell_count();
       const int64_t row_obj_cnt = row.get_column_num();
       const int64_t rowvalue_obj_cnt = row_obj_cnt - rowkey_obj_cnt;
@@ -495,13 +495,13 @@ namespace oceanbase
       {
         for (i = 0; i < rowkey_obj_cnt; i ++)
         {
-          if (OB_SUCCESS != (ret = row.raw_get_cell(i, obj, 
+          if (OB_SUCCESS != (ret = row.raw_get_cell(i, obj,
                   t_table_id, column_id)))
           {
             char buf[1024];
             (*obj).to_string(buf, 1024);
             TBSYS_LOG(WARN, "row raw get cell error:ret=%d,i=%ld,obj=%s"
-                "table_id=%lu,column_id=%lu", 
+                "table_id=%lu,column_id=%lu",
                 ret, i, buf, table_id, column_id);
             break;
           }
@@ -697,18 +697,18 @@ namespace oceanbase
         }
 
         int ret_hash = 0;
-        if (0 == size || (NULL != last 
+        if (0 == size || (NULL != last
               && (column_def.table_id_ != last->table_id_
                 || column_def.is_rowkey_column() != last->is_rowkey_column())))
         {
           value.offset_ = size;
           value.size_ = 1;
           ret_hash = table_schema_hashmap_.set(key, value);
-          
+
           if (-1 == ret_hash)
           {
             TBSYS_LOG(WARN, "table schema hash map set error:ret_hash=%d,"
-                "key.table_id_=%lu,key.is_rowkey_=%d, value.offset_=%ld", 
+                "key.table_id_=%lu,key.is_rowkey_=%d, value.offset_=%ld",
                 ret_hash, key.table_id_, key.is_rowkey_, value.offset_);
             ret = OB_ERROR;
           }
@@ -817,7 +817,7 @@ namespace oceanbase
         for (col_index = 0; col_index < rowkey_info.get_size() && OB_SUCCESS == ret; ++col_index)
         {
           column = rowkey_info.get_column(col_index);
-          if (NULL == column) 
+          if (NULL == column)
           {
             TBSYS_LOG(ERROR, "schema internal error, rowkey column %ld not exist.", col_index);
             ret = OB_ERROR;
@@ -860,7 +860,7 @@ namespace oceanbase
       return ret;
     }
 
-    int build_sstable_schema(const uint64_t table_id, 
+    int build_sstable_schema(const uint64_t table_id,
         const common::ObSchemaManagerV2 & schema, ObSSTableSchema& sstable_schema)
     {
       return build_sstable_schema(table_id, table_id, schema, sstable_schema);

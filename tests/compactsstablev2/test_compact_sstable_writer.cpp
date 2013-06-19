@@ -247,8 +247,8 @@ public:
    *@param value_type: value type
    *@param rowkey_seq: rowkey seq
    */
-  void make_column_def(ObSSTableSchemaColumnDef& def, 
-      const uint64_t table_id, const uint64_t column_id, 
+  void make_column_def(ObSSTableSchemaColumnDef& def,
+      const uint64_t table_id, const uint64_t column_id,
       const int value_type, const int64_t rowkey_seq)
   {
     def.table_id_ = table_id;
@@ -923,14 +923,14 @@ public:
     char** block_endkey_ptr = NULL;
 
     //char buf[2 * 1024 * 1024];
-    char* buf = (char*)ob_malloc(10 * 1024 * 1024);
+    char* buf = (char*)ob_malloc(10 * 1024 * 1024, ObModIds::TEST);
     int64_t read_offset = 0;
     int64_t read_size = 0;
     int64_t real_read_size = 0;
     const char* payload_ptr = NULL;
     int64_t payload_size = 0;
     //char uncomp_buf[1024 * 1024];
-    char* uncomp_buf = (char*)ob_malloc(1024 * 1024);
+    char* uncomp_buf = (char*)ob_malloc(1024 * 1024, ObModIds::TEST);
     int64_t uncomp_buf_size = 1024 * 1024;
     int64_t uncomp_buf_len = 0;
     int64_t ii = 0;
@@ -1051,7 +1051,7 @@ public:
         payload_ptr, payload_size);
     ASSERT_EQ(OB_SUCCESS, ret);
     table_index_ptr = (ObSSTableTableIndex*)ob_malloc(
-        sizeof(ObSSTableTableIndex) * sstable_header.table_count_);
+      sizeof(ObSSTableTableIndex) * sstable_header.table_count_, ObModIds::TEST);
     memcpy(table_index_ptr, payload_ptr, payload_size);
     for (int64_t i = 0; i < sstable_header.table_count_; i ++)
     {
@@ -1124,7 +1124,7 @@ public:
 
     //block index
     block_index_ptr = (ObSSTableBlockIndex**)ob_malloc(
-        sstable_header.table_count_ * sizeof(ObSSTableBlockIndex*));
+      sstable_header.table_count_ * sizeof(ObSSTableBlockIndex*), ObModIds::TEST);
     ASSERT_TRUE(NULL != block_index_ptr);
     for (int64_t i = 0; i < sstable_header.table_count_; i ++)
     {
@@ -1132,7 +1132,7 @@ public:
       {
         block_index_ptr[i] = (ObSSTableBlockIndex*)ob_malloc(
             (table_index_ptr[i].block_count_ + 1) *
-            sizeof(ObSSTableBlockIndex));
+            sizeof(ObSSTableBlockIndex), ObModIds::TEST);
         read_offset = table_index_ptr[i].block_index_offset_;
         read_size = table_index_ptr[i].block_index_size_;
         lseek(fd, read_offset, SEEK_SET);
@@ -1148,7 +1148,7 @@ public:
 
     //block endkey
     block_endkey_ptr = (char**)ob_malloc(
-        sstable_header.table_count_ * sizeof(char*));
+      sstable_header.table_count_ * sizeof(char*), ObModIds::TEST);
     ASSERT_TRUE(NULL != block_endkey_ptr);
     for (int64_t i = 0; i < sstable_header.table_count_; i ++)
     {
@@ -1163,7 +1163,7 @@ public:
             OB_SSTABLE_BLOCK_ENDKEY_MAGIC,
             record_header, payload_ptr, payload_size);
         ASSERT_EQ(OB_SUCCESS, ret);
-        block_endkey_ptr[i] = (char*)ob_malloc(payload_size);
+        block_endkey_ptr[i] = (char*)ob_malloc(payload_size, ObModIds::TEST);
         memcpy(block_endkey_ptr[i], payload_ptr, payload_size);
       }
     }
@@ -1824,7 +1824,7 @@ TEST_F(TestCompactSSTableWriter, set_table_info2)
 
   ret = make_range(range, table_id, 0, 0, 0, 0);
   ASSERT_EQ(OB_SUCCESS, ret);
- 
+
   ret = writer.set_table_info(table_id, schema, range);
   ASSERT_EQ(OB_NOT_INIT, ret);
 }
@@ -2183,7 +2183,7 @@ TEST_F(TestCompactSSTableWriter, append_row1)
   {
     TBSYS_LOG(WARN, "open error");
   }
-  
+
   int64_t start_row_num[1] = {0};
   const int64_t range_start_num = 0;
   const int64_t range_end_num = 0;
@@ -2270,7 +2270,7 @@ TEST_F(TestCompactSSTableWriter, append_row2)
   {
     TBSYS_LOG(WARN, "open error");
   }
-  
+
   int64_t start_row_num[1] = {0};
   const int64_t range_start_num = 0;
   const int64_t range_end_num = 0;
@@ -2357,7 +2357,7 @@ TEST_F(TestCompactSSTableWriter, append_row3)
   {
     TBSYS_LOG(WARN, "open error");
   }
-  
+
   int64_t start_row_num[1] = {0};
   const int64_t range_start_num = 0;
   const int64_t range_end_num = 0;
@@ -2478,7 +2478,7 @@ TEST_F(TestCompactSSTableWriter, append_row4)
   {
     TBSYS_LOG(WARN, "open error");
   }
-  
+
   int64_t start_row_num[3] = {0, 0, 0};
   const int64_t range_start_num[3] = {0, 0, 0};
   const int64_t range_end_num[3] = {0, 0, 0};
@@ -2787,7 +2787,7 @@ TEST_F(TestCompactSSTableWriter, get_table_range)
  //after finish sstable
  //after switch table
  //after switch sstable
- 
+
   int ret = OB_SUCCESS;
   ObCompactSSTableWriter writer1;
   ObCompactSSTableWriter writer2;

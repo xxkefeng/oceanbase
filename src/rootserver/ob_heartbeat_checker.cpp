@@ -108,9 +108,6 @@ void ObHeartbeatChecker::run(tbsys::CThread * thread, void * arg)
                     it - root_server_->server_manager_.begin());
               }
             }
-            {
-              root_server_->nr_remove_replicas(cs);
-            }
             if (master)
             {
               root_server_->commit_task(SERVER_OFFLINE, OB_CHUNKSERVER, it->server_, 0, "hb server version null");

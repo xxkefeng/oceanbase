@@ -208,8 +208,8 @@ int ObFileService::handle_send_file_request(
         src_ip, file_path.length(), file_path.ptr(),
         tmp_file_path.length(), tmp_file_path.ptr(),
         file_size, duration, file_size*1000000/1024/duration);
-  } 
-  else 
+  }
+  else
   {
     TBSYS_LOG(ERROR, "Recieve file from server[%s] to file_path[%.*s] "
         "tmp_file_path[%.*s] failed, filesize[%ld] cost time[%ld]:ret[%d]",
@@ -532,7 +532,7 @@ int ObFileService::receive_file_block(ObFileAppender& file_appender,
 
 
 int ObFileService::receive_file_end(ObString& file_path, ObString& tmp_file_path,
-    const int64_t file_size, easy_request_t* request, ObDataBuffer& out_buffer, 
+    const int64_t file_size, easy_request_t* request, ObDataBuffer& out_buffer,
     int32_t& response_cid, const int64_t session_id)
 {
   int ret = OB_SUCCESS;
@@ -604,7 +604,7 @@ int ObFileService::receive_file_end(ObString& file_path, ObString& tmp_file_path
   return ret;
 }
 
-int ObFileService::receive_file_loop(ObString& file_path, ObString& tmp_file_path, 
+int ObFileService::receive_file_loop(ObString& file_path, ObString& tmp_file_path,
     const int64_t file_size, ObFileAppender& file_appender,
     easy_request_t* request, ObDataBuffer& out_buffer,
     int32_t& response_cid, const int64_t session_id)
@@ -623,7 +623,7 @@ int ObFileService::receive_file_loop(ObString& file_path, ObString& tmp_file_pat
   char *block_buf = NULL;
   if (OB_SUCCESS == ret)
   {
-    block_buf = reinterpret_cast<char *>(ob_malloc(block_size_));
+    block_buf = reinterpret_cast<char *>(ob_malloc(block_size_, ObModIds::OB_FILE_CLIENT));
     if(NULL == block_buf)
     {
       ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -693,7 +693,7 @@ int ObFileService::receive_file_loop(ObString& file_path, ObString& tmp_file_pat
           file_appender.close();
         }
         //FILL_TRACE_LOG("receive_file_end");
-        ret = receive_file_end(file_path, tmp_file_path, file_size, 
+        ret = receive_file_end(file_path, tmp_file_path, file_size,
             request, out_buffer, response_cid, session_id);
         if (OB_SUCCESS != ret)
         {
@@ -766,7 +766,3 @@ int ObFileService::check_dir(const ObString& local_dir, const int64_t file_size)
   }
   return ret;
 }
-
-
-
-

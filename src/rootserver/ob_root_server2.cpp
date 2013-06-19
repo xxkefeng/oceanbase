@@ -39,6 +39,7 @@
 #include "ob_root_util.h"
 #include "ob_root_bootstrap.h"
 #include "ob_root_ms_provider.h"
+#include "ob_root_monitor_table.h"
 #include "ob_rs_trigger_event_util.h"
 #include "ob_root_ups_provider.h"
 #include "ob_root_ddl_operator.h"
@@ -419,7 +420,6 @@ bool ObRootServer2::init(const int64_t now, ObRootWorker* worker)
       ups_manager_->set_ups_config((int32_t)config_.read_master_master_ups_percent,
                                    (int32_t)config_.read_slave_master_ups_percent);
       config_.get_root_server(my_addr_);
-      monitor_table_.init(my_addr_, server_manager_, *ups_manager_);
       // init client helper
       client_helper_.init(worker_->get_client_manager(),
           worker_->get_thread_buffer(), worker_->get_rs_master(),
@@ -506,13 +506,21 @@ int ObRootServer2::start_master_rootserver()
     TBSYS_LOG(INFO, "rootserver alreay bootstrap, set boot ok.");
     boot_state_.set_boot_ok();
     request_cs_report_tablet();
-    ret = worker_->schedule_after_restart_task(1000000, false);
-    if (OB_SUCCESS != ret)
+    // after restart master root server refresh the schema
+    static const int64_t RETRY_TIMES = 3;
+    for (int64_t i = 0; i < RETRY_TIMES; ++i)
     {
-      TBSYS_LOG(ERROR, "fail to schedule after_restart task, ret=%d", ret);
+      ret = worker_->schedule_after_restart_task(1000000, false);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(ERROR, "fail to schedule after_restart task, ret=%d", ret);
+      }
+      else
+      {
+        break;
+      }
     }
   }
-
   privilege_timestamp_ = tbsys::CTimeUtil::getTime();
   TBSYS_LOG(INFO, "set privilege timestamp to %ld", privilege_timestamp_);
   return ret;
@@ -914,8 +922,8 @@ int ObRootServer2::after_restart()
   int err = ret;
   if (OB_SUCCESS != ret)
   {
-    static const int64_t RETRY_TIMES = 3;
     TBSYS_LOG(WARN, "fail to renew user schema try again. err=%d", ret);
+    static const int64_t RETRY_TIMES = 3;
     for (int64_t i = 0; i < RETRY_TIMES; ++i)
     {
       ret = worker_->schedule_after_restart_task(1000000, false);
@@ -933,7 +941,8 @@ int ObRootServer2::after_restart()
   }
   else
   {
-    // renew schema version and config version
+    // renew schema version and config version succ
+    // start service right now
     worker_->get_config_mgr().got_version(tbsys::CTimeUtil::getTime());
     TBSYS_LOG(INFO, "after restart renew schema succ:count[%ld]", table_count);
     TBSYS_LOG(INFO, "[NOTICE] start service now");
@@ -1101,7 +1110,7 @@ int ObRootServer2::get_schema(const bool force_update, bool only_core_tables, Ob
             {
               TBSYS_LOG(WARN, "failed to sort columns in schema manager, err=%d", ret);
             }
-            else if (OB_SUCCESS != (ret = switch_schema_manager(&out_schema)))
+            else if (OB_SUCCESS != (ret = switch_schema_manager(out_schema)))
             {
               TBSYS_LOG(WARN, "fail to switch schema. ret=%d", ret);
             }
@@ -1136,18 +1145,17 @@ int64_t ObRootServer2::get_last_frozen_version() const
   return last_frozen_mem_version_;
 }
 
-int ObRootServer2::switch_schema_manager(ObSchemaManagerV2 *schema_manager)
+int ObRootServer2::switch_schema_manager(const ObSchemaManagerV2 & schema_manager)
 {
   int ret = OB_SUCCESS;
-  if (NULL == schema_manager || NULL == schema_manager_for_cache_)
+  if (NULL == schema_manager_for_cache_)
   {
     ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "invalid argument. schema_manager_for_cache_=%p, schema_manager=%p",
-              schema_manager_for_cache_, schema_manager);
+    TBSYS_LOG(WARN, "invalid argument. schema_manager_for_cache_=%p", schema_manager_for_cache_);
   }
-  if (OB_SUCCESS == ret)
+  else
   {
-    *schema_manager_for_cache_ = *schema_manager;
+    *schema_manager_for_cache_ = schema_manager;
   }
   return ret;
 }
@@ -1939,29 +1947,6 @@ void ObRootServer2::switch_root_table(ObRootTable2 *rt, ObTabletInfoManager *ti)
   }
 }
 
-int ObRootServer2::replay_remove_replica(const common::ObTabletReportInfo &replica)
-{
-  int ret = OB_SUCCESS;
-  ObRootTable2::const_iterator start_it;
-  ObRootTable2::const_iterator end_it;
-  tbsys::CThreadGuard mutex_gard(&root_table_build_mutex_);
-  tbsys::CWLockGuard guard(root_table_rwlock_);
-  int find_ret = root_table_->find_range(replica.tablet_info_.range_, start_it, end_it);
-  if (OB_SUCCESS == find_ret && start_it == end_it)
-  {
-    for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
-    {
-      if (OB_INVALID_INDEX != start_it->server_info_indexes_[i]
-          && start_it->server_info_indexes_[i] == replica.tablet_location_.chunkserver_.get_port())
-      {
-        start_it->server_info_indexes_[i] = OB_INVALID_INDEX;
-        break;
-      }
-    }
-  }
-  return ret;
-}
-
 /*
  * chunk server register
  * @param out status 0 do not start report 1 start report
@@ -2230,7 +2215,6 @@ int ObRootServer2::migrate_over(const ObNewRange& range, const common::ObServer&
     }
   }
 
-  nr_migrate_replica(range, tablet_version, src_server, dest_server, keep_src);
   return ret;
 }
 
@@ -2425,7 +2409,9 @@ int ObRootServer2::find_monitor_table_key(const common::ObGetParam& get_param, c
   }
   else
   {
-    ret = monitor_table_.get(cell->row_key_, scanner);
+    ObRootMonitorTable monitor_table;
+    monitor_table.init(my_addr_, server_manager_, *ups_manager_);
+    ret = monitor_table.get(cell->row_key_, scanner);
     if (ret != OB_SUCCESS)
     {
       TBSYS_LOG(WARN, "get scanner from monitor root table failed:table_id[%lu], ret[%d]",
@@ -2668,7 +2654,6 @@ int ObRootServer2::report_tablets(const ObServer& server, const ObTabletReportIn
     return_code = got_reported(tablets, server_index, frozen_mem_version);
     TBSYS_LOG_US(INFO, "got_reported over");
   }
-  nr_report_tablets(server, tablets);
   return return_code;
 }
 /*
@@ -3160,6 +3145,112 @@ int ObRootServer2::slave_batch_create_new_table(const common::ObTabletInfoList& 
   return ret;
 }
 
+// just for replay root server remove rplica commit log
+int ObRootServer2::remove_replica(const bool did_replay, const common::ObTabletReportInfo &replica)
+{
+  int ret = OB_SUCCESS;
+  UNUSED(did_replay);
+  ObRootTable2::const_iterator start_it;
+  ObRootTable2::const_iterator end_it;
+  tbsys::CThreadGuard mutex_gard(&root_table_build_mutex_);
+  tbsys::CWLockGuard guard(root_table_rwlock_);
+  int find_ret = root_table_->find_range(replica.tablet_info_.range_, start_it, end_it);
+  if (OB_SUCCESS == find_ret && start_it == end_it)
+  {
+    for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
+    {
+      if (OB_INVALID_INDEX != start_it->server_info_indexes_[i]
+          && start_it->server_info_indexes_[i] == replica.tablet_location_.chunkserver_.get_port())
+      {
+        start_it->server_info_indexes_[i] = OB_INVALID_INDEX;
+        break;
+      }
+    }
+  }
+  return ret;
+}
+
+// delete the replicas that chunk server remove automaticly when daily merge failed
+int ObRootServer2::delete_replicas(const bool did_replay, const common::ObServer & cs, const common::ObTabletReportInfoList & replicas)
+{
+  int ret = OB_SUCCESS;
+  ObRootTable2::const_iterator start_it;
+  ObRootTable2::const_iterator end_it;
+  // step 1. find server index for delete replicas
+  int32_t server_index = get_server_index(cs);
+  if (OB_INVALID_INDEX == server_index)
+  {
+    ret = OB_ERROR;
+    TBSYS_LOG(WARN, "get server index failed:server[%s], ret[%d]", cs.to_cstring(), server_index);
+  }
+  else
+  {
+    common::ObTabletReportInfo * replica = NULL;
+    tbsys::CThreadGuard mutex_gard(&root_table_build_mutex_);
+    tbsys::CWLockGuard guard(root_table_rwlock_);
+    // step 1. modify root table delete replicas
+    for (int64_t i = 0; i < replicas.tablet_list_.get_array_index(); ++i)
+    {
+      replica = replicas.tablet_list_.at(i);
+      if (NULL == replica)
+      {
+        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(WARN, "check replica is null");
+        break;
+      }
+      int find_ret = root_table_->find_range(replica->tablet_info_.range_, start_it, end_it);
+      if (OB_SUCCESS == find_ret && start_it == end_it)
+      {
+        int64_t replica_count = 0;
+        int64_t find_index = OB_INVALID_INDEX;
+        for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
+        {
+          if (start_it->server_info_indexes_[i] != OB_INVALID_INDEX)
+          {
+            ++replica_count;
+            if (server_index == start_it->server_info_indexes_[i])
+            {
+              find_index = i;
+            }
+          }
+        }
+        // find the server
+        if (find_index != OB_INVALID_INDEX)
+        {
+          if (replica_count > 1)
+          {
+            start_it->server_info_indexes_[find_index] = OB_INVALID_INDEX;
+          }
+          else
+          {
+            ret = OB_ERROR;
+            TBSYS_LOG(ERROR, "can not remove this replica not safe:index[%d], server[%s]",
+                server_index, cs.to_cstring());
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "not find this server in service this tablet:index[%d], server[%s]",
+              server_index, cs.to_cstring());
+        }
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "not find the tablet replica:range[%s]", to_cstring(replica->tablet_info_.range_));
+      }
+    }
+  }
+  // step 2. write commit log if not replay
+  if ((OB_SUCCESS == ret) && (false == did_replay))
+  {
+    if (OB_SUCCESS != (ret = log_worker_->delete_replicas(cs, replicas)))
+    {
+      TBSYS_LOG(WARN, "log_worker remove tablet replicas failed. err=%d", ret);
+    }
+  }
+  return ret;
+}
+
 // @pre root_table_build_mutex_ locked
 // @note Do not remove tablet entries in tablet_manager_ for now.
 int ObRootServer2::delete_tables(const bool did_replay, const common::ObArray<uint64_t> &deleted_tables)
@@ -3205,7 +3296,6 @@ int ObRootServer2::delete_tables(const bool did_replay, const common::ObArray<ui
   {
     OB_DELETE(ObRootTable2, ObModIds::OB_RS_ROOT_TABLE, rt1);
   }
-  nr_remove_tables(deleted_tables);
   return ret;
 }
 
@@ -3419,7 +3509,6 @@ int ObRootServer2::create_empty_tablet(TableSchema &tschema, ObArray<ObServer> &
           TBSYS_LOG(WARN, "create new table failed:table[%lu], ret[%d]", tablet.range_.table_id_, ret);
         }
       }
-      nr_new_table(tablet.range_.table_id_, tschema.create_mem_version_, created_cs);
     }
     if (OB_ENTRY_EXIST == ret)
     {
@@ -4950,200 +5039,6 @@ int ObRootServer2::cs_import_tablets(const uint64_t table_id, const int64_t tabl
                 ret, table_id, version, sent_num);
     }
   }
-  return ret;
-}
-
-int ObRootServer2::nr_report_tablets(const ObServer& cs, const ObTabletReportInfoList& tablets)
-{
-  int ret = OB_SUCCESS;
-  if (config_.enable_new_root_table)
-  {
-    if (is_master())
-    {
-      if (NULL == rt_service_)
-      {
-        TBSYS_LOG(ERROR, "root_table_service not init");
-      }
-      else
-      {
-        ObRootMsProvider ms_provider(server_manager_);
-        ObRootUpsProvider ups_provider(get_update_server_info(false));
-        ObScanHelperImpl scan_helper;
-        scan_helper.set_ms_provider(&ms_provider);
-        scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
-        scan_helper.set_ups_provider(&ups_provider);
-        scan_helper.set_scan_timeout(config_.network_timeout);
-        scan_helper.set_mutate_timeout(config_.network_timeout);
-        tbsys::CThreadGuard guard(&rt_service_wmutex_);
-        if (OB_SUCCESS != (ret = rt_service_->report_tablets(scan_helper, cs, tablets)))
-        {
-          TBSYS_LOG(WARN, "report tablets failed, err=%d", ret);
-        }
-      }
-    }
-  } // end if enable
-  return ret;
-}
-
-int ObRootServer2::nr_remove_replicas(const ObServer &cs)
-{
-  int ret = OB_SUCCESS;
-  if (config_.enable_new_root_table)
-  {
-    if (is_master())
-    {
-      if (NULL == rt_service_)
-      {
-        TBSYS_LOG(ERROR, "root_table_service not init");
-      }
-      else
-      {
-        ObRootMsProvider ms_provider(server_manager_);
-        ObRootUpsProvider ups_provider(get_update_server_info(false));
-        ObScanHelperImpl scan_helper;
-        scan_helper.set_ms_provider(&ms_provider);
-        scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
-        scan_helper.set_ups_provider(&ups_provider);
-        scan_helper.set_scan_timeout(config_.network_timeout);
-        scan_helper.set_mutate_timeout(config_.network_timeout);
-        tbsys::CThreadGuard guard(&rt_service_wmutex_);
-        if (OB_SUCCESS != (ret = rt_service_->remove_replicas(scan_helper, cs)))
-        {
-          TBSYS_LOG(WARN, "remove replicas failed, err=%d", ret);
-        }
-      }
-    }
-  } // end if enable
-  return ret;
-}
-
-int ObRootServer2::nr_migrate_replica(const ObNewRange &tab, const int64_t version,
-                                      const ObServer &from, const ObServer &to, bool keep_src)
-{
-  int ret = OB_SUCCESS;
-  if (config_.enable_new_root_table)
-  {
-    if (is_master())
-    {
-      if (NULL == rt_service_)
-      {
-        TBSYS_LOG(ERROR, "root_table_service not init");
-      }
-      else
-      {
-        ObRootMsProvider ms_provider(server_manager_);
-        ObRootUpsProvider ups_provider(get_update_server_info(false));
-        ObScanHelperImpl scan_helper;
-        scan_helper.set_ms_provider(&ms_provider);
-        scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
-        scan_helper.set_ups_provider(&ups_provider);
-        scan_helper.set_scan_timeout(config_.network_timeout);
-        scan_helper.set_mutate_timeout(config_.network_timeout);
-
-        tbsys::CThreadGuard guard(&rt_service_wmutex_);
-        if (OB_SUCCESS != (ret = rt_service_->migrate_replica(scan_helper, tab, version, from, to, keep_src)))
-        {
-          TBSYS_LOG(WARN, "migrate replica failed, err=%d", ret);
-        }
-      }
-    }
-  } // end if enable
-  return ret;
-}
-
-int ObRootServer2::nr_remove_tables(const ObArray<uint64_t> &tables)
-{
-  int ret = OB_SUCCESS;
-  if (config_.enable_new_root_table)
-  {
-    if (is_master())
-    {
-      if (NULL == rt_service_)
-      {
-        TBSYS_LOG(ERROR, "root_table_service not init");
-      }
-      else
-      {
-        ObRootMsProvider ms_provider(server_manager_);
-        ObRootUpsProvider ups_provider(get_update_server_info(false));
-        ObScanHelperImpl scan_helper;
-        scan_helper.set_ms_provider(&ms_provider);
-        scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
-        scan_helper.set_ups_provider(&ups_provider);
-        scan_helper.set_scan_timeout(config_.network_timeout);
-        scan_helper.set_mutate_timeout(config_.network_timeout);
-        tbsys::CThreadGuard guard(&rt_service_wmutex_);
-        if (OB_SUCCESS != (ret = rt_service_->remove_tables(scan_helper, tables)))
-        {
-          TBSYS_LOG(WARN, "remove tables failed, err=%d", ret);
-        }
-      }
-    }
-  } // end if enable
-  return ret;
-}
-
-int ObRootServer2::nr_search_range(const ObNewRange& range, ObScanner& scanner) const
-{
-  int ret = OB_SUCCESS;
-  if (config_.enable_new_root_table)
-  {
-    if (is_master())
-    {
-      if (NULL == rt_service_)
-      {
-        TBSYS_LOG(ERROR, "root_table_service not init");
-      }
-      else
-      {
-        ObRootMsProvider ms_provider(server_manager_);
-        ObRootUpsProvider ups_provider(get_update_server_info(false));
-        ObScanHelperImpl scan_helper;
-        scan_helper.set_ms_provider(&ms_provider);
-        scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
-        scan_helper.set_ups_provider(&ups_provider);
-        scan_helper.set_scan_timeout(config_.network_timeout);
-        scan_helper.set_mutate_timeout(config_.network_timeout);
-        tbsys::CThreadGuard guard(&rt_service_wmutex_);
-        if (OB_SUCCESS != (ret = rt_service_->search_range(scan_helper, range, scanner)))
-        {
-          TBSYS_LOG(WARN, "search range failed, err=%d", ret);
-        }
-      }
-    }
-  } // end if enable
-  return ret;
-}
-
-int ObRootServer2::nr_new_table(const uint64_t tid, const int64_t tablet_version, const ObArray<ObServer> &chunkservers)
-{
-  int ret = OB_SUCCESS;
-  if (config_.enable_new_root_table)
-  {
-    if (is_master())
-    {
-      if (NULL == rt_service_)
-      {
-        TBSYS_LOG(ERROR, "root_table_service not init");
-      }
-      else
-      {
-        ObRootMsProvider ms_provider(server_manager_);
-        ObRootUpsProvider ups_provider(get_update_server_info(false));
-        ObScanHelperImpl scan_helper;
-        scan_helper.set_ms_provider(&ms_provider);
-        scan_helper.set_rpc_stub(&worker_->get_rpc_stub());
-        scan_helper.set_ups_provider(&ups_provider);
-        scan_helper.set_scan_timeout(config_.network_timeout);
-        scan_helper.set_mutate_timeout(config_.network_timeout);
-        tbsys::CThreadGuard guard(&rt_service_wmutex_);
-        if (OB_SUCCESS != (ret = rt_service_->new_table(scan_helper, tid, tablet_version, chunkservers)))
-        {
-          TBSYS_LOG(WARN, "new table failed, err=%d", ret);
-        }
-      }
-    }
-  } // end if enable
   return ret;
 }
 

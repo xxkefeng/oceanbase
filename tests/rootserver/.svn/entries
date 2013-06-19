@@ -1,14 +1,14 @@
 10
 
 dir
-13930
+14512
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/rootserver
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-04-28T04:13:22.361508Z
-13561
+2013-06-08T07:40:25.587721Z
+14380
 zhuweng.yzf
 has-props
 
@@ -100,11 +100,11 @@ file
 
 
 
-2013-05-22T14:08:49.000000Z
-35ab5f759af38b7e54efb610767d8ce5
-2013-04-28T04:13:22.361508Z
-13561
-zhuweng.yzf
+2013-06-19T08:29:42.000000Z
+aeaffc95a9bf69b4198733b2f4fc3356
+2013-06-07T10:41:07.322366Z
+14339
+xielun
 
 
 
@@ -126,7 +126,7 @@ zhuweng.yzf
 
 
 
-7943
+7973
 
 ob_delete_replicas_test.conf
 file
@@ -406,11 +406,11 @@ file
 
 
 
-2013-05-22T14:08:49.000000Z
-00147bd88c209c7f279e0b1b8f02b6f5
-2013-04-28T04:13:22.361508Z
-13561
-zhuweng.yzf
+2013-06-19T08:29:42.000000Z
+6daa558ab6377329f482573434063235
+2013-06-07T10:41:07.322366Z
+14339
+xielun
 
 
 
@@ -432,7 +432,7 @@ zhuweng.yzf
 
 
 
-28638
+28639
 
 mock_server.cpp
 file
@@ -502,17 +502,17 @@ qushan
 
 3674
 
-balance_candidate_test.cpp
+ob_delete_replicas_test_schema.ini
 file
 
 
 
 
 2013-05-22T14:08:49.000000Z
-d41d8cd98f00b204e9800998ecf8427e
-2012-04-23T03:13:55.228722Z
-8043
-rizhao.ych
+9f930d7feb2638d2f7b88055ec1a2a46
+2013-02-05T12:27:14.641743Z
+12040
+rongxuan
 
 
 
@@ -534,7 +534,7 @@ rizhao.ych
 
 
 
-0
+203
 
 ob_new_balance_test.conf
 file
@@ -570,17 +570,17 @@ rizhao.ych
 
 882
 
-ob_delete_replicas_test_schema.ini
+balance_candidate_test.cpp
 file
 
 
 
 
 2013-05-22T14:08:49.000000Z
-9f930d7feb2638d2f7b88055ec1a2a46
-2013-02-05T12:27:14.641743Z
-12040
-rongxuan
+d41d8cd98f00b204e9800998ecf8427e
+2012-04-23T03:13:55.228722Z
+8043
+rizhao.ych
 
 
 
@@ -602,7 +602,7 @@ rongxuan
 
 
 
-203
+0
 
 mock_update_server.cpp
 file
@@ -944,17 +944,17 @@ yubai
 
 0
 
-test_batch_create_table.cpp
+test_root_table2_test.cpp
 file
 
 
 
 
 2013-05-22T14:08:49.000000Z
-a51c3e3aa4b78b9a614e998573c847e8
-2012-12-07T10:06:20.267999Z
-10778
-xiaochu.yh
+826a06f0aa174d4654e35c9c58056953
+2013-04-16T03:52:59.752605Z
+13277
+xielun
 
 
 
@@ -976,7 +976,7 @@ xiaochu.yh
 
 
 
-6023
+9599
 
 chunk_servers_manager_test.cpp
 file
@@ -1012,17 +1012,17 @@ zhuweng.yzf
 
 2331
 
-test_root_table2_test.cpp
+test_batch_create_table.cpp
 file
 
 
 
 
-2013-05-22T14:08:49.000000Z
-826a06f0aa174d4654e35c9c58056953
-2013-04-16T03:52:59.752605Z
-13277
-xielun
+2013-06-19T08:29:42.000000Z
+8e3fae99ff361cdc07e72791536883be
+2013-06-08T07:40:25.587721Z
+14380
+zhuweng.yzf
 
 
 
@@ -1044,7 +1044,7 @@ xielun
 
 
 
-9599
+6039
 
 test_root_table2.cpp
 file

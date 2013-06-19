@@ -429,8 +429,9 @@ int ObRootTable2::check_tablet_version_merged(const int64_t tablet_version, cons
   }
   if (!is_merged)
   {
-    TBSYS_LOG(INFO, "already have %d tablet not safely merged to version[%ld], merging_count[%d], safe_count[%ld]",
-        fail_count, tablet_version, merging_count, safe_count);
+    TBSYS_LOG(INFO, "there are %d tablet not safity the veriosn[%ld] and safe_copy_count[%ld], the mering tablet count=%d",
+        fail_count, tablet_version, safe_count, merging_count);
+
   }
   return err;
 }
@@ -531,6 +532,7 @@ int64_t ObRootTable2::get_max_tablet_version()
   }
   return max_tablet_version;
 }
+
 int64_t ObRootTable2::get_max_tablet_version(const const_iterator& it)
 {
   int64_t max_tablet_version = 0;
@@ -543,6 +545,45 @@ int64_t ObRootTable2::get_max_tablet_version(const const_iterator& it)
   }
   return max_tablet_version;
 }
+
+int ObRootTable2::remove(const const_iterator& it, const int32_t safe_count, const int32_t server_index)
+{
+  int ret = OB_SUCCESS;
+  if (safe_count <= 0)
+  {
+    ret = OB_INVALID_ARGUMENT;
+    TBSYS_LOG(WARN, "check safe count failed:safe_count[%d]", safe_count);
+  }
+  else
+  {
+    int32_t current_count = 0;
+    int32_t found_it_index = OB_INVALID_INDEX;
+    for (int32_t i = 0; i < OB_SAFE_COPY_COUNT; i++)
+    {
+      if (it->server_info_indexes_[i] != OB_INVALID_INDEX)
+      {
+        ++current_count;
+      }
+      if (it->server_info_indexes_[i] == server_index)
+      {
+        found_it_index = i;
+      }
+    }
+    // find and remove the replica
+    if ((OB_INVALID_INDEX != found_it_index) && (current_count - 1 > safe_count))
+    {
+      it->server_info_indexes_[found_it_index] = OB_INVALID_INDEX;
+      ret = OB_SUCCESS;
+    }
+    else
+    {
+      TBSYS_LOG(WARN, "not find the server or safe count failed:server[%d], safe[%d], current[%d]",
+          server_index, safe_count, current_count);
+    }
+  }
+  return ret;
+}
+
 int ObRootTable2::modify(const const_iterator& it, const int32_t dest_server_index, const int64_t tablet_version)
 {
   int32_t found_it_index = OB_INVALID_INDEX;
@@ -1668,7 +1709,7 @@ int ObRootTable2::write_to_file(const char* filename)
     }
 
     // allocate memory
-    char* data_buffer = static_cast<char*>(ob_malloc(total_size));
+    char* data_buffer = static_cast<char*>(ob_malloc(total_size, ObModIds::OB_RS_ROOT_TABLE));
     if (data_buffer == NULL)
     {
       ret = OB_ERROR;
@@ -1831,7 +1872,7 @@ int ObRootTable2::read_from_file(const char* filename)
   if (ret == OB_SUCCESS)
   {
     size = header.data_length_;
-    data_buffer = static_cast<char*>(ob_malloc(size));
+    data_buffer = static_cast<char*>(ob_malloc(size, ObModIds::OB_RS_ROOT_TABLE));
     if (data_buffer == NULL)
     {
       ret = OB_ERROR;

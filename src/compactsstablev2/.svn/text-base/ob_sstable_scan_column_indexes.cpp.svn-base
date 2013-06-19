@@ -26,7 +26,7 @@ namespace oceanbase
         if (NULL == column_info_)
         {
           if (NULL == (column_info_ = reinterpret_cast<Column*>(
-                  common::ob_malloc(COLUMN_ITEM_SIZE * column_info_size_))))
+                         common::ob_malloc(COLUMN_ITEM_SIZE * column_info_size_, ObModIds::OB_SSTABLE_INDEX))))
           {
             TBSYS_LOG(WARN, "failed to alloc memory");
             ret = common::OB_ALLOCATE_MEMORY_FAILED;
@@ -45,7 +45,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSSTableScanColumnIndexes::get_column(const int64_t index, 
+    int ObSSTableScanColumnIndexes::get_column(const int64_t index,
         Column& column) const
     {
       int ret = OB_SUCCESS;

@@ -222,24 +222,20 @@ namespace oceanbase
         }
         else
         {
-          retry_times = config_.retry_times;
           timeout = config_.network_timeout;
-          for (int64_t i = 0; i <= retry_times; ++i)
+          int64_t retry_times = 0;
+          while (!stoped_)
           {
             // fetch core table schema for startup.
             ret = rpc_stub_.fetch_schema(timeout, get_root_server(),
                                           0, true, *newest_schema_mgr);
-            if (OB_SUCCESS == ret)
-            {
-              ret = schema_mgr_->init(true, *newest_schema_mgr);
-              break;
-            }
+            if (OB_SUCCESS == ret || OB_RESPONSE_TIME_OUT != ret) break;
             usleep(RETRY_INTERVAL_TIME);
+            TBSYS_LOG(INFO, "retry to fetch core schema:retry_times[%ld]", retry_times ++);
           }
-          if (OB_SUCCESS != ret)
+          if (OB_SUCCESS == ret)
           {
-            TBSYS_LOG(WARN, "cannot fetch schema from rootserver, delegate to schema schedule task.");
-            ret = OB_SUCCESS;
+            ret = schema_mgr_->init(true, *newest_schema_mgr);
           }
         }
 
@@ -284,7 +280,8 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         int32_t count = 0;
-        for (int32_t i = 0; i <= config_.retry_times; ++i)
+        int64_t retry_times = 0;
+        while (!stoped_)
         {
           ret = rpc_proxy_->fetch_update_server_list(count);
           if (OB_SUCCESS == ret)
@@ -292,7 +289,12 @@ namespace oceanbase
             TBSYS_LOG(INFO, "fetch update server list succ:count=%d", count);
             break;
           }
+          if (OB_RESPONSE_TIME_OUT != ret)
+          {
+            break;
+          }
           usleep(RETRY_INTERVAL_TIME);
+          TBSYS_LOG(INFO, "retry to get ups list:retry_times[%ld]", retry_times ++);
         }
       }
 

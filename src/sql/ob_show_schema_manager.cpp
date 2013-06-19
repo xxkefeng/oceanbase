@@ -32,7 +32,7 @@ const ObSchemaManagerV2* ObShowSchemaManager::get_show_schema_manager()
     {
       void *ptr = NULL;
       ObSchemaManagerV2 *schema_mgr = NULL;
-      if ((ptr = ob_malloc(sizeof(ObSchemaManagerV2))) == NULL)
+      if ((ptr = ob_malloc(sizeof(ObSchemaManagerV2), ObModIds::OB_SCHEMA)) == NULL)
       {
         TBSYS_LOG(WARN, "Out of memory");
       }

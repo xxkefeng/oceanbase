@@ -16,7 +16,7 @@
 #include "common/ob_row_iterator.h"
 #include "common/ob_row.h"
 #include "ob_ms_request.h"
-
+#include "common/ob_se_array.h"
 namespace oceanbase
 {
   namespace sql
@@ -55,7 +55,7 @@ namespace oceanbase
 
       void reset();
 
-      int64_t get_sharding_result_count()const { return sharding_result_count_; }
+      int64_t get_sharding_result_count()const { return sharding_result_arr_.count(); }
       int64_t get_cur_sharding_result_idx()const { return cur_sharding_result_idx_; }
       //inline int64_t get_seamless_result_count() { return seamless_result_count_; }
 
@@ -74,9 +74,8 @@ namespace oceanbase
           common::ObRowkey & last_proces_rowkey, const int64_t fullfilled_item_num);
         bool operator<(const sharding_result_t & other)const;
       };
-      static const int64_t MAX_SHARDING_RESULT_COUNT = mergeserver::ObMergerRequest::MAX_SUBREQUEST_NUM;
-      sharding_result_t sharding_result_arr_[MAX_SHARDING_RESULT_COUNT];
-      int64_t           sharding_result_count_;
+      static const int64_t COMMON_SHARDING_RESULT_COUNT = 4;
+      ObSEArray<sharding_result_t, COMMON_SHARDING_RESULT_COUNT> sharding_result_arr_;
       int64_t           seamless_result_count_;
       int64_t           cur_sharding_result_idx_;
       const sql::ObSqlScanParam    *scan_param_;

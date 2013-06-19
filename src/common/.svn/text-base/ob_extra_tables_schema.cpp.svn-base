@@ -210,7 +210,7 @@ int ObExtraTablesSchema::all_all_column_schema(TableSchema& table_schema)
   strcpy(table_schema.compress_func_name_, OB_DEFAULT_COMPRESS_FUNC_NAME);
   table_schema.is_use_bloomfilter_ = false;
   table_schema.is_pure_update_table_ = false;
-  table_schema.rowkey_split_ = sizeof(int64_t) + OB_MAX_COLUMN_NAME_LENGTH ;
+  table_schema.rowkey_split_ = 0;
   table_schema.merge_write_sstable_version_ = TableSchema::DEFAULT_SSTABLE_VERSION;
   table_schema.create_time_column_id_ = OB_CREATE_TIME_COLUMN_ID;
   table_schema.modify_time_column_id_ = OB_MODIFY_TIME_COLUMN_ID;
@@ -339,7 +339,7 @@ int ObExtraTablesSchema::all_join_info_schema(TableSchema& table_schema)
   strcpy(table_schema.compress_func_name_, OB_DEFAULT_COMPRESS_FUNC_NAME);
   table_schema.is_use_bloomfilter_ = false;
   table_schema.is_pure_update_table_ = false;
-  table_schema.rowkey_split_ = 4 * sizeof(int64_t);
+  table_schema.rowkey_split_ = 0;
   table_schema.merge_write_sstable_version_ = TableSchema::DEFAULT_SSTABLE_VERSION;
   table_schema.create_time_column_id_ = OB_CREATE_TIME_COLUMN_ID;
   table_schema.modify_time_column_id_ = OB_MODIFY_TIME_COLUMN_ID;
@@ -919,7 +919,7 @@ int ObExtraTablesSchema::all_sys_stat_schema(TableSchema &table_schema)
   table_schema.max_used_column_id_ = OB_APP_MIN_COLUMN_ID + 4;
   table_schema.max_rowkey_length_ = OB_MAX_TABLE_NAME_LENGTH + sizeof(int64_t);
   strcpy(table_schema.compress_func_name_, OB_DEFAULT_COMPRESS_FUNC_NAME);
-  table_schema.rowkey_split_ = sizeof(int64_t) + OB_MAX_COLUMN_NAME_LENGTH ;
+  table_schema.rowkey_split_ = 0;
 
   int column_id = OB_APP_MIN_COLUMN_ID;
   ADD_COLUMN_SCHEMA("cluster_id", //column_name
@@ -989,7 +989,7 @@ int ObExtraTablesSchema::all_sys_config_schema(TableSchema &table_schema)
   table_schema.max_used_column_id_ = OB_ALL_SYS_STAT_MAX_COLUMN_ID;
   table_schema.max_rowkey_length_ = TEMP_ROWKEY_LENGTH;
   strcpy(table_schema.compress_func_name_, OB_DEFAULT_COMPRESS_FUNC_NAME);
-  table_schema.rowkey_split_ = sizeof(int64_t) + OB_MAX_COLUMN_NAME_LENGTH ;
+  table_schema.rowkey_split_ = 0;
 
   int column_id = OB_APP_MIN_COLUMN_ID;
   ADD_COLUMN_SCHEMA("cluster_id", //column_name

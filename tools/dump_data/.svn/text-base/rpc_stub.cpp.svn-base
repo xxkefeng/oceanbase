@@ -6,6 +6,7 @@ using namespace oceanbase::tools;
 
 RpcStub::RpcStub(ObClientManager * client, ThreadSpecificBuffer * buffer)
 {
+  server_ = NULL;
   frame_ = client;
   buffer_ = buffer;
 }
@@ -61,7 +62,7 @@ int RpcStub::fetch_task(const ObServer & server, const int64_t timeout,
   // step 2. deserialize restult code
   int64_t pos = 0;
   if (OB_SUCCESS == ret)
-  { 
+  {
     ObResultCode result_code;
     ret = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
     if (OB_SUCCESS != ret)
@@ -101,7 +102,7 @@ int RpcStub::fetch_task(const ObServer & server, const int64_t timeout,
 }
 
 
-int RpcStub::report_task(const ObServer & server, const int64_t timeout, 
+int RpcStub::report_task(const ObServer & server, const int64_t timeout,
     const int64_t result_code, const char * file_name, const TaskInfo & task)
 {
   ObDataBuffer data_buff;
@@ -120,7 +121,7 @@ int RpcStub::report_task(const ObServer & server, const int64_t timeout,
       TBSYS_LOG(ERROR, "serialize result code failed:ret[%d]", ret);
     }
   }
-  
+
   // step 2. serialize finish task info to data_buff
   if (OB_SUCCESS == ret)
   {
@@ -131,13 +132,13 @@ int RpcStub::report_task(const ObServer & server, const int64_t timeout,
       TBSYS_LOG(ERROR, "serialize task info failed:ret[%d]", ret);
     }
   }
-  
+
   // step 3. serialize output file path
   if (OB_SUCCESS == ret)
   {
     if (OB_SUCCESS == result_code)
     {
-      ret = serialization::encode_vstr(data_buff.get_data(), data_buff.get_capacity(), 
+      ret = serialization::encode_vstr(data_buff.get_data(), data_buff.get_capacity(),
           data_buff.get_position(), file_name, strlen(file_name));
       if (ret != OB_SUCCESS)
       {
@@ -146,7 +147,7 @@ int RpcStub::report_task(const ObServer & server, const int64_t timeout,
     }
   }
 
-  // step 4. send request for report task complete 
+  // step 4. send request for report task complete
   if (OB_SUCCESS == ret)
   {
     ret = frame_->send_request(server, REPORT_TASK_REQUEST, DEFAULT_VERSION, timeout,
@@ -176,7 +177,7 @@ int RpcStub::report_task(const ObServer & server, const int64_t timeout,
 }
 
 
-int RpcStub::get(const ObServer & server, const int64_t timeout, 
+int RpcStub::get(const ObServer & server, const int64_t timeout,
     const ObGetParam & param, ObScanner & result)
 {
   ObDataBuffer data_buff;
@@ -188,7 +189,7 @@ int RpcStub::get(const ObServer & server, const int64_t timeout,
   else
   {
     // step 1. serialize ObGetParam to the data_buff
-    ret = param.serialize(data_buff.get_data(), data_buff.get_capacity(), 
+    ret = param.serialize(data_buff.get_data(), data_buff.get_capacity(),
         data_buff.get_position());
     if (OB_SUCCESS != ret)
     {
@@ -196,17 +197,17 @@ int RpcStub::get(const ObServer & server, const int64_t timeout,
     }
   }
 
-  // step 2. send request for get data 
+  // step 2. send request for get data
   if (OB_SUCCESS == ret)
   {
-    ret = frame_->send_request(server, OB_GET_REQUEST, DEFAULT_VERSION, 
+    ret = frame_->send_request(server, OB_GET_REQUEST, DEFAULT_VERSION,
         timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
       TBSYS_LOG(WARN, "get data failed from server:ret[%d]", ret);
     }
   }
-  
+
   // step 3. deserialize the response result
   int64_t pos = 0;
   if (OB_SUCCESS == ret)
@@ -222,11 +223,11 @@ int RpcStub::get(const ObServer & server, const int64_t timeout,
       ret = result_code.result_code_;
     }
   }
-  
-  // step 4. deserialize the scanner 
+
+  // step 4. deserialize the scanner
   if (OB_SUCCESS == ret)
   {
-    result.clear();
+    result.reset();
     ret = result.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
     if (OB_SUCCESS != ret)
     {
@@ -248,7 +249,7 @@ int RpcStub::scan(const ObServer & server, const int64_t timeout, const ObScanPa
   else
   {
     // step 1. serialize ObScanParam to the data_buff
-    ret = param.serialize(data_buff.get_data(), data_buff.get_capacity(), 
+    ret = param.serialize(data_buff.get_data(), data_buff.get_capacity(),
         data_buff.get_position());
     if (OB_SUCCESS != ret)
     {
@@ -257,12 +258,12 @@ int RpcStub::scan(const ObServer & server, const int64_t timeout, const ObScanPa
   }
 
   int64_t pos = 0;
-  // step 2. send request for scan data 
+  // step 2. send request for scan data
   if (OB_SUCCESS == ret)
   {
     ObResultCode result_code;
     // merge server list
-    ret = frame_->send_request(server, OB_SCAN_REQUEST, DEFAULT_VERSION, 
+    ret = frame_->send_request(server, OB_SCAN_REQUEST, DEFAULT_VERSION,
         timeout, data_buff);
     if (OB_SUCCESS != ret)
     {
@@ -283,8 +284,8 @@ int RpcStub::scan(const ObServer & server, const int64_t timeout, const ObScanPa
       }
     }
   }
-  
-  // step 4. deserialize the scanner 
+
+  // step 4. deserialize the scanner
   if (OB_SUCCESS == ret)
   {
     result.clear();
@@ -310,14 +311,12 @@ int RpcStub::scan(const int64_t index, const TabletLocation & list, const int64_
   for (int64_t i = index; count < size; i = (i + 1) % size, ++count)
   {
     list[i].chunkserver_.to_string(server_addr, MAX_SERVER_ADDR_SIZE);
-
     /* 09/13/2011, add tablet version control */
     if (list[i].tablet_version_ != version &&
         list[i].tablet_version_ != (version + 1))
     {
       TBSYS_LOG(DEBUG, "skip version:index[%ld], size[%ld], server[%s], tablet_ver=%ld, version=%ld",
-                i, size, server_addr, list[i].tablet_version_, version);
-
+          i, size, server_addr, list[i].tablet_version_, version);
       continue;
     }
 
@@ -325,13 +324,13 @@ int RpcStub::scan(const int64_t index, const TabletLocation & list, const int64_
     if (OB_SUCCESS == ret)
     {
       TBSYS_LOG(DEBUG, "scan from server succ:index[%ld], size[%ld], server[%s]",
-                i, size, server_addr);
+          i, size, server_addr);
       break;
     }
     else
     {
       TBSYS_LOG(WARN, "scan from server failed:index[%ld], size[%ld], server[%s], ret[%d]",
-                i, size, server_addr, ret);
+          i, size, server_addr, ret);
     }
   }
   return ret;
@@ -345,7 +344,7 @@ int RpcStub::get_update_server(const common::ObServer & server, const int64_t ti
   // step 1. send get update server info request
   if (OB_SUCCESS == ret)
   {
-    ret = frame_->send_request(server, OB_GET_UPDATE_SERVER_INFO, DEFAULT_VERSION, 
+    ret = frame_->send_request(server, OB_GET_UPDATE_SERVER_INFO, DEFAULT_VERSION,
         timeout, data_buff);
     if (ret != OB_SUCCESS)
     {
@@ -356,7 +355,7 @@ int RpcStub::get_update_server(const common::ObServer & server, const int64_t ti
   // step 2. deserialize restult code
   int64_t pos = 0;
   if (OB_SUCCESS == ret)
-  { 
+  {
     ObResultCode result_code;
     ret = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
     if (OB_SUCCESS != ret)
@@ -381,7 +380,7 @@ int RpcStub::get_update_server(const common::ObServer & server, const int64_t ti
   return ret;
 }
 
-int RpcStub::get_schema(const ObServer & server, const int64_t timeout, const int64_t version, 
+int RpcStub::get_schema(const ObServer & server, const int64_t timeout, const int64_t version,
     ObSchemaManagerV2 & schema)
 {
   ObDataBuffer data_buff;
@@ -389,15 +388,15 @@ int RpcStub::get_schema(const ObServer & server, const int64_t timeout, const in
   // step 1. serialize timestamp to data_buff
   if (OB_SUCCESS == ret)
   {
-    ret = serialization::encode_vi64(data_buff.get_data(), 
+    ret = serialization::encode_vi64(data_buff.get_data(),
         data_buff.get_capacity(), data_buff.get_position(), version);
     if (OB_SUCCESS != ret)
     {
-      TBSYS_LOG(ERROR, "serialize timestamp failed:version[%ld], ret[%d]", 
+      TBSYS_LOG(ERROR, "serialize timestamp failed:version[%ld], ret[%d]",
           version, ret);
     }
   }
-  
+
   // step 2. send request for fetch new schema
   if (OB_SUCCESS == ret)
   {
@@ -409,7 +408,7 @@ int RpcStub::get_schema(const ObServer & server, const int64_t timeout, const in
           "version[%ld], ret[%d]", version, ret);
     }
   }
-  
+
   // step 3. deserialize the response code
   int64_t pos = 0;
   if (OB_SUCCESS == ret)
@@ -476,7 +475,7 @@ int RpcStub::get_version(const ObServer & server, const int64_t timeout, int64_t
       ret = result_code.result_code_;
     }
   }
-  
+
   // step 3. deserialize memtable version
   if (OB_SUCCESS == ret)
   {
@@ -496,7 +495,7 @@ int RpcStub::get_version(const ObServer & server, const int64_t timeout, int64_t
 int RpcStub::response_finish(const int ret_code, const ObPacket * packet)
 {
   int ret = common::OB_SUCCESS;
-  if ((NULL == packet) || (false == check_inner_stat()))
+  if ((NULL == packet) || (false == check_inner_stat()) || NULL == server_)
   {
     TBSYS_LOG(ERROR, "check packet or inner stat failed:packet[%p]", packet);
     ret = common::OB_ERROR;
@@ -519,13 +518,12 @@ int RpcStub::response_finish(const int ret_code, const ObPacket * packet)
       {
         TBSYS_LOG(ERROR, "serialize result message failed:ret[%d]", ret);
       }
-      
+
       // send reponse
       if (OB_SUCCESS == ret)
       {
-        int32_t channel_id = packet->getChannelId();
-        tbnet::Connection * connection = packet->get_connection();
-        ret = send_packet(REPORT_TASK_RESPONSE, DEFAULT_VERSION, out_buffer, connection, channel_id);
+        ret = server_->send_response(REPORT_TASK_RESPONSE, DEFAULT_VERSION, out_buffer, packet->get_request(),
+            packet->get_channel_id());
         if (ret != common::OB_SUCCESS)
         {
           TBSYS_LOG(WARN, "send response packet failed:ret[%d]", ret);
@@ -539,7 +537,7 @@ int RpcStub::response_finish(const int ret_code, const ObPacket * packet)
 int RpcStub::response_fetch(const int ret_code, const TaskCounter & couter, const TaskInfo & task, ObPacket * packet)
 {
   int ret = OB_SUCCESS;
-  if ((NULL == packet) || (false == check_inner_stat()))
+  if ((NULL == packet) || (false == check_inner_stat()) || NULL == server_)
   {
     TBSYS_LOG(ERROR, "check packet or inner stat failed:packet[%p]", packet);
     ret = OB_ERROR;
@@ -585,9 +583,8 @@ int RpcStub::response_fetch(const int ret_code, const TaskCounter & couter, cons
     // step 3. send packet for response
     if (OB_SUCCESS == ret)
     {
-      int32_t channel_id = packet->getChannelId();
-      tbnet::Connection * connection = packet->get_connection();
-      ret = send_packet(FETCH_TASK_RESPONSE, DEFAULT_VERSION, out_buffer, connection, channel_id);
+      ret = server_->send_response(FETCH_TASK_RESPONSE, DEFAULT_VERSION, out_buffer, packet->get_request(),
+          packet->get_channel_id());
       if (ret != common::OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "send response packet failed:ret[%d]", ret);
@@ -596,57 +593,4 @@ int RpcStub::response_fetch(const int ret_code, const TaskCounter & couter, cons
   }
   return ret;
 }
-
-
-int RpcStub::send_packet(const int32_t pcode, const int32_t version, const ObDataBuffer & buffer,
-  tbnet::Connection * conn, const int32_t channel_id)
-{
-  int ret = OB_SUCCESS;
-  if (conn == NULL)
-  {
-    ret = OB_ERROR;
-    TBSYS_LOG(ERROR, "%s", "check connection is NULL");
-  }
-  else
-  {
-    ObPacket * packet = new(std::nothrow) ObPacket();
-    if (NULL == packet)
-    {
-      ret = OB_ERROR;
-      TBSYS_LOG(ERROR, "%s", "check new packet failed");
-    }
-    else
-    {
-      packet->set_packet_code(pcode);
-      packet->setChannelId(channel_id);
-      packet->set_api_version(version);
-      packet->set_data(buffer);
-      if (ret == OB_SUCCESS)
-      {
-        ret = packet->serialize();
-        if (ret != OB_SUCCESS)
-        {
-          TBSYS_LOG(WARN, "packet serialize error, error: %d", ret);
-        }
-      }
-    }
-
-    if (ret == OB_SUCCESS)
-    {
-      if (!conn->postPacket(packet))
-      {
-        uint64_t peer_id = conn->getPeerId();
-        TBSYS_LOG(WARN, "send packet to [%s] failed", tbsys::CNetUtil::addrToString(peer_id).c_str());
-        ret = OB_ERROR;
-      }
-    }
-
-    if (ret != OB_SUCCESS)
-    {
-      packet->free();
-    }
-  }
-  return ret;
-}
-
 

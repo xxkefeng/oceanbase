@@ -31,7 +31,7 @@ sleep 60;
 deploy ob1.check_cs_sstable 200;
 deploy ob2.check_cs_sstable 200;
 
-alter system set tablet_replicas_num=2 server_type=rootserver;
+deploy ob1.mysql alter system set tablet_replicas_num=2 server_type=rootserver;
 deploy ob1.cs3.check_log_until_success "begin migrate_tablet";
 
 deploy ob1.stop;

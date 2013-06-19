@@ -94,7 +94,7 @@ int ObUpdate::update_by_mutator()
   char *varchar_buff = NULL;
   const ObObj *res_cell = NULL;
   int64_t i = 0;
-  if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH*(OB_MAX_COLUMN_NUMBER))))
+  if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH*(OB_MAX_COLUMN_NUMBER), ObModIds::OB_SQL_UPDATE)))
   {
     TBSYS_LOG(ERROR, "no memory");
     ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -111,7 +111,7 @@ int ObUpdate::update_by_mutator()
       TBSYS_LOG(WARN, "fail to get next row. unexpected.");
       break;
     }
-    else if (OB_SUCCESS != (ret = get_row_key(table_id_, *row, rowkey_info_, 
+    else if (OB_SUCCESS != (ret = get_row_key(table_id_, *row, rowkey_info_,
             rowkey_objs, OB_MAX_ROWKEY_COLUMN_NUMBER, rowkey)))
     {
       TBSYS_LOG(WARN, "fail to get rowkey for table %lu", table_id_);
@@ -124,7 +124,7 @@ int ObUpdate::update_by_mutator()
       ObString varchar;
       varchar.assign_ptr(varchar_buff + OB_MAX_VARCHAR_LENGTH * i, OB_MAX_VARCHAR_LENGTH);
       casted_cells[i].set_varchar(varchar);
-      
+
       column_id = update_column_ids_.at(i);
       if (OB_SUCCESS != (ret = cols_desc_.get_by_id(table_id_, column_id, idx, data_type)))
       {
@@ -159,9 +159,9 @@ int ObUpdate::update_by_mutator()
           TBSYS_LOG(WARN, "fail to add table %lu item %s to update mutator. ret=%d", table_id_, to_cstring(rowkey), ret);
           break;
         }
-        if (0) 
+        if (0)
         {
-          TBSYS_LOG(DEBUG, "mutator.update() rowkey=%s, column_id=%lu, cell=%s, i=%ld", 
+          TBSYS_LOG(DEBUG, "mutator.update() rowkey=%s, column_id=%lu, cell=%s, i=%ld",
               to_cstring(rowkey), column_id, to_cstring(*res_cell), i);
         }
       }
@@ -192,9 +192,9 @@ int ObUpdate::update_by_mutator()
   return ret;
 }
 
-int ObUpdate::get_row_key(const uint64_t table_id, 
-    const ObRow &row, 
-    const ObRowkeyInfo &rowkey_info, 
+int ObUpdate::get_row_key(const uint64_t table_id,
+    const ObRow &row,
+    const ObRowkeyInfo &rowkey_info,
     ObObj *rowkey_objs,
     const int64_t obj_size,
     ObRowkey &rowkey)

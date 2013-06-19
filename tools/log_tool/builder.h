@@ -1174,7 +1174,7 @@ class SimpleAllocator: public SimpleBufAllocator
     const static int64_t buf_limit = 1<<21;
   public:
     SimpleAllocator() {
-      void* cbuf = ob_malloc(buf_limit);
+      void* cbuf = ob_malloc(buf_limit, ObModIds::OB_RS_LOG_WORKER);
       buf_.set_data((char*)cbuf, buf_limit);
       SimpleBufAllocator::set_buf(&buf_);
     }
@@ -1279,7 +1279,7 @@ int build_gt0_expr(ObSqlExpression& expr, uint64_t table_id, uint64_t column_id)
   cref.type_ = T_REF_COLUMN;
   cref.value_.cell_.tid = table_id;
   cref.value_.cell_.cid = column_id;
-  
+
   zero.type_ = T_INT;
   zero.value_.int_ = 1;
   if (OB_SUCCESS != (err = expr.add_expr_item(cref)))
@@ -1417,7 +1417,7 @@ class PhyPlanBuilder: public RowBuilder, public ObVersionProvider
     int update_ifgt0(ObPhysicalPlan* plan, ObPhyOperator*& op, int64_t row_count) {
       int err = OB_SUCCESS;
       uint64_t table_id = 0, column_id = 0;
-      ObSqlExpression gt0_expr;
+      ObSqlExpression *gt0_expr = ObSqlExpression::alloc();
       empty_values_.set_row_desc(rowkey_desc_);
       merger_.set_is_ups_row(false);
       ups_modify_.set_phy_plan(plan);
@@ -1434,7 +1434,7 @@ class PhyPlanBuilder: public RowBuilder, public ObVersionProvider
       {
         TBSYS_LOG(ERROR, "get_first_int_col()=>%d", err);
       }
-      else if (OB_SUCCESS != (err = build_gt0_expr(gt0_expr, table_id, column_id)))
+      else if (OB_SUCCESS != (err = build_gt0_expr(*gt0_expr, table_id, column_id)))
       {
         TBSYS_LOG(ERROR, "build_gt0_expr()=>%d", err);
       }

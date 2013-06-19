@@ -41,7 +41,7 @@ namespace oceanbase
 
       if (NULL != write_param && NULL == *write_param)
       {
-        *write_param = reinterpret_cast<ObOpParam*>(ob_malloc(sizeof(ObOpParam)));
+        *write_param = reinterpret_cast<ObOpParam*>(ob_malloc(sizeof(ObOpParam), ObModIds::TEST));
         if (NULL == *write_param)
         {
           TBSYS_LOG(ERROR, "failed to allocate memory for write param");
@@ -114,13 +114,13 @@ namespace oceanbase
                           cell_param.value_.int_val_);
         break;
       case ObFloatType:
-        ret = mutator.add(write_param.table_name_, row_key, 
-                          cell_param.column_name_, 
+        ret = mutator.add(write_param.table_name_, row_key,
+                          cell_param.column_name_,
                           cell_param.value_.float_val_);
         break;
       case ObDoubleType:
-        ret = mutator.add(write_param.table_name_, row_key, 
-                          cell_param.column_name_, 
+        ret = mutator.add(write_param.table_name_, row_key,
+                          cell_param.column_name_,
                           cell_param.value_.double_val_);
         break;
       case ObDateTimeType:

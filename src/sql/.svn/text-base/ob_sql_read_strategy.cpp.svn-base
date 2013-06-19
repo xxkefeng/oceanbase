@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_sql_read_strategy.cpp 
+ * ob_sql_read_strategy.cpp
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -21,7 +21,9 @@ using namespace common;
 using namespace sql;
 
 ObSqlReadStrategy::ObSqlReadStrategy()
-  :rowkey_info_(NULL)
+  :simple_in_filter_list_(common::OB_MALLOC_BLOCK_SIZE, ModulePageAllocator(ObModIds::OB_SQL_READ_STRATEGY)),
+   simple_cond_filter_list_(common::OB_MALLOC_BLOCK_SIZE, ModulePageAllocator(ObModIds::OB_SQL_READ_STRATEGY)),
+   rowkey_info_(NULL)
 {
   memset(start_key_mem_hold_, 0, sizeof(start_key_mem_hold_));
   memset(end_key_mem_hold_, 0, sizeof(end_key_mem_hold_));
@@ -64,7 +66,7 @@ int ObSqlReadStrategy::find_scan_range(ObNewRange &range, bool &found, bool sing
       break;
     }
     else
-    {   
+    {
       if (OB_SUCCESS != (ret = find_closed_column_range(idx, column_id, found_start, found_end, single_row_only)))
       {
         TBSYS_LOG(WARN, "fail to find closed column range for column %lu", column_id);
@@ -122,7 +124,7 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
         char *varchar_buff = NULL;
         if (target_type == ObVarcharType && source_type != ObVarcharType)
         {
-          if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH)))
+          if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH, ObModIds::OB_SQL_READ_STRATEGY)))
           {
             ret = OB_ALLOCATE_MEMORY_FAILED;
             TBSYS_LOG(WARN, "ob_malloc %ld bytes failed, ret=%d", OB_MAX_VARCHAR_LENGTH, ret);
@@ -304,7 +306,7 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
                   if (*p_promoted_obj != start_key_objs_[idx])
                   {
                     TBSYS_LOG(WARN, "two different equal condition on the same column, column_id=%lu"
-                        " start_key_objs_[idx]=%s, *p_promoted_obj=%s", 
+                        " start_key_objs_[idx]=%s, *p_promoted_obj=%s",
                         column_id, to_cstring(start_key_objs_[idx]), to_cstring(*p_promoted_obj));
                   }
                   else
@@ -373,7 +375,7 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
           ObObjType end_source_type = cond_end.get_type();
           if (target_type == ObVarcharType && start_source_type != ObVarcharType)
           {
-            if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH)))
+            if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH, ObModIds::OB_SQL_READ_STRATEGY)))
             {
               ret = OB_ALLOCATE_MEMORY_FAILED;
               TBSYS_LOG(WARN, "ob_malloc %ld bytes failed, ret=%d", OB_MAX_VARCHAR_LENGTH, ret);
@@ -449,7 +451,7 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
           {
             if (target_type == ObVarcharType && end_source_type != ObVarcharType)
             {
-              if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH)))
+              if (NULL == (varchar_buff = (char*)ob_malloc(OB_MAX_VARCHAR_LENGTH, ObModIds::OB_SQL_READ_STRATEGY)))
               {
                 ret = OB_ALLOCATE_MEMORY_FAILED;
                 TBSYS_LOG(WARN, "ob_malloc %ld bytes failed, ret=%d", OB_MAX_VARCHAR_LENGTH, ret);
@@ -567,7 +569,7 @@ int ObSqlReadStrategy::add_filter(const ObSqlExpression &expr)
   {
     ObArray<ObRowkey> rowkey_array;
     common::PageArena<ObObj,common::ModulePageAllocator> rowkey_objs_allocator(
-        PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_MOD_DEFAULT));
+        PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_SQL_COMMON));
     if (true == expr.is_simple_in_expr(*rowkey_info_, rowkey_array, rowkey_objs_allocator))
     {
       // TBSYS_LOG(DEBUG, "simple in expr [%s]", to_cstring(expr));
@@ -577,7 +579,7 @@ int ObSqlReadStrategy::add_filter(const ObSqlExpression &expr)
       }
     }
   }
-  
+
   return ret;
 }
 
@@ -665,11 +667,11 @@ int ObSqlReadStrategy::find_rowkeys_from_in_expr(ObArray<ObRowkey> &rowkey_array
       else if (need_buf)
       {
         if (NULL == in_rowkey_buf)
-        { 
+        {
           in_rowkey_buf = (char*)objs_allocator.alloc(OB_MAX_ROW_LENGTH);
         }
         if (NULL == in_rowkey_buf)
-        { 
+        {
           TBSYS_LOG(ERROR, "no memory");
           ret = OB_ALLOCATE_MEMORY_FAILED;
         }
@@ -709,7 +711,7 @@ int ObSqlReadStrategy::get_read_method(ObArray<ObRowkey> &rowkey_array, PageAren
     else if (rowkey_array.count() > 0)
     {
       read_method = USE_GET;
-    } 
+    }
     else if (OB_SUCCESS != (ret = find_rowkeys_from_equal_expr(rowkey_array, rowkey_objs_allocator)))
     {
       TBSYS_LOG(WARN, "fail to find rowkeys in equal where operator. ret=%d", ret);
@@ -752,6 +754,3 @@ void ObSqlReadStrategy::destroy()
     }
   }
 }
-
-
-

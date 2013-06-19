@@ -205,6 +205,7 @@ namespace oceanbase
     const int OB_UPS_TABLE_NOT_FROZEN = -2008;
     const int OB_UPS_CHANGE_MASTER_TIMEOUT = -2009;
     const int OB_FORCE_TIME_OUT = -2010;
+    const int OB_BEGIN_TRANS_LOCKED = -2011;
 
     //error code for root server -3001 ---- -4000
     const int OB_ERROR_TIME_STAMP = -3001;
@@ -215,6 +216,7 @@ namespace oceanbase
     const int OB_FIND_OUT_OF_RANGE = -3006;
     const int OB_CONVERT_ERROR = -3007;
     const int OB_MS_ITER_END = -3008;
+    const int OB_MS_NOT_EXIST = -3009;
 
     //error code for merge server -4000 ---- -5000
     const int OB_INNER_STAT_ERROR = -4001;     // inner stat check error
@@ -510,7 +512,7 @@ namespace oceanbase
     static const int64_t OB_MAX_USER_DEFINED_COLUMNS_COUNT = OB_ROW_MAX_COLUMNS_COUNT - OB_APP_MIN_COLUMN_ID;
 
     const char* const SYS_DATE = "$SYS_DATE";
-    const char* const OB_DEFAULT_COMPRESS_FUNC_NAME = "snappy_1.0";
+    const char* const OB_DEFAULT_COMPRESS_FUNC_NAME = "none";
 
     static const int64_t OB_MAX_CONFIG_NAME_LEN = 64;
     static const int64_t OB_MAX_CONFIG_VALUE_LEN = 1024;
@@ -523,7 +525,7 @@ namespace oceanbase
     const char* const OB_META_TABLE_NAME_PREFIX = "__m_";
     static const int64_t OB_META_TABLE_NAME_PREFIX_LENGTH = strlen(OB_META_TABLE_NAME_PREFIX);
 
-    static const int64_t OB_DEFAULT_SSTABLE_BLOCK_SIZE = 64*1024; // 64KB
+    static const int64_t OB_DEFAULT_SSTABLE_BLOCK_SIZE = 16*1024; // 16KB
     static const int64_t OB_DEFAULT_MAX_TABLET_SIZE = 256*1024*1024; // 256MB
     static const int64_t OB_MYSQL_PACKET_BUFF_SIZE = 6 * 1024; //6KB
     static const int64_t OB_MAX_ERROR_CODE = 10000;
@@ -644,6 +646,8 @@ const int64_t OB_SERVER_VERSION_LENGTH = 64;
   }while(0)
 
 
-
+#ifdef __ENABLE_PRELOAD__
+#include "ob_preload.h"
+#endif
 
 #endif // OCEANBASE_COMMON_DEFINE_H_

@@ -17,7 +17,7 @@ ob1.source include/migrate.inc
 ob1.prepare
 ob1.check_cs_sstable 200
 ob2.check_cs_sstable 200
-alter system set tablet_replicas_num=2 server_type=rootserver;
+ob1.mysql alter system set tablet_replicas_num=2 server_type=rootserver
 ob1.cs3.check_log_until_success "begin migrate_tablet"
 ob1.cs0.force_stop
 ob1.cs1.force_stop

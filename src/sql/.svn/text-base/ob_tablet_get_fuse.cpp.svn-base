@@ -70,6 +70,7 @@ int ObTabletGetFuse::open()
   {
     TBSYS_LOG(WARN, "fail to open incremental get:ret[%d]", ret);
   }
+  FILL_TRACE_LOG("open get fuse op done ret =%d", ret);
   return ret;
 }
 

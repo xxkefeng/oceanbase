@@ -273,7 +273,6 @@ int ObSql::generate_physical_plan(ObSqlContext & context, ResultPlan &result_pla
   {
     TBSYS_LOG(WARN, "failed to transform to physical plan");
     result.set_message(err_stat.err_msg_);
-    ret = OB_ERR_GEN_PLAN;
   }
   else
   {
@@ -979,6 +978,8 @@ bool ObSql::no_enough_memory()
   {
     TBSYS_LOG(WARN, "not enough memory, limit=%ld used=%ld",
               ob_get_memory_size_limit(), ob_get_memory_size_handled());
+    ob_print_mod_memory_usage();
+    ob_print_phy_operator_stat();
   }
   return ret;
 }

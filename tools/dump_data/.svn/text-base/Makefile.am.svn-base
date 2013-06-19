@@ -1,16 +1,17 @@
 AM_CPPFLAGS = -I${TBLIB_ROOT}/include/tbsys \
-			  -I${TBLIB_ROOT}/include/tbnet \
 			  -I$(top_builddir)/src/common/ \
         -I${top_srcdir}/src \
-	-I${JAVA_HOME}/include \
-	-I${JAVA_HOME}/include/linux
+	      -I${EASY_ROOT}/include/easy   \
+        -I${JAVA_HOME}/include \
+	      -I${JAVA_HOME}/include/linux
 
 LDADD = $(top_builddir)/src/common/libcommon.a \
-		    ${TBLIB_ROOT}/lib/libtbnet.a \
+        ${EASY_LIB_PATH}/libeasy.a \
 		    ${TBLIB_ROOT}/lib/libtbsys.a 
 
-AM_LDFLAGS = -lpthread -lc -lm -lrt -ldl -lhdfs -ljvm -L${JAVA_HOME}/jre/lib/amd64/server/ -L${HADOOP_HOME}/libhdfs/
-CXXFLAGS = -D__STDC_LIMIT_MACROS -g -Wall -DORDER_SERIALIZE
+AM_LDFLAGS = -lpthread -lc -lm -lrt -lssl -ldl -lhdfs -ljvm -L${JAVA_HOME}/jre/lib/amd64/server/ -L${HADOOP_HOME}/libhdfs/
+CXXFLAGS = -g -Wall -DORDER_SERIALIZE
+
 if COVERAGE
 CXXFLAGS+=-fprofile-arcs -ftest-coverage
 AM_LDFLAGS+=-lgcov
@@ -29,7 +30,7 @@ libdumpdata_a_SOURCES = task_info.cpp \
                         base_client.cpp \
 												task_stats.cpp
 
-bin_PROGRAMS = task_server task_worker dump2str parse_file test_hdfs
+bin_PROGRAMS = task_server task_worker dump2str parse_file
 
 test_hdfs_SOURCES = test_hdfs.cpp
 dump2str_SOURCES = dump2str.cpp
@@ -46,7 +47,8 @@ task_server_SOURCES = task_server_main.cpp \
                      task_server.cpp \
                      base_server.cpp \
 										 task_utils.cpp \
-										 task_table_conf.cpp
+										 task_table_conf.cpp \
+                     task_server_callback.cpp
 
 task_worker_SOURCES = task_worker_main.cpp \
                      task_info.cpp \
@@ -83,14 +85,15 @@ EXTRA_DIST = base_client.h \
 	     task_server_param.h \
 	     task_stats.h \
 	     task_table_conf.h \
+       task_server_callback.h \
 	     task_utils.h \
 	     task_worker.h \
 	     task_worker_param.h \
-             hdfsJniHelper.h \
-             ob_task_server.sh \
-             ob_task_slave.sh \
-             merge_tmp.py \
-             obcleanup.py
+       hdfsJniHelper.h \
+       ob_task_server.sh \
+       ob_task_slave.sh \
+       merge_tmp.py \
+       obcleanup.py
 
 pkgdata_data_DATA=ob_task_server.sh ob_task_slave.sh merge_tmp.py obcleanup.py
 pkgdata_datadir=${prefix}/etc

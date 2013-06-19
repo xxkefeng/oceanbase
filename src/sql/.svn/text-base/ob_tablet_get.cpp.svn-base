@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_tablet_get.cpp 
+ * ob_tablet_get.cpp
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -23,8 +23,12 @@ using namespace common;
 
 void ObTabletGet::reset()
 {
+  sql_get_param_ = NULL;
+  tablet_manager_ = NULL;
   op_project_.clear();
   op_tablet_join_.reset();
+  op_rename_.clear();
+  op_ups_multi_get_.reset();
 }
 
 int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
@@ -38,20 +42,20 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
   int64_t data_version = 0;
   bool is_need_incremental_data = true;
   ObCellInfo cell_info;
-  
+
   if (OB_SUCCESS != (ret = get_basic_column_and_join_info(
-                               sql_get_param_->get_project(), 
-                               schema_mgr, 
-                               table_id, 
-                               renamed_table_id, 
-                               basic_columns, 
+                               sql_get_param_->get_project(),
+                               schema_mgr,
+                               table_id,
+                               renamed_table_id,
+                               basic_columns,
                                table_join_info)))
   {
     TBSYS_LOG(WARN, "fail to get basic column and join info:ret[%d]", ret);
   }
   else
   {
-    TBSYS_LOG(DEBUG, "cs select basic column ids [%ld], project[%s]", basic_columns.count(), 
+    TBSYS_LOG(DEBUG, "cs select basic column ids [%ld], project[%s]", basic_columns.count(),
       to_cstring(sql_get_param_->get_project()));
   }
 
@@ -71,7 +75,7 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
         }
       }
     }
-    TBSYS_LOG(DEBUG, "cs get param row size[%ld] sql_get_param row size[%ld]", get_param_.get_row_size(), 
+    TBSYS_LOG(DEBUG, "cs get param row size[%ld] sql_get_param row size[%ld]", get_param_.get_row_size(),
       sql_get_param_->get_row_size());
   }
 
@@ -89,7 +93,6 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
 
   if (OB_SUCCESS == ret)
   {
-    FILL_TRACE_LOG("read only static data[%s]", sql_get_param_->get_is_only_static_data() ? "TRUE":"FALSE");
     if (sql_get_param_->get_is_only_static_data())
     {
       is_need_incremental_data = false;
@@ -98,8 +101,6 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
     else
     {
       op_sstable_get_.get_tablet_data_version(data_version);
-      FILL_TRACE_LOG("request data version[%ld], cs serving data version[%ld]", 
-        sql_get_param_->get_data_version(), data_version);
       if (sql_get_param_->get_data_version() != OB_NEWEST_DATA_VERSION)
       {
         if (sql_get_param_->get_data_version() == OB_INVALID_VERSION)
@@ -119,6 +120,7 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
         }
       }
     }
+    FILL_TRACE_LOG("gen sstable getter done, need increment data[%d]", is_need_incremental_data);
   }
 
   if (OB_SUCCESS == ret)
@@ -126,9 +128,9 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
     if (is_need_incremental_data)
     {
       if (OB_SUCCESS != (ret = need_incremental_data(
-                             basic_columns, 
-                             table_join_info, 
-                             data_version, 
+                             basic_columns,
+                             table_join_info,
+                             data_version,
                              sql_get_param_->get_data_version())))
       {
         TBSYS_LOG(WARN, "fail to add ups operator:ret[%d]", ret);
@@ -140,7 +142,7 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
     }
   }
 
-  
+
   if (OB_SUCCESS == ret && sql_get_param_->has_project())
   {
     op_project = &op_project_;
@@ -153,7 +155,7 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
       }
       else
       {
-        
+
         TBSYS_LOG(DEBUG, "cs get project desc[%s]", to_cstring(*op_project));
         op_root_ = op_project;
       }
@@ -174,9 +176,9 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
 }
 
 int ObTabletGet::need_incremental_data(
-    ObArray<uint64_t> &basic_columns, 
-    ObTabletJoin::TableJoinInfo &table_join_info, 
-    int64_t start_data_version, 
+    ObArray<uint64_t> &basic_columns,
+    ObTabletJoin::TableJoinInfo &table_join_info,
+    int64_t start_data_version,
     int64_t end_data_version)
 
 {
@@ -210,7 +212,7 @@ int ObTabletGet::need_incremental_data(
     get_param_.set_version_range(version_range);
   }
 
-  // init ups get 
+  // init ups get
   if (OB_SUCCESS == ret)
   {
     op_ups_multi_get = &op_ups_multi_get_;
@@ -225,7 +227,7 @@ int ObTabletGet::need_incremental_data(
     }
     else if (OB_SUCCESS != (ret = ObNewScannerHelper::get_row_desc(get_param_, false, ups_mget_row_desc_)))
     {
-      TBSYS_LOG(WARN, "fail to get row desc:ret[%d]", ret);
+      TBSYS_LOG(WARN, "fail to get row desc:ret[%d] get_param=%s", ret, to_cstring(get_param_));
     }
     else
     {
@@ -304,11 +306,11 @@ int ObTabletGet::need_incremental_data(
       }
       else
       {
-        op_root_ = &op_rename_; 
+        op_root_ = &op_rename_;
       }
     }
   }
-  
+
   return ret;
 }
 
@@ -319,7 +321,7 @@ bool ObTabletGet::check_inner_stat() const
     NULL == sql_get_param_)
   {
     ret = false;
-    TBSYS_LOG(WARN, "tablet_manager_ [%p], sql_get_param_[%p]", 
+    TBSYS_LOG(WARN, "tablet_manager_ [%p], sql_get_param_[%p]",
       tablet_manager_, sql_get_param_);
   }
   return ret;
@@ -349,5 +351,3 @@ int64_t ObTabletGet::to_string(char* buf, const int64_t buf_len) const
   }
   return pos;
 }
-
-

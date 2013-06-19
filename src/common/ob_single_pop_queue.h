@@ -61,7 +61,7 @@ namespace oceanbase
       {
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (NULL == (array_ = (T*)ob_malloc(sizeof(T) * max_num)))
+      else if (NULL == (array_ = (T*)ob_malloc(sizeof(T) * max_num, common::ObModIds::SPOP_QUEUE)))
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
       }
@@ -192,4 +192,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_SINGLE_POP_QUEUE_H_
-

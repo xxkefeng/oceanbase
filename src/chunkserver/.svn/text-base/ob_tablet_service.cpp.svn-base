@@ -140,6 +140,7 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
     else
     {
       PROFILE_LOG_TIME(DEBUG, "tablet_read_ create_plan complete.");
+      FILL_TRACE_LOG("create_plan done,ret=%d", ret);
       if (OB_UNLIKELY(TBSYS_LOGGER._level >= TBSYS_LOG_LEVEL_TRACE))
       {
         TBSYS_LOG(TRACE, "ExecutionPlan: \n%s", to_cstring(tablet_scan_));

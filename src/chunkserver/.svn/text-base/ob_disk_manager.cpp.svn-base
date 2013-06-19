@@ -415,7 +415,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
-        char *buf = static_cast<char *>(ob_malloc(PROC_MOUNTS_FILE_SIZE)); //st.st_size in proc is 0
+        char *buf = static_cast<char *>(ob_malloc(PROC_MOUNTS_FILE_SIZE, ObModIds::OB_CS_COMMON)); //st.st_size in proc is 0
         int64_t size = 0;
         if (buf != NULL && (size = read(fileno(fp),buf,PROC_MOUNTS_FILE_SIZE - 1)) <= 0)
         {
@@ -461,4 +461,3 @@ namespace oceanbase
     }
   } /* chunkserver */
 } /* oceanbase */
-

@@ -83,6 +83,10 @@ void ObAggregateFunction::destroy()
     ob_free(varchar_buffs_[i]);
     varchar_buffs_[i] = NULL;
   }
+  for (int64_t i = 0; i < OB_ROW_MAX_COLUMNS_COUNT; ++i)
+  {
+    aggr_cells_[i].set_null();
+  }
   varchar_buffs_count_ = 0;
   row_desc_.reset();
   aggr_columns_ = NULL;
@@ -111,7 +115,7 @@ int ObAggregateFunction::clone_expr_cell(const ObExprObj &cell, ObExprObj &cell_
     }
     else
     {
-      char* buff = static_cast<char*>(ob_malloc(OB_MAX_VARCHAR_LENGTH));
+      char* buff = static_cast<char*>(ob_malloc(OB_MAX_VARCHAR_LENGTH, ObModIds::OB_SQL_AGGR_FUNC));
       if (NULL == buff)
       {
         TBSYS_LOG(ERROR, "no memory");
@@ -165,7 +169,7 @@ int ObAggregateFunction::clone_cell(const ObObj &cell, ObObj &cell_clone)
     }
     else
     {
-      char* buff = static_cast<char*>(ob_malloc(OB_MAX_VARCHAR_LENGTH));
+      char* buff = static_cast<char*>(ob_malloc(OB_MAX_VARCHAR_LENGTH, ObModIds::OB_SQL_AGGR_FUNC));
       if (NULL == buff)
       {
         TBSYS_LOG(ERROR, "no memory");
@@ -266,7 +270,7 @@ int ObAggregateFunction::prepare(const ObRow &input_row)
   if (OB_SUCCESS == ret && has_distinct)
   {
     // store the cells and insert into dedup sets
-    row_store_.clear();
+    row_store_.clear_rows();
     const ObRowStore::StoredRow *stored_row = NULL;
     if (OB_SUCCESS != (ret = row_store_.add_row(dedup_row, stored_row)))
     {

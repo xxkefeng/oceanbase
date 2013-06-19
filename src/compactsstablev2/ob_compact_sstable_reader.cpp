@@ -18,13 +18,13 @@ namespace oceanbase
         TBSYS_LOG(WARN, "argument error:NULL==sstable_fname");
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (!use_dio && -1 == (fd_ = ::open(sstable_fname, 
+      else if (!use_dio && -1 == (fd_ = ::open(sstable_fname,
               FILE_OPEN_NORMAL_RFLAG)))
       {
         TBSYS_LOG(ERROR, "open file error:sstable_fname=%s", sstable_fname);
         ret = OB_IO_ERROR;
       }
-      else if (use_dio && -1 == (fd_ = ::open(sstable_fname, 
+      else if (use_dio && -1 == (fd_ = ::open(sstable_fname,
               FILE_OPEN_DIRECT_RFLAG)))
       {
         TBSYS_LOG(ERROR, "open file error:sstable_fname=%s", sstable_fname);
@@ -75,14 +75,14 @@ namespace oceanbase
           TBSYS_LOG(WARN, "load trailer offset error:ret=%d", ret);
           ret = OB_ERROR;
         }
-        else if(OB_SUCCESS != (ret = load_trailer(*file_info, 
-                sstable_header_, trailer_offset, 
+        else if(OB_SUCCESS != (ret = load_trailer(*file_info,
+                sstable_header_, trailer_offset,
                 sstable_size_)))
         {
           TBSYS_LOG(WARN, "load trailer error:ret=%d", ret);
           ret = OB_ERROR;
         }
-        else if(OB_SUCCESS != (ret = load_schema(*file_info, 
+        else if(OB_SUCCESS != (ret = load_schema(*file_info,
                 sstable_header_, sstable_schema_)))
         {
           TBSYS_LOG(WARN, "load schema error:ret=%d", ret);
@@ -214,7 +214,7 @@ namespace oceanbase
       int64_t size = sizeof(ObSSTableTrailerOffset);
       int64_t offset = sstable_size - size;
 
-      if (OB_SUCCESS != (ret = read_record(file_info, 
+      if (OB_SUCCESS != (ret = read_record(file_info,
               offset, size, record_buf)))
       {
         TBSYS_LOG(WARN, "read recrod error:ret=%d", ret);
@@ -246,7 +246,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "argument error:offset=%ld,size=%ld", offset, size);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (OB_SUCCESS != (ret = read_record(file_info, 
+      else if (OB_SUCCESS != (ret = read_record(file_info,
               offset, size, record_buf)))
       {
         TBSYS_LOG(WARN, "read record error:offset=%ld, size=%ld", offset, size);
@@ -275,7 +275,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObCompactSSTableReader::load_schema(const IFileInfo& file_info, 
+    int ObCompactSSTableReader::load_schema(const IFileInfo& file_info,
         const ObSSTableHeader& sstable_header,
         ObSSTableSchema*& schema)
     {
@@ -311,7 +311,7 @@ namespace oceanbase
         else
         {
           char* result_buf = static_cast<char*>(
-              ob_malloc(sizeof(ObSSTableSchema)));
+            ob_malloc(sizeof(ObSSTableSchema), ObModIds::OB_SSTABLE_SCHEMA));
           if (NULL == result_buf)
           {
             TBSYS_LOG(WARN, "NULL == result_buf");
@@ -330,7 +330,7 @@ namespace oceanbase
 
           if (OB_SUCCESS == ret)
           {
-            if (OB_SUCCESS != (ret = read_record(file_info, 
+            if (OB_SUCCESS != (ret = read_record(file_info,
                     record_offset, record_size, record_buf)))
             {
               TBSYS_LOG(WARN, "read record error:ret=%d", ret);
@@ -354,7 +354,7 @@ namespace oceanbase
             {
               if (!record_header.is_compress())
               {
-                const ObSSTableTableSchemaItem* tmp_buf = 
+                const ObSSTableTableSchemaItem* tmp_buf =
                   reinterpret_cast<const ObSSTableTableSchemaItem*>(payload_ptr);
                 int64_t tmp_count = sstable_header.schema_array_unit_count_;
 
@@ -396,7 +396,7 @@ namespace oceanbase
           }
         }
       }
-      
+
       if (OB_SUCCESS == ret)
       {
         schema = result_schema;
@@ -405,8 +405,8 @@ namespace oceanbase
       return ret;
     }//end function load_schema
 
-    int ObCompactSSTableReader::load_table_index(const IFileInfo& file_info, 
-        const ObSSTableHeader& sstable_header, 
+    int ObCompactSSTableReader::load_table_index(const IFileInfo& file_info,
+        const ObSSTableHeader& sstable_header,
         ObSSTableTableIndex*& table_index)
     {
       int ret = OB_SUCCESS;
@@ -425,7 +425,7 @@ namespace oceanbase
             record_offset, record_size);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (OB_SUCCESS != (ret = read_record(file_info, 
+      else if (OB_SUCCESS != (ret = read_record(file_info,
               record_offset, record_size, record_buf)))
       {
         TBSYS_LOG(WARN, "read record error:ret=%d", ret);
@@ -489,7 +489,7 @@ namespace oceanbase
 
 
     int ObCompactSSTableReader::load_table_bloom_filter(
-        const IFileInfo& file_info, 
+        const IFileInfo& file_info,
         const ObSSTableHeader& sstable_header,
         const ObSSTableTableIndex* table_index,
         TableBloomFilter*& bloom_filter)
@@ -545,7 +545,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        ObSSTableTableIndex* table_index_ptr  
+        ObSSTableTableIndex* table_index_ptr
           = const_cast<ObSSTableTableIndex*>(table_index);
         TableBloomFilter* bloom_filter_ptr = result_bloomfilter;
         for (int64_t i = 0; i < table_count; i ++)
@@ -560,15 +560,15 @@ namespace oceanbase
           }
           else
           {
-            ret = ObRecordHeaderV2::check_record(record_buf, record_size, 
-                OB_SSTABLE_TABLE_BLOOMFILTER_MAGIC, record_header, 
+            ret = ObRecordHeaderV2::check_record(record_buf, record_size,
+                OB_SSTABLE_TABLE_BLOOMFILTER_MAGIC, record_header,
                 payload_ptr, payload_size);
             if (OB_SUCCESS == ret)
             {
               if (!record_header.is_compress())
               {
                 if (OB_SUCCESS != (ret = bloom_filter_ptr->init(
-                    table_index_ptr->bloom_filter_hash_count_, 
+                    table_index_ptr->bloom_filter_hash_count_,
                     payload_size)))
                 {
                   TBSYS_LOG(WARN, "bloomfilter init error:ret=%d", ret);
@@ -577,7 +577,7 @@ namespace oceanbase
 
                 if (OB_SUCCESS == ret)
                 {
-                  const uint8_t* tmp_ptr 
+                  const uint8_t* tmp_ptr
                     = reinterpret_cast<const uint8_t*>(payload_ptr);
                   if (OB_SUCCESS != (ret = bloom_filter_ptr->reinit(tmp_ptr,
                           payload_size)))
@@ -606,7 +606,7 @@ namespace oceanbase
     }
 
     int ObCompactSSTableReader::load_table_range(
-        const IFileInfo& file_info, 
+        const IFileInfo& file_info,
         const ObSSTableHeader& sstable_header,
         const ObSSTableTableIndex* table_index,
         ObNewRange*& table_range)
@@ -673,7 +673,7 @@ namespace oceanbase
           //range_ptr->border_flag_.unset_inclusive_start();
           //range_ptr->border_flag_.set_inclusive_end();
           record_offset = table_index_ptr->range_keys_offset_;
-          record_size = sizeof(int8_t) 
+          record_size = sizeof(int8_t)
             + table_index_ptr->range_start_key_length_
             + table_index_ptr->range_end_key_length_
             + sizeof(ObRecordHeaderV2);
@@ -768,7 +768,7 @@ namespace oceanbase
     }
 
     int ObCompactSSTableReader::trans_to_sstable_schema(
-        ObSSTableSchema& schema, const ObSSTableTableSchemaItem* item_array, 
+        ObSSTableSchema& schema, const ObSSTableTableSchemaItem* item_array,
         int64_t item_count)
     {
       int ret = OB_SUCCESS;
@@ -820,7 +820,7 @@ namespace oceanbase
       const ObObj* tmp_buf = reinterpret_cast<const ObObj*>(
           buf + sizeof(int8_t) + start_key_length + end_key_length);
       ObObj* start_key_obj_array = const_cast<ObObj*>(tmp_buf);
-      ObObj* end_key_obj_array = start_key_obj_array 
+      ObObj* end_key_obj_array = start_key_obj_array
         + sizeof(const ObObj) * sizeof(OB_MAX_ROWKEY_COLUMN_NUMBER);
 
       int64_t obj_cnt = 0;

@@ -25,9 +25,9 @@ deploy ob1.switch_cluster ob2;
 #new master cluster ups restart
 let $master_ups=deploy_get_value(ob2.get_master_ups);
 let $slave_ups=deploy_get_value(ob2.get_slave_ups);
-deploy ob2.$master_ups.stop;
+deploy ob2.$master_ups.restart;
 sleep 5;
-deploy ob2.$slave_ups.stop;
+deploy ob2.$slave_ups.restart;
 
 
 #sleep for ups sync from rs

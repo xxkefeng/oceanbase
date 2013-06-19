@@ -434,6 +434,21 @@ namespace oceanbase
       }
       return ret;
     }
+
+#define REACH_TIME_INTERVAL(i) \
+  ({ \
+    bool bret = false; \
+    static int64_t last_time = 0; \
+    int64_t cur_time = tbsys::CTimeUtil::getTime(); \
+    int64_t old_time = last_time; \
+    if ((i + last_time) < cur_time \
+        && old_time == ATOMIC_CAS(&last_time, old_time, cur_time)) \
+    { \
+      bret = true; \
+    } \
+    bret; \
+  })
+
   } // end namespace common
 } // end namespace oceanbase
 

@@ -62,12 +62,12 @@ namespace oceanbase
       int64_t pos = 0;
       if (NULL == buffer_)
       {
-        buffer_ = reinterpret_cast<char*>(ob_malloc(BUF_SIZE));
+        buffer_ = reinterpret_cast<char*>(ob_malloc(BUF_SIZE, ObModIds::OB_PERM_INFO));
       }
 
       if (NULL != buffer_)
       {
-        int64_t encode_pos = pos;        
+        int64_t encode_pos = pos;
         ret = serialization::encode_i64(buffer_, BUF_SIZE, encode_pos, table_id_);
         if (OB_SUCCESS != ret)
         {
@@ -106,7 +106,7 @@ namespace oceanbase
       }
       return ret;
     }
-    
+
     int64_t ObPermInfoKey::hash() const
     {
       uint32_t hash_val = 0;
@@ -184,7 +184,7 @@ namespace oceanbase
       }
       return ret;
     }
-    
+
     int ObPermInfoKey:: set_length(int64_t length)
     {
       int ret = OB_SUCCESS;
@@ -235,9 +235,9 @@ namespace oceanbase
       ObVersionRange ver_range;
       if (NULL == buffer_)
       {
-        buffer_ = reinterpret_cast<char*>(ob_malloc(BUF_SIZE));
+        buffer_ = reinterpret_cast<char*>(ob_malloc(BUF_SIZE, ObModIds::OB_USER_INFO_KEY));
       }
-      
+
       if (NULL != buffer_)
       {
         memcpy(buffer_, user_name_, length_);
@@ -376,9 +376,9 @@ namespace oceanbase
       int64_t pos = 0;
       if (NULL == buffer_)
       {
-        buffer_ = reinterpret_cast<char*>(ob_malloc(BUF_SIZE));
+        buffer_ = reinterpret_cast<char*>(ob_malloc(BUF_SIZE, ObModIds::OB_SKEY_INFO_KEY));
       }
-            
+
       ret = serialization::encode_i64(buffer_, BUF_SIZE, pos, skey_version_);
       if (OB_SUCCESS != ret)
       {

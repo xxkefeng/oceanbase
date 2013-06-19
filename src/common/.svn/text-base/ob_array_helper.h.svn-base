@@ -4,11 +4,11 @@
 #include <stdlib.h>
 #include "ob_define.h"
 
-namespace oceanbase 
-{ 
-  namespace common 
+namespace oceanbase
+{
+  namespace common
   {
-    template<class T> 
+    template<class T>
       class ObArrayHelper
       {
         public:
@@ -80,7 +80,7 @@ namespace oceanbase
       };
 
 
-      template<class T> 
+      template<class T>
       class ObArrayHelpers
       {
       public:
@@ -92,10 +92,10 @@ namespace oceanbase
 
         int add_array_helper(ObArrayHelper<T> &helper)
         {
-          int err = oceanbase::common::OB_SUCCESS;
+          int err = OB_SUCCESS;
           if(arr_count_ >= MAX_ARR_COUNT)
           {
-            err = oceanbase::common::OB_ARRAY_OUT_OF_RANGE;
+            err = OB_ARRAY_OUT_OF_RANGE;
           }
           else
           {

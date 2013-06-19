@@ -598,7 +598,7 @@ TEST(ObUnionDistinct, test1)
   ASSERT_EQ(OB_ITER_END, union_distinct.get_next_row(row));
   ASSERT_EQ(OB_ITER_END, union_distinct.get_next_row(row));
 
-  void * logic_plan = ob_malloc(sizeof(ObLogicalPlan));//new ObLogicalPlan();
+  void * logic_plan = ob_malloc(sizeof(ObLogicalPlan), ObModIds::TEST);//new ObLogicalPlan();
   ObStringBuf buf;
   new (logic_plan) ObLogicalPlan(&buf);
   ObMultiLogicPlan * multi_logic_plan = static_cast<ObMultiLogicPlan*>(logic_plan);

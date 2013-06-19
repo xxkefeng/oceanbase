@@ -33,6 +33,9 @@
 #include "ob_ms_scan_param.h"
 #include "ob_ms_scan_request.h"
 
+#define __ms_debug__
+#include "common/debug.h"
+
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
@@ -547,7 +550,7 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "service init error, ret: [%d]", err);
       }
-
+      __debug_init__();
       return err;
     }
 
@@ -699,7 +702,7 @@ namespace oceanbase
       UNUSED(channel_id);
       UNUSED(req);
       const int64_t buf_size = 16*1024;
-      char *buf = (char*)ob_malloc(buf_size);
+      char *buf = (char*)ob_malloc(buf_size, ObModIds::OB_MS_COMMON);
       ObObj result;
       int64_t pos = 0;
       ObString str;

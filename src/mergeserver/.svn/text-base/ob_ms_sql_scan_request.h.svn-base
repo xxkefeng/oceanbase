@@ -25,7 +25,6 @@
 #include "ob_ms_sql_request.h"
 #include "ob_ms_sql_sub_scan_request.h"
 #include "ob_ms_sql_operator.h"
-#include "ob_ms_sql_scan_param.h"
 #include "common/location/ob_tablet_location_range_iterator.h"
 
 namespace oceanbase
@@ -101,8 +100,6 @@ namespace oceanbase
       int64_t       timeout_us_;
       ObTabletLocationRangeIterator org_req_range_iter_;
       int64_t sharding_limit_count_;
-      int64_t cur_row_cell_cnt_;
-      common::ObCellInfo row_cells_[MAX_ROW_COLUMN_COUNT];
     };
 
     inline const int32_t ObMsSqlScanRequest::get_total_sub_request_count() const
@@ -119,4 +116,3 @@ namespace oceanbase
 }
 
 #endif
-

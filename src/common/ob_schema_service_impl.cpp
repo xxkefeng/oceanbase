@@ -83,11 +83,11 @@ int ObSchemaServiceImpl::add_join_info(ObMutator* mutator, const TableSchema& ta
   {
     for(int32_t i=0;i<table_schema.join_info_.count();i++)
     {
-
       ret = table_schema.join_info_.at(i, join_info);
       if(OB_SUCCESS != ret)
       {
         TBSYS_LOG(WARN, "get joininfo from table_schema fail:ret[%d], i[%d]", ret, i);
+        break;
       }
 
       value[0].set_int(join_info.left_table_id_);
@@ -108,7 +108,6 @@ int ObSchemaServiceImpl::add_join_info(ObMutator* mutator, const TableSchema& ta
       ADD_VARCHAR(joininfo_table_name, rowkey, "left_column_name", join_info.left_column_name_);
       ADD_VARCHAR(joininfo_table_name, rowkey, "right_table_name", join_info.right_table_name_);
       ADD_VARCHAR(joininfo_table_name, rowkey, "right_column_name", join_info.right_column_name_);
-
     }
   }
 

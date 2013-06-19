@@ -13,7 +13,7 @@ drop table if exists t4;
 create table t1(a int primary key, b int);
 
 insert into t1 values(1,0),(2,0),(3,0);
---error 5003
+--error 5047
 delete from t1;
 delete from t1 where a = 1;
 delete from t1 where a = 2;
@@ -28,7 +28,7 @@ insert into t1 values(1,0);
 replace into t1 values(2,0),(3,0);
 delete from t1 where a=1;
 delete from t1 where a=2;
---error 5003
+--error 5047
 delete from t1 where a=1 or a=2 or a=3;
 select * from t1;
 
@@ -45,7 +45,7 @@ create table t2 (p1 int, p2 int, p3 int, p4 int, primary key(p1,p2,p3));
 
 insert into t2 values(1,1,1,0),(2,2,2,0),(3,3,3,0),(4,4,4,0),(5,4,4,0),(6,4,4,0),(7,4,6,0),(8,4,6,0),(9,4,6,0),(10,4,6,0),(11,4,6,0),(12,4,6,0), (13,4,6,0);
 
---error 5003
+--error 5047
 delete from t2 where p1 = 1;
 
 --let $p=13
@@ -72,7 +72,7 @@ select p1,p3 from t2;
 
 replace into t2 values(1,1,1,0),(2,2,2,0),(3,3,3,0),(4,4,4,0),(5,4,4,0),(6,4,4,0),(7,4,6,0),(8,4,6,0),(9,4,6,0),(10,4,6,0),(11,4,6,0),(12,4,6,0), (13,4,6,0);
 
---error 5003
+--error 5047
 delete from t2 where p1 in (1,2,3,6,13,0);
 select * from t2;
 
@@ -88,11 +88,11 @@ select * from t3;
 select p1,p3 from t3;
 
 replace into t3 values(1,1,1),(2,2,2),(3,3,3),(4,4,4),(5,4,4),(6,4,4),(7,4,6),(8,4,6),(9,4,6),(10,4,6),(11,4,6),(12,4,6), (13,4,6);
---error 5003
+--error 5047
 delete from t3 where p1>3 or p3 >=6;
 select * from t3;
 select p1,p3 from t3;
---error 5003
+--error 5047
 delete from t3 where p1=1 and p3 =2;
 select * from t3;
 select p1,p3 from t3;
@@ -101,7 +101,7 @@ select * from t3;
 select p1,p3 from t3;
 
 replace into t3 values(1,1,1),(2,2,2),(3,3,3),(4,4,4),(5,4,4),(6,4,4),(7,4,6),(8,4,6),(9,4,6),(10,4,6),(11,4,6),(12,4,6), (13,4,6);
---error 5003
+--error 5047
 delete from t3 where p1 in (1,2,3,6,13,0);
 select * from t3;
 
@@ -111,13 +111,13 @@ drop table t3;
 create table t4 (p1 varchar(100), p2 int, p3 datetime, p4 int, primary key(p1,p2,p3));
 
 insert into t4 values('a', 41, '2012-10-23 17:14:00',0), ('b', 42, '2012-10-23 17:15:00',0), ('c', 43, '2012-10-23 17:16:00',0);
---error 5003
+--error 5047
 delete from t4 where p3='2012-10-23 17:14:00';
 select * from t4;
---error 5003
+--error 5047
 delete from t4 where p2='42';
 select * from t4;
---error 5003
+--error 5047
 delete from t4 where p2<'401' and p1='c';
 
 delete from t4 where p1='a' and p2=41 and p3='2012-10-23 17:14:00';

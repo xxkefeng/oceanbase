@@ -118,6 +118,20 @@
 			  [with_perf=no]
 	   )
 
+    AC_ARG_WITH([preload],
+           AS_HELP_STRING([--with-preload],
+		          [with preload (default is YES)]),
+	   		  [
+			    if test "$withval" = "yes"; then
+			    	with_preload=yes
+                                AM_CXXFLAGS="${AM_CXXFLAGS} -D__ENABLE_PRELOAD__"
+			    fi
+			  ],
+			  [
+                            with_preload=yes
+                            AM_CXXFLAGS="${AM_CXXFLAGS} -D__ENABLE_PRELOAD__"
+                          ]
+	   )
     AC_ARG_WITH([coverage],
            AS_HELP_STRING([--with-coverage],
 		          [with coverage (default is NO)]),

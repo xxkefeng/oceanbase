@@ -180,9 +180,8 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       ThreadSpecificBuffer::Buffer* my_buffer = log_buffer_for_prefetch_.get_buffer();
-      my_buffer->reset();
-      char* buf = my_buffer->current();
-      int64_t len = my_buffer->remain();
+      char* buf = NULL;
+      int64_t len = 0;
       int64_t read_count = 0;
       ObLogCursor start_cursor;
       ObLogCursor end_cursor;
@@ -194,8 +193,16 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "get_prefetch_cursor()=>%d", err);
       }
+      else if (NULL == my_buffer)
+      {
+        TBSYS_LOG(ERROR, "get thread specific buffer fail");
+        err = OB_ALLOCATE_MEMORY_FAILED;
+      }
       else
       {
+        my_buffer->reset();
+        buf = my_buffer->current();
+        len = my_buffer->remain();
         end_cursor = start_cursor;
       }
       if (OB_SUCCESS != err)

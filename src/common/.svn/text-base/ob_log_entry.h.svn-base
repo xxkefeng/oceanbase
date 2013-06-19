@@ -61,6 +61,7 @@ namespace oceanbase
       OB_RT_SYNC_FIRST_META_ROW = 427,
       OB_RT_BATCH_ADD_NEW_TABLET = 428,
       OB_RT_GOT_CONFIG_VERSION = 429,
+      OB_RT_CS_DELETE_REPLICAS = 430,
       //// ChunkServer ... 600 - 799 ////
 
       //// Base command ... ////
@@ -96,7 +97,7 @@ namespace oceanbase
         databuff_printf(buf, buf_len, pos, " seq=%lu cmd=%d", seq_, cmd_);
         return pos;
       }
-      
+
       /**
        * @brief 设置日志序号
        */

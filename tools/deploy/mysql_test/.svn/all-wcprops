@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 88
-/repos/oceanbase/!svn/ver/13853/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test
+/repos/oceanbase/!svn/ver/14493/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test
 END
 __init__.py
 K 25
@@ -19,7 +19,7 @@ mysqltest.py
 K 25
 svn:wc:ra_dav:version-url
 V 101
-/repos/oceanbase/!svn/ver/13527/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/mysqltest.py
+/repos/oceanbase/!svn/ver/14400/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/mysqltest.py
 END
 README
 K 25

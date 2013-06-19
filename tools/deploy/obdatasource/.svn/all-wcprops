@@ -1,0 +1,53 @@
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource
+END
+obdatasource.py
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/obdatasource.py
+END
+table.sql
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/table.sql
+END
+prev_schema.xml.template
+K 25
+svn:wc:ra_dav:version-url
+V 115
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/prev_schema.xml.template
+END
+obmonster
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/obmonster
+END
+obdatasource.conf.template
+K 25
+svn:wc:ra_dav:version-url
+V 117
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/obdatasource.conf.template
+END
+stress.sh
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/stress.sh
+END
+obmonster.properties.template
+K 25
+svn:wc:ra_dav:version-url
+V 120
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/obmonster.properties.template
+END
+post_schema.xml.template
+K 25
+svn:wc:ra_dav:version-url
+V 115
+/repos/oceanbase/!svn/ver/14278/branches/0_4_1_release/oceanbase/tools/deploy/obdatasource/post_schema.xml.template
+END

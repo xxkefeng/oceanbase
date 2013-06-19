@@ -38,7 +38,7 @@ namespace oceanbase
     int ObRootLogWorker::sync_schema(const int64_t timestamp)
     {
       int ret = OB_SUCCESS;
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -59,7 +59,7 @@ namespace oceanbase
         else
         {
           // read schema content from file
-          char* tmp_buffer = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+          char* tmp_buffer = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
           if (tmp_buffer == NULL)
           {
             ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -125,7 +125,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -176,7 +176,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -218,7 +218,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -259,7 +259,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -311,7 +311,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
 
       char* log_data = NULL;
-      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -348,11 +348,45 @@ namespace oceanbase
       return ret;
     }
 
+    int ObRootLogWorker::delete_replicas(const ObServer& server, const ObTabletReportInfoList& replicas)
+    {
+      int ret = OB_SUCCESS;
+      char* log_data = NULL;
+      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
+      if (log_data == NULL)
+      {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(ERROR, "allocate memory failed");
+      }
+      else
+      {
+        int64_t pos = 0;
+        if (OB_SUCCESS != (ret = server.serialize(log_data, OB_MAX_PACKET_LENGTH, pos)))
+        {
+          TBSYS_LOG(WARN, "failed to serialize server info");
+        }
+        else if (OB_SUCCESS != (ret = replicas.serialize(log_data, OB_MAX_PACKET_LENGTH, pos)))
+        {
+          TBSYS_LOG(WARN, "failed to serialize replicas list");
+        }
+        else if (OB_SUCCESS != (ret = flush_log(OB_RT_CS_DELETE_REPLICAS, log_data, pos)))
+        {
+          TBSYS_LOG(WARN, "failed to flush log, err=%d", ret);
+        }
+      }
+      if (NULL != log_data)
+      {
+        ob_free(log_data);
+        log_data = NULL;
+      }
+      return ret;
+    }
+
     int ObRootLogWorker::remove_replica(const ObTabletReportInfo &replica)
     {
       int ret = OB_SUCCESS;
       char* log_data = NULL;
-      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -382,7 +416,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       char* log_data = NULL;
-      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       int64_t pos = 0;
       if (log_data == NULL)
       {
@@ -424,7 +458,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
 
       char* log_data = NULL;
-      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -495,7 +529,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
 
       char* log_data = NULL;
-      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -572,7 +606,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -602,7 +636,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       int64_t pos = 0;
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
 
       if (log_data == NULL)
       {
@@ -630,7 +664,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -665,7 +699,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -696,7 +730,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       int64_t pos = 0;
-      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH));
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
 
       if (NULL == log_data)
       {
@@ -805,6 +839,9 @@ namespace oceanbase
         case OB_RT_REMOVE_REPLICA:
           ret = do_remove_replica(log_data, data_len);
           break;
+        case OB_RT_CS_DELETE_REPLICAS:
+          ret = do_delete_replicas(log_data, data_len);
+          break;
         case OB_RT_REMOVE_TABLE:
           ret = do_remove_table(log_data, data_len);
           break;
@@ -819,7 +856,6 @@ namespace oceanbase
           ret = OB_INVALID_ARGUMENT;
           break;
       }
-
       return ret;
     }
 
@@ -1236,19 +1272,49 @@ namespace oceanbase
     int ObRootLogWorker::do_remove_replica(const char* log_data, const int64_t& log_length)
     {
       int ret = OB_SUCCESS;
-      int64_t pos = 0;
       ObTabletReportInfo tablet;
       ObObj start_rowkey_obj_array[OB_MAX_ROWKEY_COLUMN_NUMBER];
       ObObj end_rowkey_obj_array[OB_MAX_ROWKEY_COLUMN_NUMBER];
       tablet.tablet_info_.range_.start_key_.assign(start_rowkey_obj_array, OB_MAX_ROWKEY_COLUMN_NUMBER);
       tablet.tablet_info_.range_.end_key_.assign(end_rowkey_obj_array, OB_MAX_ROWKEY_COLUMN_NUMBER);
+      int64_t pos = 0;
       if (OB_SUCCESS != (ret = tablet.deserialize(log_data, log_length, pos)))
       {
-        TBSYS_LOG(WARN, "deserialize error");
+        TBSYS_LOG(WARN, "deserialize tablet failed:ret[%d]", ret);
       }
-      else if (OB_SUCCESS != (ret = root_server_->replay_remove_replica(tablet)))
+      else
       {
-        TBSYS_LOG(ERROR, "replay remove replica error, err=%d", ret);
+        // replay log
+        ret = root_server_->remove_replica(true, tablet);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(ERROR, "replay removed replica failed:ret[%d]", ret);
+        }
+      }
+      return ret;
+    }
+
+    int ObRootLogWorker::do_delete_replicas(const char* log_data, const int64_t& log_length)
+    {
+      int ret = OB_SUCCESS;
+      ObServer server;
+      ObTabletReportInfoList replicas;
+      int64_t pos = 0;
+      ret = server.deserialize(log_data, log_length, pos);
+      if (ret != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "deserialize server failed:ret[%d]", ret);
+      }
+      else
+      {
+        if (OB_SUCCESS != (ret = replicas.deserialize(log_data, log_length, pos)))
+        {
+          TBSYS_LOG(WARN, "deserialize error");
+        }
+        else if (OB_SUCCESS != (ret = root_server_->delete_replicas(true, server, replicas)))
+        {
+          TBSYS_LOG(ERROR, "replay remove replica error, err=%d", ret);
+        }
       }
       return ret;
     }

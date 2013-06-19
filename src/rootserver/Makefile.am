@@ -27,7 +27,6 @@ pub_source =                                                                \
   ob_root_stat.h                                                            \
   ob_daily_merge_checker.h             ob_daily_merge_checker.cpp           \
   ob_heartbeat_checker.h               ob_heartbeat_checker.cpp             \
-  ob_root_table_proxy.h                ob_root_table_proxy.cpp              \
   ob_rs_trigger_event_util.h           ob_rs_trigger_event_util.cpp         \
   ob_root_inner_table_task.h           ob_root_inner_table_task.cpp         \
   ob_root_async_task_queue.h           ob_root_async_task_queue.cpp         \

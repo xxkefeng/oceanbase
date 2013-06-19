@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 99
-/repos/oceanbase/!svn/ver/12809/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/tests/oltp
+/repos/oceanbase/!svn/ver/14273/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/tests/oltp
 END
 SimpleIni.h
 K 25
@@ -25,7 +25,7 @@ sb_oltp.c
 K 25
 svn:wc:ra_dav:version-url
 V 109
-/repos/oceanbase/!svn/ver/12809/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/tests/oltp/sb_oltp.c
+/repos/oceanbase/!svn/ver/14273/branches/0_4_1_release/oceanbase/tools/sysbench/sysbench/tests/oltp/sb_oltp.c
 END
 ConvertUTF.h
 K 25

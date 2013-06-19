@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 78
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/obmysql
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/tests/obmysql
 END
 test_ob_mysql_state.cpp
 K 25
@@ -19,7 +19,7 @@ test_ob_mysql_command_packet.cpp
 K 25
 svn:wc:ra_dav:version-url
 V 111
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/obmysql/test_ob_mysql_command_packet.cpp
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/tests/obmysql/test_ob_mysql_command_packet.cpp
 END
 test_ob_mysql_dtoa.cpp
 K 25

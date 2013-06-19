@@ -14,7 +14,7 @@ static const char * OBTS_LOGLEVEL = "log_level";
 static const char * OBTS_MAX_LOGSIZE = "max_log_file_size";
 static const char * OBTS_VISIT_COUNT = "max_visit_count";
 static const char * OBTS_TIMEOUT_TIMES = "max_timeout_times";
-static const char * OBTS_TASK_QUEUE_SIZE = "task_queue_size"; 
+static const char * OBTS_TASK_QUEUE_SIZE = "task_queue_size";
 static const char * OBTS_TASK_THREAD_COUNT = "task_thread_count";
 static const char * OBTS_NETWORK_TIMEOUT = "network_timeout_us";
 static const char * OBTS_TALETS_FILE = "tablet_list_file";
@@ -37,7 +37,6 @@ TaskServerParam::TaskServerParam()
 
 TaskServerParam::~TaskServerParam()
 {
-
 }
 
 int TaskServerParam::load_from_config(const char * file)
@@ -71,7 +70,7 @@ int TaskServerParam::load_from_config(const char * file)
       }
     }
   }
-  
+
   // task finish result conf
   if (OB_SUCCESS == ret)
   {
@@ -94,7 +93,7 @@ int TaskServerParam::load_from_config(const char * file)
       max_log_size_ = TBSYS_CONFIG.getInt(OBTS_SECTION, OBTS_MAX_LOGSIZE, 1024);
     }
   }
-  
+
   // other conf
   if (OB_SUCCESS == ret)
   {
@@ -107,8 +106,8 @@ int TaskServerParam::load_from_config(const char * file)
       || (task_thread_count_ <= 0) || (network_timeout_ <= 0))
     {
       ret = OB_ERROR;
-      TBSYS_LOG(ERROR, "check task server conf failed:count[%ld], times[%d], queue[%d], "
-          "thread[%d], timeout[%d]", max_visit_count_, max_timeout_times_, task_queue_size_,
+      TBSYS_LOG(ERROR, "check task server conf failed:count[%d], times[%d], queue[%d], "
+          "thread[%d], timeout[%ld]", max_visit_count_, max_timeout_times_, task_queue_size_,
           task_thread_count_, network_timeout_);
     }
   }
@@ -132,31 +131,27 @@ int TaskServerParam::load_from_config(const char * file)
   {
     std::vector<std::string> sections;
     TBSYS_CONFIG.getSectionName(sections);
-
-    for(size_t i = 0;i < sections.size(); i++) 
+    for(size_t i = 0;i < sections.size(); i++)
     {
-      if (sections[i] != OBTS_SECTION && sections[i] != OBTS_RS_SECTION) 
+      if (sections[i] != OBTS_SECTION && sections[i] != OBTS_RS_SECTION)
       {
         TableConf conf;
-
         TBSYS_LOG(DEBUG, "section=%s", sections[i].c_str());
         ret = TableConf::loadConf(sections[i].c_str(), conf);
-        if (ret != OB_SUCCESS) 
+        if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "can't load conf table_name = %s", sections[i].c_str());
           break;
         }
-
         confs_.push_back(conf);
       }
     }
   }
-
   return ret;
 }
 
 
-int TaskServerParam::load_string(char * dest, const int32_t size, const char * section, 
+int TaskServerParam::load_string(char * dest, const int32_t size, const char * section,
     const char * name, bool require)
 {
   int ret = OB_SUCCESS;
@@ -180,8 +175,7 @@ int TaskServerParam::load_string(char * dest, const int32_t size, const char * s
   {
     if ((int32_t)strlen(value) >= size)
     {
-      TBSYS_LOG(ERROR, "%s.%s too long, length (%ld) > %d", 
-          section, name, strlen(value), size);
+      TBSYS_LOG(ERROR, "%s.%s too long, length (%d) > %d", section, name, int(strlen(value)), size);
       ret = OB_SIZE_OVERFLOW;
     }
     else

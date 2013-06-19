@@ -16,6 +16,7 @@
 
 #include "ob_ups_multi_get.h"
 #include "common/utility.h"
+#include "common/ob_trace_log.h"
 
 using namespace oceanbase;
 using namespace sql;
@@ -68,6 +69,8 @@ int ObUpsMultiGet::open()
   int64_t fullfilled_row_num = 0;
 
   got_row_count_ = 0;
+
+  FILL_TRACE_LOG("begin open ups multi get.");
 
   if(!check_inner_stat())
   {

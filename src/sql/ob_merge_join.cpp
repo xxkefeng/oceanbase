@@ -109,7 +109,7 @@ int ObMergeJoin::open()
     TBSYS_LOG(WARN, "failed to cons row desc, err=%d", ret);
   }
   // allocate memory for last_join_left_row_store_
-  else if (NULL == (store_buf = static_cast<char*>(ob_malloc(MAX_SINGLE_ROW_SIZE))))
+  else if (NULL == (store_buf = static_cast<char*>(ob_malloc(MAX_SINGLE_ROW_SIZE, ObModIds::OB_SQL_MERGE_JOIN))))
   {
     TBSYS_LOG(ERROR, "no memory");
     ret = OB_ALLOCATE_MEMORY_FAILED;

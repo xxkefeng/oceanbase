@@ -1,7 +1,7 @@
 10
 
 dir
-13930
+14512
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/updateserver/test_cases
 http://svn.app.taobao.net/repos/oceanbase
 
@@ -60,40 +60,6 @@ yubai
 
 409
 
-test_mt_sorted_2row_scan.ci.ini
-file
-
-
-
-
-2013-05-22T14:08:48.000000Z
-953a967e1a556edb2414e970069fe85d
-2012-06-25T10:56:44.413785Z
-8513
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-343
-
 test_mt_ret_unsorted.ci.ini
 file
 
@@ -127,6 +93,40 @@ yubai
 
 
 341
+
+test_mt_sorted_2row_scan.ci.ini
+file
+
+
+
+
+2013-05-22T14:08:48.000000Z
+953a967e1a556edb2414e970069fe85d
+2012-06-25T10:56:44.413785Z
+8513
+yubai
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+343
 
 test_mt_scan.scan1_1.ini
 file
@@ -230,40 +230,6 @@ yubai
 
 401
 
-test_mt_scan.scan1_4.ini
-file
-
-
-
-
-2013-05-22T14:08:48.000000Z
-8e3261c7b142132015730d5791d72284
-2012-06-25T10:56:44.413785Z
-8513
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-401
-
 test_mt_scan.scan1_ab1.ini
 file
 
@@ -298,14 +264,14 @@ yubai
 
 401
 
-test_mt_scan.scan1_5.ini
+test_mt_scan.scan1_4.ini
 file
 
 
 
 
 2013-05-22T14:08:48.000000Z
-e7ff3da9607173f73a554631e167828f
+8e3261c7b142132015730d5791d72284
 2012-06-25T10:56:44.413785Z
 8513
 yubai
@@ -366,14 +332,14 @@ yubai
 
 403
 
-test_mt_scan.scan1_6.ini
+test_mt_scan.scan1_5.ini
 file
 
 
 
 
 2013-05-22T14:08:48.000000Z
-96cb1b2439b99ad93a474bf1eaf4d65c
+e7ff3da9607173f73a554631e167828f
 2012-06-25T10:56:44.413785Z
 8513
 yubai
@@ -398,7 +364,7 @@ yubai
 
 
 
-399
+401
 
 test_mt_scan.scan1_ab3.ini
 file
@@ -434,14 +400,14 @@ yubai
 
 403
 
-test_mt_set.scan.ini
+test_mt_scan.scan1_6.ini
 file
 
 
 
 
 2013-05-22T14:08:48.000000Z
-1fcb322b8eb99e84213eba2b8826726a
+96cb1b2439b99ad93a474bf1eaf4d65c
 2012-06-25T10:56:44.413785Z
 8513
 yubai
@@ -466,7 +432,41 @@ yubai
 
 
 
-247
+399
+
+test_mt_scan.scan1_ab4.ini
+file
+
+
+
+
+2013-05-22T14:08:48.000000Z
+dd3f8136e6557b19e143d527991c4f0a
+2012-06-25T10:56:44.413785Z
+8513
+yubai
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+403
 
 test_mt_scan.ci.ini
 file
@@ -502,14 +502,14 @@ yubai
 
 2168
 
-test_mt_scan.scan1_ab4.ini
+test_mt_set.scan.ini
 file
 
 
 
 
 2013-05-22T14:08:48.000000Z
-dd3f8136e6557b19e143d527991c4f0a
+1fcb322b8eb99e84213eba2b8826726a
 2012-06-25T10:56:44.413785Z
 8513
 yubai
@@ -534,7 +534,7 @@ yubai
 
 
 
-403
+247
 
 test_mt_scan.scan1_ab5.ini
 file
@@ -1148,40 +1148,6 @@ yubai
 
 391
 
-test_mt_sorted_1row_scan.scan5.ini
-file
-
-
-
-
-2013-05-22T14:08:48.000000Z
-e3d18d9ecd4c15a30833b9108a687cff
-2012-06-25T10:56:44.413785Z
-8513
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-399
-
 test_mt_empty1_set.ci.ini
 file
 
@@ -1215,6 +1181,40 @@ yubai
 
 
 187
+
+test_mt_sorted_1row_scan.scan5.ini
+file
+
+
+
+
+2013-05-22T14:08:48.000000Z
+e3d18d9ecd4c15a30833b9108a687cff
+2012-06-25T10:56:44.413785Z
+8513
+yubai
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+399
 
 test_mt_sorted_1row_scan.scan6.ini
 file
@@ -1488,40 +1488,6 @@ yubai
 
 197
 
-test_mt_sorted_2row_scan.ret1_2.ini
-file
-
-
-
-
-2013-05-22T14:08:48.000000Z
-7ed67a04112e6977128c9d9f72142628
-2012-06-25T10:56:44.413785Z
-8513
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-197
-
 test_mt_set_unsorted.ci.ini
 file
 
@@ -1555,6 +1521,40 @@ yubai
 
 
 492
+
+test_mt_sorted_2row_scan.ret1_2.ini
+file
+
+
+
+
+2013-05-22T14:08:48.000000Z
+7ed67a04112e6977128c9d9f72142628
+2012-06-25T10:56:44.413785Z
+8513
+yubai
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+197
 
 test_mt_scan.ret1_1.ini
 file
@@ -1862,14 +1862,14 @@ yubai
 
 333
 
-test_mt_sorted_1row_scan.scan10.ini
+test_schema.ini
 file
 
 
 
 
 2013-05-22T14:08:49.000000Z
-706c92fa6ee928a623966af272e8fb87
+5e3aa64433781f79206366690e6feb28
 2012-06-25T10:56:44.413785Z
 8513
 yubai
@@ -1894,7 +1894,7 @@ yubai
 
 
 
-401
+156
 
 test_mt_scan.ret3.ini
 file
@@ -1930,14 +1930,14 @@ yubai
 
 333
 
-test_schema.ini
+test_mt_sorted_1row_scan.scan10.ini
 file
 
 
 
 
 2013-05-22T14:08:49.000000Z
-5e3aa64433781f79206366690e6feb28
+706c92fa6ee928a623966af272e8fb87
 2012-06-25T10:56:44.413785Z
 8513
 yubai
@@ -1962,7 +1962,7 @@ yubai
 
 
 
-156
+401
 
 test_mt_sorted_1row_scan.scan11.ini
 file

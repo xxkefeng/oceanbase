@@ -124,6 +124,7 @@ int ObTabletScanFuse::open()
       last_sstable_row_ = NULL;
     }
   }
+  FILL_TRACE_LOG("open scan fuse op done ret =%d", ret);
 
   return ret;
 }

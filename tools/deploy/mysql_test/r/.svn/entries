@@ -1,14 +1,14 @@
 10
 
 dir
-13930
+14512
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/deploy/mysql_test/r
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-05-17T03:41:04.720216Z
-13853
+2013-06-18T07:45:16.049252Z
+14493
 yulan.way
 
 
@@ -66,11 +66,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-4f70da06c40ac2cbf455989950ed639d
-2013-04-08T10:24:28.973031Z
-13105
-fff.fanff
+2013-06-19T08:29:40.000000Z
+eca88e0db5e6b1babba03f0c26d6059c
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -92,7 +92,7 @@ fff.fanff
 
 
 
-78987
+78988
 
 jdbc_autocommit.result
 file
@@ -230,6 +230,40 @@ fff.fanff
 
 8541
 
+replace.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+2ab8f976db63fee375af6fec3be8cc56
+2013-06-04T05:54:30.299475Z
+14189
+zhuweng.yzf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2412
+
 master_ups_lost_causedby_switch_twice.result
 file
 
@@ -304,11 +338,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-58aac5a6ca6e50f00e0d82c4be874432
-2013-04-08T10:24:28.973031Z
-13105
-fff.fanff
+2013-06-19T08:29:40.000000Z
+65b47c547ffab54140bd0a4a33c1e48c
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -330,7 +364,7 @@ fff.fanff
 
 
 
-1664
+1665
 
 bug217660_xiaochu.result
 file
@@ -536,40 +570,6 @@ xiaojun.chengxj
 
 7095
 
-set.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-49527beed7e3ffad4b14fe016a32a21f
-2013-03-15T05:40:01.990564Z
-12642
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-2501
-
 revoke.result
 file
 
@@ -603,6 +603,40 @@ xiaojun.chengxj
 
 
 2496
+
+set.result
+file
+
+
+
+
+2013-05-22T14:08:43.000000Z
+49527beed7e3ffad4b14fe016a32a21f
+2013-03-15T05:40:01.990564Z
+12642
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2501
 
 range.result
 file
@@ -706,40 +740,6 @@ yubai
 
 1494
 
-affect_rows.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-c792d86ff00fe8828d7bef979f0906ae
-2013-03-10T07:38:17.628469Z
-12489
-fff.fanff
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-291
-
 trx_6.result
 file
 
@@ -774,17 +774,17 @@ xiaojun.chengxj
 
 588
 
-insert.result
+affect_rows.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-3aa77f63e3a7ab948e1a7e9c3ab856f9
-2013-05-14T10:54:46.646792Z
-13779
-yulan.way
+c792d86ff00fe8828d7bef979f0906ae
+2013-03-10T07:38:17.628469Z
+12489
+fff.fanff
 
 
 
@@ -806,7 +806,7 @@ yulan.way
 
 
 
-991
+291
 
 trx_complex.result
 file
@@ -842,17 +842,17 @@ xiaojun.chengxj
 
 4363
 
-rowkey_is_null.result
+insert.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-99eca04540ad2ced96cca81ead50aab6
-2013-05-14T07:38:25.395925Z
-13738
-xiaojun.chengxj
+3aa77f63e3a7ab948e1a7e9c3ab856f9
+2013-05-14T10:54:46.646792Z
+13779
+yulan.way
 
 
 
@@ -874,41 +874,7 @@ xiaojun.chengxj
 
 
 
-3126
-
-merge_insert2.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-fca1d9de2038c9c8123cbf6803f4a45f
-2013-04-10T05:37:48.616567Z
-13193
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-67973
+991
 
 alter_sys.result
 file
@@ -944,17 +910,51 @@ xiaojun.chengxj
 
 718
 
-group_by_1.result
+merge_insert2.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+a8f0a7a994a1041b7b445a8f42cfea83
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+67974
+
+rowkey_is_null.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-1217c5ddf5052fbc6735d0b95f35a165
-2012-10-25T12:45:13.690654Z
-10181
-yubai
+99eca04540ad2ced96cca81ead50aab6
+2013-05-14T07:38:25.395925Z
+13738
+xiaojun.chengxj
 
 
 
@@ -976,7 +976,7 @@ yubai
 
 
 
-1052
+3126
 
 type_modify_time.result
 file
@@ -1012,17 +1012,17 @@ xiaojun.chengxj
 
 262
 
-jdbc_trx_with_merge.result
+group_by_1.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-d41d8cd98f00b204e9800998ecf8427e
-2013-03-28T06:46:07.878849Z
-12904
-xiaojun.chengxj
+1217c5ddf5052fbc6735d0b95f35a165
+2012-10-25T12:45:13.690654Z
+10181
+yubai
 
 
 
@@ -1044,7 +1044,7 @@ xiaojun.chengxj
 
 
 
-0
+1052
 
 create_syntax.result
 file
@@ -1079,6 +1079,40 @@ xiaojun.chengxj
 
 
 1978
+
+jdbc_trx_with_merge.result
+file
+
+
+
+
+2013-05-22T14:08:43.000000Z
+d41d8cd98f00b204e9800998ecf8427e
+2013-03-28T06:46:07.878849Z
+12904
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+0
 
 privileges.result
 file
@@ -1290,11 +1324,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-454f62b65d7cf4fe046f1d318a145edc
-2013-04-08T10:24:28.973031Z
-13105
-fff.fanff
+2013-06-19T08:29:40.000000Z
+e6ea4af649d655fa4e3c8ac91d8de2e9
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -1316,7 +1350,7 @@ fff.fanff
 
 
 
-11443
+11444
 
 merge_update2.result
 file
@@ -1324,11 +1358,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-1a93898688282cf3a717093375cfcb59
-2013-04-08T10:24:28.973031Z
-13105
-fff.fanff
+2013-06-19T08:29:40.000000Z
+ffb95550e248f596b0775b5af811743b
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -1350,7 +1384,7 @@ fff.fanff
 
 
 
-83345
+83346
 
 delete_bug206717.result
 file
@@ -2168,40 +2202,6 @@ yubai
 
 1115
 
-jdbc_ps_complex.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-cfb9260c37c772c2226a943c87034b3a
-2013-03-28T05:26:21.698155Z
-12898
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-2763
-
 func_group_5.result
 file
 
@@ -2236,16 +2236,16 @@ xiaojun.chengxj
 
 1257
 
-read_config.result
+jdbc_ps_complex.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-3d5b1df6dc1f6852e6fe5d7c37271272
-2013-04-17T02:18:52.747271Z
-13307
+cfb9260c37c772c2226a943c87034b3a
+2013-03-28T05:26:21.698155Z
+12898
 xiaojun.chengxj
 
 
@@ -2268,7 +2268,7 @@ xiaojun.chengxj
 
 
 
-10646
+2763
 
 trx_4.result
 file
@@ -2303,6 +2303,40 @@ xiaojun.chengxj
 
 
 1148
+
+read_config.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+abe90183b8f81bb5319fb30a9f5e2d42
+2013-06-18T07:38:47.086429Z
+14491
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+10846
 
 create.result
 file
@@ -2440,6 +2474,40 @@ xiaojun.chengxj
 
 566
 
+jdbc_replace_parallel_trx.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+47db502aa9fb41082b2c698f82103c1e
+2013-06-07T07:02:21.477438Z
+14323
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3838
+
 rowkey_duplicate.result
 file
 
@@ -2542,40 +2610,6 @@ zhuweng.yzf
 
 7218
 
-type_create_time.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-8fd2739400d47ba5c03a046dc880194d
-2012-12-25T04:14:19.236614Z
-11073
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-270
-
 update.result
 file
 
@@ -2610,6 +2644,40 @@ zhuweng.yzf
 
 1717
 
+type_create_time.result
+file
+
+
+
+
+2013-05-22T14:08:43.000000Z
+8fd2739400d47ba5c03a046dc880194d
+2012-12-25T04:14:19.236614Z
+11073
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+270
+
 user_privilege.result
 file
 
@@ -2643,6 +2711,40 @@ yulan.way
 
 
 180
+
+bug233498_rename_table_jianming.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+f89c6420ca3b5efea21433e2c444c418
+2013-06-05T12:07:13.749771Z
+14265
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1475
 
 2ups.require
 file
@@ -2712,40 +2814,6 @@ lide.wd
 
 423
 
-join_many_table.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-34a3f43e2ae39a60996195e775e0c0de
-2012-10-25T12:45:13.690654Z
-10181
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-2667
-
 func_group_4.result
 file
 
@@ -2780,14 +2848,14 @@ yulan.way
 
 1436
 
-bool.result
+join_many_table.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-b4923e455ab579ac643443a420d98c4e
+34a3f43e2ae39a60996195e775e0c0de
 2012-10-25T12:45:13.690654Z
 10181
 yubai
@@ -2812,7 +2880,41 @@ yubai
 
 
 
-1375
+2667
+
+merge_replace.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+1dc0b46e067e4260840510b041811db2
+2013-06-07T13:16:49.263912Z
+14345
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+60887
 
 disable_create_sys_table.result
 file
@@ -2848,17 +2950,17 @@ zhuweng.yzf
 
 502
 
-expire.result
+bool.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-d138e951ec1551263d78929d3023f975
-2013-04-09T07:37:02.445091Z
-13155
-fff.fanff
+b4923e455ab579ac643443a420d98c4e
+2012-10-25T12:45:13.690654Z
+10181
+yubai
 
 
 
@@ -2880,7 +2982,41 @@ fff.fanff
 
 
 
-4774
+1375
+
+expire.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+d90a1dede978f21bccef6433ace4988d
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+4775
 
 ps_complex_insert.result
 file
@@ -2950,40 +3086,6 @@ xiaojun.chengxj
 
 1539
 
-connection.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-e7b1fdab3862e404c7d1bbb9c41d829f
-2013-05-14T04:59:54.295592Z
-13725
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-9044
-
 trx_3.result
 file
 
@@ -3017,6 +3119,40 @@ xiaojun.chengxj
 
 
 916
+
+connection.result
+file
+
+
+
+
+2013-05-22T14:08:43.000000Z
+e7b1fdab3862e404c7d1bbb9c41d829f
+2013-05-14T04:59:54.295592Z
+13725
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+9044
 
 ps_2.result
 file
@@ -3092,11 +3228,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-bd83693ef522b97255e749905c374e60
-2013-04-10T05:32:22.874601Z
-13192
-xiaojun.chengxj
+2013-06-19T08:29:40.000000Z
+484eb87084bdf0a32fb21a34980f86e1
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -3118,7 +3254,7 @@ xiaojun.chengxj
 
 
 
-2706
+2707
 
 type_varchar_2.result
 file
@@ -3188,40 +3324,6 @@ yulan.way
 
 2226
 
-chinese.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-678f82cadf000fe5f9c8deaf7f6ec36a
-2013-04-01T05:56:10.949559Z
-12983
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-328
-
 type_date.result
 file
 
@@ -3255,6 +3357,40 @@ fff.fanff
 
 
 5103
+
+chinese.result
+file
+
+
+
+
+2013-05-22T14:08:43.000000Z
+678f82cadf000fe5f9c8deaf7f6ec36a
+2013-04-01T05:56:10.949559Z
+12983
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+328
 
 get.result
 file
@@ -3364,11 +3500,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-d0a3cc6f61aa3d0201c79d04f2d102d9
-2013-05-14T10:35:20.102070Z
-13765
-yulan.way
+2013-06-19T08:29:40.000000Z
+62472a4f694eb88a59d8529b6503a971
+2013-06-08T06:15:14.894259Z
+14370
+xiaojun.chengxj
 
 
 
@@ -3390,7 +3526,7 @@ yulan.way
 
 
 
-2367
+2388
 
 compare.result
 file
@@ -3426,40 +3562,6 @@ xiaojun.chengxj
 
 786
 
-join_null.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-a12b99bfeb84d9428850b90b67533d75
-2012-10-25T12:45:13.690654Z
-10181
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-550
-
 func_group_3.result
 file
 
@@ -3493,6 +3595,40 @@ xiaojun.chengxj
 
 
 1064
+
+join_null.result
+file
+
+
+
+
+2013-05-22T14:08:43.000000Z
+a12b99bfeb84d9428850b90b67533d75
+2012-10-25T12:45:13.690654Z
+10181
+yubai
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+550
 
 ps_complex_delete.result
 file
@@ -3534,11 +3670,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-e8a99a42c46c9b10a82df949463f7849
-2013-03-28T02:24:42.630247Z
-12891
-xiaojun.chengxj
+2013-06-19T08:29:40.000000Z
+f7eaf9198ea8ab4c61e5ff424f5b977d
+2013-06-18T07:15:22.926784Z
+14490
+yulan.way
 
 
 
@@ -3560,7 +3696,7 @@ xiaojun.chengxj
 
 
 
-1317
+1243
 
 trx_2.result
 file
@@ -3596,40 +3732,6 @@ xiaojun.chengxj
 
 1513
 
-build_in_func_test.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-76efc8d9418b9a52f7baba8dc4340f0d
-2013-03-12T10:44:08.030180Z
-12554
-fff.fanff
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-8177
-
 error_msg.result
 file
 
@@ -3664,16 +3766,16 @@ xiaojun.chengxj
 
 1776
 
-merge_basic.result
+build_in_func_test.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-50e603e73498c2ca322de7df773361c6
-2013-04-08T10:24:28.973031Z
-13105
+76efc8d9418b9a52f7baba8dc4340f0d
+2013-03-12T10:44:08.030180Z
+12554
 fff.fanff
 
 
@@ -3696,7 +3798,41 @@ fff.fanff
 
 
 
-1750
+8177
+
+merge_basic.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+483f65ac906006d8f776f5ca9172da65
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1751
 
 ps_1.result
 file
@@ -3704,11 +3840,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-747c1a7fa0e6d49b5c7f1f356018823d
-2013-05-14T04:59:54.295592Z
-13725
-xiaojun.chengxj
+2013-06-19T08:29:40.000000Z
+bc090486f4c01aa84cd4f3bda44feb85
+2013-06-05T09:49:56.564935Z
+14250
+yulan.way
 
 
 
@@ -3765,6 +3901,40 @@ yubai
 
 
 207
+
+ps_cache.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+3ed46c5667b2620255aad8355bd9a78e
+2013-06-08T06:35:41.094275Z
+14376
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+591
 
 type_varchar_1.result
 file
@@ -3840,11 +4010,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-bbb6a21c6a1f418651aca67c8cac4eee
-2013-04-10T02:51:11.870629Z
-13180
-xiaojun.chengxj
+2013-06-19T08:29:40.000000Z
+422d0f73ef8997ca04666e9cb93caf3f
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -3866,7 +4036,7 @@ xiaojun.chengxj
 
 
 
-61088
+61089
 
 dual.result
 file
@@ -3902,40 +4072,6 @@ xiaojun.chengxj
 
 2011
 
-bench_count_distinct.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-f7da971048e982ab9ba44398c67f7a4f
-2012-10-25T12:45:13.690654Z
-10181
-yubai
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-149
-
 func_group_2.result
 file
 
@@ -3970,17 +4106,17 @@ yubai
 
 4645
 
-non_reserved_keyword.result
+bench_count_distinct.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-d91b4e72677a375e9f0f9b0b3e804d29
-2013-03-12T06:59:35.674803Z
-12537
-tianguan.dgb
+f7da971048e982ab9ba44398c67f7a4f
+2012-10-25T12:45:13.690654Z
+10181
+yubai
 
 
 
@@ -4002,7 +4138,7 @@ tianguan.dgb
 
 
 
-1186
+149
 
 trx_1.result
 file
@@ -4037,6 +4173,40 @@ xiaojun.chengxj
 
 
 5691
+
+non_reserved_keyword.result
+file
+
+
+
+
+2013-05-22T14:08:43.000000Z
+d91b4e72677a375e9f0f9b0b3e804d29
+2013-03-12T06:59:35.674803Z
+12537
+tianguan.dgb
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1186
 
 join_ps_bug.result
 file
@@ -4112,11 +4282,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-5f8c5a8d9601462619ce404c6580649e
-2013-04-01T05:56:10.949559Z
-12983
-xiaojun.chengxj
+2013-06-19T08:29:40.000000Z
+9ab5cab2c7b5e9fe56895d10c839c075
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -4138,7 +4308,7 @@ xiaojun.chengxj
 
 
 
-785
+786
 
 binary_protocol.result
 file
@@ -4174,17 +4344,17 @@ xiaojun.chengxj
 
 343
 
-ps_complex.result
+yubai.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-8f5bf34e9d6df20cb6e3466d53a479cb
-2013-03-12T10:25:57.583679Z
-12551
-fff.fanff
+2087812db58f343e3ae8dfafcc4bc25a
+2013-01-25T05:46:36.329773Z
+11740
+xiaojun.chengxj
 
 
 
@@ -4206,7 +4376,7 @@ fff.fanff
 
 
 
-3155
+10820
 
 group_by_4.result
 file
@@ -4242,17 +4412,17 @@ yubai
 
 899
 
-yubai.result
+ps_complex.result
 file
 
 
 
 
 2013-05-22T14:08:43.000000Z
-2087812db58f343e3ae8dfafcc4bc25a
-2013-01-25T05:46:36.329773Z
-11740
-xiaojun.chengxj
+8f5bf34e9d6df20cb6e3466d53a479cb
+2013-03-12T10:25:57.583679Z
+12551
+fff.fanff
 
 
 
@@ -4274,41 +4444,7 @@ xiaojun.chengxj
 
 
 
-10820
-
-jdbc_parallel_trx.result
-file
-
-
-
-
-2013-05-22T14:08:43.000000Z
-1a23b97d95cdc9ffd5069fff2c320c9d
-2013-03-28T05:26:21.698155Z
-12898
-xiaojun.chengxj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-3866
+3155
 
 case.result
 file
@@ -4344,6 +4480,40 @@ xiaojun.chengxj
 
 1691
 
+jdbc_parallel_trx.result
+file
+
+
+
+
+2013-05-22T14:08:43.000000Z
+1a23b97d95cdc9ffd5069fff2c320c9d
+2013-03-28T05:26:21.698155Z
+12898
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3866
+
 ps_complex_update.result
 file
 
@@ -4377,6 +4547,40 @@ xiaojun.chengxj
 
 
 30678
+
+merge_replace2.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+aca9b26a9052577248e945e0b133b4ed
+2013-06-08T03:05:57.319917Z
+14351
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+115742
 
 empty_input.result
 file
@@ -4520,11 +4724,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-a895d0f6218b4f78bec0acea2c42ebc6
-2013-04-08T10:24:28.973031Z
-13105
-fff.fanff
+2013-06-19T08:29:40.000000Z
+f01249b63fa1b83fad0f2afe661b5dd0
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -4546,7 +4750,7 @@ fff.fanff
 
 
 
-58511
+58512
 
 collect.result
 file
@@ -4752,6 +4956,74 @@ zhuweng.yzf
 
 130
 
+jdbc_replace_trx.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+194887ddbb05405a818969d4e3c4a029
+2013-06-07T06:56:39.231817Z
+14322
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+7073
+
+jdbc_replace_ps_trx.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+e7503429a40a0560282f9bf939b629eb
+2013-06-07T07:30:10.218370Z
+14325
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5000
+
 deadlock_causedby_ups_switch.result
 file
 
@@ -4786,17 +5058,85 @@ xiaojun.chengxj
 
 351
 
+jdbc_replace.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+7f40c3ffb60b1d0d2a4c667a545dc6c1
+2013-06-07T06:46:39.835411Z
+14321
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5469
+
+jdbc_replace_ps.result
+file
+
+
+
+
+2013-06-19T08:29:40.000000Z
+6b2c86735aa8c3535f9ce03fa0a9b30e
+2013-06-07T06:56:39.231817Z
+14322
+yulan.way
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3157
+
 merge_failed_if_table_has_only_one_column.result
 file
 
 
 
 
-2013-05-22T14:08:43.000000Z
-b6ce70ad9dc1e961aa80f0ddf57f7816
-2013-04-08T10:24:28.973031Z
-13105
-fff.fanff
+2013-06-19T08:29:40.000000Z
+62aabe66243e3018a1c3af4dbb8a61a7
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -4818,7 +5158,7 @@ fff.fanff
 
 
 
-749
+750
 
 many_columns.result
 file
@@ -4826,10 +5166,10 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-6243ee573bd8d1575851e0d5676758dc
-2013-05-17T03:41:04.720216Z
-13853
+2013-06-19T08:29:40.000000Z
+c0430bc820a0d0b2602082789b05545d
+2013-06-18T07:45:16.049252Z
+14493
 yulan.way
 
 
@@ -4962,11 +5302,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-13b2e4741686f61a9e8af071ba4be39e
-2013-01-22T07:50:15.526340Z
-11599
-lide.wd
+2013-06-19T08:29:40.000000Z
+a902cb68835fdd6a67461a293fc1e03d
+2013-06-05T10:39:20.559596Z
+14260
+yulan.way
 
 
 
@@ -5166,11 +5506,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-75f92db646289e854a8f5912b01b221b
-2013-05-14T09:05:51.215340Z
-13744
-xiaojun.chengxj
+2013-06-19T08:29:40.000000Z
+f6c93d2a062adbc1ef9b89aaab694fd2
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -5192,7 +5532,7 @@ xiaojun.chengxj
 
 
 
-1439
+1440
 
 func_like.result
 file
@@ -5234,11 +5574,11 @@ file
 
 
 
-2013-05-22T14:08:43.000000Z
-0b7aa6f0c7d00615045da4a3ce6166f1
-2013-04-08T10:24:28.973031Z
-13105
-fff.fanff
+2013-06-19T08:29:40.000000Z
+1bf0cd2652c5c00676efa9470a63b0b7
+2013-05-24T06:56:06.758310Z
+13970
+yulan.way
 
 
 
@@ -5260,7 +5600,7 @@ fff.fanff
 
 
 
-59869
+59870
 
 create_user.result
 file

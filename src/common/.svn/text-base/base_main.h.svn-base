@@ -63,7 +63,7 @@ namespace oceanbase
         const char *log_dir_;
         const char *server_name_;
       private:
-        bool use_deamon_;
+        bool use_daemon_;
         static void sign_handler(const int sig);
         static bool restart_;
     };

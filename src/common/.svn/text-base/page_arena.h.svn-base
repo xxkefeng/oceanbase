@@ -31,20 +31,26 @@ namespace oceanbase
       return size;
     }
 
-    struct DefaultPageAllocator
+    struct DefaultPageAllocator: public ObIAllocator
     {
-      void *allocate(const int64_t sz) { return ob_malloc(sz, ObModIds::OB_PAGE_ARENA); }
-      void deallocate(void *p) { ob_free(p); }
+      DefaultPageAllocator():mod_id_(ObModIds::OB_PAGE_ARENA) {};
+      virtual ~DefaultPageAllocator(){};
+      void *alloc(const int64_t sz) { return ob_malloc(sz, mod_id_); }
+      void free(void *p) { ob_free(p); }
       void freed(const int64_t sz) {UNUSED(sz); /* mostly for effcient bulk stat reporting */ }
+      void set_mod_id(int32_t mod_id) {mod_id_ = mod_id;};
+      private:
+        int32_t mod_id_;
     };
 
-    struct ModulePageAllocator
+    struct ModulePageAllocator: public ObIAllocator
     {
       explicit ModulePageAllocator(int32_t mod_id = 0) : mod_id_(mod_id), allocator_(NULL) {}
       explicit ModulePageAllocator(ObIAllocator &allocator) : allocator_(&allocator) {}
+      virtual ~ModulePageAllocator(){}
       void set_mod_id(int32_t mod_id) { mod_id_ = mod_id; }
-      void *allocate(const int64_t sz) { return (NULL == allocator_) ? ob_malloc(sz, mod_id_) : allocator_->alloc(sz); }
-      void deallocate(void *p) { (NULL == allocator_) ? ob_free(p, mod_id_) : allocator_->free(p); }
+      void *alloc(const int64_t sz) { return (NULL == allocator_) ? ob_malloc(sz, mod_id_) : allocator_->alloc(sz); }
+      void free(void *p) { (NULL == allocator_) ? ob_free(p, mod_id_) : allocator_->free(p); }
       void freed(const int64_t sz) {UNUSED(sz); /* mostly for effcient bulk stat reporting */ }
       private:
       int32_t mod_id_;
@@ -143,7 +149,7 @@ namespace oceanbase
           Page * alloc_new_page(const int64_t sz)
           {
             Page* page = NULL;
-            void* ptr = page_allocator_.allocate(sz);
+            void* ptr = page_allocator_.alloc(sz);
 
             if (NULL != ptr)
             {
@@ -231,7 +237,7 @@ namespace oceanbase
                 *current = entry->next_page_;
                 pages_ -= 1;
                 total_ -= entry->raw_size();
-                page_allocator_.deallocate(entry);
+                page_allocator_.free(entry);
               }
               else
               {
@@ -328,6 +334,8 @@ namespace oceanbase
           {
             page_allocator_ = alloc;
           }
+
+          void set_mod_id(int32_t mod_id) {page_allocator_.set_mod_id(mod_id);};
 
           /** allocate sz bytes */
           CharT * alloc(const int64_t sz)
@@ -505,7 +513,7 @@ namespace oceanbase
             {
               page = header_;
               header_ = header_->next_page_;
-              page_allocator_.deallocate(page);
+              page_allocator_.free(page);
             }
             page_allocator_.freed(total_);
 
@@ -538,7 +546,7 @@ namespace oceanbase
 
               total_ -= page->raw_size();
 
-              page_allocator_.deallocate(page);
+              page_allocator_.free(page);
 
               ++current_sleep_pages;
               --pages_;
@@ -596,6 +604,7 @@ namespace oceanbase
         virtual void *alloc(const int64_t sz) {return arena_.alloc(sz);};
         virtual void free(void *ptr) {arena_.free(reinterpret_cast<char*>(ptr));};
         void reuse() {arena_.reuse();};
+        virtual void set_mod_id(int32_t mod_id) {UNUSED(mod_id);};
       private:
         ModuleArena arena_;
     };

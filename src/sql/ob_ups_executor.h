@@ -40,6 +40,7 @@ namespace oceanbase
 
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const {UNUSED(row_desc); return common::OB_NOT_SUPPORTED;}
+        virtual enum ObPhyOperatorType get_type() const {return PHY_UPS_EXECUTOR;};
       private:
         // types and constants
       private:

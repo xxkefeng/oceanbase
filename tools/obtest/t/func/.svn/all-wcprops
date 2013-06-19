@@ -1,13 +1,19 @@
 K 25
 svn:wc:ra_dav:version-url
 V 84
-/repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/t/func
+/repos/oceanbase/!svn/ver/14033/branches/0_4_1_release/oceanbase/tools/obtest/t/func
 END
 c1111_p0_bug_stop_masterups_after_create_table_junyue.test
 K 25
 svn:wc:ra_dav:version-url
 V 143
-/repos/oceanbase/!svn/ver/13678/branches/0_4_1_release/oceanbase/tools/obtest/t/func/c1111_p0_bug_stop_masterups_after_create_table_junyue.test
+/repos/oceanbase/!svn/ver/13997/branches/0_4_1_release/oceanbase/tools/obtest/t/func/c1111_p0_bug_stop_masterups_after_create_table_junyue.test
+END
+c1111_p1_start_server_randomly_junyue.test
+K 25
+svn:wc:ra_dav:version-url
+V 127
+/repos/oceanbase/!svn/ver/14033/branches/0_4_1_release/oceanbase/tools/obtest/t/func/c1111_p1_start_server_randomly_junyue.test
 END
 c1111_p0_new_cluster_junyue.test
 K 25

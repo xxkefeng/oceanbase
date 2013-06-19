@@ -495,7 +495,7 @@ namespace oceanbase
         CThreadGuard guard(&lock_);
         if (!inited_)
         {
-          files_list_ = static_cast<FileList *>(ob_malloc(OB_MAX_DISK_NUMBER * sizeof(*files_list_)));
+          files_list_ = static_cast<FileList *>(ob_malloc(OB_MAX_DISK_NUMBER * sizeof(*files_list_), ObModIds::OB_CS_FILE_RECYCLE));
           if (NULL == files_list_)
           {
             ret = OB_ERROR;

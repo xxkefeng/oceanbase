@@ -306,10 +306,12 @@ namespace oceanbase
     };
 
     // ob table schema service interface layer
+    class ObScanHelper;
     class ObSchemaService
     {
       public:
         virtual ~ObSchemaService() {}
+        virtual int init(ObScanHelper* client_proxy, bool only_core_tables) = 0;
         virtual int get_table_schema(const ObString& table_name, TableSchema& table_schema) = 0;
         virtual int create_table(const TableSchema& table_schema) = 0;
         virtual int drop_table(const ObString& table_name) = 0;

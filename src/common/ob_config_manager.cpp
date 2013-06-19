@@ -301,7 +301,7 @@ int ObConfigManager::update_local()
     }
     else
     {
-      TBSYS_LOG(ERROR, "Read system config form inner talbe error, ret: [%d]", ret);
+      TBSYS_LOG(WARN, "Read system config from inner table error, ret: [%d]", ret);
     }
   }
   return ret;
@@ -488,6 +488,10 @@ void ObConfigManager::UpdateTask::runTimerTask()
       {
         break;
       }
+    }
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(ERROR, "update local config failed:ret[%d]", ret);
     }
   }
 

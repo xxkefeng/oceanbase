@@ -1,14 +1,14 @@
 10
 
 dir
-13930
+14512
 http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/script/deploy
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-05-16T07:02:46.185108Z
-13820
+2013-06-03T11:04:20.486952Z
+14166
 fufeng.syd
 
 
@@ -32,10 +32,10 @@ file
 
 
 
-2013-05-22T14:08:50.000000Z
-cb01cdc6935afb1dd46884b2675082c8
-2013-05-16T07:02:46.185108Z
-13820
+2013-06-19T08:29:42.000000Z
+170c0d271a389082703bdda6ef7e8f11
+2013-06-03T11:04:20.486952Z
+14166
 fufeng.syd
 has-props
 
@@ -58,7 +58,7 @@ has-props
 
 
 
-23176
+23245
 
 oceanbase.conf.template
 file
@@ -66,10 +66,10 @@ file
 
 
 
-2013-05-22T14:08:50.000000Z
-2872f768533c6a30a7cff7825b07d7a1
-2013-05-06T09:37:04.837019Z
-13625
+2013-06-19T08:29:42.000000Z
+c449c959081c44c080cb92f11883fcc7
+2013-06-03T11:04:20.486952Z
+14166
 fufeng.syd
 
 
@@ -92,5 +92,5 @@ fufeng.syd
 
 
 
-2267
+2226
 

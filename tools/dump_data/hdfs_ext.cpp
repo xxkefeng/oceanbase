@@ -1,6 +1,8 @@
 #include "hdfs.h"
 #include "hdfsJniHelper.h"
 
+#include "common/ob_define.h"
+
 #define UGI_INFO "hadoop.job.ugi"
 #define UGI_DELIMA ","
 #define DEFAULT_FS "fs.default.name"
@@ -50,7 +52,7 @@ static void destroyLocalReference(JNIEnv *env, jobject jObject)
     (env)->DeleteLocalRef(jObject);
 }
 
-jobject constructNewObjectOfClass(JNIEnv *env, Exc *exc, const char *className, 
+jobject constructNewObjectOfClass(JNIEnv *env, Exc *exc, const char *className,
                                   const char *ctorSignature, ...)
 {
   va_list args;
@@ -98,9 +100,9 @@ JNIEnv* getJNIEnv(void)
 {
 
   const jsize vmBufLength = 1;
-  JavaVM* vmBuf[vmBufLength]; 
+  JavaVM* vmBuf[vmBufLength];
   JNIEnv *env;
-  jint rv = 0; 
+  jint rv = 0;
   jint noVMs = 0;
 
   rv = JNI_GetCreatedJavaVMs(&(vmBuf[0]), vmBufLength, &noVMs);
@@ -115,10 +117,10 @@ JNIEnv* getJNIEnv(void)
     if (hadoopClassPath == NULL) {
       fprintf(stderr, "Environment variable CLASSPATH not set!\n");
       return NULL;
-    } 
+    }
 
     char *hadoopClassPathVMArg = "-Djava.class.path=";
-    size_t optHadoopClassPathLen = strlen(hadoopClassPath) + 
+    size_t optHadoopClassPathLen = strlen(hadoopClassPath) +
       strlen(hadoopClassPathVMArg) + 1;
     char *optHadoopClassPath = static_cast<char *>(malloc(sizeof(char)*optHadoopClassPathLen));
     snprintf(optHadoopClassPath, optHadoopClassPathLen,
@@ -142,7 +144,7 @@ JNIEnv* getJNIEnv(void)
     //fill in any specified arguments
     if (hadoopJvmArgs != NULL)  {
       char *result = NULL;
-      result = strtok( hadoopJvmArgs, jvmArgDelims );	
+      result = strtok( hadoopJvmArgs, jvmArgDelims );
       int argNum = 1;
       for (;argNum < noArgs ; argNum++) {
         options[argNum].optionString = result; //optHadoopArg;
@@ -154,7 +156,7 @@ JNIEnv* getJNIEnv(void)
     JavaVM *vm;
     vm_args.version = JNI_VERSION_1_2;
     vm_args.options = options;
-    vm_args.nOptions = noArgs; 
+    vm_args.nOptions = noArgs;
     vm_args.ignoreUnrecognized = 1;
 
     rv = JNI_CreateJavaVM(&vm, (void**)&env, &vm_args);
@@ -180,10 +182,11 @@ JNIEnv* getJNIEnv(void)
   return env;
 }
 
-int invokeMethod(JNIEnv *env, jvalue *retval, Exc *exc, 
+int invokeMethod(JNIEnv *env, jvalue *retval, Exc *exc,
                  jobject instObj, const char *className,
                  const char *methName, const char *methSignature, ...)
 {
+  UNUSED(exc);
   jclass cls;
   jmethodID mid;
   va_list args;
@@ -261,7 +264,7 @@ static int parseHostAndPort(const char *&host, unsigned short &port, const char 
 #define HOST_PORT_BUFF_SIZE 4096
   static char host_port_buff[HOST_PORT_BUFF_SIZE];
   int ret = -1;
-  
+
   strcpy(host_port_buff, fs_str);
   char *end = host_port_buff + strlen(host_port_buff) - 1;
   char *str = end;

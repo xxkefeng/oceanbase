@@ -327,7 +327,7 @@ int ObFileClient::send_file_loop(const int64_t timeout,
 
   if (OB_SUCCESS == ret)
   {
-    block_buffer = reinterpret_cast<char *>(ob_malloc(block_size_));
+    block_buffer = reinterpret_cast<char *>(ob_malloc(block_size_, ObModIds::OB_FILE_CLIENT));
     if (NULL == block_buffer)
     {
       ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -497,6 +497,3 @@ int ObFileClient::send_file(const int64_t timeout, const int64_t band_limit,
 
   return ret;
 }
-
-
-

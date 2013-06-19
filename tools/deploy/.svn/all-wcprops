@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
 V 77
-/repos/oceanbase/!svn/ver/13853/branches/0_4_1_release/oceanbase/tools/deploy
+/repos/oceanbase/!svn/ver/14493/branches/0_4_1_release/oceanbase/tools/deploy
 END
 common.py
 K 25
@@ -15,11 +15,11 @@ svn:wc:ra_dav:version-url
 V 94
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/multi_cluster.py
 END
-readme.org
+deploy.py
 K 25
 svn:wc:ra_dav:version-url
-V 88
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/readme.org
+V 87
+/repos/oceanbase/!svn/ver/13653/branches/0_4_1_release/oceanbase/tools/deploy/deploy.py
 END
 copy.sh
 K 25
@@ -27,11 +27,11 @@ svn:wc:ra_dav:version-url
 V 85
 /repos/oceanbase/!svn/ver/13157/branches/0_4_1_release/oceanbase/tools/deploy/copy.sh
 END
-deploy.py
+readme.org
 K 25
 svn:wc:ra_dav:version-url
-V 87
-/repos/oceanbase/!svn/ver/13653/branches/0_4_1_release/oceanbase/tools/deploy/deploy.py
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/readme.org
 END
 collect.schema
 K 25
@@ -39,17 +39,17 @@ svn:wc:ra_dav:version-url
 V 92
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/collect.schema
 END
-tpl.py
-K 25
-svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/tpl.py
-END
 ob_new_sql_test.schema
 K 25
 svn:wc:ra_dav:version-url
 V 100
 /repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/ob_new_sql_test.schema
+END
+tpl.py
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/tpl.py
 END
 config.py
 K 25

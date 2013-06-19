@@ -41,7 +41,7 @@ TEST_F(ObPrivilegeManagerTest, basic)
 {
   ObPrivilegeManager manager;
   this->set_manager(manager);
-  ObPrivilege *p_privilege = (ObPrivilege*)ob_malloc(sizeof(ObPrivilege));
+  ObPrivilege *p_privilege = (ObPrivilege*)ob_malloc(sizeof(ObPrivilege), ObModIds::TEST);
   ASSERT_EQ(OB_SUCCESS, p_privilege->init());
   ASSERT_EQ(OB_SUCCESS, manager.renew_privilege(*p_privilege));
   ASSERT_EQ(static_cast<int64_t>(0), this->get_newest_version_index());
@@ -65,4 +65,3 @@ int main(int argc, char **argv)
   ::testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }
-

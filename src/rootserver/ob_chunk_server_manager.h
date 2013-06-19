@@ -122,6 +122,7 @@ namespace oceanbase
         common::ObServer get_cs(const int32_t index) const;
         int get_server_index(const common::ObServer &server, int32_t &index) const;
         int32_t get_alive_server_count(const bool chunkserver) const;
+        int get_next_alive_ms(int32_t & index, common::ObServer & server) const;
 
         void set_server_down(iterator& it);
         void set_server_down_ms(iterator& it);

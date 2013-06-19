@@ -221,6 +221,10 @@ namespace oceanbase
         }
       ,
         {
+          "init_cluster", OB_RS_ADMIN_INIT_CLUSTER, do_rs_admin
+        }
+      ,
+        {
           "restart_cs", OB_RS_RESTART_SERVERS, do_restart_servers
         }
       ,

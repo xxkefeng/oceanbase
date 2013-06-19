@@ -1,17 +1,17 @@
 K 25
 svn:wc:ra_dav:version-url
 V 82
-/repos/oceanbase/!svn/ver/13870/branches/0_4_1_release/oceanbase/tools/obtest/conf
+/repos/oceanbase/!svn/ver/14424/branches/0_4_1_release/oceanbase/tools/obtest/conf
 END
 configure.ini
 K 25
 svn:wc:ra_dav:version-url
 V 96
-/repos/oceanbase/!svn/ver/13870/branches/0_4_1_release/oceanbase/tools/obtest/conf/configure.ini
+/repos/oceanbase/!svn/ver/14424/branches/0_4_1_release/oceanbase/tools/obtest/conf/configure.ini
 END
 log4j.properties
 K 25
 svn:wc:ra_dav:version-url
 V 99
-/repos/oceanbase/!svn/ver/13720/branches/0_4_1_release/oceanbase/tools/obtest/conf/log4j.properties
+/repos/oceanbase/!svn/ver/14047/branches/0_4_1_release/oceanbase/tools/obtest/conf/log4j.properties
 END
