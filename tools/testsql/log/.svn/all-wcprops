@@ -1,23 +1,23 @@
 K 25
 svn:wc:ra_dav:version-url
-V 71
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/log
-END
-obtf.log
-K 25
-svn:wc:ra_dav:version-url
-V 80
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/log/obtf.log
+V 82
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/log
 END
 obtf.log.2012-06-26
 K 25
 svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/log/obtf.log.2012-06-26
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/log/obtf.log.2012-06-26
 END
 obtf.log.2012-06-27
 K 25
 svn:wc:ra_dav:version-url
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/log/obtf.log.2012-06-27
+END
+obtf.log
+K 25
+svn:wc:ra_dav:version-url
 V 91
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/log/obtf.log.2012-06-27
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/log/obtf.log
 END

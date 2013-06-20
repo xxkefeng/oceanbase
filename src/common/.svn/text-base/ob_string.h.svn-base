@@ -409,29 +409,6 @@ namespace oceanbase
       }
       return ret;
     }
-
-    template <typename AllocatorT>
-    int ob_write_index_name(AllocatorT &allocator, const ObString &src, ObString& dst)
-    {
-      int ret = OB_SUCCESS;
-      int32_t src_len = src.length() + static_cast<int32_t>(strlen(OB_INDEX_PREFIX));
-      void * ptr = NULL;
-      if (OB_UNLIKELY(0 >= src_len))
-      {
-        dst.assign(NULL, 0);
-      }
-      else if (NULL == (ptr = allocator.alloc(src_len)))
-      {
-        ret = OB_ALLOCATE_MEMORY_FAILED;
-      }
-      else
-      {
-        memcpy(ptr, OB_INDEX_PREFIX, strlen(OB_INDEX_PREFIX));
-        memcpy(static_cast<char*>(ptr) + strlen(OB_INDEX_PREFIX), src.ptr(), src.length());
-        dst.assign_ptr(reinterpret_cast<char*>(ptr), src_len);
-      }
-      return ret;
-    }
   }
 }
 #endif

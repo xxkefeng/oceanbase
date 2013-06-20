@@ -9,75 +9,14 @@
 #include "common/ob_read_common_data.h"
 #include "common/ob_row.h"
 #include "common/ob_row_desc.h"
-#include "sstable/ob_sstable_scan_param.h"
-#include "common/ob_tbnet_callback.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::sql;
 using namespace oceanbase::sql::test;
 
-// from ob_chunk_callback.cpp
-static int mock_chunk_server_process(easy_request_t *r)
-{
-  int ret = EASY_OK;
-
-  if (NULL == r)
-  {        
-    TBSYS_LOG(WARN, "request is NULL, r = %p", r);
-    ret = EASY_BREAK;
-  }
-  else if (NULL == r->ipacket)
-  {
-    TBSYS_LOG(WARN, "request is NULL, r->ipacket = %p", r->ipacket);
-    ret = EASY_BREAK;
-  }
-  else
-  {
-    MockChunkServer* server = (MockChunkServer*)r->ms->c->handler->user_data;
-    ObPacket* packet = (ObPacket*)r->ipacket;
-    packet->set_request(r);
-    //handle_request will send response
-    if (OB_REQUIRE_HEARTBEAT == packet->get_packet_code())
-    {
-      server->handle_request(packet);
-      ret = EASY_OK;
-    }
-    else
-    {
-      ret = server->handlePacket(packet);
-      if (OB_SUCCESS == ret)
-      {
-        r->ms->c->pool->ref++;
-        easy_atomic_inc(&r->ms->pool->ref);
-        easy_pool_set_lock(r->ms->pool);
-        ret = EASY_AGAIN;
-      }
-      else
-      {
-        ret = EASY_OK;
-        TBSYS_LOG(WARN, "can not push packet(src is %s, pcode is %u) to packet queue", 
-            inet_ntoa_r(r->ms->c->addr), packet->get_packet_code());
-
-      }
-    }
-  }
-  return ret;
-}
-
 int MockChunkServer::initialize()
 {
   set_listen_port(CHUNK_SERVER_PORT);
-
-  memset(&server_handler_, 0, sizeof(easy_io_handler_pt));
-  server_handler_.encode = ObTbnetCallback::encode;
-  server_handler_.decode = ObTbnetCallback::decode;
-  server_handler_.process = mock_chunk_server_process;
-  //server_handler_.batch_process = ObTbnetCallback::batch_process;
-  server_handler_.get_packet_id = ObTbnetCallback::get_packet_id;
-  server_handler_.on_disconnect = ObTbnetCallback::on_disconnect;
-  server_handler_.user_data = this;
-
-
   return MockServer::initialize();
 }
 
@@ -107,11 +46,6 @@ int MockChunkServer::do_request(ObPacket* base_packet)
 #else
         ret = handle_scan_table(ob_packet);
 #endif
-        break;
-      }
-    case OB_SSTABLE_SCAN_REQUEST:
-      {
-        ret = handle_mock_sstable_scan(ob_packet);
         break;
       }
     default:
@@ -149,7 +83,7 @@ int MockChunkServer::handle_scan_table(ObPacket * ob_packet)
     }
   }
 
-  // tbnet::Connection* connection = ob_packet->get_connection();
+  tbnet::Connection* connection = ob_packet->get_connection();
   ThreadSpecificBuffer::Buffer* thread_buffer = response_packet_buffer_.get_buffer();
   if (NULL == thread_buffer)
   {
@@ -170,7 +104,7 @@ int MockChunkServer::handle_scan_table(ObPacket * ob_packet)
     ObRowDesc row_desc_;
     ObString row_key;
     ObString column_name;
-    // char temp[256] = "";
+    char temp[256] = "";
     ObObj obj_a, obj_b, obj_d;
     ObObj str_c;
     ObString var_str;
@@ -211,12 +145,12 @@ int MockChunkServer::handle_scan_table(ObPacket * ob_packet)
     scanner.set_is_req_fullfilled(true, 10);
     /* end add by xiaochu */
 
-    int32_t channel_id = ob_packet->get_channel_id();
+    int32_t channel_id = ob_packet->getChannelId();
     if (OB_SUCCESS != (ret = scanner.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position())))
     {
       TBSYS_LOG(WARN, "fail to serialize scanner");
     }
-    else if (OB_SUCCESS != (ret = send_response(OB_SCAN_RESPONSE, 1, out_buffer, ob_packet->get_request(), channel_id)))
+    else if (OB_SUCCESS != (ret = send_response(OB_SCAN_RESPONSE, 1, out_buffer, connection, channel_id)))
     {
       TBSYS_LOG(WARN, "fail to send scanner");
     }
@@ -228,7 +162,6 @@ int MockChunkServer::handle_scan_table(ObPacket * ob_packet)
 
 int MockChunkServer::handle_mock_get(ObPacket * ob_packet)
 {
-  UNUSED(ob_packet);
   int ret = OB_SUCCESS;
 #if 0
   ObDataBuffer* data = ob_packet->get_buffer();
@@ -344,7 +277,6 @@ int MockChunkServer::handle_mock_get(ObPacket * ob_packet)
 
 int MockChunkServer::handle_mock_scan(ObPacket * ob_packet)
 {
-  UNUSED(ob_packet);
   int ret = OB_SUCCESS;
 #if 0
   ObDataBuffer* data = ob_packet->get_buffer();
@@ -486,7 +418,6 @@ int MockChunkServer::handle_mock_scan(ObPacket * ob_packet)
 
 int MockChunkServer::handle_get_table(ObPacket * ob_packet)
 {
-  UNUSED(ob_packet);
   int ret = OB_SUCCESS;
 #if 0
   ObDataBuffer* data = ob_packet->get_buffer();
@@ -575,111 +506,5 @@ int MockChunkServer::handle_get_table(ObPacket * ob_packet)
   return ret;
 }
 
-int MockChunkServer::handle_mock_sstable_scan(ObPacket *packet)
-{
-  int rc = OB_SUCCESS;
-  int32_t version = packet->get_api_version();
-  int32_t channel_id = packet->get_channel_id();
-  easy_request_t *req = packet->get_request();
 
-  ObDataBuffer *in_buffer = NULL;
-  sstable::ObSSTableScanParam scan_param;
-  if (OB_SUCCESS != (rc = packet->deserialize()))
-  {
-    TBSYS_LOG(ERROR, "packet deserialize failed, rc %d", rc);
-  }
-  else
-  {
-    in_buffer = packet->get_buffer();
-    if (OB_SUCCESS != (rc = scan_param.deserialize(in_buffer->get_data(), in_buffer->get_capacity(),
-            in_buffer->get_position())))
-    {
-      TBSYS_LOG(ERROR, "scan_param deserialize failed, rc %d", rc);
-    }
-  }
-
-  ThreadSpecificBuffer thread_buffer(2 << 20);
-  ObDataBuffer out_buffer(thread_buffer.get_buffer()->current(),
-      thread_buffer.get_buffer()->remain());
-  ObPacketQueueThread &queue_thread = get_default_task_queue_thread();
-
-  ObNewScanner scanner;
-  int64_t session_id = queue_thread.generate_session_id();
-
-  // fake response and send
-  const static int SCANNER_COUNT = 3;
-  for (int i = 0; i < SCANNER_COUNT; i++)
-  {
-    bool is_fullfilled = (i == (SCANNER_COUNT - 1)) ? true : false;
-    int64_t fullfill_num = 1;
-    scanner.reuse();
-    scanner.set_is_req_fullfilled(is_fullfilled, fullfill_num);
-    ObRow row;
-    scanner.add_row(row);
-
-    if (OB_SUCCESS == rc && !is_fullfilled)
-    {
-      rc = queue_thread.prepare_for_next_request(session_id);
-    }
-
-    ObResultCode result_code;
-    result_code.result_code_ = rc;
-    out_buffer.get_position() = 0;
-
-    rc = result_code.serialize(out_buffer.get_data(), out_buffer.get_capacity(),
-        out_buffer.get_position());
-    if (OB_SUCCESS != rc)
-    {
-      break;
-    }
-    if (OB_SUCCESS == result_code.result_code_ || OB_SUCCESS == rc)
-    {
-      if (OB_SUCCESS != (rc = scanner.serialize(out_buffer.get_data(), out_buffer.get_capacity(),
-              out_buffer.get_position())))
-      {
-        TBSYS_LOG(ERROR, "serialize failed, rc %d", rc);
-        break;
-      }
-    }
-
-    send_response(is_fullfilled ? OB_SESSION_END : OB_SSTABLE_SCAN_RESPONSE,
-        version, out_buffer, req, channel_id, session_id);
-
-    if (is_fullfilled || OB_SUCCESS != result_code.result_code_)
-    {
-      rc = result_code.result_code_;
-      break;
-    }
-
-    ObPacket *next_request = NULL;
-    scanner.reuse();
-
-    rc = queue_thread.wait_for_next_request(session_id, next_request, 10 * 1000 * 1000);
-    if (OB_NET_SESSION_END == rc)
-    {
-      rc = OB_SUCCESS;
-      if (next_request)
-      {
-        req = next_request->get_request();
-        easy_request_wakeup(req);
-      }
-      break;
-    }
-    else if (OB_SUCCESS != rc)
-    {
-      TBSYS_LOG(WARN, "wait for next_request failed, %d", rc);
-    }
-    else
-    {
-      channel_id = next_request->get_channel_id();
-      req = next_request->get_request();
-    }
-  }
-
-  if (session_id)
-  {
-    queue_thread.destroy_session(session_id);
-  }
-  return rc;
-}
 

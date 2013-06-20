@@ -18,6 +18,7 @@
 #include "ob_root_bootstrap.h"
 #include "ob_root_server2.h"
 #include "common/ob_encrypted_helper.h"
+#include "common/nb_accessor/ob_nb_accessor.h"
 #include "common/ob_schema_service_impl.h"
 #include "common/ob_schema_helper.h"
 #include "common/ob_extra_tables_schema.h"
@@ -387,19 +388,6 @@ int ObBootstrap::bootstrap_sys_tables(void)
       TBSYS_LOG(WARN, "failed to create empty tablet for __all_sys_config_stat, err=%d", ret);
     }
   }
-  // create table _root_table
-  if (OB_SUCCESS == ret)
-  {
-    if (OB_SUCCESS != (ret = ObExtraTablesSchema::root_table_schema(table_schema)))
-    {
-      TBSYS_LOG(WARN, "failed to get schema of __root_table, err=%d", ret);
-    }
-    else if (OB_SUCCESS != (ret = create_sys_table(table_schema)))
-    {
-      TBSYS_LOG(WARN, "failed to create table for __root_table, err=%d", ret);
-    }
-  }
-
   return ret;
 }
 
@@ -505,7 +493,7 @@ int ObBootstrap::init_all_cluster()
     ObRootMsProvider ms_provider(root_server_.get_server_manager());
     for (int64_t i = 0; i < config.retry_times; i++)
     {
-      if (OB_SUCCESS != (ret = ms_provider.get_ms(i, server)))
+      if (OB_SUCCESS != (ret = ms_provider.get_ms(server)))
       {
         TBSYS_LOG(WARN, "get merge server to init all_cluster table failed:ret[%d]", ret);
       }
@@ -550,37 +538,35 @@ int ObBootstrap::init_all_sys_config_stat()
 int ObBootstrap::init_users()
 {
   int ret = OB_SUCCESS;
-  char sql[OB_DEFAULT_SQL_LENGTH ];
-  int64_t pos = 0;
-  char scrambled3[SCRAMBLE_LENGTH * 2 + 1];
-  memset(scrambled3, 0, sizeof(scrambled3));
-  ObString stored_pwd;
-  stored_pwd.assign_ptr(scrambled3, SCRAMBLE_LENGTH * 2 + 1);
-  ObString admin = ObString::make_string(OB_ADMIN_USER_NAME);
-  ObEncryptedHelper::encrypt(stored_pwd, admin);
-  stored_pwd.assign_ptr(scrambled3, SCRAMBLE_LENGTH * 2);
+  nb_accessor::ObNbAccessor acc;
+  if (OB_SUCCESS != (ret = acc.init(root_server_.schema_service_scan_helper_)))
+  {
+    TBSYS_LOG(WARN, "failed to init nb_accessor, err=%d", ret);
+  }
+  else
+  {
+    ObObj rowkey_objs[1];
+    ObString username = ObString::make_string(OB_ADMIN_USER_NAME);
+    rowkey_objs[0].set_varchar(username);
+    ObRowkey rowkey;
+    rowkey.assign(rowkey_objs, 1);
 
-  if (NULL == root_server_.schema_service_scan_helper_)
-  {
-    TBSYS_LOG(WARN, "scan helper not set.");
-    ret = OB_NOT_INIT;
-  }
-  else if (OB_SUCCESS != (ret = databuff_printf(sql, OB_DEFAULT_SQL_LENGTH, pos,
-          "replace into %s "
-          "(user_name, user_id, pass_word, info, priv_all, priv_alter, "
-          "priv_create, priv_create_user, priv_delete, priv_drop, "
-          "priv_grant_option, priv_insert, priv_update, priv_select,"
-          "priv_replace, is_locked) "
-          "values ('%s', %ld, '%.*s', 'system administrator', "
-          "1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0);",
-          OB_ALL_USER_TABLE_NAME, OB_ADMIN_USER_NAME, OB_ADMIN_UID, 
-          stored_pwd.length(), stored_pwd.ptr())))
-  {
-    TBSYS_LOG(WARN, "build insert sql [%s] ret=%d", sql, ret);
-  }
-  else if (OB_SUCCESS != (ret = root_server_.schema_service_scan_helper_->modify(sql)))
-  {
-    TBSYS_LOG(WARN, "execute sql [%s] ret=%d", sql, ret);
+    char scrambled3[SCRAMBLE_LENGTH * 2 + 1];
+    memset(scrambled3, 0, sizeof(scrambled3));
+    ObString stored_pwd;
+    stored_pwd.assign_ptr(scrambled3, SCRAMBLE_LENGTH * 2 + 1);
+    ObString admin = ObString::make_string(OB_ADMIN_USER_NAME);
+    ObEncryptedHelper::encrypt(stored_pwd, admin);
+    stored_pwd.assign_ptr(scrambled3, SCRAMBLE_LENGTH * 2);
+    // @bug
+    if (OB_SUCCESS != (ret = acc.insert(OB_ALL_USER_TABLE_NAME, rowkey,
+       KV("user_id", OB_ADMIN_UID) ("pass_word", stored_pwd) ("info", ObString::make_string("system administrator"))
+         ("priv_all", 1) ("priv_alter", 1) ("priv_create", 1) ("priv_create_user", 1) ("priv_delete", 1)
+         ("priv_drop", 1) ("priv_grant_option", 1) ("priv_insert", 1) ("priv_update", 1) ("priv_select", 1)
+         ("priv_replace", 1) ("is_locked", 0))))
+    {
+      TBSYS_LOG(WARN, "failed to insert row into __users, err=%d", ret);
+    }
   }
   return ret;
 }
@@ -588,98 +574,104 @@ int ObBootstrap::init_users()
 int ObBootstrap::init_all_sys_stat()
 {
   int ret = OB_SUCCESS;
-  char sql[OB_DEFAULT_SQL_LENGTH];
-  int64_t sql_len = 0;
-  int64_t privilege_version = tbsys::CTimeUtil::getTime();
-  if (NULL == root_server_.schema_service_scan_helper_)
+  nb_accessor::ObNbAccessor acc;
+  if (OB_SUCCESS != (ret = acc.init(root_server_.schema_service_scan_helper_)))
   {
-    TBSYS_LOG(WARN, "scan helper not set.");
-    ret = OB_NOT_INIT;
+    TBSYS_LOG(WARN, "failed to init nb_accessor, err=%d", ret);
   }
-  else if ( (sql_len = snprintf(
-          sql, OB_DEFAULT_SQL_LENGTH, "replace into %s "
-          "(cluster_id, name, data_type, value, info) "
-          "values (0, 'ob_max_used_table_id', %d, '%ld', 'max used table id');",
-          OB_ALL_SYS_STAT_TABLE_NAME, ObIntType, OB_APP_MIN_TABLE_ID + 2000) 
-        > OB_DEFAULT_SQL_LENGTH - 1))
+  else
   {
-    TBSYS_LOG(WARN, "build insert sql [%s] ret=%d", sql, ret);
-    ret = OB_BUF_NOT_ENOUGH;
-  }
-  else if (OB_SUCCESS != (ret = root_server_.schema_service_scan_helper_->modify(sql)))
-  {
-    TBSYS_LOG(WARN, "execute sql [%s] ret=%d", sql, ret);
-  }
-  else if ( (sql_len = snprintf(
-          sql, OB_DEFAULT_SQL_LENGTH, "replace into %s "
-          "(cluster_id, name, data_type, value, info) "
-          "values (0, 'ob_max_user_id', %d, '%ld', 'max user id');", 
-          OB_ALL_SYS_STAT_TABLE_NAME, ObIntType, OB_ADMIN_UID) 
-        > OB_DEFAULT_SQL_LENGTH - 1))
-  {
-    TBSYS_LOG(WARN, "build insert sql [%s] ret=%d", sql, ret);
-    ret = OB_BUF_NOT_ENOUGH;
-  }
-  else if (OB_SUCCESS != (ret = root_server_.schema_service_scan_helper_->modify(sql)))
-  {
-    TBSYS_LOG(WARN, "execute sql [%s] ret=%d", sql, ret);
-  }
-  else if ( (sql_len = snprintf(
-          sql, OB_DEFAULT_SQL_LENGTH, "replace into %s "
-          "(cluster_id, name, data_type, value, info) "
-          "values (0, 'ob_current_privilege_version', %d, '%ld', "
-          "'systems newest privilege version');" ,
-          OB_ALL_SYS_STAT_TABLE_NAME, ObIntType, privilege_version) 
-        > OB_DEFAULT_SQL_LENGTH - 1))
-  {
-    TBSYS_LOG(WARN, "build insert sql [%s] ret=%d", sql, ret);
-    ret = OB_BUF_NOT_ENOUGH;
-  }
-  else if (OB_SUCCESS != (ret = root_server_.schema_service_scan_helper_->modify(sql)))
-  {
-    TBSYS_LOG(WARN, "execute sql [%s] ret=%d", sql, ret);
+    char string_value[STRING_VALUE_LENGTH] = "";
+    ObObj rowkey_objs[2];
+    rowkey_objs[0].set_int(0);// cluster_id
+    rowkey_objs[1].set_varchar(ObString::make_string("ob_max_used_table_id")); // name
+    ObRowkey rowkey;
+    rowkey.assign(rowkey_objs, 2);
+    snprintf(string_value, sizeof(string_value), "%lu", OB_APP_MIN_TABLE_ID + 2000);
+    if (OB_SUCCESS != (ret = acc.insert(OB_ALL_SYS_STAT_TABLE_NAME, rowkey,
+                                        KV("data_type", ObIntType)
+                                        ("value", ObString::make_string(string_value))
+                                        ("info", ObString::make_string("max used table id")))))
+    {
+      TBSYS_LOG(WARN, "failed to insert row into __all_sys_stat, err=%d", ret);
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "insert max_used_table_id row into __all_sys_stat succ");
+    }
+
+    if (OB_SUCCESS == ret)
+    {
+      snprintf(string_value, sizeof(string_value), "%lu", OB_ADMIN_UID);
+      rowkey_objs[1].set_varchar(ObString::make_string("ob_max_user_id")); // name
+      if (OB_SUCCESS != (ret = acc.insert(OB_ALL_SYS_STAT_TABLE_NAME, rowkey,
+                                          KV("data_type", ObIntType)
+                                          ("value", ObString::make_string(string_value))
+                                          ("info", ObString::make_string("max used user id")))))
+      {
+        TBSYS_LOG(WARN, "failed to insert row into __all_sys_stat, err=%d", ret);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "insert max_user_id row into __all_sys_stat succ");
+      }
+    }
+    if (OB_SUCCESS == ret)
+    {
+      int64_t privilege_version = tbsys::CTimeUtil::getTime();
+      snprintf(string_value, sizeof(string_value), "%ld", privilege_version);
+      rowkey_objs[1].set_varchar(ObString::make_string("ob_current_privilege_version")); // name
+      if (OB_SUCCESS != (ret = acc.insert(OB_ALL_SYS_STAT_TABLE_NAME, rowkey,
+                                          KV("data_type", ObIntType)
+                                          ("value", ObString::make_string(string_value))
+                                          ("info", ObString::make_string("system's newest privilege version")))))
+      {
+        TBSYS_LOG(WARN, "failed to insert row into __all_sys_stat, err=%d", ret);
+      }
+      else
+      {
+        root_server_.set_privilege_version(privilege_version);
+        TBSYS_LOG(INFO, "insert privilege_version row into __all_sys_stat succ");
+      }
+    }
   }
   return ret;
 }
 
-extern const char* svn_version();
-extern const char* build_date();
-extern const char* build_time();
+const char* svn_version();
+const char* build_date();
+const char* build_time();
 
 int ObBootstrap::init_all_sys_param()
 {
   int ret = OB_SUCCESS;
-  char sql[OB_DEFAULT_SQL_LENGTH];
-  int64_t sql_len = 0;
-  if (NULL == root_server_.schema_service_scan_helper_)
+  nb_accessor::ObNbAccessor acc;
+  if (OB_SUCCESS != (ret = acc.init(root_server_.schema_service_scan_helper_)))
   {
-    TBSYS_LOG(WARN, "scan helper not set.");
-    ret = OB_NOT_INIT;
+    TBSYS_LOG(WARN, "failed to init nb_accessor, err=%d", ret);
   }
   else
   {
-
-#define INSERT_ALL_SYS_PARAM_ROW(ret, cname, itype_value, cvalue, cinfo)  \
-    if (OB_SUCCESS == ret) \
+#define INSERT_ALL_SYS_PARAM_ROW(ret, acc, cname, itype_value, cvalue, cinfo)  \
+  if (ret == OB_SUCCESS) \
+  { \
+    ObObj rowkey_objs[2];       \
+    rowkey_objs[0].set_int(0);  /* cluster_id */ \
+    rowkey_objs[1].set_varchar(ObString::make_string(cname));  /* name */ \
+    ObRowkey rowkey;  \
+    rowkey.assign(rowkey_objs, 2); \
+    if ((ret = acc.insert(OB_ALL_SYS_PARAM_TABLE_NAME, rowkey, \
+                           KV("data_type", itype_value) \
+                           ("value", ObString::make_string(cvalue)) \
+                           ("info", ObString::make_string(cinfo)))) != OB_SUCCESS) \
     { \
-      if ( (sql_len = snprintf( \
-              sql, OB_DEFAULT_SQL_LENGTH, "replace into %s " \
-              "(cluster_id, name, data_type, value, info) " \
-              "values (0, '%s', %d, '%s', '%s');", \
-              OB_ALL_SYS_PARAM_TABLE_NAME, cname, itype_value, cvalue, cinfo)  \
-            > OB_DEFAULT_SQL_LENGTH - 1)) \
-      { \
-        TBSYS_LOG(WARN, "build insert sql [%s] ret=%d", sql, ret); \
-        ret = OB_BUF_NOT_ENOUGH; \
-      } \
-      else if (OB_SUCCESS != (ret = root_server_.schema_service_scan_helper_->modify(sql))) \
-      { \
-        TBSYS_LOG(WARN, "execute sql [%s] ret=%d", sql, ret); \
-      } \
-    }
+      TBSYS_LOG(WARN, "failed to insert row into __all_sys_param, err=%d", ret); \
+    } \
+  }
 
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "ob_app_name",
         ObIntType,
         /* root_server_.config_.client_config_.app_name_, */
@@ -687,54 +679,63 @@ int ObBootstrap::init_all_sys_param()
         "app name");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "autocommit",
         ObIntType,
         "1",
         "");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "character_set_results",
         ObVarcharType,
         "latin1",
         "");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "sql_mode",
         ObVarcharType,
         "",
         "");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "max_allowed_packet",
         ObIntType,
         "1048576",
         "");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "ob_group_agg_push_down_param",
         ObBoolType,
         "true",
         "");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "tx_isolation",
         ObVarcharType,
         "READ-COMMITTED",
         "Transaction Isolcation Levels: READ-UNCOMMITTED READ-COMMITTED REPEATABLE-READ SERIALIZABLE");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "ob_tx_timeout",
         ObIntType,
         "100000000",
         "The max duration of one transaction");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "ob_tx_idle_timeout",
         ObIntType,
         "100000000",
         "The max idle time between queries in one transaction");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "ob_read_consistency",
         ObIntType,
         "1",
@@ -744,18 +745,21 @@ int ObBootstrap::init_all_sys_param()
              PACKAGE_VERSION, svn_version(), build_date(), build_time());
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "version_comment",
         ObVarcharType,
         version_comment,
         "");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "auto_increment_increment",
         ObIntType,
         "1",
         "");
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
+        acc,
         "ob_disable_create_sys_table",
         ObBoolType,
         "true",

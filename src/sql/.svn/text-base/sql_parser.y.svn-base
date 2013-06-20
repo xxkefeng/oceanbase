@@ -132,7 +132,7 @@ do \
 %token FLOAT FOR FROM FULL
 %token GLOBAL GLOBAL_ALIAS GRANT GROUP
 %token HAVING HINT_BEGIN HINT_END
-%token IDENTIFIED IF IN INDEX INNER INTEGER INTERSECT INSERT INTO IS
+%token IDENTIFIED IF IN INNER INTEGER INTERSECT INSERT INTO IS
 %token JOIN
 %token KEY
 %token LEADING LEFT LIMIT LIKE LOCAL LOCKED
@@ -140,17 +140,17 @@ do \
 %token NOT NUMERIC
 %token OFFSET ON OR ORDER OPTION OUTER
 %token PARAMETERS PASSWORD PRECISION PREPARE PRIMARY
-%token READ_CONSISTENCY READ_STATIC REAL RENAME REPLACE RESTRICT PRIVILEGES 
-       REVOKE RIGHT ROLLBACK
+%token READ_STATIC REAL RENAME REPLACE RESTRICT PRIVILEGES REVOKE RIGHT
+       ROLLBACK
 %token SCHEMA SCOPE SELECT SESSION SESSION_ALIAS
-       SET SHOW SMALLINT SNAPSHOT SPFILE START STATIC STORING STRONG SYSTEM
+       SET SHOW SMALLINT SNAPSHOT SPFILE START STATIC SYSTEM
 %token TABLE TABLES THEN TIME TIMESTAMP TINYINT TRAILING TRANSACTION TO
-%token UNION UNIQUE UPDATE USER USING
+%token UNION UPDATE USER USING
 %token VALUES VARCHAR VARBINARY
-%token WEAK WHERE WHEN WITH WORK
+%token WHERE WHEN WITH WORK
 
 %token <non_reserved_keyword>
-       AUTO_INCREMENT CHARSET CHUNKSERVER COMPRESS_METHOD CONSISTENT_MODE
+       AUTO_INCREMENT CHUNKSERVER COMPRESS_METHOD CONSISTENT_MODE
        EXPIRE_INFO GRANTS
        MERGESERVER REPLICA_NUM ROOTSERVER SERVER SERVER_IP
        SERVER_PORT SERVER_TYPE STATUS TABLET_BLOCK_SIZE TABLET_MAX_SIZE
@@ -179,7 +179,7 @@ do \
 %type <node> from_list table_factor relation_factor joined_table
 %type <node> join_type join_outer
 %type <node> opt_float opt_time_precision opt_char_length opt_decimal
-%type <node> opt_equal_mark opt_precision opt_verbose opt_default_mark
+%type <node> opt_equal_mark opt_precision opt_verbose
 %type <node> opt_column_attribute_list column_attribute
 %type <node> show_stmt opt_show_condition opt_like_condition
 %type <node> prepare_stmt stmt_name preparable_stmt
@@ -196,18 +196,15 @@ do \
 %type <node> revoke_stmt opt_on_priv_level
 %type <node> opt_limit opt_for_grant_user
 %type <node> parameterized_trim
-%type <ival> opt_with_consistent_snapshot opt_config_scope opt_all opt_unique
+%type <ival> opt_with_consistent_snapshot opt_config_scope
 %type <node> opt_work begin_stmt commit_stmt rollback_stmt
 %type <node> alter_table_stmt alter_column_actions alter_column_action
 %type <node> opt_column alter_column_behavior
 %type <node> alter_system_stmt alter_system_actions alter_system_action
-%type <node> server_type opt_cluster_or_address opt_comment 
+%type <node> server_type opt_cluster_or_address opt_comment
 %type <node> column_name relation_name function_name column_label
 %type <node> opt_hint opt_hint_list hint_option
-%type <node> create_index_stmt index_name sort_column_list sort_column_key opt_storing
 %type <non_reserved_keyword> unreserved_keyword
-%type <ival> consistent_level
-%type <node> drop_index_stmt
 
 %start sql_stmt
 %%
@@ -260,8 +257,6 @@ stmt:
   | begin_stmt { $$ = $1;}
   | commit_stmt { $$ = $1;}
   | rollback_stmt {$$ = $1;}
-  | create_index_stmt
-  | drop_index_stmt
   | /*EMPTY*/   { $$ = NULL; }
   ;
 
@@ -964,18 +959,6 @@ table_option:
       malloc_terminal_node($$, result->malloc_pool_, T_CONSISTENT_MODE);
       $$->value_ = 1;
     }
-  | opt_default_mark CHARSET opt_equal_mark STRING
-    {
-      (void)($1) ; /* make bison mute */
-      (void)($3) ; /* make bison mute */
-      malloc_non_terminal_node($$, result->malloc_pool_, T_CHARSET, 1, $4);
-    }
-  | opt_default_mark CHARACTER SET opt_equal_mark STRING
-    {
-      (void)($1) ; /* make bison mute */
-      (void)($4) ; /* make bison mute */
-      malloc_non_terminal_node($$, result->malloc_pool_, T_CHARSET, 1, $5);
-    }
   ;
 
 opt_equal_mark:
@@ -983,72 +966,6 @@ opt_equal_mark:
   | /*EMPTY*/   { $$ = NULL; }
   ;
 
-opt_default_mark:
-    DEFAULT     { $$ = NULL; }
-  | /*EMPTY*/   { $$ = NULL; }
-  ;
-
-
-/*****************************************************************************
- *
- *	create index
- *
- *****************************************************************************/
-
-create_index_stmt:
-    CREATE opt_unique INDEX index_name ON relation_factor '(' sort_column_list ')'
-    opt_storing opt_table_option_list
-    {
-      ParseNode *idx_columns = NULL;
-      ParseNode *table_options = NULL;
-      merge_nodes(idx_columns, result->malloc_pool_, T_INDEX_COLUMN_LIST, $8);
-      merge_nodes(table_options, result->malloc_pool_, T_TABLE_OPTION_LIST, $11);
-      malloc_non_terminal_node($$, result->malloc_pool_, T_CREATE_INDEX, 5,
-              $4,                   /* index name */
-              $6,                   /* table name */
-              idx_columns,          /* index columns */
-              $10,                  /* storing coumns */
-              table_options         /* table option(s) */
-              );
-      $$->value_ = $2;              /* unique */
-    }
-  ;
-
-opt_unique:
-    UNIQUE
-    { $$ = 1; }
-  | /*EMPTY*/
-    { $$ = 0; }
-  ;
-
-index_name:
-    relation_name
-  ;
-
-sort_column_list:
-  	sort_column_key
-    { $$ = $1; }
-  | sort_column_list ',' sort_column_key
-    { malloc_non_terminal_node($$, result->malloc_pool_, T_LINK_NODE, 2, $1, $3); }
-  ;
-
-sort_column_key:
-    column_name opt_asc_desc
-    {
-    	malloc_non_terminal_node($$, result->malloc_pool_, T_SORT_COLUMN_KEY, 2, $1, $2);
-    }
-  ;
-
-opt_storing:
-    STORING '(' column_list ')'
-    {
-      merge_nodes($$, result->malloc_pool_, T_STORING_COLUMN_LIST, $3);
-    }
-  | /*EMPTY*/
-    {
-      $$ = NULL;
-    }
-  ;
 
 /*****************************************************************************
  *
@@ -1080,20 +997,6 @@ table_list:
   | table_list ',' table_factor
     {
       malloc_non_terminal_node($$, result->malloc_pool_, T_LINK_NODE, 2, $1, $3);
-    }
-  ;
-
-
-/*****************************************************************************
- *
- *	drop index grammar
- *
- *****************************************************************************/
-
-drop_index_stmt:
-    DROP INDEX table_factor
-    {
-      malloc_non_terminal_node($$, result->malloc_pool_, T_DROP_INDEX, 1, $3);
     }
   ;
 
@@ -1475,20 +1378,6 @@ hint_option:
     {
       malloc_terminal_node($$, result->malloc_pool_, T_READ_STATIC);
     }
-  | READ_CONSISTENCY '(' consistent_level ')'
-    {
-      malloc_terminal_node($$, result->malloc_pool_, T_READ_CONSISTENCY);
-      $$->value_ = $3;
-    }
-  | '(' ')'
-    { $$ = NULL; }
-  ;
-
-consistent_level:
-    WEAK
-    { $$ = 0; }
-  | STRONG
-    { $$ = 1; }
   ;
 
 limit_expr:
@@ -1817,11 +1706,8 @@ opt_verbose:
  *
  *****************************************************************************/
 show_stmt:
-    SHOW opt_all TABLES opt_show_condition
-    { 
-      malloc_non_terminal_node($$, result->malloc_pool_, T_SHOW_TABLES, 1, $4);
-      $$->value_ = $2;
-    }
+    SHOW TABLES opt_show_condition
+    { malloc_non_terminal_node($$, result->malloc_pool_, T_SHOW_TABLES, 1, $3); }
   | SHOW COLUMNS FROM relation_factor opt_show_condition
     { malloc_non_terminal_node($$, result->malloc_pool_, T_SHOW_COLUMNS, 2, $4, $5); }
   | SHOW COLUMNS IN relation_factor opt_show_condition
@@ -1867,10 +1753,6 @@ show_stmt:
   | SHOW PARAMETERS opt_show_condition
     {
       malloc_non_terminal_node($$, result->malloc_pool_, T_SHOW_PARAMETERS, 1, $3);
-    }
-  | SHOW INDEX FROM relation_factor opt_where
-    {
-      malloc_non_terminal_node($$, result->malloc_pool_, T_SHOW_INDEXES, 2, $4, $5);
     }
   ;
 
@@ -2593,13 +2475,6 @@ opt_comment:
     { $$ = NULL; }
   ;
 
-opt_all:
-    ALL
-    {$$=1;}
-  | /* EMPTY */
-    {$$=0;}
-  ;
-
 opt_config_scope:
     SCOPE COMP_EQ MEMORY
     { $$ = 0; }   /* same as ObConfigType */
@@ -2713,7 +2588,6 @@ column_label:
 
 unreserved_keyword:
     AUTO_INCREMENT
-  | CHARSET
   | CHUNKSERVER
   | COMPRESS_METHOD
   | CONSISTENT_MODE

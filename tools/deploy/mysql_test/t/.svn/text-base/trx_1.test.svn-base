@@ -183,7 +183,7 @@ select * from t1;
 connection conn1;
 begin;
 --echo --rowkey is required
---error 5003
+--error 5047
 update t1 set a=a+1 where f1=1;
 ROLLBACK;
 
@@ -250,7 +250,7 @@ select * from t1;
 connection conn1;
 begin;
 --echo --rowkey is required
---error 5003
+--error 5047
 update t1 set a=a+1 where f1=1;
 ROLLBACK;
 

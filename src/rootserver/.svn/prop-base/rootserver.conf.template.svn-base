@@ -1,9 +1,7 @@
 K 13
 svn:mergeinfo
-V 531
+V 361
 /branches/0_2_1_release/src/rootserver/rootserver.conf.template:6345-7289
-/branches/0_4_1_release/oceanbase/src/rootserver/rootserver.conf.template:12603-13939
-/branches/cs_plan_dev/oceanbase/src/rootserver/rootserver.conf.template:13985-14477
 /branches/dev/oceanbase/src/rootserver/rootserver.conf.template:5023-6269,7279-7378,7382-7412,8885-9111
 /branches/developing/trans_mvcc_dev/oceanbase/src/rootserver/rootserver.conf.template:9273-10180
 /tags/oceanbase_A_0_2_1_266_20110923/src/rootserver/rootserver.conf.template:6270-6344

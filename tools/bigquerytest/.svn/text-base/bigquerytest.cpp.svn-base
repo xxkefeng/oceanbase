@@ -4,16 +4,11 @@
 
 BigqueryTest::BigqueryTest()
 {
-  write_worker_ = NULL;
+
 }
 
 BigqueryTest::~BigqueryTest()
 {
-  if (NULL != write_worker_)
-  {
-    delete write_worker_;
-    write_worker_ = NULL;
-  }
 }
 
 int BigqueryTest::init()
@@ -28,8 +23,7 @@ int BigqueryTest::init()
     ServerAddr server_addr[100];
     int64_t addr_num = 0;
     translate_server_addr(bigquerytest_param_.get_ob_addr(), server_addr, addr_num);
-    ret = client_.init(server_addr, addr_num, const_cast<char*>("admin"),
-        const_cast<char*>("admin"), const_cast<char*>("test"));
+    ret = client_.init(server_addr, addr_num, "admin", "admin", "test");
     if (0 != ret)
     {
       TBSYS_LOG(WARN, "failed to init client, server_addr=%p, addr_num=%ld, ret=%d",
@@ -64,8 +58,7 @@ int BigqueryTest::init()
     }
     else
     {
-      write_worker_ = new WriteWorker(bigquerytest_param_.get_row_num());
-      ret = write_worker_->init(key_gen_, client_, prefix_info_);
+      ret = write_worker_.init(key_gen_, client_, prefix_info_);
       if (OB_SUCCESS != ret)
       {
         TBSYS_LOG(WARN, "failed to init write worker, ret=%d", ret);
@@ -128,13 +121,13 @@ int BigqueryTest::start()
 
     if (write_thread_count > 0)
     {
-      write_worker_->setThreadCount((int) write_thread_count);
-      write_worker_->start();
+      write_worker_.setThreadCount(write_thread_count);
+      write_worker_.start();
     }
 
     if (read_thread_count > 0)
     {
-      read_worker_.setThreadCount((int) read_thread_count);
+      read_worker_.setThreadCount(read_thread_count);
       read_worker_.start();
     }
 
@@ -149,7 +142,7 @@ int BigqueryTest::start()
 
 int BigqueryTest::stop()
 {
-  write_worker_->stop();
+  write_worker_.stop();
   read_worker_.stop();
 
   return OB_SUCCESS;
@@ -157,7 +150,7 @@ int BigqueryTest::stop()
 
 int BigqueryTest::wait()
 {
-  write_worker_->wait();
+  write_worker_.wait();
   read_worker_.wait();
 
   return OB_SUCCESS;

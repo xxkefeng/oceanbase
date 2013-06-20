@@ -55,6 +55,8 @@ namespace oceanbase
       int ret = OB_ERROR;
       if (delay < 0 || (tasks_num_ >= MAX_TASK_NUM) || !inited_ || destroyed_)
       {
+        TBSYS_LOG(WARN, "check schedule param failed:delay[%ld], task[%d], max[%d], init[%d], destroy[%d]",
+            delay, tasks_num_, MAX_TASK_NUM, inited_, destroyed_);
         ret = OB_ERROR;
       }
       else
@@ -68,6 +70,10 @@ namespace oceanbase
           {
             monitor_.notify();
           }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "insert token failed:ret[%d]", ret);
         }
       }
       return ret;

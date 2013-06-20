@@ -181,7 +181,8 @@ TEST(ObMultiVersionTabletImage, test_query)
   ASSERT_EQ(0, ret);
   ASSERT_EQ(VERSION_1, tablet->get_data_version());
 
-  ret = image.acquire_tablet(query_whole_range, ObMultiVersionTabletImage::SCAN_BACKWARD, VERSION_2, tablet);
+  ret = image.acquire_tablet_all_version(query_whole_range, ObMultiVersionTabletImage::SCAN_BACKWARD,
+      ObMultiVersionTabletImage::FROM_NEWEST_INDEX, VERSION_2, tablet);
   ASSERT_EQ(0, ret);
   ASSERT_EQ(true, tablet->get_range().equal(r3));
   ret = image.release_tablet(tablet);
@@ -195,7 +196,8 @@ TEST(ObMultiVersionTabletImage, test_query)
 
   ObNewRange r4;
   create_range(allocator, r4, 1, ObBorderFlag::INCLUSIVE_START|ObBorderFlag::INCLUSIVE_END, "foo", "koo");
-  ret = image.acquire_tablet(r4, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);
+  ret = image.acquire_tablet_all_version(r4, ObMultiVersionTabletImage::SCAN_FORWARD,
+      ObMultiVersionTabletImage::FROM_NEWEST_INDEX, 0, tablet);
   ASSERT_EQ(0, ret);
   ASSERT_EQ(true, tablet->get_range().equal(r1));
   ASSERT_EQ(VERSION_2, tablet->get_data_version());
@@ -231,7 +233,7 @@ TEST(ObMultiVersionTabletImage, test_remove)
   int disk_no = 0;
   ObTablet *tablet= NULL;
 
-  ret = image.remove_tablet(r1, VERSION_2, disk_no);
+  ret = image.remove_tablet(r1, VERSION_2, disk_no, false);
   ASSERT_EQ(0, ret);
   ASSERT_EQ(1, disk_no);
 
@@ -263,7 +265,7 @@ TEST(ObMultiVersionTabletImage, test_upgrade)
   int disk_no = 0;
   ObTablet *tablet= NULL;
 
-  ret = image.remove_tablet(r1, VERSION_2, disk_no);
+  ret = image.remove_tablet(r1, VERSION_2, disk_no, false);
   ASSERT_EQ(0, ret);
   ASSERT_EQ(1, disk_no);
 
@@ -295,10 +297,10 @@ TEST(ObMultiVersionTabletImage, test_upgrade)
   id.sstable_file_offset_ = 0;
   ret = new_tablet->add_sstable_by_id(id);
   ASSERT_EQ(0, ret);
-  ret = image.upgrade_tablet(tablet, &new_tablet, false);
+  ret = image.upgrade_tablet(tablet, new_tablet, false);
   ASSERT_EQ(0, ret);
 
-  ret = image.finish_merge();
+  ret = image.upgrade_service();
   ASSERT_EQ(0, ret);
 
   // query r1 v2
@@ -329,14 +331,14 @@ TEST(ObMultiVersionTabletImage, test_upgrade)
   id.sstable_file_offset_ = 0;
   ret = new_tablet->add_sstable_by_id(id);
   ASSERT_EQ(0, ret);
-  ret = image.upgrade_tablet(tablet, &new_tablet, false);
+  ret = image.upgrade_tablet(tablet, new_tablet, false);
   ASSERT_EQ(0, ret);
   for (int i = 0; i < num; ++i)
   {
     image.release_tablet(tablets[i]);
   }
 
-  ret = image.finish_merge();
+  ret = image.upgrade_service();
   // query v3
   ret = image.acquire_tablet(r1, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);
   ASSERT_EQ(0, ret);
@@ -442,7 +444,7 @@ TEST(ObMultiVersionTabletImage, test_upgrade_null)
 
   int ret = 0;
 
-  ASSERT_EQ(0, image.get_last_not_merged_version());
+  ASSERT_EQ(0, image.get_serving_version());
 
 
 
@@ -467,7 +469,7 @@ TEST(ObMultiVersionTabletImage, test_upgrade_null)
   id.sstable_file_offset_ = 0;
   ret = new_tablet->add_sstable_by_id(id);
   ASSERT_EQ(0, ret);
-  ret = image.upgrade_tablet(tablet, &new_tablet, false);
+  ret = image.upgrade_tablet(tablet, new_tablet, false);
   ASSERT_EQ(0, ret);
 
   /*
@@ -636,6 +638,9 @@ TEST(ObMultiVersionTabletImage, test_query_complex)
   tablet->add_sstable_by_id(id);
   ret = image.add_tablet(tablet, false);
   ASSERT_EQ(0, ret);
+
+  image.prepare_for_service();
+  image.dump(false);
 
   /// querys;;
   ret = image.acquire_tablet(r1, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);

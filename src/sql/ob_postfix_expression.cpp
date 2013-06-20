@@ -237,9 +237,10 @@ namespace oceanbase
     };
 
     ObPostfixExpression::ObPostfixExpression()
-      :stack_(NULL),
+      :expr_(64*1024, ModulePageAllocator(ObModIds::OB_SQL_EXPR)),
+       stack_(NULL),
        did_int_div_as_double_(false),
-       str_buf_(0, DEF_STRING_BUF_SIZE)
+       str_buf_(ObModIds::OB_SQL_EXPR, DEF_STRING_BUF_SIZE)
     {
     }
 
@@ -410,13 +411,6 @@ namespace oceanbase
           {}
           break;
         case T_QUESTIONMARK:
-          item_type.set_int(CONST_OBJ);
-          obj.set_unknown(item.value_.unknown_);
-          if (OB_SUCCESS != (ret = expr_.push_back(item_type)))
-          {}
-          else if (OB_SUCCESS != (ret = expr_.push_back(obj)))
-          {}
-          break;
         case T_SYSTEM_VARIABLE:
         case T_TEMP_VARIABLE:
           item_type.set_int(CONST_OBJ);
@@ -656,11 +650,14 @@ namespace oceanbase
               }
               break;
             case CONST_OBJ:
-              if (expr_[idx].get_type() == ObUnknownType)
+              if (expr_[idx].get_type() == ObExtendType)
               {
-                const ObObj *obj_addr = NULL;
-                expr_[idx++].get_unknown(obj_addr);
-                stack_[idx_i++].assign(*obj_addr);
+                int64_t obj_addr = common::OB_INVALID_ID;
+                expr_[idx++].get_ext(obj_addr);
+                TBSYS_LOG(DEBUG, "get ext value=%s addr=%p",
+                          to_cstring(*(reinterpret_cast<ObObj *>(obj_addr))),
+                          (void*)obj_addr);
+                stack_[idx_i++].assign(*(reinterpret_cast<ObObj *>(obj_addr)));
               }
               else
               {
@@ -946,19 +943,12 @@ namespace oceanbase
           /* (4) result */
           else
           {
-            if (real_val && ObUnknownType == expr_[4].get_type()) // question mark
+            if (real_val && ObExtendType == expr_[4].get_type()) // question mark
             {
-              const ObObj *obj_addr = NULL;
-              expr_[4].get_unknown(obj_addr);
-              if (NULL == obj_addr)
-              {
-                TBSYS_LOG(ERROR, "obj address must not be NULL");
-                break;
-              }
-              else
-              {
-                const_val = *obj_addr;
-              }
+              int64_t obj_addr = common::OB_INVALID_ID;
+              expr_[4].get_ext(obj_addr);
+              const_val = *(reinterpret_cast<ObObj *>(obj_addr));
+              TBSYS_LOG(DEBUG, "using variable, const_val=%s", to_cstring(const_val));
             }
             else
             {
@@ -1034,38 +1024,23 @@ namespace oceanbase
           }
           else
           {
-            if (real_val && ObUnknownType == expr_[4].get_type()) // question mark
+            if (real_val && ObExtendType == expr_[4].get_type()) // question mark
             {
-              const ObObj *obj_addr = NULL;
-              expr_[4].get_unknown(obj_addr);
-              if (NULL == obj_addr)
-              {
-                TBSYS_LOG(ERROR, "obj address must not be NULL");
-                break;
-              }
-              else
-              {
-                cond_start = *obj_addr;
-              }
+              int64_t obj_addr = common::OB_INVALID_ID;
+              expr_[4].get_ext(obj_addr);
+              cond_start = *(reinterpret_cast<ObObj *>(obj_addr));
+              TBSYS_LOG(DEBUG, "using variable, cond_start=%s", to_cstring(cond_start));
             }
             else
             {
               cond_start = expr_[4];
             }
-
-            if (real_val && ObUnknownType == expr_[6].get_type()) // question mark
+            if (real_val && ObExtendType == expr_[6].get_type()) // question mark
             {
-              const ObObj *obj_addr = NULL;
-              expr_[6].get_unknown(obj_addr);
-              if (NULL == obj_addr)
-              {
-                TBSYS_LOG(ERROR, "obj address must not be NULL");
-                break;
-              }
-              else
-              {
-                cond_end = *obj_addr;
-              }
+              int64_t obj_addr = common::OB_INVALID_ID;
+              expr_[6].get_ext(obj_addr);
+              cond_end = *(reinterpret_cast<ObObj *>(obj_addr));
+              TBSYS_LOG(DEBUG, "using variable, cond_end=%s", to_cstring(cond_end));
             }
             else
             {
@@ -1139,21 +1114,23 @@ namespace oceanbase
       {
         for (i = 0; i < expr_.count(); i++)
         {
-          if (OB_UNLIKELY(expr_[i].get_type() == ObUnknownType))
+          if (OB_UNLIKELY(expr_[i].get_type() == ObExtendType))
           {
-            const ObObj *obj_addr = NULL;
-            if (OB_SUCCESS != (ret = expr_[i].get_unknown(obj_addr)))
+            int64_t obj_addr = common::OB_INVALID_ID;
+            ObObj *val = NULL;
+            ObObj tmp_val;
+            if (OB_SUCCESS != (ret = expr_[i].get_ext(obj_addr)))
             {
               TBSYS_LOG(WARN,"get_ext error [err:%d]", ret);
               break;
             }
-            else if (obj_addr == NULL)
+            else if ((val = reinterpret_cast<ObObj *>(obj_addr)) == NULL)
             {
               ret = OB_ERR_UNEXPECTED;
               TBSYS_LOG(WARN,"Wrong place holder address [err:%d]", ret);
               break;
             }
-            else if (OB_SUCCESS != (ret = obj_addr->serialize(buf, buf_len, pos)))
+            else if (OB_SUCCESS != (ret = val->serialize(buf, buf_len, pos)))
             {
               TBSYS_LOG(WARN, "fail to serialize expr[%d]. ret=%d", i, ret);
               break;
@@ -1280,17 +1257,17 @@ namespace oceanbase
                     {
                       // TODO: check every T_OP_ROW dim, all must be equal. currently skipped this step
                       const int64_t offset = val_idx + row * single_row_len + (index * 2 + 1); // 2=CONST,VALUE
-                      if (ObUnknownType == expr_.at(offset).get_type())
+                      if (ObExtendType == expr_.at(offset).get_type())
                       {
-                        const ObObj *obj_addr = NULL;
-                        expr_.at(offset).get_unknown(obj_addr);
-                        OB_ASSERT(obj_addr);
-                        rowkey_objs[index] = (*obj_addr);
+                        int64_t obj_addr = common::OB_INVALID_ID;
+                        expr_.at(offset).get_ext(obj_addr);
+                        rowkey_objs[index] = *(reinterpret_cast<ObObj *>(obj_addr));
                       }
                       else
                       {
                         rowkey_objs[index] = expr_.at(offset);
                       }
+                      // TBSYS_LOG(DEBUG, "index=%ld, at=%ld, val=%s", index, offset, to_cstring(rowkey_objs[index]));
                     }
                     rowkey.assign(rowkey_objs, rowkey_column_count);
                     if (OB_SUCCESS!= (err = rowkey_array.push_back(rowkey)))

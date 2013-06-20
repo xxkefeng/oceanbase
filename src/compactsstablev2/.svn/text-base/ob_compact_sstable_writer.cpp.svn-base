@@ -244,8 +244,8 @@ namespace oceanbase
       }
       else if (OB_SUCCESS != (ret = filesys_->create(filepath, dio_flag_)))
       {
-        TBSYS_LOG(ERROR, "create file appender error: ret=[%d], filepath=[%s], "
-            "dio_flag_=[%d]", ret, filepath.ptr(), dio_flag_);
+        TBSYS_LOG(ERROR, "create file appender error:ret=%d,filepath=%s,"
+            "dio_flag_=%d", ret, to_cstring(filepath), dio_flag_);
       }
       else if (OB_SUCCESS != (ret = flush_mem_block_list()))
       {
@@ -342,9 +342,7 @@ namespace oceanbase
       //add row
       if (OB_SUCCESS == ret)
       {
-        uint64_t row_checksum = 0;
-
-        if (OB_SUCCESS != (ret = block_.add_row(row_key, row_value, row_checksum)))
+        if (OB_SUCCESS != (ret = block_.add_row(row_key, row_value)))
         {//add the row
           TBSYS_LOG(WARN, "add row error:ret=%d", ret);
         }
@@ -361,9 +359,6 @@ namespace oceanbase
 
           //add list row count
           sstable_writer_buffer_.inc_list_row_count();
-
-          //calculate row checksum
-          sstable_.calculate_row_checksum(row_checksum);
 
           //update bloom filter
           if (OB_SUCCESS != (ret = sstable_writer_buffer_.update_list_bloomfilter(sstable_.get_table_id(), row_key)))
@@ -458,9 +453,7 @@ namespace oceanbase
       //add row
       if (OB_SUCCESS == ret)
       {
-        uint64_t row_checksum = 0;
-
-        if (OB_SUCCESS != (ret = block_.add_row(row, row_checksum)))
+        if (OB_SUCCESS != (ret = block_.add_row(row)))
         {//add the row
           TBSYS_LOG(WARN, "add row error:ret=%d", ret);
         }
@@ -477,9 +470,6 @@ namespace oceanbase
 
           //add list row count
           sstable_writer_buffer_.inc_list_row_count();
-
-          //calculate row checksum
-          sstable_.calculate_row_checksum(row_checksum);
 
 #ifdef OB_COMPACT_SSTABLE_ALLOW_BLOOMFILTER_
           //update bloom filter
@@ -630,7 +620,7 @@ namespace oceanbase
       while (cur_iter != end_iter)
       {
         prev_offset = cur_offset_;
-        sstable_checksum_ = ob_crc64_sse42(sstable_checksum_,
+        sstable_checksum_ = ob_crc64(sstable_checksum_,
             &(*cur_iter)->record_header_, sizeof(ObRecordHeaderV2));
         if (OB_SUCCESS != (ret = write_record_header((*cur_iter)->record_header_)))
         {
@@ -783,7 +773,7 @@ namespace oceanbase
 
         const ObRecordHeaderV2& record_header =
           sstable_writer_buffer_.get_record_header();
-        sstable_checksum_ = ob_crc64_sse42(sstable_checksum_,
+        sstable_checksum_ = ob_crc64(sstable_checksum_,
             &record_header, sizeof(ObRecordHeaderV2));
 
         const char* buf = NULL;
@@ -841,7 +831,7 @@ namespace oceanbase
           OB_SSTABLE_BLOCK_DATA_MAGIC);
       const ObRecordHeaderV2& record_header =
         sstable_writer_buffer_.get_record_header();
-      sstable_checksum_ = ob_crc64_sse42(sstable_checksum_,
+      sstable_checksum_ = ob_crc64(sstable_checksum_,
           &record_header, sizeof(ObRecordHeaderV2));
 
       const char* buf = NULL;
@@ -1020,7 +1010,7 @@ namespace oceanbase
               OB_SSTABLE_BLOCK_INDEX_MAGIC);
           const ObRecordHeaderV2& record_header =
             sstable_writer_buffer_.get_record_header();
-          sstable_checksum_ = ob_crc64_sse42(sstable_checksum_,
+          sstable_checksum_ = ob_crc64(sstable_checksum_,
               &record_header, sizeof(ObRecordHeaderV2));
 
           const char* buf = NULL;
@@ -1123,7 +1113,7 @@ namespace oceanbase
               OB_SSTABLE_BLOCK_ENDKEY_MAGIC);
           const ObRecordHeaderV2& record_header =
             sstable_writer_buffer_.get_record_header();
-          sstable_checksum_ = ob_crc64_sse42(sstable_checksum_, &record_header,
+          sstable_checksum_ = ob_crc64(sstable_checksum_, &record_header,
               sizeof(ObRecordHeaderV2));
 
           const char* buf = NULL;
@@ -1238,7 +1228,7 @@ namespace oceanbase
             OB_SSTABLE_TABLE_RANGE_MAGIC);
         const ObRecordHeaderV2& record_header =
           sstable_writer_buffer_.get_record_header();
-        sstable_checksum_ = ob_crc64_sse42(sstable_checksum_, &record_header,
+        sstable_checksum_ = ob_crc64(sstable_checksum_, &record_header,
             sizeof(ObRecordHeaderV2));
 
         const char* buf = NULL;
@@ -1300,7 +1290,7 @@ namespace oceanbase
             OB_SSTABLE_TABLE_BLOOMFILTER_MAGIC);
         const ObRecordHeaderV2& record_header =
           sstable_writer_buffer_.get_record_header();
-        sstable_checksum_ = ob_crc64_sse42(sstable_checksum_, &record_header,
+        sstable_checksum_ = ob_crc64(sstable_checksum_, &record_header,
             sizeof(ObRecordHeaderV2));
 
         const char* buf = NULL;
@@ -1429,7 +1419,7 @@ namespace oceanbase
             OB_SSTABLE_TABLE_INDEX_MAGIC);
         const ObRecordHeaderV2& record_header =
           sstable_writer_buffer_.get_record_header();
-        sstable_checksum_ = ob_crc64_sse42(sstable_checksum_,
+        sstable_checksum_ = ob_crc64(sstable_checksum_,
             &record_header, sizeof(ObRecordHeaderV2));
 
         const char* buf = NULL;
@@ -1528,7 +1518,7 @@ namespace oceanbase
             OB_SSTABLE_SCHEMA_MAGIC);
         const ObRecordHeaderV2& record_header =
           sstable_writer_buffer_.get_record_header();
-        sstable_checksum_ = ob_crc64_sse42(sstable_checksum_,
+        sstable_checksum_ = ob_crc64(sstable_checksum_,
             &record_header, sizeof(ObRecordHeaderV2));
 
         const char* buf = NULL;
@@ -1655,28 +1645,29 @@ namespace oceanbase
       return ret;
     }
 
-    int ObCompactSSTableWriter::write_record_body(const char* block_buf, const int64_t block_buf_len)
+    int ObCompactSSTableWriter::write_record_body(const char* block_buf,
+        const int64_t block_buf_len)
     {
       int ret = OB_SUCCESS;
 
       if (NULL == filesys_)
       {
-        TBSYS_LOG(WARN, "filesys is NULL");
+        TBSYS_LOG(WARN, "filesys == NULL");
         ret = OB_ERROR;
       }
-      else if (NULL == block_buf)
+      else if(block_buf == NULL || block_buf_len < 0)
       {
-        TBSYS_LOG(WARN, "block buf is NULL");
+        TBSYS_LOG(WARN, "block buf == NULL or block buf len <= 0:block_buf_len=%ld", block_buf_len);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (block_buf_len < 0)
+      else if (0 == block_buf_len)
       {
-        TBSYS_LOG(WARN, "block buf len is < 0: block_buf_len=[%ld]", block_buf_len);
-        ret = OB_INVALID_ARGUMENT;
+        //do nothing
       }
-      else if (OB_SUCCESS != (ret = filesys_->append(block_buf, block_buf_len, false)))
+      else if (OB_SUCCESS != (ret = filesys_->append(block_buf,
+              block_buf_len, false)))
       {
-        TBSYS_LOG(WARN, "file append error: ret=[%d], block_buf=[%p], block_buf_len=[%ld]", ret, block_buf, block_buf_len);
+        TBSYS_LOG(WARN, "file append error:ret=%d", ret);
       }
       else
       {

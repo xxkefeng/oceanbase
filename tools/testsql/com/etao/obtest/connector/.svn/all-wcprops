@@ -1,41 +1,41 @@
 K 25
 svn:wc:ra_dav:version-url
-V 93
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/com/etao/obtest/connector
 END
 BaseTest.class
 K 25
 svn:wc:ra_dav:version-url
-V 108
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/BaseTest.class
+V 119
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/com/etao/obtest/connector/BaseTest.class
 END
 Parser.class
 K 25
 svn:wc:ra_dav:version-url
-V 106
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/Parser.class
+V 117
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/com/etao/obtest/connector/Parser.class
 END
 Test.class
 K 25
 svn:wc:ra_dav:version-url
-V 104
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/Test.class
+V 115
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/com/etao/obtest/connector/Test.class
 END
 SQLOperation.class
 K 25
 svn:wc:ra_dav:version-url
-V 112
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/SQLOperation.class
+V 123
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/com/etao/obtest/connector/SQLOperation.class
 END
 Statement.class
 K 25
 svn:wc:ra_dav:version-url
-V 109
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/Statement.class
+V 120
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/com/etao/obtest/connector/Statement.class
 END
 StatementType.class
 K 25
 svn:wc:ra_dav:version-url
-V 113
-/repos/oceanbase/!svn/ver/8668/branches/dev/oceanbase/tools/testsql/com/etao/obtest/connector/StatementType.class
+V 124
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/testsql/com/etao/obtest/connector/StatementType.class
 END

@@ -24,6 +24,11 @@ ObCreateTableStmt::ObCreateTableStmt(ObStringBuf* name_pool)
 {
   name_pool_ = name_pool;
   next_column_id_ = OB_APP_MIN_COLUMN_ID;
+  tablet_max_size_ = -1; //FIX ME
+  tablet_block_size_ = -1;
+  replica_num_ = OB_SAFE_COPY_COUNT;
+  use_bloom_filter_ = false;
+  read_static_ = false;
   if_not_exists_ = false;
 }
 
@@ -62,24 +67,14 @@ int ObCreateTableStmt::set_table_name(ResultPlan& result_plan, const ObString& t
   return ret;
 }
 
-int ObCreateTableStmt::set_table_option(ResultPlan& result_plan, const ObTableOption& option)
+int ObCreateTableStmt::set_expire_info(const common::ObString& expire_info)
 {
-  int ret = OB_SUCCESS;
-  table_option_ = option;
-  if ((ret = ob_write_string(*name_pool_, option.expire_info_, table_option_.expire_info_)) != OB_SUCCESS)
-  {
-    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
-        "Allocate memory for expire_info failed");
-  }
-  else if ((ret = ob_write_string(*name_pool_,
-                                  option.compress_method_,
-                                  table_option_.compress_method_)
-                                  ) != OB_SUCCESS)
-  {
-    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
-        "Allocate memory for compress_method failed");
-  }
-  return ret;
+  return ob_write_string(*name_pool_, expire_info, expire_info_);
+}
+
+int ObCreateTableStmt::set_compress_method(const common::ObString& compress_method)
+{
+  return ob_write_string(*name_pool_, compress_method, compress_method_);
 }
 
 int ObCreateTableStmt::add_primary_key_part(ResultPlan& result_plan, const ObString& column_name)
@@ -212,7 +207,37 @@ void ObCreateTableStmt::print(FILE* fp, int32_t level, int32_t index)
     fprintf(fp, "Column(%d) ::=\n", i + 1);
     col.print(fp, level + 3);
   }
-  table_option_.print(fp, level + 1);
+
+  if (tablet_max_size_ > 0)
+  {
+    print_indentation(fp, level + 1);
+    fprintf(fp, "tablet_max_size = %ld\n", tablet_max_size_);
+  }
+  if (tablet_block_size_ > 0)
+  {
+    print_indentation(fp, level + 1);
+    fprintf(fp, "tablet_block_size = %ld\n", tablet_block_size_);
+  }
+  if (replica_num_ > 0)
+  {
+    print_indentation(fp, level + 1);
+    fprintf(fp, "replica_num = %d\n", replica_num_);
+  }
+  if (use_bloom_filter_)
+  {
+    print_indentation(fp, level + 1);
+    fprintf(fp, "use_bloom_filter = TRUE\n");
+  }
+  if (expire_info_.length() > 0)
+  {
+    print_indentation(fp, level + 1);
+    fprintf(fp, "expire_info = '%.*s'\n", expire_info_.length(), expire_info_.ptr());
+  }
+  if (compress_method_.length() > 0)
+  {
+    print_indentation(fp, level + 1);
+    fprintf(fp, "compress_method = '%.*s'\n", compress_method_.length(), compress_method_.ptr());
+  }
   print_indentation(fp, level);
   fprintf(fp, "ObCreateTableStmt %d End\n", index);
 }

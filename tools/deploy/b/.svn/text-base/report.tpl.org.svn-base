@@ -1,16 +1,18 @@
 #+Title: UPS Performance Report[${log_dir}]
 #+Options: toc:nil
-* 测试环境
-#+begin_example
-${test_meta}
-#+end_example
 
 * 表定义:
 #+begin_example
-${read('b/init.sql').strip()}
+${read('init.sql').strip()}
 #+end_example
+* COMMENT 延迟和TPS(i01xi01)            
+|         | 单线程每次一行RT                | 多线程每次1行RT/RPS                       | 多线程每次20行RT/RPS                      |
+|---------+---------------------------------+-------------------------------------------+-------------------------------------------|
+| MGET    | ${c01x001_mget01_i01xi01.rt}    | ${rt_tps('c04x100_mget01_i01xi01')}       | ${rt_tps('c04x100_mget20_i01xi01')}       |
+| MUTATOR | ${c01x001_mutator01_i01xi01.rt} | ${rt_tps('c04x100_mutator01_i01xi01')}    | ${rt_tps('c04x100_mutator20_i01xi01')}    |
+| INSERT  | ${c01x001_phyplan01_i01xi01.rt} | ${rt_tps('c04x100_phyplan01_i01xi01')}    | ${rt_tps('c04x100_phyplan20_i01xi01')}    |
 * Data
-[[$plot_url][原始数据]]
+[[$plot_url][Browse(包含plot)]]
 包含若干组测试，每一组测试命名的含义用一个例子解释如下:
 #+begin_example
 c01x100_mutator01_i1xi1: 一个客户端，每个客户端100个线程，用mutator插入表，每次插1行，插入的表名为i1xi1.

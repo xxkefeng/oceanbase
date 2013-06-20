@@ -2,7 +2,6 @@
 #include "common/ob_atomic.h"
 #include "common/ob_profile_type.h"
 #include "obmysql/ob_mysql_define.h"
-#include "common/ob_profile_fill_log.h"
 
 using namespace oceanbase::common;
 namespace  oceanbase
@@ -125,26 +124,13 @@ namespace  oceanbase
           (generated_id->id).seq_ = trace_seq;
           (generated_id->id).ip_ = ip_port_.ip_;
           (generated_id->id).port_ = ip_port_.port_;
-          PFILL_SET_TRACE_ID(generated_id->uval_);
-          uint8_t pcode = packet->get_type();
-          if (pcode != COM_DELETE_SESSION)
+          if (packet->get_type() != COM_DELETE_SESSION)
           {
-            PFILL_SET_WAIT_SQL_QUEUE_TIME(pop_time - packet->get_receive_ts());
-            PFILL_SET_PCODE(pcode);
-            if (pcode == COM_STMT_EXECUTE)
-            {
-              PFILL_SET_SQL("EXEC", 4);
-            }
-            else
-            {
-              PFILL_SET_SQL(packet->get_command().ptr(), packet->get_command().length());
-            }
+            PROFILE_LOG(DEBUG, SQL WAIT_TIME_US_IN_SQL_QUEUE PCODE, packet->get_command().length(), packet->get_command().ptr(), pop_time - packet->get_receive_ts(), packet->get_type());
           }
-          PFILL_ITEM_START(handle_sql_time);
           handler_->handle_packet_queue(packet, args);
-          PFILL_ITEM_END(handle_sql_time);
-          PFILL_PRINT();
-          PFILL_CLEAR_LOG();
+          int64_t ed = tbsys::CTimeUtil::getTime();
+          PROFILE_LOG(DEBUG, HANDLE_SQL_TIME_MS, (ed - pop_time) / 1000);
         }
       }
 
@@ -161,15 +147,10 @@ namespace  oceanbase
           (generated_id->id).seq_ = trace_seq;
           (generated_id->id).ip_ = ip_port_.ip_;
           (generated_id->id).port_ = ip_port_.port_;
-          PFILL_SET_TRACE_ID(generated_id->uval_);
-          if (packet->get_type() != COM_DELETE_SESSION)
-          {
-            PFILL_SET_WAIT_SQL_QUEUE_TIME(pop_time - packet->get_receive_ts());
-            PFILL_SET_PCODE(packet->get_type());
-          }
-          PFILL_ITEM_START(handle_sql_time);
+          PROFILE_LOG(DEBUG, SQL WAIT_TIME_US_IN_SQL_QUEUE, packet->get_command().length(), packet->get_command().ptr(), pop_time - packet->get_receive_ts());
           handler_->handle_packet_queue(packet, args);
-          PFILL_ITEM_END(handle_sql_time);
+          int64_t ed = tbsys::CTimeUtil::getTime();
+          PROFILE_LOG(DEBUG, SQL HANDLE_SQL_TIME_MS, packet->get_command().length(), packet->get_command().ptr(), (ed - pop_time) / 1000);
         }
         cond_.lock();
       }

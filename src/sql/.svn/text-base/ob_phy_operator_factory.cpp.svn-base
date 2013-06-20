@@ -51,7 +51,6 @@ ObPhyOperator *ObPhyOperatorFactory::get_one(ObPhyOperatorType phy_operator_type
   switch(phy_operator_type)
   {
     case PHY_INVALID:
-      TBSYS_LOG(WARN, "invalid operator type. type=PHY_INVALID");
       break;
     CASE_CLAUSE(PHY_PROJECT, ObProject);
     CASE_CLAUSE(PHY_LIMIT, ObLimit);
@@ -68,10 +67,8 @@ ObPhyOperator *ObPhyOperatorFactory::get_one(ObPhyOperatorType phy_operator_type
     CASE_CLAUSE(PHY_MULTIPLE_SCAN_MERGE, ObMultipleScanMerge);
     CASE_CLAUSE(PHY_MULTIPLE_GET_MERGE, ObMultipleGetMerge);
     CASE_CLAUSE(PHY_EMPTY_ROW_FILTER, ObEmptyRowFilter);
-    CASE_CLAUSE(PHY_MERGE_GROUP_BY, ObMergeGroupBy);
-    CASE_CLAUSE(PHY_SCALAR_AGGREGATE, ObScalarAggregate);
+    CASE_CLAUSE(PHY_EXPR_VALUES, ObExprValues);
     default:
-      TBSYS_LOG(WARN, "invalid operator type. type=%d", phy_operator_type);
       break;
   }
   return ret;

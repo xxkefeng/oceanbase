@@ -469,7 +469,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       ObFileBuffer* file_buf = GET_TSI_MULT(ObFileBuffer, 
-          TSI_SSTABLE_FILE_BUFFER_1);
+          TSI_COMPACTSSTABLEV2_FILE_BUFFER_1);
       out_buffer = NULL;
 
       if (NULL == file_buf)
@@ -502,7 +502,7 @@ namespace oceanbase
       ObThreadAIOBufferMgrArray* aio_buf_mgr_array = NULL;
 
       if (NULL == (aio_buf_mgr_array = GET_TSI_MULT(ObThreadAIOBufferMgrArray,
-              TSI_SSTABLE_THREAD_AIO_BUFFER_MGR_ARRAY_1)))
+              TSI_COMPACTSSTABLEV2_THREAD_AIO_BUFFER_MGR_ARRAY_1)))
       {
         TBSYS_LOG(WARN, "GET_TSI_MULT error");
       }

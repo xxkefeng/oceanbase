@@ -13,21 +13,12 @@ namespace oceanbase
   {
     struct ObQueryHint
     {
-      enum ObConsistencyLevel
-      {
-        NO_CONSISTENCY,
-        WEAK,
-        STRONG,
-      };
-      
       ObQueryHint()
       {
         read_static_ = false;
-        read_consistency_ = NO_CONSISTENCY;
       }
 
       bool    read_static_;
-      ObConsistencyLevel    read_consistency_;
     };
     
     struct TableItem
@@ -184,10 +175,6 @@ namespace oceanbase
         return query_hint_;
       }
 
-      int add_subquery_index(int32_t index);
-      bool has_subqueries() const;
-      bool has_member(int32_t index) const;
-
       virtual void print(FILE* fp, int32_t level, int32_t index = 0);
 
     protected:
@@ -203,9 +190,6 @@ namespace oceanbase
       // it is only used to record the table_id--bit_index map
       // although it is a little weird, but it is high-performance than ObHashMap
       common::ObRowDesc tables_hash_;
-
-      // dependent sub-queres in expression
-      common::ObBitSet<common::OB_MAX_SUBQUERIES_NUM> subqueries_idxes_;
     };
   }
 }

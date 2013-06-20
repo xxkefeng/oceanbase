@@ -15,7 +15,7 @@ namespace oceanbase
       table_id_(OB_INVALID_ID), renamed_table_id_(OB_INVALID_ID), only_static_data_(false),
       project_(), scalar_agg_(), group_(), group_columns_sort_(), limit_(), filter_(),
       has_project_(false), has_scalar_agg_(false), has_group_(false), has_group_columns_sort_(false),
-      has_limit_(false), has_filter_(false) 
+      has_limit_(false), has_filter_(false)
     {
       reset();
     }
@@ -27,14 +27,19 @@ namespace oceanbase
       data_version_ = OB_NEWEST_DATA_VERSION;
       table_id_ = OB_INVALID_ID;
       renamed_table_id_ = OB_INVALID_ID;
+      project_.reset();
+      if (NULL != scalar_agg_)
+      {
+        scalar_agg_->reset();
+      }
+      if (NULL != group_)
+      {
+        group_->reset();
+      }
 
-      if (has_project_) project_.reset();
-      if (has_scalar_agg_) scalar_agg_.reset();
-      if (has_group_) group_.reset();
-      if (has_group_columns_sort_) group_columns_sort_.reset();
-      if (has_limit_) limit_.reset();
-      if (has_filter_) filter_.reset();
-
+      group_columns_sort_.reset();
+      limit_.reset();
+      filter_.reset();
       has_project_ = false;
       has_scalar_agg_ = false;
       has_group_ = false;
@@ -45,6 +50,18 @@ namespace oceanbase
 
     ObSqlReadParam::~ObSqlReadParam()
     {
+      if (NULL != scalar_agg_)
+      {
+        scalar_agg_->~ObScalarAggregate();
+        ob_free(scalar_agg_);
+        scalar_agg_ = NULL;
+      }
+      if (NULL != group_)
+      {
+        group_->~ObMergeGroupBy();
+        ob_free(group_);
+        group_ = NULL;
+      }
     }
 
     int ObSqlReadParam::set_project(const ObProject &project)
@@ -73,28 +90,6 @@ namespace oceanbase
       return project_;
     }
 
-    int ObSqlReadParam::set_scalar_agg(const ObScalarAggregate &scalar_agg)
-    {
-      int ret = OB_SUCCESS;
-      if (OB_SUCCESS == ret)
-      {
-        scalar_agg_.assign(scalar_agg);
-        has_scalar_agg_ = true;
-      }
-      return ret;
-    }
-
-    int ObSqlReadParam::set_group(const ObMergeGroupBy &group)
-    {
-      int ret = OB_SUCCESS;
-      if (OB_SUCCESS == ret)
-      {
-        group_.assign(group);
-        has_group_ = true;
-      }
-      return ret;
-    }
-
     int ObSqlReadParam::set_group_columns_sort(const ObSort &sort)
     {
       int ret = OB_SUCCESS;
@@ -117,7 +112,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSqlReadParam::add_filter(const ObSqlExpression & cond)
+    int ObSqlReadParam::add_filter(ObSqlExpression *cond)
     {
       int ret = OB_SUCCESS;
       if (OB_SUCCESS != (ret = filter_.add_filter(cond)))
@@ -139,19 +134,32 @@ namespace oceanbase
         ret = OB_ERR_GEN_PLAN;
         TBSYS_LOG(WARN, "Can not adding group column after adding aggregate function(s). ret=%d", ret);
       }
-      else if ((ret = group_columns_sort_.add_sort_column(tid, cid, true)) != OB_SUCCESS)
+      else
       {
-        TBSYS_LOG(WARN, "Add sort column of ObSqlReadParam sort operator failed. ret=%d", ret);
+        if (NULL == group_)
+        {
+          group_ = OB_NEW(ObMergeGroupBy, ObModIds::OB_SQL_MERGE_GROUPBY);
+        }
+        if (NULL == group_)
+        {
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+          TBSYS_LOG(WARN, "failed to alloc memory");
+        }
+        else if ((ret = group_columns_sort_.add_sort_column(tid, cid, true)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Add sort column of ObSqlReadParam sort operator failed. ret=%d", ret);
+        }
+        else if ((ret = group_->add_group_column(tid, cid)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Add group column of ObSqlReadParam group operator failed. ret=%d", ret);
+        }
+        else if (!has_group_)
+        {
+          has_group_columns_sort_ = true;
+          has_group_ = true;
+        }
       }
-      else if ((ret = group_.add_group_column(tid, cid)) != OB_SUCCESS)
-      {
-        TBSYS_LOG(WARN, "Add group column of ObSqlReadParam group operator failed. ret=%d", ret);
-      }
-      else if (!has_group_)
-      {
-        has_group_columns_sort_ = true;
-        has_group_ = true;
-      }
+
       return ret;
     }
 
@@ -160,7 +168,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (has_group_)
       {
-        if ((ret = group_.add_aggr_column(expr)) != OB_SUCCESS)
+        if ((ret = group_->add_aggr_column(expr)) != OB_SUCCESS)
         {
           TBSYS_LOG(WARN, "Add aggregate function of ObSqlReadParam group operator failed. ret=%d", ret);
         }
@@ -168,7 +176,16 @@ namespace oceanbase
       else
       {
         has_scalar_agg_ = true;
-        if ((ret = scalar_agg_.add_aggr_column(expr)) != OB_SUCCESS)
+        if (NULL == scalar_agg_)
+        {
+          scalar_agg_ = OB_NEW(ObScalarAggregate, ObModIds::OB_SQL_SCALAR_AGGR);
+        }
+        if (NULL == scalar_agg_)
+        {
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+          TBSYS_LOG(WARN, "failed to alloc memory");
+        }
+        else if ((ret = scalar_agg_->add_aggr_column(expr)) != OB_SUCCESS)
         {
           TBSYS_LOG(WARN, "Add aggregate function of ObSqlReadParam scalar aggregate operator failed. ret=%d", ret);
         }
@@ -320,7 +337,7 @@ namespace oceanbase
           TBSYS_LOG(WARN, "fail to deserialize obj. ret=%d", ret);
         }
       }
-      // result cached 
+      // result cached
       if (OB_SUCCESS == ret)
       {
         ret = obj.deserialize(buf, data_len, pos);
@@ -376,7 +393,7 @@ namespace oceanbase
             table_id_ = int_value;
           }
           else
-          { 
+          {
             TBSYS_LOG(WARN, "fail to get int. obj type=%d", obj.get_type());
           }
         }
@@ -397,7 +414,7 @@ namespace oceanbase
             renamed_table_id_ = int_value;
           }
           else
-          { 
+          {
             TBSYS_LOG(WARN, "fail to get int. obj type=%d", obj.get_type());
           }
         }
@@ -469,9 +486,9 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "fail to serialize obj. buf=%p, buf_len=%ld, pos=%ld, ret=%d", buf, buf_len, pos, ret);
         }
-        else if (OB_SUCCESS != (ret = scalar_agg_.serialize(buf, buf_len, pos)))
+        else if (OB_SUCCESS != (ret = scalar_agg_->serialize(buf, buf_len, pos)))
         {
-          TBSYS_LOG(WARN, "fail to serialize scalar aggregation param. buf=%p, buf_len=%ld, pos=%ld, ret=%d", 
+          TBSYS_LOG(WARN, "fail to serialize scalar aggregation param. buf=%p, buf_len=%ld, pos=%ld, ret=%d",
               buf, buf_len, pos, ret);
         }
       }
@@ -486,7 +503,7 @@ namespace oceanbase
         }
         else if (OB_SUCCESS != (ret = group_columns_sort_.serialize(buf, buf_len, pos)))
         {
-          TBSYS_LOG(WARN, "fail to serialize group column sort param. buf=%p, buf_len=%ld, pos=%ld, ret=%d", 
+          TBSYS_LOG(WARN, "fail to serialize group column sort param. buf=%p, buf_len=%ld, pos=%ld, ret=%d",
               buf, buf_len, pos, ret);
         }
       }
@@ -499,9 +516,9 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "fail to serialize obj. buf=%p, buf_len=%ld, pos=%ld, ret=%d", buf, buf_len, pos, ret);
         }
-        else if (OB_SUCCESS != (ret = group_.serialize(buf, buf_len, pos)))
+        else if (OB_SUCCESS != (ret = group_->serialize(buf, buf_len, pos)))
         {
-          TBSYS_LOG(WARN, "fail to serialize group param. buf=%p, buf_len=%ld, pos=%ld, ret=%d", 
+          TBSYS_LOG(WARN, "fail to serialize group param. buf=%p, buf_len=%ld, pos=%ld, ret=%d",
               buf, buf_len, pos, ret);
         }
       }
@@ -547,6 +564,8 @@ namespace oceanbase
 
     DEFINE_DESERIALIZE(ObSqlReadParam)
     {
+      // reset contents
+      reset();
       ObObj obj;
       int ret = OB_SUCCESS;
       while (OB_SUCCESS == ret)
@@ -583,7 +602,16 @@ namespace oceanbase
               }
             case ObActionFlag::SQL_SCALAR_AGG_PARAM_FIELD:
               {
-                if (OB_SUCCESS != (ret = scalar_agg_.deserialize(buf, data_len, pos)))
+                if (NULL == scalar_agg_)
+                {
+                  scalar_agg_ = OB_NEW(ObScalarAggregate, ObModIds::OB_SQL_SCALAR_AGGR);
+                }
+                if (NULL == scalar_agg_)
+                {
+                  ret = OB_ALLOCATE_MEMORY_FAILED;
+                  TBSYS_LOG(WARN, "no memory");
+                }
+                else if (OB_SUCCESS != (ret = scalar_agg_->deserialize(buf, data_len, pos)))
                 {
                   TBSYS_LOG(WARN, "fail to deserialize scalar aggregation. buf=%p, data_len=%ld, pos=%ld, ret=%d",
                       buf, data_len, pos, ret);
@@ -609,7 +637,17 @@ namespace oceanbase
               }
             case ObActionFlag::SQL_GROUP_BY_PARAM_FIELD:
               {
-                if (OB_SUCCESS != (ret = group_.deserialize(buf, data_len, pos)))
+                if (NULL == group_)
+                {
+                  group_ = OB_NEW(ObMergeGroupBy, ObModIds::OB_SQL_MERGE_GROUPBY);
+                }
+
+                if (NULL == group_)
+                {
+                  ret = OB_ALLOCATE_MEMORY_FAILED;
+                  TBSYS_LOG(WARN, "no memory");
+                }
+                else if (OB_SUCCESS != (ret = group_->deserialize(buf, data_len, pos)))
                 {
                   TBSYS_LOG(WARN, "fail to deserialize group by. buf=%p, data_len=%ld, pos=%ld, ret=%d",
                       buf, data_len, pos, ret);
@@ -670,7 +708,7 @@ namespace oceanbase
       // consistency
       obj.set_int(get_is_read_consistency());
       total_size += obj.get_serialize_size();
-      // result cached 
+      // result cached
       obj.set_int(get_is_result_cached());
       total_size += obj.get_serialize_size();
       // data version
@@ -710,7 +748,7 @@ namespace oceanbase
       {
         obj.set_ext(ObActionFlag::SQL_SCALAR_AGG_PARAM_FIELD);
         total_size += obj.get_serialize_size();
-        total_size += scalar_agg_.get_serialize_size();
+        total_size += scalar_agg_->get_serialize_size();
       }
       if (has_group_columns_sort_)
       {
@@ -722,7 +760,7 @@ namespace oceanbase
       {
         obj.set_ext(ObActionFlag::SQL_GROUP_BY_PARAM_FIELD);
         total_size += obj.get_serialize_size();
-        total_size += group_.get_serialize_size();
+        total_size += group_->get_serialize_size();
       }
       if (has_limit_)
       {
@@ -759,12 +797,34 @@ namespace oceanbase
       has_scalar_agg_ = other.has_scalar_agg_;
       if (other.has_scalar_agg_)
       {
-        scalar_agg_.assign(other.scalar_agg_);
+        if (NULL == scalar_agg_)
+        {
+          scalar_agg_ = OB_NEW(ObScalarAggregate, ObModIds::OB_SQL_SCALAR_AGGR);
+        }
+        if (NULL == scalar_agg_)
+        {
+          TBSYS_LOG(ERROR, "no memory");
+        }
+        else
+        {
+          scalar_agg_->assign(*other.scalar_agg_);
+        }
       }
       has_group_ = other.has_group_;
       if (other.has_group_)
       {
-        group_.assign(other.group_);
+        if (NULL == group_)
+        {
+          group_ = OB_NEW(ObMergeGroupBy, ObModIds::OB_SQL_MERGE_GROUPBY);
+        }
+        if (NULL == group_)
+        {
+          TBSYS_LOG(ERROR, "no memory");
+        }
+        else
+        {
+          group_->assign(*other.group_);
+        }
       }
       has_group_columns_sort_ = other.has_group_columns_sort_;
       if (other.has_group_columns_sort_)
@@ -791,9 +851,9 @@ namespace oceanbase
       if (has_limit_)
         databuff_print_obj(buf, buf_len, pos, limit_);
       if (has_scalar_agg_)
-        databuff_print_obj(buf, buf_len, pos, scalar_agg_);
+        databuff_print_obj(buf, buf_len, pos, *scalar_agg_);
       if (has_group_)
-        databuff_print_obj(buf, buf_len, pos, group_);
+        databuff_print_obj(buf, buf_len, pos, *group_);
       if (has_group_columns_sort_)
         databuff_print_obj(buf, buf_len, pos, group_columns_sort_);
       if (has_filter_)

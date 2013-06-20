@@ -50,7 +50,6 @@ namespace oceanbase
         ObTabletInfoManager();
         void set_allocator(common::CharArena *allocator);
 
-      void clear();
         int add_tablet_info(const common::ObTabletInfo& tablet_info, int32_t& out_index);
 
         const_iterator begin() const;

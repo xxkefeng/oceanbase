@@ -17,6 +17,7 @@
 #include "test_helper.h"
 #include "sstable/ob_disk_path.h"
 #include "common/file_directory_utils.h"
+#include "common/file_directory_utils.h"
 #include "chunkserver/ob_tablet.h"
 #include "chunkserver/ob_chunk_server_config.h"
 #include "../common/test_rowkey_helper.h"
@@ -140,14 +141,12 @@ int append_cg_rows(
 }
 
 int write_cg_sstable(const ObCellInfo** cell_infos,
-    const int64_t row_num, const int64_t col_num, const char* sstable_file_path,
-    const uint64_t base_column_id)
+    const int64_t row_num, const int64_t col_num, const char* sstable_file_path )
 {
   int err = OB_SUCCESS;
   EXPECT_TRUE(NULL != cell_infos);
   EXPECT_TRUE(row_num > 0);
   EXPECT_TRUE(col_num > 0);
-  UNUSED(base_column_id);
 
   if (sstable_file_path) unlink(sstable_file_path);
 
@@ -190,8 +189,7 @@ int write_cg_sstable(const ObCellInfo** cell_infos,
 }
 
 int write_sstable(const ObCellInfo** cell_infos,
-    const int64_t row_num, const int64_t col_num, const char* sstable_file_path,
-    const uint64_t base_column_id, ObNewRange* range)
+    const int64_t row_num, const int64_t col_num, const char* sstable_file_path )
 {
   int err = OB_SUCCESS;
 
@@ -210,7 +208,7 @@ int write_sstable(const ObCellInfo** cell_infos,
   column_def.reserved_ = 0;
   column_def.rowkey_seq_ = 1;
   column_def.column_group_id_= 0;
-  column_def.column_name_id_ = static_cast<uint16_t>(base_column_id - 1);
+  column_def.column_name_id_ = 1;
   column_def.column_value_type_ = ObVarcharType;
   column_def.table_id_ = static_cast<uint32_t>(table_id);
   sstable_schema.add_column_def(column_def);
@@ -242,10 +240,8 @@ int write_sstable(const ObCellInfo** cell_infos,
   compress_name.assign((char*)"lzo_1.0", static_cast<int32_t>(strlen("lzo_1.0")));
 
   ObSSTableWriter writer;
-  err = writer.create_sstable(sstable_schema, path, compress_name, 1);
+  err = writer.create_sstable(sstable_schema, path, compress_name, table_id);
   EXPECT_EQ(0, err);
-
-  writer.set_tablet_range(*range);
 
   for (int64_t i = 0; i < row_num; ++i)
   {
@@ -273,11 +269,9 @@ int write_sstable(const ObCellInfo** cell_infos,
 }
 
 int write_empty_sstable(const ObCellInfo** cell_infos,
-    const int64_t row_num, const int64_t col_num, const char* sstable_file_path,
-    const uint64_t base_column_id, ObNewRange* range)
+    const int64_t row_num, const int64_t col_num, const char* sstable_file_path )
 {
   int err = OB_SUCCESS;
-  UNUSED(range);
 
   if (sstable_file_path) unlink(sstable_file_path);
 
@@ -294,7 +288,7 @@ int write_empty_sstable(const ObCellInfo** cell_infos,
   column_def.reserved_ = 0;
   column_def.rowkey_seq_ = 1;
   column_def.column_group_id_= 0;
-  column_def.column_name_id_ = static_cast<uint16_t>(base_column_id - 1);
+  column_def.column_name_id_ = 1;
   column_def.column_value_type_ = ObVarcharType;
   column_def.table_id_ = static_cast<uint32_t>(table_id);
   sstable_schema.add_column_def(column_def);
@@ -336,13 +330,13 @@ int write_empty_sstable(const ObCellInfo** cell_infos,
   return err;
 }
 
-//GFactory GFactory::instance_;
+GFactory GFactory::instance_;
 
 void GFactory::init()
 {
   const ObChunkServerConfig config;
 
-  ob_init_memory_pool(64 * 1024);
+  ob_init_memory_pool(64 * 1024 * 1024);
   fic_.init(config.file_info_cache_num);
   int ret = block_cache_.init(config.block_cache_size);
   ASSERT_EQ(0, ret);
@@ -367,7 +361,10 @@ SSTableBuilder::SSTableBuilder()
 
   for (int64_t i = 0; i < ROW_NUM; ++i)
   {
-    row_key_strs[i] = new char[50];
+    for (int64_t j = 0; j < COL_NUM; ++j)
+    {
+      row_key_strs[i][j] = new char[50];
+    }
   }
 }
 
@@ -375,10 +372,13 @@ SSTableBuilder::~SSTableBuilder()
 {
   for (int64_t i = 0; i < ROW_NUM; ++i)
   {
-    if (NULL != row_key_strs[i])
+    for (int64_t j = 0; j < COL_NUM; ++j)
     {
-      delete[] row_key_strs[i];
-      row_key_strs[i] = NULL;
+      if (NULL != row_key_strs[i][j])
+      {
+        delete[] row_key_strs[i][j];
+        row_key_strs[i][j] = NULL;
+      }
     }
   }
 
@@ -397,7 +397,7 @@ SSTableBuilder::~SSTableBuilder()
 }
 
 int SSTableBuilder::generate_sstable_file(WRITE_SSTABLE_FUNC write_func,
-    const ObSSTableId& sstable_id, const int64_t start_index, const uint64_t base_column_id, ObNewRange* range)
+    const ObSSTableId& sstable_id, const int64_t start_index)
 {
   int err = OB_SUCCESS;
   static CharArena allocator;
@@ -405,28 +405,14 @@ int SSTableBuilder::generate_sstable_file(WRITE_SSTABLE_FUNC write_func,
   // init cell infos
   for (int64_t i = 0; i < ROW_NUM; ++i)
   {
-    sprintf(row_key_strs[i], "row_key_%08ld", i + start_index);
     for (int64_t j = 0; j < COL_NUM; ++j)
     {
       cell_infos[i][j].table_id_ = table_id;
-      if (j == 0)
-      {
-        cell_infos[i][0].row_key_ = make_rowkey(row_key_strs[i], &allocator);
-      }
-      else 
-      {
-        cell_infos[i][j].row_key_ = cell_infos[i][0].row_key_;
-      }
-      cell_infos[i][j].column_id_ = j + base_column_id;
-      cell_infos[i][j].value_.set_int((start_index + i) * COL_NUM + j);
+      sprintf(row_key_strs[i][j], "row_key_%08ld", i + start_index);
+      cell_infos[i][j].row_key_ = make_rowkey(row_key_strs[i][j], &allocator);
+      cell_infos[i][j].column_id_ = j + 2;
+      cell_infos[i][j].value_.set_int(1000 + i * COL_NUM + j);
     }
-  }
-
-  if(NULL != range && !range->end_key_.is_max_row())
-  {
-
-    range->end_key_ = cell_infos[SSTableBuilder::ROW_NUM - 1][0].row_key_;
-    range->border_flag_.set_inclusive_end();
   }
 
   char sstable_file_path[OB_MAX_FILE_NAME_LENGTH];
@@ -446,50 +432,29 @@ int SSTableBuilder::generate_sstable_file(WRITE_SSTABLE_FUNC write_func,
   err = get_sstable_path(sstable_id, sstable_file_path, OB_MAX_FILE_NAME_LENGTH);
   if (err) return err;
   //init sstable
-  err = write_func((const ObCellInfo**) cell_infos, ROW_NUM, COL_NUM, sstable_file_path, base_column_id, range);
+  err = write_func((const ObCellInfo**) cell_infos, ROW_NUM, COL_NUM, sstable_file_path);
   return err;
 }
 
-int MultSSTableBuilder::generate_sstable_files(bool empty_sstable, const uint64_t base_column_id)
+int MultSSTableBuilder::generate_sstable_files(bool empty_sstable)
 {
   int ret = OB_SUCCESS;
   int64_t start_index = 0;
   ObSSTableId sst_id;
 
-  ObCellInfo** prev_cell_infos;
-  
-  ObNewRange ranges[MultSSTableBuilder::SSTABLE_NUM];
   for (int i = 0; i < SSTABLE_NUM; i++)
   {
-    ranges[i].table_id_ = SSTableBuilder::table_id;
     ret = get_sstable_id(sst_id, i);
     if (OB_SUCCESS == ret)
     {
-      
-      if (i == MultSSTableBuilder::SSTABLE_NUM - 1)
-      {
-        ranges[i].end_key_.set_max_row();
-        ranges[i].border_flag_.unset_inclusive_end();
-      }
-
-      if (0 == i)
-      {
-        ranges[i].start_key_.set_min_row();
-      }
-      else
-      {
-        prev_cell_infos = get_cell_infos(i - 1);
-        ranges[i].start_key_ = prev_cell_infos[SSTableBuilder::ROW_NUM - 1][0].row_key_;
-      }
-      
       start_index = i * SSTableBuilder::ROW_NUM * SSTableBuilder::COL_NUM;
       if (empty_sstable)
       {
-        ret = builder_[i].generate_sstable_file(write_empty_sstable, sst_id, start_index, base_column_id);
+        ret = builder_[i].generate_sstable_file(write_empty_sstable, sst_id, start_index);
       }
       else
       {
-        ret = builder_[i].generate_sstable_file(write_sstable, sst_id, start_index, base_column_id, &ranges[i]);
+        ret = builder_[i].generate_sstable_file(write_sstable, sst_id, start_index);
       }
       if (OB_SUCCESS != ret)
       {
@@ -515,28 +480,40 @@ int TabletManagerIniter::create_tablet(const ObNewRange& range,
     ret = OB_INVALID_ARGUMENT;
   }
 
-
   if (OB_SUCCESS == ret)
   {
     ObTablet* tablet = NULL;
     // find tablet if exist?
-    ObMultiVersionTabletImage &image = tablet_mgr_->get_serving_tablet_image();
-    ret = image.alloc_tablet_object(range, version, tablet);
-    if (OB_SUCCESS == ret && add_sst_id)
-    {
-      ret = tablet->add_sstable_by_id(sst_id);
-    }
+    ObMultiVersionTabletImage &image = tablet_mgr_.get_serving_tablet_image();
+    ret = image.acquire_tablet(range, ObMultiVersionTabletImage::SCAN_FORWARD, version, tablet);
     if (OB_SUCCESS == ret)
     {
-      tablet->set_disk_no(sst_id.sstable_file_id_ & DISK_NO_MASK);
-      ret = image.add_tablet(tablet, true, true);
+      TBSYS_LOG(ERROR, "tablet already exists! dump input and exist:");
+      range.hex_dump(TBSYS_LOG_LEVEL_ERROR);
+      tablet->get_range().hex_dump(TBSYS_LOG_LEVEL_ERROR);
+      ret = OB_ERROR;
+      tablet = NULL;
+      image.release_tablet(tablet);
+    }
+    else
+    {
+      ret = image.alloc_tablet_object(range, version, tablet);
+      if (OB_SUCCESS == ret && add_sst_id)
+      {
+        ret = tablet->add_sstable_by_id(sst_id);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        tablet->set_disk_no(sst_id.sstable_file_id_ & DISK_NO_MASK);
+        ret = image.add_tablet(tablet, true, true);
+      }
     }
   }
 
   return ret;
 }
 
-int TabletManagerIniter::create_tablets(bool empty_tablet, const uint64_t base_column_id)
+int TabletManagerIniter::create_tablets(bool empty_tablet)
 {
   int ret = OB_SUCCESS;
   ObNewRange ranges[MultSSTableBuilder::SSTABLE_NUM];
@@ -544,23 +521,15 @@ int TabletManagerIniter::create_tablets(bool empty_tablet, const uint64_t base_c
   ObCellInfo** cell_infos;
   ObCellInfo** prev_cell_infos;
 
-  ret = builder_.generate_sstable_files(empty_tablet, base_column_id);
+  ret = builder_.generate_sstable_files(empty_tablet);
   if (OB_SUCCESS == ret)
   {
     for (int64_t i = 0; i < MultSSTableBuilder::SSTABLE_NUM; ++i)
     {
       ranges[i].table_id_ = SSTableBuilder::table_id;
       cell_infos = get_mult_sstable_builder().get_cell_infos(i);
-      if (i == MultSSTableBuilder::SSTABLE_NUM - 1)
-      {
-        ranges[i].end_key_.set_max_row();
-        ranges[i].border_flag_.unset_inclusive_end();
-      }
-      else 
-      {
-        ranges[i].end_key_ = cell_infos[SSTableBuilder::ROW_NUM - 1][0].row_key_;
-        ranges[i].border_flag_.set_inclusive_end();
-      }
+      ranges[i].end_key_ = cell_infos[SSTableBuilder::ROW_NUM - 1][0].row_key_;
+      ranges[i].border_flag_.set_inclusive_end();
       ranges[i].border_flag_.unset_inclusive_start();
 
       if (0 == i)
@@ -604,7 +573,7 @@ int TabletManagerIniter::create_tablets(bool empty_tablet, const uint64_t base_c
       int32_t disk_no_array[MultSSTableBuilder::DISK_NUM];
       char path[OB_MAX_FILE_NAME_LENGTH];
 
-      ObMultiVersionTabletImage &image = tablet_mgr_->get_serving_tablet_image();
+      ObMultiVersionTabletImage &image = tablet_mgr_.get_serving_tablet_image();
       for (int i = 0; i < MultSSTableBuilder::DISK_NUM && OB_SUCCESS == ret; i++)
       {
         disk_no_array[i] = i + 1;
@@ -626,15 +595,11 @@ int TabletManagerIniter::create_tablets(bool empty_tablet, const uint64_t base_c
 }
 
 
-int TabletManagerIniter::init(bool create, bool empty_tablet, const uint64_t base_column_id)
+int TabletManagerIniter::init(bool create, bool empty_tablet)
 {
   int ret = OB_SUCCESS;
   static ObChunkServerConfig config;
   config.datadir.set_value("./tmp");
-  config.block_cache_size.set_value("128M");
-  config.block_index_cache_size.set_value("64M");
-  config.sstable_row_cache_size.set_value("0");
-  config.file_info_cache_num.set_value("128");
 
   if (inited_)
   {
@@ -642,10 +607,10 @@ int TabletManagerIniter::init(bool create, bool empty_tablet, const uint64_t bas
   }
   else
   {
-    ret = tablet_mgr_->init(&config);
+    ret = tablet_mgr_.init(&config);
     if (OB_SUCCESS == ret && create)
     {
-      ret = create_tablets(empty_tablet, base_column_id);
+      ret = create_tablets(empty_tablet);
     }
 
     if (OB_SUCCESS == ret)

@@ -20,7 +20,6 @@
 #include "ob_sql_query_service.h"
 #include "sql/ob_tablet_scan.h"
 #include "sql/ob_tablet_get.h"
-#include "sql/ob_tablet_sstable_scan.h"
 #include "sql/ob_sstable_scan.h"
 #include "sql/ob_ups_scan.h"
 #include "sql/ob_ups_multi_get.h"
@@ -41,7 +40,6 @@ namespace oceanbase
         virtual ~ObTabletService();
 
         int open(const sql::ObSqlReadParam &sql_read_param);
-        int open(const sstable::ObSSTableScanParam  &scan_param, const int64_t timeout_us);
         int fill_scan_data(ObNewScanner &new_scanner);
         int close();
         void reset();
@@ -55,7 +53,6 @@ namespace oceanbase
         ObRowkey last_rowkey_;
         ObTabletScan tablet_scan_;
         ObTabletGet tablet_get_;
-        ObTabletSSTableScan tablet_sstable_scan_;
         ObChunkServer &chunk_server_;
         CharArena rowkey_allocator_;
     };

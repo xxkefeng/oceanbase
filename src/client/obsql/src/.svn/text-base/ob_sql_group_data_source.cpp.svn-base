@@ -23,7 +23,7 @@ static int delete_server_pool(ObClusterInfo *spool, ObGroupDataSource *gds)
   for (; index < spool->csize_; ++index)
   {
     ObDataSource *ds = spool->dslist_ + index;
-    ObSQLConnList *list = reinterpret_cast<ObSQLConnList*>(ob_malloc(sizeof(ObSQLConnList)));
+    ObSQLConnList *list = reinterpret_cast<ObSQLConnList*>(ob_malloc(sizeof(ObSQLConnList), ObModIds::LIB_OBSQL));
     if (NULL == list)
     {
       TBSYS_LOG(ERROR, "alloc mem for ObSQLConnList failed");

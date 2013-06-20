@@ -109,7 +109,7 @@ int ObMergeJoin::open()
     TBSYS_LOG(WARN, "failed to cons row desc, err=%d", ret);
   }
   // allocate memory for last_join_left_row_store_
-  else if (NULL == (store_buf = static_cast<char*>(ob_malloc(MAX_SINGLE_ROW_SIZE))))
+  else if (NULL == (store_buf = static_cast<char*>(ob_malloc(MAX_SINGLE_ROW_SIZE, ObModIds::OB_SQL_MERGE_JOIN))))
   {
     TBSYS_LOG(ERROR, "no memory");
     ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -457,6 +457,7 @@ int ObMergeJoin::inner_get_next_row(const common::ObRow *&row)
         {
           if (OB_ITER_END == ret)
           {
+            TBSYS_LOG(INFO, "end of right child op");
             is_right_iter_end_ = true;
             if (!right_cache_.is_empty())
             {
@@ -704,6 +705,7 @@ int ObMergeJoin::left_outer_get_next_row(const common::ObRow *&row)
         {
           if (OB_ITER_END == ret)
           {
+            TBSYS_LOG(INFO, "end of right child op");
             is_right_iter_end_ = true;
             if (!right_cache_.is_empty())
             {
@@ -955,6 +957,7 @@ int ObMergeJoin::right_outer_get_next_row(const common::ObRow *&row)
         {
           if (OB_ITER_END == ret)
           {
+            TBSYS_LOG(INFO, "end of right child op");
             is_right_iter_end_ = true;
             if (!right_cache_.is_empty())
             {
@@ -1082,6 +1085,7 @@ int ObMergeJoin::right_outer_get_next_row(const common::ObRow *&row)
         {
           if (OB_ITER_END == ret)
           {
+            TBSYS_LOG(INFO, "end of right child op");
             break;
           }
           else
@@ -1239,6 +1243,7 @@ int ObMergeJoin::full_outer_get_next_row(const common::ObRow *&row)
         {
           if (OB_ITER_END == ret)
           {
+            TBSYS_LOG(INFO, "end of right child op");
             is_right_iter_end_ = true;
             if (!right_cache_.is_empty())
             {
@@ -1397,6 +1402,7 @@ int ObMergeJoin::full_outer_get_next_row(const common::ObRow *&row)
         {
           if (OB_ITER_END == ret)
           {
+            TBSYS_LOG(INFO, "end of right child op");
             break;
           }
           else

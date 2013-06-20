@@ -132,25 +132,6 @@ namespace oceanbase
       return ret;
     }
 
-    int get_tmp_directory(const int32_t disk_no, char *path, const int64_t path_len)
-    {
-      int ret = OB_SUCCESS;
-      if (disk_no < 0 || NULL == path || path_len < 0)
-      {
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else
-      {
-        int bufsiz = snprintf(path, path_len, "./tmp/%d/temp",  disk_no);
-        if (bufsiz + 1 > path_len)
-        {
-          ret = OB_SIZE_OVERFLOW;
-        }
-      }
-
-      return ret;
-    }
-
     int get_tmp_meta_path(const int32_t disk_no, char *path, const int32_t path_len)
     {
       int ret = OB_SUCCESS;

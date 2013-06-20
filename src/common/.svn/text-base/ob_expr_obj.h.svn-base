@@ -51,7 +51,6 @@ namespace oceanbase
         void set_bool(const bool value);
         void set_decimal(const ObNumber &value);
         void set_ext(const int64_t value);
-        void set_unknown(const ObObj *value);
 
         // getters
         bool is_null() const {return ObNullType == type_;}
@@ -66,7 +65,6 @@ namespace oceanbase
         bool get_bool() const {return v_.bool_;}
         const ObNumber& get_decimal() const {return num_;}
         const int64_t get_ext() const {return v_.ext_;}
-        const ObObj *get_unknown() const {return v_.unknown_;}
         ObObjType get_type() const;
         bool is_zero() const;
         bool is_true() const;
@@ -187,7 +185,6 @@ namespace oceanbase
         int get_decimal(char * buf, const int64_t buf_len) const;
         int get_float(float &f) const;
         int get_double(double &d) const;
-        int get_unknown(const ObObj *&value) const;
       private:
         // data members
         int8_t type_;           // ObObjType
@@ -204,7 +201,6 @@ namespace oceanbase
           bool bool_;
           float float_;
           double double_;
-          const ObObj *unknown_;
         } v_;
     };
 
@@ -293,12 +289,6 @@ namespace oceanbase
     {
       type_ = ObExtendType;
       v_.ext_ = value;
-    }
-
-    inline void ObExprObj::set_unknown(const ObObj *value)
-    {
-      type_ = ObUnknownType;
-      v_.unknown_ = value;
     }
 
     inline bool ObExprObj::is_zero() const

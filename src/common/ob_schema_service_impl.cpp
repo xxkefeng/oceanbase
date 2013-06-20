@@ -1,13 +1,11 @@
 #include "ob_schema_service_impl.h"
-#include "roottable/ob_first_tablet_entry_schema.h"
 #include "ob_extra_tables_schema.h"
 #include "ob_schema_service.h"
 #include "utility.h"
-#include "ob_mutator.h"
-#include "ob_tsi_factory.h"
 
 using namespace oceanbase;
 using namespace common;
+using namespace nb_accessor;
 
 #define DEL_ROW(table_name, rowkey) \
 if (OB_SUCCESS == ret) \
@@ -85,11 +83,11 @@ int ObSchemaServiceImpl::add_join_info(ObMutator* mutator, const TableSchema& ta
   {
     for(int32_t i=0;i<table_schema.join_info_.count();i++)
     {
-
       ret = table_schema.join_info_.at(i, join_info);
       if(OB_SUCCESS != ret)
       {
         TBSYS_LOG(WARN, "get joininfo from table_schema fail:ret[%d], i[%d]", ret, i);
+        break;
       }
 
       value[0].set_int(join_info.left_table_id_);
@@ -110,7 +108,6 @@ int ObSchemaServiceImpl::add_join_info(ObMutator* mutator, const TableSchema& ta
       ADD_VARCHAR(joininfo_table_name, rowkey, "left_column_name", join_info.left_column_name_);
       ADD_VARCHAR(joininfo_table_name, rowkey, "right_table_name", join_info.right_table_name_);
       ADD_VARCHAR(joininfo_table_name, rowkey, "right_column_name", join_info.right_column_name_);
-
     }
   }
 
@@ -236,6 +233,15 @@ int ObSchemaServiceImpl::init(ObScanHelper* client_proxy, bool only_core_tables)
   {
     this->client_proxy_ = client_proxy;
     this->only_core_tables_ = only_core_tables;
+    ret = nb_accessor_.init(client_proxy_);
+    if(OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "init nb accessor fail:ret[%d]", ret);
+    }
+    else
+    {
+      nb_accessor_.set_is_read_consistency(true);
+    }
   }
   return ret;
 }
@@ -275,12 +281,6 @@ int ObSchemaServiceImpl::create_table_mutator(const TableSchema& table_schema, O
   ADD_VARCHAR(first_tablet_entry_name, rowkey, "expire_condition", table_schema.expire_condition_);
   ADD_INT(first_tablet_entry_name, rowkey, "create_time_column_id", table_schema.create_time_column_id_);
   ADD_INT(first_tablet_entry_name, rowkey, "modify_time_column_id", table_schema.modify_time_column_id_);
-  ADD_INT(first_tablet_entry_name, rowkey, "character_set", table_schema.charset_number_);
-
-  // field for index
-  ADD_INT(first_tablet_entry_name, rowkey, "data_table_id", table_schema.data_table_id_);
-  ADD_INT(first_tablet_entry_name, rowkey, "index_status", table_schema.index_status_);
-
   if(OB_SUCCESS == ret)
   {
     ret = add_column(mutator, table_schema);
@@ -500,53 +500,149 @@ int ObSchemaServiceImpl::create_table(const TableSchema& table_schema)
   return ret;
 }
 
-int ObSchemaServiceImpl::delete_range(
-    const ObString& table_name, const SC& rowkey_columns, 
-    const SC& cond_columns, const ObObj *cond_values)
-{
-  int ret = OB_SUCCESS;
-  char sql[OB_DEFAULT_SQL_LENGTH];
-  int64_t pos = 0;
-
-  SQLQueryResultReader reader;
-  ObRow row;
-
-  if (OB_SUCCESS != (ret = build_select_stmt(
-          table_name, rowkey_columns, cond_columns, cond_values, 
-          sql, OB_DEFAULT_SQL_LENGTH, pos)))
-  {
-    TBSYS_LOG(WARN, "build_select_stmt ret=%d", ret);
-  }
-  else if (OB_SUCCESS != (ret = reader.query(*client_proxy_, sql)))
-  {
-    TBSYS_LOG(WARN, "execute query sql[%s] ret=%d", sql, ret);
-  }
-  else
-  {
-    while (OB_SUCCESS == (ret = reader.get_next_row(row)))
-    {
-      pos = 0;
-      if(OB_SUCCESS != (ret = build_delete_stmt(table_name, 
-              rowkey_columns, row, sql, OB_DEFAULT_SQL_LENGTH, pos)))
-      {
-        TBSYS_LOG(WARN, "build delete stmt row[%s] fail:ret[%d]", to_cstring(row), ret);
-        break;
-      }
-      else if(OB_SUCCESS != (ret = client_proxy_->modify(sql)))
-      {
-        TBSYS_LOG(WARN, "add column to table schema fail:ret[%d]", ret);
-        break;
-      }
-    }
-    if (OB_ITER_END == ret)
-    {
-      ret = OB_SUCCESS;
-    }
-  }
-
-  return ret;
-
+#define ASSIGN_INT_FROM_ROWKEY(column, rowkey_index, field, type) \
+if(OB_SUCCESS == ret) \
+{ \
+  ObCellInfo * ci = NULL; \
+  int64_t int_value = 0; \
+  ci = table_row->get_cell_info(column); \
+  if (NULL != ci && NULL != ci->row_key_.ptr() \
+      && rowkey_index < ci->row_key_.length() \
+      && ci->row_key_.ptr()[rowkey_index].get_type() == ObIntType) \
+  { \
+    ci->row_key_.ptr()[rowkey_index].get_int(int_value); \
+    field = static_cast<type>(int_value); \
+    TBSYS_LOG(DEBUG, "get cell info:column[%s], value[%ld]", column, int_value); \
+  } \
+  else \
+  { \
+    ret = OB_ERROR; \
+    TBSYS_LOG(WARN, "get column[%s] with error cell info %s ", \
+        column, NULL == ci ? "nil": print_cellinfo(ci)); \
+  } \
 }
+
+#define ASSIGN_VARCHAR_FROM_ROWKEY(column, rowkey_index, field, max_length) \
+if(OB_SUCCESS == ret) \
+{ \
+  ObCellInfo * ci = NULL; \
+  ObString str_value; \
+  ci = table_row->get_cell_info(column); \
+  if (NULL != ci && NULL != ci->row_key_.ptr() \
+      && rowkey_index < ci->row_key_.length() \
+      && ci->row_key_.ptr()[rowkey_index].get_type() == ObVarcharType) \
+  { \
+    ci->row_key_.ptr()[rowkey_index].get_varchar(str_value);  \
+    if(str_value.length() >= max_length) \
+    { \
+      ret = OB_SIZE_OVERFLOW; \
+      TBSYS_LOG(WARN, "field max length is not enough:max_length[%ld], str length[%d]", max_length, str_value.length()); \
+    } \
+    else \
+    { \
+      memcpy(field, str_value.ptr(), str_value.length()); \
+      field[str_value.length()] = '\0'; \
+    } \
+  } \
+  else \
+  { \
+    ret = OB_ERROR; \
+    TBSYS_LOG(WARN, "get column[%s] with error cell info %s ", \
+        column, NULL == ci ? "nil": print_cellinfo(ci)); \
+  } \
+}
+
+#define ASSIGN_VARCHAR(column, field, max_length) \
+if(OB_SUCCESS == ret) \
+{ \
+  ObCellInfo * cell_info = NULL; \
+  ObString str_value; \
+  cell_info = table_row->get_cell_info(column); \
+  if(NULL != cell_info && cell_info->value_.get_type() == ObVarcharType) \
+  { \
+    cell_info->value_.get_varchar(str_value); \
+    if(str_value.length() >= max_length) \
+    { \
+      ret = OB_SIZE_OVERFLOW; \
+      TBSYS_LOG(WARN, "field max length is not enough:max_length[%ld], str length[%d]", max_length, str_value.length()); \
+    } \
+    else \
+    { \
+      memcpy(field, str_value.ptr(), str_value.length()); \
+      field[str_value.length()] = '\0'; \
+    } \
+  } \
+  else \
+  { \
+    ret = OB_ERROR; \
+    TBSYS_LOG(WARN, "get column[%s] with error cell info %s ", \
+        column, NULL == cell_info ? "nil": print_cellinfo(cell_info)); \
+  } \
+}
+
+#define ASSIGN_INT(column, field, type) \
+if(OB_SUCCESS == ret) \
+{ \
+  ObCellInfo * cell_info = NULL; \
+  int64_t int_value = 0; \
+  cell_info = table_row->get_cell_info(column); \
+  if(NULL != cell_info && cell_info->value_.get_type() == ObIntType) \
+  { \
+    cell_info->value_.get_int(int_value); \
+    field = static_cast<type>(int_value); \
+    TBSYS_LOG(DEBUG, "get cell info:column[%s], value[%ld]", column, int_value); \
+  } \
+  else if (NULL != cell_info && cell_info->value_.get_type() == ObNullType) \
+  { \
+    field = static_cast<type>(0); \
+    TBSYS_LOG(WARN, "get cell value null:column[%s]", column); \
+  } \
+  else \
+  { \
+    ret = OB_ERROR; \
+    TBSYS_LOG(WARN, "get column[%s] with error cell info %s ", \
+        column, NULL == cell_info ? "nil": print_cellinfo(cell_info)); \
+  } \
+}
+
+#define ASSIGN_CREATE_TIME(column, field, type) \
+if(OB_SUCCESS == ret) \
+{ \
+  ObCellInfo * cell_info = NULL; \
+  ObCreateTime value = false; \
+  cell_info = table_row->get_cell_info(column); \
+  if(NULL != cell_info) \
+  { \
+    cell_info->value_.get_createtime(value); \
+    field = static_cast<type>(value); \
+    TBSYS_LOG(DEBUG, "get cell info:column[%s], value[%ld]", column, value); \
+  } \
+  else \
+  { \
+    ret = OB_ERROR; \
+    TBSYS_LOG(WARN, "get cell info:column[%s]", column); \
+  } \
+}
+#define ASSIGN_MODIFY_TIME(column, field, type) \
+if(OB_SUCCESS == ret) \
+{ \
+  ObCellInfo * cell_info = NULL; \
+  ObModifyTime value = false; \
+  cell_info = table_row->get_cell_info(column); \
+  if(NULL != cell_info) \
+  { \
+    cell_info->value_.get_modifytime(value); \
+    field = static_cast<type>(value); \
+    TBSYS_LOG(DEBUG, "get cell info:column[%s], value[%ld]", column, value); \
+  } \
+  else \
+  { \
+    ret = OB_ERROR; \
+    TBSYS_LOG(WARN, "get cell info:column[%s]", column); \
+  } \
+}
+
+
 
 int ObSchemaServiceImpl::drop_table(const ObString& table_name)
 {
@@ -560,58 +656,58 @@ int ObSchemaServiceImpl::drop_table(const ObString& table_name)
 
 
   uint64_t table_id = 0;
-  char sql[OB_DEFAULT_SQL_LENGTH];
-  int64_t sql_len = 0;
-  ObRow row;
-  ObObj cond_value;
 
   ret = get_table_id(table_name, table_id);
   if(OB_SUCCESS != ret)
   {
     TBSYS_LOG(WARN, "get table id fail:table_name[%.*s]", table_name.length(), table_name.ptr());
   }
-  else
-  {
-    cond_value.set_int(table_id);
-  }
 
   // called after get_table_id() to prevent dead lock
   tbsys::CThreadGuard guard(&mutex_);
-  if (OB_SUCCESS == ret)
+
+  ObRowkey rowkey;
+  ObObj table_name_obj;
+  table_name_obj.set_varchar(table_name);
+  rowkey.assign(&table_name_obj, 1);
+
+  if(OB_SUCCESS == ret)
   {
-    if ((sql_len = snprintf(sql, OB_DEFAULT_SQL_LENGTH, 
-            "delete from %s where table_name='%.*s'", 
-            FIRST_TABLET_TABLE_NAME, 
-            table_name.length(), table_name.ptr())) > OB_DEFAULT_SQL_LENGTH - 1)
-    {
-      TBSYS_LOG(WARN, "sql buffer not enough %s", sql);
-      ret = OB_BUF_NOT_ENOUGH;
-    }
-    else if (OB_SUCCESS != (ret = client_proxy_->modify(sql)))
-    {
-      TBSYS_LOG(WARN, "execute sql [%s] ret =%d", sql, ret);
-    }
-    // unfortunately, we donot support delete range now.
-    // scan all rows and delete one by one.
-    else if(OB_SUCCESS != (ret = delete_range(column_table_name, 
-            SC("table_id")("column_name"), SC("table_id"), &cond_value) ))
+    ret = nb_accessor_.delete_row(FIRST_TABLET_TABLE_NAME, rowkey);
+    if(OB_SUCCESS != ret)
     {
       TBSYS_LOG(WARN, "delete rwo from first tablet table fail:ret[%d]", ret);
     }
-    else if(OB_SUCCESS != (ret = delete_range(joininfo_table_name,
-            SC("left_table_id")("left_column_id")("right_table_id")("right_column_id"),
-            SC("left_table_id"), &cond_value) ))
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    ret = nb_accessor_.delete_row(OB_ALL_COLUMN_TABLE_NAME, SC("table_name")("column_id"),
+        ScanConds("table_id", EQ, table_id));
+    if(OB_SUCCESS != ret)
     {
       TBSYS_LOG(WARN, "delete rwo from first tablet table fail:ret[%d]", ret);
     }
-    else
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    ret = nb_accessor_.delete_row(OB_ALL_JOININFO_TABLE_NAME, SC("left_table_id")("left_column_id")("right_table_id")("right_column_id"),
+        ScanConds("left_table_id", EQ, table_id));
+    if(OB_SUCCESS != ret)
     {
-      int err = id_name_map_.erase(table_id);
-      if(hash::HASH_EXIST != err)
-      {
-        ret = hash::HASH_NOT_EXIST == err ? OB_ENTRY_NOT_EXIST : OB_SUCCESS;
-        TBSYS_LOG(WARN, "id name map erase fail:err[%d], table_id[%lu]", err, table_id);
-      }
+      TBSYS_LOG(WARN, "delete rwo from first tablet table fail:ret[%d]", ret);
+    }
+  }
+
+  int err = 0;
+  if(OB_SUCCESS == ret)
+  {
+    err = id_name_map_.erase(table_id);
+    if(hash::HASH_EXIST != err)
+    {
+      ret = hash::HASH_NOT_EXIST == err ? OB_ENTRY_NOT_EXIST : OB_SUCCESS;
+      TBSYS_LOG(WARN, "id name map erase fail:err[%d], table_id[%lu]", err, table_id);
     }
   }
 
@@ -639,6 +735,7 @@ int ObSchemaServiceImpl::init_id_name_map()
     }
   }
 
+  iterator.destroy();
   return ret;
 }
 
@@ -649,8 +746,14 @@ int ObSchemaServiceImpl::init_id_name_map(ObTableIdNameIterator& iterator)
   ObTableIdName * table_id_name = NULL;
   ObString tmp_str;
 
-  while(OB_SUCCESS == ret && OB_SUCCESS == (ret = iterator.get_next(&table_id_name)))
+  while(OB_SUCCESS == ret && OB_SUCCESS == (ret = iterator.next()))
   {
+    ret = iterator.get(&table_id_name);
+    if(OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "get table id name fail:ret[%d]", ret);
+    }
+
     if(OB_SUCCESS == ret)
     {
       tbsys::CThreadGuard buf_guard(&string_buf_write_mutex_);
@@ -724,116 +827,140 @@ int ObSchemaServiceImpl::get_table_name(uint64_t table_id, ObString& table_name)
 int ObSchemaServiceImpl::get_table_id(const ObString& table_name, uint64_t& table_id)
 {
   int ret = OB_SUCCESS;
-  SQLQueryResultReader res;
-  char sql[OB_DEFAULT_SQL_LENGTH] ;
-  int64_t len = 0;
-  ObRow row;
-  const ObObj *value = NULL;
-
   if(!check_inner_stat())
   {
-    ret = OB_NOT_INIT;
+    ret = OB_ERROR;
     TBSYS_LOG(WARN, "check inner stat fail");
   }
-  else if ( (len = snprintf(sql, OB_DEFAULT_SQL_LENGTH,  
-          "select table_id from %s where table_name='%.*s'", 
-          FIRST_TABLET_TABLE_NAME, 
-          table_name.length(), 
-          table_name.ptr())) >= OB_DEFAULT_SQL_LENGTH - 1)
+
+  QueryRes* res = NULL;
+  TableRow* table_row = NULL;
+
+  ObRowkey rowkey;
+  ObObj table_name_obj;
+  table_name_obj.set_varchar(table_name);
+  rowkey.assign(&table_name_obj, 1);
+
+  if(OB_SUCCESS == ret)
   {
-    TBSYS_LOG(WARN, "sql buffer not enough %s", sql);
-    ret = OB_BUF_NOT_ENOUGH;
+    ret = nb_accessor_.get(res, FIRST_TABLET_TABLE_NAME, rowkey, SC("table_id"));
+
+    if(OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "get table schema fail:ret[%d]", ret);
+    }
   }
-  else if (OB_SUCCESS != (ret = res.query_one_row(*client_proxy_, sql, row)))
+
+  if(OB_SUCCESS == ret)
   {
-    TBSYS_LOG(WARN, "execute sql %s ret=%d", sql, ret);
+    table_row = res->get_only_one_row();
+    if(NULL != table_row)
+    {
+      ASSIGN_INT("table_id", table_id, uint64_t);
+    }
+    else
+    {
+      ret = OB_ENTRY_NOT_EXIST;
+      TBSYS_LOG(DEBUG, "get table row fail:table_name[%.*s]", table_name.length(), table_name.ptr());
+    }
   }
-  else if (OB_SUCCESS != (ret = row.raw_get_cell(0, value)) || NULL == value)
-  {
-    TBSYS_LOG(WARN, "row (%s) get cell 0 ret=%d, value=%p", to_cstring(row), ret, value);
-  }
-  else if (value->get_type() != ObIntType 
-      || OB_SUCCESS != (ret = value->get_int(*(int64_t*)&table_id)))
-  {
-    TBSYS_LOG(WARN, "value (%s) is unexpected.", to_cstring(*value));
-  }
+
+  nb_accessor_.release_query_res(res);
+  res = NULL;
 
   return ret;
 }
 
-int ObSchemaServiceImpl::assemble_table(const SQLQueryResultReader& reader, 
-    const ObRow& row, TableSchema& table_schema)
+int ObSchemaServiceImpl::assemble_table(const TableRow* table_row, TableSchema& table_schema)
 {
   int ret = OB_SUCCESS;
 
-  EXTRACT_STRBUF_FIELD(reader, row, "table_name", table_schema.table_name_, OB_MAX_COLUMN_NAME_LENGTH);
-  EXTRACT_INT_FIELD(reader, row, "table_id", table_schema.table_id_, uint64_t);
-  EXTRACT_INT_FIELD(reader, row, "table_type", table_schema.table_type_, TableSchema::TableType);
-  EXTRACT_INT_FIELD(reader, row, "load_type", table_schema.load_type_, TableSchema::LoadType);
-  EXTRACT_INT_FIELD(reader, row, "table_def_type", table_schema.table_def_type_, TableSchema::TableDefType);
-  EXTRACT_INT_FIELD(reader, row, "rowkey_column_num", table_schema.rowkey_column_num_, int32_t);
-  EXTRACT_INT_FIELD(reader, row, "replica_num", table_schema.replica_num_, int32_t);
-  EXTRACT_INT_FIELD(reader, row, "max_used_column_id", table_schema.max_used_column_id_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "create_mem_version", table_schema.create_mem_version_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "tablet_max_size", table_schema.tablet_max_size_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "tablet_block_size", table_schema.tablet_block_size_, int64_t);
+  ASSIGN_VARCHAR("table_name", table_schema.table_name_, OB_MAX_COLUMN_NAME_LENGTH);
+  /* !! OBSOLETE CODE !! no need extract rowkey field when updateserver supports ROWKEY column query.
+  if (table_schema.table_name_[0] == '\0' || OB_SUCCESS != ret)
+  {
+    ret = OB_SUCCESS;
+    ASSIGN_VARCHAR_FROM_ROWKEY("table_name", 0, table_schema.table_name_, OB_MAX_COLUMN_NAME_LENGTH);
+    TBSYS_LOG(WARN, "assemble_table table_name=%s", table_schema.table_name_);
+  }
+  */
+
+  ASSIGN_INT("table_id", table_schema.table_id_, uint64_t);
+  ASSIGN_INT("table_type", table_schema.table_type_, TableSchema::TableType);
+  ASSIGN_INT("load_type", table_schema.load_type_, TableSchema::LoadType);
+  ASSIGN_INT("table_def_type", table_schema.table_def_type_, TableSchema::TableDefType);
+  ASSIGN_INT("rowkey_column_num", table_schema.rowkey_column_num_, int32_t);
+  ASSIGN_INT("replica_num", table_schema.replica_num_, int32_t);
+  ASSIGN_INT("max_used_column_id", table_schema.max_used_column_id_, int64_t);
+  ASSIGN_INT("create_mem_version", table_schema.create_mem_version_, int64_t);
+  ASSIGN_INT("tablet_max_size", table_schema.tablet_max_size_, int64_t);
+  ASSIGN_INT("tablet_block_size", table_schema.tablet_block_size_, int64_t);
   if (OB_SUCCESS == ret && table_schema.tablet_block_size_ <= 0)
   {
     TBSYS_LOG(WARN, "set tablet sstable block size to default value:read[%ld]", table_schema.tablet_block_size_);
     table_schema.tablet_block_size_ = OB_DEFAULT_SSTABLE_BLOCK_SIZE;
   }
-  EXTRACT_INT_FIELD(reader, row, "max_rowkey_length", table_schema.max_rowkey_length_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "merge_write_sstable_version", table_schema.merge_write_sstable_version_, int64_t);
-  EXTRACT_STRBUF_FIELD(reader, row, "compress_func_name", table_schema.compress_func_name_, OB_MAX_COLUMN_NAME_LENGTH);
-  EXTRACT_STRBUF_FIELD(reader, row, "expire_condition", table_schema.expire_condition_, OB_MAX_EXPIRE_CONDITION_LENGTH);
-  EXTRACT_INT_FIELD(reader, row, "is_use_bloomfilter", table_schema.is_use_bloomfilter_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "is_pure_update_table", table_schema.is_pure_update_table_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "is_read_static", table_schema.is_read_static_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "rowkey_split", table_schema.rowkey_split_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "create_time_column_id", table_schema.create_time_column_id_, uint64_t);
-  EXTRACT_INT_FIELD(reader, row, "modify_time_column_id", table_schema.modify_time_column_id_, uint64_t);
-  EXTRACT_INT_FIELD(reader, row, "character_set", table_schema.charset_number_, int32_t);
-  EXTRACT_INT_FIELD(reader, row, "data_table_id", table_schema.data_table_id_, uint64_t);
-  EXTRACT_INT_FIELD(reader, row, "index_status", table_schema.index_status_, TableSchema::IndexStatus);
+  ASSIGN_INT("max_rowkey_length", table_schema.max_rowkey_length_, int64_t);
+  ASSIGN_INT("merge_write_sstable_version", table_schema.merge_write_sstable_version_, int64_t);
+  ASSIGN_VARCHAR("compress_func_name", table_schema.compress_func_name_, OB_MAX_COLUMN_NAME_LENGTH);
+  ASSIGN_VARCHAR("expire_condition", table_schema.expire_condition_, OB_MAX_EXPIRE_CONDITION_LENGTH);
+  ASSIGN_INT("is_use_bloomfilter", table_schema.is_use_bloomfilter_, int64_t);
+  ASSIGN_INT("is_pure_update_table", table_schema.is_pure_update_table_, int64_t);
+  ASSIGN_INT("is_read_static", table_schema.is_read_static_, int64_t);
+  ASSIGN_INT("rowkey_split", table_schema.rowkey_split_, int64_t);
+  ASSIGN_INT("create_time_column_id", table_schema.create_time_column_id_, uint64_t);
+  ASSIGN_INT("modify_time_column_id", table_schema.modify_time_column_id_, uint64_t);
   return ret;
 }
 
-int ObSchemaServiceImpl::assemble_column(const SQLQueryResultReader& reader, 
-    const ObRow& row, ColumnSchema& column)
+int ObSchemaServiceImpl::assemble_column(const TableRow* table_row, ColumnSchema& column)
 {
   int ret = OB_SUCCESS;
 
-  EXTRACT_STRBUF_FIELD(reader, row, "column_name", column.column_name_, OB_MAX_COLUMN_NAME_LENGTH);
-  EXTRACT_INT_FIELD(reader, row, "column_id", column.column_id_, uint64_t);
-  EXTRACT_INT_FIELD(reader, row, "column_group_id", column.column_group_id_, uint64_t);
-  EXTRACT_INT_FIELD(reader, row, "rowkey_id", column.rowkey_id_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "join_table_id", column.join_table_id_, uint64_t);
-  EXTRACT_INT_FIELD(reader, row, "join_column_id", column.join_column_id_, uint64_t);
-  EXTRACT_INT_FIELD(reader, row, "data_type", column.data_type_, ColumnType);
-  EXTRACT_INT_FIELD(reader, row, "data_length", column.data_length_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "data_precision", column.data_precision_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "data_scale", column.data_scale_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "nullable", column.nullable_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "length_in_rowkey", column.length_in_rowkey_, int64_t);
-  EXTRACT_INT_FIELD(reader, row, "order_in_rowkey", column.order_in_rowkey_, int32_t);
-  EXTRACT_CREATE_TIME_FIELD(reader, row, "gm_create", column.gm_create_, ObCreateTime);
-  EXTRACT_MODIFY_TIME_FIELD(reader, row, "gm_modify", column.gm_modify_, ObModifyTime);
+  ASSIGN_VARCHAR("column_name", column.column_name_, OB_MAX_COLUMN_NAME_LENGTH);
+  /* !! OBSOLETE CODE !! no need extract rowkey field when updateserver supports ROWKEY column query.
+  if (column.column_name_[0] == '\0' || OB_SUCCESS != ret)
+  {
+    ret = OB_SUCCESS;
+    // __all_all_column rowkey (table_id,column_name);
+    ASSIGN_VARCHAR_FROM_ROWKEY("column_name", 1, column.column_name_, OB_MAX_COLUMN_NAME_LENGTH);
+    TBSYS_LOG(WARN, "assemble_column column_name_=%s", column.column_name_);
+  }
+  */
+
+  ASSIGN_INT("column_id", column.column_id_, uint64_t);
+  ASSIGN_INT("column_group_id", column.column_group_id_, uint64_t);
+  ASSIGN_INT("rowkey_id", column.rowkey_id_, int64_t);
+  ASSIGN_INT("join_table_id", column.join_table_id_, uint64_t);
+  ASSIGN_INT("join_column_id", column.join_column_id_, uint64_t);
+  ASSIGN_INT("data_type", column.data_type_, ColumnType);
+  ASSIGN_INT("data_length", column.data_length_, int64_t);
+  ASSIGN_INT("data_precision", column.data_precision_, int64_t);
+  ASSIGN_INT("data_scale", column.data_scale_, int64_t);
+  ASSIGN_INT("nullable", column.nullable_, int64_t);
+  ASSIGN_INT("length_in_rowkey", column.length_in_rowkey_, int64_t);
+  ASSIGN_INT("order_in_rowkey", column.order_in_rowkey_, int32_t);
+  ASSIGN_CREATE_TIME("gm_create", column.gm_create_, ObCreateTime);
+  ASSIGN_MODIFY_TIME("gm_modify", column.gm_modify_, ObModifyTime);
 
   return ret;
 }
 
-int ObSchemaServiceImpl::assemble_join_info(const SQLQueryResultReader& reader, 
-    const ObRow& row, JoinInfo& join_info)
+int ObSchemaServiceImpl::assemble_join_info(const TableRow* table_row, JoinInfo& join_info)
 {
   int ret = OB_SUCCESS;
-  EXTRACT_STRBUF_FIELD(reader, row, "left_table_name", join_info.left_table_name_, OB_MAX_TABLE_NAME_LENGTH);
-  EXTRACT_INT_FIELD(reader, row, "left_table_id", join_info.left_table_id_, uint64_t);
-  EXTRACT_STRBUF_FIELD(reader, row, "left_column_name", join_info.left_column_name_, OB_MAX_COLUMN_NAME_LENGTH);
-  EXTRACT_INT_FIELD(reader, row, "left_column_id", join_info.left_column_id_, uint64_t);
-  EXTRACT_STRBUF_FIELD(reader, row, "right_table_name", join_info.right_table_name_, OB_MAX_TABLE_NAME_LENGTH);
-  EXTRACT_INT_FIELD(reader, row, "right_table_id", join_info.right_table_id_, uint64_t);
-  EXTRACT_STRBUF_FIELD(reader, row, "right_column_name", join_info.right_column_name_, OB_MAX_COLUMN_NAME_LENGTH);
-  EXTRACT_INT_FIELD(reader, row, "right_column_id", join_info.right_column_id_, uint64_t);
+  ASSIGN_VARCHAR("left_table_name", join_info.left_table_name_, OB_MAX_TABLE_NAME_LENGTH);
+  ASSIGN_INT("left_table_id", join_info.left_table_id_, uint64_t);
+  //ASSIGN_INT_FROM_ROWKEY("left_table_id", 0, join_info.left_table_id_, uint64_t);
+  ASSIGN_VARCHAR("left_column_name", join_info.left_column_name_, OB_MAX_COLUMN_NAME_LENGTH);
+  ASSIGN_INT("left_column_id", join_info.left_column_id_, uint64_t);
+  //ASSIGN_INT_FROM_ROWKEY("left_column_id", 1, join_info.left_column_id_, uint64_t);
+  ASSIGN_VARCHAR("right_table_name", join_info.right_table_name_, OB_MAX_TABLE_NAME_LENGTH);
+  ASSIGN_INT("right_table_id", join_info.right_table_id_, uint64_t);
+  //ASSIGN_INT_FROM_ROWKEY("right_table_id", 2, join_info.right_table_id_, uint64_t);
+  ASSIGN_VARCHAR("right_column_name", join_info.right_column_name_, OB_MAX_COLUMN_NAME_LENGTH);
+  ASSIGN_INT("right_column_id", join_info.right_column_id_, uint64_t);
+  //ASSIGN_INT_FROM_ROWKEY("right_column_id", 3, join_info.right_column_id_, uint64_t);
 
   return ret;
 }
@@ -876,159 +1003,194 @@ int ObSchemaServiceImpl::get_table_schema(const ObString& table_name, TableSchem
   return ret;
 }
 
-int ObSchemaServiceImpl::fetch_table_info(const ObString& table_name, TableSchema& table_schema)
-{
-  int ret = OB_SUCCESS;
-  SQLQueryResultReader reader;
-  ObRow row;
-  char sql[OB_DEFAULT_SQL_LENGTH];
-  int64_t sql_len = 0;
-
-  if ( (sql_len = snprintf(sql, OB_DEFAULT_SQL_LENGTH,  
-          "select table_name,table_id,"
-          "table_type,load_type,table_def_type,rowkey_column_num,replica_num,"
-          "max_used_column_id,create_mem_version,tablet_max_size,tablet_block_size,"
-          "max_rowkey_length,compress_func_name,expire_condition,is_use_bloomfilter,"
-          "is_read_static,merge_write_sstable_version,is_pure_update_table,rowkey_split,"
-          "create_time_column_id,modify_time_column_id,character_set,data_table_id,"
-          "index_status from %s where table_name = '%.*s'",
-          FIRST_TABLET_TABLE_NAME, table_name.length(), table_name.ptr())) >= OB_DEFAULT_SQL_LENGTH - 1)
-  {
-    TBSYS_LOG(WARN, "sql buffer not enough %s", sql);
-    ret = OB_BUF_NOT_ENOUGH;
-  }
-  else if (OB_SUCCESS != (ret = reader.query_one_row(*client_proxy_, sql, row)))
-  {
-    TBSYS_LOG(WARN, "execute sql %s ret=%d", sql, ret);
-  }
-  else if (OB_SUCCESS != (ret = assemble_table(reader, row, table_schema)))
-  {
-    TBSYS_LOG(WARN, "assemble_table row [%s] ret=%d", to_cstring(row), ret);
-  }
-  return ret;
-}
-
-int ObSchemaServiceImpl::fetch_column_info(const uint64_t table_id, TableSchema& table_schema)
-{
-  int ret = OB_SUCCESS;
-  SQLQueryResultReader reader;
-  ObRow row;
-  char sql[OB_DEFAULT_SQL_LENGTH];
-  int64_t sql_len = 0;
-  ColumnSchema column;
-
-  if ( (sql_len = snprintf(sql, OB_DEFAULT_SQL_LENGTH,  
-          "select column_name,column_id,gm_create,gm_modify,column_group_id,rowkey_id,"
-          "join_table_id,join_column_id,data_type,data_length,data_precision,"
-          "data_scale,nullable,length_in_rowkey,order_in_rowkey from %s where table_id=%lu",
-          OB_ALL_COLUMN_TABLE_NAME, table_id)) >= OB_DEFAULT_SQL_LENGTH - 1)
-  {
-    TBSYS_LOG(WARN, "sql buffer not enough %s", sql);
-    ret = OB_BUF_NOT_ENOUGH;
-  }
-  else if (OB_SUCCESS != (ret = reader.query(*client_proxy_, sql)))
-  {
-    TBSYS_LOG(WARN, "execute sql %s ret=%d", sql, ret);
-  }
-  else
-  {
-    while (OB_SUCCESS == (ret = reader.get_next_row(row)))
-    {
-      if(OB_SUCCESS != (ret = assemble_column(reader, row, column)))
-      {
-        TBSYS_LOG(WARN, "assemble row[%s] fail:ret[%d]", to_cstring(row), ret);
-        break;
-      }
-      else if(OB_SUCCESS != (ret = table_schema.add_column(column)))
-      {
-        TBSYS_LOG(WARN, "add column to table schema fail:ret[%d]", ret);
-        break;
-      }
-    }
-    if (OB_ITER_END == ret)
-    {
-      ret = OB_SUCCESS;
-    }
-  }
-
-  return ret;
-}
-
-int ObSchemaServiceImpl::fetch_join_info(const uint64_t table_id, TableSchema& table_schema)
-{
-  int ret = OB_SUCCESS;
-  SQLQueryResultReader reader;
-  ObRow row;
-  char sql[OB_DEFAULT_SQL_LENGTH];
-  int64_t sql_len = 0;
-  JoinInfo join_info;
-
-  if ( (sql_len = snprintf(sql, OB_DEFAULT_SQL_LENGTH,  
-          "select left_table_id,left_column_id,right_table_id,right_column_id,"
-          "left_table_name,left_column_name,right_table_name,right_column_name "
-          "from %s where left_table_id = %lu",
-          OB_ALL_JOININFO_TABLE_NAME, table_id)) >= OB_DEFAULT_SQL_LENGTH - 1)
-  {
-    TBSYS_LOG(WARN, "sql buffer not enough %s", sql);
-    ret = OB_BUF_NOT_ENOUGH;
-  }
-  else if (OB_SUCCESS != (ret = reader.query(*client_proxy_, sql)))
-  {
-    TBSYS_LOG(WARN, "execute sql %s ret=%d", sql, ret);
-  }
-  else
-  {
-    while (OB_SUCCESS == (ret = reader.get_next_row(row)))
-    {
-      if(OB_SUCCESS != (ret = assemble_join_info(reader, row, join_info)))
-      {
-        TBSYS_LOG(WARN, "assemble row[%s] fail:ret[%d]", to_cstring(row), ret);
-        break;
-      }
-      else if(OB_SUCCESS != (ret = table_schema.add_join_info(join_info)))
-      {
-        TBSYS_LOG(WARN, "add column to table schema fail:ret[%d]", ret);
-        break;
-      }
-    }
-    if (OB_SUCCESS == ret || OB_ITER_END == ret)
-    {
-      ret = OB_SUCCESS;
-    }
-  }
-
-  return ret;
-}
-
 int ObSchemaServiceImpl::fetch_table_schema(const ObString& table_name, TableSchema& table_schema)
 {
   int ret = OB_SUCCESS;
 
   TBSYS_LOG(TRACE, "fetch_table_schema begin: table_name=%.*s,", table_name.length(), table_name.ptr());
 
-
   if(!check_inner_stat())
   {
-    ret = OB_NOT_INIT;
+    ret = OB_ERROR;
     TBSYS_LOG(WARN, "check inner stat fail");
   }
-  else if (OB_SUCCESS != (ret = fetch_table_info(table_name, table_schema)))
+
+  QueryRes* res = NULL;
+
+  ObRowkey rowkey;
+
+  ObObj table_name_obj;
+  table_name_obj.set_varchar(table_name);
+  rowkey.assign(&table_name_obj, 1);
+
+  TableRow* table_row = NULL;
+
+  if(OB_SUCCESS == ret)
   {
-    TBSYS_LOG(WARN, "fetch_table_info %.*s ret=%d", table_name.length(), table_name.ptr(), ret);
+    ret = nb_accessor_.get(res, FIRST_TABLET_TABLE_NAME, rowkey, SC("table_name")("table_id")
+        ("table_type")("load_type")("table_def_type")("rowkey_column_num")("replica_num")
+        ("max_used_column_id")("create_mem_version")("tablet_max_size")("tablet_block_size")
+        ("max_rowkey_length")("compress_func_name")("expire_condition")("is_use_bloomfilter")
+        ("is_read_static")("merge_write_sstable_version")("is_pure_update_table")("rowkey_split")
+        ("create_time_column_id")("modify_time_column_id"));
+    if(OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "get table schema fail:ret[%d]", ret);
+    }
   }
-  else if (OB_SUCCESS != (ret = fetch_column_info(table_schema.table_id_, table_schema)))
+
+  if(OB_SUCCESS == ret)
   {
-    TBSYS_LOG(WARN, "fetch_table_info %lu ret=%d", table_schema.table_id_, ret);
+    table_row = res->get_only_one_row();
+    if(NULL != table_row)
+    {
+      ret = assemble_table(table_row, table_schema);
+      if(OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "assemble table fail:ret[%d]", ret);
+      }
+    }
+    else
+    {
+      ret = OB_ERROR;
+      TBSYS_LOG(WARN, "get table row fail:table_name[%.*s]", table_name.length(), table_name.ptr());
+    }
   }
-  else if (OB_SUCCESS != (ret = fetch_join_info(table_schema.table_id_, table_schema)))
+
+  nb_accessor_.release_query_res(res);
+  res = NULL;
+
+  ObNewRange range;
+  int32_t rowkey_column = 2;
+  ObObj start_rowkey[rowkey_column];
+  ObObj end_rowkey[rowkey_column];
+  start_rowkey[0].set_int(table_schema.table_id_);
+  start_rowkey[1].set_min_value();
+  end_rowkey[0].set_int(table_schema.table_id_);
+  end_rowkey[1].set_max_value();
+  if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(WARN, "fetch_join_info %lu ret=%d", table_schema.table_id_, ret);
+    range.start_key_.assign(start_rowkey, rowkey_column);
+    range.end_key_.assign(end_rowkey, rowkey_column);
   }
-  else if (!table_schema.is_valid())
+  if(OB_SUCCESS == ret)
   {
-    ret = OB_ERR_UNEXPECTED;
-    TBSYS_LOG(ERROR, "check the table schema is invalid:table_name[%s]", table_schema.table_name_);
+    ret = nb_accessor_.scan(res, OB_ALL_COLUMN_TABLE_NAME, range,
+        SC("column_name")("column_id")("gm_create")("gm_modify")("column_group_id")("rowkey_id")
+        ("join_table_id")("join_column_id")("data_type")("data_length")("data_precision")
+        ("data_scale")("nullable")("length_in_rowkey")("order_in_rowkey"),
+        ScanConds("table_id", EQ, table_schema.table_id_));
+    if(OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "scan column table fail:ret[%d]", ret);
+    }
   }
+
+  ColumnSchema column;
+
+  if(OB_SUCCESS == ret)
+  {
+    int i = 0;
+    while(OB_SUCCESS == res->next_row() && OB_SUCCESS == ret)
+    {
+      res->get_row(&table_row);
+      if(NULL != table_row)
+      {
+        i ++;
+        ret = assemble_column(table_row, column);
+        if(OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "assemble column fail:ret[%d]", ret);
+        }
+
+        if(OB_SUCCESS == ret)
+        {
+          ret = table_schema.add_column(column);
+          if(OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "add column to table schema fail:ret[%d]", ret);
+          }
+        }
+      }
+      else
+      {
+        ret = OB_ERROR;
+        TBSYS_LOG(WARN, "get column fail");
+      }
+    }
+  }
+
+  nb_accessor_.release_query_res(res);
+  res = NULL;
+
+  ObNewRange join_range;
+  int32_t rowkey_column_num = 4;
+  ObObj start_obj[rowkey_column_num];
+  ObObj end_obj[rowkey_column_num];
+  start_obj[0].set_int(table_schema.table_id_);
+  end_obj[0].set_int(table_schema.table_id_);
+  for (int32_t i = 1; i < rowkey_column_num; i++)
+  {
+    start_obj[i].set_min_value();
+    end_obj[i].set_max_value();
+  }
+  join_range.start_key_.assign(start_obj, rowkey_column_num);
+  join_range.end_key_.assign(end_obj, rowkey_column_num);
+  if(OB_SUCCESS == ret)
+  {
+    ret = nb_accessor_.scan(res, OB_ALL_JOININFO_TABLE_NAME, join_range,
+        SC("left_table_id")("left_column_id")("right_table_id")("right_column_id")
+        ("left_table_name")("left_column_name")("right_table_name")("right_column_name"),
+        ScanConds("left_table_id", EQ, table_schema.table_id_));
+    if(OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "scan join info table fail:ret[%d]", ret);
+    }
+  }
+
+  JoinInfo join_info;
+
+  if(OB_SUCCESS == ret)
+  {
+    while(OB_SUCCESS == res->next_row() && OB_SUCCESS == ret)
+    {
+      res->get_row(&table_row);
+      if(NULL != table_row)
+      {
+        ret = assemble_join_info(table_row, join_info);
+        if(OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "assemble join info fail:ret[%d]", ret);
+        }
+
+        if(OB_SUCCESS == ret)
+        {
+          ret = table_schema.add_join_info(join_info);
+          if(OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "add join info to table schema fail:ret[%d]", ret);
+          }
+        }
+      }
+      else
+      {
+        ret = OB_ERROR;
+        TBSYS_LOG(WARN, "get join info fail");
+      }
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    if (!table_schema.is_valid())
+    {
+      ret = OB_ERR_UNEXPECTED;
+      TBSYS_LOG(ERROR, "check the table schema is invalid:table_name[%s]", table_schema.table_name_);
+    }
+  }
+
+  nb_accessor_.release_query_res(res);
+  res = NULL;
 
   return ret;
 }
@@ -1036,34 +1198,28 @@ int ObSchemaServiceImpl::fetch_table_schema(const ObString& table_name, TableSch
 int ObSchemaServiceImpl::set_max_used_table_id(const uint64_t max_used_tid)
 {
   int ret = OB_SUCCESS;
-  char  sql[OB_DEFAULT_SQL_LENGTH];
-  int64_t pos = 0;
-  ObObj rowkey_objs[2];
-  rowkey_objs[0].set_int(0); // cluster_id
-  rowkey_objs[1].set_varchar(ObString::make_string("ob_max_used_table_id")); // name
-
   if(!check_inner_stat())
   {
-    ret = OB_NOT_INIT;
+    ret = OB_ERROR;
     TBSYS_LOG(WARN, "check inner stat fail");
   }
-  else if (OB_SUCCESS != (ret = databuff_printf(sql, 
-          OB_DEFAULT_SQL_LENGTH, pos, "update %s set value= %lu where ", 
-          OB_ALL_SYS_STAT_TABLE_NAME, max_used_tid)))
+  else
   {
-    TBSYS_LOG(WARN, "build update stmt [%s] [%lu] ret=%d", 
-        OB_ALL_SYS_STAT_TABLE_NAME, max_used_tid, ret);
-  }
-  else if (OB_SUCCESS != (ret = build_where_condition( 
-          SC("cluster_id")("name"), rowkey_objs , 
-          sql, OB_DEFAULT_SQL_LENGTH, pos)))
-  {
-    TBSYS_LOG(WARN, "build where cond [%s] [%lu] ret=%d", 
-        OB_ALL_SYS_STAT_TABLE_NAME, max_used_tid, ret);
-  }
-  else if (OB_SUCCESS != (ret = client_proxy_->modify(sql)))
-  {
-    TBSYS_LOG(WARN, "execute sql [%s] ret=%d", sql, ret);
+    ObObj rowkey_objs[2];
+    rowkey_objs[0].set_int(0); // cluster_id
+    rowkey_objs[1].set_varchar(ObString::make_string("ob_max_used_table_id")); // name
+    ObRowkey rowkey;
+    rowkey.assign(rowkey_objs, 2);
+    ObString value;
+    char buf[64] = "";
+    snprintf(buf, sizeof(buf), "%lu", max_used_tid);
+    value.assign(buf, static_cast<int32_t>(strlen(buf)));
+    KV new_value("value", value);
+    /// TODO should using add 1 operator
+    if (OB_SUCCESS != (ret = nb_accessor_.update(OB_ALL_SYS_STAT_TABLE_NAME, rowkey, new_value)))
+    {
+      TBSYS_LOG(WARN, "failed to update the row, err=%d", ret);
+    }
   }
   return ret;
 }
@@ -1071,45 +1227,42 @@ int ObSchemaServiceImpl::set_max_used_table_id(const uint64_t max_used_tid)
 int ObSchemaServiceImpl::get_max_used_table_id(uint64_t &max_used_tid)
 {
   int ret = OB_SUCCESS;
-  SQLQueryResultReader reader;
-  ObRow row;
-  char sql[OB_DEFAULT_SQL_LENGTH] ;
-  int64_t pos = 0;
-  const ObObj *value = NULL;
-  ObString str_value;
-
   if(!check_inner_stat())
   {
-    ret = OB_NOT_INIT;
+    ret = OB_ERROR;
     TBSYS_LOG(WARN, "check inner stat fail");
-  }
-  else if ( OB_SUCCESS != (ret = 
-        databuff_printf(sql, OB_DEFAULT_SQL_LENGTH, pos, 
-          "select value from %s where "
-          "cluster_id = 0 and name='ob_max_used_table_id'", 
-          OB_ALL_SYS_STAT_TABLE_NAME)))
-  {
-    TBSYS_LOG(WARN, "build select stmt %s, ret=%d", sql, ret);
-  }
-  else if (OB_SUCCESS != (ret = reader.query_one_row(*client_proxy_, sql, row)))
-  {
-    TBSYS_LOG(WARN, "execute sql %s ret=%d", sql, ret);
-  }
-  else if (OB_SUCCESS != (ret = row.raw_get_cell(0, value)) || NULL == value)
-  {
-    TBSYS_LOG(WARN, "row (%s) get cell 0 ret=%d, value=%p", to_cstring(row), ret, value);
-  }
-  else if (value->get_type() != ObVarcharType 
-      || OB_SUCCESS != (ret = value->get_varchar(str_value)))
-  {
-    TBSYS_LOG(WARN, "value (%s) is unexpected.", to_cstring(*value));
   }
   else
   {
-    snprintf(sql, OB_DEFAULT_SQL_LENGTH, "%.*s", str_value.length(), str_value.ptr());
-    max_used_tid = strtoull(sql, NULL, 10);
+    ObObj rowkey_objs[2];
+    rowkey_objs[0].set_int(0); // cluster_id
+    rowkey_objs[1].set_varchar(ObString::make_string("ob_max_used_table_id")); // name
+    ObRowkey rowkey;
+    rowkey.assign(rowkey_objs, 2);
+    QueryRes* res = NULL;
+    if (OB_SUCCESS != (ret = nb_accessor_.get(res, OB_ALL_SYS_STAT_TABLE_NAME, rowkey, SC("value"))))
+    {
+      TBSYS_LOG(WARN, "failed to access row, err=%d", ret);
+    }
+    else
+    {
+      TableRow* table_row = res->get_only_one_row();
+      if (NULL == table_row)
+      {
+        TBSYS_LOG(WARN, "failed to get row from query results");
+        ret = OB_ERR_UNEXPECTED;
+      }
+      else
+      {
+        char value_buf[TEMP_VALUE_BUFFER_LEN] = "";
+        ASSIGN_VARCHAR("value", value_buf, TEMP_VALUE_BUFFER_LEN);
+        max_used_tid = strtoul(value_buf, NULL, 10);
+        TBSYS_LOG(TRACE, "get max used id succ:id[%lu]", max_used_tid);
+      }
+      nb_accessor_.release_query_res(res);
+      res = NULL;
+    }
   }
-
   return ret;
 }
 
@@ -1163,174 +1316,5 @@ int ObSchemaServiceImpl::alter_table(const AlterTableSchema & schema)
       TBSYS_LOG(INFO, "send alter table to ups succ.");
     }
   }
-  return ret;
-}
-int ObSchemaServiceImpl::generate_new_table_name(char* buf, const uint64_t length, const char* table_name, const uint64_t table_name_length)
-{
-  int ret = OB_SUCCESS;
-  if (table_name_length + sizeof(TMP_PREFIX) >= length
-      || NULL == buf
-      || NULL == table_name)
-  {
-    TBSYS_LOG(WARN, "invalid buf_len. need size=%ld, exist_buf_size=%ld, buf=%p, table_name=%p",
-        table_name_length + 1, length, buf, table_name);
-    ret = OB_INVALID_ARGUMENT;
-  }
-  if (OB_SUCCESS == ret)
-  {
-    snprintf(buf, sizeof(TMP_PREFIX), TMP_PREFIX);
-    snprintf(buf + sizeof(TMP_PREFIX), table_name_length, table_name);
-    buf[sizeof(TMP_PREFIX) + table_name_length] = '\0';
-  }
-  return ret;
-}
-int ObSchemaServiceImpl::modify_table_id(const TableSchema& table_schema, const int64_t new_table_id)
-{
-  int ret = OB_SUCCESS;
-  if(!check_inner_stat())
-  {
-    ret = OB_ERROR;
-    TBSYS_LOG(WARN, "check inner stat fail");
-  }
-  char table_name_buf[OB_MAX_TABLE_NAME_LENGTH];
-  if (OB_SUCCESS == ret)
-  {
-    ret = generate_new_table_name(table_name_buf, OB_MAX_TABLE_NAME_LENGTH, table_schema.table_name_, sizeof(table_schema.table_name_));
-    if (OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(WARN, "fail to genearte new table_name. table_name=%s", table_schema.table_name_);
-    }
-  }
-  common::TableSchema new_table_schema = table_schema;
-  if (OB_SUCCESS == ret)
-  {
-    memcpy(new_table_schema.table_name_, table_name_buf, OB_MAX_TABLE_NAME_LENGTH);
-    new_table_schema.table_id_ = new_table_id;
-    ret = create_table(new_table_schema);
-    if (OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(WARN, "fail to create table. table_name=%s", table_name_buf);
-    }
-  }
-  ObMutator* mutator = NULL;
-  if (OB_SUCCESS == ret)
-  {
-    if(OB_SUCCESS == ret)
-    {
-      mutator = GET_TSI_MULT(ObMutator, TSI_COMMON_MUTATOR_1);
-      if(NULL == mutator)
-      {
-        ret = OB_ALLOCATE_MEMORY_FAILED;
-        TBSYS_LOG(WARN, "get thread specific ObMutator fail");
-      }
-    }
-
-    if(OB_SUCCESS == ret)
-    {
-      ret = mutator->reset();
-      if(OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(WARN, "reset ob mutator fail:ret[%d]", ret);
-      }
-    }
-    int64_t old_table_id = table_schema.table_id_;
-    if (OB_SUCCESS == ret)
-    {
-      ObRowkey rowkey;
-      ObObj rowkey_value;
-      ObString table_name;
-      table_name.assign_ptr(new_table_schema.table_name_,
-          static_cast<int32_t>(strlen(new_table_schema.table_name_)));
-      rowkey_value.set_varchar(table_name);
-      rowkey.assign(&rowkey_value, 1);
-      ObObj value;
-      value.set_int(old_table_id);
-      ret = mutator->update(OB_FIRST_TABLET_ENTRY_TID, rowkey, first_tablet_entry_cid::TID, value);
-      if (OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(WARN, "fail to add update cell to mutator. ret=%d, rowkey=%s", ret, to_cstring(table_name));
-      }
-    }
-    if (OB_SUCCESS == ret)
-    {
-      ObRowkey rowkey;
-      ObObj rowkey_value;
-      ObString table_name;
-      table_name.assign_ptr(const_cast<char*>(table_schema.table_name_), static_cast<int32_t>(strlen(table_schema.table_name_)));
-      rowkey_value.set_varchar(table_name);
-      rowkey.assign(&rowkey_value, 1);
-      ObObj value;
-      value.set_int(new_table_id);
-      ret = mutator->update(OB_FIRST_TABLET_ENTRY_TID, rowkey, first_tablet_entry_cid::TID, value);
-      if (OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(WARN, "fail to add update cell to mutator. ret=%d, rowkey=%s", ret, to_cstring(table_name));
-      }
-    }
-  }
-  if (OB_SUCCESS == ret)
-  {
-    ret = client_proxy_->mutate(*mutator);
-    if (OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(WARN, "apply mutator to update server fail. ret=%d", ret);
-    }
-  }
-  ObString drop_table_name;
-  drop_table_name.assign_ptr(new_table_schema.table_name_, static_cast<int32_t>(strlen(new_table_schema.table_name_)));
-  if (OB_SUCCESS != drop_table(drop_table_name))
-  {
-    TBSYS_LOG(WARN, "fail to drop table. table_name=%s", new_table_schema.table_name_);
-  }
-  return ret;
-}
-
-int ObSchemaServiceImpl::modify_index_table_status(const ObString& index_table_name, const int32_t state)
-{
-  int ret = OB_SUCCESS;
-  ObMutator* mutator = GET_TSI_MULT(ObMutator, TSI_COMMON_MUTATOR_1);
-
-  if(!check_inner_stat())
-  {
-    TBSYS_LOG(WARN, "check inner stat fail");
-    ret = OB_ERROR;
-  }
-  else if(NULL == index_table_name.ptr() || index_table_name.length() <= 0)
-  {
-    TBSYS_LOG(WARN, "invalid index_table_name, ptr=%p, length=%d", 
-              index_table_name.ptr(), index_table_name.length());
-    ret = OB_ERROR;
-  }
-  else if(NULL == mutator)
-  {
-    TBSYS_LOG(WARN, "get thread specific ObMutator fail");
-    ret = OB_ALLOCATE_MEMORY_FAILED;
-  }
-  else if(OB_SUCCESS != (ret = mutator->reset()))
-  {
-    TBSYS_LOG(WARN, "reset ob mutator fail, ret=%d", ret);
-  }
-  else 
-  {
-    ObRowkey rowkey;
-    ObObj rowkey_value;
-    ObObj value;
-    rowkey_value.set_varchar(index_table_name);
-    rowkey.assign(&rowkey_value, 1);
-    value.set_int(state);
-
-    if (OB_SUCCESS != (ret = mutator->update(first_tablet_entry_name, rowkey, 
-        OB_STR("index_status"), value)))
-    {
-      TBSYS_LOG(WARN, "fail to add update cell to mutator, rowkey=%s, ret=%d", 
-                to_cstring(index_table_name), ret);
-    }
-    else if (OB_SUCCESS != (ret = client_proxy_->mutate(*mutator)))
-    {
-      TBSYS_LOG(WARN, "apply mutator to update server fail, rowkey=%s, ret=%d", 
-                to_cstring(index_table_name), ret);
-    }
-  }
-
   return ret;
 }

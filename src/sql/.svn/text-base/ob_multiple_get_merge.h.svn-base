@@ -29,9 +29,11 @@ namespace oceanbase
         int open();
         int close();
         int get_next_row(const ObRow *&row);
-
         enum ObPhyOperatorType get_type() const{return PHY_MULTIPLE_GET_MERGE;};
         int64_t to_string(char *buf, int64_t buf_len) const;
+
+      private:
+        ObRow cur_row_;
     };
   }
 }

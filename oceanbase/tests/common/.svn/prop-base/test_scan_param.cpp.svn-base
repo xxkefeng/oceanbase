@@ -1,7 +1,0 @@
-K 13
-svn:mergeinfo
-V 245
-/branches/0_4_1_release/oceanbase/tests/common/test_scan_param.cpp:12603-13939
-/branches/dev/oceanbase/tests/common/test_scan_param.cpp:5023-7378,7382-7412
-/branches/developing/trans_mvcc_dev/oceanbase/tests/common/test_scan_param.cpp:9273-10180
-END

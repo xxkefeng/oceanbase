@@ -128,19 +128,6 @@ namespace oceanbase
         return checksum;
       }
 
-      /*
-       * get the row checksum of the sstable
-       */
-      inline uint64_t get_sstable_row_checksum() const
-      {
-        int64_t row_checksum = 0;
-        if (is_inited_)
-        {
-          row_checksum = sstable_header_.row_checksum_;
-        }
-        return row_checksum;
-      }
-
       inline int64_t get_sstable_size() const
       {
         int64_t size = 0;
@@ -288,9 +275,8 @@ namespace oceanbase
           const ObSSTableTableSchemaItem* item_array, int64_t item_count);
 
       int trans_to_table_range(common::ObNewRange& range,
-          char* const buf,
-          const int64_t start_key_length,
-          const int64_t end_key_length);
+          const common::ObCompactStoreType store_type, const char* buf,
+          const int64_t start_key_length, const int64_t end_key_length);
 
     private:
       //file

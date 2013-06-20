@@ -168,8 +168,8 @@ sub pdebug($) {
 
 sub do_ssh($$$) {
   my ($ip, $cmd, $prompt) = @_;
-  $cmd = "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$main::settings->{ob_home}/lib "
-    . "&& cd $main::settings->{ob_home} && $cmd 2>&1";
+  $cmd = "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:/usr/local/lib:/usr/local/lib64:$main::settings->{ob_home}/lib "
+    . "&& cd $main::settings->{ob_home} && ulimit -c unlimited && $cmd 2>&1";
 
   my $ssh_cmd = "ssh admin\@$ip '$cmd'";
   pdebug($ssh_cmd);
@@ -185,7 +185,7 @@ sub do_server($$) {
   my ($op, $server) = @_;
   my $cmd = "bin/$server";
   if ($op eq 'start') {
-    $cmd = "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:/home/admin/oceanbase/lib:./lib "
+    $cmd = "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:/usr/local/lib:/usr/local/lib64:/home/admin/oceanbase/lib:./lib "
       . "&& cd /home/admin/oceanbase && $cmd";
     pdebug($cmd);
     system($cmd);
@@ -617,7 +617,7 @@ sub all_op {
     } @cur_clusters;
 
     pinfo("Bootstrap ok, verifing status...");
-    
+
     my $verify_ok = 1;
     for (1..6) {
       sleep 10;
@@ -636,7 +636,7 @@ sub all_op {
         $found_any = ($_->status())[1];
         pdebug("found_any: $found_any");
         if ($found_any) {
-          sleep 3 && $_->stop() && next;
+          sleep 3 && next;
         }
       } @cur_clusters;
       last if not $found_any;

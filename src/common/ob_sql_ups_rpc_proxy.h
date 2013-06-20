@@ -21,7 +21,6 @@
 #include "ob_new_scanner.h"
 #include "ob_get_param.h"
 #include "ob_scan_param.h"
-#include "ob_ups_info.h"
 
 namespace oceanbase
 {
@@ -31,8 +30,9 @@ namespace oceanbase
     {
       public:
         virtual ~ObSqlUpsRpcProxy() {}
-        virtual int sql_ups_get(const ObGetParam & get_param, ObNewScanner & new_scanner, common::ObServerType type, const int64_t timeout) = 0;
-        virtual int sql_ups_scan(const ObScanParam & scan_param, ObNewScanner & new_scanner, common::ObServerType type, const int64_t timeout) = 0;
+
+        virtual int sql_ups_get(const ObGetParam & get_param, ObNewScanner & new_scanner, const int64_t timeout) = 0;
+        virtual int sql_ups_scan(const ObScanParam & scan_param, ObNewScanner & new_scanner, const int64_t timeout) = 0;
     };
   }
 }

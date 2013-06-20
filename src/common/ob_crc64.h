@@ -42,9 +42,6 @@ namespace oceanbase
       * @param   cb      The size of the data block in bytes. 
       */ 
     uint64_t ob_crc64(uint64_t uCRC64, const void *pv, int64_t cb) ;
-
-    //Calculates CRC64 using CPU instructions.
-    uint64_t ob_crc64_sse42(uint64_t uCRC64, const void *pv, int64_t cb) ;
     
     /** 
       * Calculate CRC64 for a memory block. 
@@ -54,9 +51,6 @@ namespace oceanbase
       * @param   cb      Size of the memory block in bytes. 
       */ 
     uint64_t ob_crc64(const void *pv, int64_t cb);
-
-    //Calculates CRC64 using CPU instructions.
-    uint64_t ob_crc64_sse42(const void *pv, int64_t cb);
     
     /**
       * Get the static CRC64 table. This function is only used for testing purpose.

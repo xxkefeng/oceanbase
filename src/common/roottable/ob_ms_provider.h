@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_ms_provider.h
@@ -33,33 +33,28 @@ namespace oceanbase
       public:
         ObMsProvider(){}
         virtual ~ObMsProvider(){}
-        /** 
+        /**
          * find a suitable ms for scan operation
-         * 
+         *
          * @param scan_param [in] scan param to scan
          * @param retry_num [in] for retry_num'th retry of the scan
          * @param ms [in/out] as input it is the ms failed to scan
-         * 
+         *
          * @return OB_SUCCESS or
          *  - OB_ITER_END when there is no more mergeserver
          */
         virtual int get_ms(const ObScanParam &scan_param, const int64_t retry_num, ObServer &ms) = 0;
 
-        /** 
+        /**
          * find a suitable ms for any operation
-         * 
+         *
          * @param retry_num [in] for retry_num'th retry of the operation
          * @param ms [in/out] as input it is the ms failed to do the operation
-         * 
+         *
          * @return OB_SUCCESS or
          *  - OB_ITER_END when there is no more mergeserver
          */
-        virtual int get_ms(const int64_t retry_num, ObServer &ms)
-        {
-          UNUSED(retry_num);
-          UNUSED(ms);
-          return OB_NOT_IMPLEMENT;
-        }
+        virtual int get_ms(ObServer & ms) = 0;
       private:
         // disallow copy
         ObMsProvider(const ObMsProvider &other);

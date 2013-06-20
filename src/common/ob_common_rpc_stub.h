@@ -29,16 +29,11 @@
 #include "ob_scan_param.h"
 #include "ob_scanner.h"
 #include "ob_mutator.h"
-#include "ob_rpc_stub.h"
 namespace oceanbase
 {
-  namespace sql
-  {
-    class ObSQLResultSet;
-  };
   namespace common
   {
-    class ObCommonRpcStub : public ObRpcStub
+    class ObCommonRpcStub
     {
       public:
         ObCommonRpcStub();
@@ -78,15 +73,17 @@ namespace oceanbase
 
         virtual int scan(const ObServer& ms, const common::ObScanParam& scan_param, common::ObScanner& scanner, const int64_t timeout);
         virtual int mutate(const ObServer& update_server, const common::ObMutator& mutator, const int64_t timeout);
-        virtual int execute_sql(const ObServer & ms, const ObString &sql_str, sql::ObSQLResultSet& result, const int64_t timeout) const;
-        virtual int execute_sql(const common::ObServer& ms, const common::ObString sql, const int64_t timeout) const;
+      private:
+        int get_thread_buffer_(ObDataBuffer& data_buff);
 
-      protected:
+      private:
         static const int32_t DEFAULT_VERSION;
         static const int64_t DEFAULT_RPC_TIMEOUT_US;
 
       private:
         ThreadSpecificBuffer thread_buffer_;
+      protected:
+        const ObClientManager* client_mgr_;
     };
   }
 }

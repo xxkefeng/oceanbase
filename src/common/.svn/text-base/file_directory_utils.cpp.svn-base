@@ -136,8 +136,8 @@ namespace oceanbase
 
       bool bRet = true;
       struct stat stats;
-      if (stat (fullpath, &stats) == 0 && S_ISDIR (stats.st_mode))
-        bRet = true;
+      if (lstat (fullpath, &stats) == 0 && S_ISDIR (stats.st_mode))
+        bRet = false;
 
       char dirpath[MAX_PATH + 1];
       strncpy(dirpath, fullpath, iLen);
@@ -253,34 +253,32 @@ namespace oceanbase
       {
         bRet = false;
       }
-      else
-      {
-        while (!readdir_r (dir, &dirent, &result) && result && bRet)
-        {
-          char *name = result->d_name;
-          if (((name[0] == '.') && (name[1] == '\0'))
-              || ((name[0] == '.') && (name[1] == '.') && (name[2] == '\0')))
-          {
-            continue;
-          }
 
-          char path[MAX_PATH];
-          snprintf (path, MAX_PATH, "%s%c%s", directory, '/', name);
-          if (is_directory (path))
+      while (!readdir_r (dir, &dirent, &result) && result && bRet)
+      {
+        char *name = result->d_name;
+        if (((name[0] == '.') && (name[1] == '\0'))
+            || ((name[0] == '.') && (name[1] == '.') && (name[2] == '\0')))
+        {
+          continue;
+        }
+
+        char path[MAX_PATH];
+        snprintf (path, MAX_PATH, "%s%c%s", directory, '/', name);
+        if (is_directory (path))
+        {
+          if (!delete_directory_recursively (path))
           {
-            if (!delete_directory_recursively (path))
-            {
-              bRet = false;
-              break;
-            }
+            bRet = false;
+            break;
           }
-          else
+        }
+        else
+        {
+          if (!delete_file (path))
           {
-            if (!delete_file (path))
-            {
-              bRet = false;
-              break;
-            }
+            bRet = false;
+            break;
           }
         }
       }
@@ -678,37 +676,6 @@ namespace oceanbase
       if (OB_SUCCESS != ret)
       {
         TBSYS_LOG(WARN, "rm_ ret=%d name=%s path=%s", ret, name, path);
-      }
-
-      return ret;
-    }
-
-    bool FileDirectoryUtils::gen_tmpfile_name(char *tmpfile, const int64_t tmpfile_len,
-        const char *dir, const char *prefix)
-    {
-      static __thread uint64_t id = 0;
-      int ret = true;
-
-      if (NULL == tmpfile || tmpfile_len <= 0 || NULL == dir)
-      {
-        TBSYS_LOG(WARN, "invalid argument, tmpfile %p, tmpfile_len %ld, dir %p",
-            tmpfile, tmpfile_len, dir);
-        ret = false;
-      }
-      else
-      {
-        int64_t n = snprintf(tmpfile, tmpfile_len, "%s/%s_%ld_%ld_%ld",
-            dir,
-            NULL == prefix ? "" : prefix,
-            static_cast<int64_t>(syscall(__NR_gettid)),
-            tbsys::CTimeUtil::getTime(),
-            id++);
-        if (n >= tmpfile_len)
-        {
-          TBSYS_LOG(WARN, "tmpfile length (%lu) not enough, expected length is %lu",
-              tmpfile_len, n + 1);
-          ret = false;
-        }
       }
 
       return ret;

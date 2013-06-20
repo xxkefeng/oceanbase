@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tests/common/compress/data
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tests/common/compress/data
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:15.000000Z
+2013-06-20T08:38:53.000000Z
 ac02f22400cc33e3d586cf7aeb72f8ec
 2010-09-02T06:13:46.805700Z
 563

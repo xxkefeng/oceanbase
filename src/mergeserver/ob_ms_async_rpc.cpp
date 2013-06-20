@@ -8,8 +8,6 @@
 #include "common/ob_client_manager.h"
 #include "sql/ob_sql_get_param.h"
 #include "sql/ob_sql_scan_param.h"
-#include "sql/ob_sql_scan_simple_param.h"
-#include "sql/ob_physical_plan.h"
 #include "ob_ms_sql_get_request.h"
 #include "ob_ms_async_rpc.h"
 
@@ -227,7 +225,6 @@ int ObMergerAsyncRpcStub::scan(const int64_t timeout, const ObServer & server,
   return ret;
 }
 
-
 int ObMergerAsyncRpcStub::get(const int64_t timeout, const ObServer & server,
   const ObSqlGetParam & get_param, ObMsSqlRpcEvent & result) const
 {
@@ -261,67 +258,4 @@ int ObMergerAsyncRpcStub::get(const int64_t timeout, const ObServer & server,
   return ret;
 }
 
-int ObMergerAsyncRpcStub::scan(const int64_t timeout, const ObServer & server, 
-  const sql::ObPhysicalPlan &plan, ObMsSqlRpcEvent & result) const
-{
-  int ret = OB_SUCCESS;
-  result.set_req_type(ObMsSqlRpcEvent::SCAN_RPC);
-  if (OB_SUCCESS != (ret = execute_plan(timeout, server, plan, result)))
-  {
-    TBSYS_LOG(WARN, "fail to execute plan for GET request. ret=%d", ret);
-  }
-  return ret;
-}
-
-
-int ObMergerAsyncRpcStub::get(const int64_t timeout, const ObServer & server,
-  const sql::ObPhysicalPlan &plan, ObMsSqlRpcEvent & result) const
-{
-  int ret = OB_SUCCESS;
-  result.set_req_type(ObMsSqlRpcEvent::GET_RPC);
-  if (OB_SUCCESS != (ret = execute_plan(timeout, server, plan, result)))
-  {
-    TBSYS_LOG(WARN, "fail to execute plan for GET request. ret=%d", ret);
-  }
-  return ret;
-}
-
-
-int ObMergerAsyncRpcStub::execute_plan(const int64_t timeout, const ObServer & server,
-  const sql::ObPhysicalPlan &plan, ObMsSqlRpcEvent & result) const
-{
-  int ret = OB_SUCCESS;
-  ObDataBuffer data_buff;
-  ret = get_rpc_buffer(data_buff);
-  if (OB_SUCCESS == ret)
-  {
-    result.start();
-    result.set_timeout_us(timeout);
-    ret = plan.serialize(data_buff.get_data(), data_buff.get_capacity(), 
-      data_buff.get_position());
-    if (OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(WARN, "serialize plan failed:ret[%d]", ret);
-    }
-  }
-
-  if (OB_SUCCESS == ret)
-  {
-    result.set_server(server);
-    ret = rpc_frame_->post_request(
-        server, 
-        OB_PHY_PLAN_EXECUTE, 
-        DEFAULT_VERSION, 
-        timeout, 
-        data_buff,
-        result.get_handler(), 
-        &result);
-    if (ret != OB_SUCCESS)
-    {
-      TBSYS_LOG(WARN, "send OB_PHY_PLAN_EXECUTE request to server failed:client[%lu], event[%lu], "
-        "server[%s], ret[%d]", result.get_client_id(), result.get_event_id(), to_cstring(server), ret);
-    }
-  }
-  return ret;
-}
 

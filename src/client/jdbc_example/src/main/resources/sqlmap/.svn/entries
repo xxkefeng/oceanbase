@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/client/jdbc_example/src/main/resources/sqlmap
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/resources/sqlmap
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 fff5951676700e3eed1f8d01ca835f20
 2013-03-07T03:36:28.441410Z
 12406
@@ -66,7 +66,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 d89020707fc06be3dc03cd858f45158a
 2013-03-07T03:36:28.441410Z
 12406

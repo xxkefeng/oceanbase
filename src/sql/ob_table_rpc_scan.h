@@ -38,22 +38,14 @@ namespace oceanbase
       public:
         ObTableRpcScan();
         virtual ~ObTableRpcScan();
-        void set_phy_plan(ObPhysicalPlan *the_plan);
+
         virtual int open();
         virtual int close();
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual ObPhyOperatorType get_type() const;
 
-        int init(ObSqlContext *context);
-
-        /**
-         * 添加扫描策略建议
-         *
-         * 用于控制Scan扫描时的参数，如最大并发数、最大内存使用量等，
-         * 参考struct ObRpcScanHint
-         */
-        void set_hint(const common::ObRpcScanHint &hint);
+        int init(ObSqlContext *context, const common::ObRpcScanHint &hint);
 
         /**
          * 添加一个需输出的column
@@ -81,7 +73,7 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        int add_filter(const ObSqlExpression& expr);
+        int add_filter(ObSqlExpression *expr);
         int add_group_column(const uint64_t tid, const uint64_t cid);
         int add_aggr_column(const ObSqlExpression& expr);
 
@@ -101,23 +93,6 @@ namespace oceanbase
           rpc_scan_.set_rowkey_cell_count(rowkey_cell_count);
         }
 
-        inline void set_is_skip_empty_row(bool is_skip_empty_row)
-        {
-          rpc_scan_.set_is_skip_empty_row(is_skip_empty_row);
-          is_skip_empty_row_ = is_skip_empty_row;
-        }
-
-        inline void set_read_method(int32_t read_method)
-        {
-          rpc_scan_.set_read_method(read_method);
-          read_method_ = read_method;
-        }
-
-        inline int create_plan()
-        {
-          return rpc_scan_.create_plan();
-        }
-
         NEED_SERIALIZE_AND_DESERIALIZE;
 
       private:
@@ -128,8 +103,8 @@ namespace oceanbase
         // data members
         ObRpcScan rpc_scan_;
         ObFilter select_get_filter_;
-        ObScalarAggregate scalar_agg_;
-        ObMergeGroupBy group_;
+        ObScalarAggregate *scalar_agg_; // very big
+        ObMergeGroupBy *group_; // very big
         ObSort group_columns_sort_;
         ObLimit limit_;
         ObEmptyRowFilter empty_row_filter_;

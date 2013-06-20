@@ -67,7 +67,7 @@ namespace oceanbase
     public:
       // param  @rpc_buff rpc send and response buff
       //        @rpc_frame client manger for network interaction
-      int init(common::ObGeneralRpcStub * rpc_stub, ObSqlRpcStub * sql_rpc_stub);
+      int init(common::ObGeneralRpcStub * rpc_stub, ObSqlRpcStub * sql_rpc_stub, common::ObMergerSchemaManager * schema);
 
       // set retry times and timeout
       int set_rpc_param(const int64_t retry_times, const int64_t timeout);
@@ -77,11 +77,26 @@ namespace oceanbase
 
       static const int64_t LOCAL_NEWEST = 0;    // local cation newest version
 
+      // get the scheam data according to the timetamp, in some cases depend on the timestamp value
+      // if timestamp is LOCAL_NEWEST, it meanse only get the local latest version
+      // otherwise, it means that at first find in the local versions, if not exist then need rpc
+      // waring: after using manager, u must release this schema version for washout
+      // param  @timeout every rpc call timeout
+      //        @manager the real schema pointer returned
+      int get_schema(const uint64_t table_id, const int64_t timestamp, const common::ObSchemaManagerV2 ** manager);
+
+      // fetch new schema if find new version
+      int fetch_schema_version(int64_t & timestamp);
+
       // fetch update server list
-      virtual int fetch_update_server_list(int32_t & count);
+      int fetch_update_server_list(int32_t & count);
+
+      // waring: release schema after using for dec the manager reference count
+      //        @manager the real schema pointer returned
+      int release_schema(const common::ObSchemaManagerV2 * manager);
 
       // get master update server
-      virtual int get_update_server(const bool renew, common::ObServer & server, bool need_master = true);
+      int get_update_server(const bool renew, common::ObServer & server, bool need_master = true);
 
       // some get func as temperary interface
       const common::ObGeneralRpcStub * get_rpc_stub() const
@@ -122,6 +137,11 @@ namespace oceanbase
                           int64_t& it_size);
 
 
+      // lock and check whether need fetch new schema
+      // param  @timestamp new schema timestamp
+      //        @manager the new schema pointer
+      int fetch_new_schema(const int64_t timestamp, const common::ObSchemaManagerV2 ** manager);
+
       // get frozen time from update server
       // param  @frozen_version frozen version to query
       //        @frozen_time returned forzen time
@@ -159,7 +179,6 @@ namespace oceanbase
       //        @scanner return result
       virtual int sql_ups_get(const common::ObGetParam & get_param,
                           common::ObNewScanner & scanner,
-                          common::ObServerType type,
                           const int64_t time_out = 0);
 
       // scan data from update server
@@ -167,7 +186,6 @@ namespace oceanbase
       //        @scanner return result
       virtual int sql_ups_scan(const common::ObScanParam & scan_param,
                            common::ObNewScanner & scanner,
-                           common::ObServerType type,
                            const int64_t time_out = 0);
 
     private:
@@ -251,6 +269,11 @@ namespace oceanbase
       // param  @range_param range parameter
       static bool check_range_param(const common::ObNewRange & range_param);
 
+      // get new schema through root server rpc call
+      // param  @timestamp old schema timestamp
+      //        @manager the new schema pointer
+      int get_new_schema(const int64_t timestamp, const common::ObSchemaManagerV2 ** manager);
+
       /// max len
       static const int64_t MAX_RANGE_LEN = 128;
       static const int64_t MAX_ROWKEY_LEN = 8;
@@ -270,6 +293,9 @@ namespace oceanbase
       tbsys::CThreadMutex update_lock_;             // lock for fetch update server info
       const common::ObGeneralRpcStub * rpc_stub_;            // rpc stub bottom module
       const ObSqlRpcStub * sql_rpc_stub_;
+      common::ObMergerSchemaManager * schema_manager_;      // merge server schema cache
+      int64_t fetch_schema_timestamp_;              // last fetch schema from root timestamp
+      tbsys::CThreadMutex schema_lock_;             // lock for update schema manager
 
       // update server list
       tbsys::CRWLock ups_list_lock_;                // lock for update server list

@@ -2,7 +2,6 @@
 #define OCEANBASE_TESTS_ROOTSERVER_ROOT_SERVER_TESTER_H_
 #include "rootserver/ob_root_server2.h"
 #include "rootserver/ob_root_worker.h"
-#include "mock_root_rpc_stub.h"
 namespace oceanbase
 {
   using namespace common;
@@ -119,7 +118,6 @@ namespace oceanbase
         }
         int start_new_send_times;
         int unload_old_table_times;
-        MockObRootRpcStub rpc_stub_;
         ObRootServer2* get_root_server(){return &root_server_;}
         //ObRootServerConfig &get_config(){return config_;}
     };
@@ -131,28 +129,6 @@ namespace oceanbase
           :ObRootServer2(config)
         {
           has_been_called_ = false;
-        }
-        int request_cs_report_tablet()
-        {
-          TBSYS_LOG(INFO, "request cs report tablet.");
-          return OB_SUCCESS;
-        }
-        int bypass_meta_data_finished(const OperationType type, ObRootTable2 *root_table,
-            ObTabletInfoManager *tablet_manager, common::ObSchemaManagerV2 *schema_mgr)
-        {
-          TBSYS_LOG(INFO, "bypass meta data finished.");
-          UNUSED(type);
-          UNUSED(root_table);
-          UNUSED(tablet_manager);
-          UNUSED(schema_mgr);
-          root_table->dump();
-          return OB_SUCCESS;
-        }
-        int request_cs_load_bypass_tablet(common::ObBypassTaskInfo table_name_id)
-        {
-          TBSYS_LOG(INFO, "request cs load bypass tablet.");
-          UNUSED(table_name_id);
-          return OB_SUCCESS;
         }
 
         int migrate_over(const ObNewRange& range, const common::ObServer& src_server, const common::ObServer& dest_server, const bool keep_src, const int64_t tablet_version)

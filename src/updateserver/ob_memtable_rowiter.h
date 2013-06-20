@@ -2,9 +2,9 @@
  //
  // ob_memtable_rowiter.h updateserver / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2011-03-23 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2011-03-23 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -64,7 +64,7 @@ namespace oceanbase
           ObCellInfoNode *ret = NULL;
           if (nbyte >= (int32_t)sizeof(ObCellInfoNode))
           {
-            if (NULL != (ret = allocator_.allocate()))
+            if (NULL != (ret = allocator_.alloc()))
             {
               clear_list_.push_back(ret);
             }
@@ -76,7 +76,7 @@ namespace oceanbase
           ClearList::iterator iter;
           for (iter = clear_list_.begin(); iter != clear_list_.end(); iter++)
           {
-            allocator_.deallocate(*iter);
+            allocator_.free(*iter);
           }
           clear_list_.clear();
         };
@@ -129,4 +129,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_UPDATESERVER_MEMTABLE_ROWITER_H_
-

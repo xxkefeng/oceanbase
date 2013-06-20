@@ -388,7 +388,7 @@ void ObBalanceTest::SetUp()
   worker_.rs_config_.tablet_replicas_num = 2;
   worker_.rs_config_.tablet_migrate_disabling_period = 1000;
 
-  server_->switch_schema_manager(schema_manager);
+  server_->switch_schema_manager(*schema_manager);
   server_->start_threads();
   sleep(1);
   worker_.get_role_manager()->set_role(ObRoleMgr::STANDALONE); // for testing

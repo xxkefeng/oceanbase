@@ -127,12 +127,6 @@ int32_t ObRootBalancer::nb_get_table_count()
     const ObTableSchema* it = NULL;
     for (it = schema_manager->table_begin(); schema_manager->table_end() != it; it++)
     {
-      //skip unavailable index table
-      if (ObTableSchema::INDEX == it->get_table_type()
-          && ObTableSchema::UNAVAILABLE == it->get_index_status())
-      {
-        continue;
-      }
       count ++;
     }
   }
@@ -181,12 +175,6 @@ uint64_t ObRootBalancer::nb_get_next_table_id(int32_t table_count, int32_t seq/*
       const ObTableSchema* it = NULL;
       for (it = schema_manager->table_begin(); schema_manager->table_end() != it; ++it)
       {
-        //skip unavailable index table
-        if (ObTableSchema::INDEX == it->get_table_type()
-            && ObTableSchema::UNAVAILABLE == it->get_index_status())
-        {
-          continue;
-        }
         if (seq % table_count == idx)
         {
           ret = it->get_table_id();
@@ -470,6 +458,7 @@ int ObRootBalancer::nb_del_copy(ObRootTable2::const_iterator it, const ObTabletI
     ObTabletReportInfo to_delete;
     to_delete.tablet_info_ = *tablet;
     to_delete.tablet_location_.tablet_version_ = it->tablet_version_[delete_idx];
+    // set port to server index
     to_delete.tablet_location_.chunkserver_.set_port(it->server_info_indexes_[delete_idx]);
     if (OB_SUCCESS != (ret = delete_list_.add_tablet(to_delete)))
     {

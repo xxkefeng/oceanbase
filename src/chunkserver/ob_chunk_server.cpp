@@ -32,7 +32,7 @@ namespace oceanbase
                                  ObConfigManager &config_mgr)
       : config_(config), config_mgr_(config_mgr),
         file_service_(), file_client_(), file_client_rpc_buffer_(),
-        rpc_proxy_(NULL), response_buffer_(RESPONSE_PACKET_BUFFER_SIZE),
+        response_buffer_(RESPONSE_PACKET_BUFFER_SIZE),
         rpc_buffer_(RPC_BUFFER_SIZE)
     {
     }
@@ -110,8 +110,8 @@ namespace oceanbase
       tablet_manager.get_chunk_merge().set_config_param();
       set_default_queue_size((int)config.task_queue_size);
       set_min_left_time(config.task_left_time);
-      tablet_manager.get_block_cache().enlarg_cache_size(config.block_cache_size);
-      tablet_manager.get_block_index_cache().enlarg_cache_size(config.block_index_cache_size);
+      tablet_manager.get_serving_block_cache().enlarg_cache_size(config.block_cache_size);
+      tablet_manager.get_serving_block_index_cache().enlarg_cache_size(config.block_index_cache_size);
       tablet_manager.get_fileinfo_cache().enlarg_cache_num(config.file_info_cache_num);
       tablet_manager.get_join_cache().enlarg_cache_size(config.block_index_cache_size);
       if (NULL != tablet_manager.get_row_cache())
@@ -150,12 +150,7 @@ namespace oceanbase
       return rpc_proxy_;
     }
 
-    void ObChunkServer::set_rpc_proxy(ObMergerRpcProxy *rpc_proxy)
-    {
-      rpc_proxy_ = rpc_proxy;
-    }
-
-    ObMergerSchemaManager*& ObChunkServer::get_schema_manager()
+    ObMergerSchemaManager* ObChunkServer::get_schema_manager()
     {
       return schema_mgr_;
     }
@@ -250,7 +245,7 @@ namespace oceanbase
         }
       }
 
-      if (OB_SUCCESS == ret && NULL == rpc_proxy_)
+      if (OB_SUCCESS == ret)
       {
         rpc_proxy_ = new(std::nothrow)ObMergerRpcProxy(
           retry_times, timeout, get_root_server());
@@ -262,7 +257,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        ret = rpc_proxy_->init(&rpc_stub_, &sql_rpc_stub_);
+        ret = rpc_proxy_->init(&rpc_stub_, &sql_rpc_stub_, schema_mgr_);
       }
 
       // set update server black list param
@@ -278,6 +273,12 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
+        ObServer update_server;
+        ret = rpc_proxy_->get_update_server(true, update_server);
+      }
+
+      if (OB_SUCCESS == ret)
+      {
         int32_t count = 0;
         int64_t retry_times = 0;
         while (!stoped_)
@@ -288,7 +289,7 @@ namespace oceanbase
             TBSYS_LOG(INFO, "fetch update server list succ:count=%d", count);
             break;
           }
-          if (OB_RESPONSE_TIME_OUT != ret && OB_ENTRY_NOT_EXIST != ret)
+          if (OB_RESPONSE_TIME_OUT != ret)
           {
             break;
           }

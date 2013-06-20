@@ -23,6 +23,7 @@
 #include "tbsys.h"
 #include "tblog.h"
 #include "ob_mod_define.h"
+#include "utility.h"
 using namespace oceanbase::common;
 namespace
 {
@@ -201,7 +202,7 @@ void oceanbase::common::ObBaseMemPool::print_mod_memory_usage(bool print_to_std)
       }
     }
   }
-  malloc_stats();
+  //malloc_stats();
 }
 
 void oceanbase::common::ObBaseMemPool::mod_usage_update(const int64_t delta, const int32_t mod_id)
@@ -290,8 +291,11 @@ void *oceanbase::common::ObBaseMemPool::malloc(const int64_t nbyte, int32_t mod_
   void *ret = NULL;
   if (mem_size_handled_ > mem_size_limit_)
   {
-    TBSYS_LOG(ERROR, "memory over limited handled=%ld limit=%ld",
-              mem_size_handled_, mem_size_limit_);
+    if (REACH_TIME_INTERVAL(60L * 1000000L))
+    {
+      TBSYS_LOG(ERROR, "memory over limited handled=%ld limit=%ld",
+                mem_size_handled_, mem_size_limit_);
+    }
     errno = ENOMEM;
   }
   else

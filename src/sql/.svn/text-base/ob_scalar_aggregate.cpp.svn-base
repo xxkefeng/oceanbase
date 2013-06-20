@@ -47,11 +47,6 @@ int ObScalarAggregate::set_child(int32_t child_idx, ObPhyOperator &child_operato
   {
     TBSYS_LOG(WARN, "failed to set child, err=%d", ret);
   }
-  if (OB_SUCCESS == ret)
-  {
-    // be careful! child_operator is a child of both merge_groupby_ and this, but it only regard THIS as parent
-    child_operator.set_parent(this);  
-  }
   return ret;
 }
 

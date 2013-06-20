@@ -233,7 +233,7 @@ def fault_test_install():
     ObCfg.iof_disk_fault_prob = 1.0
     ObCfg.iof_net_timeout_us = 10000000
     ObCfg.iof_disk_timeout_us = 10000000
-    ObCfg.server_ld_preload += ' $dir/tools$tool_ver/iof'
+    ObCfg.server_ld_preload += ' $dir/tools/iof'
     ObCfg.server_start_environ += ' iof_ctrl=log/iof.$ip:$port'
     ObCfg.local_tools += ',iof'
     role_vars.update(dict_filter_out_special_attrs(fault_test_role_attrs(role_vars)))

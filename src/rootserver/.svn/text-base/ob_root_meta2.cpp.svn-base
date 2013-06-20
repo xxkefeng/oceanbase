@@ -25,7 +25,6 @@ namespace oceanbase
       for (int i = 0; i < OB_SAFE_COPY_COUNT; ++i)
       {
         server_info_indexes_[i] = OB_INVALID_INDEX;
-        tablet_status_[i] = common::TABLET_AVAILABLE;
         tablet_version_[i] = 0;
       }
     }
@@ -33,8 +32,8 @@ namespace oceanbase
     {
       for (int32_t i = 0; i < common::OB_SAFE_COPY_COUNT; i++)
       {
-        TBSYS_LOG(INFO, "server_info_index = %d, tablet_version = %ld, tablet_status_=%d",
-            server_info_indexes_[i], tablet_version_[i], tablet_status_[i]);
+        TBSYS_LOG(INFO, "server_info_index = %d, tablet_version = %ld",
+            server_info_indexes_[i], tablet_version_[i]);
       }
       TBSYS_LOG(INFO, "last_dead_server_time = %ld last_migrate_time = %ld",
           last_dead_server_time_, last_migrate_time_);
@@ -48,8 +47,8 @@ namespace oceanbase
         if (server_index == server_info_indexes_[i])
         {
           tablet_num ++;
-          TBSYS_LOG(INFO, "tablet_number = %ld, server_info_index = %d, tablet_version = %ld, tablet_status_=%d",
-              tablet_num, server_info_indexes_[i], tablet_version_[i], tablet_status_[i]);
+          TBSYS_LOG(INFO, "tablet_number = %ld, server_info_index = %d, tablet_version = %ld",
+              tablet_num, server_info_indexes_[i], tablet_version_[i]);
         }
       }
     }
@@ -61,8 +60,8 @@ namespace oceanbase
       }
       for (int32_t i = 0; i < common::OB_SAFE_COPY_COUNT; i++)
       {
-        fprintf(stream, "server_info_index %d tablet_version %ld tablet_status_=%d",
-            server_info_indexes_[i], tablet_version_[i], tablet_status_[i]);
+        fprintf(stream, "server_info_index %d tablet_version %ld ",
+            server_info_indexes_[i], tablet_version_[i]);
       }
       fprintf(stream, "last_dead_server_time %ld\n", last_dead_server_time_);
       return;
@@ -75,8 +74,8 @@ namespace oceanbase
       }
       for (int32_t i = 0; i < common::OB_SAFE_COPY_COUNT; i++)
       {
-        fscanf(stream, "server_info_index %d tablet_version %ld tablet_status_=%d",
-            &server_info_indexes_[i], &tablet_version_[i], &tablet_status_[i]);
+        fscanf(stream, "server_info_index %d tablet_version %ld ",
+            &server_info_indexes_[i], &tablet_version_[i]);
       }
       fscanf(stream, "last_dead_server_time %ld\n", &last_dead_server_time_);
       return;
@@ -103,11 +102,7 @@ namespace oceanbase
         }
         if (OB_SUCCESS == ret)
         {
-          ObTabletStatusVersion sv;
-          sv.union_value_ = 0;
-          sv.tablet_status_ = static_cast<int8_t>(tablet_status_[i]);
-          sv.tablet_version_ = static_cast<int32_t>(tablet_version_[i]);
-          ret = serialization::encode_vi64(buf, buf_len, tmp_pos, sv.union_value_);
+          ret = serialization::encode_vi64(buf, buf_len, tmp_pos, tablet_version_[i]);
         }
       }
 
@@ -137,13 +132,7 @@ namespace oceanbase
         }
         if (OB_SUCCESS == ret)
         {
-          ObTabletStatusVersion sv;
-          ret = serialization::decode_vi64(buf, data_len, tmp_pos, &(sv.union_value_));
-          if (OB_SUCCESS == ret)
-          {
-            tablet_status_[i] = sv.tablet_status_;
-            tablet_version_[i] = sv.tablet_version_;
-          }
+          ret = serialization::decode_vi64(buf, data_len, tmp_pos, &(tablet_version_[i]));
         }
       }
       if (OB_SUCCESS == ret)
@@ -158,13 +147,8 @@ namespace oceanbase
       len += serialization::encoded_length_vi64(last_dead_server_time_);
       for (int32_t i = 0; i < OB_SAFE_COPY_COUNT; i++)
       {
-        ObTabletStatusVersion sv;
-        sv.union_value_ = 0;
-        sv.tablet_status_ = static_cast<int8_t>(tablet_status_[i]);
-        sv.tablet_version_ = static_cast<int32_t>(tablet_version_[i]);
-
         len += serialization::encoded_length_vi32(server_info_indexes_[i]);
-        len += serialization::encoded_length_vi64(sv.union_value_);
+        len += serialization::encoded_length_vi64(tablet_version_[i]);
       }
       return len;
     }

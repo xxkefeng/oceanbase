@@ -42,12 +42,10 @@ bin_PROGRAMS = test_fileinfo_cache \
 			   test_disk_manager \
 			   test_tablet_manager \
 			   test_mv_tablet_image \
+			   test_block_cache_reader_loader \
 			   test_query_agent \
 			   test_ups_blacklist \
-			   test_tablet_merge_filter \
-			   test_index_builder \
-			   test_tablet_log_worker \
-			   test_tablet_sstable 
+			   test_tablet_merge_filter
 
 test_fileinfo_cache_SOURCES = test_fileinfocache.cpp
 test_root_server_rpc_SOURCES = test_root_server_rpc.cpp
@@ -55,12 +53,10 @@ test_tablet_manager_get_SOURCES = test_tablet_manager_get.cpp
 test_disk_manager_SOURCES = test_disk_manager.cpp
 test_tablet_manager_SOURCES = test_tablet_manager.cpp test_helper.cpp
 test_mv_tablet_image_SOURCES = test_mv_tablet_image.cpp test_helper.cpp
+test_block_cache_reader_loader_SOURCES = test_block_cache_reader_loader.cpp
 test_query_agent_SOURCES = test_query_agent.cpp
 test_ups_blacklist_SOURCES = test_ups_blacklist.cpp
 test_tablet_merge_filter_SOURCES = test_tablet_merge_filter.cpp
-test_index_builder_SOURCES = test_index_builder.cpp test_helper.cpp
-test_tablet_log_worker_SOURCES = test_tablet_log_worker.cpp test_helper.cpp
-test_tablet_sstable_SOURCES = test_tablet_sstable.cpp test_helper.cpp
 EXTRA_DIST = \
 			 mock_root_server.h \
 			 test_helper.h

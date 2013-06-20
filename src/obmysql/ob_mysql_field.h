@@ -45,11 +45,6 @@ namespace oceanbase
         {
           return serialize_pro41(buf, len, pos);
         }
-
-        void set_charset_number(uint16_t number)
-        {
-          charsetnr_ = number;
-        }
       private:
         /**
          * 将该行数据序列化成MySQL认识的格式（协议版本4.1）
@@ -67,7 +62,7 @@ namespace oceanbase
         uint32_t length_;            /*Width of column (create length) */
         uint16_t flags_;            /* Div flags */
         uint8_t decimals_;         /* Number of decimals in field */
-        //uint16_t charsetnr_;        /* Character set */
+        uint16_t charsetnr_;        /* Character set */
         // enum enum_field_types type_; /* Type of field. See mysql_com.h for types */
         // void *extension;
 

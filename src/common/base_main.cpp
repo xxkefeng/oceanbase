@@ -34,8 +34,7 @@ namespace oceanbase
     BaseMain::BaseMain(const bool daemon)
       : cmd_cluster_id_(0), cmd_rs_port_(0), cmd_master_rs_port_(0), cmd_port_(0),
         cmd_inner_port_(0), cmd_obmysql_port_(0), pid_dir_(DEFAULT_PID_DIR),
-        log_dir_(DEFAULT_LOG_DIR), server_name_(NULL), use_deamon_(daemon),
-        cmd_debug_(false)
+        log_dir_(DEFAULT_LOG_DIR), server_name_(NULL), use_daemon_(daemon)
     {
       memset(config_, 0, sizeof (config_));
       memset(cmd_rs_ip_, 0, sizeof (cmd_rs_ip_));
@@ -132,7 +131,7 @@ namespace oceanbase
     void BaseMain::parse_cmd_line(const int argc,  char *const argv[])
     {
       int opt = 0;
-      const char* opt_string = "r:R:p:i:C:c:n:m:o:z:dD:P:hNV";
+      const char* opt_string = "r:R:p:i:C:c:n:m:o:z:D:P:hNV";
       struct option longopts[] =
         {
           {"rootserver", 1, NULL, 'r'},
@@ -146,7 +145,6 @@ namespace oceanbase
           {"inner_port", 1, NULL, 'm'},
           {"master_rootserver", 1, NULL, 'R'},
           {"mysql_port", 1, NULL, 'z'},
-          {"debug", 0, NULL, 'd'},
           {"help", 0, NULL, 'h'},
           {"version", 0, NULL, 'V'},
           {"no_deamon", 0, NULL, 'N'},
@@ -192,9 +190,6 @@ namespace oceanbase
           case 'z':
             cmd_obmysql_port_ = static_cast<int32_t>(strtol(optarg, NULL, 0));
             break;
-          case 'd':
-            cmd_debug_ = true;
-            break;
           case 'V':
             print_version();
             exit(1);
@@ -202,7 +197,7 @@ namespace oceanbase
             print_usage(basename(argv[0]));
             exit(1);
           case 'N':
-            use_deamon_ = false;
+            use_daemon_ = false;
             break;
           default:
             break;
@@ -254,7 +249,6 @@ namespace oceanbase
       {
         fprintf(stderr, "rootserver\n"
                 "\t-c|--config BIN_CONFIG_FILE\n"
-                "\t-d|--debug"
                 "\t-h|--help\n"
                 "\t-i|--interface DEV\n"
                 "\t-o|--extra_config name=value[,...]\n"
@@ -268,7 +262,6 @@ namespace oceanbase
       {
         fprintf(stderr, "chunkserver\n"
                 "\t-c|--config BIN_CONFIG_FILE\n"
-                "\t-d|--debug"
                 "\t-h|--help\n"
                 "\t-i|--interface DEV\n"
                 "\t-n|--appname APPLICATION_NAME\n"
@@ -283,7 +276,6 @@ namespace oceanbase
       {
         fprintf(stderr, "updateserver\n"
                 "\t-c|--config BIN_CONFIG_FILE\n"
-                "\t-d|--debug"
                 "\t-h|--help\n"
                 "\t-i|--interface DEV\n"
                 "\t-m|--inner_port PORT\n"
@@ -298,7 +290,6 @@ namespace oceanbase
       {
         fprintf(stderr, "mergeserver\n"
                 "\t-c|--config BIN_CONFIG_FILE\n"
-                "\t-d|--debug"
                 "\t-h|--help\n"
                 "\t-i|--interface DEV\n"
                 "\t-o|--extra_config name=value[,...]\n"
@@ -356,7 +347,9 @@ namespace oceanbase
                    "%s/%s.log", log_dir_, server_name_);
 
           /* @TODO */
-          TBSYS_LOGGER.setLogLevel(cmd_debug_ ? "debug" : "info");
+          /* const char * sz_log_level = */
+          /*   TBSYS_CONFIG.getString(section_name, LOG_LEVEL, "info"); */
+          TBSYS_LOGGER.setLogLevel("info");
           easy_log_level = EASY_LOG_INFO;
           /* const char * trace_log_level = */
           /*   TBSYS_CONFIG.getString(section_name, TRACE_LOG_LEVEL, "debug"); */
@@ -383,12 +376,16 @@ namespace oceanbase
       {
         bool start_ok = true;
 
-        if (use_deamon_)
+        if (use_daemon_)
         {
           start_ok = (tbsys::CProcess::startDaemon(pid_file, log_file) == 0);
         }
         if(start_ok)
         {
+          if (use_daemon_)
+          {
+            bt("enable_preload_bt") = 1;
+          }
           signal(SIGPIPE, SIG_IGN);
           signal(SIGHUP, SIG_IGN);
           add_signal_catched(SIGINT);

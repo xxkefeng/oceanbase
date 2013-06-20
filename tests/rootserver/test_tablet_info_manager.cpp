@@ -1,17 +1,17 @@
 /*
  *   (C) 2007-2010 Taobao Inc.
- *
+ *   
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License version 2 as
  *   published by the Free Software Foundation.
- *
- *
- *
+ *       
+ *         
+ *         
  *   Version: $Id: ipvsadm.c,v 1.27 2005/12/10 16:00:07 wensong Exp $
- *
+ *           
  *   Authors:
  *      daoan <daoan@taobao.com>
- *
+ *               
  */
 
 #include <gtest/gtest.h>
@@ -24,7 +24,7 @@
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
 static CharArena allocator_;
-namespace
+namespace 
 {
   void build_range(ObNewRange & r, int64_t tid, int8_t flag, const char* sk, const char* ek)
   {
@@ -32,6 +32,7 @@ namespace
     r.border_flag_.set_data(flag);
     r.start_key_ = make_rowkey(sk, &allocator_);
     r.end_key_ = make_rowkey(ek, &allocator_);
+
   }
 }
 

@@ -2,9 +2,9 @@
  //
  // ob_lrucache.cpp / hash / common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2010-08-04 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2010-08-04 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -133,7 +133,7 @@ namespace oceanbase
       typedef typename DefendMode::lock_type lock_type;
       typedef typename DefendMode::lock_initer lock_initer;
       public:
-        ObLruCache() : inited_(false), is_traversing_(false), max_cache_num_(0), 
+        ObLruCache() : inited_(false), is_traversing_(false), max_cache_num_(0),
           min_gc_timeo_(0), cur_node_(NULL), end_node_(NULL)
         {
           lock_initer initer(lock_);
@@ -257,7 +257,7 @@ namespace oceanbase
         // 如果cache没有命中直接返回成功
         // @param [in] cache数据的ID
         // @param [in] flag LC_RELEASE_IMMED 如果删除失败则返回错误
-        //                  LC_RELEASE_DELAY 如果删除失败则标记等revert后自动删除            
+        //                  LC_RELEASE_DELAY 如果删除失败则标记等revert后自动删除
         // @return OB_SUCCESS 成功
         int free(const _key &cache_key, int flag)
         {
@@ -280,9 +280,9 @@ namespace oceanbase
             {
               /**
                * when traversing, the end node is not in memcache, and app get
-               * the end node to this moment, app will call this function to 
+               * the end node to this moment, app will call this function to
                * free the node, so we need unlock the old end node, and find a
-               * new end code instead 
+               * new end code instead
                */
               end_node_->unlock();
               end_node_ = static_cast<lrunode_t*>(end_node_->get_prev());
@@ -298,7 +298,7 @@ namespace oceanbase
                 lrunode->set_need_release();
               }
               /**
-               * return OB_SUCCESS, because maybe more than one thread get the 
+               * return OB_SUCCESS, because maybe more than one thread get the
                * same node, for this case, it will fail to release node
                */
             }
@@ -309,7 +309,7 @@ namespace oceanbase
           }
           return ret;
         };
-        
+
         // 设置cache数据
         // @param [in] cache数据的ID
         // @param [in] cache的数据指针
@@ -347,7 +347,7 @@ namespace oceanbase
               HASH_WRITE_LOG(HASH_WARNING, "no more cache item num");
               ret = OB_ERROR;
             }
-            else if (NULL == (lrunode = allocer_.allocate()))
+            else if (NULL == (lrunode = allocer_.alloc()))
             {
               HASH_WRITE_LOG(HASH_WARNING, "allocate lrunode fail cache_value=%p", cache_value);
               ret = OB_ERROR;
@@ -355,14 +355,14 @@ namespace oceanbase
             else if (!lru_list_.add_last(lrunode))
             {
               HASH_WRITE_LOG(HASH_WARNING, "add lrunode to lrulist fail cache_value=%p", cache_value);
-              allocer_.deallocate(lrunode);
+              allocer_.free(lrunode);
               ret = OB_ERROR;
             }
             else if (HASH_INSERT_SUCC != hashmap_.set(cache_key, lrunode))
             {
               HASH_WRITE_LOG(HASH_WARNING, "add lrunode to hashmap fail cache_value=%p", cache_value);
               lru_list_.remove(lrunode);
-              allocer_.deallocate(lrunode);
+              allocer_.free(lrunode);
               ret = OB_ERROR;
             }
             else
@@ -372,7 +372,7 @@ namespace oceanbase
           }
           return ret;
         };
-        
+
         // 发起一次cache淘汰策略
         // 将调用Obj的reset方法
         void gc(int64_t max_gc_num = 1)
@@ -387,7 +387,7 @@ namespace oceanbase
             gc_(min_gc_timeo_, max_gc_num, LC_RELEASE_IMMED);
           }
         };
-        
+
         // 清空缓存区,即对所有对象执行free
         // 如果有对象不能被free则返回失败
         // @return OB_SUCCESS 成功
@@ -473,7 +473,7 @@ namespace oceanbase
           return ret;
         };
 
-        //reverse traverse lru list 
+        //reverse traverse lru list
         _value *get_next(_key &cache_key)
         {
           _value *ret     = NULL;
@@ -499,14 +499,14 @@ namespace oceanbase
               if (NULL != end_node_ && end_node_ != head)
               {
                 /**
-                 * rdlock twice, add the ref_cnt twice, avoid erase end node 
-                 * when doing traversing 
+                 * rdlock twice, add the ref_cnt twice, avoid erase end node
+                 * when doing traversing
                  */
                 end_node_->rdlock();
               }
             }
             iter = static_cast<lrunode_t*>(cur_node_->get_next());
-            if (NULL == iter || iter == head 
+            if (NULL == iter || iter == head
                 || (end_node_ != head && iter == end_node_->get_next()))
             {
               //reach the tail of lru list or reach the end node
@@ -524,8 +524,8 @@ namespace oceanbase
             {
               cur_node_ = iter;
               /**
-               * rdlock twice, add the ref_cnt twice, avoid erase this node 
-               * when doing traversing 
+               * rdlock twice, add the ref_cnt twice, avoid erase this node
+               * when doing traversing
                */
               cur_node_->rdlock();
               cur_node_->rdlock();
@@ -543,7 +543,7 @@ namespace oceanbase
         {
           hashmap_.erase(lrunode->get_key());
           lru_list_.remove(lrunode);
-          allocer_.deallocate(lrunode);
+          allocer_.free(lrunode);
         };
 
         lrunode_t *get_lrunode_(const _key &cache_key)
@@ -598,4 +598,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_LRUCACHE_H_
-

@@ -620,8 +620,7 @@ struct WriterAdapter
   ObSSTableWriter &writer_;
 };
 
-int write_sstable(const ObSSTableId & sstable_id, const int64_t row_num, const int64_t col_num, const CellInfoGen::Desc* desc , const int64_t size,
-    const int store_type, const int64_t block_size, const int64_t element_count)
+int write_sstable(const ObSSTableId & sstable_id, const int64_t row_num, const int64_t col_num, const CellInfoGen::Desc* desc , const int64_t size)
 {
   char sstable_file_path[OB_MAX_FILE_NAME_LENGTH];
   char sstable_file_dir[OB_MAX_FILE_NAME_LENGTH];
@@ -639,12 +638,11 @@ int write_sstable(const ObSSTableId & sstable_id, const int64_t row_num, const i
   }
   err = get_sstable_path(sstable_id, sstable_file_path, OB_MAX_FILE_NAME_LENGTH);
   if (err) return err;
-  err = write_sstable(sstable_file_path, row_num, col_num, desc, size, store_type, block_size, element_count);
+  err = write_sstable(sstable_file_path, row_num, col_num, desc, size);
   return err;
 }
 
-int write_sstable(const char* sstable_file_path, const int64_t row_num, const int64_t col_num, const CellInfoGen::Desc* desc , const int64_t size,
-    const int store_type, const int64_t block_size, const int64_t element_count)
+int write_sstable(const char* sstable_file_path, const int64_t row_num, const int64_t col_num, const CellInfoGen::Desc* desc , const int64_t size)
 {
   int err = OB_SUCCESS;
 
@@ -663,7 +661,7 @@ int write_sstable(const char* sstable_file_path, const int64_t row_num, const in
   {
   }
   else if (OB_SUCCESS != (err = writer.create_sstable(cgen.schema,
-          path, compress_name, CellInfoGen::table_id, store_type, block_size, element_count)))
+          path, compress_name, CellInfoGen::table_id)))
   {
   }
   else
@@ -817,7 +815,7 @@ void set_obj_array(ObObj array[], const int types[], const int64_t values[],  co
         array[i].set_modifytime(values[i]);
         break;
       case ObVarcharType:
-        buf = (char*)ob_malloc(MAX_BUFSIZ);
+        buf = (char*)ob_malloc(MAX_BUFSIZ, ObModIds::TEST);
         snprintf(buf, MAX_BUFSIZ, "%ld", values[i]);
         ob_string.assign(buf, static_cast<int32_t>(strlen(buf)));
         array[i].set_varchar(ob_string);

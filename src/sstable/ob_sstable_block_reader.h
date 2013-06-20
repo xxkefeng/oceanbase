@@ -156,7 +156,7 @@ namespace oceanbase
         int get_row(const RowFormat format, const_iterator index,
             const bool is_full_row_columns,
             const ObSimpleColumnIndexes& query_columns, 
-            common::ObRow& value) const;
+            common::ObRowkey& key, common::ObRow& value) const;
 
         const_iterator lower_bound(const common::ObRowkey& key);
         const_iterator find(const common::ObRowkey& key);
@@ -169,15 +169,6 @@ namespace oceanbase
         //WARNING: this function must be called after deserialize()
         int get_cache_row_value(const_iterator index, 
           ObSSTableRowCacheValue& row_value) const;
-
-        // traverse dense row's value part
-        static int get_dense_rowvalue(const char *row_start, const char *row_end, int64_t &pos,
-            int64_t filled, int64_t value_index,
-            const ObSimpleColumnIndexes &query_columns, common::ObRow &value);
-
-        // traverse sparse row's value part
-        static int get_sparse_rowvalue(const char *row_start, const char *row_end, int64_t &pos,
-            int64_t filled, const ObSimpleColumnIndexes &query_columns, common::ObRow &value);
 
       private:
         /**
@@ -194,31 +185,16 @@ namespace oceanbase
             common::ObObj* ids, common::ObObj* values, int64_t& column_count) const;
 
         int get_row_key(const_iterator index, common::ObRowkey& key, int64_t &pos) const;
-        /**
-         * parse binary string to rowkey obj array.
-         * @param [in] index: row position
-         * @param [in] rowkey_info: rowkey description
-         * @param [in,out] rowkey_buf_array: result rowkey obj array
-         * @param [in,out] rowkey_column_count: result rowkey obj count in array.
-         * @param [out] row values position.
-         */
-        int parse_binary_rowkey(
-            const_iterator index, 
-            const common::ObRowkeyInfo& rowkey_info, 
-            common::ObObj* rowkey_buf_array,
-            int64_t &rowkey_column_count,
-            int64_t &pos) const;
-
-        static int deserialize_binary_rowkey(const char* buf, const int64_t data_len, common::ObString& key);
+        static int deserialize_sstable_rowkey(const char* buf, const int64_t data_len, common::ObString& key);
 
         int get_dense_row(const_iterator index,
             const ObSimpleColumnIndexes& query_columns, 
-            common::ObRow& value) const;
+            common::ObRowkey& key, common::ObRow& value) const;
         int get_dense_full_row(const_iterator index,
-            common::ObRow& value) const;
+            common::ObRowkey& key, common::ObRow& value) const;
         int get_sparse_row(const_iterator index,
             const ObSimpleColumnIndexes& query_columns, 
-            common::ObRow& value) const;
+            common::ObRowkey& key, common::ObRow& value) const;
 
       private:
           /** 

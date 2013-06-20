@@ -106,7 +106,7 @@ TEST(ObFixedMemPoolTest, basicTest)
       unfree_pool.clear();
     }
   }
-} 
+}
 
 /// @fn memory overwrite
 TEST(ObFixedMemPoolTest, OverWrite)
@@ -222,7 +222,7 @@ TEST(ObFixedMemPoolTest, basicTestNuma)
       unfree_pool.clear();
     }
   }
-} 
+}
 
 /// @fn memory overwrite
 TEST(ObFixedMemPoolTest, OverWriteNuma)
@@ -391,18 +391,18 @@ TEST(ob_malloc, basicTest)
   if (getenv("__OB_MALLOC_DIRECT__") == NULL)
   {
     ASSERT_EQ(ob_init_memory_pool(1024*1024*2), 0);
-    void *ptr1 = ob_malloc(2048);
+    void *ptr1 = ob_malloc(2048, ObModIds::TEST);
     void *ptr2 = NULL;
     memset(ptr1,0,2048);
     ob_free(ptr1);
-    ptr2 = ob_malloc(2048);
+    ptr2 = ob_malloc(2048, ObModIds::TEST);
     ASSERT_EQ(ptr1, ptr2);
     memset(ptr2,0,2048);
     ob_safe_free(ptr2);
     ASSERT_EQ(ptr2, reinterpret_cast<void*>(0));
 
     /// allocate nbyte < 0
-    ASSERT_EQ(ob_malloc(-1), reinterpret_cast<void*>(0));
+    ASSERT_EQ(ob_malloc(-1, ObModIds::TEST), reinterpret_cast<void*>(0));
 
     /// ObMemBuffer default constructor
     ObMemBuffer empty_buf;
@@ -442,7 +442,7 @@ TEST(ob_malloc, basicTest)
     cache_ptr = ob_malloc(size, ObModIds::OB_MS_LOCATION_CACHE);
     EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::OB_MS_LOCATION_CACHE), block_size);
 
-    ptr = ob_malloc(size);
+    ptr = ob_malloc(size, ObModIds::TEST);
     EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::OB_MOD_DEFAULT), block_size);
 
     ob_print_mod_memory_usage(true);
@@ -466,7 +466,7 @@ TEST(ob_malloc, basicTest)
     EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::OB_MS_LOCATION_CACHE), 0);
     EXPECT_EQ(ob_get_memory_size_direct_allocated(), 0);
   }
-} 
+}
 
 TEST(MemPoolTest, malloc_directly)
 {

@@ -63,9 +63,6 @@ void ObExprObj::assign(const ObObj &obj)
     case ObExtendType:
       obj.get_ext(v_.ext_);
       break;
-    case ObUnknownType:
-      obj.get_unknown(v_.unknown_);
-      break;
     default:
       TBSYS_LOG(ERROR, "invalid value type=%d", obj.get_type());
       break;
@@ -112,9 +109,6 @@ int ObExprObj::to(ObObj &obj) const
       break;
     case ObExtendType:
       obj.set_ext(v_.ext_);
-      break;
-    case ObUnknownType:
-      obj.set_unknown(v_.unknown_);
       break;
     default:
       TBSYS_LOG(ERROR, "invalid value type=%d", get_type());
@@ -288,7 +282,7 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Int compare with XXX*/
     ObNullType/*Null*/, ObIntType/*Int*/, ObFloatType,
     ObDoubleType, ObIntType, ObIntType,
-    ObIntType, ObMaxType/*Unknown, not_support*/, ObIntType,
+    ObIntType, ObMaxType/*Seq, not_support*/, ObIntType,
     ObIntType, ObMaxType/*Extend*/, ObBoolType,
     ObDecimalType
   }
@@ -297,7 +291,7 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Float compare with XXX*/
     ObNullType/*Null*/, ObFloatType, ObFloatType,
     ObDoubleType, ObFloatType, ObFloatType,
-    ObFloatType, ObMaxType/*Unknown*/, ObFloatType,
+    ObFloatType, ObMaxType/*Seq*/, ObFloatType,
     ObFloatType, ObMaxType/*Extend*/, ObBoolType,
     ObDoubleType
   }
@@ -306,7 +300,7 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Double compare with XXX*/
     ObNullType/*Null*/, ObDoubleType, ObDoubleType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObBoolType,
     ObDoubleType
   }
@@ -315,7 +309,7 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*DateTime compare with XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObDateTimeType, ObPreciseDateTimeType,
-    ObDateTimeType, ObMaxType/*Unknown*/, ObPreciseDateTimeType,
+    ObDateTimeType, ObMaxType/*Seq*/, ObPreciseDateTimeType,
     ObPreciseDateTimeType, ObMaxType/*Extend*/, ObBoolType,
     ObDecimalType
   }
@@ -324,7 +318,7 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*PreciseDateTime compare with XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObPreciseDateTimeType, ObPreciseDateTimeType,
-    ObPreciseDateTimeType, ObMaxType/*Unknown*/, ObPreciseDateTimeType,
+    ObPreciseDateTimeType, ObMaxType/*Seq*/, ObPreciseDateTimeType,
     ObPreciseDateTimeType, ObMaxType/*Extend*/, ObBoolType,
     ObDecimalType
   }
@@ -333,13 +327,13 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Varchar compare with XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObDateTimeType, ObPreciseDateTimeType,
-    ObVarcharType, ObMaxType/*Unknown*/, ObCreateTimeType,
+    ObVarcharType, ObMaxType/*Seq*/, ObCreateTimeType,
     ObModifyTimeType, ObMaxType/*Extend*/, ObBoolType,
     ObDecimalType
   }
   ,
   {
-    /*Unknown compare with XXX*/
+    /*Seq compare with XXX*/
     ObNullType, ObMaxType, ObMaxType,
     ObMaxType, ObMaxType, ObMaxType,
     ObMaxType, ObMaxType, ObMaxType,
@@ -351,7 +345,7 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*CreateTime compare with XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObPreciseDateTimeType, ObPreciseDateTimeType,
-    ObCreateTimeType, ObMaxType/*Unknown*/, ObCreateTimeType,
+    ObCreateTimeType, ObMaxType/*Seq*/, ObCreateTimeType,
     ObPreciseDateTimeType, ObMaxType/*Extend*/, ObBoolType,
     ObDecimalType
   }
@@ -360,7 +354,7 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*ModifyTime compare with XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObPreciseDateTimeType, ObPreciseDateTimeType,
-    ObModifyTimeType, ObMaxType/*Unknown*/, ObPreciseDateTimeType,
+    ObModifyTimeType, ObMaxType/*Seq*/, ObPreciseDateTimeType,
     ObModifyTimeType, ObMaxType/*Extend*/, ObBoolType,
     ObDecimalType
   }
@@ -378,7 +372,7 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Bool compare with XXX*/
     ObNullType/*Null*/, ObBoolType, ObBoolType,
     ObBoolType, ObBoolType, ObBoolType,
-    ObBoolType, ObMaxType/*Unknown*/, ObBoolType,
+    ObBoolType, ObMaxType/*Seq*/, ObBoolType,
     ObBoolType, ObMaxType/*Extend*/, ObBoolType,
     ObBoolType
   }
@@ -387,7 +381,7 @@ static ObObjType COMPARE_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Decimal compare with XXX*/
     ObNullType/*Null*/, ObDecimalType, ObDoubleType,
     ObDoubleType, ObDecimalType, ObDecimalType,
-    ObDecimalType, ObMaxType/*Unknown*/, ObDecimalType,
+    ObDecimalType, ObMaxType/*Seq*/, ObDecimalType,
     ObDecimalType, ObMaxType/*Extend*/, ObBoolType,
     ObDecimalType
   }
@@ -891,7 +885,7 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Int +/- XXX*/
     ObNullType/*Null*/, ObIntType/*Int*/, ObFloatType,
     ObDoubleType, ObIntType, ObIntType,
-    ObIntType, ObMaxType/*Unknown, not_support*/, ObIntType,
+    ObIntType, ObMaxType/*Seq, not_support*/, ObIntType,
     ObIntType, ObMaxType/*Extend*/, ObIntType,
     ObDecimalType
   }
@@ -900,7 +894,7 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Float +/- XXX*/
     ObNullType/*Null*/, ObFloatType, ObFloatType,
     ObDoubleType, ObFloatType, ObFloatType,
-    ObFloatType, ObMaxType/*Unknown*/, ObFloatType,
+    ObFloatType, ObMaxType/*Seq*/, ObFloatType,
     ObFloatType, ObMaxType/*Extend*/, ObFloatType,
     ObDoubleType
   }
@@ -909,7 +903,7 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Double +/- XXX*/
     ObNullType/*Null*/, ObDoubleType, ObDoubleType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
     ObDoubleType
   }
@@ -918,7 +912,7 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*DateTime +/- XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObIntType, ObIntType,
-    ObIntType, ObMaxType/*Unknown*/, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
     ObIntType, ObMaxType/*Extend*/, ObIntType,
     ObDecimalType
   }
@@ -927,7 +921,7 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*PreciseDateTime +/- XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObIntType, ObIntType,
-    ObIntType, ObMaxType/*Unknown*/, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
     ObIntType, ObMaxType/*Extend*/, ObIntType,
     ObDecimalType
   }
@@ -936,13 +930,13 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Varchar +/- XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObIntType, ObIntType,
-    ObIntType, ObMaxType/*Unknown*/, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
     ObIntType, ObMaxType/*Extend*/, ObIntType,
     ObDecimalType
   }
   ,
   {
-    /*Unknown +/- XXX*/
+    /*Seq +/- XXX*/
     ObNullType, ObMaxType, ObMaxType,
     ObMaxType, ObMaxType, ObMaxType,
     ObMaxType, ObMaxType, ObMaxType,
@@ -954,7 +948,7 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*CreateTime +/- XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObIntType, ObIntType,
-    ObIntType, ObMaxType/*Unknown*/, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
     ObIntType, ObMaxType/*Extend*/, ObIntType,
     ObDecimalType
   }
@@ -963,7 +957,7 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*ModifyTime +/- XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObIntType, ObIntType,
-    ObIntType, ObMaxType/*Unknown*/, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
     ObIntType, ObMaxType/*Extend*/, ObIntType,
     ObDecimalType
   }
@@ -981,7 +975,7 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Bool +/- XXX*/
     ObNullType/*Null*/, ObIntType, ObFloatType,
     ObDoubleType, ObIntType, ObIntType,
-    ObIntType, ObMaxType/*Unknown*/, ObIntType,
+    ObIntType, ObMaxType/*Seq*/, ObIntType,
     ObIntType, ObMaxType/*Extend*/, ObIntType,
     ObDecimalType
   }
@@ -990,7 +984,7 @@ static ObObjType ARITHMETIC_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Decimal +/- XXX*/
     ObNullType/*Null*/, ObDecimalType, ObDoubleType,
     ObDoubleType, ObDecimalType, ObDecimalType,
-    ObDecimalType, ObMaxType/*Unknown*/, ObDecimalType,
+    ObDecimalType, ObMaxType/*Seq*/, ObDecimalType,
     ObDecimalType, ObMaxType/*Extend*/, ObDecimalType,
     ObDecimalType
   }
@@ -1197,7 +1191,7 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Int div XXX*/
     ObNullType/*Null*/, ObDoubleType/*Int*/, ObFloatType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown, not_support*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq, not_support*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
     ObDecimalType
   }
@@ -1206,7 +1200,7 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Float div XXX*/
     ObNullType/*Null*/, ObFloatType, ObFloatType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObFloatType,
     ObDoubleType
   }
@@ -1215,7 +1209,7 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Double div XXX*/
     ObNullType/*Null*/, ObDoubleType, ObDoubleType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
     ObDoubleType
   }
@@ -1224,7 +1218,7 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*DateTime div XXX*/
     ObNullType/*Null*/, ObDoubleType, ObDoubleType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
     ObDecimalType
   }
@@ -1233,7 +1227,7 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*PreciseDateTime div XXX*/
     ObNullType/*Null*/, ObDoubleType, ObDoubleType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
     ObDecimalType
   }
@@ -1242,13 +1236,13 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Varchar div XXX*/
     ObNullType/*Null*/, ObDoubleType, ObDoubleType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
     ObDecimalType
   }
   ,
   {
-    /*Unknown div XXX*/
+    /*Seq div XXX*/
     ObNullType, ObMaxType, ObMaxType,
     ObMaxType, ObMaxType, ObMaxType,
     ObMaxType, ObMaxType, ObMaxType,
@@ -1260,7 +1254,7 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*CreateTime div XXX*/
     ObNullType/*Null*/, ObDoubleType, ObDoubleType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
     ObDecimalType
   }
@@ -1269,7 +1263,7 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*ModifyTime div XXX*/
     ObNullType/*Null*/, ObDoubleType, ObDoubleType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
     ObDecimalType
   }
@@ -1287,7 +1281,7 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Bool div XXX*/
     ObNullType/*Null*/, ObDoubleType, ObFloatType,
     ObDoubleType, ObDoubleType, ObDoubleType,
-    ObDoubleType, ObMaxType/*Unknown*/, ObDoubleType,
+    ObDoubleType, ObMaxType/*Seq*/, ObDoubleType,
     ObDoubleType, ObMaxType/*Extend*/, ObDoubleType,
     ObDecimalType
   }
@@ -1296,7 +1290,7 @@ static ObObjType DIV_TYPE_PROMOTION[ObMaxType][ObMaxType] =
     /*Decimal div XXX*/
     ObNullType/*Null*/, ObDecimalType, ObDoubleType,
     ObDoubleType, ObDecimalType, ObDecimalType,
-    ObDecimalType, ObMaxType/*Unknown*/, ObDecimalType,
+    ObDecimalType, ObMaxType/*Seq*/, ObDecimalType,
     ObDecimalType, ObMaxType/*Extend*/, ObDecimalType,
     ObDecimalType
   }
@@ -1654,7 +1648,7 @@ int ObExprObj::substr(const ObExprObj &start_pos_obj, const ObExprObj &expect_le
 int ObExprObj::substr(const ObExprObj &start_pos, ObExprObj &result, ObStringBuf &mem_buf) const
 {
   ObExprObj max_guess_len;
-  max_guess_len.set_int(OB_MAX_VARCHAR_LENGTH);
+  max_guess_len.set_int(OB_MAX_VALID_COLUMN_ID);
   return substr(start_pos, max_guess_len, result, mem_buf);
 }
 
@@ -2131,22 +2125,6 @@ int ObExprObj::get_decimal(char * buf, const int64_t buf_len) const
   }
   return ret;
 }
-
-int ObExprObj::get_unknown(const ObObj *&d) const
-{
-  int ret = OB_SUCCESS;
-  ObObj obj;
-  if (OB_SUCCESS != (ret = this->to(obj)))
-  {
-    TBSYS_LOG(WARN, "failed to convert to obj, err=%d", ret);
-  }
-  else
-  {
-    ret = obj.get_unknown(d);
-  }
-  return ret;
-}
-
 
 int ObExprObj::unhex(ObExprObj &res, ObStringBuf & mem_buf)
 {

@@ -101,8 +101,6 @@ void ValueRule::get_cycle_rule(int64_t rule_idx, int64_t& start_val, int64_t& st
 
 void ValueRule::get_col_values(uint64_t suffix, int64_t* col_ary, int64_t col_size, int64_t& ret_size)
 {
-  UNUSED(suffix);
-  UNUSED(col_size);
   assert(rule_num_ <= col_size);
   ret_size = rule_num_;
   for (int64_t i = 0; i < rule_num_; ++i)
@@ -196,7 +194,6 @@ void ValueRule::get_value(uint64_t suffix, int64_t col_idx, int64_t& value)
 
 void ValueRule::get_equal_value(uint64_t suffix, int64_t col_idx, int64_t& value)
 {
-  UNUSED(suffix);
   sscanf(rule_data_[col_idx], "%ld", &value);
 }
 
@@ -218,15 +215,9 @@ void ValueRule::get_cycle_value(uint64_t suffix, int64_t col_idx, int64_t& value
   value = start_val + (suffix % size_cycle) * step;
 }
 
-ValueGenerator::ValueGenerator(int64_t row_num)
+ValueGenerator::ValueGenerator()
 {
   // empty
-  row_num_ = row_num;
-  if (row_num_ == 0)
-  {
-    row_num_ = 10 * 1024; // default value
-  }
-  TBSYS_LOG(WARN, "ROW_NUM=%ld", row_num_);
 }
 
 ValueGenerator::~ValueGenerator()
@@ -239,12 +230,11 @@ int ValueGenerator::generate_value_rule(uint64_t prefix, ValueRule& rule)
   int err = 0;
 
   UNUSED(prefix);
-  //int ref_row_num = 1000 * 1000;
-  int64_t ref_row_num = row_num_;
-  assert(ref_row_num > 0);
+  int ref_row_num = 1000 * 1000;
+  //int ref_row_num = 50;
 
   // TODO(rizhao) add more rule
-  int64_t rand_val = rand() % 3;
+  int rand_val = rand() % 3;
   switch (rand_val)
   {
     case 0:
@@ -280,7 +270,7 @@ int ValueGenerator::generate_value_rule(uint64_t prefix, ValueRule& rule)
       }
 
     default:
-      TBSYS_LOG(WARN, "not supported, rand_val=%ld", rand_val);
+      TBSYS_LOG(WARN, "not supported, rand_val=%d", rand_val);
       break;
   }
 

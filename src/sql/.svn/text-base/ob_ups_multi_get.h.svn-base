@@ -19,7 +19,7 @@
 #include "common/ob_define.h"
 #include "common/ob_get_param.h"
 #include "common/ob_sql_ups_rpc_proxy.h"
-#include "ob_phy_operator.h"
+#include "ob_rowkey_phy_operator.h"
 #include "common/ob_row.h"
 
 namespace oceanbase
@@ -28,7 +28,7 @@ namespace oceanbase
   namespace sql
   {
     // 用于CS从UPS获取多行数据
-    class ObUpsMultiGet: public ObPhyOperator
+    class ObUpsMultiGet: public ObRowkeyPhyOperator
     {
       public:
         ObUpsMultiGet();
@@ -37,7 +37,7 @@ namespace oceanbase
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
         virtual int open();
         virtual int close();
-        virtual int get_next_row(const ObRow *&row);
+        virtual int get_next_row(const ObRowkey *&rowkey, const ObRow *&row);
         virtual void set_row_desc(const ObRowDesc &row_desc);
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
@@ -45,10 +45,6 @@ namespace oceanbase
         inline int set_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy);
         inline int set_network_timeout(int64_t network_timeout);
         virtual void reset();
-        inline void set_server_type(common::ObServerType type)
-        {
-          server_type_ = type;
-        }
 
         /**
          * 设置MultiGet的参数
@@ -69,11 +65,10 @@ namespace oceanbase
         ObGetParam cur_get_param_;
         ObNewScanner cur_new_scanner_;
         ObSqlUpsRpcProxy *rpc_proxy_;
-        ObRow cur_row_;
+        ObUpsRow cur_ups_row_;
         int64_t got_row_count_;
         const ObRowDesc *row_desc_;
         int64_t network_timeout_;
-        common::ObServerType server_type_;
     };
 
     int ObUpsMultiGet::set_network_timeout(int64_t network_timeout)

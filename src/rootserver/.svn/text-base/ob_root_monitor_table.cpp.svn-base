@@ -52,14 +52,6 @@ ObRootMonitorTable::~ObRootMonitorTable()
 {
 }
 
-void ObRootMonitorTable::init(const ObServer & root_server)
-{
-  rootserver_vip_ = root_server;
-  cs_manager_ = NULL;
-  ups_manager_ = NULL;
-}
-
-
 void ObRootMonitorTable::init(const ObServer & root_server,
     const ObChunkServerManager & cs_manager, const ObUpsManager & ups_manager)
 {

@@ -3,8 +3,7 @@
 
 #include "task_env.h"
 #include "file_utils.h"
-//#include "common/utility.h"
-//#include "common/file_utils.h"
+#include "common/ob_define.h"
 
 
 namespace oceanbase {
@@ -43,7 +42,7 @@ namespace oceanbase {
         virtual int new_writable_file(const std::string &file_name, WritableFile *&file);
 
         //setup env
-        virtual int setup(const Env::Param *param) { valid_ = true;  return 0; }
+        virtual int setup(const Env::Param *param) { UNUSED(param); valid_ = true;  return 0; }
     };
   }
 }

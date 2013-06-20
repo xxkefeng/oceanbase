@@ -2,13 +2,13 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/client/libmysql_example
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/client/libmysql_example
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-03-22T08:11:52.339622Z
-12798
+2013-03-19T09:05:15.473583Z
+12731
 zhuweng.yzf
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 07cfeec133241f7186ca3f24a054fa43
 2013-01-13T05:57:04.552848Z
 11444
@@ -66,10 +66,10 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 de25006f52587f5504d4949fa5c03af6
-2013-03-22T08:11:52.339622Z
-12798
+2013-03-19T09:05:15.473583Z
+12731
 zhuweng.yzf
 
 

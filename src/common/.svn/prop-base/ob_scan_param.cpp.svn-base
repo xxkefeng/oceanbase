@@ -1,8 +1,6 @@
 K 13
 svn:mergeinfo
-V 306
-/branches/0_4_1_release/oceanbase/src/common/ob_scan_param.cpp:12603-13939
-/branches/cs_plan_dev/oceanbase/src/common/ob_scan_param.cpp:13985-14477
+V 158
 /branches/dev/oceanbase/src/common/ob_scan_param.cpp:5023-7412,8885-9111
 /branches/developing/trans_mvcc_dev/oceanbase/src/common/ob_scan_param.cpp:9273-10180
 END

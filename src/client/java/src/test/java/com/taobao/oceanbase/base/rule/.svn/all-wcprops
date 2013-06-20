@@ -1,89 +1,89 @@
 K 25
 svn:wc:ra_dav:version-url
-V 114
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule
-END
-CollectInfoTimeColumnRule.java
-K 25
-svn:wc:ra_dav:version-url
-V 145
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoTimeColumnRule.java
-END
-ItemInfoFloatColumnRule.java
-K 25
-svn:wc:ra_dav:version-url
-V 143
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoFloatColumnRule.java
-END
-ItemInfoStringColumnRule.java
-K 25
-svn:wc:ra_dav:version-url
-V 144
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoStringColumnRule.java
-END
-Rule.java
-K 25
-svn:wc:ra_dav:version-url
-V 124
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/Rule.java
-END
-ItemInfoNumberColumnRule.java
-K 25
-svn:wc:ra_dav:version-url
-V 144
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoNumberColumnRule.java
-END
-ItemInfoDoubleColumnRule.java
-K 25
-svn:wc:ra_dav:version-url
-V 144
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoDoubleColumnRule.java
-END
-ItemInfoKeyRule.java
-K 25
-svn:wc:ra_dav:version-url
-V 135
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoKeyRule.java
-END
-CollectInfoFloatColumnRule.java
-K 25
-svn:wc:ra_dav:version-url
-V 146
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoFloatColumnRule.java
-END
-CollectInfoStringColumnRule.java
-K 25
-svn:wc:ra_dav:version-url
-V 147
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoStringColumnRule.java
-END
-ItemInfoTimeColumnRule.java
-K 25
-svn:wc:ra_dav:version-url
-V 142
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoTimeColumnRule.java
+V 125
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule
 END
 CollectInfoNumberColumnRule.java
 K 25
 svn:wc:ra_dav:version-url
-V 147
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoNumberColumnRule.java
+V 158
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoNumberColumnRule.java
 END
 CollectInfoPreciseTimeColumnRule.java
 K 25
 svn:wc:ra_dav:version-url
-V 152
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoPreciseTimeColumnRule.java
+V 163
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoPreciseTimeColumnRule.java
 END
 CollectInfoDoubleColumnRule.java
 K 25
 svn:wc:ra_dav:version-url
-V 147
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoDoubleColumnRule.java
+V 158
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoDoubleColumnRule.java
 END
 CollectInfoKeyRule.java
 K 25
 svn:wc:ra_dav:version-url
-V 138
-/repos/oceanbase/!svn/ver/5267/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoKeyRule.java
+V 149
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoKeyRule.java
+END
+CollectInfoTimeColumnRule.java
+K 25
+svn:wc:ra_dav:version-url
+V 156
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoTimeColumnRule.java
+END
+ItemInfoFloatColumnRule.java
+K 25
+svn:wc:ra_dav:version-url
+V 154
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoFloatColumnRule.java
+END
+ItemInfoStringColumnRule.java
+K 25
+svn:wc:ra_dav:version-url
+V 155
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoStringColumnRule.java
+END
+Rule.java
+K 25
+svn:wc:ra_dav:version-url
+V 135
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/Rule.java
+END
+ItemInfoNumberColumnRule.java
+K 25
+svn:wc:ra_dav:version-url
+V 155
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoNumberColumnRule.java
+END
+ItemInfoDoubleColumnRule.java
+K 25
+svn:wc:ra_dav:version-url
+V 155
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoDoubleColumnRule.java
+END
+ItemInfoKeyRule.java
+K 25
+svn:wc:ra_dav:version-url
+V 146
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoKeyRule.java
+END
+CollectInfoFloatColumnRule.java
+K 25
+svn:wc:ra_dav:version-url
+V 157
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoFloatColumnRule.java
+END
+CollectInfoStringColumnRule.java
+K 25
+svn:wc:ra_dav:version-url
+V 158
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/CollectInfoStringColumnRule.java
+END
+ItemInfoTimeColumnRule.java
+K 25
+svn:wc:ra_dav:version-url
+V 153
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/rule/ItemInfoTimeColumnRule.java
 END

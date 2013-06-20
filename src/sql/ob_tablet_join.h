@@ -20,12 +20,13 @@
 #include "common/ob_array.h"
 #include "common/ob_cache.h"
 #include "ob_phy_operator.h"
+#include "common/ob_ups_row.h"
 #include "common/ob_kv_storecache.h"
 #include "common/ob_get_param.h"
 #include "common/ob_row_store.h"
 #include "ob_ups_multi_get.h"
 #include "common/thread_buffer.h"
-#include "ob_multiple_merge.h"
+#include "ob_tablet_fuse.h"
 
 namespace oceanbase
 {
@@ -66,160 +67,11 @@ namespace oceanbase
 
           /* 指示左表哪些列是从右表取过来的 */
           ObArray<JoinInfo> join_column_;
-          private:
-            int serialize_uint64(char *buf, const int64_t buf_len, int64_t& pos, const uint64_t &u_val) const
-            {
-              int ret = OB_SUCCESS;
-              ObObj obj;
-              const int64_t *cond = reinterpret_cast<const int64_t *>(&u_val);
-              obj.set_int(*cond);
-              ret = obj.serialize(buf, buf_len, pos);
-              return ret;
-            }
-            int deserialize_uint64(const char *buf, const int64_t data_len, int64_t& pos, uint64_t &u_val) const
-            {
-              int ret = OB_SUCCESS;
-              ObObj obj;
-              int64_t val;
-              int64_t *cond = reinterpret_cast<int64_t *>(&u_val);
-              if (OB_SUCCESS == (ret = obj.deserialize(buf, data_len, pos)))
-              {
-                if (OB_SUCCESS == (ret = obj.get_int(val)))
-                {
-                  *cond = val;
-                }
-              }
-              return ret;
-            }
+
           public:
             TableJoinInfo();
-
-            int serialize(char* buf, const int64_t buf_len, int64_t& pos) const
-            {
-              int ret = OB_SUCCESS;
-              ObObj obj;
-              int64_t i = 0;
-
-              if (OB_SUCCESS != (ret = serialize_uint64(buf, buf_len, pos, left_table_id_)))
-              {
-                TBSYS_LOG(WARN, "fail to serialize table id. ret=%d", ret);
-              }
-              else if (OB_SUCCESS != (ret = serialize_uint64(buf, buf_len, pos, right_table_id_)))
-              {
-                TBSYS_LOG(WARN, "fail to serialize table id. ret=%d", ret);
-              }
-              else
-              {
-                obj.set_int(join_condition_.count());
-                if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
-                {
-                  TBSYS_LOG(WARN, "fail to serialize object. ret=%d", ret);
-                }
-                for (i = 0; OB_SUCCESS == ret && i < join_condition_.count(); i++)
-                {
-                  const uint64_t &cond = join_condition_.at(i);
-                  if (OB_SUCCESS != (ret = serialize_uint64(buf, buf_len, pos, cond)))
-                  {
-                    TBSYS_LOG(WARN, "fail to serialize table id. ret=%d", ret);
-                  }
-                }
-                obj.set_int(join_column_.count());
-                if (OB_SUCCESS != (ret = obj.serialize(buf, buf_len, pos)))
-                {
-                  TBSYS_LOG(WARN, "fail to serialize object. ret=%d", ret);
-                }
-                for (i = 0; OB_SUCCESS == ret && i < join_column_.count(); i++)
-                {
-                  const JoinInfo & join_info = join_column_.at(i);
-                  if (OB_SUCCESS != (ret = serialize_uint64(buf, buf_len, pos, join_info.left_column_id_)))
-                  {
-                    TBSYS_LOG(WARN, "fail to serialize table id. ret=%d", ret);
-                  }
-                  else if (OB_SUCCESS != (ret = serialize_uint64(buf, buf_len, pos, join_info.right_column_id_)))
-                  {
-                    TBSYS_LOG(WARN, "fail to serialize table id. ret=%d", ret);
-                  }
-                }
-              }
-              return ret;
-            }
-
-            int deserialize(const char* buf, const int64_t data_len, int64_t& pos)
-            {
-              int ret = OB_SUCCESS;
-              ObObj obj;
-              int64_t i = 0;
-              int64_t array_len = 0;
-              JoinInfo join_info;
-              uint64_t tmp_cond = 0;
-
-              if (OB_SUCCESS != (ret = deserialize_uint64(buf, data_len, pos, left_table_id_)))
-              {
-                TBSYS_LOG(WARN, "fail to deserialize table id. ret=%d", ret);
-              }
-              else if (OB_SUCCESS != (ret = deserialize_uint64(buf, data_len, pos, right_table_id_)))
-              {
-                TBSYS_LOG(WARN, "fail to deserialize table id. ret=%d", ret);
-              }
-              else
-              {
-                if (OB_SUCCESS == ret)
-                {
-                  if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
-                  {
-                    TBSYS_LOG(WARN, "fail to deserialize table id. ret=%d", ret);
-                  }
-                  else if (OB_SUCCESS != (ret = obj.get_int(array_len)))
-                  {
-                    TBSYS_LOG(WARN, "fail to get int. type=%d, ret=%d", obj.get_type(), ret);
-                  }
-                  for (i = 0; OB_SUCCESS == ret && i < array_len; i++)
-                  {
-                    if (OB_SUCCESS != (ret = deserialize_uint64(buf, data_len, pos, tmp_cond)))
-                    {
-                      TBSYS_LOG(WARN, "fail to serialize table id. ret=%d", ret);
-                    }
-                    if (OB_SUCCESS != (ret = join_condition_.push_back(tmp_cond)))
-                    {
-                      TBSYS_LOG(WARN, "fail to push condition to array. ret=%d", ret);
-                    }
-                  }
-                }
-                if (OB_SUCCESS == ret)
-                {
-                  if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
-                  {
-                    TBSYS_LOG(WARN, "fail to deserialize table id. ret=%d", ret);
-                  }
-                  else if (OB_SUCCESS != (ret = obj.get_int(array_len)))
-                  {
-                    TBSYS_LOG(WARN, "fail to get int. type=%d, ret=%d", obj.get_type(), ret);
-                  }
-                  for (i = 0; OB_SUCCESS == ret && i < array_len; i++)
-                  {
-                    if (OB_SUCCESS != (ret = deserialize_uint64(buf, data_len, pos, join_info.left_column_id_)))
-                    {
-                      TBSYS_LOG(WARN, "fail to serialize table id. ret=%d", ret);
-                    }
-                    else if (OB_SUCCESS != (ret = deserialize_uint64(buf, data_len, pos, join_info.right_column_id_)))
-                    {
-                      TBSYS_LOG(WARN, "fail to serialize table id. ret=%d", ret);
-                    }
-                    else if (OB_SUCCESS != (ret = join_column_.push_back(join_info)))
-                    {
-                      TBSYS_LOG(WARN, "fail to push join info to array. ret=%d", ret);
-                    }
-                  }
-                }
-              }
-              return ret;
-            }
-            inline int64_t get_serialize_size(void) const
-            {
-              return 0;
-            }
-
         };
+
 
       public:
         ObTabletJoin();
@@ -238,7 +90,6 @@ namespace oceanbase
         void set_network_timeout(int64_t network_timeout);
         inline void set_batch_count(const int64_t batch_count);
         inline void set_table_join_info(const TableJoinInfo &table_join_info);
-        inline void set_right_table_rowkey_info(const ObRowkeyInfo *right_table_rowkey_info);
         inline void set_is_read_consistency(bool is_read_consistency)
         {
           is_read_consistency_ = is_read_consistency;
@@ -275,8 +126,8 @@ namespace oceanbase
 
         int gen_ups_row_desc();
 
-        virtual int fetch_fused_row_prepare() = 0;
-        virtual int get_ups_row(const ObRowkey &rowkey, ObRow &row, const ObGetParam &get_param) = 0;
+        virtual int fetch_fused_row_prepare();
+        virtual int get_ups_row(const ObRowkey &rowkey, ObUpsRow &ups_row, const ObGetParam &get_param) = 0;
         virtual int gen_get_param(ObGetParam &get_param, const ObRow &fused_row) = 0;
 
       protected:
@@ -284,7 +135,7 @@ namespace oceanbase
         TableJoinInfo table_join_info_;
         int64_t batch_count_;
         bool    fused_row_iter_end_;
-        ObMultipleMerge *join_merger_;
+        ObTabletFuse *fused_scan_;
         ObUpsMultiGet ups_multi_get_;
         ObRowStore fused_row_store_;
         ThreadSpecificBuffer thread_buffer_;
@@ -297,17 +148,11 @@ namespace oceanbase
         bool is_read_consistency_;
         int64_t valid_fused_row_count_;
         ObVersionRange version_range_;
-        const ObRowkeyInfo *right_table_rowkey_info_;
     };
 
     void ObTabletJoin::set_table_join_info(const TableJoinInfo &table_join_info)
     {
       table_join_info_ = table_join_info;
-    }
-
-    void ObTabletJoin::set_right_table_rowkey_info(const ObRowkeyInfo *right_table_rowkey_info)
-    {
-      right_table_rowkey_info_ = right_table_rowkey_info;
     }
 
     void ObTabletJoin::set_batch_count(const int64_t batch_count)

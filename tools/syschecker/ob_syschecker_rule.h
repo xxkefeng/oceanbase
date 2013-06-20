@@ -156,8 +156,6 @@ namespace oceanbase
       bool invalid_op_;
       bool is_read_;
       bool is_wide_table_;
-      bool is_result_cached_;
-      int64_t last_frozen_version_;
       ObOpType op_type_;
       int64_t row_count_;
       common::ObString table_name_;
@@ -291,7 +289,6 @@ namespace oceanbase
       bool operate_full_row_;
       bool perf_test_;
       bool is_sql_read_;
-      bool is_result_cached_;
       int read_table_type_;
       int write_table_type_;
       int64_t get_row_cnt_;

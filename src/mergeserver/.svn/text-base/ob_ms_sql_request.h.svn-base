@@ -89,14 +89,13 @@ namespace oceanbase
       /// print info for debug
       void print_info(FILE * file) const;
 
-      //int update_location_cache(const common::ObServer &svr, const int32_t err,
-      //  const sql::ObSqlScanParam & scan_param);
+      int update_location_cache(const common::ObServer &svr, const int32_t err,
+        const sql::ObSqlScanParam & scan_param);
       int update_location_cache(const common::ObServer &svr, const int32_t err,
         const common::ObCellInfo & cell);
       int update_location_cache(const common::ObServer &svr, const int32_t err,
          const uint64_t table_id, const common::ObRowkey& rowkey);
-      int update_location_cache(const common::ObServer &svr, const int32_t err,
-         const ObNewRange &range);
+
       /*
        * terminate session with chunkserver when request finished.
        */

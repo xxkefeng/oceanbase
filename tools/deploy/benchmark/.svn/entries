@@ -2,14 +2,14 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/deploy/benchmark
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/deploy/benchmark
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-04-02T10:16:44.979901Z
-13032
-zhuweng.yzf
+2013-04-15T05:02:43.907059Z
+13258
+xiaojun.chengxj
 
 
 
@@ -26,17 +26,51 @@ zhuweng.yzf
 
 dd5f2d26-132e-4cc5-bbb5-82d5b530e537
 
+benchmark.conf.template
+file
+
+
+
+
+2013-06-20T08:38:49.000000Z
+fb8334c9b7d287c0d305d04ff6cee08d
+2013-01-14T05:46:04.290345Z
+11457
+xiaojun.chengxj
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1215
+
 oltp.sql
 file
 
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 5024ae9d252d7833d9b8763c741f29d4
-2013-03-16T14:25:58.941768Z
-12666
-zhuweng.yzf
+2013-04-15T05:02:43.907059Z
+13258
+xiaojun.chengxj
 
 
 
@@ -66,7 +100,7 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 71c2a708211588533a6a346b245a7b6f
 2013-03-04T07:59:57.052630Z
 12329
@@ -100,7 +134,7 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 cb3fa01a8847202db9ad0d1771150484
 2013-03-12T04:23:38.621882Z
 12524
@@ -134,11 +168,11 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 edf815db5d210cbf1c34e6950d89e6ac
-2013-04-02T10:16:44.979901Z
-13032
-zhuweng.yzf
+2013-03-28T12:50:32.848935Z
+12925
+xiaojun.chengxj
 
 
 
@@ -168,44 +202,10 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 f98d8950dd098eeb642bd45d66db45f3
-2013-04-02T10:16:44.979901Z
-13032
-zhuweng.yzf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-402
-
-benchmark.conf.template
-file
-
-
-
-
-2013-06-19T09:27:12.000000Z
-fb8334c9b7d287c0d305d04ff6cee08d
-2013-01-14T05:46:04.290345Z
-11457
+2013-04-01T04:48:40.259445Z
+12978
 xiaojun.chengxj
 
 
@@ -228,5 +228,5 @@ xiaojun.chengxj
 
 
 
-1215
+402
 

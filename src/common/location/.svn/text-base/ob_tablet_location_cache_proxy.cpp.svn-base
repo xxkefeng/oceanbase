@@ -86,29 +86,6 @@ int ObTabletLocationCacheProxy::del_cache_item(const uint64_t table_id, const Ob
   return ret;
 }
 
-int ObTabletLocationCacheProxy::del_cache_item(const ObNewRange &range)
-{
-  int ret = OB_SUCCESS;
-  ObRowkey search_key;
-  ObRowKeyContainer objs;
-  ret = get_search_key(ScanFlag::FORWARD, &range, objs, search_key); 
-  if (ret != OB_SUCCESS)
-  {
-    TBSYS_LOG(ERROR, "get search key failed:ret[%d], range[%s]", ret, to_cstring(range));
-  }
-  else
-  {
-    ret = del_cache_item(range.table_id_, search_key);
-    if (ret != OB_SUCCESS)
-    {
-      TBSYS_LOG(DEBUG, "del cache item failed:table_id[%lu], ret[%d], search key[%s]", 
-          range.table_id_, ret, to_cstring(search_key));
-    }
-  }
-  reset_search_key(search_key);
-  return ret;
-}
-
 
 
 int ObTabletLocationCacheProxy::update_cache_item(const uint64_t table_id, const ObRowkey & rowkey, 
@@ -130,57 +107,6 @@ int ObTabletLocationCacheProxy::update_cache_item(const uint64_t table_id, const
     {
       TBSYS_LOG(DEBUG, "update cache item succ:table_id[%lu]", table_id);
     }
-  }
-  return ret;
-}
-
-int ObTabletLocationCacheProxy::update_cache_item(
-    const ObNewRange &range,
-    const ObTabletLocationList & list)
-{
-  int ret = OB_SUCCESS;
-  ObRowkey search_key;
-  ObRowKeyContainer objs;
-  ret = get_search_key(ScanFlag::FORWARD, &range, objs, search_key); 
-  if (ret != OB_SUCCESS)
-  {
-    TBSYS_LOG(ERROR, "get search key failed:ret[%d], range[%s]", ret, to_cstring(range));
-  }
-  else
-  {
-    ret = update_cache_item(range.table_id_, search_key, list);
-    if (ret != OB_SUCCESS)
-    {
-      TBSYS_LOG(DEBUG, "update cache item failed:table_id[%lu], ret[%d]", range.table_id_, ret);
-    }
-  }
-  reset_search_key(search_key);
-  return ret;
-}
-
-
-int ObTabletLocationCacheProxy::set_item_invalid(const ObNewRange &range,
-    const ObTabletLocationItem & addr, ObTabletLocationList & list)
-{
-  int ret = OB_SUCCESS;
-  {
-    ObRowkey search_key;
-    ObRowKeyContainer objs;
-    int ret = get_search_key(ScanFlag::FORWARD, &range, objs, search_key);
-    if (ret != OB_SUCCESS)
-    {
-      TBSYS_LOG(ERROR, "get search key failed:ret[%d], range[%s]", ret, to_cstring(range));
-    }
-    else
-    {
-      ret = set_item_invalid(range.table_id_, search_key, addr, list);
-      if (OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(DEBUG, "set item invalid failed:table_id[%lu], ret[%d]", range.table_id_, ret);
-      }
-    }
-    // reset search key buffer
-    reset_search_key(search_key);
   }
   return ret;
 }
@@ -212,35 +138,6 @@ int ObTabletLocationCacheProxy::server_fail(const uint64_t table_id, const commo
   }
   return ret;
 }
-
-int ObTabletLocationCacheProxy::server_fail(
-    const ObNewRange& range,
-    ObTabletLocationList & list,
-    const oceanbase::common::ObServer & server)
-{
-  int ret = get_tablet_location(ScanFlag::FORWARD, &range, list);
-  if (OB_SUCCESS != ret)
-  {
-    TBSYS_LOG(WARN,"fail to get tablet location cache [ret:%d]", ret);
-  }
-  else
-  {
-    for (int64_t i = 0; i < list.size(); i ++)
-    {
-      if (list[i].server_.chunkserver_ == server)
-      {
-        list[i].err_times_ ++;
-        if (OB_SUCCESS != (ret = update_cache_item(range, list)))
-        {
-          TBSYS_LOG(WARN,"fail to update cache item [ret:%d]", ret);
-        }
-        break;
-      }
-    }
-  }
-  return ret;
-}
-
 
 //
 int ObTabletLocationCacheProxy::set_item_invalid(const uint64_t table_id, const ObRowkey & rowkey,
@@ -411,28 +308,6 @@ int ObTabletLocationCacheProxy::renew_location_item(const uint64_t table_id,
   {
     TBSYS_LOG(DEBUG, "cache item is fetched by other thread:table_id[%lu]", table_id);
   }
-  return ret;
-}
-
-int ObTabletLocationCacheProxy::renew_location_item(const ObNewRange &range, ObTabletLocationList & list, bool force_renew)
-{
-  ObRowkey search_key;
-  ObRowKeyContainer objs;
-  int ret = get_search_key(ScanFlag::FORWARD, &range, objs, search_key); 
-  if (ret != OB_SUCCESS)
-  {
-    TBSYS_LOG(ERROR, "get search key failed:ret[%d], range[%s]", ret, to_cstring(range));
-  }
-  else
-  {
-    ret = renew_location_item(range.table_id_, search_key, list, force_renew);
-    if (OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(DEBUG, "set item invalid failed:table_id[%lu], ret[%d]", range.table_id_, ret);
-    }
-  }
-  // reset search key buffer
-  reset_search_key(search_key);
   return ret;
 }
 

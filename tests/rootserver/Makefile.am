@@ -31,10 +31,8 @@ bin_PROGRAMS =  base_main_test \
        test_root_table2_test\
 				root_server_test\
        ob_new_balance_test\
-       ob_delete_replicas_test\
-       test_bypass
+       ob_delete_replicas_test
 
-test_bypass_SOURCES=test_bypass.cpp $(top_srcdir)/svn_version.cpp
 test_root_monitor_table_SOURCES = test_root_monitor_table.cpp
 nodist_test_root_monitor_table_SOURCES = $(top_srcdir)/svn_version.cpp    
 chunk_servers_manager_test_SOURCES = chunk_servers_manager_test.cpp

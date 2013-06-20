@@ -21,9 +21,8 @@ libmrsstable_la_LDFLAGS = -L${top_builddir}/src/sstable/ \
 						  -L${top_builddir}/src/common/ \
 						  -L${top_builddir}/src/common/compress/ \
 						  -L${TBLIB_ROOT}/lib/ \
-              -L${EASY_ROOT}/lib \
-						  -L${EASY_LIB_PATH} \
-              -lsstable -lcommon -lcomp \
+                                                  -L${EASY_ROOT}/lib \
+						  -lsstable -lcommon -lcomp \
 						  -Wl,-static,-leasy \
 						  -Wl,-static,-ltbsys \
 						  -lpthread -lc -lm -lrt -ldl

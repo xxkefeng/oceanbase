@@ -1,53 +1,77 @@
 K 25
 svn:wc:ra_dav:version-url
-V 64
-/repos/oceanbase/!svn/ver/13042/branches/dev/oceanbase/script/ha
-END
-deploy.sh
-K 25
-svn:wc:ra_dav:version-url
-V 73
-/repos/oceanbase/!svn/ver/2785/branches/dev/oceanbase/script/ha/deploy.sh
-END
-authkeys.sh
-K 25
-svn:wc:ra_dav:version-url
-V 75
-/repos/oceanbase/!svn/ver/2785/branches/dev/oceanbase/script/ha/authkeys.sh
-END
-cfg.sh
-K 25
-svn:wc:ra_dav:version-url
-V 71
-/repos/oceanbase/!svn/ver/13042/branches/dev/oceanbase/script/ha/cfg.sh
-END
-RootServer
-K 25
-svn:wc:ra_dav:version-url
-V 75
-/repos/oceanbase/!svn/ver/13042/branches/dev/oceanbase/script/ha/RootServer
-END
-ob_ping
-K 25
-svn:wc:ra_dav:version-url
-V 72
-/repos/oceanbase/!svn/ver/13042/branches/dev/oceanbase/script/ha/ob_ping
+V 74
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha
 END
 ha.cf
 K 25
 svn:wc:ra_dav:version-url
-V 69
-/repos/oceanbase/!svn/ver/2785/branches/dev/oceanbase/script/ha/ha.cf
+V 80
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/ha.cf
 END
 hb3.tgz
 K 25
 svn:wc:ra_dav:version-url
-V 71
-/repos/oceanbase/!svn/ver/2785/branches/dev/oceanbase/script/ha/hb3.tgz
+V 82
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/hb3.tgz
 END
-rs_tpl.xml
+rs.xml
 K 25
 svn:wc:ra_dav:version-url
-V 75
-/repos/oceanbase/!svn/ver/13042/branches/dev/oceanbase/script/ha/rs_tpl.xml
+V 81
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/rs.xml
+END
+deploy.sh
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/deploy.sh
+END
+authkeys.sh
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/authkeys.sh
+END
+rsdep.sh
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/rsdep.sh
+END
+ups.xml
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/ups.xml
+END
+all.xml
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/all.xml
+END
+cfg.sh
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/cfg.sh
+END
+UpdateServer
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/UpdateServer
+END
+upsdep.sh
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/upsdep.sh
+END
+RootServer
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/script/ha/RootServer
 END

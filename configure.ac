@@ -1,5 +1,5 @@
     AC_INIT([OceanBase],
-            [0.4.3],
+            [0.4.1.2],
             [qushan@taobao.com],
             [oceanbase],
 			[http://oceanbase.taobao.org/])
@@ -9,7 +9,7 @@
 
     AC_PROG_LIBTOOL
     AC_PROG_RANLIB
-    AM_INIT_AUTOMAKE(oceanbase, 0.4.3)
+    AM_INIT_AUTOMAKE(oceanbase, 0.4.1.2)
     ac_default_prefix=${HOME}/oceanbase_bin# for convenience
     AC_PROG_CXX
     AC_LANG([C++])
@@ -118,6 +118,20 @@
 			  [with_perf=no]
 	   )
 
+    AC_ARG_WITH([preload],
+           AS_HELP_STRING([--with-preload],
+		          [with preload (default is YES)]),
+	   		  [
+			    if test "$withval" = "yes"; then
+			    	with_preload=yes
+                                AM_CXXFLAGS="${AM_CXXFLAGS} -D__ENABLE_PRELOAD__"
+			    fi
+			  ],
+			  [
+                            with_preload=yes
+                            AM_CXXFLAGS="${AM_CXXFLAGS} -D__ENABLE_PRELOAD__"
+                          ]
+	   )
     AC_ARG_WITH([coverage],
            AS_HELP_STRING([--with-coverage],
 		          [with coverage (default is NO)]),
@@ -242,7 +256,6 @@
                      tests/lsync/Makefile \
                      tools/log_tool/Makefile \
                      tools/mixed_test/Makefile \
-                     tools/bigquerytest/Makefile \
                      tools/newsqltest/Makefile \
                      tools/sstable_builder/Makefile \
                      tools/compactsstablev2/Makefile \

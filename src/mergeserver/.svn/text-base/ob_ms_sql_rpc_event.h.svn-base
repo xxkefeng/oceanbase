@@ -74,14 +74,6 @@ namespace oceanbase
       {
         lock_.lock();
       }
-      inline void set_channel_id(uint32_t channel_id)
-      {
-        channel_id_ = channel_id;
-      }
-      inline uint32_t get_channel_id()
-      {
-        return channel_id_;
-      }
     private:
       // check inner stat
       inline bool check_inner_stat(void) const;
@@ -91,7 +83,6 @@ namespace oceanbase
 
       // parse the packet
       int parse_packet(common::ObPacket * packet, void * args);
-      uint32_t channel_id_;
 
     protected:
       int32_t magic_;

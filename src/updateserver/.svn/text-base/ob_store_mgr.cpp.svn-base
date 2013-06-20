@@ -211,7 +211,7 @@ namespace oceanbase
         else if (get_free(store_node->path) <= disk_reserved_space_
                 || get_free(store_node->path) <= static_cast<int64_t>((static_cast<double>(get_total(store_node->path)) * disk_reserved_ratio_)))
         {
-          TBSYS_LOG(WARN, "free space not enough store_node=%p path=[%s] free=%ld total=%ld disk_reserved_ratio=%lf",
+          TBSYS_LOG(ERROR, "free space not enough store_node=%p path=[%s] free=%ld total=%ld disk_reserved_ratio=%lf",
                     store_node, store_node->path, get_free(store_node->path), get_total(store_node->path), disk_reserved_ratio_);
         }
         else

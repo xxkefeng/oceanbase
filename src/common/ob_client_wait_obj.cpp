@@ -38,10 +38,11 @@ namespace oceanbase
       int err = OB_SUCCESS;
       int64_t end_time_us = tbsys::CTimeUtil::getTime() + timeout_us;
       int64_t wait_time_us = timeout_us;
+      int wait_time_ms = (int)(wait_time_us/1000LL);
       cond_.lock();
-      while (done_count_ == 0 && wait_time_us > 0)
+      while (done_count_ == 0 && (wait_time_ms = (int)(wait_time_us/1000LL)) > 0)
       {
-        cond_.wait((int)wait_time_us/1000);
+        cond_.wait(wait_time_ms);
         wait_time_us = end_time_us - tbsys::CTimeUtil::getTime();
       }
       cond_.unlock();
@@ -49,7 +50,7 @@ namespace oceanbase
       {
         err = err_;
       }
-      else if (wait_time_us <= 0)
+      else if (done_count_ <= 0 && wait_time_ms <= 0)
       {
         err = OB_RESPONSE_TIME_OUT;
         TBSYS_LOG(ERROR, "wait(timeout_us=%ld) TIMEOUT", timeout_us);

@@ -22,7 +22,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <set>
 #include "common_func.h"
 #include "common/hash/ob_hashmap.h"
 #include "common/ob_define.h"
@@ -30,14 +29,12 @@
 #include "common/serialization.h"
 #include "common/ob_malloc.h"
 #include "common/utility.h"
+#include "test_utils.h"
 #include "sstable/ob_sstable_reader.h"
-#include "sstable/ob_sstable_scan_param.h"
 
-using namespace oceanbase;
-using namespace sql;
-using namespace common;
-using namespace serialization;
-using namespace chunkserver;
+using namespace oceanbase::common;
+using namespace oceanbase::common::serialization;
+using namespace oceanbase::chunkserver;
 
 hash::ObHashMap<const char*, int> obj_type_map;
 
@@ -54,7 +51,7 @@ void init_obj_type_map_()
     obj_type_map.set("date_time", ObDateTimeType);
     obj_type_map.set("precise_date_time", ObPreciseDateTimeType);
     obj_type_map.set("var_char", ObVarcharType);
-    //obj_type_map.set("seq", ObSeqType);
+    obj_type_map.set("seq", ObSeqType);
     obj_type_map.set("create_time", ObCreateTimeType);
     obj_type_map.set("modify_time", ObModifyTimeType);
     inited = true;
@@ -147,7 +144,7 @@ int parse_string(const char* src, const char del, const char* dst[], int64_t& si
   int ret = OB_SUCCESS;
   int64_t obj_index = 0;
 
-  char *str = (char*)ob_malloc(OB_MAX_FILE_NAME_LENGTH);
+  char *str = (char*)ob_malloc(OB_MAX_FILE_NAME_LENGTH, ObModIds::TEST);
   strcpy(str, src);
   str[strlen(src)] = 0;
 
@@ -280,6 +277,9 @@ int parse_object(const char* object_str, ObObj& obj)
           break;
         case ObPreciseDateTimeType:
           obj.set_datetime(strtoll(dst[1], NULL, 10));
+          break;
+        case ObSeqType:
+          //TODO
           break;
         case ObCreateTimeType:
           obj.set_createtime(strtoll(dst[1], NULL, 10));
@@ -630,6 +630,8 @@ int parse_rowkey_obj_array(const int* type_array, const int32_t size, const char
             ObString str_value(0, static_cast<ObString::obstr_size_t>(strlen(list[i])), list[i]);
             obj_array[i].set_varchar(str_value);
           }
+        case ObSeqType:
+          break;
         case ObExtendType:
           obj_array[i].set_ext(tmp_value);
           break;
@@ -681,10 +683,7 @@ void dump_tablet_image(ObTabletImage & image, bool load_sstable)
 
       ++tablet_index;
     }
-    if (NULL != tablet)
-    {
-      tablet->dec_ref();
-    }
+    if (NULL != tablet) image.release_tablet(tablet);
   }
   image.end_scan_tablets();
 }
@@ -713,312 +712,40 @@ void dump_multi_version_tablet_image(ObMultiVersionTabletImage & image, bool loa
 int dump_tablet(const ObTablet & tablet, const bool dump_sstable)
 {
   // dump sstable info
-  const sstable::ObSSTableId& sstable_id_= tablet.get_sstable_id();
+  const common::ObArray<sstable::ObSSTableId>& sstable_id_list_
+    = tablet.get_sstable_id_list();
+  int64_t size = sstable_id_list_.count();
 
   // dump tablet basic info
   fprintf(stderr, "range=%s, data version=%ld, disk_no=%d, "
-      "merged=%d, last do expire version=%ld, seq num=%ld, sstable version=%d sstable_file_id:%ld\n",
+      "merged=%d, removed=%d, last do expire version=%ld, seq num=%ld, sstable version=%d, sstable count=%ld\n",
       to_cstring(tablet.get_range()), tablet.get_data_version(), tablet.get_disk_no(),
-      tablet.is_merged(), tablet.get_last_do_expire_version(), tablet.get_sequence_num(),
-      tablet.get_sstable_version(), sstable_id_.sstable_file_id_);
+      tablet.is_merged(), tablet.is_removed(), tablet.get_last_do_expire_version(), tablet.get_sequence_num(),
+      tablet.get_sstable_version(), size);
 
   if (dump_sstable)
   {
     const_cast<ObTablet&>(tablet).load_sstable(tablet.get_data_version());
-    sstable::SSTableReader* sstable_reader_
-      = tablet.get_sstable_reader();
-    if (NULL != sstable_reader_)
+    const common::ObArray<sstable::SSTableReader*> & sstable_reader_list_
+      = tablet.get_sstable_reader_list();
+    for (int64_t i = 0; i < sstable_reader_list_.count() ; ++i)
     {
-      fprintf(stderr, "sstable: id=%ld, row count=%ld, sstable size=%ld,"
-          "checksum=%ld\n", sstable_id_.sstable_file_id_,
-          sstable_reader_->get_row_count(), sstable_reader_->get_sstable_size(), sstable_reader_->get_sstable_checksum());
+      const sstable::SSTableReader* reader = sstable_reader_list_.at(i);
+      if (NULL != reader)
+      {
+        fprintf(stderr, "sstable [%ld]: id=%ld, row count=%ld, sstable size=%ld,"
+            "checksum=%ld\n", i, sstable_id_list_.at(i).sstable_file_id_,
+            reader->get_row_count(), reader->get_sstable_size(), reader->get_sstable_checksum());
+      }
     }
   }
   else
   {
-    fprintf(stderr, "sstable: id=%ld\n", sstable_id_.sstable_file_id_) ;
+    for (int64_t i = 0; i < size; ++i)
+    {
+      fprintf(stderr, "sstable [%ld]: id=%ld\n",
+          i, sstable_id_list_.at(i).sstable_file_id_) ;
+    }
   }
   return OB_SUCCESS;
 }
-
-int build_scan_param(const QueryParam& query_param, ObSqlScanParam& scan_param, ObRowDesc& row_desc)
-{
-  int ret = OB_SUCCESS;
-  ObNewRange range;
-  range.table_id_ = query_param.table_id;
-  int32_t query_column_size = 512;
-  int32_t query_column_array[query_column_size];
-  if (NULL == query_param.query_columns || NULL == query_param.scan_range || 0 >= query_param.table_id)
-  {
-    fprintf(stderr, "invalid table=%ld, scan_range=%s, query_columns=%s\n", 
-        query_param.table_id, query_param.scan_range, query_param.query_columns);
-    ret = OB_INVALID_ARGUMENT;
-  }
-  else if (OB_SUCCESS != (ret = parse_range_str(query_param.scan_range, 1, range)))
-  {
-    fprintf(stderr, "parse_range_str (%s) ret=%d\n", query_param.scan_range, ret);
-  }
-  else if (OB_SUCCESS != (ret = parse_number_range(query_param.query_columns, 
-          query_column_array, query_column_size)))
-  {
-    fprintf(stderr, "parse query_column ret=%d\n", ret);
-  }
-  else if (OB_SUCCESS != (ret = build_scan_param(range, 
-          query_column_array, query_column_size, query_param.version, scan_param, row_desc)))
-  {
-  }
-  else
-  {
-    scan_param.set_scan_direction(oceanbase::common::ScanFlag::FORWARD);
-    scan_param.set_read_mode(query_param.is_async_read ? ScanFlag::ASYNCREAD : ScanFlag::SYNCREAD);
-    scan_param.set_is_result_cached(query_param.is_result_cached);
-  }
-
-  return ret;
-}
-
-int build_scan_param(
-    const oceanbase::common::ObNewRange& range,  
-    const int32_t* query_column_array, 
-    const int32_t query_column_size, 
-    const int64_t query_data_version,
-    oceanbase::sql::ObSqlScanParam& scan_param,
-    oceanbase::common::ObRowDesc& row_desc)
-{
-  int ret = OB_SUCCESS;
-  if (OB_SUCCESS != (ret = fill_scan_project(range.table_id_, 
-          query_column_array, query_column_size, scan_param, row_desc)))
-  {
-    fprintf(stderr, "fill_scan_project error=%d\n", ret);
-  }
-  else
-  {
-    scan_param.set_table_id(range.table_id_, range.table_id_);
-    scan_param.set_data_version(query_data_version);
-    scan_param.set_range(range);
-
-    fprintf(stderr, "query scan param= %s\n", to_cstring(scan_param));
-
-    if (query_column_size == 1 && query_column_array[0] == 0)
-    {
-      scan_param.set_full_row_scan(true);
-    }
-  }
-  return ret;
-}
-
-int build_sstable_scan_param(
-    const QueryParam &query_param, const QueryParam *local_index_param,
-    oceanbase::sstable::ObSSTableScanParam &scan_param,
-    oceanbase::common::ObRowDesc& row_desc)
-{
-  int rc = OB_SUCCESS;
-  ObNewRange range;
-  range.table_id_ = query_param.table_id;
-  uint64_t table_id = range.table_id_;
-  int32_t query_column_size = 512;
-  int32_t query_column_array[query_column_size];
-  if (!query_param.query_columns || !query_param.scan_range || 0 >= query_param.table_id)
-  {
-    fprintf(stderr, "invalid query param");
-    rc = OB_INVALID_ARGUMENT;
-  }
-  else if (OB_SUCCESS != (rc = parse_range_str(query_param.scan_range, 1, range)))
-  {
-    fprintf(stderr, "parse_range_str failed, rc %d, range str [%s]", rc, query_param.scan_range);
-  }
-  else if (OB_SUCCESS != (rc = parse_number_range(query_param.query_columns,
-          query_column_array, query_column_size)))
-  {
-    fprintf(stderr, "parse_number_range failed, rc %d, query_columns [%s]", rc,
-        query_param.query_columns);
-  }
-  else {
-    scan_param.set_range(range);
-    scan_param.set_rowkey_column_count(static_cast<int16_t>(std::max(
-            range.start_key_.get_obj_cnt(), range.end_key_.get_obj_cnt())));
-  }
-
-  ObNewRange local_index_range;
-  if (OB_SUCCESS == rc && local_index_param)
-  {
-    local_index_range.table_id_ = local_index_param->table_id;
-    table_id = local_index_range.table_id_;
-
-    if (!local_index_param->scan_range)
-    {
-      fprintf(stderr, "invalid query param");
-      rc = OB_INVALID_ARGUMENT;
-    }
-    else if (OB_SUCCESS != (rc = parse_range_str(
-            local_index_param->scan_range, 1, local_index_range)))
-    {
-      fprintf(stderr, "parse_range_str failed, rc %d, range str [%s]",
-          rc, local_index_param->scan_range);
-    }
-    else
-    {
-      scan_param.set_local_index_range(local_index_range);
-      scan_param.set_rowkey_column_count(static_cast<int16_t>(std::max(
-              local_index_range.start_key_.get_obj_cnt(),
-              local_index_range.end_key_.get_obj_cnt())));
-    }
-  }
-
-  if (OB_SUCCESS == rc)
-  {
-    for (int32_t i = 0; i < query_column_size; i++)
-    {
-      scan_param.add_column(query_column_array[i]);
-      row_desc.add_column_desc(table_id, query_column_array[i]);
-    }
-
-    ObVersionRange vrange;
-    vrange.start_version_ = vrange.end_version_ = query_param.version;
-    vrange.border_flag_.set_inclusive_start();
-    vrange.border_flag_.set_inclusive_end();
-
-    scan_param.set_scan_direction(ScanFlag::FORWARD);
-  }
-
-  return rc;
-}
-
-void dump_scanner(oceanbase::common::ObNewScanner &scanner, oceanbase::common::ObRowDesc& row_desc)
-{
-  int ret = OB_SUCCESS;
-  common::ObRow current_row;
-  current_row.set_row_desc(row_desc);
-  int64_t row_count = 0;
-  while (OB_SUCCESS == ret && OB_SUCCESS == scanner.get_next_row(current_row))
-  {
-    fprintf(stderr, "row[%ld]=[%s]\n", row_count++, to_cstring(current_row));
-  }
-}
-
-void dump_phy_operator(oceanbase::sql::ObPhyOperator &op)
-{
-  int rc = OB_SUCCESS;
-  const common::ObRow *row = NULL;
-  int64_t count = 0;
-  while (OB_SUCCESS == rc)
-  {
-    rc = op.get_next_row(row);
-    if (OB_SUCCESS == rc)
-    {
-      fprintf(stderr, "row [%ld] = [%s]\n", count++, to_cstring(*row));
-    }
-    else if (OB_ITER_END == rc)
-    {
-      fprintf(stderr, "dump finish, %ld rows dumped.\n", count);
-    }
-    else
-    {
-      fprintf(stderr, "get_next_row failed, rc %d", rc);
-      break;
-    }
-  }
-}
-
-int fill_project(int64_t table_id, int64_t column_id, oceanbase::sql::ObProject& project)
-{
-  int ret = OB_SUCCESS;
-  sql::ObSqlExpression sql_expression;
-  sql::ExprItem item;
-
-  item.value_.cell_.tid = table_id;
-  item.value_.cell_.cid = column_id;
-  item.type_ = T_REF_COLUMN;
-  sql_expression.set_tid_cid(table_id, column_id);
-
-  if (OB_SUCCESS != (ret = sql_expression.add_expr_item(item)))
-  {
-    TBSYS_LOG(WARN, "add_expr_item ret=%d, tid=%ld, cid=%ld", ret, table_id, column_id);
-  }
-  else if (OB_SUCCESS != (ret = sql_expression.add_expr_item_end()))
-  {
-    TBSYS_LOG(WARN, "add_expr_item_end ret=%d, tid=%ld, cid=%ld", ret, table_id, column_id);
-  }
-  else if (OB_SUCCESS != (ret = project.add_output_column(sql_expression)))
-  {
-    TBSYS_LOG(WARN, "add_output_column ret=%d, tid=%ld, cid=%ld", ret, table_id, column_id);
-  }
-  return ret;
-}
-
-int fill_scan_project(
-    const int64_t table_id, const int32_t* query_column_array, const int32_t query_column_size, 
-    ObSqlScanParam& scan_param, ObRowDesc& row_desc)
-{
-  int ret = OB_SUCCESS;
-  ObProject project;
-  std::set<uint64_t> column_id_set;
-  uint64_t column_id = 0;
-
-  for (int64_t j = 0; j < query_column_size && OB_SUCCESS == ret; ++j)
-  {
-    column_id = query_column_array[j];
-    if (column_id_set.find(column_id) == column_id_set.end())
-    {
-      fill_project(table_id, column_id, project);
-      row_desc.add_column_desc(table_id, column_id);
-      column_id_set.insert(column_id);
-    }
-  }
-
-  if (OB_SUCCESS == ret) scan_param.set_project(project);
-
-  return ret;
-}
-
-int build_scan_param(const QueryParam& query_param, oceanbase::common::ObScanParam& scan_param)
-{
-  int rc = OB_SUCCESS;
-  ObNewRange range;
-  ObVersionRange version_range;
-  range.table_id_ = query_param.table_id;
-  int32_t query_column_size = 512;
-  int32_t query_column_array[query_column_size];
-  if (!query_param.query_columns || !query_param.scan_range || 0 >= query_param.table_id)
-  {
-    fprintf(stderr, "invalid query param");
-    rc = OB_INVALID_ARGUMENT;
-  }
-  else if (OB_SUCCESS != (rc = parse_range_str(query_param.scan_range, 1, range)))
-  {
-    fprintf(stderr, "parse_range_str failed, rc %d, range str [%s]", rc, query_param.scan_range);
-  }
-  else if (OB_SUCCESS != (rc = parse_number_range(query_param.query_columns,
-          query_column_array, query_column_size)))
-  {
-    fprintf(stderr, "parse_number_range failed, rc %d, query_columns [%s]", rc,
-        query_param.query_columns);
-  }
-  else 
-  {
-    ObString table_name;
-    scan_param.set(range.table_id_, table_name, range);
-
-    version_range.start_version_ = ObVersion(query_param.version);
-    version_range.border_flag_.unset_min_value();
-    version_range.border_flag_.set_inclusive_start();
-    if (query_param.end_version <= 0)
-    {
-      version_range.border_flag_.set_max_value();
-    }
-    else
-    {
-      version_range.end_version_ = ObVersion(query_param.end_version);
-      version_range.border_flag_.unset_max_value();
-      version_range.border_flag_.set_inclusive_end();
-    }
-    scan_param.set_version_range(version_range);
-
-    for (int32_t i = 0; i < query_column_size; ++i)
-    {
-      scan_param.add_column(query_column_array[i]);
-    }
-  }
-  return rc;
-}
-

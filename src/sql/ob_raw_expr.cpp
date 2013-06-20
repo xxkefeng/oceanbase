@@ -102,10 +102,13 @@ int ObConstRawExpr::set_value_and_type(const common::ObObj& val)
       this->set_expr_type(T_STRING);
       this->set_result_type(ObVarcharType);
       break;
-    case ObUnknownType:
+    case ObExtendType:
     {
       this->set_expr_type(T_QUESTIONMARK);
-      this->set_result_type(ObUnknownType);
+      this->set_result_type(ObIntType);
+      int64_t v = 0;
+      val.get_ext(v);
+      value_.set_int(v);
       break;
     }
     case ObBoolType:
@@ -117,7 +120,13 @@ int ObConstRawExpr::set_value_and_type(const common::ObObj& val)
       TBSYS_LOG(WARN, "obj type not support, type=%d", val.get_type());
       break;
   }
-  value_ = val;
+  if (OB_LIKELY(OB_SUCCESS == ret))
+  {
+    if (ObExtendType != val.get_type())
+    {
+      value_ = val;
+    }
+  }
   return ret;
 }
 
@@ -246,7 +255,7 @@ int ObConstRawExpr::fill_sql_expression(
         TBSYS_LOG(ERROR, "Session stored param placeholder is needed\n");
         break;
       }
-      else if ((ret = value_.get_unknown(item.value_.unknown_)) != OB_SUCCESS) // actually it is an int value, a index
+      else if ((ret = value_.get_int(item.value_.int_)) != OB_SUCCESS)
       {
         TBSYS_LOG(ERROR, "invalid question mark value, type=%d", value_.get_type());
         break;
@@ -258,8 +267,8 @@ int ObConstRawExpr::fill_sql_expression(
       }
       else
       {
-        const ObObj *place_holder = result_set->get_params().at(item.value_.int_);
-        item.value_.unknown_ = place_holder;
+        ObObj *place_holder = result_set->get_params().at(item.value_.int_);
+        item.value_.int_ = reinterpret_cast<int64_t>(place_holder);
       }
       break;
     }
@@ -326,28 +335,20 @@ int ObUnaryRefRawExpr::fill_sql_expression(
     ObLogicalPlan *logical_plan,
     ObPhysicalPlan *physical_plan) const
 {
-  UNUSED(logical_plan);
-  UNUSED(transformer);
   int ret = OB_SUCCESS;
   ExprItem item;
   item.type_ = get_expr_type();
-  if (physical_plan == NULL)
+  if (transformer == NULL || logical_plan == NULL || physical_plan == NULL)
   {
-    TBSYS_LOG(ERROR, "physical_plan error");
+    TBSYS_LOG(ERROR, "transformer error");
     ret = OB_ERROR;
   }
   else
   {
-    int64_t index = OB_INVALID_INDEX;
-    if ((ret = physical_plan->get_index_by_qid(id_, index)) != OB_SUCCESS)
-    {
-      TBSYS_LOG(ERROR, "get physical plan index failed, query id=%lu", id_);
-      ret = OB_ERROR;
-    }
-    else
-    {
-      item.value_.int_ = index;
-    }
+    ErrStat err_stat;
+    int32_t index = OB_INVALID_INDEX;
+    ret = transformer->gen_physical_select(logical_plan, physical_plan, err_stat, id_, &index);
+    item.value_.int_ = index;
   }
   if (ret == OB_SUCCESS && OB_INVALID_INDEX == item.value_.int_)
   {

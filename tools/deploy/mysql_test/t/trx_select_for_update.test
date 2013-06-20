@@ -19,13 +19,13 @@ update t1 set b = 's2000' where pk1 = 1 and pk2 = 's1' and pk3= '2012-12-12 12:0
 select * from t1 where pk1 = 1 and pk2 = 's1' and pk3= '2012-12-12 12:00:00' for update;
 select * from t1 where pk1 = 1 and pk2 = 's1' and pk3= '2012-12-12 12:00:01' for update;
 
---error 5003
+--error 5047
 select * from t1 where pk1 =1 for update;
---error 5003
+--error 5047
 select * from t1 where a=1 for update;
---error 5003
+--error 5047
 select * from t1 for update;
---error 5003
+--error 5047
 select * from t1 where (pk1 = 1 and pk2 = 's1' and pk3= '2012-12-12 12:00:00' ) or (pk1 = 2 and pk2 = 's2' and pk3= '2012-12-12 12:00:00' ) for update;
 
 connection conn1;

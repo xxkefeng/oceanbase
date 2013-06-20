@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/handler
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/handler
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 80f828c4e65c54b8ffa8f355d52a4b12
 2010-11-02T08:31:37.701568Z
 1397
@@ -66,7 +66,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 0fe2f763e5d8796432e9f0b0474a419d
 2011-01-17T01:23:25.541465Z
 3274

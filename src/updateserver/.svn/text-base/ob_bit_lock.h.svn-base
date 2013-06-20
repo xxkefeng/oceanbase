@@ -2,9 +2,9 @@
  //
  // ob_bit_lock.h / updateserver / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2012-08-29 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2012-08-29 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -84,7 +84,7 @@ namespace oceanbase
       else
       {
         int64_t byte_size = common::upper_align(size, 8) / 8;
-        if (NULL == (bits_ = (uint8_t*)common::ob_malloc(byte_size)))
+        if (NULL == (bits_ = (uint8_t*)common::ob_malloc(byte_size, common::ObModIds::BIT_LOCK)))
         {
           ret = common::OB_MEM_OVERFLOW;
         }
@@ -175,4 +175,3 @@ namespace oceanbase
 }
 
 #endif // OCEANBASE_UPDATESERVER_BIT_LOCK_H_
-

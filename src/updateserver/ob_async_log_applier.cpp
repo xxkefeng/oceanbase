@@ -135,7 +135,15 @@ namespace oceanbase
 
       if (OB_SUCCESS != (err = session_guard.start_session(req, task.trans_id_, session_ctx)))
       {
-        TBSYS_LOG(WARN, "begin session fail ret=%d", err);
+        if (OB_BEGIN_TRANS_LOCKED == err)
+        {
+          err = OB_EAGAIN;
+          TBSYS_LOG(TRACE, "begin session fail: TRANS_LOCKED, log_id=%ld", task.log_id_);
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "begin session fail ret=%d, log_id=%ld", err, task.log_id_);
+        }
       }
       else if (OB_SUCCESS != (err = session_ctx->get_ups_mutator().deserialize(log_data, data_len, pos)))
       {
@@ -163,14 +171,6 @@ namespace oceanbase
           session_ctx->get_uc_info().uc_checksum = ob_crc64(session_ctx->get_uc_info().uc_checksum,
                                                             &mutate_ts, sizeof(mutate_ts));
         }
-      }
-
-      if (OB_SUCCESS != err)
-      {}
-      else if (OB_SUCCESS != (err = log_mgr_->add_log_replay_event(task.log_id_, task.mutation_ts_)))
-      {
-        TBSYS_LOG(ERROR, "delay_stat_.add_log_replay_event(seq=%ld, ts=%ld)=>%d",
-                  task.log_id_, task.mutation_ts_, err);
       }
       return err;
     }
@@ -203,6 +203,7 @@ namespace oceanbase
       int64_t pos = 0;
       int64_t file_id = 0;
       task.profile_.start_apply();
+      task.mutation_ts_ = tbsys::CTimeUtil::getTime();
       if (!is_inited())
       {
         err = OB_NOT_INIT;
@@ -340,6 +341,11 @@ namespace oceanbase
       if (!is_inited())
       {
         err = OB_NOT_INIT;
+      }
+      else if (OB_SUCCESS != (err = log_mgr_->add_log_replay_event(task.log_id_, task.mutation_ts_)))
+      {
+        TBSYS_LOG(ERROR, "delay_stat_.add_log_replay_event(seq=%ld, ts=%ld)=>%d",
+                  task.log_id_, task.mutation_ts_, err);
       }
       else if (!task.trans_id_.is_valid())
       {

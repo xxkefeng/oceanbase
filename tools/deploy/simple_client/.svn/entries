@@ -2,14 +2,14 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/deploy/simple_client
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/deploy/simple_client
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-04-02T10:16:44.979901Z
-13032
-zhuweng.yzf
+2013-03-29T10:25:54.365263Z
+12956
+huating
 
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 4c2b2a1809a1734ac203b8ffa4396943
 2013-01-10T08:24:19.609746Z
 11382
@@ -66,11 +66,11 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
-2d193d35550218ebf77929ccee508690
-2013-04-02T10:16:44.979901Z
-13032
-zhuweng.yzf
+2013-06-20T08:38:49.000000Z
+427d77de2a18089e4df0aac956bb102e
+2013-03-29T10:25:54.365263Z
+12956
+huating
 has-props
 
 
@@ -92,7 +92,7 @@ has-props
 
 
 
-1357
+1217
 
 Makefile
 file
@@ -100,7 +100,7 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 b75f1d11b24d2536f646abf72accb060
 2012-07-04T08:24:00.662965Z
 8640
@@ -134,11 +134,11 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 6c9af105d6aefd4140759d6ec63f39a1
-2013-04-02T10:16:44.979901Z
-13032
-zhuweng.yzf
+2013-03-29T10:25:54.365263Z
+12956
+huating
 
 
 

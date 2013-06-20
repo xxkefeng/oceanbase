@@ -27,7 +27,7 @@
 #include "ob_hashutils.h"
 #include "ob_serialization.h"
 #include "common/ob_atomic.h"
-
+#include "common/ob_allocator.h"
 namespace oceanbase
 {
   namespace common
@@ -35,13 +35,13 @@ namespace oceanbase
     namespace hash
     {
       template <class _key_type, class _value_type, class _hashfunc, class _equal, class _getkey, class _allocer, class _defendmode,
-               template <class> class _bucket_array>
+                template <class> class _bucket_array, class _bucket_allocer>
         class ObHashTable;
       template <class _key_type, class _value_type, class _hashfunc, class _equal, class _getkey, class _allocer, class _defendmode,
-               template <class> class _bucket_array>
+                template <class> class _bucket_array, class _bucket_allocer>
         class ObHashTableIterator;
       template <class _key_type, class _value_type, class _hashfunc, class _equal, class _getkey, class _allocer, class _defendmode,
-               template <class> class _bucket_array>
+                template <class> class _bucket_array, class _bucket_allocer>
         class ObHashTableConstIterator;
 
       template <class _value_type>
@@ -67,17 +67,18 @@ namespace oceanbase
                class _getkey,
                class _allocer,
                class _defendmode,
-               template <class> class _bucket_array>
+                template <class> class _bucket_array,
+                class _bucket_allocer>
       class ObHashTableIterator
       {
         private:
           typedef ObHashTableNode<_value_type> hashnode;
-          typedef ObHashTable<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array> hashtable;
-          typedef ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array> iterator;
-          typedef ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array> const_iterator;
+          typedef ObHashTable<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer> hashtable;
+          typedef ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer> iterator;
+          typedef ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer> const_iterator;
           typedef _value_type &reference;
           typedef _value_type *pointer;
-          friend class ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array>;
+          friend class ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer>;
         public:
           ObHashTableIterator() : ht_(NULL), bucket_pos_(0), node_(0)
           {
@@ -147,17 +148,18 @@ namespace oceanbase
                class _getkey,
                class _allocer,
                class _defendmode,
-               template <class> class _bucket_array>
+                template <class> class _bucket_array,
+                class _bucket_allocer>
       class ObHashTableConstIterator
       {
         private:
           typedef ObHashTableNode<_value_type> hashnode;
-          typedef ObHashTable<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array> hashtable;
-          typedef ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array> iterator;
-          typedef ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array> const_iterator;
+          typedef ObHashTable<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer> hashtable;
+          typedef ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer> iterator;
+          typedef ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer> const_iterator;
           typedef const _value_type &const_reference;
           typedef const _value_type *const_pointer;
-          friend class ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array>;
+          friend class ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer>;
         public:
           ObHashTableConstIterator() : ht_(NULL), bucket_pos_(0), node_(0)
           {
@@ -236,12 +238,13 @@ namespace oceanbase
                class _getkey,     // 根据value获取key的函数
                class _allocer,    // 内存分配器
                class _defendmode, // 多线程保护模式
-               template <class> class _bucket_array>
+                template <class> class _bucket_array,
+                class _bucket_allocer = oceanbase::common::ObMalloc >
       class ObHashTable
       {
         public:
-          typedef ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array> iterator;
-          typedef ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array> const_iterator;
+          typedef ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer> iterator;
+          typedef ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer> const_iterator;
           typedef ObHashTableNode<_value_type> hashnode;
         private:
           static const int64_t ARRAY_SIZE = 1024 * 16;  // 乘以hashbucket的大小约1M 必须是2的整数次方
@@ -251,18 +254,18 @@ namespace oceanbase
           typedef typename _defendmode::cond_type cond_type;
           typedef typename _defendmode::cond_waiter cond_waiter;
           typedef typename _defendmode::cond_broadcaster cond_broadcaster;
-          typedef ObHashTable<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array> hashtable;
+          typedef ObHashTable<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer> hashtable;
           typedef ObHashTableBucket<_value_type, lock_type, cond_type> hashbucket;
           typedef pre_proc<_value_type> preproc;
           typedef typename _bucket_array<hashbucket>::array_type bucket_array;
-          friend class ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array>;
-          friend class ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array>;
+          friend class ObHashTableIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer>;
+          friend class ObHashTableConstIterator<_key_type, _value_type, _hashfunc, _equal, _getkey, _allocer, _defendmode, _bucket_array, _bucket_allocer>;
         private:
           ObHashTable(const hashtable &);
           hashtable operator= (const hashtable &);
         public:
           //ObHashTable() : allocer_(NULL), buckets_(NULL), bucket_num_(0), size_(0)
-          ObHashTable() : allocer_(NULL), bucket_num_(0), size_(0)
+          ObHashTable() : allocer_(NULL), bucket_allocer_(&default_bucket_allocer_), bucket_num_(0), size_(0)
           {
             construct(buckets_);
           };
@@ -280,7 +283,7 @@ namespace oceanbase
             return inited(buckets_);
           }
           // 注意 向上取质数自己调用ob_hashutils.h中的cal_next_prime去算，这里不管
-          int create(int64_t bucket_num, _allocer *allocer)
+          int create(int64_t bucket_num, _allocer *allocer, _bucket_allocer* bucket_allocer)
           {
             int ret = 0;
             if (0 >= bucket_num || NULL == allocer)
@@ -288,15 +291,13 @@ namespace oceanbase
               HASH_WRITE_LOG(HASH_WARNING, "invalid param bucket_num=%ld allocer=%p", bucket_num, allocer);
               ret = -1;
             }
-            //else if (NULL != buckets_)
             else if (inited(buckets_))
             {
               HASH_WRITE_LOG(HASH_WARNING, "hashtable has already been created allocer=%p bucket_num=%ld",
                             allocer_, bucket_num_);
               ret = -1;
             }
-            //else if (NULL == (buckets_ = new(std::nothrow) hashbucket[bucket_num]))
-            else if (0 != hash::create(buckets_, bucket_num, ARRAY_SIZE, sizeof(hashbucket)))
+            else if (0 != hash::create(buckets_, bucket_num, ARRAY_SIZE, sizeof(hashbucket), *bucket_allocer))
             {
               HASH_WRITE_LOG(HASH_WARNING, "create buckets fail");
               ret = -1;
@@ -307,6 +308,7 @@ namespace oceanbase
               bucket_num_ = bucket_num;
               allocer_ = allocer;
               allocer_->inc_ref();
+              bucket_allocer_ = bucket_allocer;
             }
             return ret;
           };
@@ -328,7 +330,7 @@ namespace oceanbase
                   while (NULL != cur_node)
                   {
                     hashnode *tmp_node = cur_node->next;
-                    allocer_->deallocate(cur_node);
+                    allocer_->free(cur_node);
                     cur_node = tmp_node;
                   }
                   buckets_[i].node = NULL;
@@ -338,7 +340,7 @@ namespace oceanbase
               allocer_ = NULL;
               //delete[] buckets_;
               //buckets_ = NULL;
-              hash::destroy(buckets_);
+              hash::destroy(buckets_, *bucket_allocer_);
               bucket_num_ = 0;
               size_ = 0;
             }
@@ -363,7 +365,7 @@ namespace oceanbase
                   while (NULL != cur_node)
                   {
                     hashnode *tmp_node = cur_node->next;
-                    allocer_->deallocate(cur_node);
+                    allocer_->free(cur_node);
                     cur_node = tmp_node;
                   }
                 }
@@ -479,7 +481,7 @@ namespace oceanbase
             int ret = HASH_INSERT_SUCC;
             hashnode *node = NULL;
 
-            node = (hashnode*)(allocer_->allocate());
+            node = (hashnode*)(allocer_->alloc());
             if (NULL == node)
             {
               ret = -1;
@@ -732,7 +734,7 @@ namespace oceanbase
                   {
                     *value = node->data;
                   }
-                  allocer_->deallocate(node);
+                  allocer_->free(node);
                   atomic_dec((uint64_t*)&size_);
                   ret = HASH_EXIST;
                   break;
@@ -815,7 +817,7 @@ namespace oceanbase
               {
                 destroy();
               }
-              if (0 == (ret = create(bucket_num, allocer)))
+              if (0 == (ret = create(bucket_num, allocer, bucket_allocer_)))
               {
                 _value_type value;
                 for (int64_t i = 0; i < size; i++)
@@ -877,7 +879,9 @@ namespace oceanbase
             return ret;
           };
         private:
+          _bucket_allocer default_bucket_allocer_;
           _allocer *allocer_;
+          _bucket_allocer *bucket_allocer_;
           //hashbucket *buckets_;
           bucket_array buckets_;
           int64_t bucket_num_;

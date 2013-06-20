@@ -25,11 +25,6 @@ namespace oceanbase
   using namespace common;
   using namespace sql;
 
-  namespace sstable
-  {
-    class ObSSTableScanParam;
-  }
-
   namespace chunkserver
   {
     class ObSqlQueryService 
@@ -38,8 +33,6 @@ namespace oceanbase
         virtual ~ObSqlQueryService() {};
 
         virtual int open(const sql::ObSqlReadParam &sql_read_param) = 0;
-        virtual int open(const sstable::ObSSTableScanParam  &scan_param,
-            const int64_t timeout_us) = 0;
         virtual int fill_scan_data(ObNewScanner &new_scanner) = 0;
         virtual int close() = 0;
         virtual void reset() = 0;

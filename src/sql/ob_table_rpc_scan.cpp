@@ -17,12 +17,30 @@
 #include "common/utility.h"
 #include "ob_sql_read_strategy.h"
 
+#define CREATE_PHY_OPERRATOR_NEW(op, type_name, physical_plan, err)    \
+  ({                                                                    \
+    op = OB_NEW(type_name, ObModIds::OB_SQL_COMMON);                                 \
+   if (op == NULL) \
+   { \
+   err = OB_ERR_PARSER_MALLOC_FAILED; \
+   TBSYS_LOG(WARN, "Can not malloc space for %s", #type_name);  \
+   } \
+   else\
+   {\
+   op->set_phy_plan(physical_plan);              \
+   if ((err = physical_plan->store_phy_operator(op)) != OB_SUCCESS) \
+   { \
+   TBSYS_LOG(WARN, "Add physical operator failed");  \
+   } \
+   } \
+   op;})
+
 namespace oceanbase
 {
   namespace sql
   {
     ObTableRpcScan::ObTableRpcScan() :
-      rpc_scan_(), scalar_agg_(), group_(), group_columns_sort_(), limit_(),
+      rpc_scan_(), scalar_agg_(NULL), group_(NULL), group_columns_sort_(), limit_(),
       has_rpc_(false), has_scalar_agg_(false), has_group_(false),
       has_group_columns_sort_(false), has_limit_(false), is_skip_empty_row_(true),
       read_method_(ObSqlReadStrategy::USE_SCAN)
@@ -33,32 +51,21 @@ namespace oceanbase
     {
     }
 
-    void ObTableRpcScan::set_phy_plan(ObPhysicalPlan *the_plan)
-    {
-      ObPhyOperator::set_phy_plan(the_plan);
-      rpc_scan_.set_phy_plan(the_plan);
-      select_get_filter_.set_phy_plan(the_plan);
-      scalar_agg_.set_phy_plan(the_plan);
-      group_.set_phy_plan(the_plan);
-      group_columns_sort_.set_phy_plan(the_plan);
-      limit_.set_phy_plan(the_plan);
-      empty_row_filter_.set_phy_plan(the_plan);
-    }
-
     int ObTableRpcScan::open()
     {
       int ret = OB_SUCCESS;
-      if (child_op_ == NULL) // for reuse child tree
+      if (child_op_ == NULL)
       {
         // rpc_scan_ is the leaf operator
         if (OB_SUCCESS == ret && has_rpc_)
         {
           child_op_ = &rpc_scan_;
+          child_op_->set_phy_plan(my_phy_plan_);
           if (ObSqlReadStrategy::USE_GET == read_method_
             && is_skip_empty_row_)
           {
             empty_row_filter_.set_child(0, *child_op_);
-            select_get_filter_.set_child(0, empty_row_filter_); 
+            select_get_filter_.set_child(0, empty_row_filter_);
             child_op_ = &select_get_filter_;
           }
         }
@@ -79,13 +86,14 @@ namespace oceanbase
           else if (has_scalar_agg_)
           {
             // add scalar aggregation
-            if (OB_SUCCESS != (ret = scalar_agg_.set_child(0, *child_op_)))
+            if (OB_SUCCESS != (ret = scalar_agg_->set_child(0, *child_op_)))
             {
               TBSYS_LOG(WARN, "Fail to set child of scalar aggregate operator. ret=%d", ret);
             }
             else
             {
-              child_op_ = &scalar_agg_;
+              child_op_ = scalar_agg_;
+              child_op_->set_phy_plan(my_phy_plan_);
             }
           }
           else if (has_group_)
@@ -100,13 +108,14 @@ namespace oceanbase
             {
               TBSYS_LOG(WARN, "Fail to set child of sort operator. ret=%d", ret);
             }
-            else if (OB_SUCCESS != (ret = group_.set_child(0, group_columns_sort_)))
+            else if (OB_SUCCESS != (ret = group_->set_child(0, group_columns_sort_)))
             {
               TBSYS_LOG(WARN, "Fail to set child of group operator. ret=%d", ret);
             }
             else
             {
-              child_op_ = &group_;
+              child_op_ = group_;
+              child_op_->set_phy_plan(my_phy_plan_);
             }
           }
         }
@@ -120,6 +129,7 @@ namespace oceanbase
           else
           {
             child_op_ = &limit_;
+            child_op_->set_phy_plan(my_phy_plan_);
           }
         }
       }
@@ -178,15 +188,17 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTableRpcScan::init(ObSqlContext *context)
+    int ObTableRpcScan::init(ObSqlContext *context, const common::ObRpcScanHint &hint)
     {
       int ret = OB_SUCCESS;
       if (NULL != context)
       {
-        ret = rpc_scan_.init(context);
+        read_method_ = hint.read_method_;
+        is_skip_empty_row_ = hint.is_get_skip_empty_row_;
+        ret = rpc_scan_.init(context, hint);
         if (OB_SUCCESS == ret)
         {
-          has_rpc_ = true;          
+          has_rpc_ = true;
         }
       }
       else
@@ -195,11 +207,6 @@ namespace oceanbase
         ret = OB_INVALID_ARGUMENT;
       }
       return ret;
-    }
-
-    void ObTableRpcScan::set_hint(const common::ObRpcScanHint &hint)
-    {
-      rpc_scan_.set_hint(hint);
     }
 
     int ObTableRpcScan::add_output_column(const ObSqlExpression& expr)
@@ -225,19 +232,29 @@ namespace oceanbase
         ret = OB_ERR_GEN_PLAN;
         TBSYS_LOG(WARN, "Can not adding group column after adding aggregate function(s). ret=%d", ret);
       }
-      else if ((ret = group_columns_sort_.add_sort_column(tid, cid, true)) != OB_SUCCESS)
+      if (OB_SUCCESS == ret)
       {
-        TBSYS_LOG(WARN, "Add sort column of TableRpcScan sort operator failed. ret=%d", ret);
-      }
-      else if ((ret = group_.add_group_column(tid, cid)) != OB_SUCCESS)
-      {
-        TBSYS_LOG(WARN, "Add group column of TableRpcScan group operator failed. ret=%d", ret);
-      }
-      else
-      {
-        has_group_ = true;
-        has_group_columns_sort_ = true;
-        ret = rpc_scan_.add_group_column(tid, cid);
+        if (group_ == NULL)
+        {
+          CREATE_PHY_OPERRATOR_NEW(group_, ObMergeGroupBy, my_phy_plan_, ret);
+        }
+        if (OB_SUCCESS == ret)
+        {
+          if ((ret = group_columns_sort_.add_sort_column(tid, cid, true)) != OB_SUCCESS)
+          {
+            TBSYS_LOG(WARN, "Add sort column of TableRpcScan sort operator failed. ret=%d", ret);
+          }
+          else if ((ret = group_->add_group_column(tid, cid)) != OB_SUCCESS)
+          {
+            TBSYS_LOG(WARN, "Add group column of TableRpcScan group operator failed. ret=%d", ret);
+          }
+          else
+          {
+            has_group_ = true;
+            has_group_columns_sort_ = true;
+            ret = rpc_scan_.add_group_column(tid, cid);
+          }
+        }
       }
       return ret;
     }
@@ -292,17 +309,24 @@ namespace oceanbase
       {
         if (has_group_)
         {
-          if ((ret = group_.add_aggr_column(local_expr)) != OB_SUCCESS)
+          if ((ret = group_->add_aggr_column(local_expr)) != OB_SUCCESS)
           {
             TBSYS_LOG(WARN, "Add aggregate function to TableRpcScan group operator failed. ret=%d", ret);
           }
         }
         else
         {
-          has_scalar_agg_ = true;
-          if ((ret = scalar_agg_.add_aggr_column(local_expr)) != OB_SUCCESS)
+          if (scalar_agg_ == NULL)
           {
-            TBSYS_LOG(WARN, "Add aggregate function to TableRpcScan scalar aggregate operator failed. ret=%d", ret);
+            CREATE_PHY_OPERRATOR_NEW(scalar_agg_, ObScalarAggregate, my_phy_plan_, ret);
+          }
+          if (OB_SUCCESS == ret)
+          {
+            has_scalar_agg_ = true;
+            if ((ret = scalar_agg_->add_aggr_column(local_expr)) != OB_SUCCESS)
+            {
+              TBSYS_LOG(WARN, "Add aggregate function to TableRpcScan scalar aggregate operator failed. ret=%d", ret);
+            }
           }
         }
       }
@@ -320,17 +344,26 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTableRpcScan::add_filter(const ObSqlExpression& expr)
+    int ObTableRpcScan::add_filter(ObSqlExpression *expr)
     {
       int ret = OB_SUCCESS;
-      // add filter to scan param
-      if (OB_SUCCESS != (ret = rpc_scan_.add_filter(expr)))
+      ObSqlExpression* expr_clone = ObSqlExpression::alloc(); // @todo temporary work around
+      if (NULL == expr_clone)
       {
-        TBSYS_LOG(WARN, "fail to add filter to rpc scan operator. ret=%d", ret);
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(WARN, "no memory");
       }
-      else if (OB_SUCCESS != (ret = select_get_filter_.add_filter(expr)))
+      else
       {
-        TBSYS_LOG(WARN, "fail to add filter to filter for select get. ret=%d", ret);
+        *expr_clone = *expr;
+        if (OB_SUCCESS != (ret = rpc_scan_.add_filter(expr)))
+        {
+          TBSYS_LOG(WARN, "fail to add filter to rpc scan operator. ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = select_get_filter_.add_filter(expr_clone)))
+        {
+          TBSYS_LOG(WARN, "fail to add filter to filter for select get. ret=%d", ret);
+        }
       }
       return ret;
     }
@@ -379,7 +412,7 @@ namespace oceanbase
     int64_t ObTableRpcScan::to_string(char* buf, const int64_t buf_len) const
     {
       int64_t pos = 0;
-      databuff_printf(buf, buf_len, pos, "TableRpcScan(");
+      databuff_printf(buf, buf_len, pos, "TableRpcScan(read_method=%s, ", read_method_ == ObSqlReadStrategy::USE_SCAN ? "SCAN":"GET");
       if (has_limit_)
       {
         databuff_printf(buf, buf_len, pos, "limit=<");
@@ -389,13 +422,13 @@ namespace oceanbase
       if (has_scalar_agg_)
       {
         databuff_printf(buf, buf_len, pos, "ScalarAggregate=<");
-        pos += scalar_agg_.to_string(buf+pos, buf_len-pos);
+        pos += scalar_agg_->to_string(buf+pos, buf_len-pos);
         databuff_printf(buf, buf_len, pos, ">, ");
       }
       if (has_group_)
       {
         databuff_printf(buf, buf_len, pos, "GroupBy=<");
-        pos += group_.to_string(buf+pos, buf_len-pos);
+        pos += group_->to_string(buf+pos, buf_len-pos);
         databuff_printf(buf, buf_len, pos, ">, ");
       }
       if (has_group_columns_sort_)
@@ -416,6 +449,11 @@ namespace oceanbase
 
     DEFINE_SERIALIZE(ObTableRpcScan)
     {
+      UNUSED(buf);
+      UNUSED(buf_len);
+      UNUSED(pos);
+      return OB_NOT_IMPLEMENT;
+#if 0
       int ret = OB_SUCCESS;
 #define ENCODE_OP(has_op, op) \
       if (OB_SUCCESS == ret) \
@@ -440,10 +478,16 @@ namespace oceanbase
 
 #undef ENCODE_OP
       return ret;
+#endif
     }
 
     DEFINE_DESERIALIZE(ObTableRpcScan)
     {
+      UNUSED(buf);
+      UNUSED(data_len);
+      UNUSED(pos);
+      return OB_NOT_IMPLEMENT;
+#if 0
       int ret = OB_SUCCESS;
 #define DECODE_OP(has_op, op) \
       if (OB_SUCCESS == ret) \
@@ -471,10 +515,13 @@ namespace oceanbase
       DECODE_OP(has_limit_, limit_);
 #undef DECODE_OP
       return ret;
+#endif
     }
 
     DEFINE_GET_SERIALIZE_SIZE(ObTableRpcScan)
     {
+      return 0;
+#if 0
       int64_t size = 0;
 #define GET_OP_SERIALIZE_SIZE(size, has_op, op) \
       size += common::serialization::encoded_length_bool(has_op); \
@@ -489,6 +536,7 @@ namespace oceanbase
       GET_OP_SERIALIZE_SIZE(size, has_limit_, limit_);
 #undef GET_OP_SERIALIZE_SIZE
       return size;
+#endif
     }
 
     ObPhyOperatorType ObTableRpcScan::get_type() const

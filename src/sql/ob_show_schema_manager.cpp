@@ -32,7 +32,7 @@ const ObSchemaManagerV2* ObShowSchemaManager::get_show_schema_manager()
     {
       void *ptr = NULL;
       ObSchemaManagerV2 *schema_mgr = NULL;
-      if ((ptr = ob_malloc(sizeof(ObSchemaManagerV2))) == NULL)
+      if ((ptr = ob_malloc(sizeof(ObSchemaManagerV2), ObModIds::OB_SCHEMA)) == NULL)
       {
         TBSYS_LOG(WARN, "Out of memory");
       }
@@ -399,110 +399,12 @@ int ObShowSchemaManager::add_show_table_status_schema(ObSchemaManagerV2& schema_
   return ret;
 }
 
-int ObShowSchemaManager::add_show_indexes_schema(ObSchemaManagerV2& schema_mgr)
-{
-  int ret = OB_SUCCESS;
-  TableSchema table_schema;
-  table_schema.init_as_inner_table();
-  strcpy(table_schema.table_name_, OB_INDEXES_SHOW_TABLE_NAME);
-  table_schema.table_id_ = OB_INDEXES_SHOW_TID;
-  table_schema.rowkey_column_num_ = 2;
-  table_schema.max_used_column_id_ = OB_APP_MIN_COLUMN_ID + 12;
-  table_schema.max_rowkey_length_ = 128 + sizeof(int64_t);
-
-  int column_id = OB_APP_MIN_COLUMN_ID;
-  ADD_COLUMN_SCHEMA("table", //column_name
-      column_id ++, //column_id
-      1, //rowkey_id
-      ObVarcharType,  //column_type
-      128, //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("non_unique", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObIntType,  //column_type
-      sizeof(int64_t), //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("key_name", //column_name
-      column_id ++, //column_id
-      1, //rowkey_id
-      ObVarcharType,  //column_type
-      128, //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("seq_in_index", //column_name
-      column_id ++, //column_id
-      2, //rowkey_id
-      ObIntType,  //column_type
-      sizeof(int64_t), //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("column_name", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObVarcharType,  //column_type
-      128, //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("collation", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObVarcharType,  //column_type
-      128, //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("cardinality", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObIntType,  //column_type
-      sizeof(int64_t), //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("sub_part", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObVarcharType,  //column_type
-      128, //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("packed", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObVarcharType,  //column_type
-      128, //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("null", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObVarcharType,  //column_type
-      128, //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("index_type", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObVarcharType,  //column_type
-      128, //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("comment", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObVarcharType,  //column_type
-      5000, //column length
-      false); //is nullable
-  ADD_COLUMN_SCHEMA("index_comment", //column_name
-      column_id ++, //column_id
-      0, //rowkey_id
-      ObVarcharType,  //column_type
-      5000, //column length
-      false); //is nullable
-
-  if (ret == OB_SUCCESS
-    && (ret = schema_mgr.add_new_table_schema(table_schema)) != OB_SUCCESS)
-  {
-    TBSYS_LOG(WARN, "Add schema of %s faild, ret=%d", OB_INDEXES_SHOW_TABLE_NAME, ret);
-  }
-  return ret;
-}
 
 int ObShowSchemaManager::add_show_schemas(ObSchemaManagerV2& schema_mgr)
 {
   int ret = OB_SUCCESS;
   for (int32_t type = ObBasicStmt::T_SHOW_TABLES;
-       ret == OB_SUCCESS && type <= ObBasicStmt::T_SHOW_GRANTS;
+       ret == OB_SUCCESS && type <= ObBasicStmt::T_SHOW_SERVER_STATUS;
        type++)
   {
     ret = add_show_schema(schema_mgr, type);
@@ -536,9 +438,6 @@ int ObShowSchemaManager::add_show_schema(ObSchemaManagerV2& schema_mgr, int32_t 
       break;
     case ObBasicStmt::T_SHOW_TABLE_STATUS:
       ret = add_show_table_status_schema(schema_mgr);
-      break;
-    case ObBasicStmt::T_SHOW_INDEXES:
-      ret = add_show_indexes_schema(schema_mgr);
       break;
     case ObBasicStmt::T_SHOW_SCHEMA:
     case ObBasicStmt::T_SHOW_SERVER_STATUS:

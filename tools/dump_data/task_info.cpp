@@ -11,7 +11,7 @@ DEFINE_SERIALIZE(TaskCounter)
   {
     TBSYS_LOG(ERROR, "serialize total count failed:count[%ld], ret[%d]", total_count_, ret);
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::encode_vi64(buf, buf_len, pos, wait_count_);
@@ -20,7 +20,7 @@ DEFINE_SERIALIZE(TaskCounter)
       TBSYS_LOG(ERROR, "serialize wait count failed:count[%ld], ret[%d]", wait_count_, ret);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::encode_vi64(buf, buf_len, pos, doing_count_);
@@ -48,7 +48,7 @@ DEFINE_DESERIALIZE(TaskCounter)
   {
     TBSYS_LOG(ERROR, "deserialize total count failed:ret[%d]", ret);
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::decode_vi64(buf, data_len, pos, &wait_count_);
@@ -57,7 +57,7 @@ DEFINE_DESERIALIZE(TaskCounter)
       TBSYS_LOG(ERROR, "deserialize wait count failed:ret[%d]", ret);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::decode_vi64(buf, data_len, pos, &doing_count_);
@@ -115,7 +115,7 @@ int TaskInfo::set_param(const ObScanParam & param)
     TBSYS_LOG(ERROR, "check ob malloc failed:buffer[%p], size[%ld]", param_buffer_, size);
     ret = OB_ERROR;
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     int ret = param.serialize(param_buffer_->buffer_, size, pos);
@@ -126,7 +126,6 @@ int TaskInfo::set_param(const ObScanParam & param)
     else
     {
       pos = 0;
-      // TODO modify rewrite scan param
       ret = scan_param_.deserialize(param_buffer_->buffer_, size, pos);
       if (ret != OB_SUCCESS)
       {
@@ -145,7 +144,7 @@ DEFINE_SERIALIZE(TaskInfo)
   {
     TBSYS_LOG(ERROR, "serialize task timestamp failed:timestamp[%ld], ret[%d]", timestamp_, ret);
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::encode_vi64(buf, buf_len, pos, task_token_);
@@ -154,7 +153,7 @@ DEFINE_SERIALIZE(TaskInfo)
       TBSYS_LOG(ERROR, "serialize task token failed:token[%ld], ret[%d]", task_token_, ret);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::encode_vi64(buf, buf_len, pos, task_id_);
@@ -163,7 +162,7 @@ DEFINE_SERIALIZE(TaskInfo)
       TBSYS_LOG(ERROR, "serialize task id failed:task[%lu], ret[%d]", task_id_, ret);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::encode_vi64(buf, buf_len, pos, task_limit_);
@@ -172,7 +171,7 @@ DEFINE_SERIALIZE(TaskInfo)
       TBSYS_LOG(ERROR, "serialize task limit failed:limit[%lu], ret[%d]", task_limit_, ret);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::encode_vi64(buf, buf_len, pos, first_index_);
@@ -208,7 +207,7 @@ DEFINE_SERIALIZE(TaskInfo)
       TBSYS_LOG(ERROR, "serialize location failed:task[%lu], ret[%d]", task_id_, ret);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = scan_param_.serialize(buf, buf_len, pos);
@@ -217,7 +216,7 @@ DEFINE_SERIALIZE(TaskInfo)
       TBSYS_LOG(ERROR, "serialize scan param failed:task[%lu], ret[%d]", task_id_, ret);
     }
   }
-  
+
   return ret;
 }
 
@@ -228,7 +227,7 @@ DEFINE_DESERIALIZE(TaskInfo)
   {
     TBSYS_LOG(ERROR, "deserialize task timestamp failed:ret[%d]", ret);
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::decode_vi64(buf, data_len, pos, &task_token_);
@@ -255,7 +254,7 @@ DEFINE_DESERIALIZE(TaskInfo)
       TBSYS_LOG(ERROR, "deserialize task limit failed:task[%lu], ret[%d]", task_id_, ret);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = serialization::decode_vi64(buf, data_len, pos, &first_index_);
@@ -284,10 +283,10 @@ DEFINE_DESERIALIZE(TaskInfo)
     }
     else
     {
-      table_name_.assign_ptr(const_cast<char *>(str), len);
+      table_name_.assign_ptr(const_cast<char *>(str), int32_t(len));
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = servers_.deserialize(buf, data_len, pos);
@@ -296,7 +295,7 @@ DEFINE_DESERIALIZE(TaskInfo)
       TBSYS_LOG(ERROR, "deserialize location failed:task[%lu], ret[%d]", task_id_, ret);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     ret = scan_param_.deserialize(buf, data_len, pos);
@@ -305,7 +304,7 @@ DEFINE_DESERIALIZE(TaskInfo)
       TBSYS_LOG(ERROR, "deserialize scan param failed:task[%lu], ret[%d]", task_id_, ret);
     }
   }
-  
+
   return ret;
 }
 

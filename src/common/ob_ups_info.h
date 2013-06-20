@@ -101,7 +101,6 @@ namespace oceanbase
       int deserialize(const char* buf, const int64_t buf_len, int64_t& pos);
       void print() const;
       void print(char* buf, const int64_t buf_len, int64_t &pos) const;
-      int64_t to_string(char* buffer, const int64_t length) const;
     };
 
     inline ObUpsList::ObUpsList()

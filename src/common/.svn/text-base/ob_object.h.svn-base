@@ -74,7 +74,7 @@ namespace oceanbase
         void set_datetime(const ObDateTime& value,const bool is_add = false);
         void set_precise_datetime(const ObPreciseDateTime& value,const bool is_add = false);
         void set_varchar(const ObString& value);
-        void set_unknown(const ObObj *value);
+        void set_seq();
         void set_modifytime(const ObModifyTime& value);
         void set_createtime(const ObCreateTime& value);
         void set_bool(const bool value);
@@ -130,7 +130,6 @@ namespace oceanbase
          */
         int get_varchar(ObString& value) const;
         int get_bool(bool &value) const;
-        int get_unknown(const ObObj*& value) const;
 
         int set_decimal(const ObNumber &num, int8_t precision = 38, int8_t scale = 0, bool is_add = false);
         int get_decimal(ObNumber &num) const;
@@ -188,7 +187,6 @@ namespace oceanbase
         int64_t ext_val;
         float float_val;
         double double_val;
-        const ObObj *unknown_val;
         ObDateTime time_val;
         ObPreciseDateTime precisetime_val;
         ObModifyTime modifytime_val;
@@ -325,11 +323,10 @@ namespace oceanbase
       val_len_ = value.length();
     }
 
-    inline void ObObj::set_unknown(const ObObj *value)
+    inline void ObObj::set_seq()
     {
-      meta_.type_ = ObUnknownType;
+      meta_.type_ = ObSeqType;
       meta_.op_flag_ = INVALID_OP_FLAG;
-      value_.unknown_val = value;
     }
 
     inline void ObObj::set_modifytime(const ObModifyTime& value)
@@ -577,18 +574,6 @@ namespace oceanbase
       }
       return res;
     }
-
-    inline int ObObj::get_unknown(const ObObj *&value) const
-    {
-      int res = OB_OBJ_TYPE_ERROR;
-      if (get_type() == ObUnknownType)
-      {
-        value = value_.unknown_val;
-        res = OB_SUCCESS;
-      }
-      return res;
-    }
-
 
     inline int64_t ObObj::hash() const
     {

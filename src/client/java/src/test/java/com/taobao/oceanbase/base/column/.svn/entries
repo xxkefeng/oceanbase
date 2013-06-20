@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/column
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/base/column
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 78ac18a9c04508a284adf6cdf7c31eae
 2011-08-10T02:49:12.105410Z
 5267

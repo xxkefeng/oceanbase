@@ -23,25 +23,24 @@ namespace oceanbase
 {
   namespace rootserver
   {
-    /// ms provider to select ms randomly by hash(scan_param)
-    class ObRootMsProvider: public common::ObMsProvider
+    // thread safe simple ronud-robin merge server provider
+    class ObRootMsProvider:public common::ObMsProvider
     {
-      public:
-        ObRootMsProvider(const ObChunkServerManager &server_manager);
-        virtual ~ObRootMsProvider();
-
-        int get_ms(const common::ObScanParam &scan_param, const int64_t retry_num, common::ObServer &ms);
-        int get_ms(const int64_t retry_num, common::ObServer &ms);
-      private:
-        int reset(const uint32_t scan_param_hash);
-      private:
-        DISALLOW_COPY_AND_ASSIGN(ObRootMsProvider);
-        static const int64_t MAX_SERVER_COUNT = common::OB_TABLET_MAX_REPLICA_COUNT;
-        const ObChunkServerManager &server_manager_;
-        common::ObServer ms_carray_[MAX_SERVER_COUNT];
-        uint32_t scan_param_hash_;
-        uint32_t ms_num_;
-        int64_t count_;
+    public:
+      ObRootMsProvider(const ObChunkServerManager & server_manager);
+      virtual ~ObRootMsProvider();
+    public:
+      int get_ms(common::ObServer & server);
+      // not implement this abstract interface
+      int get_ms(const common::ObScanParam & param, int64_t retry_num, common::ObServer& server)
+      {
+        UNUSED(param);
+        UNUSED(retry_num);
+        UNUSED(server);
+        return common::OB_NOT_IMPLEMENT;
+      }
+    private:
+      const ObChunkServerManager & server_manager_;
     };
   } // end namespace rootserver
 } // end namespace oceanbase

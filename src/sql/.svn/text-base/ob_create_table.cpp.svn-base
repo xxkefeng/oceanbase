@@ -188,7 +188,6 @@ int64_t ObCreateTable::to_string(char* buf, const int64_t buf_len) const
   databuff_printf(buf, buf_len, pos, "max_used_column_id=%ld, ", table_schema_.max_used_column_id_);
   databuff_printf(buf, buf_len, pos, "create_mem_version=%ld, ", table_schema_.create_mem_version_);
   databuff_printf(buf, buf_len, pos, "tablet_max_size=%ld, ", table_schema_.tablet_max_size_);
-  databuff_printf(buf, buf_len, pos, "charset_number=%d", table_schema_.charset_number_);
   databuff_printf(buf, buf_len, pos, "tablet_block_size_=%ld, ", table_schema_.tablet_block_size_);
   databuff_printf(buf, buf_len, pos, "max_rowkey_length=%ld, ", table_schema_.max_rowkey_length_);
   databuff_printf(buf, buf_len, pos, "create_time_column_id=%lu, ", table_schema_.create_time_column_id_);

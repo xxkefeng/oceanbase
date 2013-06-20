@@ -22,12 +22,8 @@ start()
     type=$1
     shift
     if [ "$type" == all ]; then
-        if pgrep -f ^$base_dir/client; then
-            echo "$base_dir/client aready run"
-        else
-            echo "nohup $base_dir/client stress $rs $* >client.log 2>&1 &"
-            nohup $base_dir/client stress $rs $* >client.log 2>&1 &
-        fi
+        echo "nohup $base_dir/client stress $rs $* >client.log 2>&1 &"
+        nohup $base_dir/client stress $rs $* >client.log 2>&1 &
     else
         echo "operation[$type] not support!"
         return 1
@@ -75,8 +71,7 @@ clear()
 real_file=`readlink -f $0`
 cd `dirname $real_file`
 base_dir="`pwd`"
-#ulimit -s unlimited
-ulimit -s 10240
+ulimit -c unlimited
 method=${1:-help}
 shift
 $method $*

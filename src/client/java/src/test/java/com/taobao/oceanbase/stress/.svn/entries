@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 66f83b64e2df857c122fe415e20f7d94
 2010-11-11T02:59:41.319573Z
 1553
@@ -66,7 +66,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 e8dc1b67239024be507c62ccdc6ac228
 2010-11-25T06:35:35.733964Z
 1736
@@ -100,7 +100,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 da3b35935128c24b7d9e9b01fe365c81
 2010-11-11T02:59:41.319573Z
 1553

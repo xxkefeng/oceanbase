@@ -20,9 +20,8 @@
 #include "common/ob_schema.h"
 #include "ob_project.h"
 #include "ob_tablet_join.h"
-#include "ob_sql_read_param.h"
 #include "common/ob_array.h"
-#include "common/ob_bitmap.h"
+#include "common/ob_bit_set.h"
 
 namespace oceanbase
 {
@@ -32,27 +31,25 @@ namespace oceanbase
     class ObCSCreatePlan
     {
       public:
-        ObCSCreatePlan() : column_ids_(OB_ALL_MAX_COLUMN_ID) {}
+        ObCSCreatePlan() {}
         virtual ~ObCSCreatePlan() {}
 
         virtual int create_plan(const ObSchemaManagerV2 &schema_mgr) = 0;
       
+        const static int64_t COLUMN_IDS_HASH_SET_BUCKET_SIZE = 1000;
+
       protected:
         int get_basic_column_and_join_info(
-            const ObSqlReadParam& param, 
-            const ObSchemaManagerV2& schema_mgr, 
-            uint64_t *basic_columns, 
-            int64_t &basic_column_count,
-            int64_t &rowkey_cell_count,
-            ObTabletJoin::TableJoinInfo &table_join_info,
-            bool &is_plain_query);
+            const ObProject &project, 
+            const ObSchemaManagerV2 &schema_mgr, 
+            const uint64_t table_id, 
+            const uint64_t renamed_table_id, 
+            ObArray<uint64_t> &basic_columns, 
+            ObTabletJoin::TableJoinInfo &table_join_info);
 
       private:
-        int add_unique_column( uint64_t column_id, 
-            uint64_t *basic_columns, int64_t &basic_column_count, 
-            int64_t &pos, bool &is_duplicate);
-        //max column id is OB_ALL_MAX_COLUMN_ID 
-        common::ObBitmap<uint64_t> column_ids_;
+        //max column id is 65536
+        common::ObBitSet<65536> column_ids_;
     };
   }
 }

@@ -10,8 +10,7 @@ LDADD = $(top_builddir)/src/obmysql/libobmysql.a    \
         $(top_builddir)/src/sql/libsql.a            \
         $(top_builddir)/src/common/libcommon.a      \
         $(top_builddir)/src/sql/libsql.a            \
-        ${top_builddir}/src/sstable/libsstable.a      \
-				$(top_builddir)/src/common/btree/libbtree.a \
+        $(top_builddir)/src/common/btree/libbtree.a \
         ${EASY_LIB_PATH}/libeasy.a                  \
         ${TBLIB_ROOT}/lib/libtbsys.a
 
@@ -28,7 +27,6 @@ endif
 pub_source =                                                            \
   mergeserver.conf.template                                             \
   ob_ms_tsi.h                                                           \
-  ob_ms_stlmap.h                                                        \
   ob_chunk_server_task_dispatcher.h ob_chunk_server_task_dispatcher.cpp \
   ob_merge_callback.h               ob_merge_callback.cpp               \
   ob_merge_server.h                 ob_merge_server.cpp                 \
@@ -56,6 +54,7 @@ pub_source =                                                            \
   ob_ms_schema_task.h               ob_ms_schema_task.cpp               \
   ob_ms_service_monitor.h           ob_ms_service_monitor.cpp           \
   ob_ms_sql_sorted_operator.h       ob_ms_sql_sorted_operator.cpp       \
+  ob_ms_sql_operator.h              ob_ms_sql_operator.cpp              \
   ob_sql_rpc_event.h                ob_sql_rpc_event.cpp                \
   ob_ms_sql_rpc_event.h             ob_ms_sql_rpc_event.cpp             \
   ob_ms_sql_request.h               ob_ms_sql_request.cpp               \

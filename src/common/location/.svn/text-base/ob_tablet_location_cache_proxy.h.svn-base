@@ -122,7 +122,6 @@ namespace oceanbase
 
       // del cache item according to table id + search rowkey
       int del_cache_item(const uint64_t table_id, const common::ObRowkey& search_key);
-      int del_cache_item(const ObNewRange &range);
 
       // update cache item according to tablet range
       template <typename T>
@@ -161,7 +160,6 @@ namespace oceanbase
       // update cache item according to table id + search rowkey
       int update_cache_item(const uint64_t table_id, const common::ObRowkey& search_key, 
         const ObTabletLocationList & list);
-      int update_cache_item(const ObNewRange &range, const ObTabletLocationList & list);
 
       // set item addr invalid according to tablet range
       template <typename T>
@@ -202,8 +200,6 @@ namespace oceanbase
       // set item addr invalid according to table id + search rowkey
       int set_item_invalid(const uint64_t table_id, const common::ObRowkey& search_key, 
         const ObTabletLocationItem & addr, ObTabletLocationList & list);
-      int set_item_invalid(const ObNewRange &range,
-        const ObTabletLocationItem & addr, ObTabletLocationList & list);
 
       template <typename T>
       int server_fail(const T & scan_param,
@@ -233,8 +229,6 @@ namespace oceanbase
       }
 
       int server_fail(const uint64_t table_id, const common::ObRowkey & search_key, 
-        ObTabletLocationList & list, const oceanbase::common::ObServer & server);
-      int server_fail(const ObNewRange &range,
         ObTabletLocationList & list, const oceanbase::common::ObServer & server);
 
       template <typename T>
@@ -273,8 +267,7 @@ namespace oceanbase
       // get and fetch new item if root server is ok and insert the items
       int renew_location_item(const uint64_t table_id, const common::ObRowkey & row_key, 
         ObTabletLocationList & location, bool force_renew=false);
-      int renew_location_item(const ObNewRange &range,
-        ObTabletLocationList & location, bool force_renew=false);
+
     private:
       // search temp key obj array
       typedef struct ObObjArray

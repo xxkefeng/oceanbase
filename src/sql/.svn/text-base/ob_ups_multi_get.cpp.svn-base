@@ -26,8 +26,7 @@ ObUpsMultiGet::ObUpsMultiGet()
   rpc_proxy_(NULL),
   got_row_count_(0),
   row_desc_(NULL),
-  network_timeout_(0),
-  server_type_(common::MERGE_SERVER)
+  network_timeout_(0)
 {
 }
 
@@ -71,6 +70,8 @@ int ObUpsMultiGet::open()
 
   got_row_count_ = 0;
 
+  FILL_TRACE_LOG("begin open ups multi get.");
+
   if(!check_inner_stat())
   {
     ret = OB_ERROR;
@@ -80,7 +81,7 @@ int ObUpsMultiGet::open()
   {
     TBSYS_LOG(WARN, "construct next get param fail:ret[%d]", ret);
   }
-  else if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_get(cur_get_param_, cur_new_scanner_, server_type_, network_timeout_)))
+  else if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_get(cur_get_param_, cur_new_scanner_, network_timeout_)))
   {
     TBSYS_LOG(WARN, "ups get rpc fail:ret[%d]", ret);
   }
@@ -100,7 +101,6 @@ int ObUpsMultiGet::open()
       TBSYS_LOG(WARN, "get no item:ret[%d]", ret);
     }
   }
-  FILL_TRACE_LOG("ups_multi_get_open");
   return ret;
 }
 
@@ -110,7 +110,7 @@ int ObUpsMultiGet::close()
   return ret;
 }
 
-int ObUpsMultiGet::get_next_row(const ObRow *&row)
+int ObUpsMultiGet::get_next_row(const ObRowkey *&rowkey, const ObRow *&row)
 {
   int ret = OB_SUCCESS;
   bool is_fullfilled = false;
@@ -124,7 +124,7 @@ int ObUpsMultiGet::get_next_row(const ObRow *&row)
 
   while(OB_SUCCESS == ret)
   {
-    ret = cur_new_scanner_.get_next_row(cur_row_);
+    ret = cur_new_scanner_.get_next_row(rowkey, cur_ups_row_);
     if(OB_ITER_END == ret)
     {
       if(OB_SUCCESS != (ret = cur_new_scanner_.get_is_req_fullfilled(is_fullfilled, fullfilled_row_num)))
@@ -141,7 +141,7 @@ int ObUpsMultiGet::get_next_row(const ObRow *&row)
         {
           TBSYS_LOG(WARN, "construct next get param fail:ret[%d]", ret);
         }
-        else if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_get(cur_get_param_, cur_new_scanner_, server_type_, network_timeout_)))
+        else if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_get(cur_get_param_, cur_new_scanner_, network_timeout_)))
         {
           TBSYS_LOG(WARN, "ups get rpc fail:ret[%d]", ret);
         }
@@ -161,7 +161,6 @@ int ObUpsMultiGet::get_next_row(const ObRow *&row)
             TBSYS_LOG(WARN, "get no item:ret[%d]", ret);
           }
         }
-        FILL_TRACE_LOG("ups_get_done is_fullfilled=%d fullfilled_row_num=%ld", is_fullfilled, fullfilled_row_num);
       }
     }
     else if(OB_SUCCESS == ret)
@@ -176,9 +175,8 @@ int ObUpsMultiGet::get_next_row(const ObRow *&row)
 
   if(OB_SUCCESS == ret)
   {
-    row = &cur_row_;
+    row = &cur_ups_row_;
   }
-  FILL_TRACE_LOG("ups_multi_get_get_next_row");
   return ret;
 }
 
@@ -233,7 +231,7 @@ void ObUpsMultiGet::reset()
 void ObUpsMultiGet::set_row_desc(const ObRowDesc &row_desc)
 {
   row_desc_ = &row_desc;
-  cur_row_.set_row_desc(*row_desc_);
+  cur_ups_row_.set_row_desc(*row_desc_);
 }
 
 int ObUpsMultiGet::get_row_desc(const common::ObRowDesc *&row_desc) const

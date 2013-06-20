@@ -24,9 +24,9 @@
 #include "common/ob_hint.h"
 #include "ob_ms_sql_request.h"
 #include "ob_ms_sql_sub_scan_request.h"
-#include "ob_ms_sql_sorted_operator.h"
+#include "ob_ms_sql_operator.h"
 #include "common/location/ob_tablet_location_range_iterator.h"
-#include "sql/ob_sql_plan_param.h"
+
 namespace oceanbase
 {
   namespace common
@@ -50,7 +50,7 @@ namespace oceanbase
 
       /// called by working thread when receive a request from client
       /// these two functions will trigger rpc event which will non-blocking rpc access cs
-      int set_request_param(ObSqlPlanParam &plan_param);
+      int set_request_param(ObSqlScanParam &scan_param, const common::ObRpcScanHint &hint);
       int do_request(const int64_t max_parallel_count, ObTabletLocationRangeIterator &iter,
         const int64_t timeout_us,
         const int64_t limit_offset = 0);
@@ -72,57 +72,34 @@ namespace oceanbase
       {
         return(merger_operator_.get_mem_size_used() + cs_result_mem_size_used_);
       }
-      //int64_t get_whole_result_row_count()const
-      //{
-      //  return merger_operator_.get_whole_result_row_count();
-      //}
+      int64_t get_whole_result_row_count()const
+      {
+        return merger_operator_.get_whole_result_row_count();
+      }
     private:
       ObMsSqlSubScanRequest * alloc_sub_scan_request();
-      int find_sub_scan_request(
-          ObMsSqlRpcEvent * agent_event, 
-          bool &belong_to_this, 
-          bool &is_first,
-          int32_t &idx);
-      int check_if_need_more_req(
-          const int32_t sub_req_idx,
-          const int64_t timeout_us,
-          ObMsSqlRpcEvent &prev_rpc_event,
-          bool &is_session_end);
-      int send_rpc_event(
-          ObMsSqlSubScanRequest * sub_req,
-          const int64_t timeout_us,
-          uint64_t * triggered_rpc_event_id = NULL);
-      bool check_if_location_cache_valid_(
-          const ObNewScanner & scanner,
-          const ObNewRange & scan_range);
-      void end_sessions_();
-      int get_next_range(
-          const ObNewRange &org_scan_range,
-          const ObNewScanner &prev_scan_result,
-          const int64_t prev_limit_offset,
-          ObNewRange &cur_range,
-          int64_t & cur_limit_offset,
-          ObStringBuf &buf);
-      int get_next_range_for_trivail_scan(
-          const ObNewRange &org_scan_range,
-          const ObNewScanner &prev_scan_result,
-          ObNewRange &cur_range);
+      int find_sub_scan_request(ObMsSqlRpcEvent * agent_event, bool &belong_to_this, bool &is_first,
+        int32_t &idx);
+      int check_if_need_more_req(const int32_t sub_req_idx,   const int64_t timeout_us, ObMsSqlRpcEvent &prev_rpc_event, bool &is_session_end);
+
+      int send_rpc_event(ObMsSqlSubScanRequest * sub_req, const int64_t timeout_us, uint64_t * triggered_rpc_event_id = NULL);
+
+      bool check_if_location_cache_valid_(const oceanbase::common::ObNewScanner & scanner, const oceanbase::sql::ObSqlScanParam & scan_param);
+
     private:
+      void end_sessions_();
       static const int64_t MAX_ROW_COLUMN_COUNT = common::OB_MAX_COLUMN_NUMBER * 4;
       int32_t               total_sub_request_count_;
       int32_t               finished_sub_request_count_;
       common::ObVector<ObMsSqlSubScanRequest*> sub_requests_;
-      ObMsSqlSortedOperator  merger_operator_;
-      sql::ObHuskTabletScanV2 * tablet_scan_op_;
-      sql::ObPhysicalPlan * phy_plan_;
+      ObMsSqlOperator  merger_operator_;
+      sql::ObSqlScanParam * scan_param_;
       int64_t       cs_result_mem_size_used_;
       int64_t       max_cs_result_mem_size_;
       int64_t       max_parallel_count_;
       int64_t       timeout_us_;
       ObTabletLocationRangeIterator org_req_range_iter_;
       int64_t sharding_limit_count_;
-      int64_t cur_row_cell_cnt_;
-      common::ObCellInfo row_cells_[MAX_ROW_COLUMN_COUNT];
     };
 
     inline const int32_t ObMsSqlScanRequest::get_total_sub_request_count() const
@@ -139,4 +116,3 @@ namespace oceanbase
 }
 
 #endif
-

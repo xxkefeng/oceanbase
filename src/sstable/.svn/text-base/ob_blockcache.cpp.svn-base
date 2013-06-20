@@ -153,60 +153,12 @@ namespace oceanbase
       return ret;
     }
 
-    int32_t ObBlockCache::get_block_sync_io(
-        const uint64_t sstable_id,
-        const int64_t offset,
-        const int64_t nbyte,
-        ObBufferHandle& buffer_handle,
-        const uint64_t table_id,
-        const bool check_crc /*= true*/)
-    {
-      int status = OB_SUCCESS;
-      int32_t nsize = -1;
-      const char* buffer = NULL;
-
-      int64_t start_time = tbsys::CTimeUtil::getTime();
-      status = read_record(*fileinfo_cache_, sstable_id, offset, nbyte, buffer);
-      if (OB_SUCCESS != status || NULL == buffer)
-      {
-        TBSYS_LOG(WARN, "read sstable[%ld] block[%ld,%ld] from disk error=%d",
-            sstable_id, offset, nbyte, status);
-      }
-      else if (check_crc)
-      {
-        status = ObRecordHeader::check_record(buffer, nbyte, ObSSTableWriter::DATA_BLOCK_MAGIC);
-        if (OB_SUCCESS != status)
-        {
-          TBSYS_LOG(WARN, "failed to check block record, sstable_id=%lu "
-              "offset=%ld nbyte=%ld", sstable_id, offset, nbyte);              
-        }
-      }
-
-      if (OB_SUCCESS == status)
-      {
-        UNUSED(table_id);
-#ifndef _SSTABLE_NO_STAT_
-        OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_NUM, 1); 
-        OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_BYTES, nbyte); 
-#endif
-        buffer_handle.buffer_ = buffer;
-        nsize = static_cast<int32_t>(nbyte);
-        ObIOStat stat;
-        stat.total_ior_size_ = nbyte;
-        stat.total_ior_count_ = 1;
-        stat.total_ior_blocks_ = 1;
-        stat.total_ior_time_ = tbsys::CTimeUtil::getTime() - start_time;
-        add_io_stat(stat);
-      }
-      return nsize;
-    }
-
     int32_t ObBlockCache::get_block(const uint64_t sstable_id,
-        const int64_t offset,
-        const int64_t nbyte,
-        ObBufferHandle& buffer_handle,
-        const uint64_t table_id,
-        const bool check_crc)
+                                    const int64_t offset,
+                                    const int64_t nbyte,
+                                    ObBufferHandle& buffer_handle,
+                                    const uint64_t table_id,
+                                    const bool check_crc)
     {
       int32_t ret         = -1;
       int status          = OB_SUCCESS;
@@ -220,11 +172,11 @@ namespace oceanbase
         TBSYS_LOG(WARN, "have not inited, fileinfo_cache_=%p", fileinfo_cache_);
       }
       else if (OB_INVALID_ID == sstable_id || offset < 0 || nbyte <= 0
-          || OB_INVALID_ID == table_id || 0 == table_id)
+               || OB_INVALID_ID == table_id || 0 == table_id)
       {
         TBSYS_LOG(WARN, "invalid param sstable_id=%lu, offset=%ld, nbyte=%ld, "
-            "table_id=%lu", 
-            sstable_id, offset, nbyte, table_id);
+                        "table_id=%lu", 
+                  sstable_id, offset, nbyte, table_id);
       }
       else
       {
@@ -393,19 +345,18 @@ namespace oceanbase
           if (OB_SUCCESS == status)
           {
             readahead_offset = block_infos.position_info_[start_cursor].offset_;
-            int64_t start_time = tbsys::CTimeUtil::getTime();
             status = read_record(*fileinfo_cache_, sstable_id, 
                 readahead_offset, readahead_size, buffer);
+
 #ifndef _SSTABLE_NO_STAT_
             OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_CACHE_MISS, 1);
             OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_NUM, 1); 
             OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_BYTES, readahead_size);
 #endif            
             ObIOStat stat;
-            stat.total_ior_size_ = readahead_size;
-            stat.total_ior_count_ = 1;
-            stat.total_ior_blocks_ = end_cursor - start_cursor + 1;
-            stat.total_ior_time_ = tbsys::CTimeUtil::getTime() - start_time;
+            stat.total_read_size_ = readahead_size;
+            stat.total_read_times_ = 1;
+            stat.total_read_blocks_ = end_cursor - start_cursor + 1;
             add_io_stat(stat);
           }
 
@@ -591,7 +542,6 @@ namespace oceanbase
       }
       else
       {
-        int64_t start_time = tbsys::CTimeUtil::getTime();
         status = aio_buf_mgr->get_block(*this, sstable_id, offset, nbyte, 
                                         timeout_us, buffer, from_cache, check_crc);
         if (OB_SUCCESS == status && NULL != buffer)
@@ -600,12 +550,6 @@ namespace oceanbase
           ObBufferHandle handle_tmp(buffer);
           buffer_handle = handle_tmp;
           ret_size = static_cast<int32_t>(nbyte);
-          ObIOStat stat;
-          stat.total_ior_count_ = 1;
-          stat.total_ior_blocks_ = 1;
-          stat.total_ior_size_ = nbyte;
-          stat.total_ior_time_ = tbsys::CTimeUtil::getTime() - start_time;
-          add_io_stat(stat);
           if (from_cache)
           {
 #ifndef _SSTABLE_NO_STAT_

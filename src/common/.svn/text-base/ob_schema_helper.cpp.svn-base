@@ -136,11 +136,11 @@ namespace oceanbase
           ObColumnSchemaV2::ObJoinInfo *join = NULL;
           memcpy(table_schema.table_name_, table->get_table_name(), strlen(table->get_table_name()) + 1);
           table_schema.table_id_ = table->get_table_id();
-          if (table->get_table_load_type() == ObTableSchema::SSTABLE_IN_DISK)
+          if (table->get_table_type() == ObTableSchema::SSTABLE_IN_DISK)
           {
             table_schema.load_type_ = TableSchema::DISK;
           }
-          else if (table->get_table_load_type() == ObTableSchema::SSTABLE_IN_RAM)
+          else if (table->get_table_type() == ObTableSchema::SSTABLE_IN_RAM)
           {
             table_schema.load_type_ = TableSchema::MEMORY;
           }
@@ -186,8 +186,8 @@ namespace oceanbase
             }
             else
             {
-              column_schema.join_table_id_ = 0;
-              column_schema.join_column_id_ = 0;
+              column_schema.join_table_id_ = OB_INVALID_ID;
+              column_schema.join_column_id_ = OB_INVALID_ID;
             }
             memcpy(column_schema.column_name_, column->get_name(), strlen(column->get_name()) + 1);
             TBSYS_LOG(DEBUG, "column_name=%s", column->get_name());

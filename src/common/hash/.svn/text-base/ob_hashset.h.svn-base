@@ -2,9 +2,9 @@
  //
  // ob_hashset.cpp / hash / common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2010-12-27 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2010-12-27 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -52,7 +52,7 @@ namespace oceanbase
       {
         typedef typename HashSetTypes<_key_type>::pair_type pair_type;
         typedef ObHashSet<_key_type, _hashfunc, _equal, _allocer, _defendmode> hashset;
-        typedef ObHashTable<_key_type, pair_type, _hashfunc, _equal, pair_first<pair_type>, _allocer, _defendmode, _bucket_array> hashtable;
+        typedef ObHashTable<_key_type, pair_type, _hashfunc, _equal, pair_first<pair_type>, _allocer, _defendmode, _bucket_array, oceanbase::common::ObMalloc> hashtable;
       public:
         typedef typename hashtable::iterator iterator;
         typedef typename hashtable::const_iterator const_iterator;
@@ -60,7 +60,7 @@ namespace oceanbase
         ObHashSet(const hashset &);
         hashset operator= (const hashset &);
       public:
-        ObHashSet() : ht_()
+          ObHashSet() : bucket_allocer_(ObModIds::OB_HASH_BUCKET), ht_()
         {
         };
         ~ObHashSet()
@@ -89,11 +89,11 @@ namespace oceanbase
         };
         int create(int64_t bucket_num)
         {
-          return ht_.create(cal_next_prime(bucket_num), &allocer_);
+          return ht_.create(cal_next_prime(bucket_num), &allocer_, &bucket_allocer_);
         };
         int create(int64_t bucket_num, _allocer *allocer)
         {
-          return ht_.create(cal_next_prime(bucket_num), allocer);
+          return ht_.create(cal_next_prime(bucket_num), allocer, &bucket_allocer_);
         };
         int destroy()
         {
@@ -146,6 +146,7 @@ namespace oceanbase
         };
       private:
         _allocer allocer_;
+          oceanbase::common::ObMalloc bucket_allocer_;
         hashtable ht_;
       };
     }
@@ -153,4 +154,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_HASH_HASHSET_H_
-

@@ -2,14 +2,14 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/obtest/conf
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/obtest/conf
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-05-23T06:29:23.055479Z
-13944
-zhuweng.yzf
+2013-06-09T10:16:52.693955Z
+14424
+xiaojun.chengxj
 
 
 
@@ -32,11 +32,11 @@ file
 
 
 
-2013-06-19T09:27:09.000000Z
-06a6b965a217c3c6d0776a7fb406b499
-2013-05-23T06:29:23.055479Z
-13944
-zhuweng.yzf
+2013-06-20T08:38:46.000000Z
+8f94f999a71144ef67dab28041e04f4e
+2013-05-28T15:08:37.148969Z
+14047
+xiaojun.chengxj
 has-props
 
 
@@ -58,7 +58,7 @@ has-props
 
 
 
-742
+741
 
 configure.ini
 file
@@ -66,11 +66,11 @@ file
 
 
 
-2013-06-19T09:27:09.000000Z
-b15ceb11a8002b512aa4e77044c1cc18
-2013-05-23T06:29:23.055479Z
-13944
-zhuweng.yzf
+2013-06-20T08:38:46.000000Z
+9550f758ad712dd87077766ac3e70f05
+2013-06-09T10:16:52.693955Z
+14424
+xiaojun.chengxj
 
 
 
@@ -92,5 +92,5 @@ zhuweng.yzf
 
 
 
-926
+928
 

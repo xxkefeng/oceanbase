@@ -84,6 +84,8 @@ namespace oceanbase
       print_indentation(fp, level);
       fprintf(fp, "column_id : %ld\n", column_id_);
       print_indentation(fp, level);
+      fprintf(fp, "column_id : %ld\n", column_id_);
+      print_indentation(fp, level);
       fprintf(fp, "column_name : %.*s\n", column_name_.length(), column_name_.ptr());
       switch (action_)
       {

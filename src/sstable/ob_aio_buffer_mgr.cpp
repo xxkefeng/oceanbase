@@ -1441,9 +1441,9 @@ namespace oceanbase
           {
             aio_buf.set_state(WAIT);
             cur_buf_idx_ = aio_buf_idx;
-            aio_stat_.total_ior_size_ += aio_buf.get_toread_size();
-            aio_stat_.total_ior_count_ += 1;
-            aio_stat_.total_ior_blocks_ += end_curread_block_idx_ - cur_read_block_idx_;
+            aio_stat_.total_read_size_ += aio_buf.get_toread_size();
+            aio_stat_.total_read_times_ += 1;
+            aio_stat_.total_read_blocks_ += end_curread_block_idx_ - cur_read_block_idx_;
             ret = event_mgr.aio_wait(timeout_us);
           }
         }
@@ -1480,9 +1480,9 @@ namespace oceanbase
                                               *preread_aio_buf);
           if (OB_SUCCESS == ret)
           {
-            aio_stat_.total_ior_size_ += preread_aio_buf->get_toread_size();
-            aio_stat_.total_ior_count_ += 1;
-            aio_stat_.total_ior_blocks_ += end_preread_block_idx_ - preread_block_idx_;
+            aio_stat_.total_read_size_ += preread_aio_buf->get_toread_size();
+            aio_stat_.total_read_times_ += 1;
+            aio_stat_.total_read_blocks_ += end_preread_block_idx_ - preread_block_idx_;
             preread_aio_buf->set_state(WAIT);
           }
         }
@@ -2393,14 +2393,12 @@ namespace oceanbase
         stat += item_array_[i].aio_buf_mgr_->get_aio_stat();
       }
 
-      snprintf(buffer, 512, "sstable_id=%lu, total_blocks=%ld,total_size=%ld, cached_size=%ld, \n"
-          "read_size=%ld, read_count=%ld,read_blocks=%ld,read_consume=%ld,\n" 
-          "write_size=%ld, write_count=%ld,write_blocks=%ld,write_consume=%ld,\n" 
-          "rpc_size=%ld, rpc_count=%ld, rpc_consume=%ld",
-        stat.sstable_id_, stat.total_blocks_, stat.total_size_, stat.total_cached_size_,
-        stat.total_ior_size_, stat.total_ior_count_, stat.total_ior_blocks_, stat.total_ior_time_, 
-        stat.total_iow_size_, stat.total_iow_count_, stat.total_iow_blocks_, stat.total_iow_time_, 
-        stat.total_rpc_size_, stat.total_rpc_count_, stat.total_rpc_time_);
+      snprintf(buffer, 512, "read_size=%ld, read_times=%ld, "
+                      "read_blocks=%ld, total_blocks=%ld, "
+                      "total_size=%ld, cached_size=%ld, sstable_id=%lu",
+        stat.total_read_size_, stat.total_read_times_, stat.total_read_blocks_,
+        stat.total_blocks_, stat.total_size_, stat.total_cached_size_,
+        stat.sstable_id_);
 
       return buffer;
     }

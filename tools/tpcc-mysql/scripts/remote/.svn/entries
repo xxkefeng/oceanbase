@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/tpcc-mysql/scripts/remote
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/tpcc-mysql/scripts/remote
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:10.000000Z
+2013-06-20T08:38:47.000000Z
 4d01ed4f0fea1e4aadcd024671927890
 2013-02-06T06:09:33.850707Z
 12053

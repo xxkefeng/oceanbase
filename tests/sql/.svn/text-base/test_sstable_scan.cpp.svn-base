@@ -247,15 +247,13 @@ namespace oceanbase
 
 
             ObScanColumnIndexes::Column column;
-            //const ObRowkey* r_rowkey = NULL;
+            const ObRowkey* r_rowkey = NULL;
             const ObRow* r_row = NULL;
-            while (scanner_.get_next_row(r_row) == 0)
+            while (scanner_.get_next_row(r_rowkey, r_row) == 0)
             {
-              /*
               EXPECT_EQ(OB_SUCCESS, check_rowkey(*r_rowkey, expect_row_index, COL_NUM))
                 << "start row:" << start_row << ",end row:" << end_row
                 << ",row_index:" << row_index ;
-                */
 
               ++row_index;
               if (is_reverse_scan) --expect_row_index;

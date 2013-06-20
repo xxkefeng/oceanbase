@@ -66,7 +66,7 @@ int ObMySQLLoginer::login(easy_connection_t* c, sql::ObSQLSessionInfo *& session
         ret = check_privilege(c, session);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "login failed");
+          TBSYS_LOG(WARN, "login failed, err=%d", ret);
         }
       }
     }
@@ -337,14 +337,10 @@ int ObMySQLLoginer::check_privilege(easy_connection_t* c, sql::ObSQLSessionInfo 
         }
         packet = &err_packet;
       }
-      else if (NULL == (session = reinterpret_cast<sql::ObSQLSessionInfo*>(ob_malloc(sizeof(sql::ObSQLSessionInfo)))))
+      else if (NULL == (session = server_->get_session_pool().alloc()))
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
         TBSYS_LOG(ERROR, "ob malloc failed, ret=%d", OB_ALLOCATE_MEMORY_FAILED);
-        packet = &err_packet;
-      }
-      else if (NULL == (session = new (session) sql::ObSQLSessionInfo()))
-      {
         packet = &err_packet;
       }
       else if (OB_SUCCESS != (ret = session->init(*(server_->get_block_allocator()))))
@@ -381,8 +377,7 @@ int ObMySQLLoginer::check_privilege(easy_connection_t* c, sql::ObSQLSessionInfo 
       {
         if (NULL != session)
         {
-          session->~ObSQLSessionInfo();
-          ob_free(session);
+          server_->get_session_pool().free(session);
           session = NULL;
         }
         TBSYS_LOG(ERROR, "failed to insert new session, ret=%d, key is %d", ret, c->seq);

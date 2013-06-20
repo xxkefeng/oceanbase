@@ -2,13 +2,14 @@ AM_CPPFLAGS = -I${TBLIB_ROOT}/include/tbsys \
 							-I${EASY_ROOT}/include/easy \
 						  -I${top_srcdir}/include \
 							-I${top_srcdir}/src \
-						  -fPIC
+						  -fPIC \
+							-pg
 
 LDADD = ${TBLIB_ROOT}/lib/libtbsys.a \
 				${top_builddir}/src/common/libcommon.a \
 				${top_builddir}/src/sstable/libsstable.a
 
-AM_LDFLAGS = -lpthread -lc -lm -lrt -lcrypt -lssl
+AM_LDFLAGS = -lpthread -lc -lm -lrt -lcrypt -lssl -pg
 CXXFLAGS+= -D_SSTABLE_NO_STAT_
 if COVERAGE
 CXXFLAGS += -fprofile-args -ftest -coverage
@@ -19,7 +20,8 @@ noinst_LIBRARIES = libcompactsstablev2.a
 libcompactsstablev2_a_SOURCES = 																			 \
 ob_sstable_store_struct.h 																						 \
 ob_sstable_buffer.h ob_sstable_buffer.cpp                              \
-ob_sstable_block.h ob_sstable_block.cpp                                \
+ob_sstable_block.h                                                     \
+ob_sstable_block_builder.h ob_sstable_block_builder.cpp                \
 ob_sstable_block_endkey_builder.h ob_sstable_block_endkey_builder.cpp  \
 ob_sstable_block_index_builder.h ob_sstable_block_index_builder.cpp    \
 ob_sstable_table_index_builder.h ob_sstable_table_index_builder.cpp    \
@@ -43,7 +45,6 @@ ob_sstable_scan_column_indexes.h ob_sstable_scan_column_indexes.cpp    \
 ob_compact_sstable_scanner.h ob_compact_sstable_scanner.cpp            \
 ob_sstable_disk_path.h                                                 \
 ob_sstable_block_getter.h ob_sstable_block_getter.cpp                  \
-ob_simple_column_indexes_builder.h ob_simple_column_indexes_builder.cpp \
 ob_compact_sstable_getter.h ob_compact_sstable_getter.cpp
 
 #ob_sstable_scan_param.h ob_sstable_scan_param.cpp

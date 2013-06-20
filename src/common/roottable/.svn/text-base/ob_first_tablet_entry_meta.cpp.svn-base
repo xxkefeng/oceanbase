@@ -455,7 +455,7 @@ int ObFirstTabletEntryMeta::load(const char* filename, ObTabletMetaTableRow &row
   else
   {
     const int64_t max_data_size = 64*1024;
-    char* buf = static_cast<char*>(ob_malloc(max_data_size));
+    char* buf = static_cast<char*>(ob_malloc(max_data_size, ObModIds::OB_FIRST_TABLET_META));
     int fd = -1;
     ssize_t readlen = -1;
     int64_t pos = 0;
@@ -557,7 +557,7 @@ int ObFirstTabletEntryMeta::store(const ObTabletMetaTableRow &row, const char* f
   else
   {
     const int64_t max_data_size = 64*1024;
-    char* buf = static_cast<char*>(ob_malloc(max_data_size));
+    char* buf = static_cast<char*>(ob_malloc(max_data_size, ObModIds::OB_FIRST_TABLET_META));
     int fd = -1;
     ssize_t writelen = -1;
     int64_t pos = 0;
@@ -596,4 +596,3 @@ int ObFirstTabletEntryMeta::store(const ObTabletMetaTableRow &row, const char* f
   }
   return ret;
 }
-

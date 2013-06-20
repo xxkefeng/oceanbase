@@ -119,7 +119,7 @@ namespace oceanbase
     char* str_trim(char *str);
     char* ltrim(char *str);
     char* rtrim(char *str);
-    int databuff_printf(char *buf, const int64_t buf_len, int64_t& pos, const char* fmt, ...) __attribute__ ((format (printf, 4, 5)));
+    void databuff_printf(char *buf, const int64_t buf_len, int64_t& pos, const char* fmt, ...) __attribute__ ((format (printf, 4, 5)));
     template<class T>
     void databuff_print_obj(char *buf, const int64_t buf_len, int64_t& pos, const T &obj)
     {
@@ -282,6 +282,8 @@ namespace oceanbase
     {
       return obj.to_string(buffer, buffer_size);
     }
+    template <>
+    int64_t to_string<ObString>(const ObString &obj, char *buffer, const int64_t buffer_size);
 
     template <typename T, int64_t BUFFER_NUM>
     const char* to_cstring(const T &obj)
@@ -291,14 +293,7 @@ namespace oceanbase
       static __thread uint64_t i = 0;
       char *buffer = buffers[i++ % BUFFER_NUM];
       memset(buffer, 0, BUFFER_SIZE);
-      if (NULL == &obj)
-      {
-        strncpy(buffer, "NULL", BUFFER_SIZE);
-      }
-      else
-      {
-        to_string(obj, buffer, BUFFER_SIZE);
-      }
+      to_string(obj, buffer, BUFFER_SIZE);
       return buffer;
     }
 
@@ -439,6 +434,21 @@ namespace oceanbase
       }
       return ret;
     }
+
+#define REACH_TIME_INTERVAL(i) \
+  ({ \
+    bool bret = false; \
+    static int64_t last_time = 0; \
+    int64_t cur_time = tbsys::CTimeUtil::getTime(); \
+    int64_t old_time = last_time; \
+    if ((i + last_time) < cur_time \
+        && old_time == ATOMIC_CAS(&last_time, old_time, cur_time)) \
+    { \
+      bret = true; \
+    } \
+    bret; \
+  })
+
   } // end namespace common
 } // end namespace oceanbase
 

@@ -303,7 +303,6 @@ namespace oceanbase
       bool bret = true;
       static volatile uint64_t lock = 0;
       OnceGuard lock_guard(lock);
-      static int64_t last_proc_time = 0;
       static const int64_t MIN_PROC_INTERVAL = 10L * 1000L * 1000L;
       int64_t table_available_error_size = 0;
       
@@ -322,8 +321,11 @@ namespace oceanbase
           if (table_available_error_size >= mem_size_available)
           {
             ups_main->get_update_server().submit_immediately_drop();
-            TBSYS_LOG(ERROR, "available memory reach the error-size=%ld last_proc_time=%ld, will try to free a memtable",
-                      mem_size_available, last_proc_time);
+            if (REACH_TIME_INTERVAL(MIN_PROC_INTERVAL))
+            {
+              TBSYS_LOG(ERROR, "available memory reach the error-size=%ld, will try to free a memtable",
+                        mem_size_available);
+            }
           }
           else
           {
@@ -331,11 +333,10 @@ namespace oceanbase
           }
         }
 
-        if ((last_proc_time + MIN_PROC_INTERVAL) < tbsys::CTimeUtil::getTime())
+        if (REACH_TIME_INTERVAL(MIN_PROC_INTERVAL))
         {
-          TBSYS_LOG(INFO, "available memory reach the warn-size=%ld last_proc_time=%ld, will try to free a memtable",
-                    mem_size_available, last_proc_time);
-          last_proc_time = tbsys::CTimeUtil::getTime();
+          TBSYS_LOG(INFO, "available memory reach the warn-size=%ld, will try to free a memtable",
+                    mem_size_available);
         }
       }
       return bret;
@@ -726,5 +727,11 @@ namespace oceanbase
       return ObUpdateServerMain::get_instance()->get_update_server().get_param().memtable_hash_buckets_size;
     }
   }
+}
+
+void memory_limit_callback()
+{
+  TBSYS_LOG(INFO, "ups memory_limit_callback");
+  oceanbase::updateserver::ups_available_memory_warn_callback(0);
 }
 

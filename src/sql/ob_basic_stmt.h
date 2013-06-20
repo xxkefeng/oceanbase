@@ -38,8 +38,6 @@ namespace oceanbase
         T_CREATE_TABLE,
         T_DROP_TABLE,
         T_ALTER_TABLE,
-        T_CREATE_INDEX,
-        T_DROP_INDEX,
 
         // show statements
         T_SHOW_TABLES,
@@ -50,7 +48,6 @@ namespace oceanbase
         T_SHOW_CREATE_TABLE,
         T_SHOW_PARAMETERS,
         T_SHOW_SERVER_STATUS,
-        T_SHOW_INDEXES,
         T_SHOW_WARNINGS,
         T_SHOW_GRANTS,
 
@@ -131,7 +128,7 @@ namespace oceanbase
 
     inline bool ObBasicStmt::is_show_stmt() const
     {
-      return (stmt_type_ >= T_SHOW_TABLES and stmt_type_ <= T_SHOW_GRANTS);
+      return (stmt_type_ >= T_SHOW_TABLES and stmt_type_ <= T_SHOW_SERVER_STATUS);
     }
   }
 }

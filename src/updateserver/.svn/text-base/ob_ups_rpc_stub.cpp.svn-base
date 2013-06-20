@@ -29,7 +29,7 @@ namespace oceanbase
 
     ObUpsRpcStub :: ObUpsRpcStub()
     {
-      rpc_frame_ = NULL;
+      client_mgr_ = NULL;
     }
 
     ObUpsRpcStub :: ~ObUpsRpcStub()
@@ -43,14 +43,14 @@ namespace oceanbase
       ObDataBuffer data_buff;
 
       int32_t version = 2;
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
       // step 1. serialize timestamp to data_buff
       if (OB_SUCCESS == err)
@@ -76,7 +76,7 @@ namespace oceanbase
       // step 2. send request to fetch new schema
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->send_request(root_server, 
+        err = client_mgr_->send_request(root_server, 
             OB_FETCH_SCHEMA, version, timeout_us, data_buff);
         if (err != OB_SUCCESS)
         {
@@ -119,14 +119,14 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
       if (OB_SUCCESS == err)
       {
@@ -146,7 +146,7 @@ namespace oceanbase
       }
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->send_request(master, OB_SLAVE_REG, DEFAULT_VERSION, timeout_us, data_buff);
+        err = client_mgr_->send_request(master, OB_SLAVE_REG, DEFAULT_VERSION, timeout_us, data_buff);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "fail to send slave register to master. err=%d", err);
@@ -195,14 +195,14 @@ namespace oceanbase
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
 
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
 
       // step 1. serialize slave addr
@@ -219,7 +219,7 @@ namespace oceanbase
       // step 2. send request to register
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->send_request(master, 
+        err = client_mgr_->send_request(master, 
             OB_SLAVE_REG, DEFAULT_VERSION, timeout_us, data_buff);
         if (err != OB_SUCCESS)
         {
@@ -263,14 +263,14 @@ namespace oceanbase
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
 
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
 
       // step 1. serialize slave addr
@@ -291,7 +291,7 @@ namespace oceanbase
       // step 2. send request to register
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->send_request(master, 
+        err = client_mgr_->send_request(master, 
             OB_SLAVE_REG, DEFAULT_VERSION, timeout_us, data_buff);
         if (OB_SUCCESS != err)
         {
@@ -336,14 +336,14 @@ namespace oceanbase
       ObDataBuffer data_buff;
       ObServer update_server;
 
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
 
       // serialize ups_master
@@ -363,7 +363,7 @@ namespace oceanbase
       // step 1. send freeze memtable resp
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->send_request(root_server, 
+        err = client_mgr_->send_request(root_server, 
             OB_WAITING_JOB_DONE, DEFAULT_VERSION, timeout_us, data_buff);
         if (err != OB_SUCCESS)
         {
@@ -397,14 +397,14 @@ namespace oceanbase
       ObDataBuffer data_buff;
       ObServer update_server;
 
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
 
       // serialize ups_master
@@ -424,7 +424,7 @@ namespace oceanbase
       // step 1. send freeze memtable resp
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->send_request(root_server, 
+        err = client_mgr_->send_request(root_server, 
             OB_UPDATE_SERVER_REPORT_FREEZE, DEFAULT_VERSION, timeout_us, data_buff);
         if (err != OB_SUCCESS)
         {
@@ -493,11 +493,11 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
-      if (OB_SUCCESS != (err = get_rpc_buffer(data_buff)))
+      if (OB_SUCCESS != (err = get_thread_buffer_(data_buff)))
       {
-        TBSYS_LOG(ERROR, "get_rpc_buffer()=>%d", err);
+        TBSYS_LOG(ERROR, "get_thread_buffer_()=>%d", err);
       }
-      else if (OB_SUCCESS != (err = updateserver::send_request(rpc_frame_, server, DEFAULT_VERSION, pcode,
+      else if (OB_SUCCESS != (err = updateserver::send_request(client_mgr_, server, DEFAULT_VERSION, pcode,
                                                  input, output, data_buff, timeout)))
       {
         TBSYS_LOG(ERROR, "send_request(server=%s, pcode=%d)=>%d", to_cstring(server), pcode, err);
@@ -511,11 +511,11 @@ namespace oceanbase
         int ret = OB_SUCCESS;
         static const int32_t MY_VERSION = 1;
         ObDataBuffer data_buff;
-        get_rpc_buffer(data_buff);
+        get_thread_buffer_(data_buff);
 
-        if (NULL == rpc_frame_)
+        if (NULL == client_mgr_)
         {
-          TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+          TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
           ret = OB_ERROR;
         }
 
@@ -526,7 +526,7 @@ namespace oceanbase
 
         if (OB_SUCCESS == ret)
         {
-          ret = rpc_frame_->send_request(server, pcode, MY_VERSION, timeout, data_buff);
+          ret = client_mgr_->send_request(server, pcode, MY_VERSION, timeout, data_buff);
           if (OB_SUCCESS != ret)
           {
             TBSYS_LOG(WARN, "failed to send request, ret=%d", ret);
@@ -566,14 +566,14 @@ namespace oceanbase
 
       ObDataBuffer data_buff;
 
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
 
       // step 1. serialize info
@@ -596,7 +596,7 @@ namespace oceanbase
       {
         int64_t send_bgn_time = tbsys::CTimeUtil::getMonotonicTime();
 
-        err = rpc_frame_->send_request(lsync,
+        err = client_mgr_->send_request(lsync,
             OB_LSYNC_FETCH_LOG, DEFAULT_VERSION, timeout_us, data_buff);
         if (OB_SUCCESS != err && OB_RESPONSE_TIME_OUT != err)
         {
@@ -653,14 +653,14 @@ namespace oceanbase
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
 
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
-      else if (OB_SUCCESS != (err = get_rpc_buffer(data_buff)))
+      else if (OB_SUCCESS != (err = get_thread_buffer_(data_buff)))
       {
-        TBSYS_LOG(ERROR, "get_rpc_buffer()=>%d", err);
+        TBSYS_LOG(ERROR, "get_thread_buffer_()=>%d", err);
       }
       else if (OB_SUCCESS !=- (err = req.serialize(data_buff.get_data(), data_buff.get_capacity(), data_buff.get_position())))
       {
@@ -671,7 +671,7 @@ namespace oceanbase
       {
         int64_t send_bgn_time = tbsys::CTimeUtil::getMonotonicTime();
 
-        err = rpc_frame_->send_request(master,
+        err = client_mgr_->send_request(master,
             OB_FETCH_LOG, DEFAULT_VERSION, timeout_us, data_buff);
         //TBSYS_LOG(DEBUG, "send_request(client_mgr->send_request()=>%d", err);
         if (OB_SUCCESS != err && OB_RESPONSE_TIME_OUT != err)
@@ -720,20 +720,20 @@ namespace oceanbase
       int64_t pos = 0;
       ObResultCode result_code;
 
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
-      else if (OB_SUCCESS != (err = get_rpc_buffer(data_buff)))
+      else if (OB_SUCCESS != (err = get_thread_buffer_(data_buff)))
       {
-        TBSYS_LOG(ERROR, "get_rpc_buffer()=>%d", err);
+        TBSYS_LOG(ERROR, "get_thread_buffer_()=>%d", err);
       }
       else if (OB_SUCCESS !=- (err = log_cursor.serialize(data_buff.get_data(), data_buff.get_capacity(), data_buff.get_position())))
       {
         TBSYS_LOG(ERROR, "log_cursor.serialize()=>%d", err);
       }
-      else if (OB_SUCCESS != (err = rpc_frame_->send_request(master, OB_FILL_LOG_CURSOR, DEFAULT_VERSION,
+      else if (OB_SUCCESS != (err = client_mgr_->send_request(master, OB_FILL_LOG_CURSOR, DEFAULT_VERSION,
                                                               timeout_us, data_buff)))
       {
         if (OB_RESPONSE_TIME_OUT != err)
@@ -766,18 +766,47 @@ namespace oceanbase
       return send_request(root_server, OB_RS_GET_LAST_FROZEN_VERSION, __dummy__, frozen_version, timeout_us);
     }
 
+    int ObUpsRpcStub :: get_thread_buffer_(ObDataBuffer& data_buff)
+    {
+      int err = OB_SUCCESS;
+
+      ThreadSpecificBuffer::Buffer* rpc_buffer = NULL;
+      // get buffer for rpc send and receive
+      ObUpdateServerMain* obj = ObUpdateServerMain::get_instance();
+      if (NULL == obj)
+      {
+        TBSYS_LOG(ERROR, "get ObUpdateServerMain instance failed.");
+      }
+      else
+      {
+        const ObUpdateServer& server = obj->get_update_server();
+        rpc_buffer = server.get_rpc_buffer();
+        if (NULL == rpc_buffer)
+        {
+          TBSYS_LOG(ERROR, "get thread rpc buff failed:buffer[%p].", rpc_buffer);
+          err = OB_ERROR;
+        }
+        else
+        {
+          rpc_buffer->reset();
+          data_buff.set_data(rpc_buffer->current(), rpc_buffer->remain());
+        }
+      }
+
+      return err;
+    }
     int ObUpsRpcStub :: ups_report_slave_failure(const common::ObServer &slave_server, const int64_t timeout_us)
     {
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
       common::ObMsgUpsSlaveFailure failure_info;
       failure_info.slave_addr_.set_ipv4_addr(slave_server.get_ipv4(), slave_server.get_port());
@@ -810,7 +839,7 @@ namespace oceanbase
       //step 2: send request to root_server
       if (OB_SUCCESS == err)
       {
-        if (OB_SUCCESS != (err = rpc_frame_->send_request(rootserver, OB_RS_UPS_SLAVE_FAILURE, failure_info.MY_VERSION, timeout_us, data_buff)))
+        if (OB_SUCCESS != (err = client_mgr_->send_request(rootserver, OB_RS_UPS_SLAVE_FAILURE, failure_info.MY_VERSION, timeout_us, data_buff)))
         {
           TBSYS_LOG(WARN, "fail to send request. err = %d", err);
         }
@@ -837,14 +866,14 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "INVALID argument. rpc_frame_=%p", rpc_frame_);
+        TBSYS_LOG(WARN, "INVALID argument. client_mgr_=%p", client_mgr_);
         err = OB_INVALID_ARGUMENT;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
       common::ObServer master_inst_rs;
       if (OB_SUCCESS == err)
@@ -871,20 +900,20 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       ObDataBuffer data_buff;
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         ret = OB_ERROR;
       }
       else
       {
-        ret = get_rpc_buffer(data_buff);
+        ret = get_thread_buffer_(data_buff);
       }
 
 
       if (OB_SUCCESS == ret)
       {
-        ret = rpc_frame_->send_request(rootserver, OB_GET_MASTER_OBI_RS,
+        ret = client_mgr_->send_request(rootserver, OB_GET_MASTER_OBI_RS,
                                         DEFAULT_VERSION, timeout, data_buff);
         if (OB_SUCCESS != ret)
         {
@@ -924,14 +953,14 @@ namespace oceanbase
        {
        int err = OB_SUCCESS;
        ObDataBuffer data_buff;
-       if (NULL == rpc_frame_)
+       if (NULL == client_mgr_)
        {
-       TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+       TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
        err = OB_ERROR;
        }
        else
        {
-       err = get_rpc_buffer(data_buff);
+       err = get_thread_buffer_(data_buff);
        }
     //step1: serialize slave_failure_info
     ObUpdateServerMain* ups = ObUpdateServerMain::get_instance();
@@ -981,14 +1010,14 @@ namespace oceanbase
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
 
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
 
       //setp 1. serialize the register info 
@@ -1003,7 +1032,7 @@ namespace oceanbase
       // step 2. send request to root_server
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->send_request(root_server, 
+        err = client_mgr_->send_request(root_server, 
             OB_RS_UPS_REGISTER, msg_register.MY_VERSION, timeout_us, data_buff);
         if (OB_SUCCESS != err)
         {
@@ -1054,18 +1083,18 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->post_request(slave_node, OB_UPS_KEEP_ALIVE, DEFAULT_VERSION, data_buff);
+        err = client_mgr_->post_request(slave_node, OB_UPS_KEEP_ALIVE, DEFAULT_VERSION, data_buff);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "fail to post request to slave [%s], err = %d", slave_node.to_cstring(), err);
@@ -1078,14 +1107,14 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
 
       if (OB_SUCCESS == err)
@@ -1094,7 +1123,7 @@ namespace oceanbase
       }
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->post_request(rootserver, OB_RS_UPS_HEARTBEAT_RESPONSE, msg.MY_VERSION, data_buff);
+        err = client_mgr_->post_request(rootserver, OB_RS_UPS_HEARTBEAT_RESPONSE, msg.MY_VERSION, data_buff);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "fail to post request to rootserver [%s], err = %d", rootserver.to_cstring(), err);
@@ -1109,14 +1138,14 @@ namespace oceanbase
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
 
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
       // step 1. 
       if (OB_SUCCESS == err)
@@ -1133,7 +1162,7 @@ namespace oceanbase
       // step 2. 
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->send_request(root_server, 
+        err = client_mgr_->send_request(root_server, 
             OB_RS_CHECK_TABLET_MERGED, DEFAULT_VERSION, timeout_us, data_buff);
         if (err != OB_SUCCESS)
         {
@@ -1179,14 +1208,14 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       ObDataBuffer data_buff;
-      if (NULL == rpc_frame_)
+      if (NULL == client_mgr_)
       {
-        TBSYS_LOG(WARN, "invalid status, rpc_frame_[%p]", rpc_frame_);
+        TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
         err = OB_ERROR;
       }
       else
       {
-        err = get_rpc_buffer(data_buff);
+        err = get_thread_buffer_(data_buff);
       }
 
       if (OB_SUCCESS == err)
@@ -1195,7 +1224,7 @@ namespace oceanbase
       }
       if (OB_SUCCESS == err)
       {
-        err = rpc_frame_->send_request(rootserver, OB_HANDLE_TRIGGER_EVENT, DEFAULT_VERSION, timeout_us, data_buff);
+        err = client_mgr_->send_request(rootserver, OB_HANDLE_TRIGGER_EVENT, DEFAULT_VERSION, timeout_us, data_buff);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(ERROR, "fail to send request to rootserver [%s], err = %d", rootserver.to_cstring(), err);

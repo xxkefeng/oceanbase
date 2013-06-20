@@ -39,7 +39,6 @@ namespace oceanbase
       else
       {
         snprintf(path, path_len, "%ld.sst", sstable_id);
-        //snprintf(path, path_len, "/data/1/%ld.sst", sstable_id);
       }
       return ret;
     }

@@ -33,6 +33,9 @@
 #include "ob_ms_scan_param.h"
 #include "ob_ms_scan_request.h"
 
+#define __ms_debug__
+#include "common/debug.h"
+
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
@@ -60,6 +63,7 @@ namespace oceanbase
       cache_proxy_ = NULL;
       service_monitor_ = NULL;
 
+      nb_accessor_ = NULL;
       query_cache_ = NULL;
       privilege_mgr_ = NULL;
       frozen_version_ = OB_INVALID_VERSION;
@@ -546,7 +550,7 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "service init error, ret: [%d]", err);
       }
-
+      __debug_init__();
       return err;
     }
 
@@ -648,8 +652,7 @@ namespace oceanbase
           rc = ms_scan(receive_time, version, channel_id, req, in_buffer, out_buffer, timeout_us);
           break;
         case OB_SQL_SCAN_REQUEST:
-          // rc = ms_sql_scan(receive_time, version, channel_id, req, in_buffer, out_buffer, timeout_us);
-          rc = OB_NOT_SUPPORTED;
+          rc = ms_sql_scan(receive_time, version, channel_id, req, in_buffer, out_buffer, timeout_us);
           break;
         case OB_GET_REQUEST:
           rc = ms_get(receive_time, version, channel_id, req, in_buffer, out_buffer, timeout_us);
@@ -699,7 +702,7 @@ namespace oceanbase
       UNUSED(channel_id);
       UNUSED(req);
       const int64_t buf_size = 16*1024;
-      char *buf = (char*)ob_malloc(buf_size);
+      char *buf = (char*)ob_malloc(buf_size, ObModIds::OB_MS_COMMON);
       ObObj result;
       int64_t pos = 0;
       ObString str;
@@ -1647,54 +1650,36 @@ namespace oceanbase
       bool fullfilled = false;
       ObPacketQueueThread &queue_thread =
         merge_server_->get_default_task_queue_thread();
-      ObResultCode rc;
       do
       {
         out_buffer.get_position() = 0;
-        rc.result_code_ = result.get_errno();
-        rc.message_ = result.get_sqlstr();
-        if (OB_SUCCESS != (ret = rc.serialize(out_buffer.get_data(), 
-                out_buffer.get_capacity(), out_buffer.get_position())))
+        if (OB_SUCCESS == ret && OB_SUCCESS !=
+            (ret = result.serialize(out_buffer.get_data(),
+                                    out_buffer.get_capacity(),
+                                    out_buffer.get_position())))
         {
-          TBSYS_LOG(WARN, "serialize result code error = [%d] ", ret);
-        }
-        else if (OB_SUCCESS != (ret = result.serialize(out_buffer.get_data(),
-                out_buffer.get_capacity(), out_buffer.get_position())))
-        {
-          TBSYS_LOG(WARN, "serilize result buffer error, ret = [%d]", ret);
-        }
-        else
-        {
-          result.get_fullfilled(fullfilled);
-          if (result.is_select() && !fullfilled)
-          {
-            if (0 == session_id)
-            {
-              /* need a session id since data isn't fullfilled and
-               * it is the first packet.
-               */
-              session_id = queue_thread.generate_session_id();
-            }
-            /* data isn't fullfilled so set a wait object */
-            if (OB_SUCCESS != (ret = queue_thread.prepare_for_next_request(session_id)))
-            {
-              TBSYS_LOG(WARN, "prepare session_id=%ld,ret=%d", session_id, ret);
-              break;
-            }
-          }
-        }
-
-        /* serialize result code successfully, if only a fullfilled
-           packet session_id will been set to 0. */
-        if (OB_SUCCESS != ret)
-        {
-          // got error before. donot send error response and
-          // leave it to outter function.
+          TBSYS_LOG(ERROR, "serilize result buffer error, ret = [%d]", ret);
           break;
         }
-        else if ( OB_SUCCESS != (ret = merge_server_->send_response(
-                OB_SQL_EXECUTE_RESPONSE, 1, out_buffer,
-                req, response_cid, session_id)))
+        result.get_fullfilled(fullfilled);
+        if (result.is_select() && !fullfilled)
+        {
+          if (0 == session_id)
+          {
+            /* need a session id since data isn't fullfilled and
+             * it is the first packet.
+             */
+            session_id = queue_thread.generate_session_id();
+          }
+          /* data isn't fullfilled so set a wait object */
+          ret = queue_thread.prepare_for_next_request(session_id);
+        }
+        /* serialize result code successfully, if only a fullfilled
+           packet session_id will been set to 0. */
+        if (OB_SUCCESS == ret
+            && OB_SUCCESS != (ret = merge_server_->send_response(
+                                OB_SQL_EXECUTE_RESPONSE, 1, out_buffer,
+                                req, response_cid, session_id)))
         {
           TBSYS_LOG(ERROR, "send response error! ret = [%d]", ret);
           break;
@@ -1737,7 +1722,7 @@ namespace oceanbase
           /* no data should been sent, so break. */
           break;
         }
-      } while (OB_SUCCESS == ret);
+      } while (true);
       if (session_id > 0)
       {
         queue_thread.destroy_session(session_id);
@@ -1758,13 +1743,6 @@ namespace oceanbase
       UNUSED(version);
       int ret = OB_SUCCESS;
       ObString query_str;
-
-      ObResultCode rc;
-      ObSQLResultSet rs;
-      sql::ObSqlContext context;
-      int64_t schema_version = 0;
-      ObSQLSessionInfo session;
-
       if (OB_SUCCESS !=
           (ret = query_str.deserialize(in_buffer.get_data(),
                                        in_buffer.get_capacity(),
@@ -1772,51 +1750,73 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "fail to deserialize query string.");
       }
-      else  if (OB_SUCCESS !=
-          (ret = sql_proxy_.init_sql_env(context, schema_version,
-                                         rs, session)))
+      else
       {
-        TBSYS_LOG(WARN, "init sql env error.");
-      }
-      else 
-      {
-        if (OB_SUCCESS != (ret = sql_proxy_.execute(query_str, rs,
-                context, schema_version)))
-        {
-          TBSYS_LOG(WARN, "execute sql failed. ret = [%d] sql = [%.*s]",
-              ret, query_str.length(), query_str.ptr());
-        }
-        else if (OB_SUCCESS != (ret = rs.open()))
-        {
-          TBSYS_LOG(ERROR, "open sql result set error, ret = [%d]", ret);
-        }
-        else if (OB_SUCCESS != (ret = send_sql_response(req, out_buffer, rs,
-                channel_id, timeout_us)))
-        {
-          TBSYS_LOG(ERROR, "send sql result error, sql: [%.*s], ret: [%d]",
-              query_str.length(), query_str.ptr(), ret);
-        }
-        sql_proxy_.cleanup_sql_env(context, rs);
+        TBSYS_LOG(TRACE, "internal query: [%.*s], length: [%d]",
+                  query_str.length(), query_str.ptr(), query_str.length());
       }
 
+      ObSQLResultSet rs;
+      sql::ObSqlContext context;
+      int64_t schema_version = 0;
+      ObSQLSessionInfo session;
+      int retcode = OB_SUCCESS;
+
+      if (OB_SUCCESS == ret)
+      {
+        if (OB_SUCCESS !=
+            (ret = sql_proxy_.init_sql_env(context, schema_version,
+                                           rs, session)))
+        {
+          TBSYS_LOG(WARN, "init sql env error.");
+        }
+        else
+        {
+          if (OB_SUCCESS != (ret = sql_proxy_.execute(query_str, rs,
+                                                      context, schema_version)))
+          {
+            TBSYS_LOG(WARN, "execute sql failed. ret = [%d] sql = [%.*s]",
+                      ret, query_str.length(), query_str.ptr());
+          }
+          else if (OB_SUCCESS != (ret = rs.open()))
+          {
+            TBSYS_LOG(ERROR, "open sql result set error, ret = [%d]", ret);
+          }
+          else
+          {
+            if (OB_SUCCESS != (retcode = send_sql_response(req, out_buffer, rs,
+                                                       channel_id, timeout_us)))
+            {
+              TBSYS_LOG(ERROR, "send sql result error, sql: [%.*s], ret: [%d]",
+                        query_str.length(), query_str.ptr(), retcode);
+            }
+          }
+          sql_proxy_.cleanup_sql_env(context, rs);
+        }
+      }
       if (OB_SUCCESS != ret)
       {
-        out_buffer.get_position() = 0;
-        rc.result_code_ = ret;
-        rc.message_ = query_str;
-        if (OB_SUCCESS != (ret = rc.serialize(out_buffer.get_data(), 
-                out_buffer.get_capacity(), out_buffer.get_position())))
+        /* if rs errno is not set.. */
+        if (rs.get_errno() == OB_SUCCESS)
         {
-          TBSYS_LOG(WARN, "serialize result code error = [%d] ", ret);
+          rs.set_errno(ret);
+          rs.set_sqlstr(query_str);
         }
-        else if ( OB_SUCCESS != (ret = merge_server_->send_response(
-                OB_SQL_EXECUTE_RESPONSE, 1, out_buffer, req, channel_id, 0)))
+        if (OB_SUCCESS != (
+              ret = rs.serialize(out_buffer.get_data(),
+                                 out_buffer.get_capacity(),
+                                 out_buffer.get_position())))
         {
-          TBSYS_LOG(ERROR, "send response error! ret = [%d]", ret);
+          TBSYS_LOG(WARN, "serilize result set error, ret: [%d]", ret);
+        }
+        else if (OB_SUCCESS != (
+                   retcode = merge_server_->send_response(
+                     OB_SQL_EXECUTE_RESPONSE, 1, out_buffer, req, channel_id)))
+        {
+          TBSYS_LOG(WARN, "send response error, ret: [%d]", retcode);
         }
       }
-
-      return ret;
+      return retcode;
     }
 
     int ObMergeServerService::ms_scan(
@@ -2187,7 +2187,7 @@ namespace oceanbase
       }
       return send_err;
     }
-/*
+
     int ObMergeServerService::ms_sql_scan(
       const int64_t start_time,
       const int32_t version,
@@ -2278,7 +2278,7 @@ namespace oceanbase
 
       return rc.result_code_;
     }
-*/
+
     int ObMergeServerService::ms_reload_config(
       const int64_t start_time,
       const int32_t version,

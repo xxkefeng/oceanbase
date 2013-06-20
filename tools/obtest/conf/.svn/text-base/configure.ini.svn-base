@@ -26,8 +26,10 @@ sub_dir_list = {1..10}
 
 use_static_connection= 0 # only used when no connection created
 
-md5=bf0c9fcaa3b5c9b0c88376d8900f767f
+md5=a481e5321f16ec901f3187d1630376db
+
 
 sysbench=/home/hudson/oceanbase-0.4/sysbench
 
-check_error=0
+check_error=1
+

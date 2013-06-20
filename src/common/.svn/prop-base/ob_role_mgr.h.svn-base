@@ -1,8 +1,6 @@
 K 13
 svn:mergeinfo
-V 280
-/branches/0_4_1_release/oceanbase/src/common/ob_role_mgr.h:12603-13939
-/branches/cs_plan_dev/oceanbase/src/common/ob_role_mgr.h:13985-14477
+V 140
 /branches/dev/oceanbase/src/common/ob_role_mgr.h:5023-7412
 /branches/developing/trans_mvcc_dev/oceanbase/src/common/ob_role_mgr.h:9273-10180
 END

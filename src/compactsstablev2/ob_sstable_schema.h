@@ -7,7 +7,6 @@
 #include "common/hash/ob_hashmap.h"
 #include "common/ob_rowkey.h"
 #include "common/ob_row.h"
-#include "common/utility.h"
 
 class TestSSTableSchema_construct_Test;
 class TestSSTableSchema_add_column_def_Test;
@@ -68,18 +67,6 @@ namespace oceanbase
         }
 
         return ret;
-      }
-
-      int64_t to_string(char* buf, const int64_t buf_len) const
-      {
-        int64_t pos = 0;
-        
-        if (pos < buf_len)
-        {
-          common::databuff_printf(buf, buf_len, pos, "table_id_=[%lu], column_id_=[%lu], column_value_type_=[%d], offset_=[%ld], rowkey_seq_=[%ld]", table_id_, column_id_, column_value_type_, offset_, rowkey_seq_);
-        }
-
-        return pos;
       }
     };
 
@@ -214,28 +201,10 @@ namespace oceanbase
 
       void reset();
 
-      /**
-       * get sub schema(the schema of single table)
-       * @param table_id: table id
-       * @param schema: schema
-       */
-      int get_sub_schema(const uint64_t table_id, ObSSTableSchema& schema);
-
       //table id, rowkey/rowvalue ----> column def array
       const ObSSTableSchemaColumnDef* get_table_schema(
           const uint64_t table_id,
-          const bool is_rowkey_column,
-          int64_t& size) const;
-
-      /**
-       * get the schema of one single table
-       * @param table_id: table id
-       * @param size: the column count
-       * @return: the begin ptr of column array of the table
-       */
-      const ObSSTableSchemaColumnDef* get_table_schema(
-          const uint64_t table_id,
-          int64_t& size) const;
+          const bool is_rowkey_column, int64_t& size) const;
 
       //table id, column id ----> column def
       const ObSSTableSchemaColumnDef* get_column_def(

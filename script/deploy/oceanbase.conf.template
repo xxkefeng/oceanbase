@@ -1,4 +1,4 @@
-#Time-stamp: <2013-05-03 14:20:41 ryan>
+#Time-stamp: <2013-06-03 19:03:25 ryan>
 # Author: 符风 <fufeng.syd@alibaba-inc.com>
 # 集群初始化工具使用的配置文件
 # 所有以#@开始的行有特殊含义不允许当注释删除
@@ -65,24 +65,22 @@ commitlog_dir=/data/log1/ups_commitlog
 [public]
 [rootserver]
 # rootserver的vip地址
-vip=10.246.162.160
+# vip=10.10.0.1
 # 所有rootserver的ip地址
-10.246.162.160
+# 10.10.10.10
 [updateserver]
 # 所有updateserver的ip地址
-10.246.162.160
+# 10.10.10.10
 [chunkserver]
 # 所有chunkserver的ip地址
-10.246.162.161
-10.246.162.162
-10.246.162.163
-10.246.162.164
+# 10.10.10.20
+# 10.10.10.30
+# 10.10.10.40
 [mergeserver]
 # 所有mergeserver的ip地址
-10.246.162.161
-10.246.162.162
-10.246.162.163
-10.246.162.164
+# 10.10.10.20
+# 10.10.10.30
+# 10.10.10.40
 #@end_cluster_1
 
 ##@begin_cluster_2

@@ -136,11 +136,6 @@ int ObSort::do_sort()
         {
           TBSYS_LOG(INFO, "need merge sort");
           in_mem_sort_.reset();
-          if (OB_SUCCESS != (ret = in_mem_sort_.set_sort_columns(sort_columns_)))
-          {
-            TBSYS_LOG(WARN, "fail to set sort columns for in_mem_sort. ret=%d", ret);
-            break;
-          }
           need_merge = true;
           sort_reader_ = &merge_sort_;
         }

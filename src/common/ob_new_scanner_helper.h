@@ -31,13 +31,14 @@ namespace oceanbase
     class ObNewScannerHelper
     {
       public:
+        static int convert(ObScanner &scanner, const ObRowDesc *row_desc, ObNewScanner &new_scanner);
         static int get_row_desc(const ObScanParam &scan_param, ObRowDesc &row_desc);
-        static int get_row_desc(const ObGetParam &get_param, const bool has_flag_column,
-            const int64_t rowkey_cell_count, ObRowDesc &row_desc);
+        static int get_row_desc(const ObGetParam &get_param, bool has_flag_column, ObRowDesc &row_desc);
 
         static int add_cell(ObRow &row, const ObCellInfo &cell, bool is_ups_row);
+        static int add_ups_cell(ObUpsRow &ups_row, const ObCellInfo &cell, ObStringBuf *str_buf = NULL);
 
-        static int print_new_scanner(ObNewScanner &new_scanner, ObRow &row);
+        static int print_new_scanner(ObNewScanner &new_scanner, ObRow &row, bool has_rowkey = false);
       private:
         static int put_rowkey_to_row(ObRow &row, const ObCellInfo &cell);
     };

@@ -2,8 +2,6 @@
 #define BASE_SERVER_H_
 
 #include "tbsys.h"
-#include "tbnet.h"
-
 #include "common/thread_buffer.h"
 #include "common/ob_client_manager.h"
 #include "common/ob_packet_factory.h"
@@ -12,34 +10,31 @@
 
 namespace oceanbase
 {
-  namespace tools 
+  namespace tools
   {
     class BaseServer : public common::ObSingleServer
     {
       public:
         /// init
         virtual int initialize();
-        
         /// task dispatch
         virtual int do_request(common::ObPacket * base_packet) = 0;
-        
+
         /// client manager
         common::ObClientManager * get_client(void)
         {
           return &client_manager_;
         }
-        
+
         /// rpc buffer
         common::ThreadSpecificBuffer * get_buffer(void)
         {
           return &rpc_buffer_;
         }
-
       protected:
         common::ThreadSpecificBuffer rpc_buffer_;
-      
+
       private:
-        common::ObPacketFactory factory_;
         common::ObClientManager client_manager_;
     };
 
@@ -57,6 +52,8 @@ namespace oceanbase
 
         virtual void run(tbsys::CThread *thread, void *arg)
         {
+          UNUSED(thread);
+          UNUSED(arg);
           int ret = server_.start();
           if (ret != common::OB_SUCCESS)
           {

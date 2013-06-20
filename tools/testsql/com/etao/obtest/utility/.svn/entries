@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/testsql/com/etao/obtest/utility
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/testsql/com/etao/obtest/utility
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:08.000000Z
+2013-06-20T08:38:45.000000Z
 4faab7bcf0c648b2a0e7018d33ecfd1d
 2012-07-05T10:26:07.392294Z
 8668

@@ -16,8 +16,7 @@
  */
 #include "write_worker.h"
 
-WriteWorker::WriteWorker(int64_t row_num)
-    :writer_(row_num)
+WriteWorker::WriteWorker()
 {
   key_gen_ = NULL;
 }
@@ -39,8 +38,6 @@ int WriteWorker::init(KeyGenerator& key_gen, MysqlClient& ob_client, PrefixInfo&
 
 void WriteWorker::run(CThread* thread, void* arg)
 {
-  UNUSED(thread);
-  UNUSED(arg);
   int err = 0;
   uint64_t prefix = 0;
 

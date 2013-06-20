@@ -5,7 +5,6 @@
 #include "ob_stmt.h"
 #include "ob_select_stmt.h"
 #include "ob_result_set.h"
-#include "ob_sql_context.h"
 #include "common/ob_string.h"
 #include "common/ob_string_buf.h"
 #include "common/ob_vector.h"
@@ -40,33 +39,12 @@ namespace oceanbase
 
       ObSqlRawExpr* get_expr(uint64_t expr_id) const;
 
-      int add_query(ObBasicStmt* stmt, uint64_t *query_id = NULL)
+      int add_query(ObBasicStmt* stmt)
       {
         int ret = common::OB_SUCCESS;
-        if (stmt)
+        if ((!stmt) || (stmts_.push_back(stmt) != common::OB_SUCCESS))
         {
-          stmt->set_query_id(generate_query_id());
-          if (stmts_.push_back(stmt) != common::OB_SUCCESS)
-          {
-            TBSYS_LOG(WARN, "fail to allocate space for stmt. %p", stmt);
-            ret = common::OB_ERROR;
-          }
-          else if ((ret = queries_hash_.add_column_desc(
-                                            stmt->get_query_id(),
-                                            common::OB_INVALID_ID)
-                                            ) != OB_SUCCESS)
-          {
-            TBSYS_LOG(WARN, "Can not add query_id to hash table");
-            ret = common::OB_ERROR;
-          }
-          if (query_id)
-          {
-            *query_id = stmt->get_query_id();
-          }
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "query can not be empty");
+          TBSYS_LOG(WARN, "fail to allocate space for stmt. %p", stmt);
           ret = common::OB_ERROR;
         }
         return ret;
@@ -95,7 +73,7 @@ namespace oceanbase
         return ret;
       }
 
-      int fill_result_set(ObResultSet& result_set, ObSqlContext *context);
+        int fill_result_set(ObResultSet& result_set, ObSQLSessionInfo *session_info, common::StackAllocator &alloc);
 
       uint64_t generate_table_id()
       {
@@ -145,8 +123,6 @@ namespace oceanbase
         OB_ASSERT(index >= 0 && index < get_stmts_count());
         return stmts_.at(index);
       }
-      int32_t get_bit_index_by_qid(const uint64_t query_id) const;
-      int get_qid_by_bit_index(const int64_t index, uint64_t& query_id) const;
       void print(FILE* fp = stderr, int32_t level = 0) const;
 
     protected:
@@ -161,10 +137,6 @@ namespace oceanbase
       uint64_t  new_gen_cid_;
       uint64_t  new_gen_qid_;
       uint64_t  new_gen_eid_;
-
-      // it is only used to record the query_id--bit_index map
-      // although it is a little weird, but it is high-performance than ObHashMap
-      common::ObRowDesc queries_hash_;
     };
   }
 }

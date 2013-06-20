@@ -304,9 +304,11 @@ namespace oceanbase
                                                                            column_count);
       ObObjType obj_type   = ObNullType;
 
-      if (obj_count_ <= 0)
+      if (column_count <= 0 || obj_count_ <= 0 || NULL == column_def)
       {
-        TBSYS_LOG(WARN, "invalid obj count in row,obj_count=%d", obj_count_);
+        TBSYS_LOG(WARN, "invalid column count in scheam or obj count in row,"
+                  "column_count=%ld, obj_count=%d, column_def=%p",
+                  column_count, obj_count_, column_def);
         ret = OB_ERROR;
       }
       else if (OB_SUCCESS != (ret = schema.get_rowkey_column_count(table_id_, rowkey_column_count)))
@@ -353,7 +355,7 @@ namespace oceanbase
           obj_index = binary_rowkey_info_->get_size();
         }
         def_index = 0;
-        while (obj_index < obj_count_ && def_index < column_count && NULL != column_def)
+        while (obj_index < obj_count_ && def_index < column_count)
         {
           obj_type = objs_[obj_index].get_type();
           if (NULL == column_def + def_index)

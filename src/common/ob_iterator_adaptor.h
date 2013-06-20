@@ -20,7 +20,8 @@
 #include "common/ob_iterator.h"
 #include "common/ob_row.h"
 #include "common/ob_schema.h"
-#include "sql/ob_phy_operator.h"
+#include "common/ob_ups_row.h"
+#include "sql/ob_rowkey_phy_operator.h"
 
 namespace oceanbase
 {
@@ -100,7 +101,7 @@ namespace oceanbase
         int set_row_iter_ret_;
     };
 
-    class ObRowIterAdaptor : public sql::ObPhyOperator
+    class ObRowIterAdaptor : public sql::ObRowkeyPhyOperator
     {
       static const int64_t ALLOCATOR_PAGE_SIZE = 65536;
       public:
@@ -113,6 +114,7 @@ namespace oceanbase
         int open();
         int close();
         int get_next_row(const ObRow *&row);
+        int get_next_row(const ObRowkey *&rowkey, const ObRow *&row);
         int get_row_desc(const ObRowDesc *&row_desc) const;
         int64_t to_string(char* buf, const int64_t buf_len) const;
       public:

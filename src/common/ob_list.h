@@ -2,9 +2,9 @@
  //
  // ob_list.cpp / hash / common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2011-03-16 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2011-03-16 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -44,7 +44,7 @@ namespace oceanbase
         ptr_t prev;
         T data;
       };
-      
+
       template <class List>
       class ConstIterator
       {
@@ -278,7 +278,7 @@ namespace oceanbase
         int push_back(const value_type &value)
         {
           int ret = 0;
-          node_ptr_t tmp = allocator_.allocate();
+          node_ptr_t tmp = allocator_.alloc();
           if (NULL == tmp)
           {
             ret = -1;
@@ -298,7 +298,7 @@ namespace oceanbase
         int push_front(const value_type &value)
         {
           int ret = 0;
-          node_ptr_t tmp = allocator_.allocate();
+          node_ptr_t tmp = allocator_.alloc();
           if (NULL == tmp)
           {
             ret = -1;
@@ -332,7 +332,7 @@ namespace oceanbase
           }
           return ret;
         };
-        
+
         int pop_front(value_type & value)
         {
           int ret = 0;
@@ -346,7 +346,7 @@ namespace oceanbase
             root_.next = tmp->next;
             tmp->next->prev = root_;
             value = tmp->data;
-            allocator_.deallocate(tmp);
+            allocator_.free(tmp);
             size_--;
           }
           return ret;
@@ -364,7 +364,7 @@ namespace oceanbase
             node_ptr_t tmp = root_.next;
             root_.next = tmp->next;
             tmp->next->prev = root_;
-            allocator_.deallocate(tmp);
+            allocator_.free(tmp);
             size_--;
           }
           return ret;
@@ -372,7 +372,7 @@ namespace oceanbase
         int insert(iterator iter, const value_type &value)
         {
           int ret = 0;
-          node_ptr_t tmp = allocator_.allocate();
+          node_ptr_t tmp = allocator_.alloc();
           if (NULL == tmp)
           {
             ret = -1;
@@ -402,12 +402,12 @@ namespace oceanbase
             node_ptr_t tmp = iter.node_;
             tmp->next->prev = iter.node_->prev;
             tmp->prev->next = iter.node_->next;
-            allocator_.deallocate(tmp);
+            allocator_.free(tmp);
             size_--;
           }
           return ret;
         };
-        
+
         int erase(const value_type &value)
         {
           int ret = -1;
@@ -445,7 +445,7 @@ namespace oceanbase
           while (iter != root_)
           {
             node_ptr_t tmp = iter->next;
-            allocator_.deallocate(iter);
+            allocator_.free(iter);
             iter = tmp;
           }
           root_.next = root_;
@@ -475,4 +475,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_LIST_H_
-

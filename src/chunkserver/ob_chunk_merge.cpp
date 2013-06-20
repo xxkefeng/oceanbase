@@ -24,256 +24,36 @@
 #include "ob_tablet_manager.h"
 #include "common/ob_atomic.h"
 #include "common/file_directory_utils.h"
-#include "ob_tablet_merger_v0.h"
+#include "ob_tablet_merger_v1.h"
 #include "ob_tablet_merger_v2.h"
 
 namespace oceanbase
 {
-  namespace common
-  {
-    namespace hash
-    {
-      template <>
-        struct hash_func <chunkserver::ObTablet*>
-        {
-          int64_t operator () (const chunkserver::ObTablet* const key) const
-          {
-            return reinterpret_cast<int64_t>(key);
-          };
-        };
-      template <>
-        struct equal_to <chunkserver::ObTablet*>
-        {
-          bool operator()(const chunkserver::ObTablet *a, const chunkserver::ObTablet *b) const
-          {
-            return (a == b);
-          }
-        };
-    }
-  }
   namespace chunkserver
   {
     using namespace tbutil;
     using namespace common;
     using namespace sstable;
-    /*-----------------------------------------------------------------------------
-     * ObTabletFactory 
-     *-----------------------------------------------------------------------------*/
-    ObTabletFactory::ObTabletFactory() : image_(NULL), frozen_version_(0)
-    {
-      reset();
-    }
-
-    ObTabletFactory::~ObTabletFactory()
-    {
-      destroy();
-    }
-
-    void ObTabletFactory::destroy()
-    {
-      for (Iterator iterator = cache_list_.begin(); iterator != cache_list_.end(); ++iterator)
-      {
-        image_->release_tablet(*iterator);
-      }
-      for (Iterator iterator = merging_list_.begin(); iterator != merging_list_.end(); ++iterator)
-      {
-        image_->release_tablet(*iterator);
-      }
-      cache_list_.clear();
-      merging_list_.clear();
-    }
-
-    void ObTabletFactory::reset()
-    {
-      no_more_tablets_ = false;
-      memset(disk_counter_, 0, sizeof(disk_counter_));
-      destroy();
-    }
-
-    int ObTabletFactory::init(ObMultiVersionTabletImage *image, const int64_t frozen_version)
-    {
-      int ret = OB_SUCCESS;
-      if (NULL == image || 0 == frozen_version) 
-      {
-        ret = common::OB_INVALID_ARGUMENT;
-      }
-      else
-      {
-        image_ = image;
-        frozen_version_ = frozen_version;
-        reset();
-      }
-      return ret;
-    }
-
-    int ObTabletFactory::get_tablet_from_cache_list(ObTablet* &tablet) 
-    {
-      int ret = OB_SUCCESS;
-      tablet = NULL;
-      Iterator iterator = cache_list_.begin();
-      int64_t per_disk = THE_CHUNK_SERVER.get_config().merge_thread_per_disk;
-      while (iterator != cache_list_.end())
-      {
-        tablet = *iterator;
-        if (NULL == tablet) 
-        {
-          TBSYS_LOG(ERROR, "internal error, cache_list_ contains NULL tablet.");
-          ret = OB_ENTRY_NOT_EXIST;
-        }
-        else if (disk_counter_[tablet->get_disk_no()] < per_disk)
-        {
-          // got one.
-          ++disk_counter_[tablet->get_disk_no()];
-          // move to merging_list_
-          cache_list_.erase(iterator);
-          merging_list_.push_back(tablet);
-          break;
-        }
-        else
-        {
-          tablet = NULL;
-          // move on to check next tablet.
-          ++iterator; 
-        }
-      }
-      return ret;
-    }
-
-    /**
-     * get next tablet for merge.
-     * @param [out] tablet == NULL means merge thread should wait for next get.
-     * @param [out] all_tablet_merged == true means no more tablets for merge. should upgrade 
-     * @return OB_SUCCESS means success otherwise ERROR.
-     */
-    int ObTabletFactory::get_next_tablet(ObTablet* &tablet, bool & all_tablet_merged)
-    {
-      int ret = OB_SUCCESS;
-      tablet = NULL;
-      all_tablet_merged = false;
-      int64_t add_count = 0;
-      if (OB_SUCCESS != (ret = get_tablet_from_cache_list(tablet)))
-      {
-        TBSYS_LOG(ERROR, "get_tablet_from_cache_list error, ret=%d, tablet=%p", ret, tablet);
-      }
-      else if (NULL == tablet)
-      {
-        if (!no_more_tablets_ && cache_list_.size() < TABLET_COUNT_PER_MERGE)
-        {
-          if (OB_SUCCESS != (ret = fill_cache(add_count)))
-          {
-            TBSYS_LOG(ERROR, "failed fill_cache old_cached_size=%ld", cache_list_.size());
-          }
-          else if (!no_more_tablets_ && add_count > 0)
-          {
-            // fill new tablets, retry.
-            ret = get_tablet_from_cache_list(tablet);
-          }
-        }
-        if (no_more_tablets_)
-        {
-          // okay , we reach the end of image, check if all tablets merge done.
-          all_tablet_merged = ((cache_list_.size() + merging_list_.size()) == 0);
-        }
-      }
-      return ret;
-    }
-
-    int ObTabletFactory::tablet_merge_done(ObTablet* tablet)
-    {
-      int ret = OB_SUCCESS;
-      if (NULL == tablet)
-      {
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else if (OB_SUCCESS != (ret = image_->release_tablet(tablet)))
-      {
-        TBSYS_LOG(WARN, "release_tablet (%p) error = %d", tablet, ret);
-      }
-      else if (disk_counter_[tablet->get_disk_no()] <= 0)
-      {
-        TBSYS_LOG(WARN, "tablet in disk (%d) counter (%ld) <= 0", 
-            tablet->get_disk_no(), disk_counter_[tablet->get_disk_no()]);
-      }
-      else
-      {
-        --disk_counter_[tablet->get_disk_no()];
-        merging_list_.erase(tablet);
-      }
-      return ret;
-    }
-
-    int ObTabletFactory::fill_cache(int64_t &add_count)
-    {
-      int ret = OB_SUCCESS;
-      int hash_ret = OB_SUCCESS;
-      int64_t old_cached_size = cache_list_.size();
-      int64_t tablets_num = TABLET_COUNT_PER_MERGE;
-      ObTablet *tablet_array[tablets_num];
-      add_count = 0;
-
-      hash::ObHashSet<ObTablet*, hash::NoPthreadDefendMode> exist_tablets;
-      exist_tablets.create(TABLET_COUNT_PER_MERGE);
-      
-      if (old_cached_size < TABLET_COUNT_PER_MERGE)
-      {
-        // we have room then.
-        // build hash table for filter exist tablets;
-        for (Iterator iterator = cache_list_.begin(); iterator != cache_list_.end(); ++iterator)
-        {
-          exist_tablets.set(*iterator);
-        }
-        for (Iterator iterator = merging_list_.begin(); iterator != merging_list_.end(); ++iterator)
-        {
-          exist_tablets.set(*iterator);
-        }
-
-        if (OB_SUCCESS != (ret = image_->get_tablets_for_merge(
-            frozen_version_, tablets_num, tablet_array)))
-        {
-          TBSYS_LOG(ERROR, "get_tablets_for_merge ret=%d, tablets_num=%ld", 
-              ret , tablets_num);
-        }
-        else if (tablets_num == 0)
-        {
-          no_more_tablets_ = true;
-        }
-        else
-        {
-          // fill to cache_list_;
-          for (int64_t i = 0; i < tablets_num; ++i)
-          {
-            if (hash::HASH_NOT_EXIST == (hash_ret = (exist_tablets.exist(tablet_array[i]))))
-            {
-              cache_list_.push_back(tablet_array[i]);
-              ++add_count;
-            }
-            else if (hash::HASH_EXIST != hash_ret)
-            {
-              TBSYS_LOG(WARN, "check tablet:%p in hashset error=%d", tablet_array[i], hash_ret);
-              ret = OB_ERROR;
-            }
-            else
-            {
-              image_->release_tablet(tablet_array[i]);
-            }
-          }
-        }
-      }
-      return ret;
-    }
 
     /*-----------------------------------------------------------------------------
      *  ObChunkMerge
      *-----------------------------------------------------------------------------*/
 
-    ObChunkMerge::ObChunkMerge() : inited_(false), thread_num_(0), active_thread_num_(0),
+    ObChunkMerge::ObChunkMerge() : inited_(false),tablets_num_(0),
+                                   tablet_index_(0),thread_num_(0),
+                                   tablets_have_got_(0), active_thread_num_(0),
                                    frozen_version_(0), newest_frozen_version_(0), frozen_timestamp_(0),
                                    write_sstable_version_(0), merge_start_time_(0),merge_last_end_time_(0),
-                                   round_start_(false), pending_in_upgrade_(false),
+                                   round_start_(true),round_end_(true), pending_in_upgrade_(false),
                                    merge_load_high_(0),request_count_high_(0), merge_adjust_ratio_(0),
                                    merge_load_adjust_(0), merge_pause_row_count_(0), merge_pause_sleep_time_(0),
                                    merge_highload_sleep_time_(0), tablet_manager_(NULL)
     {
+      //memset(reinterpret_cast<void *>(&pending_merge_),0,sizeof(pending_merge_));
+      for(uint32_t i=0; i < sizeof(pending_merge_) / sizeof(pending_merge_[0]); ++i)
+      {
+        pending_merge_[i] = 0;
+      }
       memset(mergers_, 0, sizeof(mergers_));
     }
 
@@ -332,7 +112,7 @@ namespace oceanbase
         inited_ = true;
 
         tablet_manager_ = manager;
-        frozen_version_ = manager->get_last_not_merged_version();
+        frozen_version_ = manager->get_serving_data_version();
         newest_frozen_version_ = frozen_version_;
 
         pthread_mutex_init(&mutex_,NULL);
@@ -421,7 +201,7 @@ namespace oceanbase
     int ObChunkMerge::create_all_tablet_mergers()
     {
       int ret = OB_SUCCESS;
-      if (OB_SUCCESS != (ret = create_tablet_mergers<ObTabletMergerV0>(mergers_, MAX_MERGE_THREAD)))
+      if (OB_SUCCESS != (ret = create_tablet_mergers<ObTabletMergerV1>(mergers_, MAX_MERGE_THREAD)))
       {
         TBSYS_LOG(ERROR, "create v1 Merger error, ret=%d", ret);
       }
@@ -471,10 +251,9 @@ namespace oceanbase
 
 
       if (inited_ && frozen_version > frozen_version_ && is_merge_stoped()
-          && frozen_version > tablet_manager_->get_last_not_merged_version()
+          && frozen_version > tablet_manager_->get_serving_data_version()
           && now - merge_last_end_time_ > THE_CHUNK_SERVER.get_config().min_merge_interval
-          && THE_CHUNK_SERVER.get_tablet_manager().get_bypass_sstable_loader().is_loader_stoped()
-          && THE_CHUNK_SERVER.get_tablet_manager().get_build_index_thread().is_finish_build())
+          && THE_CHUNK_SERVER.get_tablet_manager().get_bypass_sstable_loader().is_loader_stoped())
       {
         ret = true;
       }
@@ -495,7 +274,7 @@ namespace oceanbase
       // chunkserver got new tablet by migrate in or create new table;
       if ( 0 == frozen_version_ )
       {
-        frozen_version_ = tablet_manager_->get_last_not_merged_version();
+        frozen_version_ = tablet_manager_->get_serving_data_version();
       }
 
       if (1 >= frozen_version || (!can_launch_next_round(frozen_version)))
@@ -503,10 +282,10 @@ namespace oceanbase
         // do nothing
         TBSYS_LOG(INFO, "frozen_version=%ld, current frozen version = %ld, "
             "serving data version=%ld cannot launch next round.",
-            frozen_version, frozen_version_, tablet_manager_->get_last_not_merged_version());
+            frozen_version, frozen_version_, tablet_manager_->get_serving_data_version());
         ret = OB_CS_EAGAIN;
       }
-      else if (0 == tablet_manager_->get_last_not_merged_version()) //new chunkserver
+      else if (0 == tablet_manager_->get_serving_data_version()) //new chunkserver
       {
         // empty chunkserver, no need to merge.
         TBSYS_LOG(INFO, "empty chunkserver , wait for migrate in.");
@@ -534,8 +313,8 @@ namespace oceanbase
       {
         merge_start_time_ = tbsys::CTimeUtil::getTime();
         write_sstable_version_ = THE_CHUNK_SERVER.get_config().merge_write_sstable_version;
-        factory_.init(&tablet_manager_->get_serving_tablet_image(), frozen_version_);
         round_start_ = true;
+        round_end_ = false;
         TBSYS_LOG(INFO, "start new round ,wake up all merge threads, "
             "run new merge process with version=%ld, write sstable version=%ld", 
             frozen_version_, write_sstable_version_);
@@ -558,6 +337,7 @@ namespace oceanbase
       const int64_t sleep_interval = 5000000;
       ObTablet *tablet = NULL;
       ObTabletMerger *merger = NULL;
+      int64_t merge_fail_count = 0;
 
       ObChunkServer&  chunk_server = ObChunkServerMain::get_instance()->get_chunk_server();
 
@@ -621,6 +401,7 @@ namespace oceanbase
         pthread_mutex_unlock(&mutex_);
 
         int64_t retry_times = chunk_server.get_config().retry_times;
+        int64_t merge_per_disk = chunk_server.get_config().merge_thread_per_disk;
 
         // okay , we got a tablet for merge finally.
         if (NULL != tablet)
@@ -634,26 +415,13 @@ namespace oceanbase
           else if ((tablet->get_merge_count() > retry_times) && (have_new_version_in_othercs(tablet)))
           {
             TBSYS_LOG(WARN,"too many times(%d),discard this tablet,wait for migrate copy.", tablet->get_merge_count());
-            if (OB_SUCCESS == tablet_manager_->delete_tablet_on_rootserver(&tablet, 1))
+            if (OB_SUCCESS == delete_tablet_on_rootserver(tablet))
             {
-              int32_t disk_no = tablet->get_disk_no();
               TBSYS_LOG(INFO, "delete tablet (version=%ld) on rs succeed. ", tablet->get_data_version());
-              if(OB_SUCCESS != (ret = tablet_manager_->get_serving_tablet_image().set_tablet_merged(tablet)))
-              {
-                TBSYS_LOG(WARN, "set the tablet merged error, ret=%d", ret);
-              }
-              if(OB_SUCCESS != (ret = tablet_manager_->get_serving_tablet_image().remove_tablet(tablet->get_range(), tablet->get_data_version(), disk_no)))
-              {
-                TBSYS_LOG(WARN, "remove the tablet error, ret=%d", ret);
-              }
+              tablet->set_merged();
+              tablet->set_removed();
 
-              //flush the change log to disk
-              if(OB_SUCCESS != (ret = tablet_manager_->get_serving_tablet_image().flush_log(OB_LOG_CS_MERGE_TABLET, OB_SUCCESS == ret)))
-              {
-                TBSYS_LOG(ERROR,"flush redo log error, ret=%d", ret);
-              }
-
-              disk_no = 0;
+              int32_t disk_no = 0;
               if (OB_SUCCESS != tablet_manager_->get_serving_tablet_image().remove_tablet(
                 tablet->get_range(), tablet->get_data_version(), disk_no))
               {
@@ -677,22 +445,39 @@ namespace oceanbase
                   tablet->get_data_version(),newest_frozen_version_);
             }
 
-            int merge_ret = OB_SUCCESS;
-            if (OB_SUCCESS != (merge_ret = merger->merge(tablet, tablet->get_data_version() + 1))
-                && OB_CS_TABLE_HAS_DELETED != merge_ret)
+            volatile uint32_t *ref = &pending_merge_[ tablet->get_disk_no() ];
+            int err = OB_SUCCESS;
+            if (*ref < merge_per_disk)
             {
-              TBSYS_LOG(WARN,"merge tablet(%s), version[%ld] error(%d)", 
-                  to_cstring(tablet->get_range()), tablet->get_data_version(), merge_ret);
+              atomic_inc(ref);
+              TBSYS_LOG(DEBUG,"get a tablet, start merge");
+              if ((err = merger->merge(tablet,tablet->get_data_version() + 1)) != OB_SUCCESS
+                  && OB_CS_TABLE_HAS_DELETED != err)
+              {
+                TBSYS_LOG(WARN,"merge tablet failed");
+                if (++merge_fail_count > 5)
+                {
+                  usleep(sleep_interval);
+                }
+              }
+              else
+              {
+                merge_fail_count = 0;
+              }
+              tablet->inc_merge_count();
+              atomic_dec(ref);
             }
-            tablet->inc_merge_count();
+          }
+
+          if (tablet_manager_->get_serving_tablet_image().release_tablet(tablet) != OB_SUCCESS)
+          {
+            TBSYS_LOG(WARN,"release tablet failed");
           }
 
           pthread_mutex_lock(&mutex_);
-          if (OB_SUCCESS != (factory_.tablet_merge_done(tablet)))
-          {
-            TBSYS_LOG(WARN, "release tablet error.");
-          }
+          ++tablets_have_got_;
           pthread_mutex_unlock(&mutex_);
+
         }
 
         if ( tablet_manager_->is_stoped() )
@@ -823,7 +608,11 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       pending_in_upgrade_ = true;
       tablet_manager_->sync_all_tablet_images();  //ignore err
-      if ( OB_SUCCESS != (ret = tablet_manager_->get_serving_tablet_image().finish_merge()) )
+      if ( OB_SUCCESS != (ret = tablet_manager_->build_unserving_cache()) )
+      {
+        TBSYS_LOG(WARN,"switch cache failed");
+      }
+      else if ( OB_SUCCESS != (ret = tablet_manager_->get_serving_tablet_image().upgrade_service()) )
       {
         TBSYS_LOG(ERROR, "upgrade_service to version = %ld failed", frozen_version);
       }
@@ -833,6 +622,7 @@ namespace oceanbase
         // wait for other worker threads release old cache,
         // switch to use new cache.
         tablet_manager_->get_join_cache().destroy();
+        tablet_manager_->switch_cache(); //switch cache
         tablet_manager_->get_disk_manager().scan(THE_CHUNK_SERVER.get_config().datadir,
                                                  OB_DEFAULT_MAX_TABLET_SIZE);
         // report tablets
@@ -841,8 +631,12 @@ namespace oceanbase
 
         // upgrade complete, no need pending, for migrate in.
         pending_in_upgrade_ = false;
-        round_start_ = false;
+        round_end_ = true;
 
+        ::usleep(static_cast<useconds_t>(THE_CHUNK_SERVER.get_config().min_drop_cache_wait_time));
+        // now we suppose old cache not used by others,
+        // drop it.
+        tablet_manager_->drop_unserving_cache(); //ignore err
         // re scan all local disk to recycle sstable
         // left by RegularRecycler. e.g. migrated sstable.
         tablet_manager_->get_scan_recycler().recycle();
@@ -860,34 +654,78 @@ namespace oceanbase
     int ObChunkMerge::get_tablets(ObTablet* &tablet)
     {
       tablet = NULL;
-      bool all_tablet_merged = false;
-      int ret = OB_SUCCESS;
-      if (round_start_)
+      int err = OB_SUCCESS;
+      int64_t print_step = thread_num_ > 0 ? thread_num_ : 10;
+      if (tablets_num_ > 0 && tablet_index_ < tablets_num_)
       {
-        if (OB_SUCCESS != (ret = factory_.get_next_tablet(tablet, all_tablet_merged)))
+        TBSYS_LOG(DEBUG,"get tablet from local list,tablet_index_:%ld,tablets_num_:%ld",tablet_index_,tablets_num_);
+        tablet = tablet_array_[tablet_index_++];
+        if (NULL == tablet)
         {
-          TBSYS_LOG(WARN, "get_next_tablet ret=%d", ret);
+          TBSYS_LOG(WARN,"tablet that get from tablet image is null");
         }
-        else
+        if (0 == tablet_index_ % print_step)
         {
-          pending_in_upgrade_ = factory_.pending_in_upgrade();
-          if (NULL != tablet)
+          int64_t seconds = (tbsys::CTimeUtil::getTime() - merge_start_time_) / 1000L / 1000L;
+          TBSYS_LOG(INFO, "merge consume seconds:%lds, minutes:%.2fm, hours:%.2fh, merge process:%s",
+            seconds, (double)seconds / 60.0, (double)seconds / 3600.0,
+            tablet_manager_->get_serving_tablet_image().print_tablet_image_stat());
+        }
+      }
+      else if ( (tablets_have_got_ == tablets_num_) &&
+          (frozen_version_ > tablet_manager_->get_serving_data_version()) )
+      {
+
+        while(OB_SUCCESS == err)
+        {
+          if (round_start_)
           {
-            int64_t seconds = (tbsys::CTimeUtil::getTime() - merge_start_time_) / 1000L / 1000L;
-            TBSYS_LOG(INFO, "merge consume seconds:%lds, minutes:%.2fm, hours:%.2fh, merge process:%s",
-                seconds, (double)seconds / 60.0, (double)seconds / 3600.0,
-                tablet_manager_->get_serving_tablet_image().print_tablet_image_stat());
+            round_start_ = false;
           }
-          if (all_tablet_merged)
+
+          tablets_num_ = sizeof(tablet_array_) / sizeof(tablet_array_[0]);
+          tablet_index_ = 0;
+          tablets_have_got_ = 0;
+
+          TBSYS_LOG(INFO,"get tablet from tablet image, frozen_version_=%ld, tablets_num_=%ld",
+              frozen_version_, tablets_num_);
+          err = tablet_manager_->get_serving_tablet_image().get_tablets_for_merge(
+              frozen_version_, tablets_num_,tablet_array_);
+
+          if (err != OB_SUCCESS)
           {
-            if (OB_SUCCESS != (ret = finish_round(frozen_version_)))
+            TBSYS_LOG(WARN,"get tablets failed : [%d]",err);
+          }
+          else if (OB_SUCCESS == err && tablets_num_ > 0)
+          {
+            TBSYS_LOG(INFO,"get %ld tablets from tablet image",tablets_num_);
+            tablet = tablet_array_[tablet_index_++];
+            break; //got it
+          }
+          else if (!round_end_)
+          {
+            if (OB_SUCCESS == (err = finish_round(frozen_version_)))
             {
-              TBSYS_LOG(WARN, "finish_round version=%ld, ret=%d", frozen_version_, ret);
+              break;
             }
+          }
+          else
+          {
+            //impossible
+            TBSYS_LOG(WARN,"can't get tablets and is not round end");
+            break;
           }
         }
       }
-      return ret;
+      else
+      {
+        TBSYS_LOG(DEBUG,"tablets_num_:%ld,tablets_have_got_:%ld,"
+                       "frozen_version_:%ld,serving data version:%ld",
+                       tablets_num_,tablets_have_got_,
+                       frozen_version_,tablet_manager_->get_serving_data_version());
+      }
+
+      return err;
     }
 
     bool ObChunkMerge::have_new_version_in_othercs(const ObTablet* tablet)
@@ -912,6 +750,34 @@ namespace oceanbase
         }
         if (OB_SAFE_COPY_COUNT - 1 == new_copy)
           ret = true;
+      }
+      return ret;
+    }
+
+    int ObChunkMerge::delete_tablet_on_rootserver(const ObTablet* tablet)
+    {
+      int ret = OB_SUCCESS;
+      ObTabletReportInfoList *discard_tablet_list =  GET_TSI_MULT(ObTabletReportInfoList, TSI_CS_TABLET_REPORT_INFO_LIST_1);
+
+      if (NULL == tablet || NULL == discard_tablet_list)
+      {
+      }
+      else
+      {
+        discard_tablet_list->reset();
+        ObTabletReportInfo tablet_info;
+        if (OB_SUCCESS != (ret = tablet_manager_->fill_tablet_info(*tablet,  tablet_info)))
+        {
+          TBSYS_LOG(WARN, "fill_tablet_info error.");
+        }
+        else if (OB_SUCCESS != (ret = discard_tablet_list->add_tablet(tablet_info)))
+        {
+          TBSYS_LOG(WARN, "add tablet(version=%ld) info to list error. ", tablet->get_data_version());
+        }
+        else if (OB_SUCCESS != (ret = CS_RPC_CALL_RS(delete_tablets, THE_CHUNK_SERVER.get_self(), *discard_tablet_list)))
+        {
+          TBSYS_LOG(WARN, "delete tablets rpc error, ret= %d", ret);
+        }
       }
       return ret;
     }
@@ -958,9 +824,10 @@ namespace oceanbase
         ret = true;
         int64_t sleep_thread = thread_num_ - active_thread_num_;
         int64_t remain_load = merge_load_high_ - static_cast<int64_t>(loadavg[0]) - 1; //loadavg[0] double to int
-        int64_t remain_tablet = factory_.get_cache_list_size();
+        int64_t remain_tablet = tablets_num_ - tablets_have_got_;
         if ((loadavg[0] < merge_load_adjust_) &&
-            (remain_tablet > 0) && (sleep_thread > 0) && (remain_load > 0) )
+            (remain_tablet > active_thread_num_) &&
+            (sleep_thread > 0) && (remain_load > 0) )
         {
           TBSYS_LOG(INFO,"wake up %ld thread(s)",sleep_thread > remain_load ? remain_load : sleep_thread);
           while(sleep_thread-- > 0 && remain_load-- > 0)

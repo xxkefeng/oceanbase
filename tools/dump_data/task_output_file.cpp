@@ -6,15 +6,17 @@
 #include "common/data_buffer.h"
 #include "common/utility.h"
 
-namespace oceanbase {
-  namespace tools {
+namespace oceanbase
+{
+  namespace tools
+  {
     using namespace oceanbase::common;
 
-    TaskOutputFile::TaskOutputFile() 
+    TaskOutputFile::TaskOutputFile()
       : file_name_(NULL), env_(NULL), file_(NULL), split_rowkey_(false), conf_(NULL), delima_(1), rec_delima_(10) { }
 
-    TaskOutputFile::TaskOutputFile(const char *file_name, Env *env) 
-      : file_name_(file_name),env_(env), file_(NULL), 
+    TaskOutputFile::TaskOutputFile(const char *file_name, Env *env)
+      : file_name_(file_name),env_(env), file_(NULL),
       split_rowkey_(false), conf_(NULL), delima_(1), rec_delima_(10) { }
 
     TaskOutputFile::~TaskOutputFile()
@@ -23,11 +25,11 @@ namespace oceanbase {
     }
 
 
-    int TaskOutputFile::handle_rk_null(common::ObDataBuffer &buffer, ObCellInfo *cell, 
-                                       TableConf::ColumnIterator &col_itr, bool add_delima) const
+    int TaskOutputFile::handle_rk_null(common::ObDataBuffer &buffer, ObCellInfo *cell,
+        TableConf::ColumnIterator &col_itr, bool add_delima) const
     {
+      UNUSED(cell);
       int ret = OB_SUCCESS;
-
       while (col_itr != conf_->column_end())// && cell->column_name_.compare(*col_itr))
       {
         if (!conf_->is_rowkey(*col_itr) && !conf_->is_null_column(*(col_itr)))
@@ -47,7 +49,8 @@ namespace oceanbase {
 
         if (conf_->is_rowkey(*col_itr))
         {
-          ret = conf_->append_rowkey_item(cell->row_key_, *col_itr, buffer);
+          // TODO
+          //ret = conf_->append_rowkey_item(cell->row_key_, *col_itr, buffer);
           if (ret != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR, "can't encode rowkey");
@@ -81,7 +84,7 @@ namespace oceanbase {
       int ret = OB_SUCCESS;
       split_rowkey_ = true;
       conf_ = conf;
-      if (!conf_) 
+      if (!conf_)
       {
         ret = OB_ERROR;
         TBSYS_LOG(WARN, "call set_table_conf with NULL");
@@ -101,19 +104,19 @@ namespace oceanbase {
     {
       int ret = OB_SUCCESS;
       //check if env is valid
-      if (env_ != NULL && env_->valid()) 
+      if (env_ != NULL && env_->valid())
       {
         std::string fname = file_name_;
-        if (env_->new_writable_file(fname, file_) != 0) 
+        if (env_->new_writable_file(fname, file_) != 0)
         {
           TBSYS_LOG(ERROR, "can't new writable_file");
           ret = OB_ERROR;
         }
-      } 
+      }
       else                                      /* create a console output */
       {
         file_ = Env::Posix()->console();
-        if (file_ == NULL) 
+        if (file_ == NULL)
         {
           TBSYS_LOG(ERROR, "can't create console output");
           ret = OB_ERROR;
@@ -129,10 +132,9 @@ namespace oceanbase {
 
     int TaskOutputFile::convert_result(const ObScanner &result, ObDataBuffer &buffer) const
     {
-      bool first_line = true;
       int ret = OB_SUCCESS;
       int len = 0;
-
+      bool first_line = true;
       ObCellInfo *cell = NULL;
       ObScannerIterator itr = result.begin();
       TableConf::ColumnIterator col_itr;
@@ -201,12 +203,13 @@ namespace oceanbase {
         if (cell == NULL || cell->column_name_.compare(*col_itr))
         {
           ret = OB_ERROR;
-          TBSYS_LOG(ERROR, "column name mismatch ,cell column name = %s, expected name = %s", 
+          TBSYS_LOG(ERROR, "column name mismatch ,cell column name = %s, expected name = %s",
                     std:: string(cell->column_name_.ptr(), cell->column_name_.length()).c_str(), *col_itr);
           break;
         }
 
-        if (ret == OB_SUCCESS)                  /* normal column */
+        // normal column
+        if (ret == OB_SUCCESS)
         {
           if (conf_->is_revise_column(cell->column_name_))
           {
@@ -220,7 +223,7 @@ namespace oceanbase {
           else
           {
             len = serialize_cell(cell, buffer);
-            if (len < 0) 
+            if (len < 0)
             {
               TBSYS_LOG(ERROR, "serialize cell failed");
               ret = OB_ERROR;
@@ -231,7 +234,8 @@ namespace oceanbase {
 
         if (col_itr != conf_->column_end())
         {
-          col_itr++;                            /* move to next column */
+          // move to next column
+          col_itr++;
         }
 
         if (ret == OB_SUCCESS && conf_ != NULL)
@@ -256,13 +260,12 @@ namespace oceanbase {
         if (ret == OB_SUCCESS)
         {
           ret = append_end_rec(buffer, rec_delima_);
-          if (ret != OB_SUCCESS) 
+          if (ret != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR, "last row, append end rec failed");
           }
         }
       }
-
       return ret;
     }
 
@@ -270,7 +273,7 @@ namespace oceanbase {
     {
       int ret = OB_SUCCESS;
       ret = buffer_.ensure_space(2 * OB_MAX_PACKET_LENGTH);
-      if (ret != OB_SUCCESS) 
+      if (ret != OB_SUCCESS)
       {
         TBSYS_LOG(ERROR, "no enough memory for buffer");
       }
@@ -309,7 +312,7 @@ namespace oceanbase {
         ret = convert_result(scanner, buffer);
         if (ret == OB_SUCCESS)
         {
-          TBSYS_LOG(DEBUG, "result buffer len = %d", buffer.get_position());
+          TBSYS_LOG(DEBUG, "result buffer len = %ld", buffer.get_position());
           if (file_->append(buffer) == -1)
           {
             ret = OB_ERROR;
@@ -335,7 +338,7 @@ namespace oceanbase {
     int TaskOutputFile::close()
     {
       int ret = OB_SUCCESS;
-      if (file_ != NULL) 
+      if (file_ != NULL)
       {
         ret = file_->close();
         delete file_;

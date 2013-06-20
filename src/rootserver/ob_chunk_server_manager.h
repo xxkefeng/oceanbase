@@ -51,15 +51,6 @@ namespace oceanbase
     const int16_t CHUNK_SERVER_MAGIC = static_cast<int16_t>(0xCDFF);
     struct ObServerStatus
     {
-      enum CsOperationProcess
-      {
-        FAILED = -1,
-        INIT = 0,
-        LOADED = 1,
-        REPORTED = 2,
-        SAMPLED = 3,
-        INDEXED = 4,
-      };
       enum EStatus {
         STATUS_DEAD = 0,
         STATUS_WAITING_REPORT,
@@ -95,7 +86,6 @@ namespace oceanbase
       ObBalanceInfo balance_info_;
       bool wait_restart_;
       bool can_restart_; //all the tablet in this chunkserver has safe copy num replicas, means that this server can be restarted;
-      CsOperationProcess bypass_process_;
     };
     class ObChunkServerManager
     {
@@ -132,6 +122,7 @@ namespace oceanbase
         common::ObServer get_cs(const int32_t index) const;
         int get_server_index(const common::ObServer &server, int32_t &index) const;
         int32_t get_alive_server_count(const bool chunkserver) const;
+        int get_next_alive_ms(int32_t & index, common::ObServer & server) const;
 
         void set_server_down(iterator& it);
         void set_server_down_ms(iterator& it);

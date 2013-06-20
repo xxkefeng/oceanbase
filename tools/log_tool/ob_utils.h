@@ -98,6 +98,7 @@ class SimpleBufAllocator:public ObIAllocator
     ~SimpleBufAllocator() {}
     void set_buf(ObDataBuffer* buf) { buf_ = buf; }
     void free(void* p) { UNUSED(p); }
+    void set_mod_id(int32_t mod_id) {UNUSED(mod_id);};
     void* alloc(const int64_t size){
       void* p = NULL;
       if (NULL == buf_)

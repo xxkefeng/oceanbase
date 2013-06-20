@@ -1,7 +1,0 @@
-K 13
-svn:mergeinfo
-V 200
-/branches/0_4_1_release/oceanbase/tests/chunkserver:12603-13939
-/branches/dev/oceanbase/tests/chunkserver:7279-7378,7382-7412
-/branches/developing/trans_mvcc_dev/oceanbase/tests/chunkserver:9273-10180
-END

@@ -27,6 +27,7 @@ namespace oceanbase
   {
     class ObRootRpcStub;
     class ObChunkServerManager;
+    // thread safe sql proxy
     class ObRootSQLProxy
     {
     public:

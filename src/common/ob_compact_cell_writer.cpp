@@ -36,6 +36,10 @@ int ObCompactCellWriter::append_row(const ObRowkey& rowkey, const ObRow& row)
   {
     TBSYS_LOG(WARN, "append rowvalue error:ret=%d", ret);
   }
+  else
+  {
+    //do nothing
+  }
 
   return ret;
 }
@@ -478,11 +482,7 @@ int ObCompactCellWriter::append(uint64_t column_id, const ObObj &value, ObObj *c
         }
         else if (ObActionFlag::OP_DEL_ROW == tmp_value)
         {
-          cell_meta.attr_ = ObCellMeta::ET_DEL_ROW;
-        }
-        else if (ObActionFlag::OP_NEW_ADD == tmp_value)
-        {
-          cell_meta.attr_ = ObCellMeta::ET_NEW_ADD;
+          cell_meta.attr_ = ObCellMeta::ES_DEL_ROW;
         }
         else
         {

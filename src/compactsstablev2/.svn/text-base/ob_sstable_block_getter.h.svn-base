@@ -1,18 +1,3 @@
-/**
- *  (C) 2010-2011 Taobao Inc.
- *
- *  This program is free software; you can redistribute it
- *  and/or modify it under the terms of the GNU General Public
- *  License version 2 as published by the Free Software
- *  Foundation.
- *
- *  ob_sstable_block_getter.h
- *
- *  Authors:
- *     jiangzhe < jiangzhe.lxh@alipay.com >
- *     zian < yunliang.shi@alipay.com >
- *
- */
 #ifndef OCEANBASE_COMPACTSSTABLEV2_OB_SSTABLE_BLOCK_GETTER_H_
 #define OCEANBASE_COMPACTSSTABLEV2_OB_SSTABLE_BLOCK_GETTER_H_
 
@@ -44,25 +29,17 @@ namespace oceanbase
       ~ObSSTableBlockGetter()
       {
       }
-
-      inline int get_row(const common::ObRow *&row) const
+  
+      inline int get_row(common::ObCompactCellIterator*& row)
       {
         int ret = common::OB_SUCCESS;
-        row = &rowvalue_;
+        row = &row_;
         return ret;
       }
-
+  
       int init(const common::ObRowkey& row_key,
           const ObSSTableBlockReader::BlockData& block_data,
           const common::ObCompactStoreType& row_store_type);
-
-      int init(const common::ObRowkey& row_key,
-          const ObSSTableBlockReader::BlockData& block_data,
-          const common::ObCompactStoreType& row_store_type,
-          const sstable::ObSimpleColumnIndexes& query_columns,
-          const common::ObRowDesc *row_desc,
-          common::ObRow::DefaultValue row_def_value);
-
 
       inline int get_cache_row_value(
           sstable::ObSSTableRowCacheValue& row_value)
@@ -70,21 +47,24 @@ namespace oceanbase
         return block_reader_.get_cache_row_value(row_cursor_, row_value);
       }
 
-
-      // Parse cache row value to row.
-      // This func can be called before initialize(). (it reset class status)
-      int get_cached_row(const sstable::ObSSTableRowCacheValue &row_cache_val,
-          const common::ObCompactStoreType& row_store_type,
-          const common::ObRowDesc *row_desc,
-          common::ObRow::DefaultValue row_def_value,
-          const sstable::ObSimpleColumnIndexes &column_index,
-          const common::ObRow *&value);
-
+    private:
+      inline int load_current_row(const_iterator row_index)
+      {
+        int ret = common::OB_SUCCESS;
+        if (common::OB_SUCCESS != (ret = block_reader_.get_row(
+                row_index, row_)))
+        {
+          TBSYS_LOG(WARN, "block get row error");
+          ret = common::OB_ERROR;
+        }
+        return ret;
+      }
+  
     private:
       bool inited_;
       ObSSTableBlockReader block_reader_;
       const_iterator row_cursor_;
-      common::ObRow rowvalue_;
+      common::ObCompactCellIterator row_;
     };
   }//end namespace sstable
 }//end namespace oceanbase

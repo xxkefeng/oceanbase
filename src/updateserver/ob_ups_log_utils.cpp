@@ -223,6 +223,7 @@ namespace oceanbase
     {
       int64_t end_time_us = 0;
       int64_t wait_time_us = 0;
+      int wait_time_ms = (int)(wait_time_us/1000LL);
       if (counter >= limit)
       {}
       else
@@ -230,7 +231,7 @@ namespace oceanbase
         end_time_us = tbsys::CTimeUtil::getTime() + timeout_us;
         wait_time_us = timeout_us;
         cond.lock();
-        while(wait_time_us > 0)
+        while((wait_time_ms = (int)(wait_time_us/1000LL)) > 0)
         {
           if (counter >= limit)
           {
@@ -238,7 +239,7 @@ namespace oceanbase
           }
           else
           {
-            cond.wait((int32_t)wait_time_us/1000);
+            cond.wait(wait_time_ms);
             wait_time_us = end_time_us - tbsys::CTimeUtil::getTime();
           }
         }
@@ -376,7 +377,7 @@ namespace oceanbase
         err = OB_INVALID_ARGUMENT;
         TBSYS_LOG(ERROR, "invalid argument: log_dir=%s, log_cursor=%s", log_dir, start_cursor.to_str());
       }
-      else if (NULL == (buf = (char*)ob_malloc(len)))
+      else if (NULL == (buf = (char*)ob_malloc(len, ObModIds::OB_UPS_COMMON)))
       {
         err = OB_ALLOCATE_MEMORY_FAILED;
         TBSYS_LOG(ERROR, "ob_malloc(len=%ld) fail", len);

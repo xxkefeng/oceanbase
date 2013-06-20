@@ -37,7 +37,7 @@ namespace oceanbase
     static const int OB_RS_ADMIN_BOOT_STRAP = 16;
     static const int OB_RS_ADMIN_BOOT_RECOVER = 17;
     static const int OB_RS_ADMIN_REFRESH_SCHEMA = 18;
-    static const int OB_RS_ADMIN_CLEAN_ROOT_TABLE = 19;
+    static const int OB_RS_ADMIN_INIT_CLUSTER = 19;
   } // end namespace rootserver
 } // end namespace oceanbase
 

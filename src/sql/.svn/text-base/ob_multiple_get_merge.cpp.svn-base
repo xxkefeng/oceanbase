@@ -35,15 +35,9 @@ int ObMultipleGetMerge::open()
 
   if (OB_SUCCESS == ret)
   {
-    ret = get_row_desc(row_desc);
-    if (OB_SUCCESS != ret || NULL == row_desc)
+    if (OB_SUCCESS != (ret = get_row_desc(row_desc)))
     {
       TBSYS_LOG(WARN, "get row desc fail:ret[%d]", ret);
-    }
-    else if (row_desc->get_rowkey_cell_count() <= 0)
-    {
-      ret = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(ERROR, "rowkey count[%ld]", row_desc->get_rowkey_cell_count());
     }
     else
     {
@@ -74,71 +68,76 @@ int ObMultipleGetMerge::get_next_row(const ObRow *&row)
   int ret = OB_SUCCESS;
   const ObRow *tmp_row = NULL;
   bool is_row_empty = true;
-
   if (child_num_ <= 0)
   {
     ret = OB_NOT_INIT;
     TBSYS_LOG(WARN, "has no child");
   }
-  cur_row_.reset(false, is_ups_row_ ? ObRow::DEFAULT_NOP : ObRow::DEFAULT_NULL);
-  for (int32_t i = 0; OB_SUCCESS == ret && i < child_num_; i++)
+  while (OB_SUCCESS == ret)
   {
-    ret = child_array_[i]->get_next_row(tmp_row);
-    if (OB_SUCCESS != ret)
+    is_row_empty = true;
+    cur_row_.reset(false, is_ups_row_ ? ObRow::DEFAULT_NOP : ObRow::DEFAULT_NULL);
+    for (int32_t i = 0; OB_SUCCESS == ret && i < child_num_; i++)
     {
-      if (OB_ITER_END == ret)
+      ret = child_array_[i]->get_next_row(tmp_row);
+      if (OB_SUCCESS != ret)
       {
-        if (0 != i)
+        if (OB_ITER_END == ret)
         {
-          ret = OB_ERR_UNEXPECTED;
-          TBSYS_LOG(ERROR, "child[%d] should not reach iter end first", i);
-        }
-        else
-        {
-          int err = OB_SUCCESS;
-          for (int32_t k = 1; OB_ITER_END == ret && k < child_num_; ++k)
-          { // check end
-            err = child_array_[k]->get_next_row(tmp_row);
-            if (OB_ITER_END != err)
+          if ( 0 != i)
+          {
+            ret = OB_ERROR;
+            TBSYS_LOG(WARN, "should not be iter end[%d]", i);
+          }
+          else
+          {
+            int err = OB_SUCCESS;
+            for (int32_t k = 1; OB_SUCCESS == err && k < child_num_; k ++)
             {
-              ret = OB_ERR_UNEXPECTED;
-              TBSYS_LOG(ERROR, "child[0] has reached iter, but child[%d] not", k);
+              err = child_array_[k]->get_next_row(tmp_row);
+              if (OB_ITER_END != err)
+              {
+                err = OB_ERR_UNEXPECTED;
+                ret = err;
+                TBSYS_LOG(WARN, "should be iter end[%d], i=%d", k, i);
+              }
             }
           }
         }
-        break;
+        else
+        {
+          TBSYS_LOG(WARN, "fail to get next row:ret[%d]", ret);
+        }
       }
-      else
+      
+      if (OB_SUCCESS == ret)
       {
-        TBSYS_LOG(WARN, "fail to get next row:ret[%d]", ret);
+        TBSYS_LOG(DEBUG, "multiple get merge child[%d] row[%s]", i, to_cstring(*tmp_row));
+        if (OB_SUCCESS != (ret = common::ObRowFuse::fuse_row(*tmp_row, cur_row_, is_row_empty, is_ups_row_)))
+        {
+          TBSYS_LOG(WARN, "fail to fuse row:ret[%d]", ret);
+        }
+        else if (0 == i)
+        {
+          if (OB_SUCCESS != (ret = copy_rowkey(*tmp_row, cur_row_, false)))
+          {
+            TBSYS_LOG(WARN, "fail to copy rowkey:ret[%d]", ret);
+          }
+        }
       }
+      
     }
-
     if (OB_SUCCESS == ret)
     {
-      TBSYS_LOG(DEBUG, "multiple get merge child[%d] row[%s]", i, to_cstring(*tmp_row));
-      if (OB_SUCCESS != (ret = common::ObRowFuse::fuse_row(*tmp_row, cur_row_, is_row_empty, is_ups_row_)))
+      if (is_ups_row_ || !is_row_empty)
       {
-        TBSYS_LOG(WARN, "fail to fuse row:ret[%d], tmp_row[%s], cur_row_[%s]", ret, to_cstring(*tmp_row), to_cstring(cur_row_));
-      }
-      else if (0 == i)
-      {
-        if (OB_SUCCESS != (ret = copy_rowkey(*tmp_row, cur_row_, false)))
-        {
-          TBSYS_LOG(WARN, "fail to copy rowkey:ret[%d]", ret);
-        }
+        break;
       }
     }
   }
   if (OB_SUCCESS == ret)
   {
     row = &cur_row_;
-
-    ret = cur_row_.get_rowkey(cur_rowkey_);
-    if (OB_SUCCESS != ret || NULL == cur_rowkey_)
-    {
-      TBSYS_LOG(WARN, "fail to get rowkey to update cur rowkey:ret[%d]", ret);
-    }
   }
   return ret;
 }
@@ -158,3 +157,5 @@ int64_t ObMultipleGetMerge::to_string(char *buf, int64_t buf_len) const
   }
   return pos;
 }
+
+

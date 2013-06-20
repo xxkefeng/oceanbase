@@ -17,7 +17,7 @@
 #define _OB_FILTER_H 1
 #include "ob_single_child_phy_operator.h"
 #include "ob_sql_expression.h"
-#include "common/ob_array.h"
+#include "common/dlist.h"
 
 namespace oceanbase
 {
@@ -38,7 +38,7 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        int add_filter(const ObSqlExpression& expr);
+        int add_filter(ObSqlExpression* expr);
         virtual int open();
         virtual int close();
         virtual int get_next_row(const common::ObRow *&row);
@@ -54,7 +54,7 @@ namespace oceanbase
         ObFilter& operator=(const ObFilter &other);
       private:
         // data members
-        common::ObArray<ObSqlExpression> filters_;
+        common::DList filters_;
     };
   } // end namespace sql
 } // end namespace oceanbase

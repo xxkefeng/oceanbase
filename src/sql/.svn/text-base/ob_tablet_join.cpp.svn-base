@@ -19,7 +19,6 @@
 #include "common/ob_row_util.h"
 #include "common/ob_row_fuse.h"
 #include "common/utility.h"
-#include "common/ob_schema.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::sql;
@@ -51,13 +50,12 @@ void ObTabletJoin::reset()
 ObTabletJoin::ObTabletJoin()
   :batch_count_(0),
   fused_row_iter_end_(false),
-  join_merger_(NULL),
+  fused_scan_(NULL),
   fused_row_store_(),
   fused_row_(NULL),
   fused_row_idx_(0),
   is_read_consistency_(true),
-  valid_fused_row_count_(0),
-  right_table_rowkey_info_(NULL)
+  valid_fused_row_count_(0)
 {
 }
 
@@ -68,10 +66,10 @@ ObTabletJoin::~ObTabletJoin()
 bool ObTabletJoin::check_inner_stat()
 {
   bool ret = true;
-  if(NULL == join_merger_ || 0 == batch_count_)
+  if(NULL == fused_scan_ || 0 == batch_count_)
   {
     ret = false;
-    TBSYS_LOG(WARN, "check inner stat fail:join_merger_[%p], batch_count_[%ld]", join_merger_, batch_count_);
+    TBSYS_LOG(WARN, "check inner stat fail:fused_scan_[%p], batch_count_[%ld]", fused_scan_, batch_count_);
   }
   return ret;
 }
@@ -82,8 +80,8 @@ int ObTabletJoin::set_child(int32_t child_idx, ObPhyOperator &child_operator)
   switch(child_idx)
   {
     case 0:
-      join_merger_ = dynamic_cast<ObMultipleMerge*>(&child_operator);
-      if(NULL == join_merger_)
+      fused_scan_ = dynamic_cast<ObTabletFuse *>(&child_operator);
+      if(NULL == fused_scan_)
       {
         ret = OB_INVALID_ARGUMENT;
         TBSYS_LOG(WARN, "child operator is not ObTabletFuse");
@@ -92,10 +90,6 @@ int ObTabletJoin::set_child(int32_t child_idx, ObPhyOperator &child_operator)
     default:
       ret = OB_ERR_UNEXPECTED;
       break;
-  }
-  if (OB_SUCCESS == ret)
-  {
-    child_operator.set_parent(this);
   }
   return ret;
 }
@@ -108,9 +102,9 @@ int ObTabletJoin::open()
     ret = OB_ERROR;
     TBSYS_LOG(WARN, "check inner stat fail");
   }
-  else if(OB_SUCCESS != (ret = join_merger_->open()))
+  else if(OB_SUCCESS != (ret = fused_scan_->open()))
   {
-    TBSYS_LOG(WARN, "open join merger fail:ret[%d]", ret);
+    TBSYS_LOG(WARN, "open fused scan fail:ret[%d]", ret);
   }
   else if(OB_SUCCESS != (ret = gen_ups_row_desc()))
   {
@@ -133,11 +127,11 @@ int ObTabletJoin::open()
 int ObTabletJoin::close()
 {
   int ret = OB_SUCCESS;
-  if(NULL != join_merger_)
+  if(NULL != fused_scan_)
   {
-    if(OB_SUCCESS != (ret = join_merger_->close()))
+    if(OB_SUCCESS != (ret = fused_scan_->close()))
     {
-      TBSYS_LOG(WARN, "close join merger fail:ret[%d]", ret);
+      TBSYS_LOG(WARN, "close fused scan fail:ret[%d]", ret);
     }
   }
   return ret;
@@ -158,27 +152,6 @@ int ObTabletJoin::compose_get_param(uint64_t table_id, const ObRowkey &rowkey, O
   }
   else
   {
-    for (int64_t i = 0; i < table_join_info_.join_condition_.count(); i ++)
-    {
-      cell_info.column_id_ = table_join_info_.join_condition_.at(i);
-      ret = get_param.add_cell(cell_info);
-      if (OB_SIZE_OVERFLOW == ret)
-      {
-        if (0 != i)
-        {
-          if (OB_SUCCESS != (ret = get_param.rollback(i)))
-          {
-            TBSYS_LOG(WARN, "fail to rollback get param:ret[%d], i[%ld]", ret, i);
-          }
-          else
-          {
-            ret = OB_SIZE_OVERFLOW;
-          }
-        }
-        TBSYS_LOG(INFO, "batch count is too large[%ld], get param capability[%ld]", batch_count_, get_param.get_row_size());
-      }
-      if (OB_SUCCESS != ret) break;
-    }
     for(int64_t i=0; (OB_SUCCESS == ret) && i<table_join_info_.join_column_.count();i++)
     {
       if(OB_SUCCESS != (ret = table_join_info_.join_column_.at(i, join_info)))
@@ -193,7 +166,7 @@ int ObTabletJoin::compose_get_param(uint64_t table_id, const ObRowkey &rowkey, O
         {
           if (0 != i)
           {
-            if (OB_SUCCESS != (ret = get_param.rollback(i + table_join_info_.join_condition_.count())))
+            if (OB_SUCCESS != (ret = get_param.rollback(i)))
             {
               TBSYS_LOG(WARN, "fail to rollback get param:ret[%d], i[%ld]", ret, i);
             }
@@ -259,6 +232,11 @@ int ObTabletJoin::get_right_table_rowkey(const ObRow &row, ObRowkey &rowkey, ObO
   return ret;
 }
 
+int ObTabletJoin::fetch_fused_row_prepare()
+{
+  return OB_SUCCESS;
+}
+
 int ObTabletJoin::fetch_fused_row(ObGetParam *get_param)
 {
   int ret = OB_SUCCESS;
@@ -287,7 +265,7 @@ int ObTabletJoin::fetch_fused_row(ObGetParam *get_param)
   {
     if(NULL == fused_row_)
     {
-      ret = join_merger_->get_next_row(fused_row_);
+      ret = fused_scan_->get_next_row(fused_row_);
       if(OB_ITER_END == ret)
       {
         break;
@@ -350,37 +328,6 @@ int ObTabletJoin::gen_ups_row_desc()
 {
   int ret = OB_SUCCESS;
   JoinInfo join_info;
-  if (NULL == right_table_rowkey_info_)
-  {
-    ret = OB_NOT_INIT;
-    TBSYS_LOG(WARN, "right_table_rowkey_info_ is not set");
-  }
-  for (int64_t i = 0; OB_SUCCESS == ret && i < right_table_rowkey_info_->get_size(); i ++)
-  {
-    ObRowkeyColumn rowkey_col;
-    if (OB_SUCCESS != (ret = right_table_rowkey_info_->get_column(i, rowkey_col)))
-    {
-      TBSYS_LOG(WARN, "fail to get rowkey column:ret[%d]", ret);
-    }
-    else if (OB_SUCCESS != (ret = ups_row_desc_.add_column_desc(table_join_info_.right_table_id_, rowkey_col.column_id_)))
-    {
-      TBSYS_LOG(WARN, "fail to add column desc:ret[%d]", ret);
-    }
-  }
-  for (int64_t i = 0; OB_SUCCESS == ret && i < table_join_info_.join_condition_.count(); i ++)
-  {
-    uint64_t cid = table_join_info_.join_condition_.at(i);
-    if (OB_SUCCESS != (ret = ups_row_desc_for_join_.add_column_desc(table_join_info_.left_table_id_, cid)))
-    {
-      TBSYS_LOG(WARN, "fail to add column desc:ret[%d]", ret);
-      break;
-    }
-  }
-  if (OB_SUCCESS == ret)
-  {
-    ups_row_desc_.set_rowkey_cell_count(table_join_info_.join_condition_.count());
-    ups_row_desc_for_join_.set_rowkey_cell_count(table_join_info_.join_condition_.count());
-  }
   for(int64_t i=0;(OB_SUCCESS == ret) && i<table_join_info_.join_column_.count();i++)
   {
     if(OB_SUCCESS != (ret = table_join_info_.join_column_.at(i, join_info)))
@@ -394,17 +341,6 @@ int ObTabletJoin::gen_ups_row_desc()
     else if(OB_SUCCESS != (ret = ups_row_desc_for_join_.add_column_desc(table_join_info_.left_table_id_, join_info.left_column_id_)))
     {
       TBSYS_LOG(WARN, "ups_row_desc_for_join_ add column desc fail:ret[%d]", ret);
-    }
-  }
-  if (OB_SUCCESS == ret)
-  {
-    if (OB_SUCCESS != (ret = ups_row_desc_.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID)))
-    {
-      TBSYS_LOG(WARN, "fail to add spectial column:ret[%d]", ret);
-    }
-    else if (OB_SUCCESS != (ret = ups_row_desc_for_join_.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID)))
-    {
-      TBSYS_LOG(WARN, "fail to add spectial column:ret[%d]", ret);
     }
   }
   return ret;
@@ -449,21 +385,19 @@ int ObTabletJoin::get_next_row(const ObRow *&row)
   ObRowkey rowkey;
   ObObj rowkey_obj[OB_MAX_ROWKEY_COLUMN_NUMBER];
   ObRow tmp_row;
-  ObRow tmp_ups_row;
+  ObUpsRow tmp_ups_row;
   const ObRowStore::StoredRow *stored_row = NULL;
   ObGetParam *get_param = NULL;
   const ObRowDesc *row_desc = NULL;
 
-  FILL_TRACE_LOG("get_new_row of tablet join");
-
   tmp_ups_row.set_row_desc(ups_row_desc_);
       
-  if(NULL == join_merger_)
+  if(NULL == fused_scan_)
   {
-    ret = OB_NOT_INIT;
-    TBSYS_LOG(ERROR, "fuse_scan_ is null");
+    ret = OB_ERROR;
+    TBSYS_LOG(WARN, "fuse_scan_ is null");
   }
-  else if (OB_SUCCESS != (ret = join_merger_->get_row_desc(row_desc) ))
+  else if (OB_SUCCESS != (ret = fused_scan_->get_row_desc(row_desc) ))
   {
     TBSYS_LOG(WARN, "fail to get row desc:ret[%d]", ret);
   }
@@ -539,7 +473,7 @@ int ObTabletJoin::get_next_row(const ObRow *&row)
 
   if(OB_SUCCESS == ret)
   {
-    ++fused_row_idx_;
+    fused_row_idx_ ++;
     tmp_ups_row.set_row_desc(ups_row_desc_for_join_);
     TBSYS_LOG(DEBUG, "fuse_row: incrow:%s, sstable row:%s", 
         to_cstring(tmp_ups_row), to_cstring(tmp_row));
@@ -554,8 +488,6 @@ int ObTabletJoin::get_next_row(const ObRow *&row)
     TBSYS_LOG(DEBUG, "fuse_row dest row:%s", to_cstring(curr_row_));
   }
 
-  FILL_TRACE_LOG("tablet_join get_next_row done");
-
   return ret;
 }
 
@@ -563,9 +495,9 @@ int64_t ObTabletJoin::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
   databuff_printf(buf, buf_len, pos, "TabletJoin()\n");
-  if (NULL != join_merger_)
+  if (NULL != fused_scan_)
   {
-    pos += join_merger_->to_string(buf+pos, buf_len-pos);
+    pos += fused_scan_->to_string(buf+pos, buf_len-pos);
   }
   return pos;
 }
@@ -573,12 +505,12 @@ int64_t ObTabletJoin::to_string(char* buf, const int64_t buf_len) const
 int ObTabletJoin::get_row_desc(const common::ObRowDesc *&row_desc) const
 {
   int ret = OB_SUCCESS;
-  if (NULL == join_merger_)
+  if (NULL == fused_scan_)
   {
     ret = OB_NOT_INIT;
-    TBSYS_LOG(WARN, "join_merger_ is null");
+    TBSYS_LOG(WARN, "fused_scan_ is null");
   }
-  else if (OB_SUCCESS != (ret = join_merger_->get_row_desc(row_desc)))
+  else if (OB_SUCCESS != (ret = fused_scan_->get_row_desc(row_desc)))
   {
     TBSYS_LOG(WARN, "fail to get row desc:ret[%d]", ret);
   }

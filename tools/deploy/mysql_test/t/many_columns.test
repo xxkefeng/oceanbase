@@ -94,7 +94,7 @@ while($column)
     dec $column;
 }
 --let $z=)
---error 5003
+--error 5042
 eval $head$sql$z;
 --error 5019
 show create table t1;

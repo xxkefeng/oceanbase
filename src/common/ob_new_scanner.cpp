@@ -29,15 +29,14 @@
 #include "utility.h"
 #include "ob_row.h"
 #include "ob_schema.h"
-#include "ob_row_util.h"
 
 using namespace oceanbase::common;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-ObNewScanner::ObNewScanner() : 
-row_store_(), cur_size_counter_(0), mem_size_limit_(DEFAULT_MAX_SERIALIZE_SIZE),
-mod_(ObModIds::OB_SCANNER), rowkey_allocator_(ModuleArena::DEFAULT_PAGE_SIZE, mod_),
+ObNewScanner::ObNewScanner() :
+row_store_(ObModIds::OB_NEW_SCANNER), cur_size_counter_(0), mem_size_limit_(DEFAULT_MAX_SERIALIZE_SIZE),
+mod_(ObModIds::OB_NEW_SCANNER), rowkey_allocator_(ModuleArena::DEFAULT_PAGE_SIZE, mod_),
 default_row_desc_(NULL)
 {
   data_version_ = 0;
@@ -106,6 +105,33 @@ int64_t ObNewScanner::set_mem_size_limit(const int64_t limit)
   return mem_size_limit_;
 }
 
+
+int ObNewScanner::add_row(const ObRow &row)
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = row_store_.add_row(row, cur_size_counter_)))
+  {
+    TBSYS_LOG(WARN, "fail to add_row to row store. ret=%d", ret);
+  }
+  if (cur_size_counter_ > mem_size_limit_)
+  {
+    TBSYS_LOG(WARN, "scanner memory exceeds the limit."
+         "cur_size_counter_=%ld, mem_size_limit_=%ld", cur_size_counter_, mem_size_limit_);
+    // rollback last added row
+    if (OB_SUCCESS != row_store_.rollback_last_row()) // ret code ignored
+    {
+      TBSYS_LOG(WARN, "fail to rollback last row");
+    }
+    ret = OB_SIZE_OVERFLOW;
+  }
+  else
+  {
+    cur_row_num_++;
+  }
+  return ret;
+}
+
+
 int ObNewScanner::serialize_meta_param(char * buf, const int64_t buf_len, int64_t & pos) const
 {
   ObObj obj;
@@ -131,7 +157,7 @@ int ObNewScanner::serialize_meta_param(char * buf, const int64_t buf_len, int64_
   // last rowkey
   if (OB_SUCCESS == ret)
   {
-      ret = set_rowkey_obj_array(buf, buf_len, pos, 
+      ret = set_rowkey_obj_array(buf, buf_len, pos,
           last_row_key_.get_obj_ptr(), last_row_key_.get_obj_cnt());
       if (OB_SUCCESS != ret)
       {
@@ -145,24 +171,29 @@ int ObNewScanner::serialize_meta_param(char * buf, const int64_t buf_len, int64_
 // WARN: can not add cell after deserialize scanner if do that rollback will be failed for get last row key
 int ObNewScanner::deserialize_meta_param(const char* buf, const int64_t data_len, int64_t& pos, ObObj &last_obj)
 {
-  ObObj rowkey_buf[OB_MAX_ROWKEY_COLUMN_NUMBER];
   int64_t rowkey_col_num = OB_MAX_ROWKEY_COLUMN_NUMBER;
+  ObObj* rowkey = reinterpret_cast<ObObj*>(rowkey_allocator_.alloc(sizeof(ObObj) * rowkey_col_num));
   int ret = OB_SUCCESS;
 
-  if (OB_SUCCESS != (ret = deserialize_int_(buf, data_len, pos, cur_row_num_, last_obj)))
+  if (NULL == rowkey)
+  {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+    TBSYS_LOG(WARN, "fail to alloc memory for rowkey. ret=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = deserialize_int_(buf, data_len, pos, cur_row_num_, last_obj)))
   {
     TBSYS_LOG(WARN, "deserialize cur_row_num_ error, ret=%d buf=%p data_len=%ld pos=%ld",
         ret, buf, data_len, pos);
   }
   // last row key
-  else if (OB_SUCCESS != (ret = get_rowkey_obj_array(buf, data_len, pos, rowkey_buf, rowkey_col_num)))
+  else if (OB_SUCCESS != (ret = get_rowkey_obj_array(buf, data_len, pos, rowkey, rowkey_col_num)))
   {
-    TBSYS_LOG(WARN, "deserialize last rowkey error, ret=%d buf=%p data_len=%ld pos=%ld", 
+    TBSYS_LOG(WARN, "deserialize last rowkey error, ret=%d buf=%p data_len=%ld pos=%ld",
         ret, buf, data_len, pos);
   }
   else
   {
-    last_row_key_.assign(rowkey_buf, rowkey_col_num);
+    last_row_key_.assign(rowkey ,rowkey_col_num);
     if (OB_SUCCESS != (ret = last_row_key_.deep_copy(last_row_key_, rowkey_allocator_)))
     {
       TBSYS_LOG(WARN, "fail to set deserialize last row key. ret=%d last_row_key=%s", ret, to_cstring(last_row_key_));
@@ -181,59 +212,85 @@ int ObNewScanner::deserialize_meta_param(const char* buf, const int64_t data_len
   return ret;
 }
 
-int64_t ObNewScanner::get_meta_param_serialize_size() const
-{
-  int64_t ret = 0;
-  ObObj obj;
-  obj.set_ext(ObActionFlag::META_PARAM_FIELD);
-  ret += obj.get_serialize_size();
-  obj.set_int(cur_row_num_);
-  ret += obj.get_serialize_size();
-  ret += get_rowkey_obj_array_size(last_row_key_.ptr(), last_row_key_.get_obj_cnt());
-  return ret;
-}
 
+//int ObNewScanner::serialize(char* buf, const int64_t buf_len, int64_t& pos) const
 DEFINE_SERIALIZE(ObNewScanner)
 {
   int ret = OB_SUCCESS;
   ObObj obj;
   int64_t next_pos = pos;
 
-#define SERIALIZE_EXT(ext_value) \
-if (OB_SUCCESS == ret) \
-  { \
-    obj.set_ext(ext_value); \
-    ret = obj.serialize(buf, buf_len, next_pos); \
-    if (OB_SUCCESS != ret) \
-    { \
-      TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld", \
-                ret, buf, buf_len, next_pos); \
-    } \
+  if (OB_SUCCESS == ret)
+  {
+    ///obj.reset();
+    obj.set_ext(ObActionFlag::BASIC_PARAM_FIELD);
+    ret = obj.serialize(buf, buf_len, next_pos);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld",
+                ret, buf, buf_len, next_pos);
+    }
   }
 
-#define SERIALIZE_INT(int_value) \
-  if (OB_SUCCESS == ret) \
-  { \
-    obj.set_int(int_value); \
-    ret = obj.serialize(buf, buf_len, next_pos); \
-    if (OB_SUCCESS != ret) \
-    { \
-      TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld", \
-                ret, buf, buf_len, next_pos); \
-    } \
+  if (OB_SUCCESS == ret)
+  {
+    ///obj.reset();
+    obj.set_int(is_request_fullfilled_ ? 1 : 0);
+    ret = obj.serialize(buf, buf_len, next_pos);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld",
+                ret, buf, buf_len, next_pos);
+    }
   }
 
-  SERIALIZE_EXT(ObActionFlag::BASIC_PARAM_FIELD);
-  SERIALIZE_INT(is_request_fullfilled_ ? 1 : 0);
-  SERIALIZE_INT(fullfilled_row_num_);
-  SERIALIZE_INT(data_version_);
+  if (OB_SUCCESS == ret)
+  {
+    ///obj.reset();
+    obj.set_int(fullfilled_row_num_);
+    ret = obj.serialize(buf, buf_len, next_pos);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld",
+                ret, buf, buf_len, next_pos);
+    }
+  }
 
+  if (OB_SUCCESS == ret)
+  {
+    ///obj.reset();
+    obj.set_int(data_version_);
+    ret = obj.serialize(buf, buf_len, next_pos);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld",
+                ret, buf, buf_len, next_pos);
+    }
+  }
 
   if (has_range_)
   {
-    SERIALIZE_EXT(ObActionFlag::TABLET_RANGE_FIELD);
+    if (OB_SUCCESS == ret)
+    {
+      obj.set_ext(ObActionFlag::TABLET_RANGE_FIELD);
+      ret = obj.serialize(buf, buf_len, next_pos);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld",
+                  ret, buf, buf_len, next_pos);
+      }
+    }
     // range - border flag
-    SERIALIZE_INT(range_.border_flag_.get_data());
+    if (OB_SUCCESS == ret)
+    {
+      obj.set_int(range_.border_flag_.get_data());
+      ret = obj.serialize(buf, buf_len, next_pos);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld",
+                  ret, buf, buf_len, next_pos);
+      }
+    }
     // range - start key
     if (OB_SUCCESS == ret)
     {
@@ -265,8 +322,17 @@ if (OB_SUCCESS == ret) \
     }
   }
 
-  
-  SERIALIZE_EXT(ObActionFlag::TABLE_PARAM_FIELD);
+  if (OB_SUCCESS == ret)
+  {
+    ///obj.reset();
+    obj.set_ext(ObActionFlag::TABLE_PARAM_FIELD);
+    ret = obj.serialize(buf, buf_len, next_pos);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld",
+          ret, buf, buf_len, next_pos);
+    }
+  }
 
   if (OB_SUCCESS == ret)
   {
@@ -278,15 +344,18 @@ if (OB_SUCCESS == ret) \
     }
   }
 
-  SERIALIZE_EXT(ObActionFlag::NEW_SCANNER_BASIC_PARAM_FIELD_2);
-  SERIALIZE_INT(cur_size_counter_);
-  SERIALIZE_INT(mem_size_limit_);
-
-  SERIALIZE_EXT(ObActionFlag::END_PARAM_FIELD);
-
-#undef SERIALIZE_EXT
-#undef SERIALIZE_INT
-
+  if (OB_SUCCESS == ret)
+  {
+    ///obj.reset();
+    //TBSYS_LOG(DEBUG, "set  END_PARAM_FIELD to scanner");
+    obj.set_ext(ObActionFlag::END_PARAM_FIELD);
+    ret = obj.serialize(buf, buf_len, next_pos);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "ObObj serialize error, ret=%d buf=%p data_len=%ld next_pos=%ld",
+                ret, buf, buf_len, next_pos);
+    }
+  }
 
   if (OB_SUCCESS == ret)
   {
@@ -295,7 +364,16 @@ if (OB_SUCCESS == ret) \
   return ret;
 }
 
+DEFINE_GET_SERIALIZE_SIZE(ObNewScanner)
+//int64_t ObNewScanner::get_serialize_size(void) const
+{
+  int64_t ret = 0;
+  TBSYS_LOG(WARN, "SER size false" );
+  return ret;
+}
+
 DEFINE_DESERIALIZE(ObNewScanner)
+//int ObNewScanner::deserialize(const char* buf, const int64_t data_len, int64_t& pos)
 {
   int ret = OB_SUCCESS;
 
@@ -372,15 +450,6 @@ DEFINE_DESERIALIZE(ObNewScanner)
                         ret, buf, data_len, new_pos);
             }
             break;
-          case ObActionFlag::NEW_SCANNER_BASIC_PARAM_FIELD_2:
-            ret = deserialize_basic_2_(buf, data_len, new_pos, param_id);
-            if (OB_SUCCESS != ret)
-            {
-              TBSYS_LOG(WARN, "deserialize_basic_2_ error, ret=%d buf=%p data_len=%ld new_pos=%ld",
-                        ret, buf, data_len, new_pos);
-            }
-            break;
-
           case ObActionFlag::END_PARAM_FIELD:
             is_end = true;
             break;
@@ -404,85 +473,6 @@ DEFINE_DESERIALIZE(ObNewScanner)
   return ret;
 }
 
-DEFINE_GET_SERIALIZE_SIZE(ObNewScanner)
-{
-  int64_t ret = 0;
-  ObObj obj;
-  obj.set_ext(ObActionFlag::BASIC_PARAM_FIELD);
-  ret += obj.get_serialize_size();
-  obj.set_int(is_request_fullfilled_ ? 1 : 0);
-  ret += obj.get_serialize_size();
-  obj.set_int(fullfilled_row_num_);
-  ret += obj.get_serialize_size();
-  obj.set_int(data_version_);
-  ret += obj.get_serialize_size();
-  if (has_range_)
-  {
-    obj.set_ext(ObActionFlag::TABLET_RANGE_FIELD);
-    ret += obj.get_serialize_size();
-    obj.set_int(range_.border_flag_.get_data());
-    ret += obj.get_serialize_size();
-    ret += range_.start_key_.get_serialize_size();
-    ret += range_.end_key_.get_serialize_size();
-  }
-  ret += get_meta_param_serialize_size();
-  obj.set_ext(ObActionFlag::TABLE_PARAM_FIELD);
-  ret += obj.get_serialize_size();
-  ret += row_store_.get_serialize_size();
-  obj.set_ext(ObActionFlag::NEW_SCANNER_BASIC_PARAM_FIELD_2);
-  ret += obj.get_serialize_size();
-  obj.set_int(cur_size_counter_);
-  ret += obj.get_serialize_size();
-  obj.set_int(mem_size_limit_);
-  ret += obj.get_serialize_size();
-  obj.set_ext(ObActionFlag::END_PARAM_FIELD);
-  ret += obj.get_serialize_size();
-  return ret;
-}
-
-int ObNewScanner::deserialize_basic_2_(const char* buf, const int64_t data_len, int64_t& pos, ObObj &last_obj)
-{
-  int ret = OB_SUCCESS;
-
-  int64_t value = 0;
-
-  ret = deserialize_int_(buf, data_len, pos, value, last_obj);
-  if (OB_SUCCESS != ret)
-  {
-    TBSYS_LOG(WARN, "deserialize_int_ error, ret=%d buf=%p data_len=%ld pos=%ld",
-              ret, buf, data_len, pos);
-  }
-  else
-  {
-    cur_size_counter_ = value;
-  }
-
-  if (OB_SUCCESS == ret)
-  {
-    ret = deserialize_int_(buf, data_len, pos, value, last_obj);
-    if (OB_SUCCESS != ret)
-    {
-      TBSYS_LOG(WARN, "deserialize_int_ error, ret=%d buf=%p data_len=%ld pos=%ld",
-                ret, buf, data_len, pos);
-    }
-    else
-    {
-      mem_size_limit_ = value;
-    }
-  }
-  
-  // after reading all neccessary fields,
-  // filter unknown ObObj
-  if (OB_SUCCESS == ret && ObExtendType != last_obj.get_type())
-  {
-    ret = last_obj.deserialize(buf, data_len, pos);
-    while (OB_SUCCESS == ret && ObExtendType != last_obj.get_type())
-    {
-      ret = last_obj.deserialize(buf, data_len, pos);
-    }
-  }
-  return ret;
-}
 
 int ObNewScanner::deserialize_basic_(const char* buf, const int64_t data_len, int64_t& pos, ObObj &last_obj)
 {
@@ -562,12 +552,12 @@ int ObNewScanner::deserialize_basic_(const char* buf, const int64_t data_len, in
           }
           else if (OB_SUCCESS != (ret = range.start_key_.deserialize(buf, data_len, pos)))
           {
-            TBSYS_LOG(WARN, "deserialize range start key error, ret=%d buf=%p data_len=%ld pos=%ld", 
+            TBSYS_LOG(WARN, "deserialize range start key error, ret=%d buf=%p data_len=%ld pos=%ld",
                 ret, buf, data_len, pos);
           }
           else if (OB_SUCCESS != (ret = range.end_key_.deserialize(buf, data_len, pos)))
           {
-            TBSYS_LOG(WARN, "deserialize range end key error, ret=%d buf=%p data_len=%ld pos=%ld", 
+            TBSYS_LOG(WARN, "deserialize range end key error, ret=%d buf=%p data_len=%ld pos=%ld",
                 ret, buf, data_len, pos);
           }
           else
@@ -638,7 +628,6 @@ int ObNewScanner::deserialize_int_(const char* buf, const int64_t data_len, int6
   {
     if (ObIntType != last_obj.get_type())
     {
-      ret = OB_ERR_UNEXPECTED;
       TBSYS_LOG(WARN, "ObObj type is not Int, Type=%d", last_obj.get_type());
     }
     else
@@ -724,16 +713,16 @@ int ObNewScanner::deserialize_int_or_varchar_(const char* buf, const int64_t dat
 }
 
 
-int ObNewScanner::add_row(const ObRow &row)
+int ObNewScanner::add_row(const ObRowkey &rowkey, const ObRow &row)
 {
   int ret = OB_SUCCESS;
-  if (OB_SUCCESS != (ret = row_store_.add_row(row, cur_size_counter_)))
+  if (OB_SUCCESS != (ret = row_store_.add_row(rowkey, row, cur_size_counter_)))
   {
     TBSYS_LOG(WARN, "fail to add_row to row store. ret=%d", ret);
   }
   if (cur_size_counter_ > mem_size_limit_)
   {
-    TBSYS_LOG(WARN, "scanner memory exceeds the limit." 
+    TBSYS_LOG(WARN, "scanner memory exceeds the limit."
          "cur_size_counter_=%ld, mem_size_limit_=%ld", cur_size_counter_, mem_size_limit_);
     // rollback last added row
     if (OB_SUCCESS != row_store_.rollback_last_row()) // ret code ignored
@@ -744,8 +733,15 @@ int ObNewScanner::add_row(const ObRow &row)
   }
   else
   {
-    ++cur_row_num_;
+    cur_row_num_++;
   }
+  return ret;
+}
+
+int ObNewScanner::get_next_row(const ObRowkey *&rowkey, ObRow &row)
+{
+  int ret = OB_SUCCESS;
+  ret = row_store_.get_next_row(rowkey, row);
   return ret;
 }
 
@@ -757,10 +753,6 @@ int ObNewScanner::get_next_row(ObRow &row)
     row.set_row_desc(*default_row_desc_);
   }
   ret = row_store_.get_next_row(row);
-  if (OB_SUCCESS != ret && OB_ITER_END != ret)
-  {
-    TBSYS_LOG(WARN, "fail to get next row from row_store: ret[%d] scanner %s", ret, to_cstring(*this));
-  }
   return ret;
 }
 
@@ -769,46 +761,9 @@ bool ObNewScanner::is_empty() const
   return row_store_.is_empty();
 }
 
-int ObNewScanner::set_last_row_key(const ObRowkey &row_key)
+int ObNewScanner::set_last_row_key(ObRowkey &row_key)
 {
   return row_key.deep_copy(last_row_key_, rowkey_allocator_);
-}
-
-int ObNewScanner::set_last_row_key_from_row_store()
-{
-  int ret = OB_SUCCESS;
-  const ObRowStore::StoredRow *stored_row = NULL;
-  const ObRowkey *rowkey = NULL;
-  ObRow row;
-  if (NULL == default_row_desc_)
-  {
-    ret = OB_NOT_INIT;
-    TBSYS_LOG(WARN, "set default_row_desc_ first");
-  }
-  else
-  {
-    row.set_row_desc(*default_row_desc_);
-  }
-  if (OB_SUCCESS == ret)
-  {
-    if (OB_SUCCESS != (ret = row_store_.get_last_stored_row(stored_row)))
-    {
-      TBSYS_LOG(WARN, "fail to get last stored row:ret[%d]", ret);
-    }
-    else if (OB_SUCCESS != (ret = ObRowUtil::convert(stored_row->get_compact_row(), row)))
-    {
-      TBSYS_LOG(WARN, "fail to convert row:ret[%d]", ret);
-    }
-    else if (OB_SUCCESS != (ret = row.get_rowkey(rowkey)))
-    {
-      TBSYS_LOG(WARN, "fail to get rowkey:ret[%d]", ret);
-    }
-    else if (OB_SUCCESS != (ret = rowkey->deep_copy(last_row_key_, rowkey_allocator_)))
-    {
-      TBSYS_LOG(WARN, "rowkey fail to deep copy:ret[%d]", ret);
-    }
-  }
-  return ret;
 }
 
 int ObNewScanner::get_last_row_key(ObRowkey &row_key) const
@@ -910,7 +865,7 @@ int64_t ObNewScanner::to_string(char* buffer, const int64_t length) const
   databuff_printf(buffer, length, pos, "ObNewScanner(range:");
   if (has_range_)
   {
-    pos = range_.to_string(buffer+pos, length-pos);
+    pos = range_.to_string(buffer, length);
   }
   else
   {
@@ -932,7 +887,7 @@ void ObNewScanner::dump(void) const
   {
     TBSYS_LOG(INFO, "    no scanner range found!");
   }
- 
+
   TBSYS_LOG(INFO, "[dump] is_request_fullfilled_=%d", is_request_fullfilled_);
   TBSYS_LOG(INFO, "[dump] fullfilled_row_num_=%ld", fullfilled_row_num_);
   TBSYS_LOG(INFO, "[dump] cur_row_num_=%ld", cur_row_num_);
@@ -951,8 +906,8 @@ void ObNewScanner::dump_all(int log_level) const
 #if 0
     ObCellInfo *cell = NULL;
     bool row_change = false;
-    ObNewScannerIterator iter = this->begin(); 
-    while((iter != this->end()) && 
+    ObNewScannerIterator iter = this->begin();
+    while((iter != this->end()) &&
         (OB_SUCCESS == (err = iter.get_cell(&cell, &row_change))))
     {
       if (NULL == cell)
@@ -969,10 +924,180 @@ void ObNewScanner::dump_all(int log_level) const
       ++iter;
     }
 #endif
-    
+
     if (err != OB_SUCCESS)
     {
       TBSYS_LOG(WARN, "fail to get scanner cell as debug output. ");
     }
   }
+}
+
+int ObCellNewScanner::set_is_req_fullfilled(const bool &is_fullfilled, const int64_t fullfilled_row_num){
+  if (!is_fullfilled)
+  {
+    is_size_overflow_ = true;
+  }
+  return ObNewScanner::set_is_req_fullfilled(is_fullfilled, fullfilled_row_num);
+}
+
+int ObCellNewScanner::add_cell(const ObCellInfo &cell_info,
+    const bool is_compare_rowkey, const bool is_rowkey_change)
+{
+  int ret = OB_SUCCESS;
+  bool row_changed = false;
+  if (last_table_id_ == OB_INVALID_ID)
+  {
+    // first cell;
+    row_changed = true;
+  }
+  else if (last_table_id_ != cell_info.table_id_)
+  {
+    TBSYS_LOG(WARN, "cannot add another table :%lu, current table:%ld",
+        cell_info.table_id_, last_table_id_);
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else if (!is_compare_rowkey && is_rowkey_change)
+  {
+    row_changed = true;
+  }
+  else if (cur_rowkey_ != cell_info.row_key_)
+  {
+    row_changed = true;
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    if (row_changed && last_table_id_ != OB_INVALID_ID)
+    {
+      // okay, got a row in compactor;
+      ret = add_current_row();
+      if(OB_SIZE_OVERFLOW == ret)
+      {
+        is_size_overflow_ = true;
+      }
+      else if(OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "add current row fail:ret[%d]", ret);
+      }
+    }
+  }
+
+  if (OB_SUCCESS == ret )
+  {
+    if(!ups_row_valid_)
+    {
+      ups_row_.reuse();
+      str_buf_.reset();
+    }
+    // add current cell to compactor;
+    if (OB_SUCCESS != (ret = ObNewScannerHelper::add_ups_cell(ups_row_, cell_info, &str_buf_)))
+    {
+      TBSYS_LOG(WARN, "cannot add current cell to compactor, "
+          "cur_size_counter_=%ld, last_table_id_=%ld, cur table=%ld, rowkey=%s",
+          cur_size_counter_, last_table_id_, cell_info.table_id_, to_cstring(cell_info.row_key_));
+    }
+    else
+    {
+      ups_row_valid_ = true;
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    if (row_changed)
+    {
+      last_table_id_ = cell_info.table_id_;
+      cell_info.row_key_.deep_copy(cur_rowkey_, rowkey_allocator_);
+    }
+  }
+
+  return ret;
+}
+
+int ObCellNewScanner::finish()
+{
+  int ret = OB_SUCCESS;
+  if(ups_row_valid_ && !is_size_overflow_)
+  {
+    ret = add_current_row();
+    if(OB_SIZE_OVERFLOW == ret)
+    {
+      is_size_overflow_ = true;
+      ret = OB_SUCCESS;
+    }
+    else if(OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "add current row fail:ret[%d]", ret);
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    if(OB_SUCCESS != (ret = set_is_req_fullfilled(!is_size_overflow_, get_row_num())))
+    {
+      TBSYS_LOG(WARN, "set is req fullfilled fail:ret[%d]", ret);
+    }
+  }
+  return ret;
+}
+
+void ObCellNewScanner::set_row_desc(const ObRowDesc &row_desc)
+{
+  row_desc_ = &row_desc;
+  ups_row_.set_row_desc(*row_desc_);
+}
+
+int ObCellNewScanner::add_current_row()
+{
+  int ret = OB_SUCCESS;
+  if(!ups_row_valid_)
+  {
+    TBSYS_LOG(WARN, "ups row is invalid");
+    ret = OB_ERR_UNEXPECTED;
+  }
+  else if (NULL == row_desc_)
+  {
+    TBSYS_LOG(WARN, "set row desc first.");
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else if (ups_row_.get_column_num() <= 0)
+  {
+    TBSYS_LOG(WARN, "current row has no cell");
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    ret = add_row(cur_rowkey_, ups_row_);
+    if (OB_SUCCESS != ret && OB_SIZE_OVERFLOW != ret)
+    {
+      TBSYS_LOG(WARN, "add row to row_store error, ret=%d, last_row_key_=%s, cell num=%ld",
+          ret, to_cstring(last_row_key_), ups_row_.get_column_num());
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    last_row_key_ = cur_rowkey_;
+    ups_row_valid_ = false;
+  }
+  return ret;
+}
+
+void ObCellNewScanner::clear()
+{
+  ObNewScanner::clear();
+  row_desc_ = NULL;
+  last_table_id_ = OB_INVALID_ID;
+  ups_row_valid_ = false;
+  is_size_overflow_ = false;
+}
+
+void ObCellNewScanner::reuse()
+{
+  ObNewScanner::reuse();
+  str_buf_.reset();
+  row_desc_ = NULL;
+  last_table_id_ = OB_INVALID_ID;
+  ups_row_valid_ = false;
+  is_size_overflow_ = false;
 }

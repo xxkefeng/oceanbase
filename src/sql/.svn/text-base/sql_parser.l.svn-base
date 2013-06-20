@@ -196,7 +196,6 @@ HAVING            { return HAVING; }
 IDENTIFIED        { return IDENTIFIED; }
 IF                { return IF; }
 IN                { return IN; }
-INDEX             { return INDEX; }
 INNER             { return INNER; }
 INT               { return INTEGER; }
 INTEGER           { return INTEGER; }
@@ -249,7 +248,6 @@ SNAPSHOT          { return SNAPSHOT; }
 SPFILE            { return SPFILE; }
 START             { return START; }
 STATIC            { return STATIC; }
-STORING           { return STORING; }
 SYSTEM            { return SYSTEM; }
 TABLE             { return TABLE; }
 TABLES            { return TABLES; }
@@ -261,7 +259,6 @@ TO                { return TO; }
 TRAILING          { return TRAILING; }
 TRANSACTION       { return TRANSACTION; }
 UNION             { return UNION; }
-UNIQUE            { return UNIQUE; }
 UPDATE            { return UPDATE; }
 USER              { return USER; }
 USING             { return USING; }
@@ -586,11 +583,9 @@ Timestamp{whitespace}?'[0-9]{4}(-[0-9]{2}){2}[ ][0-9]{2}(:[0-9]{2}){2}[.]?' {
   return HINT_END;
 }
 <hint>[ \t\r\n] {}
-<hint>READ_STATIC  { return READ_STATIC; }
-<hint>READ_CONSISTENCY { return READ_CONSISTENCY; }
-<hint>WEAK { return WEAK; }
-<hint>STRONG { return STRONG; }
-<hint>[()] { return yytext[0]; }
+<hint>READ_STATIC  {
+  return READ_STATIC;
+}
 <hint>{identifer} {}
 <hint>. {}
 

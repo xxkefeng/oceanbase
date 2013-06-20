@@ -431,6 +431,7 @@ namespace oceanbase
 
         inited_ = true;
         ret = filter_column_group();
+        FILL_TRACE_LOG("init sstable_getter_ filter_column_group done.");
         if (OB_SUCCESS == ret)
         {
           ret = load_cur_block();
@@ -546,6 +547,7 @@ namespace oceanbase
             OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_SSTABLE_ROW_CACHE_MISS, 1);
 #endif
           }
+          FILL_TRACE_LOG("check row cache hit=%d.", is_row_cache_hit);
         }
 
         if (NULL == sstable_row_cache_ || !is_row_cache_hit)
@@ -592,6 +594,7 @@ namespace oceanbase
           TBSYS_LOG(WARN, "failed to apply block index, ret=%d", ret);
         }
       }
+      FILL_TRACE_LOG("load_cur_block=%d.", ret);
       
       return ret;
     }

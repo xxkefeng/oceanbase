@@ -1,7 +1,7 @@
 drop table if exists sbtest;
 alter system set merge_delay_interval='1s' server_type=chunkserver;
 alter system set merge_delay_for_lsync='1s' server_type=chunkserver;
-alter system set min_drop_cache_wait_time='1s' server_type=chunkserver;
+alter system set min_drop_cache_wait_time='10s' server_type=chunkserver;
 alter system set merge_thread_per_disk=10 server_type=chunkserver;
 alter system set each_tablet_sync_meta=False server_type=chunkserver;
 CREATE TABLE sbtest (id INTEGER  NOT NULL, name varchar, whenn datetime,  k integer  DEFAULT '0' NOT NULL,pad char(60) DEFAULT '' NOT NULL, whenn1 datetime, stat1 bool, PRIMARY KEY  (id,name,whenn) ) ;

@@ -19,8 +19,7 @@
 static const char* BIGQUERY_TABLE = "bigquery_table";
 static const char* COLUMN_PREFIX = "col";
 
-BigqueryWriter::BigqueryWriter(int64_t row_num)
-    :value_gen_(row_num)
+BigqueryWriter::BigqueryWriter()
 {
   mysql_client_ = NULL;
 }
@@ -231,7 +230,7 @@ void BigqueryWriter::translate_uint64(char* rowkey, uint64_t value)
   assert(rowkey != NULL);
   for (int i = 7; i >=0; --i)
   {
-    *(rowkey + i) = (char) (value % 256);
+    *(rowkey + i) = value % 256;
     value /= 256;
   }
 }

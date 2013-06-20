@@ -47,9 +47,6 @@ namespace oceanbase
         { return OB_CHUNKSERVER; }
 
       public:
-        DEF_CAP(max_commit_log_size, "64MB", "max commit log size");
-        DEF_INT(commit_log_sync_type, "1", "commit log sync type");
-        DEF_STR(commit_log_dir, "data/cs_commitlog", "chunk server commit log directory");
         DEF_STR(datadir, "./data", "sstable data path");
         DEF_STR(appname, "", "application name");
         DEF_STR(check_compress_lib, "snappy_1.0:none:lzo_1.0", "check compress lib as cs start");
@@ -67,12 +64,9 @@ namespace oceanbase
 
         DEF_BOOL(lazy_load_sstable, "True", "lazy load sstable to speed up cs start");
         DEF_BOOL(unmerge_if_unchanged, "True", "merge sstable depend on it\\'s changed or not");
-        DEF_INT(bypass_sstable_loader_thread_num, "0", "[0,10]", "bypass sstable load thread number");
+        DEF_INT(bypass_sstable_loader_thread_num, "0", "[0,10]", "bypass sstable loead thread number");
         DEF_CAP(compactsstable_cache_size, "0", "compacet sstable cache size");
         DEF_INT(compactsstable_cache_thread_num, "0", "[0,]", "compacet sstable cache thread number");
-        DEF_INT(index_builder_thread_num, "10", "[0,10]", "index builder thread number");
-        DEF_CAP(index_sort_mem_limit, "4096MB", "sort memory limit for all index build thread");
-        DEF_TIME(scan_index_timeout, "30s", "timeout when scan remote chunkserver's local index");
 
         DEF_CAP(migrate_band_limit_per_second, "50MB", "network band limit for migration");
 
@@ -92,6 +86,7 @@ namespace oceanbase
         DEF_INT(merge_adjust_ratio, "80", "when the load is greater than this ratio of merge_load_high, slow down daily merge");
         DEF_INT(max_version_gap, "3", "[1,]", "use to judge if the seving version is too old, maybe need not to merge");
         DEF_TIME(min_merge_interval, "10s", "minimal merge interval between tow merges");
+        DEF_TIME(min_drop_cache_wait_time, "300s", "waiting time before drop previous version cache after merge done");
         DEF_BOOL(switch_cache_after_merge, "False", "switch cache after merge");
 
         DEF_BOOL(each_tablet_sync_meta, "True", "sync tablet image to index file after merge each tablet");

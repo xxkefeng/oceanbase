@@ -101,7 +101,7 @@ export PATH=$PATH:/home/yuanqi.xhf/work/python2.7/bin/
   1. 在本地准备好server和client的二进制文件和依赖的库
      如果直接使用checkout下来的svn代码编译:
      #+begin_src sh
-     cd ../../ && ./build.sh init && ./configure && make -j -C src && make ups_admin -j -C tools
+     cd ../../ && ./build.sh init && ./configure && make -j -C src && make -j -C src/client/cpp/ && make ups_admin -j -C tools
      cd - && ./copy.sh ../.. && make
      #+end_src
   2. 打通使用的hosts之间的ssh信任关系, 在这个最简单的例子，你需要确保自己能从本机无密码ssh登录本机。

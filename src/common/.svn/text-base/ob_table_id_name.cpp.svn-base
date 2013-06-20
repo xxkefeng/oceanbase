@@ -1,124 +1,166 @@
 #include "ob_table_id_name.h"
 #include "utility.h"
-#include "common/ob_row.h"
 
 using namespace oceanbase;
 using namespace common;
+using namespace nb_accessor;
 
 ObTableIdNameIterator::ObTableIdNameIterator()
-   :inited_(false), only_core_tables_(true), 
-   table_idx_(-1), client_proxy_(NULL) 
+   :need_scan_(false), only_core_tables_(true),
+   table_idx_(-1), client_proxy_(NULL), res_(NULL)
 {
 }
 
 ObTableIdNameIterator::~ObTableIdNameIterator()
 {
-  destroy_objects();
+  this->destroy();
+  need_scan_ = true;
 }
 
-int ObTableIdNameIterator::scan_tables()
+bool ObTableIdNameIterator::check_inner_stat()
 {
-  int ret = OB_SUCCESS;
-  const char * sql = "select table_name, table_id from __first_tablet_entry";
-  if(OB_SUCCESS != (ret = reader_->query(*client_proxy_, sql)))
+  bool ret = true;
+  if (NULL == client_proxy_)
   {
-    TBSYS_LOG(WARN, "nb accessor scan fail:ret[%d]", ret);
+    ret = false;
+    TBSYS_LOG(ERROR, "not init");
   }
   else
   {
-    TBSYS_LOG(INFO, "scan first_tablet_entry success. scanner size=%ld", 
-        reader_->get_result_set().get_new_scanner().get_row_num());
+    if (need_scan_)
+    {
+      ObNewRange range;
+      range.border_flag_.unset_inclusive_start();
+      range.border_flag_.set_inclusive_end();
+      range.set_whole_range();
+
+      int err = OB_SUCCESS;
+      if(OB_SUCCESS != (err = nb_accessor_.scan(res_, FIRST_TABLET_TABLE_NAME, range, SC("table_name")("table_id"))))
+      {
+        TBSYS_LOG(WARN, "nb accessor scan fail:ret[%d]", err);
+        ret = false;
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "scan first_tablet_table success. scanner size=%ld", res_->get_scanner()->get_row_num());
+        need_scan_ = false;
+      }
+    }
+    //need add core_schema to res_
   }
   return ret;
-}
-
-int ObTableIdNameIterator::alloc_objects()
-{
-  int ret = OB_SUCCESS;
-  void *ptr = NULL;
-  if (NULL == (ptr = ob_malloc(sizeof(SQLQueryResultReader))))
-  {
-    ret = OB_ALLOCATE_MEMORY_FAILED;
-  }
-  else if (NULL == (reader_ = new (ptr) (SQLQueryResultReader)))
-  {
-    ret = OB_NOT_INIT;
-  }
-  return ret;
-}
-
-int ObTableIdNameIterator::destroy_objects()
-{
-  if (NULL != reader_)
-  {
-    reader_->~SQLQueryResultReader();
-    ob_free(reader_);
-    reader_ = NULL;
-  }
-  return OB_SUCCESS;
 }
 
 int ObTableIdNameIterator::init(ObScanHelper* client_proxy, bool only_core_tables)
 {
   int ret = OB_SUCCESS;
-  only_core_tables_ = only_core_tables;
-  client_proxy_ = client_proxy;
-  table_idx_ = -1;
   if(NULL == client_proxy)
   {
     ret = OB_INVALID_ARGUMENT;
     TBSYS_LOG(WARN, "client_proxy is null");
   }
-  else if (OB_SUCCESS != (ret = alloc_objects())) 
-  {
-    TBSYS_LOG(WARN, "alloc_objects ret=%d", ret);
-  }
-  else  if (!only_core_tables)
-  {
-    ret = scan_tables();
-  }
 
-  if (OB_SUCCESS == ret) 
+  if(OB_SUCCESS == ret)
   {
-    inited_ = true;
+    this->only_core_tables_ = only_core_tables;
+    this->client_proxy_ = client_proxy;
+    table_idx_ = -1;
+    if (only_core_tables == false)
+    {
+      need_scan_ = true;
+      ret = nb_accessor_.init(client_proxy);
+      if(OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "init nb_accessor fail:ret[%d]", ret);
+      }
+      else
+      {
+        nb_accessor_.set_is_read_consistency(true);
+      }
+    }
   }
   return ret;
 }
 
-int ObTableIdNameIterator::get_next(ObTableIdName** table_info)
+int ObTableIdNameIterator::next()
 {
   int ret = OB_SUCCESS;
-  ObRow row;
-  if(!inited_)
+  if(!check_inner_stat())
   {
-    ret = OB_NOT_INIT;
-    TBSYS_LOG(WARN, "not init. can NOT iterate");
+    ret = OB_ERROR;
+    TBSYS_LOG(WARN, "check inner stat fail");
+  }
+  if(OB_SUCCESS == ret)
+  {
+    if (only_core_tables_ == true)
+    {
+      ++table_idx_;
+      TBSYS_LOG(DEBUG, "table_idx=%d", table_idx_);
+      if (table_idx_ < 3)
+      {
+        // we have three basic tables: __first_tablet_entry, __all_all_column, __all_all_join
+      }
+      else
+      {
+        ret = OB_ITER_END;
+      }
+    }
+    else
+    {
+      ++table_idx_;
+      TBSYS_LOG(DEBUG, "table_idx=%d", table_idx_);
+      if (table_idx_ < 3)
+      {
+        // we have three basic tables: __first_tablet_entry, __all_all_column, __all_all_join
+      }
+      else if (NULL == res_)
+      {
+        TBSYS_LOG(ERROR, "results is NULL");
+        ret = OB_ERR_UNEXPECTED;
+      }
+      else
+      {
+        ret = res_->next_row();
+        if(OB_SUCCESS != ret && OB_ITER_END != ret)
+        {
+          TBSYS_LOG(WARN, "next row fail:ret[%d]", ret);
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+int ObTableIdNameIterator::get(ObTableIdName** table_info)
+{
+  int ret = OB_SUCCESS;
+  if (0 > table_idx_)
+  {
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(ERROR, "get failed");
+  }
+  else if (table_idx_ < 3)
+  {
+    ret = internal_get(table_info);
   }
   else
   {
-    ++table_idx_;
-    if (table_idx_ < 3)
+    if (only_core_tables_ == true)
     {
-      // get core table, do nothing;
-      ret = internal_get(table_info);
+      ret = OB_INNER_STAT_ERROR;
+      TBSYS_LOG(WARN, "get core tables but table_idx[%d]_ >= 3", table_idx_);
     }
-    else if (only_core_tables_)
+    else
     {
-      ret = OB_ITER_END;
-    }
-    else if (OB_SUCCESS != (ret = reader_->get_next_row(row)))
-    {
-      if (OB_ITER_END != ret)
-      {
-        TBSYS_LOG(WARN, "get_next_row ret=%d", ret);
-      }
-    }
-    else if (OB_SUCCESS != (ret = normal_get(row, table_info)))
-    {
-      TBSYS_LOG(WARN, "normal_get [%d][%s] ret=%d", table_idx_, to_cstring(row), ret);
+      ret = normal_get(table_info);
     }
   }
-
+  if (OB_SUCCESS == ret)
+  {
+    TBSYS_LOG(INFO, "table_name: [%.*s], table_id: [%ld]",
+        (*table_info)->table_name_.length(),
+        (*table_info)->table_name_.ptr(), (*table_info)->table_id_);
+  }
   return ret;
 }
 
@@ -153,16 +195,84 @@ int ObTableIdNameIterator::internal_get(ObTableIdName** table_info)
   return ret;
 }
 
-int ObTableIdNameIterator::normal_get(const ObRow & row, ObTableIdName** table_info)
+int ObTableIdNameIterator::normal_get(ObTableIdName** table_id_name)
 {
   int ret = OB_SUCCESS;
 
-  EXTRACT_VARCHAR_FIELD((*reader_), row, "table_name", table_id_name_.table_name_);
-  EXTRACT_INT_FIELD((*reader_), row, "table_id", table_id_name_.table_id_, uint64_t);
-  if (OB_SUCCESS == ret)
+  TableRow* table_row = NULL;
+  if (NULL == res_)
   {
-    *table_info = &table_id_name_;
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(ERROR, "results is NULL");
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    ret = res_->get_row(&table_row);
+    if(OB_SUCCESS != ret && OB_ITER_END != ret)
+    {
+      TBSYS_LOG(WARN, "get row fail:ret[%d]", ret);
+    }
+  }
+
+  ObCellInfo* cell_info = NULL;
+  if(OB_SUCCESS == ret)
+  {
+    cell_info = table_row->get_cell_info("table_name");
+    if(NULL != cell_info)
+    {
+      if (cell_info->value_.get_type() == ObNullType
+          && cell_info->row_key_.get_obj_cnt() > 0
+          && cell_info->row_key_.get_obj_ptr()[0].get_type() == ObVarcharType)
+      {
+        TBSYS_LOG(WARN, "value is null,  get table name from cell rowkey:%s", print_cellinfo(cell_info));
+        cell_info->row_key_.get_obj_ptr()[0].get_varchar(table_id_name_.table_name_);
+      }
+      else
+      {
+        cell_info->value_.get_varchar(table_id_name_.table_name_);
+      }
+    }
+    else
+    {
+      ret = OB_ERROR;
+      TBSYS_LOG(WARN, "get table_name cell info fail");
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    cell_info = table_row->get_cell_info("table_id");
+    if(NULL != cell_info)
+    {
+      int64_t tmp = 0;
+      cell_info->value_.get_int(tmp);
+      table_id_name_.table_id_ = static_cast<uint64_t>(tmp);
+      if (tmp == 0)
+      {
+        TBSYS_LOG(INFO, "get table_id = 0");
+      }
+    }
+    else
+    {
+      ret = OB_ERROR;
+      TBSYS_LOG(WARN, "get table_id cell info fail");
+    }
+  }
+
+  if(OB_SUCCESS == ret)
+  {
+    *table_id_name = &table_id_name_;
   }
   return ret;
+}
+
+void ObTableIdNameIterator::destroy()
+{
+  if(NULL != res_)
+  {
+    nb_accessor_.release_query_res(res_);
+    res_ = NULL;
+  }
 }
 

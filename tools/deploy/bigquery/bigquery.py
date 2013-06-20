@@ -6,13 +6,8 @@ client_start_args = 'bigquery.conf.$ip'
 def configure_obi(**self):
     obi = find_attr(self, 'obi')
     if not obi: raise Exception('no obi defined for bigquery')
-    obi.update(tpl=dict(schema_template = read('bigquery/bigquery.schema')), init_sql_file='bigquery/init.sql')
+    obi.update(tpl=dict(schema_template = read('bigquery/bigquery.schema')))
     print 'configure_obi by bigquery'
-
-def prepare(**self):
-    obi = find_attr(self, 'obi')
-    if not obi: raise Fail('no obi defined for bigquery')
-    return 'OK'
 
 def gen_client_conf(**self):
     path, content = sub2('bigquery/bigquery.conf.$ip', self), sub2(read('bigquery/bigquery.conf.template'), self)

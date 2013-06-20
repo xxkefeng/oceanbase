@@ -42,8 +42,6 @@ void ReadWorker::run(CThread* thread, void* arg)
 {
   int err = 0;
   uint64_t prefix = 0;
-  UNUSED(thread);
-  UNUSED(arg);
 
   if (NULL != key_gen_)
   {

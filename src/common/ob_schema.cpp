@@ -47,7 +47,7 @@ namespace
   const char* STR_COLUMN_TYPE_VCHAR = "varchar";
   const char* STR_COLUMN_TYPE_DATETIME = "datetime";
   const char* STR_COLUMN_TYPE_PRECISE_DATETIME = "precise_datetime";
-  const char* STR_COLUMN_TYPE_UNKNOWN= "unknown";
+  const char* STR_COLUMN_TYPE_SEQ = "seq";
   const char* STR_COLUMN_TYPE_C_TIME = "create_time";
   const char* STR_COLUMN_TYPE_M_TIME = "modify_time";
 
@@ -241,22 +241,6 @@ namespace oceanbase
         {
           index = i;
           column = columns_[i];
-          ret = OB_SUCCESS;
-          break;
-        }
-      }
-      return ret;
-    }
-
-    int ObRowkeyInfo::get_index(const uint64_t column_id, int64_t &index) const
-    {
-      int ret = OB_ENTRY_NOT_EXIST;
-      int64_t i = 0;
-      for (; i < size_; ++i)
-      {
-        if (columns_[i].column_id_ == column_id)
-        {
-          index = i;
           ret = OB_SUCCESS;
           break;
         }
@@ -503,42 +487,6 @@ namespace oceanbase
             join_info_.left_column_count_, join_info_.correlated_column_);
       }
     }
-    const char* convert_column_type_to_str(ColumnType type)
-    {
-      if (type == ObIntType)
-      {
-        return STR_COLUMN_TYPE_INT;
-      }
-      else if (type == ObVarcharType)
-      {
-        return STR_COLUMN_TYPE_VCHAR;
-      }
-      else if (type == ObDateTimeType)
-      {
-        return STR_COLUMN_TYPE_DATETIME;
-      }
-      else if (type == ObPreciseDateTimeType)
-      {
-        return STR_COLUMN_TYPE_PRECISE_DATETIME;
-      }
-      else if (type == ObUnknownType)
-      {
-        return STR_COLUMN_TYPE_UNKNOWN;
-      }
-      else if (type == ObCreateTimeType)
-      {
-        return STR_COLUMN_TYPE_C_TIME;
-      }
-      else if (type == ObModifyTimeType)
-      {
-        return STR_COLUMN_TYPE_M_TIME;
-      }
-      else
-      {
-        TBSYS_LOG(ERROR,"column type %d not be supported", type);
-        return NULL;
-      }
-    }
 
     ColumnType ObColumnSchemaV2::convert_str_to_column_type(const char* str)
     {
@@ -567,9 +515,9 @@ namespace oceanbase
       {
         type = ObPreciseDateTimeType;
       }
-      else if (strcmp(str, STR_COLUMN_TYPE_UNKNOWN) == 0)
+      else if (strcmp(str, STR_COLUMN_TYPE_SEQ) == 0)
       {
-        type = ObUnknownType;
+        type = ObSeqType;
       }
       else if (strcmp(str, STR_COLUMN_TYPE_C_TIME) == 0)
       {
@@ -880,11 +828,9 @@ namespace oceanbase
      *-----------------------------------------------------------------------------*/
 
     ObTableSchema::ObTableSchema() : table_id_(OB_INVALID_ID),
-                                     index_tid_count_(0),
                                      rowkey_split_(0),
                                      block_size_(0),
-                                     table_load_type_(SSTABLE_IN_DISK),
-                                     table_type_(NORMAL),
+                                     table_type_(SSTABLE_IN_DISK),
                                      is_pure_update_table_(false),
                                      is_use_bloomfilter_(false),
                                      is_merge_dynamic_data_(true),
@@ -897,10 +843,6 @@ namespace oceanbase
                                      internal_ups_scan_size_(0),
                                      merge_write_sstable_version_(2),
                                      replica_count_(2),
-                                     charset_number_(OB_DEFAULT_CHARACTER_SET),
-                                     data_table_id_(OB_INVALID_ID),
-                                     index_status_(UNAVAILABLE),
-                                     create_mem_version_(0),
                                      version_(OB_SCHEMA_VERSION_FOUR),
                                      create_time_column_id_(OB_INVALID_ID),
                                      modify_time_column_id_(OB_INVALID_ID)
@@ -921,72 +863,7 @@ namespace oceanbase
       return table_id_;
     }
 
-    uint64_t ObTableSchema::get_data_table_id() const
-    {
-      return data_table_id_;
-    }
-
-    ObTableSchema::IndexStatus ObTableSchema::get_index_status() const
-    {
-      return index_status_;
-    }
-
-    int64_t ObTableSchema::get_create_mem_version() const
-    {
-      return create_mem_version_;
-    }
-
-    int ObTableSchema::add_index_tid(uint64_t index_tid)
-    {
-      int ret = OB_SUCCESS;
-      if (index_tid_count_ >= OB_MAX_INDEX_PER_TABLE)
-      {
-        ret = OB_SIZE_OVERFLOW;
-        TBSYS_LOG(WARN, "cannot create index for this table[%lu]", table_id_);
-      }
-      else
-      {
-        index_tid_array_[index_tid_count_ ++] = index_tid;
-      }
-      return ret;
-    }
-
-    void ObTableSchema::reset_index_tid_array()
-    {
-      index_tid_count_ = 0;
-    }
-
-    int ObTableSchema::get_index_tid_array(uint64_t *index_tid_array, int64_t &size) const
-    {
-      int ret = OB_SUCCESS;
-      if (NULL == index_tid_array)
-      {
-        ret = OB_INVALID_ARGUMENT;
-        TBSYS_LOG(WARN, "index_tid_array is null");
-      }
-      else if (size < index_tid_count_)
-      {
-        ret = OB_BUF_NOT_ENOUGH;
-        TBSYS_LOG(WARN, "buf size is not enough:size[%ld], "
-        "index_tid_count_[%ld]", size, index_tid_count_);
-      }
-      else
-      {
-        for (int64_t i = 0; i < index_tid_count_; i ++)
-        {
-          index_tid_array[i] = index_tid_array_[i];
-        }
-        size = index_tid_count_;
-      }
-      return 0;
-    }
-
-    ObTableSchema::TableLoadType ObTableSchema::get_table_load_type() const
-    {
-      return table_load_type_;
-    }
-
-    ObTableSchema::TableType ObTableSchema::get_table_type() const
+    ObTableSchema::TableType   ObTableSchema::get_table_type() const
     {
       return table_type_;
     }
@@ -999,11 +876,6 @@ namespace oceanbase
     const char* ObTableSchema::get_compress_func_name() const
     {
       return compress_func_name_;
-    }
-
-    int64_t ObTableSchema::get_charset_number() const
-    {
-      return charset_number_;
     }
 
     uint64_t ObTableSchema::get_max_column_id() const
@@ -1095,12 +967,10 @@ namespace oceanbase
     {
       fprintf(fd, "table=%s id=%ld, version=%ld\n", name_, table_id_, version_);
       fprintf(fd, "properties: max_column_id_=%lu, rowkey_split_=%ld,\n"
-          "rowkey_max_length_=%ld, block_size_=%d, max_sstable_size_=%ld, "
-          "table_load_type_=%d,table_type_=%d, "
+          "rowkey_max_length_=%ld, block_size_=%d, table_type_=%d,"
           "is_pure_update_table_=%d,is_use_bloomfilter_=%d,"
           "has_baseline_data_=%d, merge_write_sstable_version_=%ld\n" ,
-          max_column_id_, rowkey_split_, rowkey_max_length_, block_size_, 
-          max_sstable_size_, table_load_type_, table_type_,
+          max_column_id_, rowkey_split_, rowkey_max_length_, block_size_, table_type_,
           is_pure_update_table_, is_use_bloomfilter_, has_baseline_data_,
           merge_write_sstable_version_);
       fprintf(fd, "rowkey=");
@@ -1151,16 +1021,6 @@ namespace oceanbase
     void ObTableSchema::set_max_column_id(const uint64_t id)
     {
       max_column_id_ = id;
-    }
-
-    void ObTableSchema::set_charset_number(const int32_t number)
-    {
-      charset_number_ = number;
-    }
-
-    void ObTableSchema::set_table_load_type(TableLoadType load_type)
-    {
-      table_load_type_ = load_type;
     }
 
     void ObTableSchema::set_table_type(TableType type)
@@ -1303,21 +1163,6 @@ namespace oceanbase
       replica_count_ = count;
     }
 
-    void ObTableSchema::set_data_table_id(const uint64_t data_table_id)
-    {
-      data_table_id_ = data_table_id;
-    }
-
-    void ObTableSchema::set_index_status(ObTableSchema::IndexStatus index_status)
-    {
-      index_status_ = index_status;
-    }
-
-    void ObTableSchema::set_create_mem_version(const int64_t create_mem_version)
-    {
-      create_mem_version_ = create_mem_version;
-    }
-
     void ObTableSchema::set_modify_time_column(uint64_t id)
     {
       modify_time_column_id_ = id;
@@ -1381,10 +1226,6 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         ret = serialization::encode_vi32(buf, buf_len, tmp_pos, block_size_);
-      }
-      if (OB_SUCCESS == ret)
-      {
-        ret = serialization::encode_vi32(buf, buf_len, tmp_pos, table_load_type_);
       }
       if (OB_SUCCESS == ret)
       {
@@ -1454,23 +1295,7 @@ namespace oceanbase
       {
         ret = serialization::encode_vi64(buf, buf_len, tmp_pos, replica_count_);
       }
-      if (OB_SUCCESS == ret)
-      {
-        ret = serialization::encode_vi64(buf, buf_len, tmp_pos, charset_number_);
-      }
-      if (OB_SUCCESS == ret)
-      {
-        ret = serialization::encode_vi64(buf, buf_len, tmp_pos, data_table_id_);
-      }
-      if (OB_SUCCESS == ret)
-      {
-        ret = serialization::encode_vi64(buf, buf_len, tmp_pos, index_status_);
-      }
-      if (OB_SUCCESS == ret)
-      {
-        ret = serialization::encode_vi64(buf, buf_len, tmp_pos, create_mem_version_);
-      }
-      for (int64_t i = 0; i < TABLE_SCHEMA_RESERVED_NUM_V4 && OB_SUCCESS == ret; ++i)
+      for (int64_t i = 0; i < TABLE_SCHEMA_RESERVED_NUM && OB_SUCCESS == ret; ++i)
       {
         ret = serialization::encode_vi64(buf, buf_len, tmp_pos, reserved_[i]);
       }
@@ -1509,12 +1334,6 @@ namespace oceanbase
         ret = serialization::decode_vi32(buf, data_len, tmp_pos, &block_size_);
       }
 
-      if (OB_SUCCESS == ret)
-      {
-        int32_t table_load_type = 0;
-        ret = serialization::decode_vi32(buf, data_len, tmp_pos, &table_load_type);
-        table_load_type_ = static_cast<TableLoadType>(table_load_type);
-      }
       if (OB_SUCCESS == ret)
       {
         int32_t table_type = 0;
@@ -1646,12 +1465,7 @@ namespace oceanbase
       {
         ret = serialization::decode_vi32(buf, data_len, tmp_pos, &block_size_);
       }
-      if (OB_SUCCESS == ret)
-      {
-        int32_t table_load_type = 0;
-        ret = serialization::decode_vi32(buf, data_len, tmp_pos, &table_load_type);
-        table_load_type_ = static_cast<TableLoadType>(table_load_type);
-      }
+
       if (OB_SUCCESS == ret)
       {
         int32_t table_type = 0;
@@ -1741,37 +1555,7 @@ namespace oceanbase
       {
         ret = serialization::decode_vi64(buf, data_len, tmp_pos, &replica_count_);
       }
-      if (OB_SUCCESS == ret)
-      {
-        ret = serialization::decode_vi64(buf, data_len, tmp_pos, &charset_number_);
-      }
-      if (0 == charset_number_) //decode from 0.4.1, charset_number_ is first reserved member
-      {
-        charset_number_ = OB_DEFAULT_CHARACTER_SET;
-      }
-      if (OB_SUCCESS == ret)
-      {
-        int64_t tmp_data_table_id = 0;
-        ret = serialization::decode_vi64(buf, data_len, tmp_pos, &tmp_data_table_id);
-        if (OB_SUCCESS == ret)
-        {
-          data_table_id_ = tmp_data_table_id;
-        }
-      }
-      if (OB_SUCCESS == ret)
-      {
-        int64_t tmp_index_status = 0;
-        ret = serialization::decode_vi64(buf, data_len, tmp_pos, &tmp_index_status);
-        if (OB_SUCCESS == ret)
-        {
-          index_status_ = static_cast<IndexStatus>(tmp_index_status);
-        }
-      }
-      if (OB_SUCCESS == ret)
-      {
-        ret = serialization::decode_vi64(buf, data_len, tmp_pos, &create_mem_version_);
-      }
-      for (int64_t i = 0; i < TABLE_SCHEMA_RESERVED_NUM_V4 && OB_SUCCESS == ret; ++i)
+      for (int64_t i = 0; i < TABLE_SCHEMA_RESERVED_NUM && OB_SUCCESS == ret; ++i)
       {
         ret = serialization::decode_vi64(buf, data_len, tmp_pos, &reserved_[i]);
       }
@@ -1803,7 +1587,6 @@ namespace oceanbase
       len += serialization::encoded_length_vi64(rowkey_split_);
       len += serialization::encoded_length_vi64(rowkey_max_length_);
       len += serialization::encoded_length_vi32(block_size_);
-      len += serialization::encoded_length_vi32(table_load_type_);
       len += serialization::encoded_length_vi32(table_type_);
       len += serialization::encoded_length_vstr(name_);
       len += serialization::encoded_length_vstr(compress_func_name_);
@@ -1821,11 +1604,7 @@ namespace oceanbase
       len += serialization::encoded_length_vi64(internal_ups_scan_size_);
       len += serialization::encoded_length_vi64(merge_write_sstable_version_);
       len += serialization::encoded_length_vi64(replica_count_);
-      len += serialization::encoded_length_vi64(charset_number_);
-      len += serialization::encoded_length_vi64(data_table_id_);
-      len += serialization::encoded_length_vi64(index_status_);
-      len += serialization::encoded_length_vi64(create_mem_version_);
-      len += serialization::encoded_length_vi64(reserved_[0]) * TABLE_SCHEMA_RESERVED_NUM_V4;
+      len += serialization::encoded_length_vi64(reserved_[0]) * TABLE_SCHEMA_RESERVED_NUM;
       return len;
     }
 
@@ -2206,7 +1985,8 @@ namespace oceanbase
     {
       uint64_t table_id = OB_INVALID_ID;
       int type = 0;
-      ObTableSchema::TableLoadType table_load_type = ObTableSchema::INVALID;
+      //ObSchema::TableType table_type = ObSchema::INVALID;
+      ObTableSchema::TableType table_type = ObTableSchema::INVALID;
       int32_t rowkey_split = 0;
       int32_t rowkey_max_length = 0;
       uint64_t max_column_id = 0;
@@ -2247,11 +2027,11 @@ namespace oceanbase
 
         if (type == ObTableSchema::SSTABLE_IN_DISK)
         {
-          table_load_type = ObTableSchema::SSTABLE_IN_DISK;
+          table_type = ObTableSchema::SSTABLE_IN_DISK;
         }
         else if (type == ObTableSchema::SSTABLE_IN_RAM)
         {
-          table_load_type = ObTableSchema::SSTABLE_IN_RAM;
+          table_type = ObTableSchema::SSTABLE_IN_RAM;
         }
         else
         {
@@ -2299,7 +2079,7 @@ namespace oceanbase
         schema.set_table_id(table_id);
         schema.set_max_column_id(max_column_id);
         schema.set_table_name(name);
-        schema.set_table_load_type(table_load_type);
+        schema.set_table_type(table_type);
         schema.set_split_pos(rowkey_split);
         schema.set_rowkey_max_length(rowkey_max_length);
         schema.set_compressor_name(compress_func_name);
@@ -3152,7 +2932,7 @@ namespace oceanbase
       }
       else if (column.get_id() > table->get_max_column_id())
       {
-        TBSYS_LOG(ERROR,"column id %lu greater than max_column_id %lu",
+        TBSYS_LOG(ERROR,"column id %lu greater thean max_column_id %lu",
             column.get_id(), table->get_max_column_id());
         ret = OB_INVALID_ARGUMENT;
       }
@@ -4300,46 +4080,6 @@ namespace oceanbase
       return ret;
     }
 
-    int ObSchemaManagerV2::cons_table_to_index_relation()
-    {
-      int ret = OB_SUCCESS;
-      const ObTableSchema *table_schema_iter = NULL;
-      for (table_schema_iter = table_begin();
-        OB_SUCCESS == ret && table_schema_iter != table_end();
-        table_schema_iter ++)
-      {
-        ObTableSchema *table_schema = this->get_table_schema(table_schema_iter->get_table_id());
-        if (NULL == table_schema)
-        {
-          ret = OB_ERR_UNEXPECTED;
-          TBSYS_LOG(ERROR, "table_schema should not be null");
-          break;
-        }
-        const ObTableSchema *ts_iter = NULL;
-        if (ObTableSchema::NORMAL == table_schema_iter->get_table_type())
-        {
-          table_schema->reset_index_tid_array();
-          for (ts_iter = table_begin();
-            OB_SUCCESS == ret && ts_iter != table_end(); ts_iter ++)
-          {
-            if (ObTableSchema::INDEX == ts_iter->get_table_type())
-            {
-              if (table_schema_iter->get_table_id() == ts_iter->get_data_table_id())
-              {
-                ret = table_schema->add_index_tid(ts_iter->get_table_id());
-                if (OB_SUCCESS != ret)
-                {
-                  TBSYS_LOG(WARN, "fail to add index to table schema:ret[%d]", ret);
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-      return ret;
-    }
-
     DEFINE_SERIALIZE(ObSchemaManagerV2)
     {
       int ret = 0;
@@ -4521,12 +4261,7 @@ namespace oceanbase
 
           if (OB_SUCCESS == ret)
           {
-            ret = sort_column();
-          }
-
-          if (OB_SUCCESS == ret)
-          {
-            ret = cons_table_to_index_relation();
+            sort_column();
           }
         }
       }
@@ -4566,36 +4301,15 @@ namespace oceanbase
         old_tschema.set_table_id(tschema->table_id_);
         old_tschema.set_max_column_id(tschema->max_used_column_id_);
         old_tschema.set_table_name(tschema->table_name_);
-        ObTableSchema::TableLoadType table_load_type = ObTableSchema::INVALID;
+        ObTableSchema::TableType table_type = ObTableSchema::INVALID;
         if (TableSchema::DISK == tschema->load_type_)
         {
-          table_load_type = ObTableSchema::SSTABLE_IN_DISK;
+          table_type = ObTableSchema::SSTABLE_IN_DISK;
         }
         else if (TableSchema::MEMORY == tschema->load_type_)
         {
-          table_load_type = ObTableSchema::SSTABLE_IN_RAM;
+          table_type = ObTableSchema::SSTABLE_IN_RAM;
         }
-
-        ObTableSchema::TableType table_type = ObTableSchema::NORMAL;
-        switch(tschema->table_type_)
-        {
-          case TableSchema::NORMAL:
-            table_type = ObTableSchema::NORMAL;
-            break;
-          case TableSchema::INDEX:
-            table_type = ObTableSchema::INDEX;
-            break;
-          case TableSchema::META:
-            table_type = ObTableSchema::META;
-            break;
-          case TableSchema::VIEW:
-            table_type = ObTableSchema::VIEW;
-            break;
-          default:
-            ret = OB_NOT_SUPPORTED;
-            break;
-        }
-        old_tschema.set_table_load_type(table_load_type);
         old_tschema.set_table_type(table_type);
         old_tschema.set_split_pos(tschema->rowkey_split_);            //
         old_tschema.set_rowkey_max_length(tschema->max_rowkey_length_);
@@ -4608,27 +4322,6 @@ namespace oceanbase
         old_tschema.set_pure_update_table(tschema->is_pure_update_table_); // @deprecated
         old_tschema.set_create_time_column(tschema->create_time_column_id_);
         old_tschema.set_modify_time_column(tschema->modify_time_column_id_);
-        old_tschema.set_charset_number(tschema->charset_number_);
-        old_tschema.set_data_table_id(tschema->data_table_id_);
-        old_tschema.set_create_mem_version(tschema->create_mem_version_);
-
-        ObTableSchema::IndexStatus index_status = ObTableSchema::UNAVAILABLE;
-        switch (tschema->index_status_)
-        {
-          case TableSchema::UNAVAILABLE:
-            index_status = ObTableSchema::UNAVAILABLE;
-            break;
-          case TableSchema::AVAILABLE:
-            index_status = ObTableSchema::AVAILABLE;
-            break;
-          case TableSchema::INDEX_ERROR:
-            index_status = ObTableSchema::INDEX_ERROR;
-            break;
-          default:
-            ret = OB_NOT_SUPPORTED;
-            break;
-        }
-        old_tschema.set_index_status(index_status);
         if (tschema->expire_condition_[0] != 0)
         {
           old_tschema.set_expire_condition(tschema->expire_condition_);
@@ -4743,437 +4436,6 @@ namespace oceanbase
       }
       return ret;
     }
-    int ObSchemaManagerV2::change_table_id(const uint64_t table_id, const uint64_t new_table_id)
-    {
-      int ret = OB_SUCCESS;
-      //tableschema
-      ObTableSchema *table_schema = NULL;
-      if (NULL == (table_schema = const_cast<ObTableSchema*>(get_table_schema(table_id))))
-      {
-        TBSYS_LOG(WARN, "fail to find table_schema. table_id=%ld", table_id);
-        ret = OB_ERROR;
-      }
-      else
-      {
-        table_schema->set_table_id(new_table_id);
-      }
-      //columnschema
-      //join_tables
-      if (OB_SUCCESS == ret)
-      {
-        for (int64_t i = 0; i < column_nums_; i++)
-        {
-          ObColumnSchemaV2 *column = const_cast<ObColumnSchemaV2 *>(columns_ + i);
-          ObColumnSchemaV2::ObJoinInfo *join_info = NULL;
-          if (NULL != column)
-          {
-            if (NULL != (join_info = const_cast<ObColumnSchemaV2::ObJoinInfo *>(column->get_join_info())))
-            {
-              if (join_info->join_table_ == table_id)
-              {
-                join_info->join_table_ = new_table_id;
-              }
-            }
-            if (column->get_table_id() == table_id)
-            {
-              column->set_table_id(new_table_id);
-            }
-          }
-          else
-          {
-            TBSYS_LOG(WARN, "error happened. i=%ld, column_num=%ld", i, column_nums_);
-            break;
-          }
-        }
-      }
-      //column_groups
-      if (OB_SUCCESS == ret)
-      {
-        for (int64_t i = 0; i < column_group_nums_; i++)
-        {
-          if (column_groups_[i].table_id_ == table_id)
-          {
-            column_groups_[i].table_id_ = new_table_id;
-          }
-        }
-      }
-      //sort
-      if (OB_SUCCESS == ret)
-      {
-        ret = sort_column();
-        if (OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "fail to sort column. ert=%d", ret);
-        }
-      }
-      return ret;
-    }
-    int ObSchemaManagerV2::write_to_file(const char* file_name)
-    {
-     int ret = OB_SUCCESS;
-     FILE *fd = NULL;
-     if (NULL == file_name || (NULL == (fd = fopen(file_name, "w"))))
-     {
-       TBSYS_LOG(WARN, "can't open file. file_name=%p", file_name);
-       ret = OB_INVALID_ARGUMENT;
-     }
-     if (OB_SUCCESS == ret)
-     {
-       if (0 >= (ret = fprintf(fd, "[%s]\n", STR_SECTION_APP_NAME)))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%s\n", STR_KEY_APP_NAME, app_name_)))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%lu\n", STR_MAX_TABLE_ID, max_table_id_)))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_SCHEMA_VERSION, version_)))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else
-       {
-         ret = OB_SUCCESS;
-       }
-     }
-     if (OB_SUCCESS == ret)
-     {
-       for (int64_t i = 0; i < table_nums_; i++)
-       {
-         ret = write_table_to_file(fd, i);
-         if (OB_SUCCESS != ret)
-         {
-           TBSYS_LOG(WARN, "fail to write table to file. table index =%ld, ret=%d", i, ret);
-           break;
-         }
-       }
-     }
-     if (NULL != fd)
-     {
-       fclose(fd);
-     }
-     return ret;
-   }
 
-   int ObSchemaManagerV2::write_table_to_file(FILE *fd, const int64_t table_index)
-   {
-     int ret = OB_SUCCESS;
-     if (table_index >= table_nums_ || NULL == fd)
-     {
-       TBSYS_LOG(WARN, "invalid index. index=%ld, table_num=%ld, fd=%p",
-           table_index, table_nums_, fd);
-       ret = OB_INVALID_ARGUMENT;
-     }
-
-     const ObTableSchema *table_schema = NULL;
-     if (OB_SUCCESS == ret)
-     {
-       table_schema = table_begin() + table_index;
-       if (NULL == table_schema)
-       {
-         TBSYS_LOG(WARN, "table_schema = %p, error here.!", table_schema);
-         ret = OB_ERROR;
-       }
-     }
-     if (OB_SUCCESS == ret)
-     {
-       if (0 >= (ret = fprintf(fd, "\n\n[%s]\n", table_schema->get_table_name())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%lu\n", STR_TABLE_ID, table_schema->get_table_id())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_TABLE_TYPE, table_schema->get_table_type())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       //else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_ROWKEY_SPLIT, table_schema->get_split_pos())))
-       //{
-       //  ret = OB_ERROR;
-       //  TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       //}
-       //else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_ROWKEY_LENGTH, table_schema->get_rowkey_max_length())))
-       //{
-       //  ret = OB_ERROR;
-       //  TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       //}
-       else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_MAX_COLUMN_ID, table_schema->get_max_column_id())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%s\n", STR_COMPRESS_FUNC_NAME, table_schema->get_compress_func_name())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_BLOCK_SIZE, table_schema->get_block_size())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_USE_BLOOMFILTER, table_schema->is_use_bloomfilter())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_HAS_BASELINE_DATA, table_schema->has_baseline_data())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       //else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_ROWKEY_IS_FIXED_LENGTH, table_schema->is_row_key_fixed_len())))
-       //{
-       //  ret = OB_ERROR;
-       //  TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       //}
-       else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_EXPIRE_FREQUENCY, table_schema->get_expire_frequency())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_IS_MERGE_DYNAMIC_DATA, table_schema->is_merge_dynamic_data())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_QUERY_CACHE_EXPIRE_TIME, table_schema->get_query_cache_expire_time())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_IS_EXPIRE_EFFECT_IMMEDIATELY, table_schema->is_expire_effect_immediately())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_MAX_SCAN_ROWS_PER_TABLET, table_schema->get_max_scan_rows_per_tablet())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_INTERNAL_UPS_SCAN_SIZE, table_schema->get_internal_ups_scan_size())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%s\n", STR_EXPIRE_CONDITION, table_schema->get_expire_condition())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_MAX_SSTABLE_SIZE, table_schema->get_max_sstable_size())))
-       {
-         ret = OB_ERROR;
-         TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-       }
-       else
-       {
-         ret = OB_SUCCESS;
-       }
-     }
-
-     //row_key
-     if (OB_SUCCESS == ret)
-     {
-       ret = write_rowkey_info_to_file(fd, table_schema->get_table_id(), table_schema->get_rowkey_info());
-       if (OB_SUCCESS != ret)
-       {
-         TBSYS_LOG(WARN, "fail to write rowkey info to file. ret=%d", ret);
-       }
-     }
-     if (OB_SUCCESS == ret)
-     {
-       bool have_join_info = false;
-       char join_buff[OB_MAX_PACKET_LENGTH]; //for join_info
-       int64_t pos = 0;
-       const ObColumnSchemaV2* column_schema = NULL;
-       for (uint64_t i = 0; i <= table_schema->get_max_column_id(); i++)
-       {
-         column_schema = get_column_schema(table_schema->get_table_id(), i);
-         if (NULL != column_schema)
-         {
-           ret = write_column_info_to_file(fd, column_schema);
-           if (OB_SUCCESS != ret)
-           {
-             TBSYS_LOG(WARN, "fail to write column info to file. ret=%d", ret);
-             break;
-           }
-           else
-           {
-             const ObColumnSchemaV2::ObJoinInfo* join_info = column_schema->get_join_info();
-             if (join_info != NULL)
-             {
-               const ObTableSchema *join_table_schema = get_table_schema(join_info->join_table_);
-               const ObColumnSchemaV2 *join_column_schema = get_column_schema(join_info->join_table_, join_info->correlated_column_);
-               if (NULL == join_table_schema || NULL == join_column_schema)
-               {
-                 TBSYS_LOG(WARN, "table schema =%p, column_schema=%p, table_id=%ld, column_id=%ld",
-                     join_table_schema, join_column_schema, join_info->join_table_, join_info->correlated_column_);
-                 ret = OB_ERROR;
-                 break;
-               }
-               if (!have_join_info)
-               {
-                 have_join_info = true;
-                 //[r1$jr1,r2$jr2]%joined_table_name:f1$jf1,f2$jf2,
-                 pos += snprintf(join_buff + pos, OB_MAX_PACKET_LENGTH, "%s=[", STR_JOIN_RELATION);
-                 for (uint64_t i = 0 ; i < join_info->left_column_count_; i ++)
-                 {
-                   uint64_t left_column_id = 0;
-                   table_schema->get_rowkey_info().get_column_id(join_info->left_column_offset_array_[i], left_column_id);
-                   const ObColumnSchemaV2 *left_column= get_column_schema(table_schema->get_table_id(), left_column_id);
-                   ObRowkeyInfo join_rowkey = join_table_schema->get_rowkey_info();
-                   uint64_t rowkey_column_id = 0;
-                   join_rowkey.get_column_id(i, rowkey_column_id);
-                   const ObColumnSchemaV2 *rowkey_column_schema = get_column_schema(join_info->join_table_, rowkey_column_id);
-                   pos += snprintf(join_buff + pos, OB_MAX_PACKET_LENGTH, "%s$%s,", left_column->get_name(), rowkey_column_schema->get_name());
-                 }
-                 pos += snprintf(join_buff + pos - 1, OB_MAX_PACKET_LENGTH, "]%%%s:", join_table_schema->get_table_name());
-                 pos = pos - 1;
-                 pos += snprintf(join_buff + pos, OB_MAX_PACKET_LENGTH, "%s$%s", column_schema->get_name(), join_column_schema->get_name());
-               }
-               else
-               {
-                 pos += snprintf(join_buff + pos, OB_MAX_PACKET_LENGTH, ",%s$%s", column_schema->get_name(), join_column_schema->get_name());
-               }
-             }
-           }
-         }
-       }
-       join_buff[pos] = '\0';
-       if (OB_SUCCESS == ret)
-       {
-         fprintf(fd, "%s\n", join_buff);
-       }
-     }
-     //column_group
-     //if (OB_SUCCESS == ret)
-     //{
-     //  if (OB_SUCCESS != write_column_group_info_to_file(fd, table_index))
-     //  {
-     //    TBSYS_LOG(INFO, "write clumn group info to file fail. never mind. not supported anymore");
-     //  }
-     //}
-     return ret;
-   }
-   int ObSchemaManagerV2::write_rowkey_info_to_file(FILE *fd, const uint64_t table_id, const ObRowkeyInfo &rowkey)
-   {
-     int ret = OB_SUCCESS;
-     char rowkey_buf[OB_MAX_PACKET_LENGTH];
-     memset(rowkey_buf, '\0', OB_MAX_PACKET_LENGTH);
-     int64_t pos = 0;
-     pos += snprintf(rowkey_buf + pos, OB_MAX_PACKET_LENGTH, "%s=", STR_ROWKEY);
-     for (int64_t i = 0; i < rowkey.get_size(); i++)
-     {
-       const ObRowkeyColumn *rowkey_column = rowkey.get_column(i);
-       if (rowkey_column == NULL)
-       {
-         TBSYS_LOG(WARN, "invalid column. column point is NULL");
-         ret = OB_ERROR;
-         break;
-       }
-       uint64_t column_id = rowkey_column->column_id_;
-       const ObColumnSchemaV2* column_schema = get_column_schema(table_id, column_id);
-       if (column_schema == NULL)
-       {
-         TBSYS_LOG(WARN, "cann't find the column_schema. table_id=%ld, column_id=%ld",
-             table_id, column_id);
-         ret = OB_ERROR;
-         break;
-       }
-
-
-       pos += snprintf(rowkey_buf + pos, OB_MAX_PACKET_LENGTH, "%s(%ld%%%s),",
-           column_schema->get_name(), rowkey_column->length_, convert_column_type_to_str(rowkey_column->type_));
-     }
-     rowkey_buf[pos - 1] = '\0';
-     fprintf(fd, "%s\n", rowkey_buf);
-     return ret;
-   }
-   //int ObSchemaManagerV2::write_column_group_info_to_file(FILE *fd, const int64_t table_index)
-   //{
-   //  int ret = OB_SUCCESS;
-   //  if (table_index >= table_nums_ || NULL == fd)
-   //  {
-   //    TBSYS_LOG(WARN, "invalid index. index=%ld, table_num=%ld, fd=%p",
-   //        table_index, table_nums_, fd);
-   //    ret = OB_INVALID_ARGUMENT;
-   //  }
-
-   //  const ObTableSchema *table_schema = NULL;
-   //  if (OB_SUCCESS == ret)
-   //  {
-   //    table_schema = table_begin() + table_index;
-   //    if (NULL == table_schema)
-   //    {
-   //      TBSYS_LOG(WARN, "table_schema = %p, error here.!", table_schema);
-   //      ret = OB_ERROR;
-   //    }
-   //  }
-   //  if (OB_SUCCESS == ret)
-   //  {
-   //    TBSYS_LOG(INFO, "column group will not supported any more.");
-   //    ret = OB_NOT_SUPPORTED;
-   //  }
-   //  return ret;
-   //}
-   int ObSchemaManagerV2::write_column_info_to_file(FILE *fd, const ObColumnSchemaV2 *column_schema)
-   {
-     int ret = OB_SUCCESS;
-     if (NULL == fd || NULL == column_schema)
-     {
-       TBSYS_LOG(WARN, "invalid argument. fd=%p, column_schema=%p", fd, column_schema);
-       ret = OB_INVALID_ARGUMENT;
-     }
-     if (OB_SUCCESS == ret)
-     {
-       if (ObVarcharType != column_schema->get_type())
-       {
-         if (0 >= (ret = fprintf(fd, "%s=%d,%ld,%s,%s\n", STR_COLUMN_INFO, column_schema->is_maintained(),
-                 column_schema->get_id(),
-                 column_schema->get_name(),
-                 convert_column_type_to_str(column_schema->get_type()))))
-         {
-           TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-           ret = OB_ERROR;
-         }
-         else
-         {
-           ret = OB_SUCCESS;
-         }
-       }
-       else
-       {
-         if (0 >= (ret = fprintf(fd, "%s=%d,%ld,%s,%s,%ld\n", STR_COLUMN_INFO, column_schema->is_maintained(),
-                 column_schema->get_id(),
-                 column_schema->get_name(),
-                 convert_column_type_to_str(column_schema->get_type()),
-                 column_schema->get_size())))
-         {
-           TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
-           ret = OB_ERROR;
-         }
-         else
-         {
-           ret = OB_SUCCESS;
-         }
-       }
-     }
-     return ret;
-   }
   } // end namespace common
 }   // end namespace oceanbase

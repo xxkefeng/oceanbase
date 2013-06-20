@@ -61,7 +61,7 @@ namespace oceanbase
         {
         }
       public:
-        virtual int get_next_row(const common::ObRowkey*& rowkey, const common::ObRow*& row) = 0;
+        virtual int get_next_row(const common::ObRowkey *&rowkey, const common::ObRow *&row) = 0;
         virtual int get_next_row(const common::ObRow *&row)
         {
           row = NULL;

@@ -1,167 +1,167 @@
 K 25
 svn:wc:ra_dav:version-url
-V 66
-/repos/oceanbase/!svn/ver/14478/branches/dev/oceanbase/src/obmysql
-END
-ob_mysql_loginer.h
-K 25
-svn:wc:ra_dav:version-url
-V 85
-/repos/oceanbase/!svn/ver/12108/branches/dev/oceanbase/src/obmysql/ob_mysql_loginer.h
-END
-ob_mysql_global.h
-K 25
-svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/12312/branches/dev/oceanbase/src/obmysql/ob_mysql_global.h
-END
-ob_mysql_server.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 86
-/repos/oceanbase/!svn/ver/13705/branches/dev/oceanbase/src/obmysql/ob_mysql_server.cpp
-END
-ob_mysql_row.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 83
-/repos/oceanbase/!svn/ver/14478/branches/dev/oceanbase/src/obmysql/ob_mysql_row.cpp
-END
-ob_mysql_command_queue_thread.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 100
-/repos/oceanbase/!svn/ver/12903/branches/dev/oceanbase/src/obmysql/ob_mysql_command_queue_thread.cpp
-END
-ob_mysql_server.h
-K 25
-svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/13223/branches/dev/oceanbase/src/obmysql/ob_mysql_server.h
-END
-ob_mysql_state.map
-K 25
-svn:wc:ra_dav:version-url
-V 85
-/repos/oceanbase/!svn/ver/13223/branches/dev/oceanbase/src/obmysql/ob_mysql_state.map
-END
-ob_mysql_row.h
-K 25
-svn:wc:ra_dav:version-url
-V 81
-/repos/oceanbase/!svn/ver/12312/branches/dev/oceanbase/src/obmysql/ob_mysql_row.h
-END
-ob_mysql_packet_queue_handler.h
-K 25
-svn:wc:ra_dav:version-url
-V 98
-/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/src/obmysql/ob_mysql_packet_queue_handler.h
-END
-ob_mysql_util.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/13032/branches/dev/oceanbase/src/obmysql/ob_mysql_util.cpp
-END
-ob_mysql_command_queue_thread.h
-K 25
-svn:wc:ra_dav:version-url
-V 98
-/repos/oceanbase/!svn/ver/10782/branches/dev/oceanbase/src/obmysql/ob_mysql_command_queue_thread.h
-END
-ob_mysql_state.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 85
-/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/src/obmysql/ob_mysql_state.cpp
-END
-ob_mysql_command_queue.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 93
-/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/src/obmysql/ob_mysql_command_queue.cpp
-END
-ob_mysql_util.h
-K 25
-svn:wc:ra_dav:version-url
-V 82
-/repos/oceanbase/!svn/ver/12312/branches/dev/oceanbase/src/obmysql/ob_mysql_util.h
-END
-ob_mysql_field.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 85
-/repos/oceanbase/!svn/ver/13403/branches/dev/oceanbase/src/obmysql/ob_mysql_field.cpp
-END
-Makefile.am
-K 25
-svn:wc:ra_dav:version-url
-V 78
-/repos/oceanbase/!svn/ver/10399/branches/dev/oceanbase/src/obmysql/Makefile.am
-END
-ob_mysql_state.h
-K 25
-svn:wc:ra_dav:version-url
-V 83
-/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/src/obmysql/ob_mysql_state.h
-END
-ob_mysql_dtoa.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/src/obmysql/ob_mysql_dtoa.cpp
-END
-ob_mysql_command_queue.h
-K 25
-svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/src/obmysql/ob_mysql_command_queue.h
-END
-ob_mysql_field.h
-K 25
-svn:wc:ra_dav:version-url
-V 83
-/repos/oceanbase/!svn/ver/13403/branches/dev/oceanbase/src/obmysql/ob_mysql_field.h
-END
-ob_mysql_result_set.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 90
-/repos/oceanbase/!svn/ver/10560/branches/dev/oceanbase/src/obmysql/ob_mysql_result_set.cpp
-END
-ob_mysql_dtoa.h
-K 25
-svn:wc:ra_dav:version-url
-V 82
-/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/src/obmysql/ob_mysql_dtoa.h
-END
-ob_mysql_callback.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 88
-/repos/oceanbase/!svn/ver/12798/branches/dev/oceanbase/src/obmysql/ob_mysql_callback.cpp
-END
-ob_mysql_result_set.h
-K 25
-svn:wc:ra_dav:version-url
-V 88
-/repos/oceanbase/!svn/ver/10560/branches/dev/oceanbase/src/obmysql/ob_mysql_result_set.h
-END
-ob_mysql_loginer.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 87
-/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/obmysql/ob_mysql_loginer.cpp
-END
-ob_mysql_define.h
-K 25
-svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/10931/branches/dev/oceanbase/src/obmysql/ob_mysql_define.h
+V 76
+/repos/oceanbase/!svn/ver/14466/branches/0_4_1_release/oceanbase/src/obmysql
 END
 ob_mysql_callback.h
 K 25
 svn:wc:ra_dav:version-url
-V 86
-/repos/oceanbase/!svn/ver/10181/branches/dev/oceanbase/src/obmysql/ob_mysql_callback.h
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_callback.h
+END
+ob_mysql_loginer.h
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_loginer.h
+END
+ob_mysql_global.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_global.h
+END
+ob_mysql_server.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/14466/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_server.cpp
+END
+ob_mysql_row.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/13536/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_row.cpp
+END
+ob_mysql_command_queue_thread.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/repos/oceanbase/!svn/ver/12690/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_command_queue_thread.cpp
+END
+ob_mysql_server.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_server.h
+END
+ob_mysql_state.map
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/13091/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_state.map
+END
+ob_mysql_row.h
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_row.h
+END
+ob_mysql_packet_queue_handler.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_packet_queue_handler.h
+END
+ob_mysql_util.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12938/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_util.cpp
+END
+ob_mysql_command_queue_thread.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_command_queue_thread.h
+END
+ob_mysql_state.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_state.cpp
+END
+ob_mysql_command_queue.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_command_queue.cpp
+END
+ob_mysql_util.h
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_util.h
+END
+ob_mysql_field.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/repos/oceanbase/!svn/ver/12957/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_field.cpp
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/repos/oceanbase/!svn/ver/12660/branches/0_4_1_release/oceanbase/src/obmysql/Makefile.am
+END
+ob_mysql_state.h
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_state.h
+END
+ob_mysql_dtoa.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_dtoa.cpp
+END
+ob_mysql_command_queue.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_command_queue.h
+END
+ob_mysql_field.h
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_field.h
+END
+ob_mysql_result_set.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_result_set.cpp
+END
+ob_mysql_dtoa.h
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_dtoa.h
+END
+ob_mysql_callback.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12682/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_callback.cpp
+END
+ob_mysql_result_set.h
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_result_set.h
+END
+ob_mysql_loginer.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/14466/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_loginer.cpp
+END
+ob_mysql_define.h
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/obmysql/ob_mysql_define.h
 END

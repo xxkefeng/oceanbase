@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/sqltest/data
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/sqltest/data
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:08.000000Z
+2013-06-20T08:38:45.000000Z
 b4ac4566d3759fe9f9750989a9868e2c
 2012-05-16T11:32:02.198203Z
 8263
@@ -66,7 +66,7 @@ file
 
 
 
-2013-06-19T09:27:08.000000Z
+2013-06-20T08:38:45.000000Z
 4138cf71d21743e35b218fc83fd009e9
 2012-04-17T07:24:48.695798Z
 7981
@@ -100,7 +100,7 @@ file
 
 
 
-2013-06-19T09:27:08.000000Z
+2013-06-20T08:38:45.000000Z
 25927db48a1e7a7e30a7453de5f5e73c
 2012-03-27T08:16:48.378873Z
 7834

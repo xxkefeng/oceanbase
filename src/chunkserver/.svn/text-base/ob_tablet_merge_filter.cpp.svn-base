@@ -2,11 +2,11 @@
  * (C) 2010-2012 Taobao Inc.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
- *  
- * ob_tablet_merge_filter.cpp for expire row of tablet when do 
- * daily merge. 
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * ob_tablet_merge_filter.cpp for expire row of tablet when do
+ * daily merge.
  *
  * Authors:
  *   huating <huating.zmq@taobao.com>
@@ -29,8 +29,8 @@ namespace oceanbase
     const char* ObTabletMergerFilter::EXPIRE_CONDITION_CNAME_PREFIX = "__EXPIRE_COND_";
 
     ObTabletMergerFilter::ObTabletMergerFilter()
-    : inited_(false), hash_map_inited_(false), 
-      expire_row_filter_(DEFAULT_SSTABLE_ROW_COUNT, &expire_filter_allocator_), 
+    : inited_(false), hash_map_inited_(false),
+      expire_row_filter_(DEFAULT_SSTABLE_ROW_COUNT, &expire_filter_allocator_),
       schema_(NULL), table_id_(OB_INVALID_ID), frozen_version_(0), frozen_time_(0),
       column_group_num_(0), extra_column_cnt_(0), need_filter_(false)
     {
@@ -55,7 +55,7 @@ namespace oceanbase
       if (NULL == tablet || frozen_version <= 1 || frozen_time < 0)
       {
         TBSYS_LOG(WARN, "invalid param, tablet=%p, frozen_version=%ld, "
-                        "frozen_time=%ld", 
+                        "frozen_time=%ld",
           tablet, frozen_version, frozen_time);
         ret = OB_ERROR;
       }
@@ -117,7 +117,7 @@ namespace oceanbase
       expire_row_filter_.clear();
     }
 
-    bool ObTabletMergerFilter::need_filter(const int64_t frozen_version, 
+    bool ObTabletMergerFilter::need_filter(const int64_t frozen_version,
       const int64_t last_do_expire_version)
     {
       bool ret            = false;
@@ -128,7 +128,7 @@ namespace oceanbase
 
       if (frozen_version <= 1 || last_do_expire_version < 0)
       {
-        TBSYS_LOG(WARN, "invalid param, frozen_version=%ld, last_do_expire_version=%ld", 
+        TBSYS_LOG(WARN, "invalid param, frozen_version=%ld, last_do_expire_version=%ld",
           frozen_version, last_do_expire_version);
       }
       else if (NULL == (table_schema = schema_->get_table_schema(table_id_)))
@@ -145,16 +145,16 @@ namespace oceanbase
         TBSYS_LOG(INFO, "expire info, frozen_version=%ld, expire_frequency=%ld, "
                         "last_do_expire_version=%ld, table_id=%lu, "
                         "expire column id=%ld, expire_duration=%ld, "
-                        "expire_condition=%s, need_filter=%d", 
-          frozen_version, table_schema->get_expire_frequency(), 
-          last_do_expire_version, table_id_, column_id, duration, 
+                        "expire_condition=%s, need_filter=%d",
+          frozen_version, table_schema->get_expire_frequency(),
+          last_do_expire_version, table_id_, column_id, duration,
           (NULL == expire_condition) ? "" : expire_condition, ret);
       }
 
       return ret;
     }
 
-    int ObTabletMergerFilter::replace_system_variable(char* expire_condition, 
+    int ObTabletMergerFilter::replace_system_variable(char* expire_condition,
       const int64_t buf_size)
     {
       int ret = OB_SUCCESS;
@@ -168,7 +168,7 @@ namespace oceanbase
           expire_condition, buf_size);
         ret = OB_ERROR;
       }
-      else 
+      else
       {
         frozen_second = static_cast<time_t>(frozen_time_ / 1000 / 1000);
         tm = localtime(&frozen_second);
@@ -179,9 +179,9 @@ namespace oceanbase
             frozen_time_, frozen_second);
           ret = OB_ERROR;
         }
-        else 
+        else
         {
-          strftime(replace_str_buf, sizeof(replace_str_buf), 
+          strftime(replace_str_buf, sizeof(replace_str_buf),
             "#%Y-%m-%d %H:%M:%S#", tm);
           ret = replace_str(expire_condition, buf_size, SYS_DATE, replace_str_buf);
           if (OB_SUCCESS != ret)
@@ -201,10 +201,10 @@ namespace oceanbase
         int32_t old_op;
         int32_t new_op;
         int32_t op_count;
-      } op_map[] = 
-      { 
+      } op_map[] =
+      {
         {ObExpression::ADD_FUNC, T_OP_ADD, 2} ,
-        {ObExpression::SUB_FUNC, T_OP_MINUS, 2}, 
+        {ObExpression::SUB_FUNC, T_OP_MINUS, 2},
         {ObExpression::MUL_FUNC, T_OP_MUL, 2},
         {ObExpression::DIV_FUNC, T_OP_DIV, 2},
         {ObExpression::MOD_FUNC, T_OP_MOD, 2},
@@ -244,8 +244,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletMergerFilter::infix_str_to_sql_expression( 
-        const common::ObString& table_name, 
+    int ObTabletMergerFilter::infix_str_to_sql_expression(
+        const common::ObString& table_name,
         const common::ObString& cond_expr, sql::ObSqlExpression& sql_expr)
     {
       int ret = OB_SUCCESS;
@@ -257,7 +257,7 @@ namespace oceanbase
 
       const ObColumnSchemaV2 *column_schema = NULL;
 
-      ObObj objs[obj_count]; 
+      ObObj objs[obj_count];
       ObArrayHelper<ObObj> expr_array;
       expr_array.init(obj_count, objs);
       ObString column_name;
@@ -266,7 +266,7 @@ namespace oceanbase
 
       if (OB_SUCCESS != (ret =  post_expression_parser_.parse(cond_expr, expr_array)))
       {
-        TBSYS_LOG(WARN, "parse cond_expr:%.*s error, ret=%d", 
+        TBSYS_LOG(WARN, "parse cond_expr:%.*s error, ret=%d",
             cond_expr.length(), cond_expr.ptr(), ret);
       }
       else if ((expr_obj_count = expr_array.get_array_index()) <= 0)
@@ -281,7 +281,7 @@ namespace oceanbase
           column_name.assign_ptr(NULL, 0);
           if (OB_SUCCESS != (ret = obj->get_int(type)))
           {
-            TBSYS_LOG(WARN, "unexpected data type. int expected, but actual type is %d", 
+            TBSYS_LOG(WARN, "unexpected data type. int expected, but actual type is %d",
                 expr_array.at(i)->get_type());
             ret = OB_ERR_UNEXPECTED;
           }
@@ -291,7 +291,7 @@ namespace oceanbase
                 || OB_SUCCESS != expr_array.at(i+1)->get_varchar(column_name)
                 || NULL == column_name.ptr() || column_name.length() <= 0)
             {
-              TBSYS_LOG(WARN, "illegal postfix expr, type=%d, colname:%.*s", 
+              TBSYS_LOG(WARN, "illegal postfix expr, type=%d, colname:%.*s",
                   expr_array.at(i+1)->get_type(), column_name.length(), column_name.ptr());
               ret = OB_INVALID_ARGUMENT;
             }
@@ -365,7 +365,7 @@ namespace oceanbase
 
       if (NULL == objs || obj_count <= 0)
       {
-        TBSYS_LOG(WARN, "invalid param, objs=%p, obj_count=%ld", 
+        TBSYS_LOG(WARN, "invalid param, objs=%p, obj_count=%ld",
           objs, obj_count);
         ret = OB_ERROR;
       }
@@ -400,7 +400,7 @@ namespace oceanbase
         {
           if (OB_SUCCESS != expr_array.at(i)->get_int(type))
           {
-            TBSYS_LOG(WARN, "unexpected data type. int expected, but actual type is %d", 
+            TBSYS_LOG(WARN, "unexpected data type. int expected, but actual type is %d",
                 expr_array.at(i)->get_type());
             ret = OB_ERR_UNEXPECTED;
             break;
@@ -409,10 +409,10 @@ namespace oceanbase
           {
             if (ObExpression::COLUMN_IDX == type)
             {
-              if (OB_SUCCESS != expr_array.at(i+1)->get_varchar(key_col_name))  
+              if (OB_SUCCESS != expr_array.at(i+1)->get_varchar(key_col_name))
               {
                 TBSYS_LOG(WARN, "unexpected data type. varchar expected, "
-                                "but actual type is %d", 
+                                "but actual type is %d",
                     expr_array.at(i+1)->get_type());
                 ret = OB_ERR_UNEXPECTED;
                 break;
@@ -426,7 +426,7 @@ namespace oceanbase
                   if (OB_SUCCESS != ret || val_index < 0)
                   {
                     TBSYS_LOG(WARN, "failed add extra column into scan param, "
-                                    "column_name=%.*s, table_id=%lu, val_index=%ld", 
+                                    "column_name=%.*s, table_id=%lu, val_index=%ld",
                       key_col_name.length(), key_col_name.ptr(), table_id_, val_index);
                     break;
                   }
@@ -435,7 +435,7 @@ namespace oceanbase
                 {
                   /* decode. quite simple, isn't it. */
                   expr_array.at(i+1)->set_int(val_index);
-                  TBSYS_LOG(DEBUG, "succ decode.  key(%.*s) -> %ld", 
+                  TBSYS_LOG(DEBUG, "succ decode.  key(%.*s) -> %ld",
                       key_col_name.length(), key_col_name.ptr(), val_index);
                 }
               }
@@ -448,13 +448,13 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletMergerFilter::add_extra_basic_column(ObScanParam& scan_param, 
+    int ObTabletMergerFilter::add_extra_basic_column(ObScanParam& scan_param,
       const ObString& column_name, int64_t& column_index)
     {
       int ret             = OB_SUCCESS;
       int hash_err        = 0;
       int64_t column_size = 0;
-      const ObTableSchema* table_schema     = NULL; 
+      const ObTableSchema* table_schema     = NULL;
       const ObColumnSchemaV2* column_schema = NULL;
       ObString table_name;
 
@@ -471,9 +471,9 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "table=%lu not exist", table_id_);
         ret = OB_ERROR;
       }
-      else 
+      else
       {
-        table_name.assign_ptr(const_cast<char*>(table_schema->get_table_name()), 
+        table_name.assign_ptr(const_cast<char*>(table_schema->get_table_name()),
           static_cast<int32_t>(strlen(table_schema->get_table_name())));
         column_schema = schema_->get_column_schema(table_name, column_name);
         if (NULL == column_schema)
@@ -492,7 +492,7 @@ namespace oceanbase
           column_name, column_size)))
         {
           TBSYS_LOG(WARN, "fail to add expire column <column_name, idx> pair "
-                          "hash_err=%d, column_name=%.*s, expire_column_idx=%ld", 
+                          "hash_err=%d, column_name=%.*s, expire_column_idx=%ld",
             hash_err, column_name.length(), column_name.ptr(), column_size);
           ret = OB_ERROR;
         }
@@ -502,7 +502,7 @@ namespace oceanbase
                           "column_id=%lu, ret=%d",
             column_schema->get_id(), ret);
         }
-        else 
+        else
         {
           column_index = column_size;
           extra_column_cnt_ += 1;
@@ -528,7 +528,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid param, post_expr=%p", post_expr);
         ret = OB_ERROR;
       }
-      else 
+      else
       {
         column_size = scan_param.get_column_id_size();
         comp_cname_len = snprintf(comp_cname, sizeof(comp_cname),
@@ -538,7 +538,7 @@ namespace oceanbase
           comp_cname_str, column_size)))
         {
           TBSYS_LOG(WARN, "fail to add expire composite column <column_name, idx> pair "
-                          "hash_err=%d, column_name=%s, expire_column_idx=%ld", 
+                          "hash_err=%d, column_name=%s, expire_column_idx=%ld",
             hash_ret, comp_cname, column_size);
           ret = OB_ERROR;
         }
@@ -551,7 +551,7 @@ namespace oceanbase
         else
         {
           true_obj.set_bool(true);
-          ret = expire_filter_.add_cond(scan_param.get_column_id_size(), 
+          ret = expire_filter_.add_cond(scan_param.get_column_id_size(),
             EQ, true_obj);
           if (OB_SUCCESS == ret)
           {
@@ -591,24 +591,24 @@ namespace oceanbase
         else
         {
           strcpy(infix_condition_expr, expire_condition);
-          ret = replace_system_variable(infix_condition_expr, 
+          ret = replace_system_variable(infix_condition_expr,
             OB_MAX_EXPIRE_CONDITION_LENGTH);
           if (OB_SUCCESS == ret)
           {
-            cond_expr.assign_ptr(infix_condition_expr, 
+            cond_expr.assign_ptr(infix_condition_expr,
               static_cast<int32_t>(strlen(infix_condition_expr)));
-            ret = infix_to_postfix(cond_expr, scan_param, post_expr, 
+            ret = infix_to_postfix(cond_expr, scan_param, post_expr,
               OB_MAX_COMPOSITE_SYMBOL_COUNT);
             if (OB_SUCCESS != ret)
             {
               TBSYS_LOG(WARN, "failed to transfer infix expression to postfix "
-                              "expression, infix_expr=%s", 
+                              "expression, infix_expr=%s",
                 infix_condition_expr);
             }
-            else 
+            else
             {
               TBSYS_LOG(INFO, "success to transfer infix expression to postfix "
-                              "expression, infix_expr=%s", 
+                              "expression, infix_expr=%s",
                 infix_condition_expr);
             }
           }
@@ -650,11 +650,11 @@ namespace oceanbase
             // erase rowkey columns;
             continue;
           }
-          column_name.assign_ptr(const_cast<char*>((col + i)->get_name()), 
+          column_name.assign_ptr(const_cast<char*>((col + i)->get_name()),
             static_cast<int32_t>(strlen((col + i)->get_name())));
           if (HASH_INSERT_SUCC != (hash_err = cname_to_idx_map_.set(column_name, column_index)))
           {
-            TBSYS_LOG(WARN, "fail to add column <column_name, idx> pair hash_err=%d", 
+            TBSYS_LOG(WARN, "fail to add column <column_name, idx> pair hash_err=%d",
               hash_err);
             ret = OB_ERROR;
             break;
@@ -666,7 +666,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletMergerFilter::adjust_scan_param(const int64_t column_group_idx, 
+    int ObTabletMergerFilter::adjust_scan_param(const int64_t column_group_idx,
         const uint64_t column_group_id, ObScanParam& scan_param)
     {
       int ret = OB_SUCCESS;
@@ -675,12 +675,12 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "tablet merge filter doesn't initialize");
         ret = OB_ERROR;
-      } 
+      }
       else if (column_group_idx < 0 || column_group_idx >= column_group_num_
           || OB_INVALID_ID == column_group_id)
       {
         TBSYS_LOG(WARN, "invalid param, column_group_idx=%ld, column_group_num_=%ld, "
-            "column_group_id=%lu", 
+            "column_group_id=%lu",
             column_group_idx, column_group_num_, column_group_id);
         ret = OB_ERROR;
       }
@@ -690,11 +690,11 @@ namespace oceanbase
         cname_to_idx_map_.clear();
         expire_filter_.reset();
         ret = fill_cname_to_idx_map(column_group_id);
-        if (OB_SUCCESS == ret 
+        if (OB_SUCCESS == ret
             && cname_to_idx_map_.size() != scan_param.get_column_id_size())
         {
           TBSYS_LOG(WARN, "column count in scan param is unexpected, "
-              "column_count_in_param=%ld, scan_column_count=%ld", 
+              "column_count_in_param=%ld, scan_column_count=%ld",
               scan_param.get_column_id_size(), cname_to_idx_map_.size());
           ret = OB_ERROR;
         }
@@ -707,7 +707,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletMergerFilter::check_and_trim_row(const int64_t column_group_idx, 
+    int ObTabletMergerFilter::check_and_trim_row(const int64_t column_group_idx,
         const int64_t row_num, ObSSTableRow& sstable_row, bool& is_expired)
     {
       int ret           = OB_SUCCESS;
@@ -725,7 +725,7 @@ namespace oceanbase
           || row_num < 0)
       {
         TBSYS_LOG(WARN, "invalid param, column_group_idx=%ld, column_group_num_=%ld, "
-            "row_num=%ld", 
+            "row_num=%ld",
             column_group_idx, column_group_num_, row_num);
         ret = OB_ERROR;
       }
@@ -736,34 +736,34 @@ namespace oceanbase
         if (obj_count - rowkey_column_count != cname_to_idx_map_.size())
         {
           TBSYS_LOG(WARN, "column count in sstable row is unexpected, "
-                          "column_count_in_row=%ld, scan_column_count=%ld", 
+                          "column_count_in_row=%ld, scan_column_count=%ld",
             obj_count - rowkey_column_count, cname_to_idx_map_.size());
           ret = OB_ERROR;
         }
-        else 
+        else
         {
           /**
-           * because check() default return true, if there is not 
-           * condition in filter, it return true, we call 
-           * default_false_check() to check whether the current is 
-           * expired, if no filter, it return false. it only support 
-           * 'AND', only if all the expire condition is satisfied, the 
-           * function default_false_check() return true. 
+           * because check() default return true, if there is not
+           * condition in filter, it return true, we call
+           * default_false_check() to check whether the current is
+           * expired, if no filter, it return false. it only support
+           * 'AND', only if all the expire condition is satisfied, the
+           * function default_false_check() return true.
            */
-          ret = expire_filter_.default_false_check(objs + rowkey_column_count, 
+          ret = expire_filter_.default_false_check(objs + rowkey_column_count,
                 obj_count - rowkey_column_count, is_expired);
         }
         if (OB_SUCCESS != ret)
         {
           TBSYS_LOG(WARN, "failed to filter expire sstable row, objs=%p, "
-                          "obj_count=%ld, ret=%d", 
+                          "obj_count=%ld, ret=%d",
             objs + rowkey_column_count, obj_count - rowkey_column_count, ret);
         }
         else
         {
           /**
-           * in order to do expire, we add some extra columns after the 
-           * basic columns to scan, after do expire, we trim the extra 
+           * in order to do expire, we add some extra columns after the
+           * basic columns to scan, after do expire, we trim the extra
            * columns here.
            */
           if (extra_column_cnt_ > 0)
@@ -777,7 +777,7 @@ namespace oceanbase
             if (OB_SUCCESS != ret)
             {
               TBSYS_LOG(WARN, "failed to set expire bitmap filter, column_group_idx=%ld, "
-                              "row_num=%ld, is_expired=%d, ret=%d", 
+                              "row_num=%ld, is_expired=%d, ret=%d",
                 column_group_idx, row_num, is_expired, ret);
             }
           }
@@ -806,7 +806,7 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "tablet merge filter doesn't initialize");
         ret = OB_ERROR;
-      } 
+      }
       else if (!need_filter_)
       {
         ret = OB_SUCCESS;
@@ -826,7 +826,7 @@ namespace oceanbase
       else if (static_cast<int64_t>(strlen(expire_condition)) >= OB_MAX_EXPIRE_CONDITION_LENGTH)
       {
         TBSYS_LOG(WARN, "table %ld expire condition too large,"
-            "expire_condition_len=%zu, max_condition_len=%ld", 
+            "expire_condition_len=%zu, max_condition_len=%ld",
             table_id_, strlen(expire_condition), OB_MAX_EXPIRE_CONDITION_LENGTH);
         ret = OB_ERROR;
       }
@@ -836,14 +836,14 @@ namespace oceanbase
         ret = replace_system_variable(infix_condition_expr, OB_MAX_EXPIRE_CONDITION_LENGTH);
         if (OB_SUCCESS == ret)
         {
-          cond_expr.assign_ptr(infix_condition_expr, 
+          cond_expr.assign_ptr(infix_condition_expr,
               static_cast<int32_t>(strlen(infix_condition_expr)));
-          table_name.assign(const_cast<char*>(table_schema->get_table_name()), 
+          table_name.assign(const_cast<char*>(table_schema->get_table_name()),
               static_cast<ObString::obstr_size_t>(strlen(table_schema->get_table_name())));
           if (OB_SUCCESS != (ret = infix_str_to_sql_expression(table_name, cond_expr, sql_expr)))
           {
             TBSYS_LOG(WARN, "failed to transfer infix expression to postfix "
-                "expression, infix_expr=%s", 
+                "expression, infix_expr=%s",
                 infix_condition_expr);
           }
           else
@@ -857,7 +857,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTabletMergerFilter::finish_expire_filter(sql::ObSqlExpression& sql_expr, 
+    int ObTabletMergerFilter::finish_expire_filter(sql::ObSqlExpression& sql_expr,
         const bool has_column_filter, const bool has_condition_filter)
     {
       int ret = OB_SUCCESS;
@@ -895,24 +895,30 @@ namespace oceanbase
     int ObTabletMergerFilter::adjust_scan_param(sql::ObSqlScanParam& scan_param)
     {
       int ret = OB_SUCCESS;
-      ObSqlExpression sql_expr;
+      ObSqlExpression *sql_expr = ObSqlExpression::alloc();
       bool has_condition_filter = false;
-
-      if (OB_SUCCESS != (ret = build_expire_condition_filter(sql_expr, has_condition_filter)))
+      if (NULL == sql_expr)
       {
+        TBSYS_LOG(WARN, "no memory");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else if (OB_SUCCESS != (ret = build_expire_condition_filter(*sql_expr, has_condition_filter)))
+      {
+        ObSqlExpression::free(sql_expr);
         TBSYS_LOG(WARN, "build_expire_condition_filter error, ret =%d", ret);
       }
-      else if (OB_SUCCESS != (ret = finish_expire_filter(sql_expr, false, has_condition_filter)))
+      else if (OB_SUCCESS != (ret = finish_expire_filter(*sql_expr, false, has_condition_filter)))
       {
+        ObSqlExpression::free(sql_expr);
         TBSYS_LOG(WARN, "finish_expire_filter ret = %d", ret);
       }
       else if (OB_SUCCESS != (ret = scan_param.add_filter(sql_expr)))
       {
-        TBSYS_LOG(WARN, "add_filter to scan_param ret = %d, sql_expr=%s", ret, to_cstring(sql_expr));
+        TBSYS_LOG(WARN, "add_filter to scan_param ret = %d, sql_expr=%s", ret, to_cstring(*sql_expr));
       }
       else
       {
-        TBSYS_LOG(INFO, "add_filter to scan_param sql_expr=%s", to_cstring(sql_expr));
+        TBSYS_LOG(INFO, "add_filter to scan_param sql_expr=%s", to_cstring(*sql_expr));
       }
 
       return ret;

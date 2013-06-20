@@ -10,8 +10,8 @@ namespace oceanbase
       int16_t checksum = 0;
       
       checksum = checksum ^ magic_;
-      checksum = static_cast<int16_t>(checksum ^ static_cast<int16_t>(header_length_));
-      checksum = static_cast<int16_t>(checksum ^ static_cast<int16_t>(version_));
+      checksum = checksum ^ header_length_;
+      checksum = checksum ^ version_;
       checksum = checksum ^ reserved16_;
       format_i64(data_length_, checksum);
       format_i64(data_zlength_, checksum);
@@ -25,8 +25,8 @@ namespace oceanbase
       int16_t checksum = 0;
 
       checksum = checksum ^ magic_;
-      checksum = static_cast<int16_t>(checksum ^ static_cast<int16_t>(header_length_));
-      checksum = static_cast<int16_t>(checksum ^ static_cast<int16_t>(version_));
+      checksum = checksum ^ header_length_;
+      checksum = checksum ^ version_;
       checksum = checksum ^ header_checksum_;
       checksum = checksum ^ reserved16_;
       format_i64(data_length_, checksum);
@@ -53,7 +53,7 @@ namespace oceanbase
       }
       else
       {
-        int64_t crc_check_sum = ob_crc64_sse42(buf, len);
+        int64_t crc_check_sum = ob_crc64(buf, len);
         if (crc_check_sum !=  data_checksum_)
         { 
           TBSYS_LOG(WARN, "crc_check_sum != data_checksum_:"

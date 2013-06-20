@@ -18,7 +18,6 @@
 #include "common/ob_iterator.h"
 #include "common/thread_buffer.h"
 #include "sstable/ob_scan_column_indexes.h"
-#include "sstable/ob_simple_column_indexes_builder.h"
 #include "sstable/ob_sstable_block_index_v2.h"
 #include "ob_sstable_block_scanner.h"
 #include "ob_multi_cg_scanner.h"
@@ -39,7 +38,12 @@ namespace oceanbase
     class ObColumnGroupScanner : public ObRowkeyIterator
     {
       public:
-        typedef sstable::ObSimpleColumnIndexesBuilder::GroupIdDesc Group;
+        struct Group
+        {
+          uint64_t id_;
+          uint64_t seq_;
+          uint64_t size_;
+        };
 
       public:
         static const int64_t UNCOMPRESSED_BLOCK_BUFSIZ = 256*1024;
@@ -131,6 +135,11 @@ namespace oceanbase
         int trans_input_column_id(const Group & group,
             const sstable::ObSSTableScanParam *scan_param,
             const sstable::ObSSTableReader *sstable_reader);
+        int build_all_column_index( const uint64_t table_id, 
+            const Group& group, const sstable::ObSSTableSchema& schema);
+        int build_input_column_index( const uint64_t table_id, 
+            const uint64_t *const column_id_begin, const int64_t column_id_size, 
+            const Group& group, const sstable::ObSSTableSchema& schema);
         int add_column_offset(const uint64_t table_id, 
             const uint64_t column_id, const int64_t offset);
         int consummate_row_desc(const uint64_t table_id,

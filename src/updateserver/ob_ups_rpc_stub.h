@@ -104,6 +104,8 @@ namespace oceanbase
         template <class Input>
         int send_command(const common::ObServer &server, const int pcode, const Input &param, const int64_t timeout);
 
+        int get_thread_buffer_(common::ObDataBuffer& data_buff);
+
       private:
         static const int32_t DEFAULT_VERSION = 1;
     };

@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/exception
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/exception
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 208bc17befe17178571e94bf61ad7b87
 2010-11-02T08:31:37.701568Z
 1397
@@ -66,7 +66,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 48940588d6a4e7797168a465413bb7f8
 2012-04-23T03:13:55.228722Z
 8043
@@ -100,7 +100,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 1bb410b713fab5301512ebcc3b0be092
 2012-04-23T03:13:55.228722Z
 8043
@@ -134,7 +134,7 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
+2013-06-20T08:38:40.000000Z
 f527a988cc203a230d7d83e682b46a16
 2011-06-09T06:52:47.192207Z
 4651
