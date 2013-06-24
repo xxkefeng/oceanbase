@@ -1,6 +1,0 @@
-K 13
-svn:mergeinfo
-V 156
-/branches/dev/oceanbase/src/common/ob_define.h:5023-7277,7279-7412,8885-9111
-/branches/developing/trans_mvcc_dev/oceanbase/src/common/ob_define.h:9273-10180
-END
