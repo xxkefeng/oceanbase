@@ -23,7 +23,6 @@
 #include "sql/ob_select_stmt.h"
 #include "sql/ob_update_stmt.h"
 #include "sql/ob_delete_stmt.h"
-#include "sql/ob_prepare_stmt.h"
 #include "common/ob_privilege.h"
 #include "common/ob_array.h"
 #include "common/ob_privilege_type.h"
@@ -42,7 +41,6 @@
 #include "sql/ob_set_password_stmt.h"
 #include "sql/ob_rename_user_stmt.h"
 #include "sql/ob_show_stmt.h"
-#include "common/ob_profile_fill_log.h"
 using namespace oceanbase::common;
 using namespace oceanbase::sql;
 
@@ -82,9 +80,6 @@ static int init_hook_env(ObSqlContext &context, ObPhysicalPlan *&phy_plan, Opera
 int ObSql::direct_execute(const common::ObString &stmt, ObResultSet &result, ObSqlContext &context)
 {
   int ret = OB_SUCCESS;
-  
-  // TBSYS_LOG(TRACE, "begin SQL: %s", to_cstring(stmt));
-  
   result.set_session(context.session_info_);
   if (NULL != context.session_info_)
   {
@@ -135,7 +130,7 @@ int ObSql::direct_execute(const common::ObString &stmt, ObResultSet &result, ObS
         ObBasicStmt::StmtType stmt_type = logic_plan->get_main_stmt()->get_stmt_type();
         result.set_stmt_type(stmt_type);
         result.set_inner_stmt_type(stmt_type);
-        if (OB_SUCCESS != (ret = logic_plan->fill_result_set(result, &context)))
+        if (OB_SUCCESS != (ret = logic_plan->fill_result_set(result, context.session_info_, context.session_info_->get_transformer_mem_pool())))
         {
           TBSYS_LOG(WARN, "fill result set failed,ret=%d", ret);
         }
@@ -182,7 +177,7 @@ int ObSql::generate_logical_plan(const common::ObString &stmt, ObSqlContext & co
   else
   {
     // generate syntax tree
-    PFILL_ITEM_START(sql_to_logicalplan);
+    int64_t st = tbsys::CTimeUtil::getTime();
     FILL_TRACE_LOG("before_parse");
     if (parse_sql(&parse_result, stmt.ptr(), static_cast<size_t>(stmt.length())) != 0
       || NULL == parse_result.result_tree_)
@@ -227,8 +222,9 @@ int ObSql::generate_logical_plan(const common::ObString &stmt, ObSqlContext & co
         result_plan.plan_tree_ = NULL;
         // generate logical plan
         ret = resolve(&result_plan, parse_result.result_tree_);
-        PFILL_ITEM_END(sql_to_logicalplan);
-        FILL_TRACE_LOG("resolve");
+	FILL_TRACE_LOG("resolve");
+        int64_t ed = tbsys::CTimeUtil::getTime();
+        PROFILE_LOG(DEBUG, SQL_TO_LOGICALPLAN_TIME_US, ed - st);
         if (OB_SUCCESS != ret)
         {
           TBSYS_LOG(WARN, "failed to generate logical plan, err=%d sql=%.*s result_plan.err_stat_.err_msg_=[%s]",
@@ -272,16 +268,16 @@ int ObSql::generate_physical_plan(ObSqlContext & context, ResultPlan &result_pla
   ObTransformer trans(context);
   ErrStat err_stat;
   ObMultiLogicPlan *multi_logic_plan = static_cast<ObMultiLogicPlan*>(result_plan.plan_tree_);
-  PFILL_ITEM_START(logicalplan_to_physicalplan);
+  int64_t st = tbsys::CTimeUtil::getTime();
   if (OB_SUCCESS != (ret = trans.generate_physical_plans(*multi_logic_plan, multi_phy_plan, err_stat)))
   {
     TBSYS_LOG(WARN, "failed to transform to physical plan");
     result.set_message(err_stat.err_msg_);
-    ret = OB_ERR_GEN_PLAN;
   }
   else
   {
-    PFILL_ITEM_END(logicalplan_to_physicalplan);
+    int64_t ed = tbsys::CTimeUtil::getTime();
+    PROFILE_LOG(DEBUG, LOGICALPLAN_TO_PHYSICALPLAN_TIME_US, ed - st);
     for (int32_t i = 0; i < multi_phy_plan.size(); ++i)
     {
       multi_phy_plan.at(i)->set_result_set(&result);
@@ -428,9 +424,9 @@ bool ObSql::process_special_stmt_hook(const common::ObString &stmt, ObResultSet 
         +------------------------+----------+-----+---------+----------+---------+
         | Collation              | Charset  | Id  | Default | Compiled | Sortlen |
         +------------------------+----------+-----+---------+----------+---------+
-        | big5_chinese_ci        | big5     |   1 | Yes     | Yes      |       1 |
-        | ...                    | ...      | ... |  ...    | ...      |     ... |
-        +------------------------+----------+-----+---------+----------+---------+
+        | big5_chinese_ci    | big5       |   1 | Yes       | Yes         |       1 |
+        | ...                        | ...          |  ... |   ...      | ...            |       ... |
+       +------------------------+----------+-----+---------+----------+---------+
        */
     if (OB_SUCCESS != init_hook_env(context, phy_plan, op))
     {
@@ -982,6 +978,8 @@ bool ObSql::no_enough_memory()
   {
     TBSYS_LOG(WARN, "not enough memory, limit=%ld used=%ld",
               ob_get_memory_size_limit(), ob_get_memory_size_handled());
+    ob_print_mod_memory_usage();
+    ob_print_phy_operator_stat();
   }
   return ret;
 }

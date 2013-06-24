@@ -348,38 +348,23 @@ namespace oceanbase
       return ret;
     }
 
-    inline int ObCompactSSTableWriterBuffer::check_rowkey(const common::ObRow& row)
+    inline int ObCompactSSTableWriterBuffer::check_rowkey(
+        const common::ObRow& row)
     {
       int ret = common::OB_SUCCESS;
       const common::ObRowkey* rowkey = NULL;
 
       if (common::OB_SUCCESS != (ret = row.get_rowkey(rowkey)))
       {
-        TBSYS_LOG(WARN, "row get rowkey error: ret=[%d], row=[%s]", ret, to_cstring(row));
+        TBSYS_LOG(ERROR, "row get rowkey error:ret=[%d],row=[%s]",
+            ret, to_cstring(row));
       }
       else if (!(*rowkey > cur_rowkey_))
       {
-        TBSYS_LOG(WARN, "the rowkey of inserted row is not larger than current rowkey: insert_rowkey=[%s], cur_rowkey=[%s]",
+        TBSYS_LOG(ERROR, "the rowkey of inserted row is not larger than"
+            "current rowkey:*rowkey=[%s],cur_rowkey_=[%s]",
             to_cstring(*rowkey), to_cstring(cur_rowkey_));
         ret = common::OB_INVALID_ARGUMENT;
-      }
-
-      return ret;
-    }
-
-    inline int ObCompactSSTableWriterBuffer::set_cur_key(const common::ObRow& row)
-    {
-      int ret = common::OB_SUCCESS;
-      const common::ObRowkey* rowkey = NULL;
-      common::ObMemBufAllocatorWrapper allocator(cur_rowkey_buf_);
-
-      if (common::OB_SUCCESS != (ret = row.get_rowkey(rowkey)))
-      {
-        TBSYS_LOG(WARN, "get rowkey from row error: ret=[%d], row=[%s]", ret, to_cstring(row));
-      }
-      else if (common::OB_SUCCESS != (ret = rowkey->deep_copy(cur_rowkey_, allocator)))
-      {
-        TBSYS_LOG(WARN, "deep copy rowkey error: ret=[%d], rowkey=[%s]", ret, to_cstring(*rowkey));
       }
 
       return ret;

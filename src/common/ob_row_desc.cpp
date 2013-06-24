@@ -25,6 +25,7 @@ using namespace oceanbase::common;
 using namespace oceanbase::common::serialization;
 
 uint64_t ObRowDesc::HASH_COLLISIONS_COUNT = 0;
+
 ObRowDesc::ObRowDesc()
   :cells_desc_count_(0), rowkey_cell_count_(0)
 {

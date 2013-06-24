@@ -6,7 +6,7 @@ namespace oceanbase {
   namespace obmysql {
     ObMySQLField::ObMySQLField()
       : catalog_("def"), db_(""),
-        length_(0x20000), flags_(0), decimals_(0)
+        length_(0x20000), flags_(0), decimals_(0), charsetnr_(28)
     {
     }
 

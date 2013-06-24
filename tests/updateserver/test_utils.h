@@ -39,5 +39,8 @@ extern void reverse_col_in_row(ObMutator &mutator);
 
 extern void prepare_mutator(ObMutator &mutator);
 
+extern void prepare_cell_new_scanner(ObCellNewScanner &scanner);
+extern void prepare_cell_new_scanner(const ObCellNewScanner &scanner, ObCellNewScanner &out_scanner);
+
 extern void dup_mutator(const ObMutator &src, ObMutator &dest);
 

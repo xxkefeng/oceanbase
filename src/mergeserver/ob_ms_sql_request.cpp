@@ -5,7 +5,6 @@
 #include "common/ob_atomic.h"
 #include "common/ob_common_param.h"
 #include "common/ob_malloc.h"
-#include "common/ob_profile_fill_log.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
@@ -336,7 +335,6 @@ int ObMsSqlRequest::wait(const int64_t timeout)
   {
     if (OB_SUCCESS == (ret = finish_queue_.pop(remainder, (void *&)event)))
     {
-      PFILL_RPC_END(event->get_channel_id());
       /// process a new finished event
       ret = process_rpc_event(remainder, event, finish);
       if (ret != OB_SUCCESS)
@@ -353,7 +351,6 @@ int ObMsSqlRequest::wait(const int64_t timeout)
     }
     else
     {
-      PFILL_RPC_END(event->get_channel_id());
       TBSYS_LOG(WARN, "pop result from finish queue failed:request[%lu], event[%p], ret[%d]",
           request_id_, event, ret);
     }
@@ -478,7 +475,7 @@ void ObMsSqlRequest::print_info(FILE * file) const
     fflush(file);
   }
 }
-/*
+
 int ObMsSqlRequest::update_location_cache(const ObServer &svr, const int32_t result_code, const ObSqlScanParam & scan_param)
 {
   int err = OB_SUCCESS;
@@ -506,40 +503,6 @@ int ObMsSqlRequest::update_location_cache(const ObServer &svr, const int32_t res
   else if (OB_SUCCESS != result_code)
   {
     if (OB_SUCCESS != (err = cache_proxy_->server_fail(scan_param, loc_list, svr)))
-    {
-      TBSYS_LOG(WARN,"fail to update cache item [err:%d], err", err);
-    }
-  }
-  return err;
-}
-*/
-int ObMsSqlRequest::update_location_cache(const ObServer &svr, const int32_t result_code, const ObNewRange &range)
-{
-  int err = OB_SUCCESS;
-  ObTabletLocationItem addr;
-  addr.server_.chunkserver_ = svr;
-  ObTabletLocationList loc_list;
-  loc_list.set_buffer(buffer_pool_);
-  if (OB_CS_TABLET_NOT_EXIST == result_code)
-  {
-    // to prevent rootserver failure, should not del cache in advance.
-    // try force renew is a good choice, if fail, use old cache value, if succ, great!
-    if (OB_SUCCESS != (err = cache_proxy_->set_item_invalid(range, addr, loc_list)))
-    {
-      TBSYS_LOG(WARN,"fail to invalidate cache item [err:%d], err", err);
-    }
-    else if (OB_SUCCESS != (err = cache_proxy_->renew_location_item(range, loc_list, true)))
-    {
-      TBSYS_LOG(WARN, "fail to force renew location cache item. err=%d", err);
-    }
-  }
-  else if (OB_NOT_MASTER == result_code)
-  {
-    //do nothing
-  }
-  else if (OB_SUCCESS != result_code)
-  {
-    if (OB_SUCCESS != (err = cache_proxy_->server_fail(range, loc_list, svr)))
     {
       TBSYS_LOG(WARN,"fail to update cache item [err:%d], err", err);
     }
@@ -696,7 +659,6 @@ int ObMsSqlRequest::wait_single_event(int64_t &timeout)
   do{
     if (OB_SUCCESS == (ret = finish_queue_.pop(remainder, (void *&)event)))
     {
-      PFILL_RPC_END(event->get_channel_id());
       /// process a new finished event
       ret = process_rpc_event(remainder, event, finish_);
       if (ret != OB_SUCCESS)
@@ -713,7 +675,6 @@ int ObMsSqlRequest::wait_single_event(int64_t &timeout)
     }
     else
     {
-      PFILL_RPC_END(event->get_channel_id());
       TBSYS_LOG(WARN, "pop result from finish queue failed:request[%lu], event[%p], ret[%d]",
           request_id_, event, ret);
     }

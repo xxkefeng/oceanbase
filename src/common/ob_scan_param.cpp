@@ -793,7 +793,7 @@ namespace oceanbase
       tablet_location_scanner_ = const_cast<ObScanner*>(&obscanner);
       return ret;
     }
-    
+
     // BASIC_PARAM_FIELD
     int ObScanParam::serialize_basic_param(char * buf, const int64_t buf_len, int64_t & pos) const
     {
@@ -849,12 +849,12 @@ namespace oceanbase
         ret = obj.serialize(buf, buf_len, pos);
         if (OB_SUCCESS == ret)
         {
-          ret = set_rowkey_obj_array(buf, buf_len, pos, 
+          ret = set_rowkey_obj_array(buf, buf_len, pos,
               range_.start_key_.get_obj_ptr(), range_.start_key_.get_obj_cnt());
         }
         if (OB_SUCCESS == ret)
         {
-          ret = set_rowkey_obj_array(buf, buf_len, pos, 
+          ret = set_rowkey_obj_array(buf, buf_len, pos,
               range_.end_key_.get_obj_ptr(), range_.end_key_.get_obj_cnt());
         }
       }
@@ -955,7 +955,7 @@ namespace oceanbase
             range_.end_key_.assign(end_rowkey_obj_array_, int_value);
           }
         }
-        
+
         // compatible: old client may send request with min/max borderflag info.
         if (OB_SUCCESS == ret)
         {
@@ -1519,7 +1519,7 @@ namespace oceanbase
     int ObScanParam::malloc_composite_columns()
     {
       int err = OB_SUCCESS;
-      select_comp_columns_ = reinterpret_cast<ObCompositeColumn*>(ob_malloc(sizeof(ObCompositeColumn)*OB_MAX_COLUMN_NUMBER));
+      select_comp_columns_ = reinterpret_cast<ObCompositeColumn*>(ob_malloc(sizeof(ObCompositeColumn)*OB_MAX_COLUMN_NUMBER, ObModIds::OB_SCAN_PARAM));
       if (NULL == select_comp_columns_)
       {
         TBSYS_LOG(WARN,"fail to allocate memory");

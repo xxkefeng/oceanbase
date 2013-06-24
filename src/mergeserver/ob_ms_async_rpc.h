@@ -9,7 +9,6 @@ namespace oceanbase
   {
     class ObSqlGetParam;
     class ObSqlScanParam;
-    class ObPhysicalPlan;
   }
   namespace common
   {
@@ -66,7 +65,7 @@ namespace oceanbase
       /// send sql scan request for collect result
       virtual int scan(const int64_t timeout, const common::ObServer & server,
           const sql::ObSqlScanParam & scan_param, ObMsSqlRpcEvent & result) const;
- 
+      
       virtual int get(const int64_t timeout, const common::ObServer & server,
           const sql::ObSqlGetParam & get_param, ObMsSqlRpcEvent & result) const;
 
@@ -74,20 +73,11 @@ namespace oceanbase
         const int64_t session_id, const int32_t req_type, ObMsSqlRpcEvent & result)const;
 
 
-      virtual int scan(const int64_t timeout, const common::ObServer & server,
-          const sql::ObPhysicalPlan &plan, ObMsSqlRpcEvent & result) const;
-      
-      
-      virtual int get(const int64_t timeout, const common::ObServer & server,
-          const sql::ObPhysicalPlan &plan, ObMsSqlRpcEvent & result) const;
-      
       const common::ObClientManager *get_client_manager()const
       {
         return rpc_frame_;
       }
-    private:
-      virtual int execute_plan(const int64_t timeout, const common::ObServer & server,
-          const sql::ObPhysicalPlan &plan, ObMsSqlRpcEvent & result) const;
+
     private:
       /// thread buffer for send packet serialize
       const common::ThreadSpecificBuffer * rpc_buffer_;   // rpc thread buffer

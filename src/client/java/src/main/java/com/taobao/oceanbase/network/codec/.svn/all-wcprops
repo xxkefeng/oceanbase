@@ -1,17 +1,17 @@
 K 25
 svn:wc:ra_dav:version-url
-V 118
-/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/codec
-END
-ObObjectUtil.java
-K 25
-svn:wc:ra_dav:version-url
-V 136
-/repos/oceanbase/!svn/ver/2245/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/codec/ObObjectUtil.java
+V 129
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/codec
 END
 Serialization.java
 K 25
 svn:wc:ra_dav:version-url
-V 137
-/repos/oceanbase/!svn/ver/4530/branches/dev/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/codec/Serialization.java
+V 148
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/codec/Serialization.java
+END
+ObObjectUtil.java
+K 25
+svn:wc:ra_dav:version-url
+V 147
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/main/java/com/taobao/oceanbase/network/codec/ObObjectUtil.java
 END

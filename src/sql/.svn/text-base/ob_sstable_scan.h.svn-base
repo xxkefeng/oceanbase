@@ -21,9 +21,10 @@
 #include "common/ob_range2.h"
 #include "sstable/ob_sstable_scan_param.h"
 #include "compactsstablev2/ob_compact_sstable_scanner.h"
-#include "ob_noncg_sstable_scanner.h"
+#include "ob_sstable_scanner.h"
 #include "ob_phy_operator.h"
-#include "ob_cur_rowkey_interface.h"
+#include "ob_rowkey_phy_operator.h"
+#include "ob_last_rowkey_interface.h"
 
 namespace oceanbase
 {
@@ -31,7 +32,6 @@ namespace oceanbase
   {
     class ObMultiVersionTabletImage;
     class ObTablet;
-    class ObBuildIndexThread;
   };
   namespace sstable
   {
@@ -58,16 +58,13 @@ namespace oceanbase
       sstable::ObSSTableReader * sstable_reader_;                      // find in %tablet_ by call find_sstable
 
       compactsstablev2::ObCompactSSTableScanner::ScanContext compact_context_;
-
-      chunkserver::ObBuildIndexThread *build_index_thread_;
       ScanContext()
         : block_index_cache_(NULL), block_cache_(NULL),
-        tablet_image_(NULL), tablet_(NULL), sstable_reader_(NULL),
-        build_index_thread_(NULL) {}
+        tablet_image_(NULL), tablet_(NULL), sstable_reader_(NULL) {}
     };
 
     // 用于CS从磁盘或缓冲区扫描一个tablet
-    class ObSSTableScan : public ObPhyOperator, public ObCurRowkeyInterface
+    class ObSSTableScan : public ObRowkeyPhyOperator, public ObLastRowkeyInterface
     {
       public:
         ObSSTableScan();
@@ -75,16 +72,16 @@ namespace oceanbase
 
         virtual int open();
         virtual int close();
-        virtual int get_next_row(const common::ObRow *&row_value);
+        virtual int get_next_row(const common::ObRowkey* &row_key, const common::ObRow *&row_value);
         virtual int open_scan_context(const sstable::ObSSTableScanParam& param, const ScanContext& context);
 
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
 
         virtual int get_tablet_data_version(int64_t &version);
-        virtual int get_tablet_range(common::ObNewRange &range);
+        virtual int get_tablet_range(ObNewRange &range);
         int get_row_desc(const common::ObRowDesc *&row_desc) const;
-        int get_cur_rowkey(const common::ObRowkey *&rowkey) const;
+        int get_last_rowkey(const ObRowkey *&rowkey);
 
       private:
         int init_sstable_scanner();
@@ -94,10 +91,10 @@ namespace oceanbase
       private:
         sstable::ObSSTableScanParam scan_param_;
         ScanContext scan_context_;
-        ObNoncgSSTableScanner scanner_;
+        ObSSTableScanner scanner_;
         compactsstablev2::ObCompactSSTableScanner compact_scanner_;
-        ObRowIterator* iterator_;
-        const common::ObRowkey *cur_rowkey_;
+        ObRowkeyIterator* iterator_;
+        const ObRowkey *last_rowkey_;
         int64_t sstable_version_;
         int64_t row_counter_;
     };

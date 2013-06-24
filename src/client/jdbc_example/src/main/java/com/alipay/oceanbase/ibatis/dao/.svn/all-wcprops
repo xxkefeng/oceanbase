@@ -1,11 +1,11 @@
 K 25
 svn:wc:ra_dav:version-url
-V 124
-/repos/oceanbase/!svn/ver/12406/branches/dev/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase/ibatis/dao
+V 134
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase/ibatis/dao
 END
 ExampleDAOImpl.java
 K 25
 svn:wc:ra_dav:version-url
-V 144
-/repos/oceanbase/!svn/ver/12406/branches/dev/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase/ibatis/dao/ExampleDAOImpl.java
+V 154
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/jdbc_example/src/main/java/com/alipay/oceanbase/ibatis/dao/ExampleDAOImpl.java
 END

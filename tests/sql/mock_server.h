@@ -27,10 +27,10 @@ namespace oceanbase
           set_dev_name("bond0");
           set_thread_count(1);
           set_batch_process(false);
-          // set_packet_factory(&factory_);
+          set_packet_factory(&factory_);
           set_default_queue_size(100);
-          // set_packet_factory(&factory_);
-          // client_manager_.initialize(get_transport(), get_packet_streamer());
+          set_packet_factory(&factory_);
+          client_manager_.initialize(get_transport(), get_packet_streamer());
           ObSingleServer::initialize();
           return OB_SUCCESS;
         }
@@ -40,7 +40,7 @@ namespace oceanbase
         ThreadSpecificBuffer response_packet_buffer_;
       private:
         ObPacketFactory factory_;
-        // ObClientManager client_manager_;
+        ObClientManager client_manager_;
       };
 
       class MockServerRunner : public tbsys::Runnable

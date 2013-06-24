@@ -48,13 +48,14 @@ namespace oceanbase
         inline bool try_rdlock()
         {
           bool bret = false;
-          int64_t tmp = ref_cnt_;
-          if (0 <= tmp)
+          while (0 <= ref_cnt_)
           {
+            int64_t tmp = ref_cnt_;
             int64_t nv = tmp + 1;
             if (tmp == (int64_t)atomic_compare_exchange((uint64_t*)&ref_cnt_, nv, tmp))
             {
               bret = true;
+              break;
             }
           }
           return bret;

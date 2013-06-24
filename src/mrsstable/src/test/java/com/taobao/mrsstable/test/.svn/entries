@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src/mrsstable/src/test/java/com/taobao/mrsstable/test
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src/mrsstable/src/test/java/com/taobao/mrsstable/test
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:01.000000Z
+2013-06-20T08:38:37.000000Z
 e86c937508f0d98d7358583dfb764b79
 2012-04-23T03:13:55.228722Z
 8043

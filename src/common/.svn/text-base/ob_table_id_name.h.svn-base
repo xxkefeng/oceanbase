@@ -18,8 +18,7 @@
 #define _OB_TABLE_ID_NAME_H
 
 #include "common/ob_string.h"
-#include "common/roottable/ob_scan_helper.h"
-#include "common/nb_query_res.h"
+#include "common/nb_accessor/ob_nb_accessor.h"
 
 namespace oceanbase
 {
@@ -42,21 +41,26 @@ namespace oceanbase
         virtual ~ObTableIdNameIterator();
 
         int init(ObScanHelper* client_proxy, bool only_core_tables);
-        virtual int get_next(ObTableIdName** table_info);
+        virtual int next();
+
+        /* 获得内部table_info的指针 */
+        virtual int get(ObTableIdName** table_info);
+
+        /* 释放内存 */
+        void destroy();
 
       private:
-        int normal_get(const ObRow& row, ObTableIdName** table_info);
+        bool check_inner_stat();
+        int normal_get(ObTableIdName** table_info);
         int internal_get(ObTableIdName** table_info);
-        int scan_tables();
-        int alloc_objects();
-        int destroy_objects();
       protected:
-        bool inited_;
+        bool need_scan_;
         bool only_core_tables_;
         int32_t table_idx_;
-        ObTableIdName table_id_name_;
+        nb_accessor::ObNbAccessor nb_accessor_;
         ObScanHelper* client_proxy_;
-        SQLQueryResultReader *reader_;
+        nb_accessor::QueryRes* res_;
+        ObTableIdName table_id_name_;
     };
   }
 }

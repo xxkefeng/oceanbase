@@ -14,13 +14,11 @@
  *
  */
 #include "ob_physical_plan.h"
-#include "ob_husk_phy_operator.h"
 #include "common/utility.h"
 #include "ob_table_rpc_scan.h"
 #include "ob_mem_sstable_scan.h"
 #include "common/serialization.h"
 #include "ob_phy_operator_factory.h"
-#include "ob_phy_operator_type.h"
 
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
@@ -30,54 +28,18 @@ ObPhysicalPlan::ObPhysicalPlan()
   :curr_frozen_version_(OB_INVALID_VERSION),
    ts_timeout_us_(0),
    main_query_(NULL),
+   operators_store_(common::OB_MALLOC_BLOCK_SIZE, ModulePageAllocator(ObModIds::OB_SQL_PHY_PLAN)),
    allocator_(NULL),
    op_factory_(NULL),
    my_result_set_(NULL),
    start_trans_(false)
 {
-  memset(params_, 0, sizeof(params_));
 }
 
 ObPhysicalPlan::~ObPhysicalPlan()
 {
   clear();
 }
-
-ObPhyOperator *ObPhysicalPlan::get_operator_by_type(ObPhyOperator *root,  ObPhyOperatorType phy_operator_type)
-{
-  OB_ASSERT(NULL != root);
-
-  ObPhyOperator *op = NULL;
-  ObPhyOperator *result = NULL;
-  int64_t index = 0;
-  for (index = 0; index < operators_store_.count(); index++)
-  {
-    op = operators_store_.at(index);
-    OB_ASSERT(NULL != op);
-    if (op->get_type() == phy_operator_type)
-    {
-      if (root == get_root_operator(op))
-      {
-        result = op;
-        break;
-      }
-    }
-  }
-  return result;
-}
-
-
-ObPhyOperator *ObPhysicalPlan::get_root_operator(ObPhyOperator *op) const
-{
-  ObPhyOperator *result = op;
-  OB_ASSERT(NULL != op);
-  while ((NULL != result) && (NULL != result->get_parent()))
-  {
-    result = result->get_parent();  
-  }
-  return result;
-}
-
 
 int ObPhysicalPlan::deserialize_header(const char* buf, const int64_t data_len, int64_t& pos)
 {
@@ -103,7 +65,7 @@ int ObPhysicalPlan::add_phy_query(ObPhyOperator *phy_query, int32_t* idx, bool m
   if ( (ret = phy_querys_.push_back(phy_query)) == OB_SUCCESS)
   {
     if (idx != NULL)
-      *idx = phy_querys_.size() - 1;
+      *idx = static_cast<int32_t>(phy_querys_.count() - 1);
     if (main_query)
       main_query_ = phy_query;
   }
@@ -118,7 +80,7 @@ int ObPhysicalPlan::store_phy_operator(ObPhyOperator *op)
 ObPhyOperator* ObPhysicalPlan::get_phy_query(int32_t index) const
 {
   ObPhyOperator *op = NULL;
-  if (index >= 0 && index < phy_querys_.size())
+  if (index >= 0 && index < phy_querys_.count())
     op = phy_querys_.at(index);
   return op;
 }
@@ -144,31 +106,22 @@ void ObPhysicalPlan::set_main_query(ObPhyOperator *query)
 int ObPhysicalPlan::remove_phy_query(ObPhyOperator *phy_query)
 {
   int ret = OB_SUCCESS;
-  if (OB_SUCCESS != (ret = phy_querys_.remove_if(phy_query)))
-  {
-    TBSYS_LOG(WARN, "phy query not exist, phy_query=%p", phy_query);
-  }
+  UNUSED(phy_query);
+  // if (OB_SUCCESS != (ret = phy_querys_.remove_if(phy_query)))
+  // {
+  //   TBSYS_LOG(WARN, "phy query not exist, phy_query=%p", phy_query);
+  // }
   return ret;
-}
-
-int ObPhysicalPlan::add_qid_index(const uint64_t query_id, const int64_t index)
-{
-  return qid_idx_map_.insert(query_id, index);
-}
-
-int ObPhysicalPlan::get_index_by_qid(const uint64_t query_id, int64_t& index) const
-{
-  return qid_idx_map_.find(query_id, index);
 }
 
 int64_t ObPhysicalPlan::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
-  databuff_printf(buf, buf_len, pos, "PhysicalPlan(operators_num=%ld query_num=%d "
+  databuff_printf(buf, buf_len, pos, "PhysicalPlan(operators_num=%ld query_num=%ld "
                   "trans_id=%s start_trans=%c trans_req=%s)\n",
-                  operators_store_.count(), phy_querys_.size(),
+                  operators_store_.count(), phy_querys_.count(),
                   to_cstring(trans_id_), start_trans_?'Y':'N', to_cstring(start_trans_req_));
-  for (int32_t i = 0; i < phy_querys_.size(); ++i)
+  for (int32_t i = 0; i < phy_querys_.count(); ++i)
   {
     if (main_query_ == phy_querys_.at(i))
       databuff_printf(buf, buf_len, pos, "====MainQuery====:\n");
@@ -181,7 +134,7 @@ int64_t ObPhysicalPlan::to_string(char* buf, const int64_t buf_len) const
 }
 
 int ObPhysicalPlan::deserialize_tree(const char *buf, int64_t data_len, int64_t &pos, ModuleArena &allocator,
-                                     common::ObArray<ObPhyOperator *> &operators_store, ObPhyOperator *&root)
+                                     OperatorStore &operators_store, ObPhyOperator *&root)
 {
   int ret = OB_SUCCESS;
   int32_t phy_operator_type = 0;
@@ -194,6 +147,7 @@ int ObPhysicalPlan::deserialize_tree(const char *buf, int64_t data_len, int64_t 
   {
     TBSYS_LOG(WARN, "fail to decode phy operator type:ret[%d]", ret);
   }
+
   if (OB_SUCCESS == ret)
   {
     root = op_factory_->get_one(static_cast<ObPhyOperatorType>(phy_operator_type), allocator);
@@ -214,30 +168,13 @@ int ObPhysicalPlan::deserialize_tree(const char *buf, int64_t data_len, int64_t 
       TBSYS_LOG(WARN, "fail to push operator to operators_store:ret[%d]", ret);
     }
   }
-  // TBSYS_LOG(INFO, "root op: %s", to_cstring(*root));//TODO: remove
+
   if (OB_SUCCESS == ret)
   {
-    if (root->get_type() > PHY_INVALID && root->get_type() < PHY_END)
-    {
-      if (NULL != params_[root->get_type()])
-      {
-        ObHuskPhyOperator *husk_phy_operator = dynamic_cast<ObHuskPhyOperator *>(root);
-        if (NULL == husk_phy_operator)
-        {
-          ret = OB_ERR_UNEXPECTED;
-          TBSYS_LOG(WARN, "root should be ObHuskPhyOperator:type[%d]", root->get_type());
-        }
-        else
-        {
-          husk_phy_operator->set_param(params_[root->get_type()]);
-        }
-      }
-    }
-    else
+    if (root->get_type() <= PHY_INVALID || root->get_type() >= PHY_END)
     {
       ret = OB_ERR_UNEXPECTED;
       TBSYS_LOG(WARN, "invalid operator type:[%d]", root->get_type());
-      OB_ASSERT(0);
     }
   }
 
@@ -291,7 +228,7 @@ int ObPhysicalPlan::serialize_tree(char *buf, int64_t buf_len, int64_t &pos, con
     else
     {
       ret = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(WARN, "this operator[%ld] should has child:type[%d]", i, root.get_type());
+      TBSYS_LOG(WARN, "this operator should has child:type[%d]", root.get_type());
     }
   }
   return ret;
@@ -382,10 +319,10 @@ DEFINE_DESERIALIZE(ObPhysicalPlan)
 
   if (OB_LIKELY(OB_SUCCESS == ret))
   {
-    if (!phy_querys_.at(main_query_idx, main_query_))
+    if (OB_SUCCESS != phy_querys_.at(main_query_idx, main_query_))
     {
       ret = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(WARN, "fail to get main query:main_query_idx[%d], size[%d]", main_query_idx, phy_querys_.size());
+      TBSYS_LOG(WARN, "fail to get main query:main_query_idx[%d], size[%ld]", main_query_idx, phy_querys_.count());
     }
   }
 

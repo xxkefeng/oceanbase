@@ -193,7 +193,6 @@ namespace oceanbase
     const int OB_COLUMN_GROUP_NOT_FOUND = -1039;
     const int OB_NO_IMPORT_SSTABLE = -1040;
     const int OB_IMPORT_SSTABLE_NOT_EXIST = -1041;
-    const int OB_CS_APPLY_LOG_ERR = -1042;
 
     //error code for update server -2001 ---- -3000
     const int OB_UPS_TRANS_RUNNING = -2001;     // 事务正在执行
@@ -206,6 +205,7 @@ namespace oceanbase
     const int OB_UPS_TABLE_NOT_FROZEN = -2008;
     const int OB_UPS_CHANGE_MASTER_TIMEOUT = -2009;
     const int OB_FORCE_TIME_OUT = -2010;
+    const int OB_BEGIN_TRANS_LOCKED = -2011;
 
     //error code for root server -3001 ---- -4000
     const int OB_ERROR_TIME_STAMP = -3001;
@@ -216,11 +216,7 @@ namespace oceanbase
     const int OB_FIND_OUT_OF_RANGE = -3006;
     const int OB_CONVERT_ERROR = -3007;
     const int OB_MS_ITER_END = -3008;
-    const int OB_BYPASS_NEED_REPORT = -3009;
-    const int OB_BYPASS_TIMEOUT = -3010;
-    const int OB_BYPASS_DELETE_DONE = -3011;
-    const int OB_RS_STATE_NOT_ALLOW = -3012;
-    const int OB_INDEX_TIMEOUT = -3013;
+    const int OB_MS_NOT_EXIST = -3009;
 
     //error code for merge server -4000 ---- -5000
     const int OB_INNER_STAT_ERROR = -4001;     // inner stat check error
@@ -310,10 +306,9 @@ namespace oceanbase
     typedef ObPreciseDateTime ObModifyTime;
     typedef ObPreciseDateTime ObCreateTime;
 
-    const int64_t OB_MAX_INDEX_PER_TABLE = 128;
     const int64_t OB_MAX_SQL_LENGTH = 10240;
-    const int64_t OB_DEFAULT_SQL_LENGTH = 512;
     const int64_t OB_MAX_SERVER_ADDR_SIZE = 128;
+    const uint64_t OB_MAX_VALID_COLUMN_ID = 10240;   // user table max valid column id
     const int64_t OB_MAX_TABLE_NUMBER = 2048;
     const int64_t OB_MAX_JOIN_INFO_NUMBER = 10;
     const int64_t OB_MAX_ROW_KEY_LENGTH = 16384; // 16KB
@@ -360,8 +355,6 @@ namespace oceanbase
     const int64_t OB_MAX_LOG_BUFFER_SIZE = 1966080L;  // 1.875MB
 
     const int32_t OB_SAFE_COPY_COUNT = 3;
-
-    const int32_t OB_MAX_SUBQUERIES_NUM = 256;
 
     // OceanBase Log Synchronization Type
     const int64_t OB_LOG_NOSYNC = 0;
@@ -425,7 +418,6 @@ namespace oceanbase
 
     static const int OB_FAKE_MS_PORT = 2828;
 
-    // OB_ALL_MAX_COLUMN_ID must <= 65535, it is used in ob_cs_create_plan.h
     static const uint64_t OB_ALL_MAX_COLUMN_ID = 65535;
     // internal columns id
     const uint64_t OB_NOT_EXIST_COLUMN_ID = 0;
@@ -457,7 +449,6 @@ namespace oceanbase
     const char* const OB_ALL_SERVER = "__all_server";
     const char* const OB_ALL_CLIENT = "__all_client";
     const char* const OB_TABLES_SHOW_TABLE_NAME = "__tables_show";
-    const char* const OB_INDEXES_SHOW_TABLE_NAME = "__indexes_show";
     const char* const OB_VARIABLES_SHOW_TABLE_NAME = "__variables_show";
     const char* const OB_CREATE_TABLE_SHOW_TABLE_NAME = "__create_table_show";
     const char* const OB_TABLE_STATUS_SHOW_TABLE_NAME = "__table_status_show";
@@ -465,11 +456,8 @@ namespace oceanbase
     const char* const OB_COLUMNS_SHOW_TABLE_NAME = "__columns_show";
     const char* const OB_SERVER_STATUS_SHOW_TABLE_NAME = "__server_status_show";
     const char* const OB_PARAMETERS_SHOW_TABLE_NAME = "__parameters_show";
-    const char* const OB_ROOT_TABLE_TABLE_NAME = "__root_table";
     // internal params
     const char* const OB_GROUP_AGG_PUSH_DOWN_PARAM = "ob_group_agg_push_down_param";
-    // internal index prefix
-    const char* const OB_INDEX_PREFIX = "__idx_";
     // internal table id
     static const uint64_t OB_FIRST_META_VIRTUAL_TID = OB_INVALID_ID - 1; // not a real table
     static const uint64_t OB_NOT_EXIST_TABLE_TID = 0;
@@ -495,12 +483,9 @@ namespace oceanbase
     static const uint64_t OB_PARAMETERS_SHOW_TID = 507;
     static const uint64_t OB_SERVER_STATUS_SHOW_TID = 508;
     static const uint64_t OB_ALL_SERVER_STAT_TID = 509;
-    static const uint64_t OB_ROOT_TABLE_TID = 510;
-    static const uint64_t OB_INDEXES_SHOW_TID = 511;
     static const uint64_t OB_APP_MIN_TABLE_ID = 1000;
 
-#define IS_SHOW_TABLE(tid) (((tid) >= OB_TABLES_SHOW_TID && (tid) <= OB_SERVER_STATUS_SHOW_TID) \
-                           || (tid) == OB_INDEXES_SHOW_TID)
+#define IS_SHOW_TABLE(tid) ((tid) >= OB_TABLES_SHOW_TID && (tid) <= OB_SERVER_STATUS_SHOW_TID)
 
     static const uint64_t OB_ALL_STAT_COLUMN_MAX_COLUMN_ID = 45;
     static const uint64_t OB_ALL_ALL_COLUMN_MAX_COLUMN_ID = 45;
@@ -526,10 +511,8 @@ namespace oceanbase
     static const int64_t OB_MAX_COLUMN_NUMBER = OB_ROW_MAX_COLUMNS_COUNT; // used in ObSchemaManagerV2
     static const int64_t OB_MAX_USER_DEFINED_COLUMNS_COUNT = OB_ROW_MAX_COLUMNS_COUNT - OB_APP_MIN_COLUMN_ID;
 
-    static const int64_t OB_PREALLOCATED_NUM = 42; // the answer to life, the universe and everything
-
     const char* const SYS_DATE = "$SYS_DATE";
-    const char* const OB_DEFAULT_COMPRESS_FUNC_NAME = "snappy_1.0";
+    const char* const OB_DEFAULT_COMPRESS_FUNC_NAME = "none";
 
     static const int64_t OB_MAX_CONFIG_NAME_LEN = 64;
     static const int64_t OB_MAX_CONFIG_VALUE_LEN = 1024;
@@ -542,10 +525,8 @@ namespace oceanbase
     const char* const OB_META_TABLE_NAME_PREFIX = "__m_";
     static const int64_t OB_META_TABLE_NAME_PREFIX_LENGTH = strlen(OB_META_TABLE_NAME_PREFIX);
 
-    static const int64_t OB_DEFAULT_SSTABLE_BLOCK_SIZE = 64*1024; // 64KB
+    static const int64_t OB_DEFAULT_SSTABLE_BLOCK_SIZE = 16*1024; // 16KB
     static const int64_t OB_DEFAULT_MAX_TABLET_SIZE = 256*1024*1024; // 256MB
-    static const int32_t OB_DEFAULT_CHARACTER_SET = 28; //GBK
-    static const int32_t OB_INVALID_CHARACTER_NUM = -1;
     static const int64_t OB_MYSQL_PACKET_BUFF_SIZE = 6 * 1024; //6KB
     static const int64_t OB_MAX_ERROR_CODE = 10000;
     static const int64_t OB_MAX_THREAD_NUM = 1024;
@@ -617,7 +598,6 @@ virtual int serialize(char* buf, const int64_t buf_len, int64_t& pos) const = 0;
 #define PAUSE() asm("pause\n")
 
 
-#define LIGHTY_QUEUE_SIZE 2<<17
 #define CACHE_ALIGN_SIZE 64
 #define CACHE_ALIGNED __attribute__((aligned(CACHE_ALIGN_SIZE)))
 #define DIO_ALIGN_SIZE 512
@@ -666,6 +646,8 @@ const int64_t OB_SERVER_VERSION_LENGTH = 64;
   }while(0)
 
 
-
+#ifdef __ENABLE_PRELOAD__
+#include "ob_preload.h"
+#endif
 
 #endif // OCEANBASE_COMMON_DEFINE_H_

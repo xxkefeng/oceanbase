@@ -1,23 +1,23 @@
 K 25
 svn:wc:ra_dav:version-url
-V 90
-/repos/oceanbase/!svn/ver/8513/branches/dev/oceanbase/tests/updateserver/sst4test_tablemgr
-END
-10_1-1_1.sst
-K 25
-svn:wc:ra_dav:version-url
-V 103
-/repos/oceanbase/!svn/ver/8513/branches/dev/oceanbase/tests/updateserver/sst4test_tablemgr/10_1-1_1.sst
-END
-10_2-2_3.sst
-K 25
-svn:wc:ra_dav:version-url
-V 103
-/repos/oceanbase/!svn/ver/8513/branches/dev/oceanbase/tests/updateserver/sst4test_tablemgr/10_2-2_3.sst
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/updateserver/sst4test_tablemgr
 END
 10_3-3_5.sst
 K 25
 svn:wc:ra_dav:version-url
-V 103
-/repos/oceanbase/!svn/ver/8513/branches/dev/oceanbase/tests/updateserver/sst4test_tablemgr/10_3-3_5.sst
+V 114
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/updateserver/sst4test_tablemgr/10_3-3_5.sst
+END
+10_1-1_1.sst
+K 25
+svn:wc:ra_dav:version-url
+V 114
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/updateserver/sst4test_tablemgr/10_1-1_1.sst
+END
+10_2-2_3.sst
+K 25
+svn:wc:ra_dav:version-url
+V 114
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tests/updateserver/sst4test_tablemgr/10_2-2_3.sst
 END

@@ -163,7 +163,7 @@ namespace oceanbase
         memset(this, 0, sizeof(ObSSTableBlockHeader));
       }
 
-      inline void reset()
+      void reset()
       {
         memset(this, 0, sizeof(ObSSTableBlockHeader));
       }
@@ -214,8 +214,6 @@ namespace oceanbase
       int32_t schema_array_unit_size_;
       int64_t schema_record_offset_;
       int64_t block_size_;
-      uint64_t row_checksum_;
-
       char compressor_name_[MAX_COMPRESSOR_NAME_SIZE];
       int64_t reserved64_[64];
 
@@ -238,8 +236,6 @@ namespace oceanbase
         //header_size_
         //header_version_
         checksum_ = 0;
-        row_checksum_ = 0;
-
         //major_version_
         //major_frozen_time_
         //next_transaction_id_

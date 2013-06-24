@@ -12,7 +12,7 @@
 
 #include <list>
 #include "common/ob_schema.h"
-#include "common/ob_general_rpc_stub.h"
+#include "common/ob_rpc_stub.h"
 #include "common/ob_server.h"
 #include "common/ob_tablet_info.h"
 #include "common/thread_buffer.h"
@@ -24,12 +24,10 @@
 #include "common/ob_scanner.h"
 #include "common/ob_statistics.h"
 #include "common/ob_ups_info.h"
-#include "sql/ob_sql_scan_param.h"
-#include "sql/ob_sql_get_param.h"
 #include "rootserver/ob_chunk_server_manager.h"
 
 
-class ObClientRpcStub : public oceanbase::common::ObGeneralRpcStub
+class ObClientRpcStub : public oceanbase::common::ObRpcStub
 {
   public:
     static const int64_t FRAME_BUFFER_SIZE = 2*1024*1024L;
@@ -48,14 +46,6 @@ class ObClientRpcStub : public oceanbase::common::ObGeneralRpcStub
     int cs_get(const oceanbase::common::ObGetParam& get_param,
         oceanbase::common::ObScanner& scanner);
 
-    int ups_scan(const oceanbase::common::ObScanParam& scan_param,
-        oceanbase::common::ObNewScanner& scanner);
-
-    int cs_sql_scan(const oceanbase::sql::ObSqlScanParam & scan_param, 
-        oceanbase::common::ObNewScanner& scanner);
-    int cs_sql_get(const oceanbase::sql::ObSqlGetParam& get_param, 
-        oceanbase::common::ObNewScanner& scanner);
-
     int rs_scan(const oceanbase::common::ObServer & server, const int64_t timeout,
         const oceanbase::common::ObScanParam & param,
         oceanbase::common::ObScanner & result);
@@ -68,7 +58,6 @@ class ObClientRpcStub : public oceanbase::common::ObGeneralRpcStub
 
     int rs_dump_cs_info(oceanbase::rootserver::ObChunkServerManager &obcsm);
 
-    int cs_disk_maintain(const int8_t is_install, const int32_t disk_no);
     int fetch_stats(oceanbase::common::ObStatManager &obsm);
 
     int get_update_server(oceanbase::common::ObServer &update_server);
@@ -97,8 +86,6 @@ class ObClientRpcStub : public oceanbase::common::ObGeneralRpcStub
 
     const oceanbase::common::ObServer &
       get_remote_server() const { return remote_server_; }
-
-    int cs_stop_build_index();
 
 
   private:

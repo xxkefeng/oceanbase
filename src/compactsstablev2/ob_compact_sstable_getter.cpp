@@ -1,18 +1,4 @@
-/**
- *  (C) 2010-2011 Taobao Inc.
- *
- *  This program is free software; you can redistribute it
- *  and/or modify it under the terms of the GNU General Public
- *  License version 2 as published by the Free Software
- *  Foundation.
- *
- *  ob_sstable_get_param.cpp is for compact sstable getter param
- *
- *  Authors:
- *     zian < yunliang.shi@alipay.com >
- *
- */
-
+#include "common/ob_common_stat.h"
 #include "ob_compact_sstable_getter.h"
 
 using namespace oceanbase::common;
@@ -21,181 +7,127 @@ namespace oceanbase
 {
   namespace compactsstablev2
   {
-      ObCompactSSTableGetter::ObCompactSSTableGetter()
-        :
-          table_id_(OB_INVALID_ID),
-          rowkey_list_(NULL),
-          context_(NULL),
-          cur_row_index_(0),
-          uncomp_buf_(NULL),
-          uncomp_buf_size_(UNCOMP_BUF_SIZE),
-          internal_buf_(NULL),
-          internal_buf_size_(INTERNAL_BUF_SIZE)
-      {
-      }
-
-      const common::ObRowkey* ObCompactSSTableGetter::get_row_key(int64_t idx)
-      {
-        const common::ObRowkey *rowkey = NULL;
-        if (NULL == rowkey_list_)
-        {
-          TBSYS_LOG(ERROR, "rowkey_list_ must not be null");
-        }
-        else if (idx >=0 && idx < rowkey_list_->count())
-        {
-          rowkey = &rowkey_list_->at(idx);
-        }
-        return rowkey;
-      }
-
-      int ObCompactSSTableGetter::initialize(const uint64_t table_id, const ObArray<common::ObRowkey>*  rowkey_list,
-          const uint64_t *columns, const int64_t column_size, const int64_t rowkey_cell_count,
-          const ObCompactGetThreadContext* context, bool is_ups_getter)
-      {
-        int ret = OB_SUCCESS;
-
-        const ObSSTableSchema *schema = NULL;
-
-        if (NULL == rowkey_list || NULL == columns || NULL == context || NULL == context->readers_)
-        {
-          TBSYS_LOG(ERROR, "invalid argument, rowkey_list=%p columns=%p context=%p readers=%p",
-            rowkey_list, columns, context, context->readers_);
-          ret = OB_INVALID_ARGUMENT;
-        }
-        else if (rowkey_list->count() == 0 || column_size == 0 || context->readers_count_ > rowkey_list->count())
-        {
-          TBSYS_LOG(ERROR, "invalid argument, get row size: %ld, column size %ld, reader_size %ld",
-              rowkey_list->count(), column_size, context->readers_count_);
-
-          ret = OB_INVALID_ARGUMENT;
-        }
-
-        if(OB_SUCCESS == ret)
-        {
-          table_id_ = table_id;
-          rowkey_list_ = rowkey_list;
-          row_desc_.reset();
-          column_index_.reset();
-          cur_row_index_ = 0;
-
-          columns_ = columns;
-          column_size_ = column_size;
-          is_ups_getter_ = is_ups_getter;
-          context_ = context;
-
-
-          for (int64_t i = 0; i < context_->readers_count_; i++)
-          {
-            if (NULL != context_->readers_[i])
-            {
-              schema = context_->readers_[i]->get_schema();
-              break;
-            }
-          }
-
-          if(schema)
-          {
-            ret = build_column_index(schema);
-          }
-
-          if(OB_SUCCESS == ret)
-          {
-            ret = build_row_desc(rowkey_cell_count);
-          }
-        }
-
-        if(OB_SUCCESS == ret)
-        {
-          //alloc memory
-          if (OB_SUCCESS != (ret = alloc_buffer(uncomp_buf_, uncomp_buf_size_)))
-          {
-            TBSYS_LOG(WARN, "alloc buffer error:ret=[%d], uncomp_buf_size_=[%ld]", ret, uncomp_buf_size_);
-          }
-          else if (OB_SUCCESS != (ret = alloc_buffer(internal_buf_, internal_buf_size_)))
-          {
-            TBSYS_LOG(WARN, "alloc buffer error:ret=[%d], internal_buf_size_=[%ld]", ret, internal_buf_size_);
-          }
-          else
-          {
-            TBSYS_LOG(DEBUG, "sstable getter initialize success");
-          }
-        }
-
-        return ret;
-      }
-
-
-      int ObCompactSSTableGetter::get_non_exist_row(const common::ObRowkey &key, const common::ObRow *&row)
-      {
-        int ret = OB_SUCCESS;
-        row_non_exist_.set_row_desc(row_desc_);
-        row_non_exist_.reset(false, is_ups_getter() ? ObRow::DEFAULT_NOP : ObRow::DEFAULT_NULL);
-
-        ObObj obj;
-        obj.set_ext(ObActionFlag::OP_ROW_DOES_NOT_EXIST);
-        row_non_exist_.set_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, obj);
-
-        // fill rowkey
-        for (int64_t i = 0; i < row_desc_.get_rowkey_cell_count(); i++)
-        {
-          row_non_exist_.raw_set_cell(i, *(key.get_obj_ptr() + i));
-        }
-
-        row = &row_non_exist_;
-
-        return ret;
-      }
-
-
-
-    int ObCompactSSTableGetter::build_column_index(const ObSSTableSchema* const schema)
+    int ObCompactSSTableGetter::next_row()
     {
       int ret = OB_SUCCESS;
-
-
-      compactsstablev2::ObSimpleColumnIndexesBuilder builder(table_id_, *schema);
-
-      column_index_.set_table_id(table_id_);
-      ret = builder.build_input_col_index(column_index_, columns_, column_size_);
-
-      return ret;
-    }
-
-
-    int ObCompactSSTableGetter::build_row_desc(const int64_t rowkey_cell_count)
-    {
-      int ret = OB_SUCCESS;
-      row_desc_.reset();
-
-      for (int64_t i = 0; OB_SUCCESS == ret && i < column_size_; ++i)
-      {
-        ret = row_desc_.add_column_desc(table_id_, columns_[i]);
-      }
+      handled_del_row_ = false;
 
       if (OB_SUCCESS == ret)
       {
-        row_desc_.set_rowkey_cell_count(rowkey_cell_count);
-        ret = row_desc_.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
+        ret = switch_row();
       }
+
       return ret;
     }
 
-
-    int ObCompactSSTableGetter::alloc_buffer(char*& buf, const int64_t buf_size)
+    int ObCompactSSTableGetter::init(const common::ObGetParam& get_param,
+        const ObCompactSSTableReader& sstable_reader,
+        ObSSTableBlockCache& block_cache, 
+        ObSSTableBlockIndexCache& block_index_cache, 
+        sstable::ObSSTableRowCache& row_cache,
+        bool not_exit_col_ret_nop/*=false*/)
     {
       int ret = OB_SUCCESS;
 
-      ModuleArena* arena = GET_TSI_MULT(ModuleArena, TSI_SSTABLE_MODULE_ARENA_1);
+      reset();
 
-      if (buf_size <= 0)
+      if (NULL == get_param.get_row_index()
+          || get_param.get_row_size() <= 0)
       {
-        TBSYS_LOG(ERROR, "invalid buf size: buf_size=[%ld]", buf_size);
+        TBSYS_LOG(WARN, "get_param error:%p, %ld", 
+            get_param.get_row_index(), get_param.get_row_size());
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (NULL == arena)
+      else if (OB_SUCCESS != (ret = initialize(block_cache, block_index_cache,
+              row_cache, sstable_reader)))
       {
-        TBSYS_LOG(ERROR, "failed to get tsi mult arena");
-        ret = OB_ERROR;
+        TBSYS_LOG(WARN, "initialize fail:ret=%d", ret);
+      }
+      else
+      {
+        get_param_ = &get_param;
+        not_exit_col_ret_nop_ = not_exit_col_ret_nop;
+        inited_ = true;
+        const ObCellInfo* cell = NULL;
+
+        if (NULL == (cell = get_cur_param_cell()))
+        {
+          TBSYS_LOG(WARN, "get cur param cell error:cell==NULL");
+          ret = OB_ERROR;
+        }
+        else
+        {
+          table_id_ = cell->table_id_;
+        }
+
+        const ObGetParam::ObRowIndex* row_index = NULL;
+        row_index = get_param_->get_row_index();
+        const TableBloomFilter* bloom_filter 
+          = sstable_reader_->get_table_bloomfilter(table_id_);
+        cell = (*get_param_)[row_index[cur_row_index_].offset_];
+        if (!bloom_filter->contain(table_id_, cell->row_key_))
+        {
+          bloomfilter_hit_ = false;
+        }
+        else
+        {
+          bloomfilter_hit_ = true;
+          ret = load_cur_block();
+          if (OB_SEARCH_NOT_FOUND == ret)
+          {
+            iterate_status_ = ROW_NOT_FOUND;
+            ret = OB_SUCCESS;
+          }
+          else if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "load current block error:ret=%d", ret);
+          }
+        }
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::initialize(ObSSTableBlockCache& block_cache,
+          ObSSTableBlockIndexCache& block_index_cache,
+          sstable::ObSSTableRowCache& row_cache,
+          const ObCompactSSTableReader& sstable_reader)
+    {
+      int ret = OB_SUCCESS;
+
+      block_cache_ = &block_cache;
+      block_index_cache_ = &block_index_cache;
+      row_cache_ = &row_cache;
+      sstable_reader_ = &sstable_reader;
+
+      if (OB_SUCCESS != (ret = alloc_buffer(uncomp_buf_, uncomp_buf_size_)))
+      {
+        TBSYS_LOG(WARN, "alloc uncomp buffer error:uncomp_buf_=%p, uncomp_buf_size_=%ld",
+            uncomp_buf_, uncomp_buf_size_);
+      }
+      else if (OB_SUCCESS != (ret = alloc_buffer(internal_buf_, 
+              internal_buf_size_)))
+      {
+        TBSYS_LOG(WARN, "alloc uncomp buffer error:internal_buf_=%p, internal_buf_size_=%ld",
+            internal_buf_, internal_buf_size_);
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::alloc_buffer(char*& buf, 
+        const int64_t buf_size)
+    {
+      int ret = OB_SUCCESS;
+
+      ModuleArena* arena = GET_TSI_MULT(ModuleArena, 
+          TSI_COMPACTSSTABLEV2_MODULE_ARENA_2);
+
+      if (NULL == arena)
+      {
+        TBSYS_LOG(WARN, "GET TSI MULT:ModuleArena, " 
+            "TSI_COMPACTSSTABLEV2_MODULE_ARENA_2");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
       }
       else if (NULL == (buf = arena->alloc(buf_size)))
       {
@@ -204,317 +136,825 @@ namespace oceanbase
       }
       else
       {
-        TBSYS_LOG(DEBUG, "alloc buf success: buf_size=%ld", buf_size);
+        //do nothing
       }
 
       return ret;
     }
 
-
-    //1. check the bloom filter
-    //2. get from the row cache
-    //3. load the block index and block data
-    int ObCompactSSTableGetter::get_next_row(const common::ObRow *&row)
+    int ObCompactSSTableGetter::load_cur_block()
     {
       int ret = OB_SUCCESS;
-      const ObCompactSSTableReader *reader = context_->readers_[cur_row_index_];
-      const ObRowkey *rowkey = get_row_key(cur_row_index_);
-
-      //whether work done
-      if (cur_row_index_  >= context_->readers_count_)
-      {
-        ret = OB_ITER_END;
-      }
-
-      if(OB_SUCCESS == ret)
-      {
-        if(NULL == reader || reader->get_row_count() == 0)
-        {
-            ret = OB_SEARCH_NOT_FOUND;
-        }
-        else
-        {
-          //check the bloom filter
-#ifdef OB_COMPACT_SSTABLE_ALLOW_BLOOMFILTER_
-          const uint64_t table_id = table_id_;
-          const TableBloomFilter* bloom_filter = get_context_->sstable_reader_->get_table_bloomfilter(table_id);
-          if(!bloom_filter->contain(table_id, *rowkey))
-          {
-            ret = OB_SEARCH_NOT_FOUND;
-          }
-#endif
-
-          if(OB_SUCCESS == ret)
-          {
-            bool row_cache_hit = false;
-
-            //see the row cache
-            if( NULL != context_->row_cache_ && OB_SUCCESS == (ret = get_row_from_rowcache(row)))
-            {
-              row_cache_hit = true;
-            }
-
-            //will get the block index and block data if row cache miss
-            //we get the row from the sstable and put into the rowcache
-            if(!row_cache_hit)
-            {
-              ret = get_row_from_sstable(row);
-            }
-          }
-        }
-
-        if(OB_SUCCESS == ret)
-        {
-        }
-        else if(OB_SEARCH_NOT_FOUND == ret)
-        {
-          get_non_exist_row(*rowkey, row);
-          ret = OB_SUCCESS;
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "get rowkey error: ret=[%d]", ret);
-        }
-
-        //next row
-        cur_row_index_ ++;
-      }
-
-      return ret;
-    }
-
-    int ObCompactSSTableGetter::get_row_from_rowcache(const common::ObRow*& row)
-    {
-      int ret = OB_SUCCESS;
-
-      const uint64_t sstable_id = context_->readers_[cur_row_index_]->get_sstable_id();
-      const ObCompactStoreType row_store_type = context_->readers_[cur_row_index_]->get_row_store_type();
-
-      const ObRowkey *rowkey = get_row_key(cur_row_index_);
-      const uint64_t table_id = table_id_;
+      const ObCellInfo* cell = NULL;
+      uint64_t sstable_id = sstable_reader_->get_sstable_id();
+      ObRowkey look_key;
       sstable::ObSSTableRowCacheValue row_cache_val;
+      bool is_row_cache_hit = false;
+      ObBlockIndexPositionInfo info;
+      SearchMode mode = OB_SEARCH_MODE_GREATER_EQUAL;
 
-      sstable::ObSSTableRowCacheKey row_cache_key(sstable_id, table_id, *const_cast<common::ObRowkey*>(rowkey));
-
-      //get the row key from rowcache
-      ret = context_->row_cache_->get_row(row_cache_key, row_cache_val, cache_row_buf_);
-
-      if (OB_SUCCESS == ret)
+      if (NULL == (cell = get_cur_param_cell()))
       {
-        //cache hit
-#ifndef  _SSTABLE_NO_STAT_
-        OB_STAT_TABLE_INC(CHUNKSERVER, table_id, INDEX_SSTABLE_ROW_CACHE_HIT, 1);
-#endif
-        //get the row cache
-        if(NULL != row_cache_val.buf_ && row_cache_val.size_ > 0)
-        {
-          ret = getter_.get_cached_row(row_cache_val, row_store_type, &row_desc_, is_ups_getter() ? ObRow::DEFAULT_NOP : ObRow::DEFAULT_NULL, column_index_, row);
-
-          if(OB_SUCCESS != ret)
-          {
-            TBSYS_LOG(WARN, "row init error:ret=%d, row_buf=%p,row_store_type_=%d",
-                ret, row_cache_val.buf_, row_store_type);
-          }
-        }
-        else
-        {
-          get_non_exist_row(*rowkey, row);
-        }
-
+        TBSYS_LOG(WARN, "get cur param cell error:cell==NULL");
+        ret = OB_ERROR;
       }
       else
       {
-#ifndef  _SSTABLE_NO_STAT_
-        OB_STAT_TABLE_INC(CHUNKSERVER, table_id, INDEX_SSTABLE_ROW_CACHE_MISS, 1);
-#endif
+        look_key = cell->row_key_;
+        table_id_ = cell->table_id_;
       }
 
-      return ret;
-    }
-
-
-    int ObCompactSSTableGetter::get_row_from_sstable(const common::ObRow*& row)
-    {
-      int ret = OB_SUCCESS;
-
-      const ObCompactSSTableReader *reader = context_->readers_[cur_row_index_];
-      const ObRowkey *rowkey = get_row_key(cur_row_index_);
-      const char* block_data_ptr = NULL;
-      int64_t block_data_size = 0;
-
-      if(OB_SUCCESS != (ret = load_block_index()) && OB_SEARCH_NOT_FOUND != ret)
+      if (OB_SUCCESS == ret)
       {
-        TBSYS_LOG(WARN, "load block index error:ret=%d", ret);
-      }
-      else if(OB_SUCCESS == ret && OB_SUCCESS == (ret = load_block_data(block_data_ptr, block_data_size)))
-      {
-        //get the cell iterator
-        ObSSTableBlockReader::BlockData block_data(
-            internal_buf_, internal_buf_size_, block_data_ptr, block_data_size);
-        ret = getter_.init(*rowkey, block_data, reader->get_row_store_type(), column_index_, &row_desc_, is_ups_getter() ? ObRow::DEFAULT_NOP : ObRow::DEFAULT_NULL);
-
-        if(OB_SUCCESS != ret && OB_BEYOND_THE_RANGE != ret)
+        if (NULL != row_cache_)
         {
-          TBSYS_LOG(WARN, "block getter init error:ret=%d", ret);
-        }
-        else
-        {
-
-          if(OB_SUCCESS == ret)
+          sstable::ObSSTableRowCacheKey row_cache_key(sstable_id,
+              table_id_, look_key);
+          ret = row_cache_->get_row(row_cache_key, row_cache_val, row_buf_);
+          if (OB_SUCCESS == ret)
           {
-            ret = getter_.get_row(row);
+#ifndef _SSTABLE_NO_STAT_
+            OB_STAT_TABLE_INC(SSTABLE, table_id_, INDEX_SSTABLE_ROW_CACHE_HIT, 1);
+#endif
+            is_row_cache_hit = true;
           }
           else
           {
-            // not found will change the ret
-            ret = OB_SEARCH_NOT_FOUND;
+#ifndef _SSTABLE_NO_STAT_
+            OB_STAT_TABLE_INC(SSTABLE, table_id_, INDEX_SSTABLE_ROW_CACHE_MISS, 1);
+#endif
+          }
+        }
+
+        if (NULL == row_cache_ || !is_row_cache_hit)
+        {
+          const ObSSTableTableIndex* table_index 
+            = sstable_reader_->get_table_index(table_id_);
+          info.sstable_file_id_ = sstable_id;
+          info.index_offset_ = table_index->block_index_offset_;
+          info.index_size_ = table_index->block_index_size_;
+          info.endkey_offset_ = table_index->block_endkey_offset_;
+          info.endkey_size_ = table_index->block_endkey_size_;
+          info.block_count_ = table_index->block_count_;
+          ret = block_index_cache_->get_single_block_pos_info(
+              info, table_id_, look_key, mode, block_pos_);
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        ret = init_column_mask();
+        if (OB_SUCCESS == ret)
+        {
+          if (is_row_cache_hit)
+          {
+          }
+          else
+          {
+            ret = fetch_block();
+          }
+
+          if (OB_SUCCESS != ret && OB_SEARCH_NOT_FOUND != ret)
+          {
+            TBSYS_LOG(WARN, "fectch block error:ret=%d", ret);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "init column mask error:ret=%d", ret);
+        }
+      }
+      else if (OB_BEYOND_THE_RANGE == ret)
+      {
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "can not reach here:ret=%d", ret);
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::fetch_block()
+    {
+      int ret = OB_SUCCESS;
+      const ObCellInfo* cell = NULL;
+      uint64_t sstable_id = sstable_reader_->get_sstable_id();
+      const char* buf = NULL;
+      int64_t buf_size = 0;
+      ObCompactStoreType store_type = sstable_reader_->get_row_store_type();
+      int64_t rowkey_column_cnt = 0;
+
+      cell = get_cur_param_cell();
+      if (NULL == cell)
+      {
+        TBSYS_LOG(WARN, "cell==NULL");
+        ret = OB_ERROR;
+      }
+      else
+      {
+        table_id_ = cell->table_id_;
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        ret = get_block_data(buf, buf_size);
+        sstable_reader_->get_schema()->get_rowkey_column_count(table_id_,
+            rowkey_column_cnt);
+        ObSSTableBlockReader::BlockData block_data(
+            internal_buf_, internal_buf_size_, buf, buf_size);
+        ret = getter_.init(cell->row_key_, block_data, store_type);
+        if (OB_SUCCESS != ret && OB_SEARCH_NOT_FOUND != ret)
+        {
+          TBSYS_LOG(WARN, "block getter init error:ret=%d", ret);
+        }
+      }
+
+      if (NULL != row_cache_)
+      {
+        sstable::ObSSTableRowCacheKey row_cache_key(sstable_id, table_id_,
+            const_cast<ObCellInfo*>(cell)->row_key_);
+        sstable::ObSSTableRowCacheValue row_cache_val;
+        ret = getter_.get_cache_row_value(row_cache_val);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "get caceh row value error:ret=%d", ret);
+        }
+        else if (row_cache_val.size_ <= 0 || NULL == row_cache_val.buf_)
+        {
+          TBSYS_LOG(WARN, "row_cache_val error:row_cache_val.size_=%ld,"
+              "row_cache_val.buf_=%p",
+              row_cache_val.size_, row_cache_val.buf_);
+          ret = OB_INVALID_ARGUMENT;
+        }
+        else
+        {
+          ret = row_cache_->put_row(row_cache_key, row_cache_val);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "row cache put row error:ret=%d", ret);
+          }
+          ret = OB_SUCCESS;
+        }
+
+        if (OB_SEARCH_NOT_FOUND == ret)
+        {
+          ret = row_cache_->put_row(row_cache_key, row_cache_val);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "row cache put row error:ret=%d", ret);
           }
         }
       }
 
-      //update the cache
-      if(context_->row_cache_ != NULL)
-      {
-        update_row_cache(OB_SUCCESS == ret);
-      }
-
       return ret;
     }
 
-    int ObCompactSSTableGetter::update_row_cache(bool found_in_block)
+    int ObCompactSSTableGetter::init_column_mask()
     {
       int ret = OB_SUCCESS;
-      const ObCompactSSTableReader *reader = context_->readers_[cur_row_index_];
-      uint64_t sstable_id = reader->get_sstable_id();
-      uint64_t table_id = table_id_;
-      sstable::ObSSTableRowCacheValue row_cache_val;
-      const ObRowkey *rowkey = get_row_key(cur_row_index_);
-      sstable::ObSSTableRowCacheKey row_cache_key(sstable_id, table_id, *const_cast<common::ObRowkey*>(rowkey));
+      int64_t cell_size = 0;
+      int64_t start = 0;
+      int64_t end = 0;
+      const ObGetParam::ObRowIndex* row_index = NULL;
 
-      //found it
-      if(found_in_block)
+      const ObSSTableSchema* schema = sstable_reader_->get_schema();
+      uint64_t sstable_file_id = sstable_reader_->get_sstable_id();
+      cell_size = get_param_->get_cell_size();
+      row_index = get_param_->get_row_index();
+      start = row_index[cur_row_index_].offset_;
+      end = row_index[cur_row_index_].offset_ 
+        + row_index[cur_row_index_].size_;
+
+      if (NULL == schema)
       {
-        //get row cache value, for put into rowcache
-        ret = getter_.get_cache_row_value(row_cache_val);
-
-        if(OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "get cache row value error:ret=%d", ret);
-        }
+        TBSYS_LOG(WARN, "schema==NULL");
+        ret = OB_INVALID_ARGUMENT;
       }
-
-
-      if (OB_SUCCESS == ret)
+      else if (OB_INVALID_ID == sstable_file_id)
       {
-        ret = context_->row_cache_->put_row(row_cache_key, row_cache_val);
+        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "sstable_file_id==OB_INVALID_ID");
       }
-
-      return ret;
-    }
-
-    int ObCompactSSTableGetter::load_block_index()
-    {
-      int ret = OB_SUCCESS;
-
-      const ObCompactSSTableReader *reader = context_->readers_[cur_row_index_];
-
-      // get the sstable id and table id
-      uint64_t sstable_id = reader->get_sstable_id();
-      uint64_t table_id = table_id_;
-
-      // prepare for search the block index of the rowkey
-      ObBlockIndexPositionInfo info;
-      SearchMode mode = OB_SEARCH_MODE_GREATER_EQUAL;
-      const ObRowkey* look_key = get_row_key(cur_row_index_);
-
-      // get the sstable info
-      const ObSSTableTableIndex* table_index
-        = reader->get_table_index(table_id);
-      info.sstable_file_id_ = sstable_id;
-      info.index_offset_ = table_index->block_index_offset_;
-      info.index_size_ = table_index->block_index_size_;
-      info.endkey_offset_ = table_index->block_endkey_offset_;
-      info.endkey_size_ = table_index->block_endkey_size_;
-      info.block_count_ = table_index->block_count_;
-
-      // search the block index where has the look key
-      ret = context_->block_index_cache_->get_single_block_pos_info(
-          info, table_id, *look_key, mode, block_pos_);
-
-      if(OB_BEYOND_THE_RANGE == ret)
+      else if (start >= cell_size || end > cell_size)
       {
-        ret = OB_SEARCH_NOT_FOUND;
-      }
-
-      return ret;
-    }
-
-
-
-    int ObCompactSSTableGetter::load_block_data(const char*& buf, int64_t& buf_size)
-    {
-      int ret = OB_SUCCESS;
-
-      ObSSTableBlockBufferHandle handler;
-
-      const char* comp_buf = NULL;
-      int64_t comp_buf_size = 0;
-
-      const ObCompactSSTableReader *reader = context_->readers_[cur_row_index_];
-      uint64_t sstable_file_id = reader->get_sstable_id();
-      const char* block_data_ptr = NULL;
-      int64_t block_data_size = 0;
-      const uint64_t table_id = table_id_;
-      ObRecordHeaderV2 header;
-
-      if (OB_INVALID_ID == sstable_file_id)
-      {
-        TBSYS_LOG(WARN, "invalid sstable file id");
+        TBSYS_LOG(WARN, "cell size error:cell_size=%ld, start=%ld, end=%ld", 
+            cell_size, start, end);
         ret = OB_ERROR;
       }
-      else if (0 == table_id || OB_INVALID_ID == table_id)
+      else
       {
-        TBSYS_LOG(WARN, "invalid table id:table_id=%lu", table_id);
-        ret = OB_ERROR;
+        table_id_ = (*get_param_)[start]->table_id_;
+        schema = sstable_reader_->get_schema();
       }
 
       if (OB_SUCCESS == ret)
       {
-        ret = context_->block_cache_->get_block(
-            sstable_file_id,
-            block_pos_.offset_, block_pos_.size_, handler,table_id);
-        if (block_pos_.size_ == ret)
+        //reset scan column indexes
+        get_column_indexes_.reset();
+
+        //schema array
+        const ObSSTableSchemaColumnDef* def_array = NULL;
+        int64_t column_cnt = 0;
+        bool is_rowkey = true;
+
+        //rowkey columns
+        if (NULL == (def_array = schema->get_table_schema(
+                table_id_, is_rowkey, column_cnt)))
         {
-          block_data_ptr = handler.get_buffer();
-          block_data_size = block_pos_.size_;
-          ret = OB_SUCCESS;
+          TBSYS_LOG(WARN, "get table schema error:table_id=%lu, is_rowkey=%d, column_cnt=%ld",
+              table_id_, is_rowkey, column_cnt);
         }
         else
         {
-          TBSYS_LOG(ERROR, "IO ERROR:ret=%d,sstable_file_id=%lu,"
-              "table_id=%lu", ret, sstable_file_id, table_id);
-          ret = OB_IO_ERROR;
+          for (int64_t i = 0; i < column_cnt; i ++)
+          {//add rowkey column id
+            if (OB_SUCCESS != (ret = get_column_indexes_.add_column_id(
+                    ObSSTableScanColumnIndexes::Rowkey, 
+                    def_array[i].offset_, 
+                    def_array[i].column_id_)))
+            {
+              TBSYS_LOG(WARN, "get column indexes error:ret=%d", ret);
+              break;
+            }
+          }
         }
       }
 
       if (OB_SUCCESS == ret)
       {
-        if (OB_SUCCESS != (ret = ObRecordHeaderV2::get_record_header(
-                block_data_ptr, block_data_size, header,
-                comp_buf, comp_buf_size)))
-        {
-          TBSYS_LOG(WARN, "get record header error:ret=%d,"
-              "block_data_ptr=%p,block_data_size=%ld",
-              ret, block_data_ptr, block_data_size);
-        }
-        else if (header.data_length_ > uncomp_buf_size_)
-        {
-          uncomp_buf_size_ = header.data_length_;
-          if (OB_SUCCESS != (ret = alloc_buffer(uncomp_buf_,
-                  uncomp_buf_size_)))
+        int64_t get_column_cnt = row_index[cur_row_index_].size_;
+        const ObCellInfo* cell = NULL;
+        const ObGetParam::ObRowIndex* row_index = NULL;
+        row_index = get_param_->get_row_index();
+        cell = (*get_param_)[row_index[cur_row_index_].offset_];
+        uint64_t column_id = cell->column_id_;
+        const ObSSTableSchemaColumnDef* def_array = NULL;
+
+        if (1 == get_column_cnt 
+            && OB_FULL_ROW_COLUMN_ID == column_id)
+        {//query whole row
+          bool is_rowkey = false;
+          if (NULL != (def_array = schema->get_table_schema(
+                  table_id_, is_rowkey, column_cnt_)))
           {
-            TBSYS_LOG(ERROR, "failed to alloc buffer:ret=%d,"
-                "uncomp_buf_size=%ld", ret, uncomp_buf_size_);
+            TBSYS_LOG(WARN, "get table schema error:table_id_=%lu, is_rowkey=%d, column_cnt_=%ld",
+                table_id_, is_rowkey, column_cnt_);
+          }
+          else
+          {
+            for (int64_t i = 0; i < column_cnt_; i ++)
+            {
+              if (OB_SUCCESS != (ret = get_column_indexes_.add_column_id(
+                      ObSSTableScanColumnIndexes::Normal, 
+                      def_array[i].offset_, 
+                      def_array[i].column_id_)))
+              {
+                TBSYS_LOG(WARN, "add column id error:i=%ld, offset=%ld, clumn_id_=%lu",
+                    i, def_array[i].offset_, def_array[i].column_id_);
+                break;
+              }
+            }//end for
+          }
+        }
+        else
+        {//not query whole row
+          uint64_t current_column_id = OB_INVALID_ID;
+          const ObSSTableSchemaColumnDef* def = NULL;
+          cell = (*get_param_)[row_index[cur_row_index_].offset_];
+
+          for (int64_t i = 0; i < get_column_cnt; i ++)
+          {
+            current_column_id = cell->column_id_;
+            if (0 == current_column_id || OB_INVALID_ID == current_column_id)
+            {
+              TBSYS_LOG(WARN, "invalid pram:current_column_id=%lu", current_column_id);
+              ret = OB_INVALID_ARGUMENT;
+            }
+            else if (NULL != (def = schema->get_column_def(table_id_, 
+                    current_column_id)))
+            {//exist
+              if (def->is_rowkey_column())
+              {//rowkey column
+                if (OB_SUCCESS != (ret = get_column_indexes_.add_column_id(
+                        ObSSTableScanColumnIndexes::Rowkey,
+                        def->offset_, current_column_id)))
+                {
+                  TBSYS_LOG(WARN, "add rowkey column id error:offset=%ld, current_column_id=%lu",
+                      def->offset_, current_column_id);
+                }
+              }
+              else
+              {//rowvalue column
+                if (OB_SUCCESS != (ret = get_column_indexes_.add_column_id(
+                        ObSSTableScanColumnIndexes::Normal,
+                        def->offset_, current_column_id)))
+                {
+                  TBSYS_LOG(WARN, "add rowvalue column id error:offset=%ld, current_column_id=%lu",
+                      def->offset_, current_column_id);
+                }
+              }
+            }
+            else
+            {//not exist
+              if (OB_SUCCESS != (ret = get_column_indexes_.add_column_id(
+                      ObSSTableScanColumnIndexes::NotExist,
+                      0, current_column_id)))
+              {
+                TBSYS_LOG(ERROR, "add noexist column id error:offset=0, current_column_id=%lu",
+                    current_column_id);
+              }
+            }
+
+            if (OB_SUCCESS == ret)
+            {
+              cell ++;
+            }
+          }
+        }
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::switch_row()
+    {
+      int ret = OB_SUCCESS;
+      get_column_indexes_.reset();
+
+      iterate_status_ = ITERATE_NORMAL;
+      if (cur_row_index_ + 1 >= get_param_->get_row_size())
+      {
+        iterate_status_ = ITERATE_END;
+        ret = OB_ITER_END;
+      }
+      else
+      {
+        cur_row_index_ ++;
+        if (OB_SUCCESS == ret)
+        {
+          ObCellInfo* cell = NULL;
+          const ObGetParam::ObRowIndex* row_index = NULL;
+          row_index = get_param_->get_row_index();
+          const TableBloomFilter* bloom_filter 
+            = sstable_reader_->get_table_bloomfilter(table_id_);
+          cell = (*get_param_)[row_index[cur_row_index_].offset_];
+          if (!bloom_filter->contain(table_id_, cell->row_key_))
+          {
+            bloomfilter_hit_ = false;
+            if (OB_SUCCESS != (ret = init_column_mask()))
+            {
+              TBSYS_LOG(WARN, "init column mask error");
+            }
+          }
+          else
+          {
+            ret = load_cur_block();
+            if (OB_SEARCH_NOT_FOUND == ret)
+            {
+              iterate_status_ = ROW_NOT_FOUND;
+              ret = OB_SUCCESS;
+            }
+            else if (OB_SUCCESS != ret)
+            {
+              TBSYS_LOG(WARN, "load cur block error:ret=%d", ret);
+            }
+            bloomfilter_hit_ = true;
+          }
+        }
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::get_row(ObRowkey*& rowkey, ObRow*& rowvalue)
+    {
+      int ret = OB_SUCCESS;
+      ObCompactCellIterator* row = NULL;
+      const ObObj* row_obj = NULL;
+      int64_t rowkey_cnt = 0;
+      int64_t rowvalue_cnt = 0;
+      bool is_row_finished = false;
+      
+      if (bloomfilter_hit_)
+      {
+        if (OB_SUCCESS != (ret = getter_.get_row(row)))
+        {
+          TBSYS_LOG(ERROR, "block getter get row error:ret=%d", ret);
+        }
+        else
+        {
+          while(true)
+          {//解析,得到obj数组
+            if (OB_SUCCESS != (ret = row->next_cell()))
+            {
+              TBSYS_LOG(WARN, "row next cell error:ret=%d", ret);
+              break;
+            }
+            else if (OB_SUCCESS != (ret = row->get_cell(row_obj, 
+                    &is_row_finished)))
+            {
+              TBSYS_LOG(WARN, "row next cell error:ret=%d", ret);
+              break;
+            }
+            else
+            {
+              if (is_row_finished)
+              {
+                row_key_.assign(rowkey_buf_array_, rowkey_cnt);
+                break;
+              }
+              else
+              {
+                rowkey_buf_array_[rowkey_cnt] = *row_obj;
+                rowkey_cnt ++;
+              }
+            }
+          }//end while
+
+          if (OB_SUCCESS == ret)
+          {
+            ObCompactStoreType row_store_type 
+              = sstable_reader_->get_row_store_type();
+            if (DENSE_SPARSE == row_store_type)
+            {
+              while(true)
+              {
+                if (OB_SUCCESS != (ret = row->next_cell()))
+                {
+                  TBSYS_LOG(WARN, "row next cell error:ret=%d", ret);
+                  break;
+                }
+                else
+                {
+                  uint64_t column_id;
+                  if (OB_SUCCESS != (ret = row->get_cell(column_id, 
+                          row_obj, &is_row_finished)))
+                  {
+                    TBSYS_LOG(WARN, "row next cell error:ret=%d", ret);
+                    break;
+                  }
+                  else
+                  {
+                    if (is_row_finished)
+                    {
+                      column_cnt_ = rowvalue_cnt;
+                      break;
+                    }
+                    else
+                    {
+                      column_ids_[rowvalue_cnt] = column_id;
+                      column_objs_[rowvalue_cnt] = *row_obj;
+                      rowvalue_cnt ++;
+                    }
+                  }
+                }
+              }
+            }
+            else if (DENSE_DENSE == row_store_type)
+            {
+              while(true)
+              {
+                if (OB_SUCCESS != (ret = row->next_cell()))
+                {
+                  TBSYS_LOG(WARN, "row next cell error:ret=%d", ret);
+                  break;
+                }
+                else if (OB_SUCCESS != (ret = row->get_cell(
+                        row_obj, &is_row_finished)))
+                {
+                  TBSYS_LOG(WARN, "row get cell error:ret=%d", ret);
+                }
+                else
+                {
+                  column_objs_[rowvalue_cnt] = *row_obj;
+                  rowvalue_cnt ++;
+
+                  if (is_row_finished)
+                  {
+                    column_cnt_ = rowvalue_cnt;
+                  }
+                }
+              }
+            }
+          }//end while
+        }
+
+        if (OB_SUCCESS == ret)
+        {
+          column_cursor_ = rowkey_cnt;
+          row_desc_.reset();
+          row_value_.set_row_desc(row_desc_);
+          ObSSTableScanColumnIndexes::Column column;
+          while (column_cursor_ < get_column_indexes_.get_column_count())
+          {
+            if (OB_SUCCESS != (ret = get_column_index(column_cursor_,
+                    column)))
+            {
+              TBSYS_LOG(WARN, "get column index error:ret=%d, column_cursor_=%lu", 
+                  ret, column_cursor_);
+              break;
+            }
+            else if (OB_SUCCESS != (ret = store_current_cell(column)))
+            {
+              TBSYS_LOG(WARN, "store current cell error:ret=%d", ret);
+              break;
+            }
+            else
+            {
+              column_cursor_ ++;
+            }
+          }
+        }
+
+        if (OB_SUCCESS == ret)
+        {
+          rowkey = &row_key_;
+          rowvalue = &row_value_;
+        }
+      }
+      else
+      {
+        ObCellInfo* cell = NULL;
+        const ObGetParam::ObRowIndex* row_index = NULL;
+        row_index = get_param_->get_row_index();
+        cell = (*get_param_)[row_index[cur_row_index_].offset_];
+        rowkey = &cell->row_key_;
+        rowkey_cnt = rowkey->get_obj_cnt();
+
+        column_cursor_ = rowkey_cnt;
+        row_desc_.reset();
+        row_value_.set_row_desc(row_desc_);
+        ObSSTableScanColumnIndexes::Column column;
+        while (column_cursor_ < get_column_indexes_.get_column_count())
+        {
+          if (OB_SUCCESS != (ret = get_column_index(column_cursor_,
+                  column)))
+          {
+            TBSYS_LOG(WARN, "get column index error:ret=%d, column_cursor_=%lu", 
+                ret, column_cursor_);
+            break;
+          }
+          else
+          {
+            column.type_ = ObSSTableScanColumnIndexes::NotExist;
+          }
+
+          if (OB_SUCCESS == ret)
+          {
+            if (OB_SUCCESS != (ret = store_current_cell(column)))
+            {
+              TBSYS_LOG(WARN, "store current cell error:ret=%d", ret);
+              break;
+            }
+            else
+            {
+              column_cursor_ ++;
+            }
+          }
+        }
+
+        if (OB_SUCCESS == ret)
+        {
+          rowvalue = &row_value_;
+        }
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::get_column_index(const int64_t cursor, 
+        ObSSTableScanColumnIndexes::Column& column) const
+    {
+      int ret = OB_SUCCESS;
+
+      const ObCompactStoreType row_store_type 
+        = sstable_reader_->get_row_store_type();
+      if (OB_SUCCESS != (ret = get_column_indexes_.get_column(cursor, column)))
+      {
+        TBSYS_LOG(ERROR, "get column indexes get column error:ret=%d", ret);
+      }
+      else if (DENSE_SPARSE == row_store_type 
+          && ObSSTableScanColumnIndexes::Normal == column.type_)
+      {
+        column.type_ = ObSSTableScanColumnIndexes::NotExist;
+        for (int64_t i = 0; i < column_cnt_; i ++)
+        {
+          if (column.id_ == column_ids_[i])
+          {
+            column.type_ = ObSSTableScanColumnIndexes::Normal;
+            column.index_ = i;
+            break;
+          }
+        }
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::store_current_cell(
+        const ObSSTableScanColumnIndexes::Column& column)
+    {
+      int ret = OB_SUCCESS;
+      const ObCompactStoreType row_store_type 
+        = sstable_reader_->get_row_store_type();
+
+      if (DENSE_DENSE == row_store_type)
+      {
+        if (OB_SUCCESS != (ret = store_dense_column(column)))
+        {
+          TBSYS_LOG(WARN, "store dense column error:ret=%d", ret);
+        }
+      }
+      else if (DENSE_SPARSE == row_store_type)
+      {
+        if (OB_SUCCESS != (ret = store_sparse_column(column)))
+        {
+          TBSYS_LOG(WARN, "store sparse column error:ret=%d", ret);
+        }
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "can not reach here");
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::store_dense_column(
+        const ObSSTableScanColumnIndexes::Column& column)
+    {
+      int ret = OB_SUCCESS;
+
+      if (OB_SUCCESS != (ret = row_desc_.add_column_desc(table_id_,
+              column.id_)))
+      {
+        TBSYS_LOG(WARN, "row desc add column desc error:ret=%d", ret);
+      }
+      else if (ObSSTableScanColumnIndexes::Rowkey == column.type_)
+      {
+        if (OB_SUCCESS != (ret = row_value_.set_cell(
+                table_id_, column.id_, rowkey_buf_array_[column.index_])))
+        {
+          TBSYS_LOG(WARN, "row value set cell error:ret=%d", ret);
+        }
+      }
+      else if (ObSSTableScanColumnIndexes::NotExist == column.type_)
+      {
+        ObObj obj;
+        if (not_exit_col_ret_nop_)
+        {
+          obj.set_ext(ObActionFlag::OP_NOP);
+          if (OB_SUCCESS != (row_value_.set_cell(
+                  table_id_, column.id_, obj)))
+          {
+            TBSYS_LOG(WARN, "row value set cell error:ret=%d", ret);
+          }
+        }
+        else
+        {
+          obj.set_null();
+          if (OB_SUCCESS != (row_value_.set_cell(
+                  table_id_, column.id_, obj)))
+          {
+            TBSYS_LOG(WARN, "row value set cell error:ret=%d", ret);
+          }
+        }
+      }
+      else if (column.index_ >= column_cnt_)
+      {
+        TBSYS_LOG(WARN, "column.index >= column_cnt_:column.index_=%ld, column_cnt_=%ld",
+            column.index_, column_cnt_);
+        ret = OB_ERROR;
+      }
+      else
+      {
+        if (OB_SUCCESS != (row_value_.set_cell(
+                table_id_, column.id_, column_objs_[column.index_])))
+        {
+          TBSYS_LOG(WARN, "row value set cell error:ret=%d", ret);
+          ret = OB_ERROR;
+        }
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::store_sparse_column(
+        const ObSSTableScanColumnIndexes::Column& column)
+    {
+      int ret = OB_SUCCESS;
+
+      bool is_del_row = false;
+
+      if (0 == column_cursor_ && !handled_del_row_)
+      {
+        if (OB_DELETE_ROW_COLUMN_ID == column_ids_[column_cursor_])
+        {
+          is_del_row = true;
+        }
+      }
+      else if (OB_SUCCESS != (ret = row_desc_.add_column_desc(table_id_,
+              column.id_)))
+      {
+        TBSYS_LOG(WARN, "row desc add column desc error:ret=%d", ret);
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        if (is_del_row)
+        {
+          if (OB_SUCCESS != (ret = row_value_.set_cell(table_id_,
+                  column_ids_[column.index_], column_objs_[column.index_])))
+          {
+            TBSYS_LOG(WARN, "row value set cell error:ret=%d", ret);
+          }
+          handled_del_row_ = true;
+
+          if (1 == column_cnt_)
+          {
+            column_cursor_ = get_column_indexes_.get_column_count();
+          }
+        }
+        else
+        {
+          handled_del_row_ = true;
+          if (ObSSTableScanColumnIndexes::Rowkey == column.type_)
+          {
+            if (OB_SUCCESS != (ret = row_value_.set_cell(table_id_,
+                    column.id_, rowkey_buf_array_[column.index_])))
+            {
+              TBSYS_LOG(WARN, "row value set cell error:ret=%d", ret);
+            }
+          }
+          else if (ObSSTableScanColumnIndexes::NotExist == column.type_)
+          {
+            ObObj obj;
+            obj.set_ext(ObActionFlag::OP_NOP);
+            if (OB_SUCCESS != (ret = row_value_.set_cell(table_id_,
+                    column.id_, obj)))
+            {
+              TBSYS_LOG(WARN, "row value set cell error:ret=%d", ret);
+            }
+          }
+          else
+          {
+            if (OB_SUCCESS != (ret = row_value_.set_cell(table_id_,
+                    column.id_, column_objs_[column.index_])))
+            {
+              TBSYS_LOG(WARN, "row value set cell error:ret=%d", ret);
+            }
+          }
+        }
+      }
+
+      return ret;
+    }
+
+    int ObCompactSSTableGetter::get_block_data(const char*& buf, 
+        int64_t& buf_size)
+    {
+      int ret = OB_SUCCESS;
+      ObSSTableBlockBufferHandle handler;
+      const char* comp_buf = NULL;
+      int64_t comp_buf_size = 0;
+      uint64_t sstable_id = sstable_reader_->get_sstable_id();
+      const char* block_data_ptr = NULL;
+      int64_t block_data_size = 0;
+      ObRecordHeaderV2 header;
+
+      ret = block_cache_->get_block(
+              sstable_id, block_pos_.offset_,
+              block_pos_.size_, handler, table_id_);
+      if (-1 == ret || block_pos_.size_ != ret)
+      {
+        TBSYS_LOG(WARN, "block cache get block error:ret=%d", ret);
+        ret = OB_ERROR;
+      }
+      else
+      {
+        block_data_ptr = handler.get_buffer();
+        block_data_size = block_pos_.size_;
+        ret = OB_SUCCESS;
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        ret = ObRecordHeaderV2::get_record_header(
+                block_data_ptr, block_data_size, header,
+                comp_buf, comp_buf_size);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "get record header error:ret=%d", ret);
+        }
+        else
+        {
+          if (header.data_length_ > uncomp_buf_size_)
+          {
+            TBSYS_LOG(WARN, "header.data_length_ > uncomp_buf_size_");
+            uncomp_buf_size_ = header.data_length_;
+            ret = alloc_buffer(uncomp_buf_, 
+                uncomp_buf_size_);
           }
         }
       }
@@ -524,26 +964,24 @@ namespace oceanbase
         int64_t real_size = 0;
         if (header.is_compress())
         {
-          ObCompressor* dec = const_cast<ObCompactSSTableReader*>(reader)->get_decompressor();
+          ObCompressor* dec = const_cast<ObCompactSSTableReader*>(
+              sstable_reader_)->get_decompressor();
           if (NULL != dec)
           {
             if (OB_SUCCESS != (ret = dec->decompress(
                     comp_buf, comp_buf_size,
                     uncomp_buf_, header.data_length_, real_size)))
             {
-                TBSYS_LOG(WARN, "decompress error:ret=%d,"
-                    "comp_buf=%p,comp_buf_size=%ld,data_length_=%ld",
-                    ret, comp_buf, comp_buf_size, header.data_length_);
+              if (OB_SUCCESS != ret)
+              {
+                TBSYS_LOG(WARN, "decompress error:ret=%d", ret);
+              }
+              else
+              {
+                buf = uncomp_buf_;
+                buf_size = real_size;
+              }
             }
-            else
-            {
-              buf = uncomp_buf_;
-              buf_size = real_size;
-            }
-          }
-          else
-          {
-            TBSYS_LOG(ERROR, "compressor is NULL");
           }
         }
         else
@@ -552,6 +990,12 @@ namespace oceanbase
           buf = uncomp_buf_;
           buf_size = comp_buf_size;
         }
+      }
+
+      if (OB_SUCCESS != ret && NULL != sstable_reader_)
+      {
+        TBSYS_LOG(WARN, "ret!=OB_SUCCESS, NULL!=sstable_reader_,ret=%d,sstable_reader_=%p",
+            ret, sstable_reader_);
       }
 
       return ret;

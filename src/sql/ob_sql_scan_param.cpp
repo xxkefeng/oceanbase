@@ -12,6 +12,11 @@ namespace oceanbase
     void ObSqlScanParam::reset(void)
     {
       ObSqlReadParam::reset();
+      reset_local();
+    }
+
+    void ObSqlScanParam::reset_local(void)
+    {
       range_.table_id_ = OB_INVALID_ID;
       range_.start_key_.assign(NULL, 0);
       range_.end_key_.assign(NULL, 0);
@@ -22,7 +27,7 @@ namespace oceanbase
     // ObSqlScanParam
     ObSqlScanParam::ObSqlScanParam() :
       buffer_pool_(ObModIds::OB_SQL_SCAN_PARAM),
-      range_(), scan_flag_() 
+      range_(), scan_flag_()
     {
     }
 
@@ -195,6 +200,8 @@ namespace oceanbase
 
     DEFINE_DESERIALIZE(ObSqlScanParam)
     {
+      // reset contents
+      reset();
       ObObj obj;
       int ret = OB_SUCCESS;
 

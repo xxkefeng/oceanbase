@@ -18,7 +18,7 @@
 #include "util.h"
 #include "key_generator.h"
 #include "bigquerytest.h"
-#include <mysql/mysql.h>
+#include "mysql.h"
 
 char g_config[1024];
 

@@ -17,16 +17,14 @@
 #ifndef _OB_TABLET_READ_H
 #define _OB_TABLET_READ_H 1
 
-#include "ob_no_children_phy_operator.h"
+#include "sql/ob_no_children_phy_operator.h"
 #include "ob_cs_create_plan.h"
-#include "ob_cur_rowkey_interface.h"
 
 namespace oceanbase
 {
   namespace sql
   {
-    class ObTabletRead: public ObNoChildrenPhyOperator,
-        public ObCSCreatePlan, public ObCurRowkeyInterface
+    class ObTabletRead: public ObNoChildrenPhyOperator, public ObCSCreatePlan
     {
       protected:
         enum PlanLevel 
@@ -57,7 +55,7 @@ namespace oceanbase
         }
         int set_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy);
         inline void set_is_read_consistency(bool is_read_consistency);
-        int get_cur_rowkey(const ObRowkey *&rowkey) const;
+        int get_last_rowkey(const ObRowkey *&rowkey);
 
       protected:
         ObPhyOperator *op_root_;
@@ -65,7 +63,7 @@ namespace oceanbase
         ObSqlUpsRpcProxy *rpc_proxy_;
         int64_t network_timeout_;
         int64_t join_batch_count_;
-        ObCurRowkeyInterface *cur_rowkey_op_;
+        ObLastRowkeyInterface *last_rowkey_op_;
         enum PlanLevel plan_level_;
     };
 

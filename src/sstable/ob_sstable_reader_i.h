@@ -43,7 +43,6 @@ namespace oceanbase
         virtual int64_t get_row_count() const = 0;
         virtual int64_t get_sstable_size() const = 0;
         virtual int64_t get_sstable_checksum() const = 0;
-        virtual uint64_t get_sstable_row_checksum() const = 0;
         virtual ObCompressor* get_decompressor() = 0;
     };
 

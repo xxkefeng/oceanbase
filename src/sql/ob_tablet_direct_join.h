@@ -33,13 +33,13 @@ namespace oceanbase
         virtual void reset();
 
       private:
-        int get_ups_row(const ObRowkey &rowkey, ObRow &row, const ObGetParam &get_param);
+        int get_ups_row(const ObRowkey &rowkey, ObUpsRow &ups_row, const ObGetParam &get_param);
         int gen_get_param(ObGetParam &get_param, const ObRow &fused_row);
         int fetch_fused_row_prepare();
 
       private:
         const ObRowkey *last_ups_rowkey_;
-        const ObRow *last_ups_row_;
+        const ObUpsRow *last_ups_row_;
     };
   }
 }

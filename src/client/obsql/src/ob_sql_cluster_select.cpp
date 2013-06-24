@@ -77,10 +77,10 @@ int update_select_table(ObGroupDataSource *gds)
     {
       if (NULL == g_table)
       {
-        g_table = (ObSQLSelectTable *)ob_malloc(sizeof(ObSQLSelectTable));
+        g_table = (ObSQLSelectTable *)ob_malloc(sizeof(ObSQLSelectTable), ObModIds::LIB_OBSQL);
         TBSYS_LOG(DEBUG, "g_table->master_count_ is %u", g_table->master_count_);
         g_table->master_count_ = 0;
-        TBSYS_LOG(DEBUG, "g_table->master_count_ is %u", g_table->master_count_);      
+        TBSYS_LOG(DEBUG, "g_table->master_count_ is %u", g_table->master_count_);
         if (NULL == g_table)
         {
           TBSYS_LOG(ERROR, "alloc mem for ObSQLSelectTable failed");

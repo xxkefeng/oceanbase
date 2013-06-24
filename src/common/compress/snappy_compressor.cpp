@@ -27,7 +27,7 @@ int SnappyCompressor::compress(const char *src_buffer,
 {
   int ret = COM_E_NOERROR;
   
-  if (NULL == src_buffer
+  if (NULL == dst_buffer
       || 0 >= src_data_size
       || NULL == dst_buffer
       || 0 >= dst_buffer_size)
@@ -55,7 +55,7 @@ int SnappyCompressor::decompress(const char *src_buffer,
   int ret = COM_E_NOERROR;
   bool flag = true;
   size_t decom_size = 0;
-  if (NULL == src_buffer
+  if (NULL == dst_buffer
       || 0 >= src_data_size
       || NULL == dst_buffer
       || 0 >= dst_buffer_size)

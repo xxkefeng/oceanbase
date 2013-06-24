@@ -28,14 +28,17 @@ namespace oceanbase
       int64_t timeout_us;
       bool only_frozen_version_data_;
       bool only_static_data_;
-      bool read_consistency_;
+      bool is_get_skip_empty_row_;
+      int32_t read_method_;
+
       ObRpcScanHint() :
         max_parallel_count(20),
         max_memory_limit(1024*1024*512),
         timeout_us(1000*1000*10),
         only_frozen_version_data_(false),
         only_static_data_(false),
-        read_consistency_(false)
+        is_get_skip_empty_row_(true),
+        read_method_(0)
       {
       }
     };

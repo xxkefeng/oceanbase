@@ -141,12 +141,12 @@ int ObResultSet::pre_assign_params_room(const int64_t& size, common::StackAlloca
   return ret;
 }
 
-int ObResultSet::get_param_idx(const common::ObObj *param_addr, int64_t &idx)
+int ObResultSet::get_param_idx(int64_t param_addr, int64_t &idx)
 {
   int ret = OB_ENTRY_NOT_EXIST;
   for (int64_t i = 0; i < params_.count(); ++i)
   {
-    if (param_addr == params_.at(i))
+    if (reinterpret_cast<ObObj *>(param_addr) == params_.at(i))
     {
       ret = OB_SUCCESS;
       idx = i;

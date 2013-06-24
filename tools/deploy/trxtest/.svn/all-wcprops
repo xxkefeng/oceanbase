@@ -1,23 +1,23 @@
 K 25
 svn:wc:ra_dav:version-url
-V 75
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/tools/deploy/trxtest
-END
-trxtest.py
-K 25
-svn:wc:ra_dav:version-url
-V 86
-/repos/oceanbase/!svn/ver/11988/branches/dev/oceanbase/tools/deploy/trxtest/trxtest.py
+V 85
+/repos/oceanbase/!svn/ver/12905/branches/0_4_1_release/oceanbase/tools/deploy/trxtest
 END
 trxtest.conf.template
 K 25
 svn:wc:ra_dav:version-url
-V 97
-/repos/oceanbase/!svn/ver/11457/branches/dev/oceanbase/tools/deploy/trxtest/trxtest.conf.template
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/trxtest/trxtest.conf.template
 END
 stress.sh
 K 25
 svn:wc:ra_dav:version-url
-V 85
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/tools/deploy/trxtest/stress.sh
+V 95
+/repos/oceanbase/!svn/ver/12905/branches/0_4_1_release/oceanbase/tools/deploy/trxtest/stress.sh
+END
+trxtest.py
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/trxtest/trxtest.py
 END

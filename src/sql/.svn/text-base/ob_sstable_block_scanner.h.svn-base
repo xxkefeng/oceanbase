@@ -35,14 +35,14 @@ namespace oceanbase
   }
   namespace sql
   {
-    class ObSSTableBlockScanner : public ObRowIterator
+    class ObSSTableBlockScanner : public ObRowkeyIterator
     {
       public:
         ObSSTableBlockScanner(const sstable::ObSimpleColumnIndexes& column_indexes);
         ~ObSSTableBlockScanner();
 
 
-        int get_next_row(const common::ObRow *&row_value);
+        int get_next_row(const common::ObRowkey* &row_key, const common::ObRow *&row_value);
 
         /**
          * @param [in] range scan range(start key, end key, border flag).
@@ -73,7 +73,8 @@ namespace oceanbase
 
         int initialize(const bool is_reverse_scan, 
             const bool is_full_row_scan,
-            const int64_t store_style);
+            const int64_t store_style, 
+            const bool not_exit_col_ret_nop);
 
         int locate_start_pos(const common::ObNewRange& range,
             const_iterator& start_iterator, bool& need_looking_forward);
@@ -88,11 +89,18 @@ namespace oceanbase
         int64_t sstable_data_store_style_;
         bool    is_reverse_scan_;
         bool    is_full_row_scan_;
+        bool    not_exit_col_ret_nop_;
+
+        uint64_t current_column_count_;
+        int64_t not_null_column_count_;
 
         const_iterator row_cursor_;
         const_iterator row_start_index_;
         const_iterator row_last_index_;
         
+        common::ObRowkey current_rowkey_;
+        common::ObObj current_ids_[common::OB_MAX_COLUMN_NUMBER];
+        common::ObObj current_columns_[common::OB_MAX_COLUMN_NUMBER];
         common::ObRow current_row_;
 
         sstable::ObSSTableBlockReader reader_;

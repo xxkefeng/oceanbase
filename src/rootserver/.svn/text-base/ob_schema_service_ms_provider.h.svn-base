@@ -31,11 +31,15 @@ namespace oceanbase
         virtual ~ObSchemaServiceMsProvider();
 
         int get_ms(const common::ObScanParam &scan_param, const int64_t retry_num, common::ObServer &ms);
-        int get_ms(const int64_t retry_num, common::ObServer &ms);
       private:
         bool did_need_reset();
         int reset();
         void update_ms_retry(const common::ObServer &ms);
+        int get_ms(common::ObServer &ms)
+        {
+          UNUSED(ms);
+          return common::OB_NOT_IMPLEMENT;
+        }
       private:
         static const int64_t MAX_SERVER_COUNT = common::OB_TABLET_MAX_REPLICA_COUNT;
         static const int64_t MAX_MS_RETRY = 3;

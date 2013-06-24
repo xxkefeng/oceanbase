@@ -149,7 +149,7 @@ namespace oceanbase
     class ObRowkeyLess : public RowkeyInfoHolder
     {
       public:
-        ObRowkeyLess(const ObRowkeyInfo * ri)
+        ObRowkeyLess(const ObRowkeyInfo * ri) 
           : RowkeyInfoHolder(ri) {}
         ObRowkeyLess(const ObSchemaManagerV2* schema, const uint64_t table_id)
           : RowkeyInfoHolder(schema, table_id) {}
@@ -158,21 +158,6 @@ namespace oceanbase
         int compare(const ObRowkey& lhs, const ObRowkey &rhs) const;
     };
 
-    inline int64_t ObRowkey::get_deep_copy_size() const
-    {
-      int64_t obj_arr_len = obj_cnt_ * sizeof(common::ObObj);
-      int64_t total_len = obj_arr_len;
-
-      for (int64_t i = 0; i < obj_cnt_ ; ++i)
-      {
-        if (obj_ptr_[i].get_type() == common::ObVarcharType)
-        {
-          total_len += obj_ptr_[i].get_val_len();
-        }
-      }
-
-      return total_len;
-    }
 
     template <typename Allocator>
       int ObRowkey::deep_copy(ObRowkey& rhs, Allocator& allocator) const

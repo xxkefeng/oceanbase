@@ -17,13 +17,14 @@
 #include "ob_tablet_cache_join.h"
 #include "common/utility.h"
 #include "common/ob_row_util.h"
+#include "common/ob_ups_row_util.h"
 
 using namespace oceanbase;
 using namespace common;
 using namespace sql;
 
 ObTabletCacheJoin::ObTabletCacheJoin()
-  :row_cache_(NULL),
+  :ups_row_cache_(NULL),
   cache_handle_(NULL),
   handle_count_(0)
 {
@@ -38,18 +39,18 @@ void ObTabletCacheJoin::set_table_id(uint64_t table_id)
   table_id_ = table_id;
 }
 
-void ObTabletCacheJoin::set_cache(ObTabletJoinCache &row_cache)
+void ObTabletCacheJoin::set_cache(ObTabletJoinCache &ups_row_cache)
 {
-  row_cache_ = &row_cache;
+  ups_row_cache_ = &ups_row_cache;
 }
 
 int ObTabletCacheJoin::open()
 {
   int ret = OB_SUCCESS;
-  if (OB_INVALID_ID == table_id_ || NULL == row_cache_)
+  if (OB_INVALID_ID == table_id_ || NULL == ups_row_cache_)
   {
-    TBSYS_LOG(WARN, "not inited: table_id_[%lu], row_cache_[%p]",
-      table_id_, row_cache_);
+    TBSYS_LOG(WARN, "not inited: table_id_[%lu], ups_row_cache_[%p]",
+      table_id_, ups_row_cache_);
   }
   else if (OB_SUCCESS != (ret = ObTabletJoin::open()))
   {
@@ -63,7 +64,7 @@ int ObTabletCacheJoin::open()
 
   if(OB_SUCCESS == ret)
   {
-    void *tmp = ob_malloc(sizeof(CacheHandle) * batch_count_);
+    void *tmp = ob_malloc(sizeof(CacheHandle) * batch_count_, ObModIds::OB_SQL_TABLET_CACHE_JOIN);
     if(NULL == tmp)
     {
       ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -119,7 +120,7 @@ int ObTabletCacheJoin::fetch_fused_row_prepare()
   return ret;
 }
 
-int ObTabletCacheJoin::get_ups_row(const ObRowkey &rowkey, ObRow &row, const ObGetParam &get_param)
+int ObTabletCacheJoin::get_ups_row(const ObRowkey &rowkey, ObUpsRow &ups_row, const ObGetParam &get_param)
 {
   int ret = OB_SUCCESS;
   ObString value;
@@ -129,14 +130,14 @@ int ObTabletCacheJoin::get_ups_row(const ObRowkey &rowkey, ObRow &row, const ObG
     ObTabletJoinCacheKey cache_key;
     cache_key.table_id_ = table_id_;
     cache_key.rowkey_ = rowkey;
-    ret = row_cache_->get(cache_key, value);
+    ret = ups_row_cache_->get(cache_key, value);
     if(OB_ENTRY_NOT_EXIST == ret)
     {
-      if(OB_SUCCESS != (ret = fetch_next_row(get_param, fused_row_idx_)))
+      if(OB_SUCCESS != (ret = fetch_next_ups_row(get_param, fused_row_idx_)))
       {
-        TBSYS_LOG(WARN, "fetch next row fail:ret[%d]", ret);
+        TBSYS_LOG(WARN, "fetch next ups row fail:ret[%d]", ret);
       }
-      else if(OB_SUCCESS != (ret = row_cache_->get(cache_key, value)))
+      else if(OB_SUCCESS != (ret = ups_row_cache_->get(cache_key, value)))
       {
         TBSYS_LOG(WARN, "get rowkey %s from cache not exist.ret[%d]", to_cstring(rowkey), ret);
       }
@@ -149,24 +150,24 @@ int ObTabletCacheJoin::get_ups_row(const ObRowkey &rowkey, ObRow &row, const ObG
 
   if(OB_SUCCESS == ret)
   {
-    const bool is_ups_row = true;
-    if(OB_SUCCESS != (ret = ObRowUtil::convert(table_join_info_.right_table_id_, value, row, is_ups_row)))
+    if(OB_SUCCESS != (ret = ObUpsRowUtil::convert(table_join_info_.right_table_id_, value, ups_row)))
     {
-      TBSYS_LOG(WARN, "convert to row fail:ret[%d]", ret);
+      TBSYS_LOG(WARN, "convert to ups row fail:ret[%d]", ret);
     }
   }
   return ret;
 }
 
-int ObTabletCacheJoin::fetch_row(const ObGetParam &get_param)
+int ObTabletCacheJoin::fetch_ups_row(const ObGetParam &get_param)
 {
   int ret = OB_SUCCESS;
   int64_t row_count = 0;
+  const ObUpsRow *ups_row = NULL;
   ObString compact_row; //用于存储ObRow的紧缩格式，内存已经分配好
   const ObRowkey *rowkey = NULL;
   ThreadSpecificBuffer::Buffer *buffer = NULL;
-  
-  TBSYS_LOG(DEBUG, "fetch join ups_row param: %ld, %s", get_param.get_cell_size(), 
+
+  TBSYS_LOG(DEBUG, "fetch join ups_row param: %ld, %s", get_param.get_cell_size(),
       get_param.get_cell_size() < 10 ? to_cstring(get_param) : "..");
 
   if(OB_SUCCESS == ret)
@@ -198,16 +199,7 @@ int ObTabletCacheJoin::fetch_row(const ObGetParam &get_param)
     while(OB_SUCCESS == ret)
     {
       const ObRow *tmp_row_ptr = NULL;
-      ret = ups_multi_get_.get_next_row(tmp_row_ptr);
-      if (OB_SUCCESS == ret)
-      {
-        ret = tmp_row_ptr->get_rowkey(rowkey);
-        if (OB_SUCCESS != ret)
-        {
-          TBSYS_LOG(WARN, "failed to get rowkey:ret[%d]", ret);
-        }
-      }
-
+      ret = ups_multi_get_.get_next_row(rowkey, tmp_row_ptr);
       if(OB_ITER_END == ret)
       {
         ret = OB_SUCCESS;
@@ -221,15 +213,21 @@ int ObTabletCacheJoin::fetch_row(const ObGetParam &get_param)
       {
         if (row_count++ < 10)
         {
-          TBSYS_LOG(DEBUG, "fetch join ups row(%ld): key:%s, row:%s", 
+          TBSYS_LOG(DEBUG, "fetch join ups row(%ld): key:%s, row:%s",
               row_count, to_cstring(*rowkey), to_cstring(*tmp_row_ptr));
+        }
+        ups_row = dynamic_cast<const ObUpsRow *>(tmp_row_ptr);
+        if(NULL == ups_row)
+        {
+          ret = OB_ERR_UNEXPECTED;
+          TBSYS_LOG(WARN, "shoud be ObUpsRow");
         }
       }
 
       if(OB_SUCCESS == ret)
       {
         compact_row.assign_buffer(buffer->current(), buffer->remain());
-        if(OB_SUCCESS != (ret = ObRowUtil::convert(*tmp_row_ptr, compact_row)))
+        if(OB_SUCCESS != (ret = ObUpsRowUtil::convert(*ups_row, compact_row)))
         {
           TBSYS_LOG(WARN, "convert ups row to compact row fail:ret[%d]", ret);
         }
@@ -250,7 +248,7 @@ int ObTabletCacheJoin::fetch_row(const ObGetParam &get_param)
         ObTabletJoinCacheKey cache_key;
         cache_key.table_id_ = table_id_;
         cache_key.rowkey_ = *rowkey;
-        ret = row_cache_->put_and_fetch(cache_key, compact_row, value, cache_handle_[handle_count_]);
+        ret = ups_row_cache_->put_and_fetch(cache_key, compact_row, value, cache_handle_[handle_count_]);
         if(OB_BUF_NOT_ENOUGH == ret)
         {
           if(row_in_cache_num <= 0)
@@ -296,7 +294,7 @@ int ObTabletCacheJoin::compose_next_get_param(ObGetParam &next_get_param, int64_
   ObRow row;
   const ObRowDesc *row_desc = NULL;
 
-  if (OB_SUCCESS != (ret = join_merger_->get_row_desc(row_desc) ))
+  if (OB_SUCCESS != (ret = fused_scan_->get_row_desc(row_desc) ))
   {
     TBSYS_LOG(WARN, "fail to get row desc:ret[%d]", ret);
   }
@@ -304,7 +302,7 @@ int ObTabletCacheJoin::compose_next_get_param(ObGetParam &next_get_param, int64_
   {
     row.set_row_desc(*row_desc);
   }
-  
+
   if(OB_SUCCESS == ret)
   {
     next_get_param.reset(true);
@@ -336,7 +334,7 @@ int ObTabletCacheJoin::revert_cache_handle()
   {
     for(int64_t i=0;OB_SUCCESS == ret && i<handle_count_;i++)
     {
-      if(OB_SUCCESS != (ret = row_cache_->revert(cache_handle_[i])))
+      if(OB_SUCCESS != (ret = ups_row_cache_->revert(cache_handle_[i])))
       {
         TBSYS_LOG(WARN, "revert cache handle fail:ret[%d], [%ld]", ret, i);
       }
@@ -350,7 +348,7 @@ int ObTabletCacheJoin::revert_cache_handle()
   return ret;
 }
 
-int ObTabletCacheJoin::fetch_next_row(const ObGetParam &get_param, int64_t fused_row_idx)
+int ObTabletCacheJoin::fetch_next_ups_row(const ObGetParam &get_param, int64_t fused_row_idx)
 {
   int ret = OB_SUCCESS;
   const ObGetParam *next_get_param = NULL;
@@ -399,9 +397,9 @@ int ObTabletCacheJoin::fetch_next_row(const ObGetParam &get_param, int64_t fused
 
   if (OB_SUCCESS == ret)
   {
-    if(OB_SUCCESS != (ret = fetch_row(*next_get_param)))
+    if(OB_SUCCESS != (ret = fetch_ups_row(*next_get_param)))
     {
-      TBSYS_LOG(WARN, "fetch_row fail:ret[%d]", ret);
+      TBSYS_LOG(WARN, "fetch_ups_row fail:ret[%d]", ret);
     }
   }
   return ret;
@@ -436,7 +434,7 @@ int ObTabletCacheJoin::gen_get_param(ObGetParam &get_param, const ObRow &fused_r
     ObTabletJoinCacheKey cache_key;
     cache_key.table_id_ = table_id_;
     cache_key.rowkey_ = rowkey;
-    ret = row_cache_->get(cache_key, value, cache_handle_[handle_count_]);
+    ret = ups_row_cache_->get(cache_key, value, cache_handle_[handle_count_]);
     if(OB_ENTRY_NOT_EXIST == ret)
     {
       if(OB_SUCCESS != (ret = compose_get_param(table_join_info_.right_table_id_, rowkey, get_param)))
@@ -458,4 +456,3 @@ int ObTabletCacheJoin::gen_get_param(ObGetParam &get_param, const ObRow &fused_r
   }
   return ret;
 }
-

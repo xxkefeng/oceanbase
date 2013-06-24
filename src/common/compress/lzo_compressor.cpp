@@ -54,10 +54,10 @@ int LZOCompressor::compress(const char *src_buffer,
 {
   int ret = COM_E_NOERROR;
   static __thread char wrkmem[LZO1X_1_MEM_COMPRESS];
-  //memset(wrkmem, 0, LZO1X_1_MEM_COMPRESS);
+  memset(wrkmem, 0, LZO1X_1_MEM_COMPRESS);
   int lzo_errno = LZO_E_OK;
   int64_t compress_ret_size = dst_buffer_size;
-  if (NULL == src_buffer
+  if (NULL == dst_buffer
       || 0 >= src_data_size
       || NULL == dst_buffer
       || 0 >= dst_buffer_size)
@@ -93,7 +93,7 @@ int LZOCompressor::decompress(const char *src_buffer,
   int ret = COM_E_NOERROR;
   int lzo_errno = LZO_E_OK;
   int64_t decompress_ret_size = dst_buffer_size;
-  if (NULL == src_buffer
+  if (NULL == dst_buffer
       || 0 >= src_data_size
       || NULL == dst_buffer
       || 0 >= dst_buffer_size)

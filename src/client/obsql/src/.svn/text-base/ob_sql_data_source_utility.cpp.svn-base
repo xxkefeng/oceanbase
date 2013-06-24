@@ -43,7 +43,7 @@ static int copy_ds(ObDataSource *dest, ObDataSource *src)
 int create_real_connection(ObDataSource *pool)
 {
   int ret = OB_SQL_SUCCESS;
-  ObSQLConn *conn = reinterpret_cast<ObSQLConn *>(ob_malloc(sizeof(ObSQLConn)));
+  ObSQLConn *conn = reinterpret_cast<ObSQLConn *>(ob_malloc(sizeof(ObSQLConn), ObModIds::LIB_OBSQL));
   if (NULL == conn)
   {
     TBSYS_LOG(ERROR, "ob_malloc mem for ObSQLConn failed");
@@ -162,7 +162,7 @@ int delete_data_source(ObDataSource *ds)
     }
     else
     {
-      ObSQLConnList *list = reinterpret_cast<ObSQLConnList*>(ob_malloc(sizeof(ObSQLConnList)));
+      ObSQLConnList *list = reinterpret_cast<ObSQLConnList*>(ob_malloc(sizeof(ObSQLConnList), ObModIds::LIB_OBSQL));
       move_conn_list(list, ds);
       TBSYS_LOG(DEBUG, "delete ms size is %d", get_list_size(&g_delete_ms_list));
       ob_sql_list_add_tail(&list->delete_list_node_, &g_delete_ms_list);

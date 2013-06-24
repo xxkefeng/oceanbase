@@ -267,35 +267,6 @@ namespace oceanbase
       return ret;
     }
 
-    int get_tmp_directory(const int32_t disk_no, char *path, const int64_t path_len)
-    {
-      int ret = OB_SUCCESS;
-      if (disk_no < 0 || NULL == path || path_len < 0)
-      {
-        TBSYS_LOG(WARN, "get_tmp_directory invalid arguments, "
-            "disk_no=%d,path=%p,path_len=%ld", disk_no, path, path_len);
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else
-      {
-        // read from configure file
-        const char *data_dir = NULL;
-        const char *app_name = NULL;
-        ret = get_config_item(data_dir, app_name);
-        if (OB_SUCCESS == ret)
-        {
-          int bufsiz = snprintf(path, path_len, "%s/%d/temp", data_dir, disk_no);
-          if (bufsiz + 1 > path_len)
-          {
-            TBSYS_LOG(WARN, "get_tmp_directory , path_len=%ld <= bufsiz=%d", path_len, bufsiz);
-            ret = OB_SIZE_OVERFLOW;
-          }
-        }
-      }
-
-      return ret;
-    }
-
     static int get_sstable_directory_helper(const int32_t disk_no, char *path, 
       const int64_t path_len, const char* import_dir_name)
     {

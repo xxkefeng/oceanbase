@@ -88,7 +88,7 @@ namespace oceanbase
       return ret;
     }
 
-    inline __attribute__((always_inline)) int ObRawRow::set_cell(const int64_t i, const common::ObObj &cell)
+    inline int ObRawRow::set_cell(const int64_t i, const common::ObObj &cell)
     {
       int ret = common::OB_SUCCESS;
       if (0 > i || i >= MAX_COLUMNS_COUNT)
@@ -101,7 +101,7 @@ namespace oceanbase
         cells_[i] = cell;
         if (i >= cells_count_)
         {
-          cells_count_ = static_cast<int16_t>(1 + i);
+          cells_count_ = static_cast<int16_t>(1+i);
         }
       }
       return ret;

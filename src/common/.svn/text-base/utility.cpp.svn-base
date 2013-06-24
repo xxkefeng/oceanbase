@@ -349,9 +349,8 @@ namespace oceanbase
       return easy_inet_addr_to_str(&addr, buffer, BUFFER_SIZE);
     }
 
-    int databuff_printf(char *buf, const int64_t buf_len, int64_t& pos, const char* fmt, ...)
+    void databuff_printf(char *buf, const int64_t buf_len, int64_t& pos, const char* fmt, ...)
     {
-      int ret = OB_SUCCESS;
       if (NULL != buf && 0 <= pos && pos <= buf_len)
       {
         va_list args;
@@ -365,14 +364,8 @@ namespace oceanbase
         else
         {
           pos = buf_len;
-          ret = OB_BUF_NOT_ENOUGH;
         }
       }
-      else
-      {
-        ret = OB_BUF_NOT_ENOUGH;
-      }
-      return ret;
     }
 
     const char* strtype(ObObjType type)
@@ -407,8 +400,8 @@ namespace oceanbase
         case ObCreateTimeType:
           ret = "createtime";
           break;
-        case ObUnknownType:
-          ret = "unknown";
+        case ObSeqType:
+          ret = "seq";
           break;
         case ObExtendType:
           ret = "ext";
@@ -898,12 +891,8 @@ namespace oceanbase
             }
           }
           break;
-        case ObUnknownType:
-          {
-            const ObObj *tmp = NULL;
-            obj.get_unknown(tmp);
-            snprintf(buffer, BUFFER_SIZE, "obj_type=unknown. value=%p", tmp);
-          }
+        case ObSeqType:
+          snprintf(buffer, BUFFER_SIZE, "obj_type=seq");
           break;
         case ObCreateTimeType:
           {
@@ -999,6 +988,18 @@ namespace oceanbase
         }
       }
 
+      return ret;
+    }
+
+    template <>
+    int64_t to_string<ObString>(const ObString &obj, char *buffer, const int64_t buffer_size)
+    {
+      snprintf(buffer, buffer_size, "0x ");
+      int64_t ret = common::hex_to_str(obj.ptr(), obj.length(), &buffer[3], static_cast<int32_t>(buffer_size) - 3) + 3;
+      if (ret >= buffer_size)
+      {
+        ret = buffer_size - 1;
+      }
       return ret;
     }
 

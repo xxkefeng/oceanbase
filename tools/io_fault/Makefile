@@ -4,7 +4,7 @@ cc = gcc
 cflags =
 ldflags = -ldl
 
-EXTRA_DIST = Makefile iof.c func-list.c gen-iof-preload-func.py
+EXTRA_DIST = Makefile iof.c func-list.c extra-func-list.c gen-iof-preload-func.py
 
 all: $(target)
 %.test: %
@@ -16,7 +16,7 @@ all: $(target)
 	nc 127.0.0.1 10001 <date.txt
 func-list.c: gen-iof-preload-func.py
 	./$< >$@
-$(target): $(target).c func-list.c
+$(target): $(target).c func-list.c extra-func-list.c
 	$(cc) -o $@ $^ -fPIC --shared -Wl,-e,mystart $(cflags) $(ldflags)
 clean:
 	rm -f $(target) *.o

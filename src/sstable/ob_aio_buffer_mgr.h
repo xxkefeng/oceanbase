@@ -253,24 +253,12 @@ namespace oceanbase
 
       ObIOStat& operator += (const ObIOStat& stat)
       {
+        total_read_size_ += stat.total_read_size_;
+        total_read_times_ += stat.total_read_times_;
+        total_read_blocks_ += stat.total_read_blocks_;
         total_blocks_ += stat.total_blocks_;
         total_size_ += stat.total_size_;
         total_cached_size_ += stat.total_cached_size_;
-
-        total_ior_size_ += stat.total_ior_size_;
-        total_ior_count_ += stat.total_ior_count_;
-        total_ior_blocks_ += stat.total_ior_blocks_;
-        total_ior_time_ += stat.total_ior_time_;
-
-        total_iow_size_ += stat.total_iow_size_;
-        total_iow_count_ += stat.total_iow_count_;
-        total_iow_blocks_ += stat.total_iow_blocks_;
-        total_iow_time_ += stat.total_iow_time_;
-
-        total_rpc_size_ += stat.total_rpc_size_;
-        total_rpc_count_ += stat.total_rpc_count_;
-        total_rpc_time_ += stat.total_rpc_time_;
-
         if (stat.sstable_id_ > 0)
         {
           sstable_id_ = stat.sstable_id_;
@@ -279,24 +267,13 @@ namespace oceanbase
         return *this;
       }
 
-      uint64_t sstable_id_;
+      int64_t total_read_size_;
+      int64_t total_read_times_;
+      int64_t total_read_blocks_;
       int64_t total_blocks_;
       int64_t total_size_;
       int64_t total_cached_size_;
-
-      int64_t total_ior_size_;
-      int64_t total_ior_count_;
-      int64_t total_ior_blocks_;
-      int64_t total_ior_time_;
-
-      int64_t total_iow_size_;
-      int64_t total_iow_count_;
-      int64_t total_iow_blocks_;
-      int64_t total_iow_time_;
-
-      int64_t total_rpc_size_;
-      int64_t total_rpc_count_;
-      int64_t total_rpc_time_;
+      uint64_t sstable_id_;
     };
 
     enum ObDoubleAIOBufferState

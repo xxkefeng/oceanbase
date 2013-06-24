@@ -35,6 +35,7 @@ namespace oceanbase
     ObMySQLServer::ObMySQLServer(): io_thread_count_(1), work_thread_count_(10),
                                     task_queue_size_(100), port_(3100),
                                     stop_(false), eio_(NULL),
+                                    session_pool_(common::OB_MALLOC_BLOCK_SIZE, ObMalloc(ObModIds::OB_SQL_SESSION_POOL)),
                                     self_()
     {
     }
@@ -508,7 +509,7 @@ namespace oceanbase
 
           if (OB_SUCCESS == ret)
           {
-            ObPrivilege *p_privilege = reinterpret_cast<ObPrivilege*>(ob_malloc(sizeof(ObPrivilege)));
+            ObPrivilege *p_privilege = reinterpret_cast<ObPrivilege*>(ob_malloc(sizeof(ObPrivilege), ObModIds::OB_SQL_PRIVILEGE));
             if (NULL == p_privilege)
             {
               ret = OB_ALLOCATE_MEMORY_FAILED;
@@ -613,7 +614,14 @@ namespace oceanbase
       ObSQLSessionInfo *session = NULL;
       if (OB_SUCCESS != (ret = login_handler_.login(c, session)))
       {
-        TBSYS_LOG(ERROR, "handler login failed ret is %d", ret);
+        if (IS_SQL_ERR(ret))
+        {
+          TBSYS_LOG(WARN, "handler login failed ret is %d", ret);
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "handler login failed ret is %d", ret);
+        }
       }
       return ret;
     }
@@ -1002,8 +1010,7 @@ namespace oceanbase
             int64_t sessions_num = session_mgr_.size() - 1;
             TBSYS_LOG(INFO, "delete expired session, session_key=%d session=%s sessions_num=%ld",
                       seq, to_cstring(*expired_session), sessions_num);
-            expired_session->~ObSQLSessionInfo();
-            ob_free(expired_session);
+            session_pool_.free(expired_session);
             expired_session = NULL;
             ret = session_mgr_.erase(seq);
             if (-1 == ret)
@@ -1518,7 +1525,6 @@ namespace oceanbase
       }
       else
       {
-        FILL_TRACE_LOG("query_result=(%s)", to_cstring(*result));
         easy_request_t* req = packet->get_request();
         easy_addr_t addr = get_easy_addr(req);
         number = packet->get_packet_header().seq_;
@@ -1576,7 +1582,7 @@ namespace oceanbase
               ret = ret2;
             }
           }
-          FILL_TRACE_LOG("close");
+          FILL_TRACE_LOG("close, query_result=(%s)", to_cstring(*result));
         }
       }
       return ret;

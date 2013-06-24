@@ -50,7 +50,7 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        virtual int add_output_column(const ObSqlExpression& expr) = 0; 
+        virtual int add_output_column(const ObSqlExpression& expr) = 0;
 
         /**
          * 设置table_id
@@ -60,7 +60,7 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        virtual int set_table(const uint64_t table_id, const uint64_t base_table_id) = 0; 
+        virtual int set_table(const uint64_t table_id, const uint64_t base_table_id) = 0;
 
         /**
          * 添加一个filter
@@ -69,8 +69,8 @@ namespace oceanbase
          *
          * @return OB_SUCCESS或错误码
          */
-        virtual int add_filter(const ObSqlExpression& expr) = 0;
-        
+        virtual int add_filter(ObSqlExpression* expr) = 0;
+
         /**
          * 指定limit/offset
          *
@@ -90,4 +90,3 @@ namespace oceanbase
 } // end namespace oceanbase
 
 #endif /* _OB_TABLE_SCAN_H */
-

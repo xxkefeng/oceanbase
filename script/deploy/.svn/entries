@@ -2,14 +2,14 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/script/deploy
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/script/deploy
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-05-23T06:29:23.055479Z
-13944
-zhuweng.yzf
+2013-06-03T11:04:20.486952Z
+14166
+fufeng.syd
 
 
 
@@ -26,51 +26,17 @@ zhuweng.yzf
 
 dd5f2d26-132e-4cc5-bbb5-82d5b530e537
 
-oceanbase.conf.template
-file
-
-
-
-
-2013-06-19T09:27:17.000000Z
-2872f768533c6a30a7cff7825b07d7a1
-2013-05-06T10:04:21.846941Z
-13626
-zhuweng.yzf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-2267
-
 oceanbase.pl
 file
 
 
 
 
-2013-06-19T09:27:17.000000Z
-cb01cdc6935afb1dd46884b2675082c8
-2013-05-23T06:29:23.055479Z
-13944
-zhuweng.yzf
+2013-06-20T08:38:54.000000Z
+170c0d271a389082703bdda6ef7e8f11
+2013-06-03T11:04:20.486952Z
+14166
+fufeng.syd
 has-props
 
 
@@ -92,5 +58,39 @@ has-props
 
 
 
-23176
+23245
+
+oceanbase.conf.template
+file
+
+
+
+
+2013-06-20T08:38:54.000000Z
+c449c959081c44c080cb92f11883fcc7
+2013-06-03T11:04:20.486952Z
+14166
+fufeng.syd
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2226
 

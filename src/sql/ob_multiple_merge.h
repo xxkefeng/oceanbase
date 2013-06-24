@@ -18,7 +18,7 @@
 #define _OB_MULTIPLE_MERGE_H 1
 
 #include "ob_phy_operator.h"
-#include "ob_cur_rowkey_interface.h"
+#include "common/ob_ups_row.h"
 
 namespace oceanbase
 {
@@ -26,13 +26,12 @@ namespace oceanbase
   {
     using namespace common;
 
-    class ObMultipleMerge : public ObPhyOperator, public ObCurRowkeyInterface
+    class ObMultipleMerge : public ObPhyOperator
     {
       public:
         ObMultipleMerge();
         virtual ~ObMultipleMerge();
-        virtual void reset();
-        virtual void reuse();
+
         static const int64_t MAX_CHILD_OPERATOR_NUM = 128;
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator );
         virtual ObPhyOperator *get_child(int32_t child_idx) const;
@@ -41,8 +40,6 @@ namespace oceanbase
         
         virtual int get_row_desc(const ObRowDesc *&row_desc) const;
         void set_is_ups_row(bool is_ups_row);
-
-        int get_cur_rowkey(const common::ObRowkey *&rowkey) const;
 
         VIRTUAL_NEED_SERIALIZE_AND_DESERIALIZE;
 
@@ -53,10 +50,7 @@ namespace oceanbase
         CharArena allocator_;
         ObPhyOperator *child_array_[MAX_CHILD_OPERATOR_NUM];
         int32_t child_num_;
-        // default value of row, true for ObRow::DEFAULT_NOP, false for ObRow::DEFAULT_NULL
-        bool is_ups_row_; // default true
-        ObRow cur_row_;
-        const ObRowkey *cur_rowkey_;
+        bool is_ups_row_;
     };
   }
 }

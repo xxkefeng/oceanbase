@@ -523,27 +523,6 @@ int32_t ObStmt::get_table_bit_index(uint64_t table_id) const
   return static_cast<int32_t>(idx);
 }
 
-int ObStmt::add_subquery_index(int32_t index)
-{
-  int ret = OB_SUCCESS;
-  if (!subqueries_idxes_.add_member(index))
-  {
-    TBSYS_LOG(WARN, "can not add sub-query index %d.", index);
-    ret = OB_ERROR;
-  }
-  return ret;
-}
-
-bool ObStmt::has_subqueries() const
-{
-  return !subqueries_idxes_.is_empty();
-}
-
-bool ObStmt::has_member(int32_t index) const
-{
-  return subqueries_idxes_.has_member(index);
-}
-
 void ObStmt::print(FILE* fp, int32_t level, int32_t index)
 {
   OB_ASSERT(index >= 0);

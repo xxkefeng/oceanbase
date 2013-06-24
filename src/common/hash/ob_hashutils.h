@@ -920,25 +920,26 @@ namespace oceanbase
         array = NULL;
       }
 
-      template <class Array>
-      int create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size)
+      template <class Array, class BucketAllocator>
+      int create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, BucketAllocator &alloc)
       {
-        return do_create(array, total_size, array_size, item_size, typename ArrayTraits<Array>::ArrayTag());
+        return do_create(array, total_size, array_size, item_size, typename ArrayTraits<Array>::ArrayTag(), alloc);
       }
 
-      template <class Array>
-      int do_create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, BigArrayTag)
+      template <class Array, class BucketAllocator>
+      int do_create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, BigArrayTag, BucketAllocator &alloc)
       {
         UNUSED(item_size);
+        UNUSED(alloc);
         return array.create(total_size, array_size);
       }
 
-      template <class Array>
-      int do_create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, NormalPointerTag)
+      template <class Array, class BucketAllocator>
+      int do_create(Array &array, int64_t total_size, int64_t array_size, int64_t item_size, NormalPointerTag, BucketAllocator &alloc)
       {
         UNUSED(array_size);
         int ret = 0;
-        if (NULL == (array = (Array)ob_malloc(total_size * item_size, ObModIds::OB_HASH_BUCKET)))
+        if (NULL == (array = (Array)alloc.alloc(total_size * item_size)))
         {
           ret = -1;
         }
@@ -967,24 +968,24 @@ namespace oceanbase
         return (NULL != array);
       }
 
-      template <class Array>
-      void destroy(Array &array)
+      template <class Array, class BucketAllocator>
+      void destroy(Array &array, BucketAllocator& alloc)
       {
-        return do_destroy(array, typename ArrayTraits<Array>::ArrayTag());
+        do_destroy(array, typename ArrayTraits<Array>::ArrayTag(), alloc);
       }
 
-      template <class Array>
-      void do_destroy(Array &array, BigArrayTag)
+      template <class Array, class BucketAllocator>
+      void do_destroy(Array &array, BigArrayTag, BucketAllocator &)
       {
         array.destroy();
       }
 
-      template <class Array>
-      void do_destroy(Array &array, NormalPointerTag)
+      template <class Array, class BucketAllocator>
+      void do_destroy(Array &array, NormalPointerTag, BucketAllocator &alloc)
       {
         if (NULL != array)
         {
-          ob_free(array);
+          alloc.free(array);
           array = NULL;
         }
       }
@@ -993,8 +994,15 @@ namespace oceanbase
 
       struct DefaultSimpleAllocerAllocator
       {
-        void *alloc(const int64_t sz) { return ob_malloc(sz, ObModIds::OB_HASH_NODE); }
-        void free(void *p) { ob_free(p); }
+        public:
+          DefaultSimpleAllocerAllocator(int32_t mod_id = ObModIds::OB_HASH_NODE)
+            :mod_id_(mod_id)
+          {
+          }
+          void *alloc(const int64_t sz) { return ob_malloc(sz, mod_id_); }
+          void free(void *p) { ob_free(p); }
+        private:
+          int32_t mod_id_;
       };
 
       template <class T, int32_t NODE_NUM>
@@ -1026,8 +1034,28 @@ namespace oceanbase
         Block *next;
       };
 
+      template <bool B, class T>
+      struct NodeNumTraits
+      {
+      };
+
+      template <class T>
+      struct NodeNumTraits<false, T>
+      {
+        static const int32_t NODE_NUM = (common::OB_MALLOC_BLOCK_SIZE - 24/*=sizeof(SimpleAllocerBlock 's members except nodes_buffer)*/ - 128/*for robust*/)/(32/*sizeof(SimpleAllocerNode's members except data)*/+sizeof(T));
+      };
+
+      template <class T>
+      struct NodeNumTraits<true, T>
+      {
+        static const int32_t NODE_NUM = 1;
+      };
+
+#define IS_BIG_OBJ(T) \
+      ((common::OB_MALLOC_BLOCK_SIZE - 24 - 128) < (32 + sizeof(T)))
+
       template <class T,
-               int32_t NODE_NUM = 1024,
+               int32_t NODE_NUM = NodeNumTraits<IS_BIG_OBJ(T), T>::NODE_NUM,
                class DefendMode = SpinMutexDefendMode,
                class Allocer = DefaultSimpleAllocerAllocator>
       class SimpleAllocer
@@ -1069,7 +1097,7 @@ namespace oceanbase
             block_list_head_ = NULL;
             free_list_head_ = NULL;
           };
-          T *allocate()
+          T *alloc()
           {
             T *ret = NULL;
             mutexlocker locker(lock_);
@@ -1124,7 +1152,7 @@ namespace oceanbase
             }
             return (new(ret) T());
           }
-          void deallocate(T *data)
+          void free(T *data)
           {
             mutexlocker locker(lock_);
             if (NULL == data)

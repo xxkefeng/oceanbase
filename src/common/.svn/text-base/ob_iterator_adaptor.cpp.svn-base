@@ -616,6 +616,12 @@ namespace oceanbase
 
     int ObRowIterAdaptor::get_next_row(const ObRow *&row)
     {
+      const ObRowkey *rowkey = NULL;
+      return get_next_row(rowkey, row);
+    }
+
+    int ObRowIterAdaptor::get_next_row(const ObRowkey *&rowkey, const ObRow *&row)
+    {
       int ret = OB_SUCCESS;
       if (NULL == cell_iter_)
       {
@@ -635,7 +641,6 @@ namespace oceanbase
               || OB_SUCCESS != (ret = cell_iter_->is_row_finished(&is_row_finished)))
           {
             ret = (OB_SUCCESS == ret) ? OB_ERROR : ret;
-            TBSYS_LOG(WARN, "failed to get cell from cell_iter,ret[%d]", ret);
             break;
           }
           if (deep_copy_
@@ -654,6 +659,7 @@ namespace oceanbase
           cell_counter++;
           if (is_row_finished)
           {
+            rowkey = &(ci->row_key_);
             break;
           }
         }
@@ -663,10 +669,8 @@ namespace oceanbase
           TBSYS_LOG(ERROR, "unexpected row iter end, but irf is false, ret=%d cell_counter=%ld %s", ret, cell_counter, to_cstring(cur_row_));
           ret = OB_ERR_UNEXPECTED;
         }
-        if (OB_SUCCESS == ret && 0 == cell_counter)
-        {
-          ret = OB_ITER_END;
-        }
+        ret = (0 == cell_counter) ? OB_ITER_END : ret;
+        rowkey = (OB_SUCCESS == ret) ? rowkey : NULL;
         row = (OB_SUCCESS == ret) ? &cur_row_ : NULL;
       }
       return ret;

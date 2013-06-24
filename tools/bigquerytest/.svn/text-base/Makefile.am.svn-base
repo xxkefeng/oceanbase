@@ -15,7 +15,7 @@ LDADD = $(top_builddir)/src/chunkserver/libchunkserver.a \
 
 AM_LDFLAGS = -lmysqlclient_r -lpthread -lc -lm -lrt -ldl -lnuma -lssl -Llib
 #AM_LDFLAGS = -lpq -lmysqlclient -lpthread -lc -lm -lrt -ldl -lnuma
-CXXFLAGS = -D__STDC_LIMIT_MACROS -g -Wall -DORDER_SERIALIZE -Wno-deprecated#-O2 -fno-strict-aliasing
+CXXFLAGS = -D__STDC_LIMIT_MACROS -g -Wall -DORDER_SERIALIZE #-O2 -fno-strict-aliasing
 if COVERAGE
 CXXFLAGS+=-fprofile-arcs -ftest-coverage
 AM_LDFLAGS+=-lgcov
@@ -51,8 +51,7 @@ EXTRA_DIST = mysql_client.h \
 						 read_worker.h \
 						 write_worker.h \
 						 bigquerytest_param.h \
-						 bigquerytest.h \
-						 lib/libmysqlclient_r.a
+						 bigquerytest.h
 
 clean-local:
 	-rm -f *.gcov *.gcno *.gcda

@@ -184,23 +184,6 @@ const ObSchemaManagerV2 * ObMergerSchemaManager::get_user_schema(const int64_t v
   return schema;
 }
 
-const ObSchemaManagerV2 * ObMergerSchemaManager::get_sys_schema(const int64_t version) const
-{
-  UNUSED(version);
-  return &sys_schema_.schema;
-}
-
-const ObSchemaManagerV2 * ObMergerSchemaManager::get_schema(const int64_t version)
-{
-  const common::ObSchemaManagerV2 * schema = get_user_schema(version);
-  if (NULL == schema) 
-  {
-    schema = get_sys_schema(version);
-  }
-  return schema;
-}
-
-
 int ObMergerSchemaManager::release_schema(const ObSchemaManagerV2 * schema)
 {
   int ret = OB_RELEASE_SCHEMA_ERROR;

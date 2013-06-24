@@ -37,19 +37,6 @@ namespace oceanbase
       uint64_t sstable_file_id_;
       int64_t sstable_file_offset_;
 
-      void reset()
-      {
-        sstable_file_id_ = 0;
-        sstable_file_offset_ = 0;
-      }
-
-      ObSSTableId & operator = (const ObSSTableId & sstable_id)
-      {
-        sstable_file_id_ = sstable_id.sstable_file_id_;
-        sstable_file_offset_ = sstable_id.sstable_file_offset_;
-        return *this;
-      }
-
       bool operator < (const ObSSTableId& rhs) const
       {
         return ((sstable_file_id_ < rhs.sstable_file_id_) || \
@@ -124,9 +111,6 @@ namespace oceanbase
     int get_sstable_directory(const int32_t disk_no, char *path, const int64_t path_len);
 
     int get_recycle_directory(const int32_t disk_no, char *path, const int64_t path_len);
-
-    // Get temporary directory base on disk no.
-    int get_tmp_directory(const int32_t disk_no, char *path, const int64_t path_len);
 
     /**
      * get tablet index file path

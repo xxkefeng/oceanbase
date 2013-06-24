@@ -64,6 +64,22 @@ namespace oceanbase
         // because of the heartbeat handle will block tbnet thread
         static const int64_t FETCH_SCHEMA_INTERVAL = 30 * 1000;
 
+        int cs_get(
+            const int64_t start_time, 
+            const int32_t version,
+            const int32_t channel_id,
+            easy_request_t* req,
+            common::ObDataBuffer& in_buffer,
+            common::ObDataBuffer& out_buffer,
+            const int64_t timeout_time);
+
+        int cs_batch_get(
+            const int32_t version,
+            const int32_t channel_id,
+            easy_request_t* req,
+            common::ObDataBuffer& in_buffer,
+            common::ObDataBuffer& out_buffer);
+
 
         int cs_sql_scan(
             const int32_t version,
@@ -90,20 +106,13 @@ namespace oceanbase
             const int64_t timeout_time,
             sql::ObSqlReadParam *sql_read_param_ptr);
 
-        int cs_plan_execute(
+        int cs_scan(
+            const int64_t start_time, 
             const int32_t version,
             const int32_t channel_id,
             easy_request_t* req,
             common::ObDataBuffer& in_buffer,
             common::ObDataBuffer& out_buffer,
-            const int64_t timeout_time);
-
-        int cs_sstable_scan(
-            const int32_t version,
-            const int32_t channel_id,
-            easy_request_t *req,
-            common::ObDataBuffer &in_buffer,
-            common::ObDataBuffer &out_buffer,
             const int64_t timeout_time);
 
         int cs_drop_old_tablets(
@@ -260,27 +269,6 @@ namespace oceanbase
             common::ObDataBuffer& in_buffer,
             common::ObDataBuffer& out_buffer);
 
-        int cs_build_sample(
-            const int32_t version,
-            const int32_t channel_id,
-            easy_request_t* req,
-            common::ObDataBuffer& in_buffer,
-            common::ObDataBuffer& out_buffer);
-
-        int cs_build_index(
-            const int32_t version,
-            const int32_t channel_id,
-            easy_request_t* req,
-            common::ObDataBuffer& in_buffer,
-            common::ObDataBuffer& out_buffer);
-
-        int cs_stop_build_index(
-            const int32_t version,
-            const int32_t channel_id,
-            easy_request_t* req,
-            common::ObDataBuffer& in_buffer,
-            common::ObDataBuffer& out_buffer);
-
         int cs_fetch_sstable_dist(
             const int32_t version,
             const int32_t channel_id,
@@ -301,14 +289,6 @@ namespace oceanbase
             easy_request_t* req,
             common::ObDataBuffer& in_buffer,
             common::ObDataBuffer& out_buffer);
-
-        int cs_disk_maintain(
-            const int32_t version,
-            const int32_t channel_id,
-            easy_request_t* req,
-            common::ObDataBuffer& in_buffer,
-            common::ObDataBuffer& out_buffer);
-
       private:
         class LeaseChecker : public common::ObTimerTask
         {
@@ -370,8 +350,11 @@ namespace oceanbase
         int report_tablets_busy_wait();
         int fetch_schema_busy_wait(common::ObSchemaManagerV2 *schema);
         bool is_valid_lease();
+        bool have_frozen_table(const ObTablet& tablet,const int64_t ups_data_version) const;
+        int check_update_data(ObTablet& tablet,int64_t ups_data_version,bool& release_tablet);
         int get_sql_query_service(ObSqlQueryService *&service);
-        int reset_internal_status();
+        int get_query_service(ObQueryService *&service);
+        int reset_internal_status(bool release_table = true);
         int fetch_update_server_list();
       private:
         DISALLOW_COPY_AND_ASSIGN(ObChunkService);

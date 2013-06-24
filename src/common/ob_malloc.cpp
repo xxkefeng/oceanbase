@@ -21,6 +21,7 @@
 #include "ob_thread_mempool.h"
 #include "ob_tsi_factory.h"
 #include "utility.h"
+#include <algorithm>
 #ifdef __OB_MTRACE__
 #include <execinfo.h>
 #endif
@@ -71,27 +72,20 @@ namespace
   }
 
 }
-namespace oceanbase
-{
-  namespace common
-  {
-    int ob_tp_malloc_init();    // @see ob_tp_malloc.h
-  } // end namespace common
-}
 
 int oceanbase::common::ob_init_memory_pool(int64_t block_size)
 {
-  int ret = OB_SUCCESS;
-  if (OB_SUCCESS == (ret = get_fixed_memory_pool_instance().init(block_size,1, g_mod_set)))
-  {
-    ret = ob_tp_malloc_init();
-  }
-  return ret;
+  return get_fixed_memory_pool_instance().init(block_size,1, g_mod_set);
 }
 
 void oceanbase::common::ob_mod_usage_update(const int64_t delta, const int32_t mod_id)
 {
   get_fixed_memory_pool_instance().mod_usage_update(delta, mod_id);
+}
+
+void __attribute__((weak)) memory_limit_callback()
+{
+  TBSYS_LOG(DEBUG, "common memory_limit_callback");
 }
 
 void * oceanbase::common::ob_malloc(void *ptr, size_t size)
@@ -106,7 +100,11 @@ void * oceanbase::common::ob_malloc(void *ptr, size_t size)
     ptr = get_fixed_memory_pool_instance().malloc(size, ObModIds::OB_COMMON_NETWORK, NULL);
     if (OB_UNLIKELY(NULL == ptr && ENOMEM == errno))
     {
-      ob_print_mod_memory_usage();
+      if (REACH_TIME_INTERVAL(60L * 1000000L))
+      {
+        ob_print_mod_memory_usage();
+      }
+      memory_limit_callback();
     }
     else
     {
@@ -121,6 +119,21 @@ void * oceanbase::common::ob_malloc(void *ptr, size_t size)
   return ptr;
 }
 
+static int64_t MON_BLOCK_SIZE_ARRAY[] = {
+  1 << 8,
+  1 << 9,
+  1 << 10,
+  1 << 13,
+  1 << 16,
+  1 << 17,
+  1 << 20,
+  1 << 21,
+  1 << 22,
+  INT64_MAX
+};
+
+static int64_t MON_BLOCK_ARRAY[ARRAYSIZEOF(MON_BLOCK_SIZE_ARRAY)] = {0};
+
 void * oceanbase::common::ob_malloc(const int64_t nbyte, const int32_t mod_id, int64_t *got_size)
 {
   void *result = NULL;
@@ -134,11 +147,18 @@ void * oceanbase::common::ob_malloc(const int64_t nbyte, const int32_t mod_id, i
     result = get_fixed_memory_pool_instance().malloc(nbyte,mod_id, got_size);
     if (OB_UNLIKELY(NULL == result && ENOMEM == errno))
     {
-      ob_print_mod_memory_usage();
+      if (REACH_TIME_INTERVAL(60L * 1000000L))
+      {
+        ob_print_mod_memory_usage();
+      }
+      memory_limit_callback();
     }
+    int64_t *p = std::lower_bound(MON_BLOCK_SIZE_ARRAY, MON_BLOCK_SIZE_ARRAY+ARRAYSIZEOF(MON_BLOCK_SIZE_ARRAY), nbyte);
+    OB_ASSERT(p >= MON_BLOCK_SIZE_ARRAY && p < MON_BLOCK_SIZE_ARRAY+ARRAYSIZEOF(MON_BLOCK_SIZE_ARRAY));
+    MON_BLOCK_ARRAY[p-MON_BLOCK_SIZE_ARRAY] ++;
 #ifdef __OB_MTRACE__
     BACKTRACE(
-        WARN, 
+        WARN,
         (nbyte > OB_MALLOC_BLOCK_SIZE && nbyte < OB_MAX_PACKET_LENGTH),
         "ob_malloc  addr=%p nbyte=%ld", result, nbyte
         );
@@ -179,6 +199,10 @@ void oceanbase::common::ob_safe_free(void *&ptr, const int32_t mod_id)
 void oceanbase::common::ob_print_mod_memory_usage(bool print_to_std)
 {
   g_memory_pool->print_mod_memory_usage(print_to_std);
+  for (uint32_t i = 0; i < ARRAYSIZEOF(MON_BLOCK_SIZE_ARRAY); ++i)
+  {
+    TBSYS_LOG(INFO, "[BLOCK_STAT] size=%ld times=%ld", MON_BLOCK_SIZE_ARRAY[i], MON_BLOCK_ARRAY[i]);
+  } // end for
 }
 
 int64_t oceanbase::common::ob_get_mod_memory_usage(int32_t mod_id)
@@ -216,7 +240,7 @@ oceanbase::common::ObMemBuffer::ObMemBuffer(const int64_t nbyte)
 {
   buf_size_ = 0;
   buf_ptr_ = NULL;
-  buf_ptr_ = ob_malloc(nbyte);
+  buf_ptr_ = ob_malloc(nbyte, ObModIds::OB_MEM_BUFFER);
   if (buf_ptr_ != NULL)
   {
     buf_size_ = nbyte;

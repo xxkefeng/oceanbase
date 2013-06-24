@@ -7,8 +7,7 @@ namespace oceanbase
   namespace compactsstablev2
   {
     int ObCompactSSTableReader::ObFileInfo::init(
-        const char* sstable_fname,
-        const bool use_dio)
+        const char* sstable_fname, const bool use_dio)
     {
       int ret = OB_SUCCESS;
 
@@ -19,12 +18,14 @@ namespace oceanbase
         TBSYS_LOG(WARN, "argument error:NULL==sstable_fname");
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (!use_dio && -1 == (fd_ = ::open(sstable_fname, FILE_OPEN_NORMAL_RFLAG)))
+      else if (!use_dio && -1 == (fd_ = ::open(sstable_fname,
+              FILE_OPEN_NORMAL_RFLAG)))
       {
         TBSYS_LOG(ERROR, "open file error:sstable_fname=%s", sstable_fname);
         ret = OB_IO_ERROR;
       }
-      else if (use_dio && -1 == (fd_ = ::open(sstable_fname, FILE_OPEN_DIRECT_RFLAG)))
+      else if (use_dio && -1 == (fd_ = ::open(sstable_fname,
+              FILE_OPEN_DIRECT_RFLAG)))
       {
         TBSYS_LOG(ERROR, "open file error:sstable_fname=%s", sstable_fname);
         ret = OB_IO_ERROR;
@@ -74,14 +75,14 @@ namespace oceanbase
           TBSYS_LOG(WARN, "load trailer offset error:ret=%d", ret);
           ret = OB_ERROR;
         }
-        else if(OB_SUCCESS != (ret = load_trailer(*file_info, 
-                sstable_header_, trailer_offset, 
+        else if(OB_SUCCESS != (ret = load_trailer(*file_info,
+                sstable_header_, trailer_offset,
                 sstable_size_)))
         {
           TBSYS_LOG(WARN, "load trailer error:ret=%d", ret);
           ret = OB_ERROR;
         }
-        else if(OB_SUCCESS != (ret = load_schema(*file_info, 
+        else if(OB_SUCCESS != (ret = load_schema(*file_info,
                 sstable_header_, sstable_schema_)))
         {
           TBSYS_LOG(WARN, "load schema error:ret=%d", ret);
@@ -213,7 +214,7 @@ namespace oceanbase
       int64_t size = sizeof(ObSSTableTrailerOffset);
       int64_t offset = sstable_size - size;
 
-      if (OB_SUCCESS != (ret = read_record(file_info, 
+      if (OB_SUCCESS != (ret = read_record(file_info,
               offset, size, record_buf)))
       {
         TBSYS_LOG(WARN, "read recrod error:ret=%d", ret);
@@ -245,7 +246,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "argument error:offset=%ld,size=%ld", offset, size);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (OB_SUCCESS != (ret = read_record(file_info, 
+      else if (OB_SUCCESS != (ret = read_record(file_info,
               offset, size, record_buf)))
       {
         TBSYS_LOG(WARN, "read record error:offset=%ld, size=%ld", offset, size);
@@ -274,7 +275,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObCompactSSTableReader::load_schema(const IFileInfo& file_info, 
+    int ObCompactSSTableReader::load_schema(const IFileInfo& file_info,
         const ObSSTableHeader& sstable_header,
         ObSSTableSchema*& schema)
     {
@@ -310,7 +311,7 @@ namespace oceanbase
         else
         {
           char* result_buf = static_cast<char*>(
-              ob_malloc(sizeof(ObSSTableSchema)));
+            ob_malloc(sizeof(ObSSTableSchema), ObModIds::OB_SSTABLE_SCHEMA));
           if (NULL == result_buf)
           {
             TBSYS_LOG(WARN, "NULL == result_buf");
@@ -329,7 +330,7 @@ namespace oceanbase
 
           if (OB_SUCCESS == ret)
           {
-            if (OB_SUCCESS != (ret = read_record(file_info, 
+            if (OB_SUCCESS != (ret = read_record(file_info,
                     record_offset, record_size, record_buf)))
             {
               TBSYS_LOG(WARN, "read record error:ret=%d", ret);
@@ -353,7 +354,7 @@ namespace oceanbase
             {
               if (!record_header.is_compress())
               {
-                const ObSSTableTableSchemaItem* tmp_buf = 
+                const ObSSTableTableSchemaItem* tmp_buf =
                   reinterpret_cast<const ObSSTableTableSchemaItem*>(payload_ptr);
                 int64_t tmp_count = sstable_header.schema_array_unit_count_;
 
@@ -378,7 +379,7 @@ namespace oceanbase
             if (OB_ENTRY_EXIST == ret)
             {
               result_schema = schema_cache.get_schema(first_table_id, version);
-              if (NULL == result_schema)
+              if (NULL == sstable_schema_)
               {
                 TBSYS_LOG(WARN, "get schema error");
                 ret = OB_ERROR;
@@ -395,7 +396,7 @@ namespace oceanbase
           }
         }
       }
-      
+
       if (OB_SUCCESS == ret)
       {
         schema = result_schema;
@@ -404,8 +405,8 @@ namespace oceanbase
       return ret;
     }//end function load_schema
 
-    int ObCompactSSTableReader::load_table_index(const IFileInfo& file_info, 
-        const ObSSTableHeader& sstable_header, 
+    int ObCompactSSTableReader::load_table_index(const IFileInfo& file_info,
+        const ObSSTableHeader& sstable_header,
         ObSSTableTableIndex*& table_index)
     {
       int ret = OB_SUCCESS;
@@ -424,7 +425,7 @@ namespace oceanbase
             record_offset, record_size);
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (OB_SUCCESS != (ret = read_record(file_info, 
+      else if (OB_SUCCESS != (ret = read_record(file_info,
               record_offset, record_size, record_buf)))
       {
         TBSYS_LOG(WARN, "read record error:ret=%d", ret);
@@ -488,7 +489,7 @@ namespace oceanbase
 
 
     int ObCompactSSTableReader::load_table_bloom_filter(
-        const IFileInfo& file_info, 
+        const IFileInfo& file_info,
         const ObSSTableHeader& sstable_header,
         const ObSSTableTableIndex* table_index,
         TableBloomFilter*& bloom_filter)
@@ -544,7 +545,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        ObSSTableTableIndex* table_index_ptr  
+        ObSSTableTableIndex* table_index_ptr
           = const_cast<ObSSTableTableIndex*>(table_index);
         TableBloomFilter* bloom_filter_ptr = result_bloomfilter;
         for (int64_t i = 0; i < table_count; i ++)
@@ -559,15 +560,15 @@ namespace oceanbase
           }
           else
           {
-            ret = ObRecordHeaderV2::check_record(record_buf, record_size, 
-                OB_SSTABLE_TABLE_BLOOMFILTER_MAGIC, record_header, 
+            ret = ObRecordHeaderV2::check_record(record_buf, record_size,
+                OB_SSTABLE_TABLE_BLOOMFILTER_MAGIC, record_header,
                 payload_ptr, payload_size);
             if (OB_SUCCESS == ret)
             {
               if (!record_header.is_compress())
               {
                 if (OB_SUCCESS != (ret = bloom_filter_ptr->init(
-                    table_index_ptr->bloom_filter_hash_count_, 
+                    table_index_ptr->bloom_filter_hash_count_,
                     payload_size)))
                 {
                   TBSYS_LOG(WARN, "bloomfilter init error:ret=%d", ret);
@@ -576,7 +577,7 @@ namespace oceanbase
 
                 if (OB_SUCCESS == ret)
                 {
-                  const uint8_t* tmp_ptr 
+                  const uint8_t* tmp_ptr
                     = reinterpret_cast<const uint8_t*>(payload_ptr);
                   if (OB_SUCCESS != (ret = bloom_filter_ptr->reinit(tmp_ptr,
                           payload_size)))
@@ -605,102 +606,130 @@ namespace oceanbase
     }
 
     int ObCompactSSTableReader::load_table_range(
-        const IFileInfo& file_info, 
+        const IFileInfo& file_info,
         const ObSSTableHeader& sstable_header,
         const ObSSTableTableIndex* table_index,
         ObNewRange*& table_range)
     {
       int ret = OB_SUCCESS;
-
       int64_t record_offset = 0;
       int64_t record_size = 0;
       const char* payload_ptr = NULL;
       int64_t payload_size = 0;
       const char* record_buf = NULL;
       ObRecordHeaderV2 record_header;
-
       int64_t table_count = sstable_header.table_count_;
-      char* buffer = NULL;
+      ObCompactStoreType store_type = static_cast<ObCompactStoreType>(
+          sstable_header.row_store_type_);
       ObNewRange* result_range = NULL;
 
       if (NULL == table_index)
       {
-        TBSYS_LOG(WARN, "invalid argument: NULL==table_index");
+        TBSYS_LOG(WARN, "invalid argument:NULL==table_index");
         ret = OB_INVALID_ARGUMENT;
       }
-
-      //create ObNewRange array and init
-      if (OB_SUCCESS == ret)
+      else
       {
-        if (NULL == (buffer = arena_.alloc(table_count * sizeof(ObNewRange))))
+        int64_t tmp_size = table_count * sizeof(ObNewRange);
+        char* tmp_buf = arena_.alloc(tmp_size);
+        char* tmp_ptr = tmp_buf;
+        ObNewRange* range_ptr;
+        if (NULL == tmp_buf)
         {
-          TBSYS_LOG(ERROR, "failed to alloc memory: mem_size=[%ld]", table_count * sizeof(ObNewRange));
+          TBSYS_LOG(WARN, "faile to alloc memory");
           ret = OB_ALLOCATE_MEMORY_FAILED;
         }
         else
         {
           for (int64_t i = 0; i < table_count; i ++)
           {
-            if (NULL == new(buffer + i * sizeof(ObNewRange))ObNewRange())
+            range_ptr = new(tmp_ptr)ObNewRange();
+            if (NULL == range_ptr)
             {
-              TBSYS_LOG(WARN, "create ObNewRange object error");
+              TBSYS_LOG(WARN, "new ObNewRange error");
               ret = OB_MEM_OVERFLOW;
               break;
             }
+            else
+            {
+              tmp_ptr += sizeof(ObNewRange);
+            }
+          }
+
+          if (OB_SUCCESS == ret)
+          {
+            result_range = reinterpret_cast<ObNewRange*>(tmp_buf);
           }
         }
       }
 
-      //finish the ObNewRagne array
       if (OB_SUCCESS == ret)
       {
-        result_range = reinterpret_cast<ObNewRange*>(buffer);
+        const ObSSTableTableIndex* table_index_ptr = table_index;
+        ObNewRange* range_ptr = result_range;
         for (int64_t i = 0; i < table_count; i ++)
         {
-          result_range[i].table_id_ = table_index[i].table_id_;
-          record_offset = table_index[i].range_keys_offset_;
-          record_size = sizeof(int8_t) + table_index[i].range_start_key_length_ + table_index[i].range_end_key_length_ + sizeof(ObRecordHeaderV2);
-          if (OB_SUCCESS != (ret = read_record(file_info, record_offset, record_size, record_buf)))
+          range_ptr->table_id_ = table_index_ptr->table_id_;
+          //range_ptr->border_flag_.unset_inclusive_start();
+          //range_ptr->border_flag_.set_inclusive_end();
+          record_offset = table_index_ptr->range_keys_offset_;
+          record_size = sizeof(int8_t)
+            + table_index_ptr->range_start_key_length_
+            + table_index_ptr->range_end_key_length_
+            + sizeof(ObRecordHeaderV2);
+          if (OB_SUCCESS != (ret = read_record(file_info,
+                  record_offset, record_size, record_buf)))
           {
-            TBSYS_LOG(WARN, "read record error: i=[%ld], ret=[%d], record_offset=[%ld], record_size=[%ld]", i, ret, record_offset, record_size);
+            TBSYS_LOG(WARN, "read record error");
             break;
-          }
-          else if (OB_SUCCESS != (ret = ObRecordHeaderV2::check_record(record_buf, record_size,
-                  OB_SSTABLE_TABLE_RANGE_MAGIC, record_header, payload_ptr, payload_size)))
-          {
-            TBSYS_LOG(WARN, "check record error: i=[%ld], ret=[%d], record_size=[%ld]", i, ret, record_size);
           }
           else
           {
-            if (!record_header.is_compress())
+            ret = ObRecordHeaderV2::check_record(record_buf,
+                record_size, OB_SSTABLE_TABLE_RANGE_MAGIC,
+                record_header, payload_ptr, payload_size);
+            if (OB_SUCCESS == ret)
             {
-              //border flag + start key string + end key string + start key obj array + end key obj array
-              int64_t total_buffer_size = sizeof(int8_t) + table_index[i].range_start_key_length_
-                + table_index[i].range_end_key_length_ + 2 * sizeof(ObObj) * (OB_MAX_ROWKEY_COLUMN_NUMBER + 1);
-              char* total_buffer = NULL;
-              if (NULL == (total_buffer = arena_.alloc(total_buffer_size)))
+              if (!record_header.is_compress())
               {
-                TBSYS_LOG(WARN, "failed to alloc memory: size=[%ld]", total_buffer_size);
-                ret = OB_ALLOCATE_MEMORY_FAILED;
-              }
-              else
-              {
-                memcpy(total_buffer, payload_ptr, payload_size);
-                if (OB_SUCCESS != (ret = trans_to_table_range(result_range[i], total_buffer,
-                        table_index[i].range_start_key_length_, table_index[i].range_end_key_length_)))
+                //border flag + start key string + end key string
+                //+ start key obj array + end key obj array
+                int64_t tmp_size2 = sizeof(int8_t)
+                  + table_index_ptr->range_start_key_length_
+                  + table_index_ptr->range_end_key_length_
+                  + 2 * sizeof(ObObj) * OB_MAX_ROWKEY_COLUMN_NUMBER;
+                char* tmp_buf2 = NULL;
+                tmp_buf2 = arena_.alloc(tmp_size2);
+                if (NULL == tmp_buf2)
                 {
-                  TBSYS_LOG(WARN, "trans to table range error: i=[%ld], ret=[%d], start_key_length=[%d], end_key_length=[%d]",
-                      i, ret, table_index[i].range_start_key_length_, table_index[i].range_end_key_length_);
-                  break;
+                  TBSYS_LOG(WARN, "faile to alloc memory");
+                  ret = OB_ALLOCATE_MEMORY_FAILED;
+                }
+                else
+                {
+                  memcpy(tmp_buf2, payload_ptr, payload_size);
+                  if (OB_SUCCESS != (ret = trans_to_table_range(
+                          *range_ptr, store_type, tmp_buf2,
+                          table_index_ptr->range_start_key_length_,
+                          table_index_ptr->range_end_key_length_)))
+                  {
+                    TBSYS_LOG(WARN, "trans_to_table_range error");
+                    break;
+                  }
+                  else
+                  {
+                    range_ptr ++;
+                  }
                 }
               }
             }
             else
             {
-              TBSYS_LOG(WARN, "range record do not support compress");
+              TBSYS_LOG(WARN, "check record error");
+              break;
             }
           }
-        }//end for
+        }
       }
 
       if (OB_SUCCESS == ret)
@@ -739,7 +768,7 @@ namespace oceanbase
     }
 
     int ObCompactSSTableReader::trans_to_sstable_schema(
-        ObSSTableSchema& schema, const ObSSTableTableSchemaItem* item_array, 
+        ObSSTableSchema& schema, const ObSSTableTableSchemaItem* item_array,
         int64_t item_count)
     {
       int ret = OB_SUCCESS;
@@ -776,73 +805,130 @@ namespace oceanbase
       return ret;
     }
 
-    int ObCompactSSTableReader::trans_to_table_range(
-        ObNewRange& range,
-        char* const buf,
-        const int64_t start_key_length,
-        const int64_t end_key_length)
+    int ObCompactSSTableReader::trans_to_table_range(ObNewRange& range,
+          const common::ObCompactStoreType store_type, const char* buf,
+          const int64_t start_key_length, const int64_t end_key_length)
     {
       int ret = OB_SUCCESS;
-      char* start_key_ptr = NULL;
-      char* end_key_ptr = NULL;
-      ObObj* start_key_obj_array = NULL;
-      ObObj* end_key_obj_array = NULL;
+      const ObObj* obj = NULL;
       ObCompactCellIterator row;
+      bool is_row_finished = false;
+
+      const char* start_key_ptr = buf + sizeof(int8_t);
+      const char* end_key_ptr = buf + sizeof(int8_t) + start_key_length;
+
+      const ObObj* tmp_buf = reinterpret_cast<const ObObj*>(
+          buf + sizeof(int8_t) + start_key_length + end_key_length);
+      ObObj* start_key_obj_array = const_cast<ObObj*>(tmp_buf);
+      ObObj* end_key_obj_array = start_key_obj_array
+        + sizeof(const ObObj) * sizeof(OB_MAX_ROWKEY_COLUMN_NUMBER);
+
       int64_t obj_cnt = 0;
 
       if (NULL == buf)
       {
-        TBSYS_LOG(WARN, "invalid argument: buf is null");
+        TBSYS_LOG(WARN, "invald argument:buf==NULL");
         ret = OB_INVALID_ARGUMENT;
       }
       else
       {
-        /**
-         *|--border_flag(int8_t)--|---start_key---|---end_key--|--start_key_obj_array--|--end_key_obj_array---|
-         */
-        start_key_ptr = buf + sizeof(int8_t);
-        end_key_ptr = start_key_ptr + start_key_length;
-        start_key_obj_array = reinterpret_cast<ObObj*>(end_key_ptr + end_key_length);
-        end_key_obj_array = start_key_obj_array + OB_MAX_ROWKEY_COLUMN_NUMBER + 1;
-      }
-
-      //start key
-      if (OB_SUCCESS == ret)
-      {
-        obj_cnt = OB_MAX_ROWKEY_COLUMN_NUMBER + 1;
-        if (OB_SUCCESS != (ret = row.init(start_key_ptr, DENSE)))
+        if (OB_SUCCESS != (ret = row.init(start_key_ptr, store_type)))
         {
-          TBSYS_LOG(WARN, "row init error: ret=[%d], start_key_ptr=[%p]", ret, start_key_ptr);
-        }
-        else if (OB_SUCCESS != (ret = row.get_one_row_dense(start_key_obj_array, obj_cnt)))
-        {
-          TBSYS_LOG(WARN, "row iterator get one dense row error: ret=[%d], start_key_obj_array=[%p]", ret, start_key_obj_array);
+          TBSYS_LOG(WARN, "row init error");
         }
         else
         {
-          range.start_key_.assign(start_key_obj_array, obj_cnt);
+          obj_cnt = 0;
+          while(true)
+          {
+            if (OB_SUCCESS != (ret = row.next_cell()))
+            {
+              TBSYS_LOG(WARN, "row next cell error");
+              break;
+            }
+            else
+            {
+              if (DENSE_SPARSE == store_type || DENSE_DENSE == store_type)
+              {
+                if (OB_SUCCESS != (ret = row.get_cell(obj, &is_row_finished)))
+                {
+                  TBSYS_LOG(WARN, "row get cell error");
+                  break;
+                }
+                else
+                {
+                  if (is_row_finished)
+                  {
+                    range.start_key_.assign(start_key_obj_array, obj_cnt);
+                    break;
+                  }
+                  else
+                  {
+                    start_key_obj_array[obj_cnt] = *obj;
+                    obj_cnt ++;
+                  }
+                }
+              }
+              else
+              {
+                TBSYS_LOG(WARN, "can not go here");
+                break;
+              }
+            }
+          }
         }
-      }
 
-      //end key
-      if (OB_SUCCESS == ret)
-      {
-        obj_cnt = OB_MAX_ROWKEY_COLUMN_NUMBER + 1;
-        if (OB_SUCCESS != (ret = row.init(end_key_ptr, DENSE)))
+        if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(WARN, "row init error: ret=[%d], end_key_ptr=[%p]", ret, end_key_ptr);
         }
-        else if (OB_SUCCESS != (ret = row.get_one_row_dense(end_key_obj_array, obj_cnt)))
+        else if (OB_SUCCESS != (ret = row.init(end_key_ptr, store_type)))
         {
-          TBSYS_LOG(WARN, "row iterator get one dense row error: ret=[%d], end_key_obj_array=[%p]", ret, end_key_obj_array);
+          TBSYS_LOG(WARN, "row init error");
         }
         else
         {
-          range.end_key_.assign(end_key_obj_array, obj_cnt);
+          obj_cnt = 0;
+          while(true)
+          {
+            if (OB_SUCCESS != (ret = row.next_cell()))
+            {
+              TBSYS_LOG(WARN, "row next cell error");
+              break;
+            }
+            else
+            {
+              if (DENSE_SPARSE == store_type || DENSE_DENSE == store_type)
+              {
+                if (OB_SUCCESS != (ret = row.get_cell(obj, &is_row_finished)))
+                {
+                  TBSYS_LOG(WARN, "row get cell error");
+                  break;
+                }
+                else
+                {
+                  if (is_row_finished)
+                  {
+                    range.end_key_.assign(end_key_obj_array, obj_cnt);
+                    break;
+                  }
+                  else
+                  {
+                    end_key_obj_array[obj_cnt] = *obj;
+                    obj_cnt ++;
+                  }
+                }
+              }
+              else
+              {
+                TBSYS_LOG(WARN, "can not go here");
+                break;
+              }
+            }
+          }
         }
       }
 
       return ret;
     }
-  }//end namespace compactsstablev2
+  }//end namespace sstable
 }//end namespace oceanbase

@@ -18,13 +18,14 @@
 #include "common/ob_object.h"
 #include "ob_postfix_expression.h"
 #include "common/ob_row.h"
+#include "common/dlist.h"
 class ObAggregateFunctionTest;
 
 namespace oceanbase
 {
   namespace sql
   {
-    class ObSqlExpression
+    class ObSqlExpression: public common::DLink
     {
       public:
         ObSqlExpression();
@@ -77,11 +78,14 @@ namespace oceanbase
         inline int merge_expr(const ObSqlExpression &expr1, const ObSqlExpression &expr2, const ExprItem &op);
         inline bool is_simple_condition(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &const_val) const;
         inline bool is_simple_between(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &cond_start, ObObj &cond_end) const;
-        inline bool is_simple_in_expr(const ObRowkeyInfo &info, ObArray<ObRowkey> &rowkey_array, 
+        inline bool is_simple_in_expr(const ObRowkeyInfo &info, ObArray<ObRowkey> &rowkey_array,
             common::PageArena<ObObj,common::ModulePageAllocator> &allocator) const;
         inline bool is_aggr_func() const;
         inline bool is_empty() const;
         NEED_SERIALIZE_AND_DESERIALIZE;
+      public:
+        static ObSqlExpression* alloc();
+        static void free(ObSqlExpression* ptr);
       private:
         friend class ::ObAggregateFunctionTest;
         // data members
@@ -110,6 +114,7 @@ namespace oceanbase
 
     inline void ObSqlExpression::reset(void)
     {
+      DLink::reset();
       post_expr_.reset();
       column_id_ = OB_INVALID_ID;
       table_id_ = OB_INVALID_ID;
@@ -191,7 +196,7 @@ namespace oceanbase
     {
       return post_expr_.is_simple_between(real_val, column_id, cond_op, cond_start, cond_end);
     }
-    inline bool ObSqlExpression::is_simple_in_expr(const ObRowkeyInfo &info, ObArray<ObRowkey> &rowkey_array, 
+    inline bool ObSqlExpression::is_simple_in_expr(const ObRowkeyInfo &info, ObArray<ObRowkey> &rowkey_array,
         common::PageArena<ObObj,common::ModulePageAllocator>  &allocator) const
     {
       return post_expr_.is_simple_in_expr(info, rowkey_array, allocator);
@@ -209,6 +214,7 @@ namespace oceanbase
       reset();
       return post_expr_.merge_expr(expr1.post_expr_, expr2.post_expr_, op);
     }
+
   } // end namespace sql
 } // end namespace oceanbase
 

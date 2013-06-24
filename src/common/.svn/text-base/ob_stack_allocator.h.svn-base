@@ -28,7 +28,7 @@ namespace oceanbase
         DefaultBlockAllocator();
         ~DefaultBlockAllocator();
       public:
-        int set_mod(const int32_t mod);
+        void set_mod_id(int32_t mod);
         int set_limit(const int64_t limit);
         const int64_t get_allocated() const;
         void* alloc(const int64_t size);
@@ -56,10 +56,11 @@ namespace oceanbase
         ~StackAllocator();
       public:
         int init(ObIAllocator* allocator, const int64_t block_size);
-        int clear();
+        int clear(const bool slow=false);
         int reserve(const int64_t size);
         void* alloc(const int64_t size);
         void free(void* p);
+        void set_mod_id(int32_t mod_id) {allocator_->set_mod_id(mod_id);};
         int start_batch_alloc();
         int end_batch_alloc(const bool rollback);
       protected:
@@ -70,7 +71,7 @@ namespace oceanbase
         int alloc_head(const int64_t size);
         int free_head();
         int save_top(int64_t& top) const;
-        int restore_top(const int64_t top);
+        int restore_top(const int64_t top, const bool slow=false);
       private:
         ObIAllocator* allocator_;
         int64_t block_size_;
@@ -84,17 +85,28 @@ namespace oceanbase
     class TSIContainer
     {
       public:
-        TSIContainer(Factory& factory): create_err_(0), factory_(factory) {
-          create_err_ = pthread_key_create(&key_, destroy);
-        }
-        ~TSIContainer() {
-          if (0 == create_err_)
-            pthread_key_delete(key_);
-        }
+        enum {INIT, DOING, DONE};
+        TSIContainer(Factory& factory): create_stat_(INIT), factory_(factory) {}
+        ~TSIContainer() { clear(); }
         T* get(){
           int err = 0;
           T* val = NULL;
-          if (create_err_ != 0)
+          while(create_stat_ != DONE)
+          {
+            if (!__sync_bool_compare_and_swap(&create_stat_, INIT, DOING))
+            {} // do nothing
+            else if (0 != (err = pthread_key_create(&key_, destroy)))
+            {
+              __sync_bool_compare_and_swap(&create_stat_, DOING, INIT);
+              TBSYS_LOG(ERROR, "pthread_key_create() fail, err=%d", err);
+              break;
+            }
+            else
+            {
+              __sync_bool_compare_and_swap(&create_stat_, DOING, DONE);
+            }
+          }
+          if (create_stat_ != DONE)
           {}
           else if (NULL != (val = (T*)pthread_getspecific(key_)))
           {}
@@ -109,6 +121,23 @@ namespace oceanbase
           }
           return val;
         }
+        void clear()
+        {
+          int err = 0;
+          while(create_stat_ != INIT)
+          {
+            if (!__sync_bool_compare_and_swap(&create_stat_, DONE, DOING))
+            {} // do nothing
+            else
+            {
+              if (0 != (err = pthread_key_delete(key_)))
+              {
+                TBSYS_LOG(ERROR, "pthread_key_delete() fail, err=%d", err);
+              }
+              __sync_bool_compare_and_swap(&create_stat_, DOING, INIT);
+            }
+          }
+        }
       private:
         static void destroy(void* arg) {
           if (NULL != arg)
@@ -116,7 +145,7 @@ namespace oceanbase
             //(T*)arg->destroy();
           }
         }
-        int create_err_;
+        volatile int create_stat_;
         pthread_key_t key_;
         Factory& factory_;
     };
@@ -152,7 +181,7 @@ namespace oceanbase
         TSIStackAllocator();
         ~TSIStackAllocator();
         int init(ObIAllocator* block_allocator, int64_t block_size);
-        int clear();
+        int clear(const bool slow=false);
         int reserve(const int64_t size);
         void* alloc(const int64_t size);
         void free(void* p);

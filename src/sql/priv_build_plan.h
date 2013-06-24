@@ -81,7 +81,9 @@ int prepare_resolve_stmt(ResultPlan* result_plan,
   }
   else
   {
-    if (OB_SUCCESS != (ret = logical_plan->add_query(stmt, &query_id)))
+    query_id = logical_plan->generate_query_id();
+    stmt->set_query_id(query_id);
+    if (OB_SUCCESS != (ret = logical_plan->add_query(stmt)))
     {
       PARSER_LOG("Can not add stmt to logical plan");
       stmt->~T();

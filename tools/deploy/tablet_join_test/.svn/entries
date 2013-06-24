@@ -2,7 +2,7 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/tools/deploy/tablet_join_test
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/tools/deploy/tablet_join_test
 http://svn.app.taobao.net/repos/oceanbase
 
 
@@ -32,7 +32,7 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 1b73f4984260cfcad41367e507a5008b
 2012-11-05T09:32:45.246385Z
 10361
@@ -66,7 +66,7 @@ file
 
 
 
-2013-06-19T09:27:12.000000Z
+2013-06-20T08:38:49.000000Z
 7f0792fe19690310421779a6b399fc0e
 2012-11-05T09:32:45.246385Z
 10361

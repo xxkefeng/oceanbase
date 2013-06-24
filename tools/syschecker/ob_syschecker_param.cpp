@@ -42,7 +42,6 @@ namespace
   static const char* OBSC_STAT_DUMP_INTERVAL = "stat_dump_interval";
   static const char* OBSC_PERF_TEST = "perf_test";
   static const char* OBSC_SQL_READ = "sql_read";
-  static const char* OBSC_RESULT_CACHED = "result_cached";
   static const char* OBSC_CHECK_RESULT = "check_result";
   static const char* OBSC_READ_TABLE_TYPE = "read_table_type";
   static const char* OBSC_WRITE_TABLE_TYPE = "write_table_type";
@@ -252,20 +251,20 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         ret = load_string(update_server_ip, OB_MAX_IP_SIZE, 
-                          OBUPS_SECTION, OBUPS_IP, false);
+                          OBUPS_SECTION, OBUPS_IP, true);
       }
       if (OB_SUCCESS == ret)
       {
         update_server_port = TBSYS_CONFIG.getInt(OBUPS_SECTION, 
                                                  OBUPS_PORT, 0);
-        if (update_server_port < 0)
+        if (update_server_port <= 0)
         {
           TBSYS_LOG(WARN, "update server port=%d cann't <= 0.", 
                     update_server_port);
           ret = OB_INVALID_ARGUMENT;
         }
       }   
-      if (OB_SUCCESS == ret && NULL != update_server_ip && update_server_port > 0)
+      if (OB_SUCCESS == ret)
       {
         bool res = update_server_.set_ipv4_addr(update_server_ip, 
                                                 update_server_port);
@@ -411,17 +410,6 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "syschecker is_sql_read_=%ld can't < 0." ,
               is_sql_read_);
-          ret = OB_INVALID_ARGUMENT;
-        }
-      }
-
-      if (OB_SUCCESS == ret)
-      {
-        is_result_cached_ = TBSYS_CONFIG.getInt(OBSC_SECTION, OBSC_RESULT_CACHED, DEFAULT_RESULT_CACHED);
-        if (is_result_cached_ < 0)
-        {
-          TBSYS_LOG(WARN, "syschecker is_result_cached_=%ld can't < 0." ,
-              is_result_cached_);
           ret = OB_INVALID_ARGUMENT;
         }
       }

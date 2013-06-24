@@ -15,7 +15,6 @@
  */
 #include "ob_scan_helper_impl.h"
 #include "common/utility.h"
-#include "sql/ob_sql_result_set.h"
 using namespace oceanbase::common;
 
 ObScanHelperImpl::ObScanHelperImpl():scan_timeout_us_(0), mutate_timeout_us_(0),
@@ -59,82 +58,6 @@ int ObScanHelperImpl::scan(const ObScanParam& scan_param, ObScanner &out) const
       {
         TBSYS_LOG(WARN, "scan ms timeout, scan_timeout_us_=%ld, ms=%s, retry=%ld",
             scan_timeout_us_, to_cstring(ms), i);
-      }
-    } // end for
-  }
-  return ret;
-}
-
-int ObScanHelperImpl::query(const char* sql, sql::ObSQLResultSet& result) const 
-{
-  int ret = OB_SUCCESS;
-  ObString sql_str(0, static_cast<int32_t>(strlen(sql)), sql);
-  if (!check_inner_stat())
-  {
-    ret = OB_NOT_INIT;
-    TBSYS_LOG(ERROR, "scan help not init");
-  }
-  else
-  {
-    ObServer ms;
-    for (int64_t i = 0; i < scan_retry_times_; ++i)
-    {
-      if (OB_SUCCESS != (ret = ms_provider_->get_ms(i, ms)))
-      {
-        TBSYS_LOG(WARN, "failed to get one mergeserver, err=%d", ret);
-      }
-      else if (0 == ms.get_port() || 0 == ms.get_ipv4())
-      {
-        TBSYS_LOG(WARN, "invalid merge server address, i=%ld", i);
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else if (OB_SUCCESS == (ret = rpc_stub_->execute_sql(ms, sql_str, result, scan_timeout_us_)))
-      {
-        TBSYS_LOG(DEBUG, "scan from ms=%s", to_cstring(ms));
-        break;
-      }
-      else
-      {
-        TBSYS_LOG(WARN, "scan ms timeout, scan_timeout_us_=%ld, ms=%s, retry=%ld",
-            scan_timeout_us_, to_cstring(ms), i);
-      }
-    } // end for
-  }
-  return ret;
-}
-
-int ObScanHelperImpl::modify(const char* sql) 
-{
-  int ret = OB_SUCCESS;
-  ObString sql_str(0, static_cast<int32_t>(strlen(sql)), sql);
-  if (!check_inner_stat())
-  {
-    ret = OB_NOT_INIT;
-    TBSYS_LOG(ERROR, "scan help not init");
-  }
-  else
-  {
-    ObServer ms;
-    for (int64_t i = 0; i < scan_retry_times_; ++i)
-    {
-      if (OB_SUCCESS != (ret = ms_provider_->get_ms(i, ms)))
-      {
-        TBSYS_LOG(WARN, "failed to get one mergeserver, err=%d", ret);
-      }
-      else if (0 == ms.get_port() || 0 == ms.get_ipv4())
-      {
-        TBSYS_LOG(WARN, "invalid merge server address, i=%ld", i);
-        ret = OB_INVALID_ARGUMENT;
-      }
-      else if (OB_SUCCESS == (ret = rpc_stub_->execute_sql(ms, sql_str, scan_timeout_us_)))
-      {
-        TBSYS_LOG(DEBUG, "scan from ms=%s", to_cstring(ms));
-        break;
-      }
-      else
-      {
-        TBSYS_LOG(WARN, "scan ms fail, ret=%d, scan_timeout_us_=%ld, ms=%s, retry=%ld",
-            ret, scan_timeout_us_, to_cstring(ms), i);
       }
     } // end for
   }

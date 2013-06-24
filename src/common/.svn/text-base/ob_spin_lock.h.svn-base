@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
- * 
+ *
  * Version: $Id$
  *
  * ob_spin_lock.h
@@ -24,7 +24,7 @@ namespace oceanbase
   {
     /**
      * A simple wrapper of pthread spin lock
-     * 
+     *
      */
     class ObSpinLock
     {
@@ -60,48 +60,66 @@ namespace oceanbase
     {
       return pthread_spin_lock(&lock_);
     }
-    
+
     inline int ObSpinLock::unlock()
     {
       return pthread_spin_unlock(&lock_);
     }
 
     ////////////////////////////////////////////////////////////////
-    class ObSpinLockGuard
+    // A lock class that do nothing, used as template argument
+    class ObNullLock
     {
       public:
-        ObSpinLockGuard(ObSpinLock &lock);
-        ~ObSpinLockGuard();
+        ObNullLock(){};
+        ~ObNullLock(){};
+        int lock(){return OB_SUCCESS;};
+        int unlock(){return OB_SUCCESS;};
       private:
         // disallow copy
-        ObSpinLockGuard(const ObSpinLockGuard &other);
-        ObSpinLockGuard& operator=(const ObSpinLockGuard &other);
+        ObNullLock(const ObNullLock &other);
+        ObNullLock& operator=(const ObNullLock &other);
+    };
+
+    ////////////////////////////////////////////////////////////////
+    template <typename LockT>
+    class ObLockGuard
+    {
+      public:
+        ObLockGuard(LockT &lock);
+        ~ObLockGuard();
+      private:
+        // disallow copy
+        ObLockGuard(const ObLockGuard &other);
+        ObLockGuard& operator=(const ObLockGuard &other);
         // disallow new
         void* operator new (std::size_t size) throw (std::bad_alloc);
         void* operator new (std::size_t size, const std::nothrow_t& nothrow_constant) throw();
         void* operator new (std::size_t size, void* ptr) throw();
       private:
         // data members
-        ObSpinLock &lock_;
+        LockT &lock_;
     };
 
-    inline ObSpinLockGuard::ObSpinLockGuard(ObSpinLock &lock)
+    template <typename LockT>
+    inline ObLockGuard<LockT>::ObLockGuard(LockT &lock)
       :lock_(lock)
     {
       int ret = lock_.lock();
       if (0 != ret)
       {
-        TBSYS_LOG(ERROR, "failed to lock spinlock, err=%s", strerror(ret));
+        TBSYS_LOG(ERROR, "failed to lock, err=%s", strerror(ret));
       }
     }
 
-    inline ObSpinLockGuard::~ObSpinLockGuard()
+    template <typename LockT>
+    inline ObLockGuard<LockT>::~ObLockGuard()
     {
       lock_.unlock();
     }
 
+    typedef ObLockGuard<ObSpinLock> ObSpinLockGuard;
   } // end namespace common
 } // end namespace oceanbase
 
 #endif /* _OB_SPIN_LOCK_H */
-

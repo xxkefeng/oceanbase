@@ -60,10 +60,6 @@ int ObDoubleChildrenPhyOperator::set_child(int32_t child_idx, ObPhyOperator &chi
     ret = OB_INVALID_ARGUMENT;
     TBSYS_LOG(ERROR, "invalid child idx=%d", child_idx);
   }
-  if (OB_SUCCESS == ret)
-  {
-    child_operator.set_parent(this);
-  }
   return ret;
 }
 

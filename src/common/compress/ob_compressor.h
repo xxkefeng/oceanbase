@@ -38,11 +38,11 @@ class ObCompressor
     ObCompressor() : sohandle_(NULL)
     {
       return;
-    }
+    };
     virtual ~ObCompressor()
     {
       return;
-    }
+    };
   public:
   
     /*

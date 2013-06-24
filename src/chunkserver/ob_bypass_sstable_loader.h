@@ -68,7 +68,8 @@ namespace oceanbase
         int recycle_bypass_dir();
         int do_recycle_bypass_sstable(int32_t disk_no, const char* file_name);
         int rollback();
-        int recycle_unload_tablets();
+        int recycle_unload_tablets(bool only_recycle_removed_tablet = false);
+        int recycle_tablet(ObTablet* tablet, bool only_recycle_removed_tablet = false);
         void reset();
 
         int finish_load();

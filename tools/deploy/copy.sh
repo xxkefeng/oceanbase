@@ -60,8 +60,6 @@ echo 'cp '$OCEANBASE_DIR/tools/newsqltest/ob_tablet_join_test $TOOLS_DIR'/: '$?
 mkdir -p syschecker
 cp $OCEANBASE_DIR/tools/gen_sstable syschecker/
 echo 'cp '$OCEANBASE_DIR'/tools/gen_sstable' syschecker'/: '$?
-cp $OCEANBASE_DIR/tools/syschecker/syschecker syschecker/
-echo 'cp '$OCEANBASE_DIR'/tools/syschecker/syschecker' syschecker'/: '$?
 
 #copy benchmark/sysbench benchmark/ups_admin
 cp $OCEANBASE_DIR/tools/ups_admin benchmark/

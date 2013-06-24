@@ -1,47 +1,53 @@
 K 25
 svn:wc:ra_dav:version-url
-V 78
-/repos/oceanbase/!svn/ver/12976/branches/dev/oceanbase/tools/deploy/syschecker
+V 88
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/syschecker
 END
 syschecker.py
 K 25
 svn:wc:ra_dav:version-url
-V 92
-/repos/oceanbase/!svn/ver/10995/branches/dev/oceanbase/tools/deploy/syschecker/syschecker.py
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/syschecker/syschecker.py
 END
 stress.sh
 K 25
 svn:wc:ra_dav:version-url
-V 87
-/repos/oceanbase/!svn/ver/8222/branches/dev/oceanbase/tools/deploy/syschecker/stress.sh
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/syschecker/stress.sh
 END
 Makefile
 K 25
 svn:wc:ra_dav:version-url
-V 86
-/repos/oceanbase/!svn/ver/8146/branches/dev/oceanbase/tools/deploy/syschecker/Makefile
+V 97
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/syschecker/Makefile
 END
 ob3.qushan.schema
 K 25
 svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/11887/branches/dev/oceanbase/tools/deploy/syschecker/ob3.qushan.schema
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/syschecker/ob3.qushan.schema
 END
 syschecker.conf.template
 K 25
 svn:wc:ra_dav:version-url
-V 102
-/repos/oceanbase/!svn/ver/9163/branches/dev/oceanbase/tools/deploy/syschecker/syschecker.conf.template
+V 113
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/syschecker/syschecker.conf.template
 END
 gen.sh
 K 25
 svn:wc:ra_dav:version-url
-V 85
-/repos/oceanbase/!svn/ver/11887/branches/dev/oceanbase/tools/deploy/syschecker/gen.sh
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/syschecker/gen.sh
 END
 syschecker.schema
 K 25
 svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/11887/branches/dev/oceanbase/tools/deploy/syschecker/syschecker.schema
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/syschecker/syschecker.schema
+END
+syschecker
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/syschecker/syschecker
 END

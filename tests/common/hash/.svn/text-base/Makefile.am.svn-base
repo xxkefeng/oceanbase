@@ -8,7 +8,7 @@ AM_CPPFLAGS= -I${TBLIB_ROOT}/include/tbsys \
 LDADD=$(top_builddir)/src/common/libcommon.a \
 	  ${TBLIB_ROOT}/lib/libtbsys.a 
 
-AM_LDFLAGS=-lpthread -lc -lm  -lgtest ${GCOV_LIB}
+AM_LDFLAGS=-lpthread -lc -lm  -lgtest -lcrypt -ldl -lrt ${GCOV_LIB}
 if COVERAGE
 CXXFLAGS+=-fprofile-arcs -ftest-coverage
 AM_LDFLAGS+=-lgcov

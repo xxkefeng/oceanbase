@@ -353,7 +353,7 @@ namespace oceanbase
         total_size = index_payload_size + endkey_payload_size
           + sizeof(ObSSTableBlockIndexMgr);
         ModuleArena* arena = GET_TSI_MULT(ModuleArena, 
-            TSI_SSTABLE_MODULE_ARENA_1);
+            TSI_COMPACTSSTABLEV2_FILE_BUFFER_2);
         char* buffer = NULL;
 
         if (NULL == arena || NULL == (buffer = arena->alloc(total_size)))

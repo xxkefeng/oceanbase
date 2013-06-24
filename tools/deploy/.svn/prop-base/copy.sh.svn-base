@@ -4,8 +4,7 @@ V 1
 *
 K 13
 svn:mergeinfo
-V 209
-/branches/0_4_1_release/oceanbase/tools/deploy/copy.sh:12603-13939
+V 142
 /branches/dev/oceanbase/tools/deploy/copy.sh:7279-7416,8886-9111
 /branches/developing/trans_mvcc_dev/oceanbase/tools/deploy/copy.sh:9273-10180
 END

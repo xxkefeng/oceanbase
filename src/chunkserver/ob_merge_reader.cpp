@@ -55,12 +55,13 @@ namespace oceanbase
       if (OB_SUCCESS == ret && NULL != tablet_)
       {
         ObSSTableReader* sstable_reader= NULL;
-        ret = tablet_->get_sstable_reader(sstable_reader);
+        int32_t size = 1;
+        ret = tablet_->find_sstable(*scan_param.get_range(), &sstable_reader, size);
         if (OB_SUCCESS == ret)
         {
           ret = scanner_.set_scan_param(scan_param, sstable_reader, 
-            manager_.get_block_cache(), 
-            manager_.get_block_index_cache());
+            manager_.get_serving_block_cache(), 
+            manager_.get_serving_block_index_cache());
           if (OB_SUCCESS != ret)
           {
             TBSYS_LOG(WARN, "sstable scanner set scan parameter error.");

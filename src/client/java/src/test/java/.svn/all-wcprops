@@ -1,11 +1,11 @@
 K 25
 svn:wc:ra_dav:version-url
-V 83
-/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/test/java
+V 94
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java
 END
 log4j.properties
 K 25
 svn:wc:ra_dav:version-url
-V 100
-/repos/oceanbase/!svn/ver/1543/branches/dev/oceanbase/src/client/java/src/test/java/log4j.properties
+V 111
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/log4j.properties
 END

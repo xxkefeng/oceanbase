@@ -2,8 +2,8 @@
  * (C) 2007-2010 Alibaba Group Holding Limited.
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License 
- * version 2 as published by the Free Software Foundation. 
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
  *
  *         ob_rpc_stub.cpp is for what ...
  *
@@ -28,57 +28,57 @@ namespace oceanbase
     // serialization parameter for simple types(bool, int, string, float, double).
     int serialize_param(ObDataBuffer & data_buffer, const bool arg0)
     {
-      return  serialization::encode_bool( 
-          data_buffer.get_data(), data_buffer.get_capacity(), 
+      return  serialization::encode_bool(
+          data_buffer.get_data(), data_buffer.get_capacity(),
           data_buffer.get_position(), arg0);
     }
 
     int serialize_param(ObDataBuffer & data_buffer, const int8_t arg0)
     {
-      return  serialization::encode_i8( 
-          data_buffer.get_data(), data_buffer.get_capacity(), 
+      return  serialization::encode_i8(
+          data_buffer.get_data(), data_buffer.get_capacity(),
           data_buffer.get_position(), arg0);
     }
 
     int serialize_param(ObDataBuffer & data_buffer, const int16_t arg0)
     {
-      return  serialization::encode_i16( 
-          data_buffer.get_data(), data_buffer.get_capacity(), 
+      return  serialization::encode_i16(
+          data_buffer.get_data(), data_buffer.get_capacity(),
           data_buffer.get_position(), arg0);
     }
 
     int serialize_param(ObDataBuffer & data_buffer, const int32_t arg0)
     {
-      return  serialization::encode_vi32( 
-          data_buffer.get_data(), data_buffer.get_capacity(), 
+      return  serialization::encode_vi32(
+          data_buffer.get_data(), data_buffer.get_capacity(),
           data_buffer.get_position(), arg0);
     }
 
     int serialize_param(ObDataBuffer & data_buffer, const int64_t arg0)
     {
-      return  serialization::encode_vi64( 
-          data_buffer.get_data(), data_buffer.get_capacity(), 
+      return  serialization::encode_vi64(
+          data_buffer.get_data(), data_buffer.get_capacity(),
           data_buffer.get_position(), arg0);
     }
 
     int serialize_param(ObDataBuffer & data_buffer, const float arg0)
     {
-      return  serialization::encode_float( 
-          data_buffer.get_data(), data_buffer.get_capacity(), 
+      return  serialization::encode_float(
+          data_buffer.get_data(), data_buffer.get_capacity(),
           data_buffer.get_position(), arg0);
     }
 
     int serialize_param(ObDataBuffer & data_buffer, const double arg0)
     {
-      return  serialization::encode_double( 
-          data_buffer.get_data(), data_buffer.get_capacity(), 
+      return  serialization::encode_double(
+          data_buffer.get_data(), data_buffer.get_capacity(),
           data_buffer.get_position(), arg0);
     }
-    
+
     int serialize_param(ObDataBuffer & data_buffer, const char* arg0)
     {
-      return  serialization::encode_vstr( 
-          data_buffer.get_data(), data_buffer.get_capacity(), 
+      return  serialization::encode_vstr(
+          data_buffer.get_data(), data_buffer.get_capacity(),
           data_buffer.get_position(), arg0);
     }
 
@@ -86,43 +86,43 @@ namespace oceanbase
     // deserialization result for simple types(bool, int, string, float, double).
     int deserialize_result(const ObDataBuffer & data_buffer, int64_t & pos, bool &arg0)
     {
-      return  serialization::decode_bool( 
+      return  serialization::decode_bool(
           data_buffer.get_data(), data_buffer.get_position(), pos, &arg0);
     }
 
     int deserialize_result(const ObDataBuffer & data_buffer, int64_t & pos, int8_t &arg0)
     {
-      return  serialization::decode_i8( 
+      return  serialization::decode_i8(
           data_buffer.get_data(), data_buffer.get_position(), pos, &arg0);
     }
 
     int deserialize_result(const ObDataBuffer & data_buffer, int64_t & pos, int16_t &arg0)
     {
-      return  serialization::decode_i16( 
+      return  serialization::decode_i16(
           data_buffer.get_data(), data_buffer.get_position(), pos, &arg0);
     }
 
     int deserialize_result(const ObDataBuffer & data_buffer, int64_t & pos, int32_t &arg0)
     {
-      return  serialization::decode_vi32( 
+      return  serialization::decode_vi32(
           data_buffer.get_data(), data_buffer.get_position(), pos, &arg0);
     }
 
     int deserialize_result(const ObDataBuffer & data_buffer, int64_t & pos, int64_t &arg0)
     {
-      return  serialization::decode_vi64( 
+      return  serialization::decode_vi64(
           data_buffer.get_data(), data_buffer.get_position(), pos, &arg0);
     }
 
     int deserialize_result(const ObDataBuffer & data_buffer, int64_t & pos, float &arg0)
     {
-      return  serialization::decode_float( 
+      return  serialization::decode_float(
           data_buffer.get_data(), data_buffer.get_position(), pos, &arg0);
     }
 
     int deserialize_result(const ObDataBuffer & data_buffer, int64_t & pos, double &arg0)
     {
-      return  serialization::decode_double( 
+      return  serialization::decode_double(
           data_buffer.get_data(), data_buffer.get_position(), pos, &arg0);
     }
 
@@ -131,7 +131,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (OB_SUCCESS != (ret = rc.deserialize(data_buffer.get_data(), data_buffer.get_position(), pos)))
       {
-        TBSYS_LOG(WARN, "deserialize result code error. ret:%d, buffer length:%ld, pos:%ld",
+        TBSYS_LOG(WARN, "deserialize result code failed. ret:%d, buffer length:%ld, pos:%ld",
             ret, data_buffer.get_position(), pos);
       }
       else
@@ -142,26 +142,26 @@ namespace oceanbase
     }
 
     // -----------------------------------------------------------
-    //  class ObRpcStub 
+    //  class ObRpcStub
     ObRpcStub::ObRpcStub()
     {
       init_ = false;
       rpc_buffer_ = NULL;
       rpc_frame_ = NULL;
     }
-    
+
     ObRpcStub::~ObRpcStub()
     {
     }
-    
-    int ObRpcStub::init(const ThreadSpecificBuffer * rpc_buffer, const ObClientManager * rpc_frame) 
+
+    int ObRpcStub::init(const ThreadSpecificBuffer * rpc_buffer, const ObClientManager * rpc_frame)
     {
       int ret = OB_SUCCESS;
       if (init_ || (NULL == rpc_buffer) || (NULL == rpc_frame))
       {
         TBSYS_LOG(WARN, "already inited or check input failed:inited[%s], "
-            "rpc_buffer[%p], rpc_frame[%p]", (init_? "ture": "false"), rpc_buffer, rpc_frame); 
-        ret = OB_INPUT_PARAM_ERROR; 
+            "rpc_buffer[%p], rpc_frame[%p]", (init_? "ture": "false"), rpc_buffer, rpc_frame);
+        ret = OB_INPUT_PARAM_ERROR;
       }
       else
       {
@@ -171,7 +171,7 @@ namespace oceanbase
       }
       return ret;
     }
-    
+
     int ObRpcStub::get_rpc_buffer(ObDataBuffer & data_buffer) const
     {
       int ret = OB_SUCCESS;
@@ -196,29 +196,29 @@ namespace oceanbase
 
     SEND_PARAM_DEFINE_0;
 
-    int ObRpcStub::send_0_return_0(const ObServer& server, 
+    int ObRpcStub::send_0_return_0(const ObServer& server,
         const int64_t timeout, const int32_t pcode, const int32_t version) const
-    { 
-      int ret = OB_SUCCESS; 
-      int64_t pos = 0; 
-      ObResultCode rc; 
-      ObDataBuffer data_buffer; 
-      if (OB_SUCCESS != (ret = get_rpc_buffer(data_buffer))) 
-      { 
-        TBSYS_LOG(WARN, "get_rpc_buffer error with rpc call, ret =%d", ret);
-      } 
-      else if (OB_SUCCESS != (ret = rpc_frame_->send_request( 
-              server, pcode, version, timeout, data_buffer))) 
-      { 
-        TBSYS_LOG(WARN, "send_request error, ret=%d, server=%s, pcode=%d, version=%d, timeout=%ld", 
-            ret, to_cstring(server), pcode, version, timeout); 
-      } 
-      else if (OB_SUCCESS != (ret = deserialize_result_0(data_buffer, pos, rc))) 
-      { 
-        TBSYS_LOG(WARN, "deserialize_result error, ret=%d, server=%s, pcode=%d, version=%d, timeout=%ld", 
-            ret, to_cstring(server), pcode, version, timeout); 
-      } 
-      return ret; 
+    {
+      int ret = OB_SUCCESS;
+      int64_t pos = 0;
+      ObResultCode rc;
+      ObDataBuffer data_buffer;
+      if (OB_SUCCESS != (ret = get_rpc_buffer(data_buffer)))
+      {
+        TBSYS_LOG(WARN, "get_rpc_buffer failed with rpc call, ret =%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = rpc_frame_->send_request(
+              server, pcode, version, timeout, data_buffer)))
+      {
+        TBSYS_LOG(WARN, "send_request failed, ret=%d, server=%s, pcode=%d, version=%d, timeout=%ld",
+            ret, to_cstring(server), pcode, version, timeout);
+      }
+      else if (OB_SUCCESS != (ret = deserialize_result_0(data_buffer, pos, rc)))
+      {
+        TBSYS_LOG(WARN, "deserialize_result failed, ret=%d, server=%s, pcode=%d, version=%d, timeout=%ld",
+            ret, to_cstring(server), pcode, version, timeout);
+      }
+      return ret;
     }
 
     // -----------------------------------------------------------

@@ -1,41 +1,47 @@
 K 25
 svn:wc:ra_dav:version-url
-V 71
-/repos/oceanbase/!svn/ver/12798/branches/dev/oceanbase/tools/newsqltest
+V 81
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/tools/newsqltest
 END
 ob_ps_test.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 86
-/repos/oceanbase/!svn/ver/12366/branches/dev/oceanbase/tools/newsqltest/ob_ps_test.cpp
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/newsqltest/ob_ps_test.cpp
+END
+ob_session_test.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/tools/newsqltest/ob_session_test.cpp
 END
 ob_prepare_stmt_test.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/12366/branches/dev/oceanbase/tools/newsqltest/ob_prepare_stmt_test.cpp
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/newsqltest/ob_prepare_stmt_test.cpp
 END
 ob_sql_query.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 88
-/repos/oceanbase/!svn/ver/10597/branches/dev/oceanbase/tools/newsqltest/ob_sql_query.cpp
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/newsqltest/ob_sql_query.cpp
 END
 ob_new_sql_test.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/10780/branches/dev/oceanbase/tools/newsqltest/ob_new_sql_test.cpp
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/newsqltest/ob_new_sql_test.cpp
 END
 Makefile.am
 K 25
 svn:wc:ra_dav:version-url
-V 83
-/repos/oceanbase/!svn/ver/11602/branches/dev/oceanbase/tools/newsqltest/Makefile.am
+V 93
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/tools/newsqltest/Makefile.am
 END
 ob_tablet_join_test.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 95
-/repos/oceanbase/!svn/ver/12798/branches/dev/oceanbase/tools/newsqltest/ob_tablet_join_test.cpp
+V 105
+/repos/oceanbase/!svn/ver/12778/branches/0_4_1_release/oceanbase/tools/newsqltest/ob_tablet_join_test.cpp
 END

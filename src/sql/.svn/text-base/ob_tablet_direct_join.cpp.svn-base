@@ -84,7 +84,7 @@ int ObTabletDirectJoin::fetch_fused_row_prepare()
   return ret;
 }
 
-int ObTabletDirectJoin::get_ups_row(const ObRowkey &rowkey, ObRow &row, const ObGetParam &get_param)
+int ObTabletDirectJoin::get_ups_row(const ObRowkey &rowkey, ObUpsRow &ups_row, const ObGetParam &get_param)
 {
   int ret = OB_SUCCESS;
   if (NULL == last_ups_rowkey_)
@@ -109,37 +109,29 @@ int ObTabletDirectJoin::get_ups_row(const ObRowkey &rowkey, ObRow &row, const Ob
 
   if (OB_SUCCESS == ret)
   {
-    const ObRow *tmp_row_ptr = NULL;
     if (NULL == last_ups_rowkey_ || *last_ups_rowkey_ != rowkey)
     {
-      if (OB_SUCCESS != (ret = ups_multi_get_.get_next_row(tmp_row_ptr)))
+      const ObRow *tmp_row_ptr = NULL;
+      if (OB_SUCCESS != (ret = ups_multi_get_.get_next_row(last_ups_rowkey_, tmp_row_ptr)))
       {
         TBSYS_LOG(WARN, "ups multi get next row fail:ret[%d], rowkey[%s]", ret, to_cstring(rowkey));
       }
-      else if (NULL == tmp_row_ptr)
+      else if (NULL == (last_ups_row_ = dynamic_cast<const ObUpsRow *>(tmp_row_ptr)))
       {
         ret = OB_ERR_UNEXPECTED;
         TBSYS_LOG(WARN, "shoud be ObUpsRow");
-      }
-      else if (OB_SUCCESS != (ret = tmp_row_ptr->get_rowkey(last_ups_rowkey_)))
-      {
-        TBSYS_LOG(WARN, "failed to get rowkey:ret[%d]", ret);
       }
       else if (*last_ups_rowkey_ != rowkey)
       {
         ret = OB_ERR_UNEXPECTED;
         TBSYS_LOG(WARN, "cannot find rowkey:rowkey[%s], last_ups_rowkey_[%s]", to_cstring(rowkey), to_cstring(*last_ups_rowkey_));
       }
-      else
-      {
-        last_ups_row_ = tmp_row_ptr;
-      }
     }
   }
 
   if (OB_SUCCESS == ret)
   {
-    row = *last_ups_row_;
+    ups_row = *last_ups_row_;
   }
 
   return ret;

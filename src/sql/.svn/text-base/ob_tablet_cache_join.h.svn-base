@@ -41,16 +41,16 @@ namespace oceanbase
         void set_cache(ObTabletJoinCache &ups_row_cache);
 
       private:
-        int fetch_row(const ObGetParam &get_param);
+        int fetch_ups_row(const ObGetParam &get_param);
         int compose_next_get_param(ObGetParam &next_get_param, int64_t fused_row_idx);
-        int fetch_next_row(const ObGetParam &get_param, int64_t fused_row_idx);
+        int fetch_next_ups_row(const ObGetParam &get_param, int64_t fused_row_idx);
         int gen_get_param(ObGetParam &get_param, const ObRow &fused_row);
         int revert_cache_handle();
         int fetch_fused_row_prepare();
-        int get_ups_row(const ObRowkey &rowkey, ObRow &row, const ObGetParam &get_param);
+        int get_ups_row(const ObRowkey &rowkey, ObUpsRow &ups_row, const ObGetParam &get_param);
 
       private:
-        ObTabletJoinCache *row_cache_;
+        ObTabletJoinCache *ups_row_cache_;
         CacheHandle *cache_handle_;
         uint64_t table_id_;
         int64_t handle_count_;

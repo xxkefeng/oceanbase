@@ -17,6 +17,7 @@
 #include "common/ob_malloc.h"
 #include <gtest/gtest.h>
 #include "common/ob_row_fuse.h"
+#include "common/ob_ups_row.h"
 #include "common/ob_row.h"
 #include "common/ob_row_desc.h"
 
@@ -27,12 +28,6 @@ using namespace common;
 
 namespace test
 {
-  void set_flag(ObRow &row, int64_t action_flag)
-  {
-    ObObj cell;
-    cell.set_ext(action_flag);
-    row.set_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, cell);
-  }
   class ObRowFuseTest: public ::testing::Test
   {
     public:
@@ -64,6 +59,55 @@ namespace test
   {
   }
 
+  TEST_F(ObRowFuseTest, assign)
+  {
+    uint64_t TABLE_ID = 1000;
+
+    ObRowDesc row_desc;
+    for(int i=0;i<8;i++)
+    {
+      row_desc.add_column_desc(TABLE_ID, OB_APP_MIN_COLUMN_ID + i);
+    }
+
+    ObRow row;
+    row.set_row_desc(row_desc);
+    ObObj value;
+
+    for(int i=0;i<8;i++)
+    {
+      value.set_int(i);
+      OK(row.raw_set_cell(i, value));
+    }
+
+    ObRowDesc ups_row_desc;
+    for(int i=0;i<4;i++)
+    {
+      ups_row_desc.add_column_desc(TABLE_ID, OB_APP_MIN_COLUMN_ID + i);
+    }
+
+    ObUpsRow ups_row;
+    ups_row.set_row_desc(ups_row_desc);
+
+    for(int i=0;i<4;i++)
+    {
+      value.set_ext(ObActionFlag::OP_NOP);
+      OK(ups_row.raw_set_cell(i, value));
+    }
+
+    ups_row.set_is_delete_row(true);
+    OK(ObRowFuse::assign(ups_row, row));
+
+    const ObObj *cell = NULL;
+    uint64_t table_id = OB_INVALID_ID;
+    uint64_t column_id = OB_INVALID_ID;
+
+    for(int i=0;i<4;i++)
+    {
+      OK(row.raw_get_cell(i, cell, table_id, column_id));
+      ASSERT_EQ(ObNullType, cell->get_type());
+    }
+  }
+
   TEST_F(ObRowFuseTest, basic_join_test2)
   {
     uint64_t TABLE_ID = 1000;
@@ -73,7 +117,6 @@ namespace test
     {
       row_desc.add_column_desc(TABLE_ID, OB_APP_MIN_COLUMN_ID + i);
     }
-    row_desc.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
 
     ObRow row;
     row.set_row_desc(row_desc);
@@ -90,11 +133,11 @@ namespace test
     {
       ups_row_desc.add_column_desc(TABLE_ID, OB_APP_MIN_COLUMN_ID + i);
     }
-    ups_row_desc.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
 
-    ObRow ups_row;
+    ObUpsRow ups_row;
     ups_row.set_row_desc(ups_row_desc);
-    set_flag(ups_row, ObActionFlag::OP_DEL_ROW);
+
+    ups_row.set_is_delete_row(true);
 
     for(int i=0;i<4;i++)
     {
@@ -153,48 +196,36 @@ namespace test
   }
 
 
-    /*
-     * after init row
-     * seq no:         0 1  2  3  4  5  6  7
-     * row:            1 2 +3 +4 +5 +6 +7 +8
-     * result_row:     1 2  4  5  6  7  8  9
-     *
-     * not change:     1 2  4  5  6  7  8  9   i+2
-     * copy:           1 2  3  4  5  6  7  8   i+1
-     * apply:          1 2  7  9 11 13 15 17   i*2 + 3
-     *
-     */
   void init_row(ObRow &row, ObRow &result_row, int64_t column_num)
   {
     ObObj value;
-    const ObRowDesc *row_desc = row.get_row_desc();
 
-    for (int64_t i = row_desc->get_rowkey_cell_count(); i < column_num; ++i)
+    for (int i = 0; i < column_num; i ++)
     {
-      value.set_int(i+1, true);
+      value.set_int(i, true);
       row.raw_set_cell(i, value);
     }
 
-    for (int64_t i = row_desc->get_rowkey_cell_count(); i < column_num; ++i)
+    for (int i = 0; i < column_num; i ++)
     {
-      value.set_int(i + 2);
-      result_row.raw_set_cell(i, value);
-    }
-
-    for(int64_t i = 0; i < row_desc->get_rowkey_cell_count(); ++i)
-    {
-      value.set_int(i+1);
-      row.raw_set_cell(i, value);
+      value.set_int(i + 1);
       result_row.raw_set_cell(i, value);
     }
   }
 
-  #define MY_ASSERT_EQUAL(value1, value2) \
-    if ((value1) != (value2)) \
+  #define MY_ASSERT_TRUE(expr) \
+    if (!(expr)) \
     { \
-      TBSYS_LOG(WARN, "value1[%ld] != value2[%ld]", (value1), (value2)); \
+      TBSYS_LOG(WARN, "assert fail"); \
       return false; \
     }
+
+  void set_flag(ObRow &row, int64_t action_flag)
+  {
+    ObObj cell;
+    cell.set_ext(action_flag);
+    row.set_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, cell);
+  }
 
   enum ResultState
   {
@@ -223,23 +254,23 @@ namespace test
       switch (state)
       {
         case NOT_CHANGE:
-          MY_ASSERT_EQUAL( int_value, i + 2 );
+          MY_ASSERT_TRUE( int_value == i + 1 );
           break;
         case COPY:
-          MY_ASSERT_EQUAL( int_value, i + 1);
+          MY_ASSERT_TRUE( int_value == i );
           break;
         case APPLY:
-          MY_ASSERT_EQUAL( int_value, i * 2 + 3);
+          MY_ASSERT_TRUE( int_value == i * 2 + 1 );
           break;
         case ALL_NULL:
-          MY_ASSERT_EQUAL( static_cast<int64_t>(ObNullType), static_cast<int64_t>(cell->get_type()) );
+          MY_ASSERT_TRUE( ObNullType == cell->get_type() );
       }
     }
-    for (int64_t i = 0; i < row_desc->get_rowkey_cell_count(); i ++)
+    for (int i = 0; i < row_desc->get_rowkey_cell_count(); i ++)
     {
       row.raw_get_cell(i, cell, table_id, column_id);
       cell->get_int(int_value);
-      MY_ASSERT_EQUAL( int_value, i + 1 );
+      MY_ASSERT_TRUE( int_value == i + 1 );
     }
     return true;
   }
@@ -254,6 +285,7 @@ namespace test
     ObRowDesc result_row_desc;
     const uint64_t TABLE_ID = 1001;
     const int64_t COLUMN_NUM = 8;
+    const ObObj *result_action_flag_cell = NULL;
     bool is_row_empty = false;
 
     row_desc.set_rowkey_cell_count(2);
@@ -269,30 +301,82 @@ namespace test
     row.set_row_desc(row_desc);
     result_row.set_row_desc(result_row_desc);
 
+    //测试fuse_sstable_row的情况
+    /*
+     * after init row
+     * row:            +1 +2 +3 +4 +5 +6 +7 +8
+     * result_row:      2  3  4  5  6  7  8  9
+     */
     init_row(row, result_row, COLUMN_NUM);
     set_flag(row, ObActionFlag::OP_NEW_ADD);
-    ObRowFuse::fuse_row(row, result_row, is_row_empty);
+    ObRowFuse::fuse_row(row, result_row, is_row_empty, false);
     ASSERT_TRUE(check_result(result_row, COPY, COLUMN_NUM)) << to_cstring(row) << std::endl << to_cstring(result_row) << std::endl;
     ASSERT_TRUE(!is_row_empty);
 
     init_row(row, result_row, COLUMN_NUM);
     set_flag(row, ObActionFlag::OP_DEL_ROW);
-    ObRowFuse::fuse_row(row, result_row, is_row_empty);
+    ObRowFuse::fuse_row(row, result_row, is_row_empty, false);
     ASSERT_TRUE(check_result(result_row, ALL_NULL, COLUMN_NUM));
     ASSERT_TRUE(is_row_empty);
 
     init_row(row, result_row, COLUMN_NUM);
     set_flag(row, ObActionFlag::OP_ROW_DOES_NOT_EXIST);
     is_row_empty = true;
-    ObRowFuse::fuse_row(row, result_row, is_row_empty);
+    ObRowFuse::fuse_row(row, result_row, is_row_empty, false);
     ASSERT_TRUE(check_result(result_row, NOT_CHANGE, COLUMN_NUM));
     ASSERT_TRUE(is_row_empty);
 
     init_row(row, result_row, COLUMN_NUM);
     set_flag(row, ObActionFlag::OP_VALID);
-    ObRowFuse::fuse_row(row, result_row, is_row_empty);
+    ObRowFuse::fuse_row(row, result_row, is_row_empty, false);
     ASSERT_TRUE(check_result(result_row, APPLY, COLUMN_NUM));
     ASSERT_TRUE(!is_row_empty);
+
+
+    //测试fuse_ups_row的情况
+    result_row_desc.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
+    result_row.get_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, result_action_flag_cell);
+
+    init_row(row, result_row, COLUMN_NUM);
+    set_flag(row, ObActionFlag::OP_NEW_ADD);
+    set_flag(result_row, ObActionFlag::OP_DEL_ROW);
+    ObRowFuse::fuse_row(row, result_row, is_row_empty, true);
+    ASSERT_TRUE(check_result(result_row, COPY, COLUMN_NUM));
+    ASSERT_TRUE( ObActionFlag::OP_NEW_ADD == result_action_flag_cell->get_ext() );
+    ASSERT_TRUE(!is_row_empty);
+
+    init_row(row, result_row, COLUMN_NUM);
+    set_flag(row, ObActionFlag::OP_DEL_ROW);
+    set_flag(result_row, ObActionFlag::OP_NEW_ADD);
+    ObRowFuse::fuse_row(row, result_row, is_row_empty, true);
+    ASSERT_TRUE(check_result(result_row, NOT_CHANGE, COLUMN_NUM));
+    ASSERT_TRUE( ObActionFlag::OP_DEL_ROW == result_action_flag_cell->get_ext() );
+    ASSERT_TRUE(!is_row_empty);
+
+    init_row(row, result_row, COLUMN_NUM);
+    set_flag(row, ObActionFlag::OP_NEW_ADD);
+    set_flag(result_row, ObActionFlag::OP_NEW_ADD);
+    ObRowFuse::fuse_row(row, result_row, is_row_empty, true);
+    ASSERT_TRUE(check_result(result_row, COPY, COLUMN_NUM)) << to_cstring(row) << std::endl << to_cstring(result_row) << std::endl;
+    ASSERT_TRUE( ObActionFlag::OP_NEW_ADD == result_action_flag_cell->get_ext() ) << "result_action flag" << result_action_flag_cell->get_ext() << std::endl;
+    ASSERT_TRUE(!is_row_empty);
+
+    init_row(row, result_row, COLUMN_NUM);
+    set_flag(row, ObActionFlag::OP_NEW_ADD);
+    set_flag(result_row, ObActionFlag::OP_ROW_DOES_NOT_EXIST);
+    ObRowFuse::fuse_row(row, result_row, is_row_empty, true);
+    ASSERT_TRUE(check_result(result_row, COPY, COLUMN_NUM));
+    ASSERT_TRUE( ObActionFlag::OP_NEW_ADD == result_action_flag_cell->get_ext() );
+    ASSERT_TRUE(!is_row_empty);
+
+    init_row(row, result_row, COLUMN_NUM);
+    set_flag(row, ObActionFlag::OP_ROW_DOES_NOT_EXIST);
+    set_flag(result_row, ObActionFlag::OP_DEL_ROW);
+    ObRowFuse::fuse_row(row, result_row, is_row_empty, true);
+    ASSERT_TRUE(check_result(result_row, NOT_CHANGE, COLUMN_NUM));
+    ASSERT_TRUE( ObActionFlag::OP_DEL_ROW == result_action_flag_cell->get_ext() );
+    ASSERT_TRUE(!is_row_empty);
+
   }
 
   //test ObRowFuse.apply_row
@@ -329,14 +413,14 @@ namespace test
     {
       result_row.raw_get_cell(i, cell, table_id, column_id);
       cell->get_int(int_value);
-      ASSERT_EQ(int_value, i+1);
+      ASSERT_EQ(int_value, i);
     }
 
     for (int i = 0; i < row_desc.get_rowkey_cell_count(); i ++)
     {
       result_row.raw_get_cell(i, cell, table_id, column_id);
       cell->get_int(int_value);
-      ASSERT_EQ(int_value, i+1);
+      ASSERT_EQ(int_value, i + 1);
     }
 
     result_row.get_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, cell);
@@ -351,7 +435,7 @@ namespace test
     {
       result_row.raw_get_cell(i, cell, table_id, column_id);
       cell->get_int(int_value);
-      ASSERT_EQ(int_value, i * 2 + 3);
+      ASSERT_EQ(int_value, i * 2 + 1);
     }
 
     for (int i = 0; i < row_desc.get_rowkey_cell_count(); i ++)
@@ -373,11 +457,10 @@ namespace test
     {
       row_desc.add_column_desc(table_id, OB_APP_MIN_COLUMN_ID + i);
     }
-    row_desc.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
 
-    ObRow ups_row;
+    ObUpsRow ups_row;
     ups_row.set_row_desc(row_desc);
-    set_flag(ups_row, ObActionFlag::OP_VALID);
+    ups_row.set_is_delete_row(false);
 
     ObObj cell;
     for(int i=0;i<8;i++)
@@ -410,7 +493,8 @@ namespace test
       ASSERT_EQ(i * 2, int_value);
     }
 
-    set_flag(ups_row, ObActionFlag::OP_DEL_ROW);
+    ups_row.set_is_delete_row(true);
+
     ObRowFuse::join_row(&ups_row, &row, &result);
 
     for(int i=0;i<8;i++)
@@ -422,18 +506,95 @@ namespace test
 
     for(int i=0;i<8;i++)
     {
-      cell.set_int(3*i, false);
+      cell.set_int(i, false);
       ups_row.raw_set_cell(i, cell);
     }
 
-    set_flag(ups_row, ObActionFlag::OP_VALID);
+    ups_row.set_is_delete_row(false);
     ObRowFuse::join_row(&ups_row, &row, &result);
 
     for(int i=0;i<8;i++)
     {
       result.raw_get_cell(i, result_cell, result_table_id, result_column_id);
       result_cell->get_int(int_value);
-      ASSERT_EQ(3*i, int_value);
+      ASSERT_EQ(i, int_value);
+    }
+  }
+
+  TEST_F(ObRowFuseTest, basic_fuse_test)
+  {
+    ObRowDesc row_desc;
+    ObRowDesc sstable_row_desc;
+    uint64_t table_id = 1000;
+    for(int i=0;i<8;i++)
+    {
+      row_desc.add_column_desc(table_id, OB_APP_MIN_COLUMN_ID + i);
+      sstable_row_desc.add_column_desc(table_id, OB_APP_MIN_COLUMN_ID + i);
+    }
+    sstable_row_desc.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
+
+    ObUpsRow ups_row;
+    ups_row.set_row_desc(row_desc);
+    ups_row.set_is_delete_row(false);
+
+    ObObj cell;
+    for(int i=0;i<8;i++)
+    {
+      cell.set_int(i, true);
+      ups_row.raw_set_cell(i, cell);
+    }
+
+    ObRow row;
+    row.set_row_desc(sstable_row_desc);
+
+
+    for(int i=0;i<8;i++)
+    {
+      cell.set_int(i);
+      row.raw_set_cell(i, cell);
+    }
+
+    ObRow result;
+
+    set_flag(row, ObActionFlag::OP_ROW_DOES_NOT_EXIST);
+    ObRowFuse::fuse_row(&ups_row, &row, &result);
+
+    const ObObj *result_cell = NULL;
+    uint64_t result_table_id = 0;
+    uint64_t result_column_id = 0;
+    int64_t int_value = 0;
+    for(int i=0;i<8;i++)
+    {
+      result.raw_get_cell(i, result_cell, result_table_id, result_column_id);
+      result_cell->get_int(int_value);
+      ASSERT_EQ(i, int_value) << to_cstring(result);
+    }
+
+    ups_row.set_is_delete_row(true);
+
+    ObRowFuse::fuse_row(&ups_row, &row, &result);
+
+    for(int i=0;i<8;i++)
+    {
+      result.raw_get_cell(i, result_cell, result_table_id, result_column_id);
+      result_cell->get_int(int_value);
+      ASSERT_EQ(i, int_value);
+    }
+
+    for(int i=0;i<8;i++)
+    {
+      cell.set_int(i, false);
+      ups_row.raw_set_cell(i, cell);
+    }
+
+    ups_row.set_is_delete_row(false);
+    ObRowFuse::fuse_row(&ups_row, &row, &result);
+
+    for(int i=0;i<8;i++)
+    {
+      result.raw_get_cell(i, result_cell, result_table_id, result_column_id);
+      result_cell->get_int(int_value);
+      ASSERT_EQ(i, int_value);
     }
   }
 }

@@ -33,7 +33,7 @@ int ObTableRename::cons_row_desc()
   }
   else if (OB_SUCCESS != (ret = child_op_->get_row_desc(org_row_desc_)))
   {
-    TBSYS_LOG(WARN, "failed to get original row desc, child=%s, err=%d", to_cstring(*child_op_), ret);
+    TBSYS_LOG(WARN, "failed to get original row desc, err=%d", ret);
   }
   else
   {

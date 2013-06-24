@@ -27,7 +27,6 @@ namespace oceanbase
   {
     class ObPhysicalPlan;
     class ObUpsResult;
-    class ObSQLResultSet;
   };
   namespace common
   {
@@ -183,13 +182,6 @@ namespace oceanbase
         int delete_tablets(const int64_t timeout, const ObServer & root_server,
             const ObServer &client_server, const common::ObTabletReportInfoList& tablets);
 
-        int report_samples(const int64_t timeout, const ObServer & root_server,
-            const bool is_succ, const ObServer &client_server, const uint64_t index_table_id,
-            const ObNewScanner& result, bool has_more);
-
-        int build_index_over(const int64_t timeout, const ObServer & root_server,
-            const bool is_succ, const ObServer &client_server, const uint64_t index_table_id);
-
         /*
          *  notify dest_server to load tablet
          * @param [in] dest_server    migrate destination server
@@ -323,8 +315,6 @@ namespace oceanbase
                           const ObEndTransReq &req) const;
         // request ms to execute sql with no result set
         int execute_sql(const int64_t timeout, const ObServer & ms, const ObString &sql_str) const;
-        int execute_sql(const int64_t timeout, const ObServer & ms, 
-            const ObString &sql_str, sql::ObSQLResultSet& result) const;
         /* get master obi rootserver address */
         int get_master_obi_rs(const int64_t timeout, const ObServer &rs, ObServer &master_obi_rs) const;
       protected:

@@ -18,7 +18,6 @@
 #include "ob_rowkey.h"
 #include "ob_range.h"
 #include "ob_malloc.h"
-#include "utility.h"
 
 namespace oceanbase 
 { 
@@ -321,11 +320,15 @@ namespace oceanbase
 
       if (OB_SUCCESS != (ret = src.start_key_.deep_copy(dst.start_key_, start_key_allocator)))
       {
-        TBSYS_LOG(WARN, "start key deep copy error: start_key_=[%s]", to_cstring(dst.start_key_));
+        char buf[1024];
+        dst.start_key_.to_string(buf, 1024);
+        TBSYS_LOG(WARN, "start key deep copy error:start_key_=%s", buf);
       }
       else if (OB_SUCCESS != (ret = src.end_key_.deep_copy(dst.end_key_, end_key_allocator)))
       {
-        TBSYS_LOG(WARN, "end key deep copy error: end_key_=[%s]", to_cstring(dst.end_key_));
+        char buf[1024];
+        dst.end_key_.to_string(buf, 1024);
+        TBSYS_LOG(WARN, "end key deep copy error:end_key_=%s", buf);
       }
       else
       {

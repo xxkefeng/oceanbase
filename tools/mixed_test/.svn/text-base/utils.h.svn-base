@@ -76,7 +76,7 @@ int copy(T &src, T &dst)
 {
   int ret = oceanbase::common::OB_SUCCESS;
   int64_t size = src.get_serialize_size();
-  char *buffer = (char*)oceanbase::common::ob_malloc(size);
+  char *buffer = (char*)oceanbase::common::ob_malloc(size, ObModIds::TEST);
   if (NULL == buffer)
   {
     ret = oceanbase::common::OB_ERROR;

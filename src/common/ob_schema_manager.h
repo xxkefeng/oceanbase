@@ -55,8 +55,6 @@ namespace oceanbase
 
       // get user table schema of pointed version if not exist return null
       const common::ObSchemaManagerV2 * get_user_schema(const int64_t version);
-      const common::ObSchemaManagerV2 * get_sys_schema(const int64_t version) const;
-      const common::ObSchemaManagerV2 * get_schema(const int64_t version);
 
       int release_schema(const common::ObSchemaManagerV2 * schema);
 

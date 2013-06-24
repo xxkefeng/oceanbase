@@ -270,7 +270,7 @@ TEST_F(TestObStringBuf, test_set_string_buf_size_overflow)
   ObObj obj[NUM];
   ObObj stored_obj[NUM];
   const int64_t cstr_len = 64 * 1024 + 100;
-  char *cstr = (char*)ob_malloc(cstr_len);
+  char *cstr = (char*)ob_malloc(cstr_len, ObModIds::TEST);
   ObString str;
 
   ASSERT_TRUE(NULL != cstr);
@@ -311,7 +311,7 @@ TEST_F(TestObStringBuf, test_set_string_buf_size_use_user_define)
   ObObj obj[NUM];
   ObObj stored_obj[NUM];
   const int64_t cstr_len = 64 * 1024 + 100;
-  char *cstr = (char*)ob_malloc(cstr_len);
+  char *cstr = (char*)ob_malloc(cstr_len, ObModIds::TEST);
   ObString str;
 
   ASSERT_TRUE(NULL != cstr);

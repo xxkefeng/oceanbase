@@ -13,12 +13,13 @@ using namespace oceanbase::tools;
 using namespace std;
 using namespace tbsys;
 
+#define HOST_NAME_LEN 256
 #define RESET_STAT() stat_.reset()
 #define INC_STAT(type, value) stat_.inc_stat(type, value)
 #define DUMP_STAT(x) stat_.dump((x))
 
-TaskWorker::TaskWorker(Env *env, const ObServer & server, const int64_t timeout, 
-                       const uint64_t retry_times, const TaskWorkerParam *param)
+TaskWorker::TaskWorker(Env *env, const ObServer & server, const int64_t timeout,
+    const uint64_t retry_times, const TaskWorkerParam *param)
 {
   server_ = server;
   timeout_ = timeout;
@@ -50,6 +51,14 @@ int TaskWorker::init(RpcStub * rpc, const char * data_path)
   }
   else
   {
+    ret = BaseClient::init(server_);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "init rpc failed:server[%s], ret[%d]", server_.to_cstring(), ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
     rpc_ = rpc;
     temp_result_ = new(std::nothrow) char[OB_MAX_PACKET_LENGTH];
     if (NULL == temp_result_)
@@ -68,7 +77,6 @@ int TaskWorker::init(RpcStub * rpc, const char * data_path)
       ret = OB_ERROR;
     }
   }
-
   return ret;
 }
 
@@ -86,7 +94,7 @@ int TaskWorker::fetch_task(TaskCounter & count, TaskInfo & task)
       if (ret != OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "check fetch task failed:ret[%d]", ret);
-        usleep(RETRY_INTERVAL * (i + 1));
+        usleep(__useconds_t(RETRY_INTERVAL * (i + 1)));
       }
       else
       {
@@ -113,9 +121,7 @@ int TaskWorker::fetch_task(TaskCounter & count, TaskInfo & task)
 int TaskWorker::report_task(const int64_t result_code, const char * file_name, const TaskInfo & task)
 {
   int ret = OB_SUCCESS;
-
   DUMP_STAT(task.get_id());
-
   if ((NULL != file_name) && check_inner_stat())
   {
     for (uint64_t i = 0; i <= MAX_RETRY_TIMES; ++i)
@@ -162,33 +168,36 @@ int TaskWorker::scan(const int64_t index, const TabletLocation & list, const ObS
 
 int TaskWorker::do_task(TaskOutputFile * file, const TaskInfo & task)
 {
-  int ret = OB_SUCCESS;
   ObScanner scanner;
-  ObScanParam param = task.get_param();
-
-  int64_t table_id = task.get_table_id();
-  const TableConf *conf = NULL;
-  param_->get_table_conf(task.get_table_name(), conf);
-  if (conf != NULL)
+  ObScanParam param;
+  int ret = param.safe_copy(task.get_param());
+  if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(DEBUG, "using table conf, table_id=%ld", table_id);
-    file->set_table_conf(conf);
+    int64_t table_id = task.get_table_id();
+    const TableConf *conf = NULL;
+    param_->get_table_conf(task.get_table_name(), conf);
+    if (conf != NULL)
+    {
+      TBSYS_LOG(DEBUG, "using table conf, table_id=%ld", table_id);
+      file->set_table_conf(conf);
+    }
+    else
+    {
+      TBSYS_LOG(DEBUG, "do not use table conf, table_id=%ld", table_id);
+    }
   }
   else
   {
-    TBSYS_LOG(DEBUG, "do not use table conf, table_id=%ld", table_id);
+    TBSYS_LOG(WARN, "safe copy scan param failed:ret[%d]", ret);
   }
-
   int64_t scan_times = 0;
   int64_t total_scan_time = 0;
   int64_t total_output_time = 0;
 
-  while(true)
+  common::ObNewRange new_range;
+  common::ModuleArena rowkey_allocator;
+  while (ret == OB_SUCCESS)
   {
-    // every modify need a new buffer
-    // no reset temp buffer
-    ObMemBuffer temp_buffer;
-
     int64_t scan_start_time = CTimeUtil::getTime();
     ret = scan(task.get_index(), task.get_location(), param, scanner);
     if (ret != OB_SUCCESS)
@@ -213,9 +222,7 @@ int TaskWorker::do_task(TaskOutputFile * file, const TaskInfo & task)
         TBSYS_LOG(ERROR, "output result failed:task[%lu], ret[%d]", task.get_id(), ret);
         break;
       }
-
       total_output_time += CTimeUtil::getTime() - start_output_time;
-
       bool finish = false;
       ret = check_finish(param, scanner, finish);
       if (ret != OB_SUCCESS)
@@ -225,7 +232,8 @@ int TaskWorker::do_task(TaskOutputFile * file, const TaskInfo & task)
       }
       else if (!finish)
       {
-        ret = modify_param(scanner, temp_buffer, param);
+        rowkey_allocator.reuse();
+        ret = modify_param(scanner, rowkey_allocator, new_range, param);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "modify param for next query failed:task[%lu], ret[%d]",
@@ -285,9 +293,9 @@ int TaskWorker::do_task(const char * file_name, const TaskInfo & task)
         err = OB_ERROR;
       }
     }
-    
+
     // remove failed temp file
-    if (ret != OB_SUCCESS) 
+    if (ret != OB_SUCCESS)
     {
       err = env_->rmfile(temp_name);
       if (OB_SUCCESS != err)
@@ -302,11 +310,8 @@ int TaskWorker::do_task(const char * file_name, const TaskInfo & task)
 
 int TaskWorker::make_file_name(const TaskInfo &task, char file_name[], const int64_t len)
 {
-#define HOST_NAME_LEN 256
-
   int ret = OB_SUCCESS;
   char host_name[HOST_NAME_LEN];
-
   if (gethostname(host_name, HOST_NAME_LEN) != 0)
   {
     TBSYS_LOG(ERROR, "can't get host name, due to [%d]", errno);
@@ -316,7 +321,6 @@ int TaskWorker::make_file_name(const TaskInfo &task, char file_name[], const int
   {
     const TableConf *conf = NULL;
     string output_path = output_path_;
-
     int has_conf = param_->get_table_conf(task.get_table_name(), conf);
     if (has_conf != OB_SUCCESS)
     {
@@ -334,7 +338,7 @@ int TaskWorker::make_file_name(const TaskInfo &task, char file_name[], const int
     }
 
     int blen = snprintf(file_name, len, "%s/%ld_%.*s_%ld_%ld%s", output_path.c_str(), (int64_t)getpid(),
-                       task.get_param().get_table_name().length(), task.get_param().get_table_name().ptr(), 
+                       task.get_param().get_table_name().length(), task.get_param().get_table_name().ptr(),
                        task.get_token(), task.get_id(), host_name);
     if (blen <= 0)
     {
@@ -349,7 +353,6 @@ int TaskWorker::make_file_name(const TaskInfo &task, char file_name[], const int
 int TaskWorker::do_task(const TaskInfo & task, char file_name[], const int64_t len)
 {
   int ret = OB_SUCCESS;
-  ObScanParam param = task.get_param();
   if (NULL != output_path_)
   {
     ret = make_file_name(task, file_name, len);
@@ -386,7 +389,6 @@ int TaskWorker::check_finish(const ObScanParam & param, const ObScanner & result
   {
     TBSYS_LOG(INFO, "%s, Finished count=%ld", finish ? "Finished" : "Still has", item_count);
     INC_STAT(TASK_TOTAL_RECORD_COUNT, item_count); /* update row counts */
-
     ret = check_result(param, result);
     if (ret != OB_SUCCESS)
     {
@@ -396,9 +398,9 @@ int TaskWorker::check_finish(const ObScanParam & param, const ObScanner & result
   return ret;
 }
 
-int TaskWorker::modify_param(const ObScanner & result, ObMemBuffer & buffer, ObScanParam & param)
+int TaskWorker::modify_param(const ObScanner & result, ModuleArena & allocator, ObNewRange & new_range, ObScanParam & param)
 {
-  ObString last_rowkey;
+  ObRowkey last_rowkey;
   int ret = result.get_last_row_key(last_rowkey);
   if (ret != OB_SUCCESS)
   {
@@ -406,27 +408,33 @@ int TaskWorker::modify_param(const ObScanner & result, ObMemBuffer & buffer, ObS
   }
   else
   {
-    const ObRange * range = NULL;
-    range = param.get_range();
+    const ObNewRange * range = param.get_range();
     if (NULL == range)
     {
+      ret = OB_ERROR;
       TBSYS_LOG(ERROR, "get range failed:range[%p]", range);
     }
     else
     {
-      const_cast<ObRange *>(range)->border_flag_.unset_min_value();
-      const_cast<ObRange *>(range)->border_flag_.unset_inclusive_start();
-      if (NULL == buffer.malloc(last_rowkey.length()))
+      ret = deep_copy_range(allocator, *range, new_range);
+      if (ret != OB_SUCCESS)
       {
-        TBSYS_LOG(ERROR, "check malloc mem buffer failed");
-        ret = OB_ERROR;
+        TBSYS_LOG(WARN, "deep copy new range failed:ret[%d]", ret);
+      }
+    }
+    if (OB_SUCCESS == ret)
+    {
+      new_range.border_flag_.unset_min_value();
+      new_range.border_flag_.unset_inclusive_start();
+      ret = new_range.end_key_.deep_copy(last_rowkey, allocator);
+      if (ret != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "deep copy last rowkey failed:ret[%d]", ret);
       }
       else
       {
-        memcpy(buffer.get_buffer(), last_rowkey.ptr(), last_rowkey.length());
-        const_cast<ObRange *>(range)->start_key_.assign(
-            reinterpret_cast<char*>(buffer.get_buffer()), last_rowkey.length());
-        param.set(param.get_table_id(), param.get_table_name(), *range);
+        TBSYS_LOG(INFO, "construct the next scan range:%s", to_cstring(new_range));
+        param.set(param.get_table_id(), param.get_table_name(), new_range);
       }
     }
   }
@@ -435,6 +443,8 @@ int TaskWorker::modify_param(const ObScanner & result, ObMemBuffer & buffer, ObS
 
 int TaskWorker::check_result(const ObScanParam & param, const ObScanner & result)
 {
+  UNUSED(param);
+  UNUSED(result);
   int ret = OB_SUCCESS;
   return ret;
 }
@@ -454,7 +464,10 @@ int TaskWorker::output(TaskOutputFile * file, ObScanner & result) const
   }
   else
   {
-    ret = file->append(result);
+    TBSYS_LOG(INFO, "output the result");
+    UNUSED(result);
+    // TODO
+    // ret = file->append(result);
   }
   return ret;
 }

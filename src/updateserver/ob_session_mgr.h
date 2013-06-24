@@ -299,13 +299,26 @@ namespace oceanbase
     {
       public:
         SessionLockGuard(const SessionType type,
-                        common::SpinRWLock &lock) : lock_(NULL)
+                        common::SpinRWLock &lock) : lock_(NULL),
+                                                    lock_succ_(false)
         {
-          if (ST_REPLAY == type
-              || ST_READ_WRITE == type)
+          if (ST_REPLAY == type)
           {
             lock.rdlock();
             lock_ = &lock;
+            lock_succ_ = true;
+          }
+          else if (ST_READ_WRITE == type)
+          {
+            if (lock.try_rdlock())
+            {
+              lock_ = &lock;
+              lock_succ_ = true;
+            }
+          }
+          else
+          {
+            lock_succ_ = true;
           }
         };
         ~SessionLockGuard()
@@ -315,8 +328,13 @@ namespace oceanbase
             lock_->unlock();
           }
         };
+        bool is_lock_succ() const
+        {
+          return lock_succ_;
+        };
       private:
         common::SpinRWLock *lock_;
+        bool lock_succ_;
     };
 
     class SessionMgr

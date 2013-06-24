@@ -1,53 +1,35 @@
 K 25
 svn:wc:ra_dav:version-url
-V 76
-/repos/oceanbase/!svn/ver/13092/branches/dev/oceanbase/tools/deploy/bigquery
+V 86
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery
 END
 bigquery.conf.template
 K 25
 svn:wc:ra_dav:version-url
-V 99
-/repos/oceanbase/!svn/ver/13080/branches/dev/oceanbase/tools/deploy/bigquery/bigquery.conf.template
-END
-mysql
-K 25
-svn:wc:ra_dav:version-url
-V 82
-/repos/oceanbase/!svn/ver/13076/branches/dev/oceanbase/tools/deploy/bigquery/mysql
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/bigquery.conf.template
 END
 bigquery.schema
 K 25
 svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/9222/branches/dev/oceanbase/tools/deploy/bigquery/bigquery.schema
+V 102
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/bigquery.schema
 END
 stress.sh
 K 25
 svn:wc:ra_dav:version-url
-V 86
-/repos/oceanbase/!svn/ver/12417/branches/dev/oceanbase/tools/deploy/bigquery/stress.sh
+V 96
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/stress.sh
 END
 Makefile
 K 25
 svn:wc:ra_dav:version-url
-V 84
-/repos/oceanbase/!svn/ver/8215/branches/dev/oceanbase/tools/deploy/bigquery/Makefile
+V 95
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/Makefile
 END
 bigquery.py
 K 25
 svn:wc:ra_dav:version-url
-V 88
-/repos/oceanbase/!svn/ver/13092/branches/dev/oceanbase/tools/deploy/bigquery/bigquery.py
-END
-init.sql
-K 25
-svn:wc:ra_dav:version-url
-V 85
-/repos/oceanbase/!svn/ver/13076/branches/dev/oceanbase/tools/deploy/bigquery/init.sql
-END
-mysql.sql
-K 25
-svn:wc:ra_dav:version-url
-V 86
-/repos/oceanbase/!svn/ver/13076/branches/dev/oceanbase/tools/deploy/bigquery/mysql.sql
+V 98
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/tools/deploy/bigquery/bigquery.py
 END

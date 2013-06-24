@@ -35,7 +35,7 @@ namespace oceanbase
     class ObStringBufT
     {
       public:
-        ObStringBufT(const int32_t mod_id = 0, const int64_t block_size = DEF_MEM_BLOCK_SIZE);
+        ObStringBufT(const int32_t mod_id = ObModIds::OB_STRING_BUF, const int64_t block_size = DEF_MEM_BLOCK_SIZE);
         explicit ObStringBufT(PageArenaT &arena);
         ~ObStringBufT();
         int clear();

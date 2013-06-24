@@ -81,7 +81,6 @@ namespace oceanbase
       int64_t get_row_count() const;
       int64_t get_sstable_size() const;
       int64_t get_sstable_checksum() const;
-      inline uint64_t get_sstable_row_checksum() const {return 0;}
 
       const ObSSTableSchema* get_schema() const;
       inline const ObSSTableTrailer& get_trailer() const { return trailer_; }

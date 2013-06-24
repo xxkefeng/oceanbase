@@ -37,6 +37,7 @@ namespace oceanbase
   {
     class ObUpsManager;
     class ObChunkServerManager;
+    // not thread safe virtual memory table
     class ObRootMonitorTable
     {
     public:
@@ -48,7 +49,6 @@ namespace oceanbase
       typedef common::ObVector<common::ObClusterServer> ServerVector;
       void init(const common::ObServer & root_server, const ObChunkServerManager & cs_manager,
           const ObUpsManager & ups_manager);
-      void init(const common::ObServer & root_server);
       // get request
       int get(const common::ObRowkey & rowkey, common::ObScanner & scanner);
       // print all the server info

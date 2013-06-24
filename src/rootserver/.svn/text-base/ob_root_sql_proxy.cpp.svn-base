@@ -32,11 +32,11 @@ ObRootSQLProxy::~ObRootSQLProxy()
 int ObRootSQLProxy::query(const int64_t retry_times, const int64_t timeout, const common::ObString & sql)
 {
   int ret = OB_SUCCESS;
-  int64_t count = 0;
   ObServer server;
+  int64_t count = 0;
   do
   {
-    ret = ms_provider_.get_ms(count, server);
+    ret = ms_provider_.get_ms(server);
     if (ret != OB_SUCCESS)
     {
       TBSYS_LOG(WARN, "get ms failed:ret[%d]", ret);

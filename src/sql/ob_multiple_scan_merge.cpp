@@ -21,7 +21,8 @@ using namespace oceanbase;
 using namespace sql;
 
 ObMultipleScanMerge::ObMultipleScanMerge()
-  :child_context_num_(0), is_cur_row_valid_(false)
+  :child_context_num_(0),
+  is_cur_row_valid_(false)
 {
 }
 
@@ -67,23 +68,21 @@ bool ObMultipleScanMerge::CmpFunc::operator() (ObMultipleScanMerge::ChildContext
 
   if (OB_SUCCESS != a.row_->get_rowkey(r1))
   {
-    TBSYS_LOG(ERROR, "fail to get rowkey of row1, should not reach this area");
+    TBSYS_LOG(WARN, "fail to get rowkey");
   }
   else if (OB_SUCCESS != b.row_->get_rowkey(r2))
   {
-    TBSYS_LOG(ERROR, "fail to get rowkey of row2, should not reach this area");
+    TBSYS_LOG(WARN, "fail to get rowkey");
   }
-  else
+
+  int32_t r = r1->compare(*r2);
+  if (r > 0)
   {
-    int32_t r = r1->compare(*r2);
-    if (r > 0)
-    {
-      bret = true;
-    }
-    else if (0 == r)
-    {
-      bret = (a.seq_ > b.seq_);
-    }
+    bret = true;
+  }
+  else if (0 == r)
+  {
+    bret = (a.seq_ > b.seq_);
   }
   return bret;
 }
@@ -96,7 +95,6 @@ int ObMultipleScanMerge::open()
   const ObRowDesc *row_desc = NULL;
 
   child_context_num_ = 0;
-  last_child_context_.reset();
 
   for (int32_t i=0;OB_SUCCESS == ret && i<child_num_;i++)
   {
@@ -137,7 +135,6 @@ int ObMultipleScanMerge::open()
     else
     {
       cur_row_.set_row_desc(*row_desc);
-      cur_row_.reset(false, is_ups_row_ ? ObRow::DEFAULT_NOP : ObRow::DEFAULT_NULL);
     }
   }
 
@@ -168,11 +165,8 @@ int ObMultipleScanMerge::get_next_row(const ObRow *&row)
     ret = OB_ITER_END;
   }
 
-  TBSYS_LOG(DEBUG, "begin merge one row");
-
   while(OB_SUCCESS == ret && (child_context_num_ > 0 || NULL != last_child_context_.child_))
   {
-    TBSYS_LOG(DEBUG, "child_context_num_[%d]", child_context_num_);
     if (NULL == last_child_context_.child_)
     {
       std::pop_heap(&child_context_array_[0], &child_context_array_[child_context_num_], cmp_func);
@@ -181,7 +175,6 @@ int ObMultipleScanMerge::get_next_row(const ObRow *&row)
     }
     else
     {
-      TBSYS_LOG(DEBUG, "last_child_context_.seq_[%d]", last_child_context_.seq_);
       min_rowkey_child = last_child_context_;
       last_child_context_.child_ = NULL;
     }
@@ -203,19 +196,27 @@ int ObMultipleScanMerge::get_next_row(const ObRow *&row)
       if (!is_cur_row_valid_ || *cur_rowkey == *rowkey)
       {
         is_row_empty = !is_cur_row_valid_;
-        TBSYS_LOG(DEBUG, "fuse row seq[%d] row[%s], is_row_empty[%s]", min_rowkey_child.seq_, 
-          to_cstring(*(min_rowkey_child.row_)), is_row_empty ? "T":"F");
         if (OB_SUCCESS != (ret = common::ObRowFuse::fuse_row(*(min_rowkey_child.row_), cur_row_, is_row_empty, is_ups_row_)))
         {
-          TBSYS_LOG(WARN, "fail to fuse ups row:ret[%d], child[%d]", ret, min_rowkey_child.seq_);
+          TBSYS_LOG(WARN, "fail to fuse ups row:ret[%d]", ret);
         }
-        else if (OB_SUCCESS != (ret = copy_rowkey(*(min_rowkey_child.row_), cur_row_, true) ))
+        if (OB_SUCCESS == ret)
         {
-          TBSYS_LOG(WARN, "fail to copy rowkey:ret[%d]", ret);
+          if (!is_cur_row_valid_)
+          {
+            if (OB_SUCCESS != (ret = copy_rowkey(*(min_rowkey_child.row_), cur_row_, true) ))
+            {
+              TBSYS_LOG(WARN, "fail to copy rowkey:ret[%d]", ret);
+            }
+          }
         }
-        else if (OB_SUCCESS != (ret = write_row(cur_row_) ))
+
+        if (OB_SUCCESS == ret)
         {
-          TBSYS_LOG(WARN, "fail to write row:ret[%d]", ret);
+          if (OB_SUCCESS != (ret = write_row(cur_row_) ))
+          {
+            TBSYS_LOG(WARN, "fail to write row:ret[%d]", ret);
+          }
         }
 
         if (OB_SUCCESS == ret)
@@ -252,7 +253,6 @@ int ObMultipleScanMerge::get_next_row(const ObRow *&row)
       }
       else if (OB_SUCCESS == ret)
       {
-        TBSYS_LOG(DEBUG, "min rowkey seq[%d] row[%s]", min_rowkey_child.seq_, to_cstring(*(min_rowkey_child.row_)));
         child_context_array_[child_context_num_] = min_rowkey_child;
         child_context_num_ ++;
         std::push_heap(&child_context_array_[0], &child_context_array_[child_context_num_], cmp_func);
@@ -265,12 +265,6 @@ int ObMultipleScanMerge::get_next_row(const ObRow *&row)
     if (is_cur_row_valid_)
     {
       row = &cur_row_;
-
-      ret = cur_row_.get_rowkey(cur_rowkey_);
-      if (OB_SUCCESS != ret || NULL == cur_rowkey_)
-      {
-        TBSYS_LOG(WARN, "fail to get rowkey to update cur rowkey:ret[%d]", ret);
-      }
     }
     else
     {
@@ -279,6 +273,8 @@ int ObMultipleScanMerge::get_next_row(const ObRow *&row)
   }
   return ret;
 }
+
+
 
 int ObMultipleScanMerge::close()
 {
@@ -305,3 +301,4 @@ int64_t ObMultipleScanMerge::to_string(char *buf, int64_t buf_len) const
   }
   return pos;
 }
+

@@ -2,9 +2,9 @@
  //
  // ob_hashmap.cpp / hash / common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2010-08-05 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2010-08-05 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -27,7 +27,7 @@
 #include "ob_hashutils.h"
 #include "ob_hashtable.h"
 #include "ob_serialization.h"
-
+#include "common/ob_allocator.h"
 namespace oceanbase
 {
   namespace common
@@ -56,14 +56,14 @@ namespace oceanbase
                 class _defendmode = ReadWriteDefendMode,
                 class _hashfunc = hash_func<_key_type>,
                 class _equal = equal_to<_key_type>,
-                //class _allocer = SimpleAllocer<typename HashMapTypes<_key_type, _value_type>::AllocType, 256, NoPthreadDefendMode> >
                 class _allocer = SimpleAllocer<typename HashMapTypes<_key_type, _value_type>::AllocType>,
-                template <class> class _bucket_array = NormalPointer>
+                template <class> class _bucket_array = NormalPointer,
+                class _bucket_allocer = oceanbase::common::ObMalloc>
       class ObHashMap
       {
         typedef typename HashMapTypes<_key_type, _value_type>::pair_type pair_type;
-        typedef ObHashMap<_key_type, _value_type, _hashfunc, _equal, _allocer, _defendmode> hashmap;
-        typedef ObHashTable<_key_type, pair_type, _hashfunc, _equal, pair_first<pair_type>, _allocer, _defendmode, _bucket_array> hashtable;
+        typedef ObHashMap<_key_type, _value_type, _defendmode, _hashfunc, _equal, _allocer, _bucket_array, _bucket_allocer> hashmap;
+        typedef ObHashTable<_key_type, pair_type, _hashfunc, _equal, pair_first<pair_type>, _allocer, _defendmode, _bucket_array, _bucket_allocer> hashtable;
         typedef hashmap_preproc<_key_type, _value_type> preproc;
       public:
         typedef typename hashtable::iterator iterator;
@@ -72,8 +72,9 @@ namespace oceanbase
         ObHashMap(const hashmap &);
         hashmap operator= (const hashmap &);
       public:
-        ObHashMap() : ht_()
+          ObHashMap() : ht_()
         {
+          bucket_allocer_.set_mod_id(ObModIds::OB_HASH_BUCKET);
         };
         ~ObHashMap()
         {
@@ -105,11 +106,11 @@ namespace oceanbase
         }
         int create(int64_t bucket_num)
         {
-          return ht_.create(cal_next_prime(bucket_num), &allocer_);
+          return ht_.create(cal_next_prime(bucket_num), &allocer_, &bucket_allocer_);
         };
-        int create(int64_t bucket_num, _allocer *allocer)
+        int create(int64_t bucket_num, _allocer *allocer, _bucket_allocer *bucket_allocer)
         {
-          return ht_.create(cal_next_prime(bucket_num), allocer);
+          return ht_.create(cal_next_prime(bucket_num), allocer, bucket_allocer);
         };
         int destroy()
         {
@@ -119,6 +120,8 @@ namespace oceanbase
         {
           return ht_.clear();
         };
+          _allocer& get_local_allocer() {return allocer_;};
+          _bucket_allocer& get_local_bucket_allocer() {return bucket_allocer_;};
         // 返回  -1表示有错误发生
         // 返回  HASH_EXIST表示结点存在
         // 返回  HASH_NOT_EXIST表示结点不存在
@@ -149,7 +152,7 @@ namespace oceanbase
         // 返回  HASH_OVERWRITE_SUCC  表示覆盖旧结点成功(在flag非0的时候返回）
         // 返回  HASH_INSERT_SUCC 表示插入新结点成功
         // 返回  HASH_EXIST  表示hash表结点存在（在flag为0的时候返回)
-        inline int set(const _key_type &key, const _value_type &value, int flag = 0, 
+        inline int set(const _key_type &key, const _value_type &value, int flag = 0,
                 int broadcast = 0, int overwrite_key = 0)
         {
           pair_type pair(key, value);
@@ -196,6 +199,7 @@ namespace oceanbase
       private:
         preproc preproc_;
         _allocer allocer_;
+        _bucket_allocer bucket_allocer_;
         hashtable ht_;
       };
     }
@@ -203,4 +207,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_HASH_HASHMAP_H_
-

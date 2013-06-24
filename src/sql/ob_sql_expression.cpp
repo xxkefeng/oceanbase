@@ -18,6 +18,7 @@
 #include "ob_sql_expression.h"
 #include "common/utility.h"
 #include "sql/ob_item_type_str.h"
+#include "common/ob_cached_allocator.h"
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
@@ -31,6 +32,7 @@ ObSqlExpression::~ObSqlExpression()
 }
 
 ObSqlExpression::ObSqlExpression(const ObSqlExpression &other)
+  :DLink()
 {
   *this = other;
 }
@@ -45,6 +47,7 @@ ObSqlExpression& ObSqlExpression::operator=(const ObSqlExpression &other)
     is_aggr_func_ = other.is_aggr_func_;
     is_distinct_ = other.is_distinct_;
     aggr_func_ = other.aggr_func_;
+    // @note we do not copy the members of DLink on purpose
   }
   return *this;
 }
@@ -309,7 +312,7 @@ int ObSqlExpressionUtil::make_column_expr(const uint64_t tid, const uint64_t cid
 {
   int ret = OB_SUCCESS;
   ExprItem item;
- 
+
   item.type_ = T_REF_COLUMN;
   item.value_.cell_.tid = tid;
   item.value_.cell_.cid = cid;
@@ -324,3 +327,21 @@ int ObSqlExpressionUtil::make_column_expr(const uint64_t tid, const uint64_t cid
   return ret;
 }
 
+static ObCachedAllocator<ObSqlExpression> SQL_EXPR_ALLOC;
+
+ObSqlExpression* ObSqlExpression::alloc()
+{
+  ObSqlExpression *ret = SQL_EXPR_ALLOC.alloc();
+  if (OB_UNLIKELY(NULL == ret))
+  {
+    TBSYS_LOG(ERROR, "failed to allocate expression object");
+  }
+  //TBSYS_LOG(INFO, "[EXPR] alloc %p", ret);
+  return ret;
+}
+
+void ObSqlExpression::free(ObSqlExpression* ptr)
+{
+  SQL_EXPR_ALLOC.free(ptr);
+  //TBSYS_LOG(INFO, "[EXPR] freed %p", ptr);
+}

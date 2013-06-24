@@ -24,7 +24,7 @@
 class BigqueryWriter
 {
   public:
-    BigqueryWriter(int64_t row_num);
+    BigqueryWriter();
     ~BigqueryWriter();
 
     int init(MysqlClient& ob_client, PrefixInfo& prefix_info);

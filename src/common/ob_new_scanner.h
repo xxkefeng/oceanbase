@@ -51,22 +51,24 @@ namespace oceanbase
         /// @retval otherwise error
         int add_row(const ObRow &row);
 
+        int add_row(const ObRowkey &rowkey, const ObRow &row);
+
         /// @retval OB_ITER_END iterate end
         /// @retval OB_SUCCESS go to the next cell succ
         int get_next_row(ObRow &row);
 
+        int get_next_row(const ObRowkey *&rowkey, ObRow &row);
+
         /* @brief set default row desc which will auto filt into row
          * when invoke get_next_row if row desc of the given parameter
          * row is NULL. */
-        inline void set_default_row_desc(const ObRowDesc *row_desc) { default_row_desc_ = row_desc; }
-        inline const ObRowDesc* get_default_row_desc() { return default_row_desc_; }
+        void set_default_row_desc(const ObRowDesc *row_desc) { default_row_desc_ = row_desc; }
 
         bool is_empty() const;
         /// after deserialization, get_last_row_key can retreive the last row key of this scanner
         /// @param [out] row_key the last row key
         int get_last_row_key(ObRowkey &row_key) const;
-        int set_last_row_key(const ObRowkey &row_key);
-        int set_last_row_key_from_row_store();
+        int set_last_row_key(ObRowkey &row_key);
         int serialize_meta_param(char * buf, const int64_t buf_len, int64_t & pos) const;
         int deserialize_meta_param(const char* buf, const int64_t data_len, int64_t& pos, ObObj &last_obj);
         NEED_SERIALIZE_AND_DESERIALIZE;
@@ -122,7 +124,6 @@ namespace oceanbase
 
       private:
         int deserialize_basic_(const char* buf, const int64_t data_len, int64_t& pos, ObObj &last_obj);
-        int deserialize_basic_2_(const char* buf, const int64_t data_len, int64_t& pos, ObObj &last_obj);
 
         int deserialize_table_(const char* buf, const int64_t data_len, int64_t& pos, ObObj &last_obj);
 
@@ -135,7 +136,6 @@ namespace oceanbase
         static int deserialize_int_or_varchar_(const char* buf, const int64_t data_len, int64_t& pos,
             int64_t& int_value, ObString &varchar_value, ObObj &last_obj);
 
-        int64_t get_meta_param_serialize_size() const;
 
       protected:
         ObRowStore row_store_;
@@ -151,6 +151,46 @@ namespace oceanbase
         ModulePageAllocator mod_;
         mutable ModuleArena rowkey_allocator_;
         const ObRowDesc* default_row_desc_;        
+    };
+
+    class ObCellNewScanner : public ObNewScanner
+    {
+      public: 
+        ObCellNewScanner() 
+          : row_desc_(NULL),
+          last_table_id_(OB_INVALID_ID),
+          ups_row_valid_(false),
+          is_size_overflow_(false)
+        { 
+        }
+        ~ObCellNewScanner() { }
+      public:
+        // compatible with ObScanner's interface;
+        int add_cell(const ObCellInfo &cell_info, 
+            const bool is_compare_rowkey = true, const bool is_rowkey_change = false); 
+        int finish();
+        void clear();
+        void reuse();
+        void set_row_desc(const ObRowDesc & row_desc);
+        int set_is_req_fullfilled(const bool &is_fullfilled, const int64_t fullfilled_row_num);
+        
+        //do not need rollback
+        inline int rollback()
+        {
+          return OB_SUCCESS;
+        }
+
+      private:
+        int add_current_row();
+
+      private:
+        const ObRowDesc* row_desc_;
+        uint64_t last_table_id_;
+        ObUpsRow ups_row_;
+        ObStringBuf str_buf_;
+        ObRowkey cur_rowkey_;
+        bool ups_row_valid_;
+        bool is_size_overflow_;
     };
 
   } /* common */

@@ -20,7 +20,6 @@ namespace oceanbase
       struct QueryStruct
       {
         uint64_t checksum_;
-        uint64_t row_checksum_;
         int64_t row_count_;
 
         QueryStruct()
@@ -32,7 +31,6 @@ namespace oceanbase
         {
           checksum_ = 0;
           row_count_ = 0;
-          row_checksum_ = 0;
         }
       };
 
@@ -72,7 +70,6 @@ namespace oceanbase
       inline void switch_sstable_reset()
       {
         query_struct_.checksum_ = sstable_header_.checksum_;
-        query_struct_.row_checksum_ = sstable_header_.row_checksum_;
         query_struct_.row_count_ = table_index_.row_count_;
         table_index_.switch_sstable_reset();
         sstable_header_.switch_sstable_reset();
@@ -90,25 +87,6 @@ namespace oceanbase
         else if (1 == flag)
         {
           ret = sstable_header_.checksum_;
-        }
-        return ret;
-      }
-
-      /**
-       * get sstable row checksum which is the sum of the all row checksum
-       * @param flag: 0(get old sstable row checksum)
-       *              1(get cur sstable row checksum)
-       */
-      inline uint64_t get_sstable_row_checksum(const int64_t flag) const
-      {
-        uint64_t ret = 0;
-        if (0 == flag)
-        {
-          ret = query_struct_.row_checksum_;
-        }
-        else if (1 == flag)
-        {
-          ret = sstable_header_.row_checksum_;
         }
         return ret;
       }
@@ -227,15 +205,10 @@ namespace oceanbase
       {
         table_index_.bloom_filter_hash_count_ = bloomfilter_hashcount;
       }
-
+        
       inline void set_checksum(const uint64_t checksum)
       {
         sstable_header_.checksum_ = checksum;
-      }
-
-      inline void calculate_row_checksum(const uint64_t row_checksum)
-      {
-        sstable_header_.row_checksum_ += row_checksum;
       }
 
       inline void set_frozen_minor_version_range(

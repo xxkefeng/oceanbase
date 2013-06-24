@@ -469,7 +469,7 @@ namespace oceanbase
         }
         internal_buffer_arena->set_page_size(QUERY_INTERNAL_PAGE_SIZE);
         internal_buffer_arena->set_page_alloctor(mod_allocator);
-        internal_buffer_arena->fast_reuse();
+        internal_buffer_arena->reuse();
       }
 
       return err;

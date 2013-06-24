@@ -24,7 +24,7 @@
 class WriteWorker : public tbsys::CDefaultRunnable
 {
   public:
-    WriteWorker(int64_t row_num);
+    WriteWorker();
     ~WriteWorker();
 
     int init(KeyGenerator& key_gen, MysqlClient& ob_client, PrefixInfo& prefix_info);

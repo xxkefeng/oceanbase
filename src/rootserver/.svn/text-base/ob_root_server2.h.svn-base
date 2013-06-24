@@ -27,39 +27,32 @@
 #include "common/ob_schema_service.h"
 #include "common/ob_table_id_name.h"
 #include "common/ob_array.h"
-#include "common/ob_bypass_task_info.h"
 #include "common/ob_timer.h"
 #include "common/ob_tablet_info.h"
 #include "common/ob_trigger_event.h"
-#include "ob_root_server_state.h"
 #include "common/roottable/ob_root_table_service.h"
 #include "common/roottable/ob_first_tablet_entry_meta.h"
 #include "common/roottable/ob_scan_helper_impl.h"
 #include "common/ob_schema_service.h"
+#include "common/ob_spin_lock.h"
 #include "common/ob_strings.h"
 #include "ob_chunk_server_manager.h"
 #include "ob_root_table2.h"
 #include "ob_root_log_worker.h"
-#include "ob_daily_merge_checker.h"
-#include "ob_heartbeat_checker.h"
 #include "ob_root_async_task_queue.h"
 #include "ob_ups_manager.h"
 #include "ob_ups_heartbeat_runnable.h"
 #include "ob_ups_check_runnable.h"
-#include "ob_bootstrap_state.h"
 #include "ob_root_balancer.h"
 #include "ob_root_balancer_runnable.h"
 #include "ob_root_ddl_operator.h"
 #include "ob_daily_merge_checker.h"
 #include "ob_heartbeat_checker.h"
 #include "ob_root_server_config.h"
-#include "ob_root_monitor_table.h"
 #include "ob_root_ms_provider.h"
 #include "ob_rs_after_restart_task.h"
 #include "ob_schema_service_ms_provider.h"
 #include "ob_schema_service_ups_provider.h"
-#include "rootserver/ob_root_operation_helper.h"
-#include "rootserver/ob_root_timer_task.h"
 
 class ObBalanceTest;
 class ObBalanceTest_test_n_to_2_Test;
@@ -93,16 +86,38 @@ namespace oceanbase
     class ObRootServerTester;
     class ObRootWorker;
     class ObRootServer2;
+    // 参见《OceanBase自举流程》
+    class ObBootState
+    {
+      public:
+        enum State
+        {
+          OB_BOOT_NO_META = 0,
+          OB_BOOT_OK = 1,
+          OB_BOOT_STRAP = 2,
+          OB_BOOT_RECOVER = 3,
+        };
+      public:
+        ObBootState();
+        void set_boot_ok();
+        void set_boot_strap();
+        void set_boot_recover();
+        bool can_boot_strap() const;
+        bool can_boot_recover() const;
+        const char* to_cstring() const;
+        ObBootState::State get_boot_state() const;
+      private:
+        mutable common::ObSpinLock lock_;
+        State state_;
+    };
+
     class ObRootServer2
     {
       public:
         friend class ObBootstrap;
-        friend class ObDailyMergeChecker;
-        friend class ObHeartbeatChecker;
         static const int64_t DEFAULT_SAFE_CS_NUMBER = 2;
         static const char* ROOT_TABLE_EXT;
         static const char* CHUNKSERVER_LIST_EXT;
-        static const char* SCHEMA_FILE_NAME;
       public:
         ObRootServer2(ObRootServerConfig& config);
         virtual ~ObRootServer2();
@@ -178,23 +193,21 @@ namespace oceanbase
 
         int find_root_table_key(const common::ObGetParam& get_param, common::ObScanner& scanner);
         int find_monitor_table_key(const common::ObGetParam& get_param, common::ObScanner& scanner);
-        int find_rootserver_key(const common::ObGetParam& get_param, common::ObScanner& scanner);
         int find_root_table_range(const common::ObScanParam& scan_param, common::ObScanner& scanner);
         virtual int report_tablets(const common::ObServer& server, const common::ObTabletReportInfoList& tablets,
             const int64_t time_stamp);
-        int replay_remove_replica(const common::ObTabletReportInfo &replica);
         int receive_hb(const common::ObServer& server,common::ObRole role);
-        int get_update_server_info(bool use_inner_port, ObServer &server) const;
+        common::ObServer get_update_server_info(bool use_inner_port) const;
         int get_master_ups(common::ObServer &ups_addr, bool use_inner_port);
         int table_exist_in_cs(const uint64_t table_id, bool &is_exist);
         int split_table_range(const int64_t frozen_version, const uint64_t table_id,
             common::ObTabletInfoList &tablets);
         int create_tablet(const common::ObTabletInfoList& tablets);
         int create_tablet_with_range(const int64_t frozen_version,
-            const common::ObTabletInfoList& tablets, bool cs_create = true);
+            const common::ObTabletInfoList& tablets);
         int create_empty_tablet_with_range(const int64_t frozen_version,
             ObRootTable2 *root_table, const common::ObTabletInfo &tablet,
-            int32_t& created_count, int* t_server_index, bool cs_create = true);
+            int32_t& created_count, int* t_server_index);
         uint64_t get_table_info(const common::ObString& table_name, int32_t& max_row_key_length) const;
         int get_table_info(const common::ObString& table_name, uint64_t& table_id, int32_t& max_row_key_length);
 
@@ -212,7 +225,6 @@ namespace oceanbase
         bool is_master() const;
         common::ObFirstTabletEntryMeta* get_first_meta();
         void dump_root_table() const;
-        int dump_root_table(ObNewScanner &scanner) const;
         bool check_root_table(const common::ObServer &expect_cs) const;
         int dump_cs_tablet_info(const common::ObServer cs, int64_t &tablet_num) const;
         void dump_unusual_tablets() const;
@@ -225,8 +237,7 @@ namespace oceanbase
         int try_create_new_table(int64_t frozen_version, const uint64_t table_id);
         int try_create_new_tables(int64_t fetch_version);
         int check_tablets_legality(const common::ObTabletInfoList &tablets);
-        int create_table_tablets(const uint64_t table_id, const common::ObTabletInfoList & list,
-                                 bool cs_create = true);
+        int create_table_tablets(const uint64_t table_id, const common::ObTabletInfoList & list);
         int receive_new_frozen_version(int64_t rt_version, const int64_t frozen_version,
             const int64_t last_frozen_time, bool did_replay);
         int report_frozen_memtable(const int64_t frozen_version, const int64_t last_frozen_time,bool did_replay);
@@ -266,49 +277,24 @@ namespace oceanbase
         void cancel_restart_all_cs();
         int cancel_shutdown_cs(const common::ObArray<common::ObServer> &servers, enum ShutdownOperation op);
         void reset_hb_time();
+        int remove_replica(const bool did_replay, const common::ObTabletReportInfo &replica);
         int delete_tables(const bool did_replay, const common::ObArray<uint64_t> &deleted_tables);
+        int delete_replicas(const bool did_replay, const common::ObServer & cs, const common::ObTabletReportInfoList & replicas);
         int create_table(const bool if_not_exists, const common::TableSchema &tschema);
         int alter_table(common::AlterTableSchema &tschema);
         int drop_tables(const bool if_exists, const common::ObStrings &tables);
         int64_t get_last_frozen_version() const;
 
-        //for bypass process begin
-        ObRootOperationHelper* get_bypass_operation();
-        bool is_bypass_process();
-        int get_new_table_id(uint64_t &max_table_id, ObBypassTaskInfo &table_name_id);
-        int clean_root_table();
-        void set_bypass_version(const int64_t version);
-        int prepare_bypass_process(common::ObBypassTaskInfo &table_name_id);
-        virtual int start_bypass_process(common::ObBypassTaskInfo &table_name_id);
-        int check_bypass_process();
-        const char* get_bypass_state()const;
-        int cs_delete_table_done(const common::ObServer &cs,
-            const uint64_t table_id, const bool is_succ);
-        int delete_table_for_bypass();
-        int cs_load_sstable_done(const common::ObServer &cs,
-            const common::ObTableImportInfoList &table_list, const bool is_load_succ);
-        virtual int bypass_meta_data_finished(const OperationType type, ObRootTable2 *root_table,
-            ObTabletInfoManager *tablet_manager, common::ObSchemaManagerV2 *schema_mgr);
-        int use_new_root_table(ObRootTable2 *root_table, ObTabletInfoManager *tablet_manager);
-        int switch_bypass_schema(common::ObSchemaManagerV2 *schema_mgr, common::ObArray<uint64_t> &delete_tables);
-        int64_t get_frozen_version_for_cs_heartbeat() const;
-        //for bypass process end
         /// check the table exist according the local schema manager
         int check_table_exist(const common::ObString & table_name, bool & exist);
         int delete_dropped_tables(int64_t & table_count);
         void after_switch_to_master();
         int after_restart();
 
-        //index build control
-        int start_build_index_if_necessary();
-        int report_samples(const common::ObServer& server, const common::ObNewScanner& sample_scanner);
-        int cs_build_sample_done(const bool is_succ, const common::ObServer& server, const int64_t index_table_id);
-        int cs_build_index_done(const bool is_succ, const common::ObServer& server, const int64_t index_table_id);
-        int update_index_table_schema_state(const uint64_t index_table_id, int state);
-        int build_index_root_table();
-
         friend class ObRootServerTester;
         friend class ObRootLogWorker;
+        friend class ObDailyMergeChecker;
+        friend class ObHeartbeatChecker;
         friend class ::ObBalanceTest;
         friend class ::ObBalanceTest_test_n_to_2_Test;
         friend class ::ObBalanceTest_test_timeout_Test;
@@ -358,16 +344,6 @@ namespace oceanbase
             ObRootTable2::const_iterator end, common::ObScanner& scanner, const int32_t max_row_count,
             const int32_t max_key_len) const;
 
-        // new root table service
-        int nr_report_tablets(const common::ObServer& cs, const common::ObTabletReportInfoList& tablets);
-        int nr_remove_replicas(const common::ObServer &cs);
-        int nr_migrate_replica(const common::ObNewRange &tab, const int64_t version,
-            const common::ObServer &from, const common::ObServer &to, bool keep_src);
-        int nr_remove_tables(const common::ObArray<uint64_t> &tables);
-        int nr_search_range(const common::ObNewRange& range, common::ObScanner& scanner) const;
-        int nr_new_table(const uint64_t tid, const int64_t tablet_version,
-            const common::ObArray<common::ObServer> &chunkservers);
-
         // stat related functions
         void do_stat_start_time(char *buf, const int64_t buf_len, int64_t& pos);
         void do_stat_local_time(char *buf, const int64_t buf_len, int64_t& pos);
@@ -389,7 +365,7 @@ namespace oceanbase
 
         int make_checkpointing();
         void switch_root_table(ObRootTable2 *rt, ObTabletInfoManager *ti);
-        int switch_schema_manager(common::ObSchemaManagerV2 *schema_manager);
+        int switch_schema_manager(const common::ObSchemaManagerV2 & schema_manager);
         /*
          * 在一个tabelt的各份拷贝中, 寻找合适的备份替换掉
          */
@@ -407,13 +383,6 @@ namespace oceanbase
         /// force sync schema to all servers include ms\cs\master ups
         int force_sync_schema_all_servers(const common::ObSchemaManagerV2 &schema);
         int force_heartbeat_all_servers(void);
-
-        //build index functions
-        bool need_build_index(const ObTableSchema& table_schema) const;
-        int fill_build_index_info(common::ObBuildIndexInfo& build_index_info, 
-                                  const common::ObTableSchema& index_table_schema);
-        int start_index_process(const common::ObBuildIndexInfo& build_index_info);
-
       private:
         static const int MIN_BALANCE_TOLERANCE = 1;
 
@@ -431,7 +400,6 @@ namespace oceanbase
         ObTabletInfoManager* tablet_manager_;
         mutable tbsys::CRWLock root_table_rwlock_; //every query root table should rlock this
         common::ObTabletReportInfoList delete_list_;
-        ObRootMonitorTable monitor_table_;
         bool have_inited_;
         bool first_cs_had_registed_;
         volatile bool receive_stop_;
@@ -482,14 +450,8 @@ namespace oceanbase
         //to load local schema.ini file, only use the first_time
         common::ObSchemaManagerV2* local_schema_manager_;
         //used for cache
-        common::ObSchemaManagerV2* schema_manager_for_cache_;
+        common::ObSchemaManagerV2 * schema_manager_for_cache_;
         mutable tbsys::CRWLock schema_manager_rwlock_;
-
-        ObRootServerState state_;  //RS state
-        int64_t bypass_process_frozen_men_version_; //旁路导入状态下，可以广播的frozen_version
-        ObRootOperationHelper operation_helper_;
-        ObRootOperationDuty operation_duty_;
-        common::ObTimer timer_;
     };
   }
 }

@@ -1,3 +1,4 @@
+#include "common/ob_rowkey.h"
 #include "task_factory.h"
 #include <set>
 
@@ -43,7 +44,7 @@ TaskFactory::~TaskFactory()
 }
 
 void TaskFactory::add_table_confs(const std::vector<TableConf> *confs)
-{  
+{
   confs_ = confs;
 }
 
@@ -130,7 +131,7 @@ int TaskFactory::get_all_tablets(uint64_t & tablet_count)
       ret = get_table_tablet((*it).c_str(), table->get_table_id(), count);
       if (ret != OB_SUCCESS)
       {
-        TBSYS_LOG(ERROR, "get table's tablet failed:table[%s], id[%lu]", (*it).c_str(), 
+        TBSYS_LOG(ERROR, "get table's tablet failed:table[%s], id[%lu]", (*it).c_str(),
             table->get_table_id());
         break;
       }
@@ -194,9 +195,9 @@ bool TaskFactory::get_table_conf(const char *table_name, const TableConf *&conf)
 {
   bool ret = false;
 
-  for(size_t i = 0;confs_ != NULL && i < confs_->size(); i++) 
+  for(size_t i = 0;confs_ != NULL && i < confs_->size(); i++)
   {
-    if (confs_->at(i).table_name() == table_name) 
+    if (confs_->at(i).table_name() == table_name)
     {
       conf = &confs_->at(i);
       ret = true;
@@ -223,7 +224,7 @@ int TaskFactory::add_columns_conf(const uint64_t table_id, common::ObScanParam &
     }
 
     TBSYS_LOG(DEBUG, "columns with conf, column = %s", column_name);
-    column.assign(const_cast<char *>(*itr), strlen(column_name));
+    column.assign(const_cast<char *>(*itr), (int32_t)strlen(column_name));
     ret = param.add_column(column);
     if (ret != OB_SUCCESS)
     {
@@ -279,7 +280,7 @@ int TaskFactory::add_all_columns(const uint64_t table_id, ObScanParam & param)
       {
         TBSYS_LOG(DEBUG, "TableId:%ld, COLUMN=%s", table_id, column_name);
 
-        column.assign(const_cast<char *>(column_name), strlen(column_name));
+        column.assign(const_cast<char *>(column_name), (int32_t)strlen(column_name));
         ret = param.add_column(column);
         if (ret != OB_SUCCESS)
         {
@@ -321,7 +322,7 @@ int TaskFactory::setup_tablets_version()
   return ret;
 }
 
-// maybe not find a merge server 
+// maybe not find a merge server
 int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_id, uint64_t & count)
 {
   int ret = OB_SUCCESS;
@@ -340,42 +341,33 @@ int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_
       TBSYS_LOG(ERROR, "init scan param failed:table[%s], ret[%d]", table_name, ret);
     }
   }
-  
+
   if (OB_SUCCESS == ret)
   {
-    TaskInfo task;
-
-    task.set_table_id(table_id);
-    task.set_table_name(table_name);
     // for the first table tablet
-    ObString row_key;
-    char temp_buffer[1];
-    memset(temp_buffer, 0, sizeof(temp_buffer));
-    row_key.assign(temp_buffer, sizeof(temp_buffer));
+    ObRowkey row_key;
+    ObObj temp_buffer[common::OB_MAX_ROWKEY_COLUMN_NUMBER];
+    row_key.assign(temp_buffer, common::OB_MAX_ROWKEY_COLUMN_NUMBER);
     ObGetParam param;
     ObScanner scanner;
     ObServer server;
-    ObString start_key;
-    ObString end_key; 
+    ObRowkey start_key;
+    ObRowkey end_key;
     ObCellInfo * cell = NULL;
-    ObScannerIterator iter; 
+    ObScannerIterator iter;
     bool row_change = false;
     ObString name;
-    name.assign(const_cast<char*>(table_name), strlen(table_name));
+    name.assign(const_cast<char*>(table_name), (int32_t)strlen(table_name));
     ObCellInfo temp_cell;
     temp_cell.table_id_ = table_id;
     temp_cell.column_id_ = 0;
-    const uint64_t MAX_LEN = 1024;
-    char last_tablet_rowkey[MAX_LEN] = "";
-    const int32_t MAX_SERVER_ADDR_SIZE = 128;
-    char server_addr[MAX_SERVER_ADDR_SIZE];
-    while ((OB_SUCCESS == ret) 
-        && (!is_max_rowkey(max_len, row_key.ptr(), row_key.length() - 1)))
+    common::ModuleArena allocator;
+    while ((OB_SUCCESS == ret) && (!row_key.is_max_row()))
     {
       param.reset();
       param.set_is_read_consistency(false);
       temp_cell.row_key_ = row_key;
-      ret = param.add_cell(temp_cell); 
+      ret = param.add_cell(temp_cell);
       if (ret != OB_SUCCESS)
       {
         TBSYS_LOG(ERROR, "add cell failed:ret[%d]", ret);
@@ -392,7 +384,7 @@ int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_
         // skip the first row
         iter = scanner.begin();
         ++iter;
-        while ((iter != scanner.end()) 
+        while ((iter != scanner.end())
             && (OB_SUCCESS == (ret = iter.get_cell(&cell, &row_change))) && !row_change)
         {
           if (NULL == cell)
@@ -401,11 +393,15 @@ int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_
             ret = OB_INNER_STAT_ERROR;
             break;
           }
-          start_key.assign(cell->row_key_.ptr(), cell->row_key_.length());
+          ret = cell->row_key_.deep_copy(start_key, allocator);
+          if (ret != OB_SUCCESS)
+          {
+            TBSYS_LOG(WARN, "deep copy the rowkey failed:ret[%d]", ret);
+          }
           ++iter;
         }
       }
-      
+      // scanner iter end
       if (ret == OB_SUCCESS)
       {
         int64_t ip = 0;
@@ -422,6 +418,9 @@ int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_
           }
           else if (row_change) // && (iter != last_iter))
           {
+            TaskInfo task;
+            task.set_table_id(table_id);
+            task.set_table_name(table_name);
             ret = init_new_task(name, start_key, end_key, scan_param, task);
             if (ret != OB_SUCCESS)
             {
@@ -440,13 +439,12 @@ int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_
             }
             list.clear();
             start_key = end_key;
-            end_key.assign(cell->row_key_.ptr(), cell->row_key_.length());
           }
           else
           {
-            end_key.assign(cell->row_key_.ptr(), cell->row_key_.length());
-            if ((cell->column_name_.compare("1_ms_port") == 0) 
-                || (cell->column_name_.compare("2_ms_port") == 0) 
+            cell->row_key_.deep_copy(end_key, allocator);
+            if ((cell->column_name_.compare("1_ms_port") == 0)
+                || (cell->column_name_.compare("2_ms_port") == 0)
                 || (cell->column_name_.compare("3_ms_port") == 0))
             {
               ret = cell->value_.get_int(port);
@@ -470,17 +468,16 @@ int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_
                 }
                 else
                 {
-                  server.set_ipv4_addr(ip, port);
+                  server.set_ipv4_addr(int32_t(ip), int32_t(port));
                   ObTabletLocation addr(version, server);
                   if (OB_SUCCESS != (ret = list.add(addr)))
                   {
-                    TBSYS_LOG(ERROR, "add addr failed:server[%d], port[%d], ret[%d]", 
+                    TBSYS_LOG(ERROR, "add addr failed:server[%d], port[%d], ret[%d]",
                         server.get_ipv4(), server.get_port(), ret);
                   }
                   else
                   {
-                    server.to_string(server_addr, MAX_SERVER_ADDR_SIZE);
-                    TBSYS_LOG(DEBUG, "add addr succ:server[%s], version:%ld", server_addr, version);
+                    TBSYS_LOG(DEBUG, "add addr succ:server[%s], version:%ld", server.to_cstring(), version);
                   }
                 }
                 ip = port = version = 0;
@@ -496,9 +493,12 @@ int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_
           }
         }
 
-        // for the last row 
+        // for the last row
         if ((OB_SUCCESS == ret) && (start_key != end_key))
         {
+          TaskInfo task;
+          task.set_table_id(table_id);
+          task.set_table_name(table_name);
           ret = init_new_task(name, start_key, end_key, scan_param, task);
           if (ret != OB_SUCCESS)
           {
@@ -516,17 +516,17 @@ int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_
 
           if (OB_SUCCESS == ret)
           {
-            // modify last row key for next get root table
-            uint64_t len = end_key.length();
-            if (MAX_LEN > len + 1)
+            // copy all the end key objs to row_key
+            for (int64_t i = 0; i < end_key.length(); ++i)
             {
-              memcpy(last_tablet_rowkey, end_key.ptr(), len);
-              last_tablet_rowkey[len] = 0;
-              row_key.assign(last_tablet_rowkey, len + 1);
+              const_cast<ObObj *> (row_key.ptr())[i] = end_key.ptr()[i];
+              row_key.assign(const_cast<ObObj *> (row_key.ptr()), end_key.length());
             }
-            else
+            // modify last row key for next get root table
+            if (!end_key.is_max_row())
             {
-              TBSYS_LOG(ERROR, "check end key failed:len[%lu]", len);
+              const_cast<ObObj *>(row_key.ptr())[end_key.length()].set_max_value();
+              row_key.assign(const_cast<ObObj *> (row_key.ptr()), end_key.length() + 1);
             }
           }
         }
@@ -537,19 +537,19 @@ int TaskFactory::get_table_tablet(const char * table_name, const uint64_t table_
   return ret;
 }
 
-int TaskFactory::init_new_task(const ObString & table_name, const ObString & start_key,
-    const ObString & end_key, ObScanParam & scan_param, TaskInfo & task) const
+int TaskFactory::init_new_task(const ObString & table_name, const ObRowkey & start_key,
+    const ObRowkey & end_key, ObScanParam & scan_param, TaskInfo & task) const
 {
   int ret = OB_SUCCESS;
-  if (!check_string(table_name) || !check_string(end_key))
+  if (!check_string(table_name))
   {
-    TBSYS_LOG(WARN, "check table name or end key failed:name[%.*s], end_key[%.*s]", 
-      table_name.length(), table_name.ptr(), end_key.length(), end_key.ptr());
+    TBSYS_LOG(WARN, "check table name or end key failed:name[%.*s]",
+      table_name.length(), table_name.ptr());
     ret = OB_ERROR;
   }
   else
   {
-    ObRange range;
+    ObNewRange range;
     range.border_flag_.unset_inclusive_start();
     range.border_flag_.set_inclusive_end();
     if (NULL == start_key.ptr())
@@ -563,8 +563,8 @@ int TaskFactory::init_new_task(const ObString & table_name, const ObString & sta
     }
     range.border_flag_.unset_max_value();
     range.end_key_ = end_key;
-    
     scan_param.set(OB_INVALID_ID, table_name, range);
+    // deep copy the param to task info param
     ret = task.set_param(scan_param);
     if (ret != OB_SUCCESS)
     {
@@ -588,6 +588,12 @@ int TaskFactory::insert_new_task(const TabletLocation & list, TaskInfo & task)
   if (ret != OB_SUCCESS)
   {
     TBSYS_LOG(ERROR, "insert a new task failed:ret[%d]", ret);
+  }
+  else
+  {
+    TBSYS_LOG(TRACE, "insert a new task succ:task[%lu], table_name[%.*s], tablet[%s]",
+        task.get_id(), task.get_param().get_table_name().length(), task.get_param().get_table_name().ptr(),
+        to_cstring(*task.get_param().get_range()));
   }
   return ret;
 }

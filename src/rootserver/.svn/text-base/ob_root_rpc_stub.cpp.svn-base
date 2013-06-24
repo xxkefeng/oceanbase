@@ -2,12 +2,12 @@
 #include "rootserver/ob_root_rpc_stub.h"
 #include "common/ob_schema.h"
 #include "common/ob_define.h"
-#include "common/ob_tbnet_callback.h"
 
 using namespace oceanbase::rootserver;
 using namespace oceanbase::common;
 
 ObRootRpcStub::ObRootRpcStub()
+  :thread_buffer_(NULL)
 {
 }
 
@@ -17,131 +17,711 @@ ObRootRpcStub::~ObRootRpcStub()
 
 int ObRootRpcStub::init(const ObClientManager *client_mgr, common::ThreadSpecificBuffer* tsbuffer)
 {
-  UNUSED(tsbuffer);
+  OB_ASSERT(NULL != client_mgr);
+  OB_ASSERT(NULL != tsbuffer);
   ObCommonRpcStub::init(client_mgr);
+  thread_buffer_ = tsbuffer;
   return OB_SUCCESS;
 }
 
 int ObRootRpcStub::slave_register(const ObServer& master, const ObServer& slave_addr,
     ObFetchParam& fetch_param, const int64_t timeout)
 {
-  return send_1_return_1(master, timeout, OB_SLAVE_REG, DEFAULT_VERSION, slave_addr, fetch_param);
+  int err = OB_SUCCESS;
+  ObDataBuffer data_buff;
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(WARN, "invalid status, client_mgr_[%p]", client_mgr_);
+    err = OB_ERROR;
+  }
+  else
+  {
+    err = get_thread_buffer_(data_buff);
+  }
+
+  // step 1. serialize slave addr
+  if (OB_SUCCESS == err)
+  {
+    err = slave_addr.serialize(data_buff.get_data(), data_buff.get_capacity(),
+        data_buff.get_position());
+  }
+
+  // step 2. send request to register
+  if (OB_SUCCESS == err)
+  {
+    err = client_mgr_->send_request(master,
+        OB_SLAVE_REG, DEFAULT_VERSION, timeout, data_buff);
+    if (err != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "send request to register failed"
+          "err[%d].", err);
+    }
+  }
+
+  // step 3. deserialize the response code
+  int64_t pos = 0;
+  if (OB_SUCCESS == err)
+  {
+    ObResultCode result_code;
+    err = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
+    if (OB_SUCCESS != err)
+    {
+      TBSYS_LOG(ERROR, "deserialize result_code failed:pos[%ld], err[%d].", pos, err);
+    }
+    else
+    {
+      err = result_code.result_code_;
+    }
+  }
+
+  // step 3. deserialize fetch param
+  if (OB_SUCCESS == err)
+  {
+    err = fetch_param.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
+    if (OB_SUCCESS != err)
+    {
+      TBSYS_LOG(WARN, "deserialize fetch param failed, err[%d]", err);
+    }
+  }
+
+  return err;
 }
 
+int ObRootRpcStub::get_thread_buffer_(common::ObDataBuffer& data_buffer)
+{
+  int ret = OB_SUCCESS;
+  if (NULL == thread_buffer_)
+  {
+    TBSYS_LOG(ERROR, "thread_buffer_ = NULL");
+    ret = OB_ERROR;
+  }
+  else
+  {
+    common::ThreadSpecificBuffer::Buffer* buff = thread_buffer_->get_buffer();
+    if (NULL == buff)
+    {
+      TBSYS_LOG(ERROR, "thread_buffer_ = NULL");
+      ret = OB_ERROR;
+    }
+    else
+    {
+      buff->reset();
+      data_buffer.set_data(buff->current(), buff->remain());
+    }
+  }
+  return ret;
+}
 
 int ObRootRpcStub::set_obi_role(const common::ObServer& ups, const common::ObiRole& role, const int64_t timeout_us)
 {
-  return send_1_return_0(ups, timeout_us, OB_SET_OBI_ROLE, DEFAULT_VERSION, role);
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+  {
+    TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = role.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+  {
+    TBSYS_LOG(WARN, "failed to serialize role, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->send_request(ups, OB_SET_OBI_ROLE, DEFAULT_VERSION, timeout_us, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    ObResultCode result_code;
+    int64_t pos = 0;
+    if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+    }
+    else if (OB_SUCCESS != result_code.result_code_)
+    {
+      TBSYS_LOG(WARN, "failed to set obi role, err=%d", result_code.result_code_);
+      ret = result_code.result_code_;
+    }
+  }
+  return ret;
 }
 
 int ObRootRpcStub::switch_schema(const common::ObServer& server, const common::ObSchemaManagerV2& schema_manager, const int64_t timeout_us)
 {
-  return send_1_return_0(server, timeout_us, OB_SWITCH_SCHEMA, DEFAULT_VERSION, schema_manager);
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+  {
+    TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = schema_manager.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize schema, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->send_request(server, OB_SWITCH_SCHEMA, DEFAULT_VERSION, timeout_us, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    ObResultCode result;
+    int64_t pos = 0;
+    if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+    }
+    else if (OB_SUCCESS != result.result_code_)
+    {
+      TBSYS_LOG(WARN, "failed to switch schema, err=%d", result.result_code_);
+      ret = result.result_code_;
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "send switch_schema, server=%s schema_version=%ld", to_cstring(server), schema_manager.get_version());
+    }
+  }
+  return ret;
 }
 
-int ObRootRpcStub::migrate_tablet(const common::ObServer& src_cs, const common::ObServer& dest_cs, const common::ObNewRange& range, bool keep_src, const int64_t timeout_us)
+int ObRootRpcStub::migrate_tablet(const common::ObServer& src_cs, const common::ObServer& dest_cs, const common::ObNewRange& range, bool keey_src, const int64_t timeout_us)
 {
-  return send_3_return_0(src_cs, timeout_us, OB_CS_MIGRATE, DEFAULT_VERSION, range, dest_cs, keep_src);
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+  {
+    TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = range.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize rage, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = dest_cs.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize dest_cs, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_bool(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), keey_src)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize keey_src, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->send_request(src_cs, OB_CS_MIGRATE, DEFAULT_VERSION, timeout_us, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    ObResultCode result;
+    int64_t pos = 0;
+    if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+    }
+    else if (OB_SUCCESS != result.result_code_)
+    {
+      TBSYS_LOG(WARN, "failed to migrate tablet, err=%d", result.result_code_);
+      ret = result.result_code_;
+    }
+    else
+    {
+    }
+  }
+  return ret;
 }
 
 int ObRootRpcStub::create_tablet(const common::ObServer& cs, const common::ObNewRange& range, const int64_t mem_version, const int64_t timeout_us)
 {
   int ret = OB_SUCCESS;
-  if (OB_SUCCESS != (ret = send_2_return_0(cs, timeout_us, OB_CS_CREATE_TABLE, DEFAULT_VERSION, range, mem_version)))
+  ObDataBuffer msgbuf;
+  static char buff[OB_MAX_PACKET_LENGTH];
+  msgbuf.set_data(buff, OB_MAX_PACKET_LENGTH);
+  if (NULL == client_mgr_)
   {
-    TBSYS_LOG(WARN, "failed to create tablet, err=%d, cs=%s, range=%s", ret, cs.to_cstring(), to_cstring(range));
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = range.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize range, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), mem_version)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize key_src, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->send_request(cs, OB_CS_CREATE_TABLE, DEFAULT_VERSION, timeout_us, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    ObResultCode result;
+    int64_t pos = 0;
+    static char range_buff[OB_MAX_ROW_KEY_LENGTH * 2];
+    if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+    }
+    else if (OB_SUCCESS != result.result_code_)
+    {
+      range.to_string(range_buff, OB_MAX_ROW_KEY_LENGTH * 2);
+      TBSYS_LOG(WARN, "failed to create tablet, err=%d, cs=%s, range=%s", result.result_code_, cs.to_cstring(), range_buff);
+      ret = result.result_code_;
+    }
+    else
+    {
+    }
   }
   return ret;
 }
 
 int ObRootRpcStub::delete_tablets(const common::ObServer& cs, const common::ObTabletReportInfoList &tablets, const int64_t timeout_us)
 {
-  return send_1_return_0(cs, timeout_us, OB_CS_DELETE_TABLETS, DEFAULT_VERSION, tablets);
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+  {
+    TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = tablets.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+  {
+    TBSYS_LOG(ERROR, "failed to serializ, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->send_request(cs, OB_CS_DELETE_TABLETS, DEFAULT_VERSION, timeout_us, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    ObResultCode result;
+    int64_t pos = 0;
+    if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+    }
+    else if (OB_SUCCESS != result.result_code_)
+    {
+      TBSYS_LOG(WARN, "failed to delete tablets, err=%d", result.result_code_);
+      ret = result.result_code_;
+    }
+  }
+  return ret;
 }
 
-int ObRootRpcStub::import_tablets(const common::ObServer& cs, const uint64_t table_id, const int64_t version, const int64_t timeout_us)
-{
-  return send_2_return_0(cs, timeout_us, OB_CS_IMPORT_TABLETS, DEFAULT_VERSION, (int64_t)table_id, version);
-}
+    int ObRootRpcStub::import_tablets(const common::ObServer& cs, const uint64_t table_id, const int64_t version, const int64_t timeout_us)
+    {
+      int ret = OB_SUCCESS;
+      ObDataBuffer msgbuf;
+
+      if (NULL == client_mgr_)
+      {
+        TBSYS_LOG(ERROR, "client_mgr_=NULL");
+        ret = OB_ERROR;
+      }
+      else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+      {
+        TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), table_id)))
+      {
+        TBSYS_LOG(ERROR, "failed to serialize keey_src, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), version)))
+      {
+        TBSYS_LOG(ERROR, "failed to serialize keey_src, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = client_mgr_->send_request(cs, OB_CS_IMPORT_TABLETS, DEFAULT_VERSION, timeout_us, msgbuf)))
+      {
+        TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+      }
+      else
+      {
+        ObResultCode result;
+        int64_t pos = 0;
+        if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+        {
+          TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+        }
+        else if (OB_SUCCESS != result.result_code_)
+        {
+          TBSYS_LOG(WARN, "failed to create tablet, err=%d", result.result_code_);
+          ret = result.result_code_;
+        }
+        else
+        {
+        }
+      }
+      return ret;
+    }
 
 int ObRootRpcStub::get_last_frozen_version(const common::ObServer& ups, const int64_t timeout_us, int64_t &frozen_version)
 {
-  return send_0_return_1(ups, timeout_us, OB_UPS_GET_LAST_FROZEN_VERSION, DEFAULT_VERSION, frozen_version);
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
+  frozen_version = -1;
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+  {
+    TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->send_request(ups, OB_UPS_GET_LAST_FROZEN_VERSION, DEFAULT_VERSION, timeout_us, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    ObResultCode result;
+    int64_t pos = 0;
+    if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+    }
+    else if (OB_SUCCESS != result.result_code_)
+    {
+      TBSYS_LOG(WARN, "failed to get frozon version, err=%d", result.result_code_);
+      ret = result.result_code_;
+    }
+    else if (OB_SUCCESS != (ret = serialization::decode_vi64(msgbuf.get_data(), msgbuf.get_position(), pos, &frozen_version)))
+    {
+      TBSYS_LOG(WARN, "failed to deserialize frozen version ,err=%d", ret);
+      frozen_version = -1;
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "last_frozen_version=%ld", frozen_version);
+    }
+  }
+  return ret;
 }
 
-int ObRootRpcStub::get_obi_role(const common::ObServer& master, const int64_t timeout_us, common::ObiRole &obi_role)
-{
-  return send_0_return_1(master, timeout_us, OB_GET_OBI_ROLE, DEFAULT_VERSION, obi_role);
-}
+    int ObRootRpcStub::get_obi_role(const common::ObServer& master, const int64_t timeout_us, common::ObiRole &obi_role)
+    {
+      int ret = OB_SUCCESS;
+      ObDataBuffer msgbuf;
+
+      if (NULL == client_mgr_)
+      {
+        TBSYS_LOG(ERROR, "client_mgr_=NULL");
+        ret = OB_ERROR;
+      }
+      else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+      {
+        TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = client_mgr_->send_request(master, OB_GET_OBI_ROLE, DEFAULT_VERSION, timeout_us, msgbuf)))
+      {
+        TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+      }
+      else
+      {
+        ObResultCode result;
+        int64_t pos = 0;
+        if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+        {
+          TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+        }
+        else if (OB_SUCCESS != result.result_code_)
+        {
+          TBSYS_LOG(WARN, "failed to get obi_role, err=%d", result.result_code_);
+          ret = result.result_code_;
+        }
+        else if (OB_SUCCESS != (ret = obi_role.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+        {
+          TBSYS_LOG(WARN, "failed to deserialize frozen version ,err=%d", ret);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "get obi_role from master, obi_role=%s", obi_role.get_role_str());
+        }
+      }
+      return ret;
+    }
 
 int ObRootRpcStub::heartbeat_to_cs(const common::ObServer& cs,
-    const int64_t lease_time,
-    const int64_t frozen_mem_version,
-    const int64_t schema_version,
-    const int64_t config_version)
+                                   const int64_t lease_time,
+                                   const int64_t frozen_mem_version,
+                                   const int64_t schema_version,
+                                   const int64_t config_version)
 {
+  int ret = OB_SUCCESS;
   static const int MY_VERSION = 3;
-  return post_request_4(cs, DEFAULT_RPC_TIMEOUT_US,
-      OB_REQUIRE_HEARTBEAT, MY_VERSION,
-      ObTbnetCallback::default_callback, NULL,
-      lease_time, frozen_mem_version, schema_version, config_version);
+  ObDataBuffer msgbuf;
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+  {
+    TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), lease_time)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), frozen_mem_version)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), schema_version)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), config_version)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize config_version, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->post_request(cs, OB_REQUIRE_HEARTBEAT, MY_VERSION, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    // success
+  }
+  return ret;
 }
 
 int ObRootRpcStub::heartbeat_to_ms(const common::ObServer& ms,
-    const int64_t lease_time,
-    const int64_t frozen_mem_version,
-    const int64_t schema_version,
-    const common::ObiRole &role,
-    const int64_t privilege_version,
-    const int64_t config_version)
+                                   const int64_t lease_time,
+                                   const int64_t frozen_mem_version,
+                                   const int64_t schema_version,
+                                   const common::ObiRole &role,
+                                   const int64_t privilege_version,
+                                   const int64_t config_version)
 {
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
   static const int MY_VERSION = 4;
-  return post_request_6(ms, DEFAULT_RPC_TIMEOUT_US,
-      OB_REQUIRE_HEARTBEAT, MY_VERSION,
-      ObTbnetCallback::default_callback, NULL,
-      lease_time, frozen_mem_version, schema_version,
-      role, privilege_version, config_version);
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+  {
+    TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), lease_time)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), frozen_mem_version)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), schema_version)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = role.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), privilege_version)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize privilege version, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), config_version)))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize config_version, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->post_request(ms, OB_REQUIRE_HEARTBEAT, MY_VERSION, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    // success
+  }
+  return ret;
 }
 
 int ObRootRpcStub::grant_lease_to_ups(const common::ObServer& ups, ObMsgUpsHeartbeat &msg)
 {
-  return post_request_1(ups, DEFAULT_RPC_TIMEOUT_US, OB_RS_UPS_HEARTBEAT,
-      msg.MY_VERSION, ObTbnetCallback::default_callback, NULL, msg);
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
+
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+  {
+    TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = msg.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+  {
+    TBSYS_LOG(ERROR, "failed to serialize msg, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->post_request(ups, OB_RS_UPS_HEARTBEAT, msg.MY_VERSION, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    // success
+  }
+  return ret;
 }
 
 int ObRootRpcStub::request_report_tablet(const common::ObServer& chunkserver)
 {
-  int64_t dummy = 0;
-  return post_request_1(chunkserver, DEFAULT_RPC_TIMEOUT_US, OB_RS_REQUEST_REPORT_TABLET,
-      DEFAULT_VERSION, ObTbnetCallback::default_callback, NULL, dummy);
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  if (OB_SUCCESS == ret)
+  {
+    ret = get_thread_buffer_(msgbuf);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "fail to get thread buffer. err=%d", ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    ret = client_mgr_->post_request(chunkserver, OB_RS_REQUEST_REPORT_TABLET, DEFAULT_VERSION, msgbuf);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "fail to post request to chunkserver. err=%d, chunkserver_addr=%s", ret, chunkserver.to_cstring());
+    }
+  }
+  return ret;
 }
+    int ObRootRpcStub::revoke_ups_lease(const common::ObServer& ups, const int64_t lease, const common::ObServer& master, const int64_t timeout_us)
+    {
+      int ret = OB_SUCCESS;
+      ObDataBuffer msgbuf;
+      ObMsgRevokeLease msg;
+      msg.lease_ = lease;
+      msg.ups_master_ = master;
 
-int ObRootRpcStub::revoke_ups_lease(const common::ObServer& ups, const int64_t lease, const common::ObServer& master, const int64_t timeout_us)
-{
-  ObMsgRevokeLease msg;
-  msg.lease_ = lease;
-  msg.ups_master_ = master;
-  return send_1_return_0(ups, timeout_us, OB_RS_UPS_REVOKE_LEASE, msg.MY_VERSION, msg);
-}
+      if (NULL == client_mgr_)
+      {
+        TBSYS_LOG(ERROR, "client_mgr_=NULL");
+        ret = OB_ERROR;
+      }
+      else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+      {
+        TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = msg.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+      {
+        TBSYS_LOG(ERROR, "failed to serialize, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = client_mgr_->send_request(ups, OB_RS_UPS_REVOKE_LEASE, msg.MY_VERSION, timeout_us, msgbuf)))
+      {
+        TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+      }
+      else
+      {
+        // success
+        ObResultCode result;
+        int64_t pos = 0;
+        if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+        {
+          TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+        }
+        else if (OB_SUCCESS != result.result_code_)
+        {
+          TBSYS_LOG(WARN, "failed to revoke lease, err=%d", result.result_code_);
+          ret = result.result_code_;
+        }
+        else
+        {
+        }
+      }
+      return ret;
+    }
 
 int ObRootRpcStub::get_ups_max_log_seq(const common::ObServer& ups, uint64_t &max_log_seq, const int64_t timeout_us)
 {
-  int64_t log_seq = 0;
-  int ret = send_0_return_1(ups, timeout_us, OB_RS_GET_MAX_LOG_SEQ, DEFAULT_VERSION, log_seq);
-  if (OB_SUCCESS != ret) max_log_seq = log_seq;
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+  {
+    TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+  }
+  else if (OB_SUCCESS != (ret = client_mgr_->send_request(ups, OB_RS_GET_MAX_LOG_SEQ, DEFAULT_VERSION, timeout_us, msgbuf)))
+  {
+    TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+  }
+  else
+  {
+    // success
+    ObResultCode result;
+    int64_t pos = 0;
+    if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+    }
+    else if (OB_SUCCESS != result.result_code_)
+    {
+      TBSYS_LOG(WARN, "failed to revoke lease, err=%d", result.result_code_);
+      ret = result.result_code_;
+    }
+    else if (OB_SUCCESS != (ret = serialization::decode_vi64(msgbuf.get_data(), msgbuf.get_position(),
+                                                             pos, (int64_t*)&max_log_seq)))
+    {
+      TBSYS_LOG(WARN, "failed to deserialize, err=%d", ret);
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "get ups max log seq, ups=%s seq=%lu", ups.to_cstring(), max_log_seq);
+    }
+  }
   return ret;
+
 }
 
 int ObRootRpcStub::shutdown_cs(const common::ObServer& cs, bool is_restart, const int64_t timeout_us)
 {
   int ret = OB_SUCCESS;
   ObDataBuffer msgbuf;
-  if (NULL == rpc_frame_)
+  if (NULL == client_mgr_)
   {
-    TBSYS_LOG(ERROR, "rpc_frame_=NULL");
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
     ret = OB_ERROR;
   }
-  else if (OB_SUCCESS != (ret = get_rpc_buffer(msgbuf)))
+  else if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
   {
     TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
   }
@@ -149,7 +729,7 @@ int ObRootRpcStub::shutdown_cs(const common::ObServer& cs, bool is_restart, cons
   {
     TBSYS_LOG(ERROR, "encode is_restart fail:ret[%d], is_restart[%d]", ret, is_restart ? 1 : 0);
   }
-  else if (OB_SUCCESS != (ret = rpc_frame_->send_request(cs, OB_STOP_SERVER, DEFAULT_VERSION, timeout_us, msgbuf)))
+  else if (OB_SUCCESS != (ret = client_mgr_->send_request(cs, OB_STOP_SERVER, DEFAULT_VERSION, timeout_us, msgbuf)))
   {
     TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
   }
@@ -171,57 +751,179 @@ int ObRootRpcStub::shutdown_cs(const common::ObServer& cs, bool is_restart, cons
   return ret;
 }
 int ObRootRpcStub::get_split_range(const common::ObServer& ups, const int64_t timeout_us,
-    const uint64_t table_id, const int64_t frozen_version, ObTabletInfoList &tablets)
+    const uint64_t table_id, const int64_t forzen_version, ObTabletInfoList &tablets)
 {
-  return send_2_return_1(ups, timeout_us, OB_RS_FETCH_SPLIT_RANGE, DEFAULT_VERSION,
-      frozen_version, (int64_t)table_id, tablets);
+  int ret = OB_SUCCESS;
+  ObDataBuffer msgbuf;
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
+  }
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+    {
+      TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(),
+            msgbuf.get_position(), forzen_version)))
+    {
+      TBSYS_LOG(WARN, "fail to encode forzen_version. forzen_version=%ld, ret=%d", forzen_version, ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(),
+            msgbuf.get_position(), table_id)))
+    {
+      TBSYS_LOG(WARN, "fail to encode table_id. table_id=%lu, ret=%d", table_id, ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = client_mgr_->send_request(ups, OB_RS_FETCH_SPLIT_RANGE, DEFAULT_VERSION, timeout_us, msgbuf)))
+    {
+      TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+    }
+  }
+  ObResultCode result;
+  int64_t pos = 0;
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+    }
+    else if (OB_SUCCESS != result.result_code_)
+    {
+      TBSYS_LOG(WARN, "failed to fetch split range, err=%d", result.result_code_);
+      ret = result.result_code_;
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = tablets.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(WARN, "failed to deserialize tablets, err=%d", ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    TBSYS_LOG(INFO, "fetch split range from ups succ.");
+  }
+  else
+  {
+    TBSYS_LOG(WARN, "fetch split range from ups fail, ups_addr=%s, version=%ld", ups.to_cstring(), forzen_version);
+  }
+  return ret;
 }
 int ObRootRpcStub::table_exist_in_cs(const ObServer &cs, const int64_t timeout_us,
     const uint64_t table_id, bool &is_exist_in_cs)
 {
   int ret = OB_SUCCESS;
-  ret = send_1_return_0(cs, timeout_us, OB_CS_CHECK_TABLET, DEFAULT_VERSION, (int64_t)table_id);
-  if (OB_CS_TABLET_NOT_EXIST == ret)
+  ObDataBuffer msgbuf;
+  if (NULL == client_mgr_)
   {
-    ret = OB_SUCCESS;
-    is_exist_in_cs = false;
+    TBSYS_LOG(ERROR, "client_mgr_=NULL");
+    ret = OB_ERROR;
   }
-  else if (OB_SUCCESS == ret)
+  if (OB_SUCCESS == ret)
   {
-    is_exist_in_cs = true;
+    if (OB_SUCCESS != (ret = get_thread_buffer_(msgbuf)))
+    {
+      TBSYS_LOG(ERROR, "failed to get thread buffer, err=%d", ret);
+    }
   }
-  else
+  if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(WARN, "fail to check cs tablet. table_id=%lu, cs_addr=%s, err=%d",
-        table_id, cs.to_cstring(), ret);
+    if (OB_SUCCESS != (ret = serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(),
+            msgbuf.get_position(), table_id)))
+    {
+      TBSYS_LOG(WARN, "fail to encode table_id, table_id=%ld, ret=%d", table_id, ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = client_mgr_->send_request(cs, OB_CS_CHECK_TABLET, DEFAULT_VERSION, timeout_us, msgbuf)))
+    {
+      TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+    }
+  }
+  ObResultCode result;
+  int64_t pos = 0;
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_CS_TABLET_NOT_EXIST == result.result_code_)
+    {
+      ret = OB_SUCCESS;
+      is_exist_in_cs = false;
+    }
+    else if (OB_SUCCESS == result.result_code_)
+    {
+      is_exist_in_cs = true;
+    }
+    else
+    {
+      ret = result.result_code_;
+      TBSYS_LOG(WARN, "fail to check cs tablet. table_id=%lu, cs_addr=%s, err=%d",
+          table_id, cs.to_cstring(), ret);
+    }
   }
   return ret;
 }
 
-int ObRootRpcStub::request_cs_load_bypass_tablet(const common::ObServer& chunkserver,
-    const common::ObTableImportInfoList &import_info, const int64_t timeout_us)
+int ObRootRpcStub::execute_sql(const ObServer& ms, const ObString sql, int64_t timeout)
 {
-  return send_1_return_0(chunkserver, timeout_us, OB_CS_LOAD_BYPASS_SSTABLE, DEFAULT_VERSION, import_info);
-}
-int ObRootRpcStub::request_cs_delete_table(const common::ObServer& chunkserver,
-    const uint64_t table_id, const int64_t timeout_us)
-{
-  return send_1_return_0(chunkserver, timeout_us, OB_CS_DELETE_TABLE, DEFAULT_VERSION, (int64_t)table_id);
-}
-
-int ObRootRpcStub::request_cs_build_sample(
-    const ObServer& chunkserver, const int64_t timeout_us,
-    const int64_t frozen_version, const uint64_t data_table_id, 
-    const uint64_t index_table_id, const int64_t sample_count)
-{
-  return send_4_return_0(chunkserver, timeout_us, OB_CS_SAMPLE_TABLE, DEFAULT_VERSION, 
-                         frozen_version, (int64_t)data_table_id, (int64_t)index_table_id, sample_count);
-}
-
-int ObRootRpcStub::request_cs_build_index(
-    const ObServer& chunkserver, const int64_t timeout_us,
-    const int64_t frozen_version, const uint64_t data_table_id, const uint64_t index_table_id)
-{
-  return send_3_return_0(chunkserver, timeout_us, OB_CS_BUILD_INDEX, DEFAULT_VERSION, 
-                         frozen_version, (int64_t)data_table_id, (int64_t)index_table_id);
+  int ret = OB_SUCCESS;
+  static const int MY_VERSION = 1;
+  if (NULL == client_mgr_)
+  {
+    TBSYS_LOG(ERROR, "client_mgr is NULL");
+    ret = OB_NOT_INIT;
+  }
+  else
+  {
+    ObDataBuffer data_buff;
+    get_thread_buffer_(data_buff);
+    if (OB_SUCCESS != (ret = sql.serialize(data_buff.get_data(), data_buff.get_capacity(),
+            data_buff.get_position())))
+    {
+      TBSYS_LOG(WARN, "serialize sql fail, ret: [%d], sql: [%.*s]",
+          ret, sql.length(), sql.ptr());
+    }
+    else if (OB_SUCCESS != (ret = client_mgr_->send_request(ms, OB_SQL_EXECUTE,
+            MY_VERSION, timeout, data_buff)))
+    {
+      TBSYS_LOG(WARN, "send sql request to [%s] fail, ret: [%d], sql: [%.*s]",
+          to_cstring(ms), ret, sql.length(), sql.ptr());
+    }
+    else
+    {
+      int64_t pos = 0;
+      ObResultCode result_code;
+      ret = result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(ERROR, "deserialize result_code failed: pos[%ld], ret[%d]", pos, ret);
+      }
+      else if (result_code.result_code_ != OB_SUCCESS)
+      {
+        ret = result_code.result_code_;
+        TBSYS_LOG(WARN, "execute sql at[%s] fail, ret: [%d], sql: [%.*s]",
+            to_cstring(ms), ret, sql.length(), sql.ptr());
+      }
+    }
+  }
+  return ret;
 }

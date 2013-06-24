@@ -882,7 +882,7 @@ namespace oceanbase
             }
 
             if (true == is_datetime)
-            { 
+            {
               //TBSYS_LOG(DEBUG, "get datetime");
               sym.type = DATETIME;
               err = get_datetime_v2(p, pos, sym);
@@ -1655,7 +1655,7 @@ namespace oceanbase
          ObPostfixExpression& operator=(const ObPostfixExpression &other);
 
         /* @param expr:已经解析好了的后缀表达式数组 */
-        int set_expression(const ObObj *expr, oceanbase::common::ObStringBuf  & data_buf);
+        int set_expression(const ObObj *expr, ObStringBuf  & data_buf);
 
         /* @absolete interface
          *

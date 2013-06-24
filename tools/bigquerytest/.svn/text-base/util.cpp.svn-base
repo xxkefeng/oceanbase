@@ -140,7 +140,7 @@ int Array::set_value(int row_idx, int col_idx, const char* value, int type)
   }
   else
   {
-    int len = static_cast<int> (strlen(value)) + 1;
+    int len = strlen(value) + 1;
     array_[row_idx][col_idx] = (char*) malloc(len);
     sprintf(array_[row_idx][col_idx], "%s", value);
     type_array_[row_idx][col_idx] = type;

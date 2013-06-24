@@ -14,7 +14,6 @@
  */
 #include <tblog.h>
 #include "common/serialization.h"
-#include "common/ob_row_util.h"
 #include "ob_sstable_block_builder.h"
 
 namespace oceanbase 
@@ -300,72 +299,6 @@ namespace oceanbase
       {
         ret = row.serialize(block_buf_cur_, 
                             get_block_data_remain(), block_pos, row_size);
-        if (OB_SUCCESS == ret)
-        {
-          ret = encode_i32(row_index_buf_cur_, 
-                           get_row_index_remain(),
-                           index_pos, row_offset);
-          if (OB_SUCCESS == ret)
-          {
-            block_buf_cur_ += block_pos;
-            row_index_buf_cur_ += index_pos;
-            block_header_.row_count_++;
-          }
-          else
-          {
-            TBSYS_LOG(WARN, "failed to serialize row index");
-          }
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "failed to serialize row");
-        }
-      }
-
-      return ret;
-    }
-
-    int ObSSTableBlockBuilder::add_row(
-        const uint64_t table_id, const uint64_t column_group_id, 
-        const ObRow &row, const int64_t row_serialize_size) 
-    {
-      int ret             = OB_SUCCESS;
-      int32_t row_offset  = get_block_data_size();
-      int64_t row_size    = row_serialize_size;
-      int64_t block_pos   = 0;
-      int64_t index_pos   = 0;
-
-      if (row.get_column_num() <= 0 || OB_INVALID_ID == table_id
-          || 0 == table_id || OB_INVALID_ID == column_group_id)
-      {
-        TBSYS_LOG(WARN, "invalid param, row column_count=%ld, row table id=%lu,"
-                  "row column group id =%lu", row.get_column_num(), table_id, column_group_id);
-        ret = OB_ERROR;
-      }
-
-      if (OB_SUCCESS == ret && 0 == get_row_count())
-      {
-        block_header_.table_id_        =  static_cast<uint32_t>(table_id);
-        block_header_.column_group_id_ =  static_cast<uint16_t>(column_group_id);
-      }
-      
-      //check whether the row has same table id&&group id with current block
-      if (OB_SUCCESS == ret && 0 != get_row_count() 
-          && (table_id != block_header_.table_id_ 
-            || column_group_id != block_header_.column_group_id_))
-      {
-        TBSYS_LOG(WARN, "disargument  row (table_id=%lu, column_group_id=%lu)," 
-                        "block (table_id=%u, column_group_id=%u)", table_id,
-                         column_group_id, block_header_.table_id_, 
-                         block_header_.column_group_id_);
-        ret = OB_ERROR;
-      }
-
-      if (OB_SUCCESS == ret 
-          && OB_SUCCESS == (ret = ensure_space(row_size)))
-      {
-        ret = ObRowUtil::serialize_row(row, block_buf_cur_, 
-                            get_block_data_remain(), block_pos);
         if (OB_SUCCESS == ret)
         {
           ret = encode_i32(row_index_buf_cur_, 

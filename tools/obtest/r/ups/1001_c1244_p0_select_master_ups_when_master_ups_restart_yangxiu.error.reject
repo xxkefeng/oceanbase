@@ -1,0 +1,3 @@
+ob1//mergeserver.log:ERROR load_user_table (ob_get_privilege_task.cpp)  failed to get next row, ret=-12
+ob1//updateserver.log:ERROR runTimerTask (ob_config_manager.cpp)  update local config failed:ret[-6]
+ob1//chunkserver.log:ERROR ups_scan_ (ob_rpc_proxy.cpp)  scan from master ups failed:ret[-12]

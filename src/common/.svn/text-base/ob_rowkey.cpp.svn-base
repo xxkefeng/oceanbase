@@ -258,6 +258,20 @@ namespace oceanbase
       return ret;
     }
 
+    int64_t ObRowkey::get_deep_copy_size() const
+    {
+      int64_t obj_arr_len = obj_cnt_ * sizeof(ObObj);
+      int64_t total_len = obj_arr_len;
+
+      for (int64_t i = 0; i < obj_cnt_ ; ++i)
+      {
+        if (obj_ptr_[i].get_type() == ObVarcharType)
+        {
+          total_len += obj_ptr_[i].get_val_len();
+        }
+      }
+      return total_len;
+    }
 
     RowkeyInfoHolder::RowkeyInfoHolder(const ObRowkeyInfo* ri)
       : rowkey_info_(ri) 

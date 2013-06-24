@@ -33,7 +33,7 @@ namespace oceanbase
 
       ~ObMsSqlSubScanRequest();
 
-      int init(
+      int init(ObSqlScanParam *scan_param,
         ObNewRange & query_range,
         const int64_t limit_offset,
         const int64_t limit_count,
@@ -61,7 +61,7 @@ namespace oceanbase
       /// int get_next_scan_param(ObSqlScanParam & next_param);
       /// int get_next_scan_range(ObNewRange & next_range);
 
-      const ObNewRange &get_sub_range() const;
+      const ObNewRange &get_query_range() const;
       bool scan_full_tablet() const;
 
       /// check if this sub request finished, if finished
@@ -82,7 +82,7 @@ namespace oceanbase
 
       /// result interface
       inline ObNewScanner *get_scanner() const;
-      // inline ObSqlScanParam * get_scan_param() const;
+      inline ObSqlScanParam * get_scan_param() const;
       inline const int64_t get_limit_offset() const;
 
       inline int reset_cs_replicas(const int32_t replica_cnt, const ObChunkServerItem *cs_vec);
@@ -129,6 +129,7 @@ namespace oceanbase
       /// ThreadAllocator<ObMsSqlRpcEvent, MutilObjAllocator<ObMsSqlRpcEvent, 65536> > allocator_;
       ObNewRange           query_range_;
       ObMsSqlRpcEvent      *result_;
+      sql::ObSqlScanParam       *scan_param_;
       ObStringBuf       *buffer_pool_;
 
       /// session related, there should be only on session associated with a sub req, because backups tasks
@@ -175,15 +176,44 @@ namespace oceanbase
       return ret;
     }
 
-    inline const ObNewRange &ObMsSqlSubScanRequest::get_sub_range() const
+    inline const ObNewRange &ObMsSqlSubScanRequest::get_query_range() const
     {
       return query_range_;
     }
+
+
+    inline ObSqlScanParam *ObMsSqlSubScanRequest::get_scan_param() const
+    {
+      int err = OB_SUCCESS;
+
+      if (NULL != scan_param_)
+      {
+
+        if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = scan_param_->set_range(query_range_))))
+        {
+          TBSYS_LOG(WARN, "fail to set scan_param [err=%d]", err);
+        }
+/*
+        if ((OB_SUCCESS == err) &&
+          (OB_SUCCESS != (err = scan_param_->set_limit(limit_count_, limit_offset_))))
+        {
+          TBSYS_LOG(WARN, "fail to set scan limit [limit_offset_=%ld][err=%d]", limit_offset_, err);
+        }
+*/
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "null pointer error. [scan_param_=%p]", scan_param_);
+      }
+      return scan_param_;
+    }
+
 
     inline int32_t ObMsSqlSubScanRequest::triggered_backup_task_count() const
     {
       return triggered_backup_task_count_;
     }
+
 
     inline int32_t ObMsSqlSubScanRequest::finished_backup_task_count() const
     {

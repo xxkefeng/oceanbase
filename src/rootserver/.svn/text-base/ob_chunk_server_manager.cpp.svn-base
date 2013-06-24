@@ -317,7 +317,6 @@ namespace oceanbase
             TBSYS_LOG(INFO, "receive relive cs heartbeat, or new cs register. server=%s", server.to_cstring());
             it->register_time_ = time_stamp;
             it->status_ = ObServerStatus::STATUS_WAITING_REPORT;
-            it->bypass_process_= ObServerStatus::INIT;
             it->server_.set_port(server.get_port());
             if (it->port_cs_ == server.get_port() )
             {
@@ -442,12 +441,16 @@ namespace oceanbase
 
     int ObChunkServerManager::get_server_index(const common::ObServer &server, int32_t &index) const
     {
-      index = -1;
-      int ret = OB_ENTRY_NOT_EXIST;
+      int ret = OB_SUCCESS;
       const_iterator it = find_by_ip(server);
       if (end() != it)
       {
         index = static_cast<int32_t>(it - begin());
+      }
+      else
+      {
+        index = OB_INVALID_INDEX;
+        ret = OB_ENTRY_NOT_EXIST;
       }
       return ret;
     }
@@ -474,6 +477,28 @@ namespace oceanbase
         }
       }
       return count;
+    }
+
+    int ObChunkServerManager::get_next_alive_ms(int32_t & index, ObServer & server) const
+    {
+      int32_t count = size();
+      const ObServerStatus * st = NULL;
+      int32_t i = 0;
+      for (i = 0; i < count; ++i)
+      {
+        st = get_server_status(index);
+        if ((st != NULL) && (st->ms_status_ != ObServerStatus::STATUS_DEAD))
+        {
+          server = st->server_;
+          server.set_port(st->port_ms_);
+          break;
+        }
+        else
+        {
+          index = (index + 1) % count;
+        }
+      }
+      return (i == count) ? OB_MS_NOT_EXIST : OB_SUCCESS;
     }
 
     common::ObServer ObChunkServerManager::get_cs(const int32_t index) const
@@ -553,7 +578,6 @@ namespace oceanbase
           TBSYS_LOG(INFO, "chunkserver %s is down", to_cstring(tmp_server));
         }
         it->status_ = ObServerStatus::STATUS_DEAD;
-        it->bypass_process_ = ObServerStatus::FAILED;
         it->balance_info_.reset();
       }
       return ;
@@ -732,7 +756,7 @@ namespace oceanbase
           total_size += data_holder_[i].get_serialize_size();
         }
 
-        char* data_buffer = static_cast<char*>(ob_malloc(total_size));
+        char* data_buffer = static_cast<char*>(ob_malloc(total_size, ObModIds::OB_RS_SERVER_MANAGER));
         if (data_buffer == NULL)
         {
           ret = OB_ERROR;
@@ -877,7 +901,7 @@ namespace oceanbase
       if (ret == OB_SUCCESS)
       {
         size = header.data_length_;
-        data_buffer = static_cast<char*>(ob_malloc(size));
+        data_buffer = static_cast<char*>(ob_malloc(size, ObModIds::OB_RS_SERVER_MANAGER));
         if (data_buffer == NULL)
         {
           ret = OB_ERROR;

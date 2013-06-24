@@ -1,23 +1,23 @@
 K 25
 svn:wc:ra_dav:version-url
-V 111
-/repos/oceanbase/!svn/ver/8043/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress
-END
-SQLClient.java
-K 25
-svn:wc:ra_dav:version-url
-V 126
-/repos/oceanbase/!svn/ver/1553/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress/SQLClient.java
+V 122
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress
 END
 TestOBRowkey.java
 K 25
 svn:wc:ra_dav:version-url
-V 129
-/repos/oceanbase/!svn/ver/1736/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress/TestOBRowkey.java
+V 140
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress/TestOBRowkey.java
 END
 StressTest.java
 K 25
 svn:wc:ra_dav:version-url
-V 127
-/repos/oceanbase/!svn/ver/1553/branches/dev/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress/StressTest.java
+V 138
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress/StressTest.java
+END
+SQLClient.java
+K 25
+svn:wc:ra_dav:version-url
+V 137
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/java/src/test/java/com/taobao/oceanbase/stress/SQLClient.java
 END

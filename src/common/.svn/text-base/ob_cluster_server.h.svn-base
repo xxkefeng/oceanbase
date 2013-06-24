@@ -31,12 +31,13 @@ namespace oceanbase
         int ret = strcmp(RoleName[role], RoleName[other.role]);
         if (0 == ret)
         {
-          bret = addr < other.addr;
+          char ip1[OB_IP_STR_BUFF] = "";
+          char ip2[OB_IP_STR_BUFF] = "";
+          addr.ip_to_string(ip1, sizeof (ip1));
+          other.addr.ip_to_string(ip2, sizeof (ip2));
+          ret = strcmp(ip1, ip2);
         }
-        else
-        {
-          bret = ret < 0;
-        }
+        bret = ret < 0;
         return bret;
       }
     };

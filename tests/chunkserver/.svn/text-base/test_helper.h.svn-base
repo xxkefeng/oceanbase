@@ -74,14 +74,11 @@ class GFactory
 };
 
 int write_cg_sstable(const ObCellInfo** cell_infos,
-    const int64_t row_num, const int64_t col_num, const char* sstable_file_path, 
-    const uint64_t base_column_id);
+    const int64_t row_num, const int64_t col_num, const char* sstable_file_path );
 int write_sstable(const ObCellInfo** cell_infos,
-    const int64_t row_num, const int64_t col_num, const char* sstable_file_path, 
-    const uint64_t base_column_id, ObNewRange* range);
+    const int64_t row_num, const int64_t col_num, const char* sstable_file_path );
 int write_empty_sstable(const ObCellInfo** cell_infos,
-    const int64_t row_num, const int64_t col_num, const char* sstable_file_path, 
-    const uint64_t base_column_id, ObNewRange* range);
+    const int64_t row_num, const int64_t col_num, const char* sstable_file_path );
 
 class SSTableBuilder
 {
@@ -89,10 +86,9 @@ class SSTableBuilder
     SSTableBuilder();
     ~SSTableBuilder();
     typedef int (WRITE_SSTABLE_FUNC)(const ObCellInfo** cell_infos,
-        const int64_t row_num, const int64_t col_num, const char* sstable_file_path, 
-        const uint64_t base_column_id, ObNewRange* range);
+        const int64_t row_num, const int64_t col_num, const char* sstable_file_path );
     int generate_sstable_file(WRITE_SSTABLE_FUNC write_func, const ObSSTableId& sstable_id,
-                              const int64_t start_index = 0, const uint64_t base_column_id = 2, ObNewRange* range = NULL);
+                              const int64_t start_index = 0);
     ObCellInfo** const get_cell_infos() const { return cell_infos; }
   public:
     static const int64_t table_id = 100;
@@ -101,7 +97,7 @@ class SSTableBuilder
 
   private:
     ObCellInfo** cell_infos;
-    char* row_key_strs[ROW_NUM];
+    char* row_key_strs[ROW_NUM][COL_NUM];
 };
 
 class MultSSTableBuilder
@@ -117,7 +113,7 @@ class MultSSTableBuilder
 
     }
 
-    int generate_sstable_files(bool empty_sstable = false, const uint64_t base_column_id = 2);
+    int generate_sstable_files(bool empty_sstable = false);
 
     int get_sstable_id(ObSSTableId & sstable_id, const int64_t index) const
     {
@@ -154,13 +150,7 @@ class TabletManagerIniter
 {
   public:
     TabletManagerIniter(ObTabletManager& tablet_mgr)
-    : inited_(false), tablet_mgr_(&tablet_mgr)
-    {
-
-    }
-
-    TabletManagerIniter()
-    : inited_(false), tablet_mgr_(NULL)
+    : inited_(false), tablet_mgr_(tablet_mgr)
     {
 
     }
@@ -170,12 +160,7 @@ class TabletManagerIniter
 
     }
 
-    void set_tablet_manager(ObTabletManager& tablet_mgr)
-    {
-      tablet_mgr_ = &tablet_mgr;
-    }
-
-    int init(bool create = false, bool empty_tablet = false, const uint64_t base_column_id = 2);
+    int init(bool create = false, bool empty_tablet = false);
 
     const MultSSTableBuilder& get_mult_sstable_builder() const
     {
@@ -184,11 +169,11 @@ class TabletManagerIniter
 
   private:
     int create_tablet(const ObNewRange& range, const ObSSTableId& sst_id, bool serving, bool add_sst_id = true, const int64_t version = 1);
-    int create_tablets(bool empty_tablet = false, const uint64_t base_column_id = 2);
+    int create_tablets(bool empty_tablet = false);
 
   private:
     bool inited_;
-    ObTabletManager* tablet_mgr_;
+    ObTabletManager& tablet_mgr_;
     MultSSTableBuilder builder_;
 };
 

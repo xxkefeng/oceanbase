@@ -25,8 +25,7 @@ autom4te.cache
 
 K 13
 svn:mergeinfo
-V 182
-/branches/0_4_1_release/oceanbase/tests/lsync:12603-13939
+V 124
 /branches/dev/oceanbase/tests/lsync:7279-7378,7382-7412
 /branches/developing/trans_mvcc_dev/oceanbase/tests/lsync:9273-10180
 END

@@ -1,275 +1,275 @@
 K 25
 svn:wc:ra_dav:version-url
-V 75
-/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/obsql/src
-END
-ob_sql_init.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/obsql/src/ob_sql_init.cpp
-END
-ob_sql_conn_recycle.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 99
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_conn_recycle.cpp
-END
-ob_sql_real_func.h
-K 25
-svn:wc:ra_dav:version-url
-V 94
-/repos/oceanbase/!svn/ver/12346/branches/dev/oceanbase/src/client/obsql/src/ob_sql_real_func.h
-END
-ob_sql_global.h
-K 25
-svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_global.h
-END
-ob_sql_select_method_impl.h
-K 25
-svn:wc:ra_dav:version-url
-V 103
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/ob_sql_select_method_impl.h
-END
-ob_sql_mysql_adapter.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 100
-/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/obsql/src/ob_sql_mysql_adapter.cpp
-END
-ob_sql_group_data_source.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 104
-/repos/oceanbase/!svn/ver/13435/branches/dev/oceanbase/src/client/obsql/src/ob_sql_group_data_source.cpp
-END
-ob_sql_conn_acquire.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 99
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/ob_sql_conn_acquire.cpp
-END
-ob_sql_curl.h
-K 25
-svn:wc:ra_dav:version-url
-V 89
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_curl.h
-END
-ob_sql_update_worker.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 100
-/repos/oceanbase/!svn/ver/13435/branches/dev/oceanbase/src/client/obsql/src/ob_sql_update_worker.cpp
-END
-libobsql.conf
-K 25
-svn:wc:ra_dav:version-url
-V 89
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/libobsql.conf
-END
-ob_sql_cluster_config.h
-K 25
-svn:wc:ra_dav:version-url
-V 99
-/repos/oceanbase/!svn/ver/13435/branches/dev/oceanbase/src/client/obsql/src/ob_sql_cluster_config.h
-END
-libobsqlrc
-K 25
-svn:wc:ra_dav:version-url
-V 86
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/libobsqlrc
-END
-ob_sql_data_source_utility.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 106
-/repos/oceanbase/!svn/ver/13435/branches/dev/oceanbase/src/client/obsql/src/ob_sql_data_source_utility.cpp
-END
-ob_sql_util.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_util.cpp
-END
-ob_sql_list.h
-K 25
-svn:wc:ra_dav:version-url
-V 89
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_list.h
-END
-ob_sql_atomic.h
-K 25
-svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_atomic.h
-END
-ob_sql_ms_select.h
-K 25
-svn:wc:ra_dav:version-url
-V 94
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_ms_select.h
-END
-ob_sql_select_method.h
-K 25
-svn:wc:ra_dav:version-url
-V 98
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/ob_sql_select_method.h
-END
-ob_sql_cluster_select.h
-K 25
-svn:wc:ra_dav:version-url
-V 99
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_cluster_select.h
-END
-ob_sql_server_info.h
-K 25
-svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/ob_sql_server_info.h
-END
-Makefile.am
-K 25
-svn:wc:ra_dav:version-url
-V 87
-/repos/oceanbase/!svn/ver/13435/branches/dev/oceanbase/src/client/obsql/src/Makefile.am
-END
-ob_sql_struct.h
-K 25
-svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/13435/branches/dev/oceanbase/src/client/obsql/src/ob_sql_struct.h
-END
-ob_sql_data_source.h
-K 25
-svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/12346/branches/dev/oceanbase/src/client/obsql/src/ob_sql_data_source.h
-END
-ob_sql_real_func.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/obsql/src/ob_sql_real_func.cpp
-END
-ob_sql_define.h
-K 25
-svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/12666/branches/dev/oceanbase/src/client/obsql/src/ob_sql_define.h
-END
-ob_sql_global.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 93
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_global.cpp
-END
-ob_sql_select_method_impl.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 105
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/ob_sql_select_method_impl.cpp
-END
-ob_sql_cluster_info.h
-K 25
-svn:wc:ra_dav:version-url
-V 97
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/ob_sql_cluster_info.h
-END
-ob_sql_parser.h
-K 25
-svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_parser.h
-END
-ob_sql_curl.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 91
-/repos/oceanbase/!svn/ver/12433/branches/dev/oceanbase/src/client/obsql/src/ob_sql_curl.cpp
-END
-ob_sql_cluster_config.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/ob_sql_cluster_config.cpp
-END
-ob_sql_init.h
-K 25
-svn:wc:ra_dav:version-url
-V 89
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_init.h
-END
-ob_sql_conn_recycle.h
-K 25
-svn:wc:ra_dav:version-url
-V 97
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_conn_recycle.h
-END
-ob_sql_mysql_adapter.h
-K 25
-svn:wc:ra_dav:version-url
-V 98
-/repos/oceanbase/!svn/ver/13626/branches/dev/oceanbase/src/client/obsql/src/ob_sql_mysql_adapter.h
-END
-ob_sql_group_data_source.h
-K 25
-svn:wc:ra_dav:version-url
-V 102
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_group_data_source.h
-END
-ob_sql_conn_acquire.h
-K 25
-svn:wc:ra_dav:version-url
-V 97
-/repos/oceanbase/!svn/ver/12940/branches/dev/oceanbase/src/client/obsql/src/ob_sql_conn_acquire.h
-END
-ob_sql_atomic.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 93
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_atomic.cpp
-END
-readme
-K 25
-svn:wc:ra_dav:version-url
-V 82
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/readme
-END
-ob_sql_ms_select.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 96
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_ms_select.cpp
-END
-ob_sql_cluster_select.cpp
-K 25
-svn:wc:ra_dav:version-url
-V 101
-/repos/oceanbase/!svn/ver/12433/branches/dev/oceanbase/src/client/obsql/src/ob_sql_cluster_select.cpp
-END
-ob_sql_update_worker.h
-K 25
-svn:wc:ra_dav:version-url
-V 98
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_update_worker.h
+V 85
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/src/client/obsql/src
 END
 ob_sql_data_source_utility.h
 K 25
 svn:wc:ra_dav:version-url
+V 114
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_data_source_utility.h
+END
+ob_sql_atomic.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_atomic.h
+END
+ob_sql_cluster_select.h
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_cluster_select.h
+END
+Makefile.am
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/repos/oceanbase/!svn/ver/13235/branches/0_4_1_release/oceanbase/src/client/obsql/src/Makefile.am
+END
+ob_sql_struct.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/13235/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_struct.h
+END
+ob_sql_define.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12603/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_define.h
+END
+ob_sql_global.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_global.cpp
+END
+ob_sql_select_method_impl.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 115
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_select_method_impl.cpp
+END
+ob_sql_cluster_info.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_cluster_info.h
+END
+ob_sql_parser.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_parser.h
+END
+ob_sql_real_func.h
+K 25
+svn:wc:ra_dav:version-url
 V 104
-/repos/oceanbase/!svn/ver/12340/branches/dev/oceanbase/src/client/obsql/src/ob_sql_data_source_utility.h
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_real_func.h
+END
+ob_sql_mysql_adapter.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_mysql_adapter.cpp
+END
+ob_sql_group_data_source.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 114
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_group_data_source.cpp
+END
+ob_sql_curl.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_curl.cpp
+END
+ob_sql_cluster_config.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_cluster_config.cpp
+END
+ob_sql_init.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_init.h
+END
+ob_sql_conn_recycle.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_conn_recycle.h
+END
+ob_sql_conn_acquire.h
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_conn_acquire.h
+END
+ob_sql_update_worker.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 110
+/repos/oceanbase/!svn/ver/13235/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_update_worker.cpp
+END
+libobsqlrc
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/libobsqlrc
+END
+ob_sql_atomic.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_atomic.cpp
+END
+ob_sql_data_source_utility.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 116
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_data_source_utility.cpp
+END
+ob_sql_cluster_select.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 111
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_cluster_select.cpp
 END
 ob_sql_util.h
 K 25
 svn:wc:ra_dav:version-url
-V 89
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_util.h
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_util.h
+END
+ob_sql_ms_select.h
+K 25
+svn:wc:ra_dav:version-url
+V 104
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_ms_select.h
+END
+ob_sql_select_method.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_select_method.h
+END
+ob_sql_server_info.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_server_info.h
 END
 ob_sql_parser.cpp
 K 25
 svn:wc:ra_dav:version-url
-V 93
-/repos/oceanbase/!svn/ver/12338/branches/dev/oceanbase/src/client/obsql/src/ob_sql_parser.cpp
+V 103
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_parser.cpp
+END
+ob_sql_data_source.h
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_data_source.h
+END
+ob_sql_real_func.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/13502/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_real_func.cpp
+END
+ob_sql_init.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/13501/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_init.cpp
+END
+ob_sql_conn_recycle.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_conn_recycle.cpp
+END
+ob_sql_global.h
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_global.h
+END
+ob_sql_select_method_impl.h
+K 25
+svn:wc:ra_dav:version-url
+V 113
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_select_method_impl.h
+END
+ob_sql_conn_acquire.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_conn_acquire.cpp
+END
+ob_sql_mysql_adapter.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/13452/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_mysql_adapter.h
+END
+ob_sql_group_data_source.h
+K 25
+svn:wc:ra_dav:version-url
+V 112
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_group_data_source.h
+END
+ob_sql_curl.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_curl.h
+END
+libobsql.conf
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12842/branches/0_4_1_release/oceanbase/src/client/obsql/src/libobsql.conf
+END
+ob_sql_cluster_config.h
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/repos/oceanbase/!svn/ver/13235/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_cluster_config.h
+END
+ob_sql_util.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_util.cpp
+END
+readme
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/readme
+END
+ob_sql_ms_select.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/repos/oceanbase/!svn/ver/14380/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_ms_select.cpp
+END
+ob_sql_list.h
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_list.h
+END
+ob_sql_update_worker.h
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/repos/oceanbase/!svn/ver/12602/branches/0_4_1_release/oceanbase/src/client/obsql/src/ob_sql_update_worker.h
 END

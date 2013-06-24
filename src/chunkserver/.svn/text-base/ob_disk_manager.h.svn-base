@@ -52,7 +52,6 @@ namespace oceanbase
         int64_t get_total_used(void) const;
         void add_sstable_num(const int32_t disk_no,const int32_t num);
         void set_disk_status(const int32_t disk_no,const ObDiskStatus stat);
-        bool is_disk_avail(const int32_t disk_no);
         const int32_t *get_disk_no_array(int32_t& disk_num) const;
         void dump();
       private:

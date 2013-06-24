@@ -2,18 +2,18 @@
  //
  // ob_fixed_queue.h common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2012-03-04 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2012-03-04 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
  // Description
- // 
+ //
  // 无锁的环形队列
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -84,7 +84,7 @@ namespace oceanbase
       {
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (NULL == (array_ = (ArrayItem*)ob_malloc(sizeof(ArrayItem) * max_num)))
+      else if (NULL == (array_ = (ArrayItem*)ob_malloc(sizeof(ArrayItem) * max_num, ObModIds::OB_FIXED_QUEUE)))
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
       }
@@ -205,7 +205,7 @@ namespace oceanbase
             ret = OB_ENTRY_NOT_EXIST;
             break;
           }
-          
+
           register uint64_t index = old_pos % max_num_;
           if (old_pos != array_[index].cur_pos)
           {
@@ -230,4 +230,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_FIXED_QUEUE_H_
-

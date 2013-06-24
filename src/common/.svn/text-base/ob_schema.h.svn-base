@@ -51,7 +51,6 @@ namespace oceanbase
     struct TableSchema;
     //these classes are so close in logical, so I put them together to make client have a easy life
     typedef ObObjType ColumnType;
-    const char* convert_column_type_to_str(ColumnType type);
     struct ObRowkeyColumn
     {
       enum Order
@@ -111,7 +110,6 @@ namespace oceanbase
       int add_column(const ObRowkeyColumn& column);
 
       int get_index(const uint64_t column_id, int64_t &index, ObRowkeyColumn& column) const;
-      int get_index(const uint64_t column_id, int64_t &index) const;
       bool is_rowkey_column(const uint64_t column_id) const;
       int set_column(int64_t idx, const ObRowkeyColumn& column);
 
@@ -235,36 +233,15 @@ namespace oceanbase
         ObTableSchema();
         ~ObTableSchema() {}
         ObTableSchema& operator=(const ObTableSchema& src_schema);
-        enum TableLoadType
+        enum TableType
         {
           INVALID = 0,
           SSTABLE_IN_DISK,
           SSTABLE_IN_RAM,
         };
 
-        enum TableType
-        {
-          NORMAL = 1,
-          INDEX,
-          META,
-          VIEW,
-        };
-
-        enum IndexStatus
-        {
-          UNAVAILABLE = 1,
-          AVAILABLE,
-          INDEX_ERROR
-        };
-
-        void reset_index_tid_array();
-        int get_index_tid_array(uint64_t *index_tid_array, int64_t &size) const;
         uint64_t    get_table_id()   const;
-        uint64_t get_data_table_id() const;
-        IndexStatus get_index_status() const;
-        int64_t get_create_mem_version() const;
-        TableLoadType   get_table_load_type() const;
-        TableType get_table_type() const;
+        TableType   get_table_type() const;
         const char* get_table_name() const;
         const char* get_compress_func_name() const;
         uint64_t    get_max_column_id() const;
@@ -290,7 +267,6 @@ namespace oceanbase
         int64_t get_internal_ups_scan_size() const;
         int64_t get_merge_write_sstable_version() const;
         int64_t get_replica_count() const;
-        int64_t get_charset_number() const;
 
         uint64_t get_create_time_column_id() const;
         uint64_t get_modify_time_column_id() const;
@@ -299,14 +275,12 @@ namespace oceanbase
         void set_max_column_id(const uint64_t id);
         void set_version(const int64_t version);
 
-        void set_table_load_type(TableLoadType load_type);
         void set_table_type(TableType type);
         void set_split_pos(const int64_t split_pos);
 
         void set_rowkey_max_length(const int64_t len);
         void set_block_size(const int64_t block_size);
         void set_max_sstable_size(const int64_t max_sstable_size);
-        void set_charset_number(const int32_t number);
 
         void set_table_name(const char* name);
         void set_table_name(const ObString& name);
@@ -330,14 +304,9 @@ namespace oceanbase
         void set_internal_ups_scan_size(const int64_t scan_size);
         void set_merge_write_sstable_version(const int64_t version);
         void set_replica_count(const int64_t count) ;
-        void set_data_table_id(const uint64_t data_table_id);
-        void set_index_status(IndexStatus index_status);
-        void set_create_mem_version(const int64_t create_mem_version);
 
         void set_create_time_column(uint64_t id);
         void set_modify_time_column(uint64_t id);
-
-        int add_index_tid(uint64_t index_tid);
 
         bool operator ==(const ObTableSchema& r) const;
         bool operator ==(const ObString& table_name) const;
@@ -352,16 +321,12 @@ namespace oceanbase
         int deserialize_v4(const char* buf, const int64_t data_len, int64_t& pos);
       private:
         static const int64_t TABLE_SCHEMA_RESERVED_NUM = 4;
-        static const int64_t TABLE_SCHEMA_RESERVED_NUM_V4 = 0;
         uint64_t table_id_;
-        uint64_t index_tid_array_[OB_MAX_INDEX_PER_TABLE];
-        int64_t index_tid_count_;
         uint64_t max_column_id_;
         int64_t rowkey_split_;
         int64_t rowkey_max_length_;
 
         int32_t block_size_; //KB
-        TableLoadType table_load_type_;
         TableType table_type_;
 
         char name_[OB_MAX_TABLE_NAME_LENGTH];
@@ -380,11 +345,7 @@ namespace oceanbase
         int64_t internal_ups_scan_size_;
         int64_t merge_write_sstable_version_;
         int64_t replica_count_;
-        int64_t charset_number_;
-        uint64_t data_table_id_;
-        IndexStatus index_status_;
-        int64_t create_mem_version_;
-        int64_t reserved_[TABLE_SCHEMA_RESERVED_NUM_V4];
+        int64_t reserved_[TABLE_SCHEMA_RESERVED_NUM];
         int64_t version_;
 
         //in mem
@@ -412,10 +373,6 @@ namespace oceanbase
 
         int64_t get_column_count() const;
         int64_t get_table_count() const;
-
-        // construct relation in mem from table id to index table id
-        // call get_index_tid_array after this function
-        int cons_table_to_index_relation();
 
         uint64_t get_max_table_id() const;
         /**
@@ -530,18 +487,13 @@ namespace oceanbase
         //rongxuan.lc@taobao.com
         int add_new_table_schema(const ObArray<TableSchema>& schema_array);
 
-        int change_table_id(const uint64_t table_id, const uint64_t new_table_id);
       public:
         bool parse_from_file(const char* file_name, tbsys::CConfig& config);
         bool parse_one_table(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
         bool parse_column_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
         bool parse_join_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
         bool parse_rowkey_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
-        int write_to_file(const char* file_name);
-        int write_table_to_file(FILE *fd, const int64_t table_index);
-        int write_column_group_info_to_file(FILE *fd, const int64_t table_index);
-        int write_column_info_to_file(FILE *fd, const ObColumnSchemaV2 *column_schema);
-        int write_rowkey_info_to_file(FILE *fd, const uint64_t table_id, const ObRowkeyInfo &rowkey);
+
       private:
         /**
          * parse rowkey column description into ObRowkeyColumn

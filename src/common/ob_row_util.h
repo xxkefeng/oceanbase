@@ -57,11 +57,6 @@ namespace oceanbase
         static int convert(const common::ObString &compact_row, ObRow &row);
 
         static int convert(const common::ObString &compact_row, ObRow &row, ObRowkey *rowkey, ObObj *rowkey_buf);
-
-        static int convert(uint64_t table_id, const ObString &compact_row, ObRow &row, bool is_ups_row);
-
-        static int64_t get_row_serialize_size(const common::ObRow& row);
-        static int serialize_row(const common::ObRow& row, char* buf, int64_t buf_len, int64_t &pos);
     };
   } // end namespace common
 } // end namespace oceanbase

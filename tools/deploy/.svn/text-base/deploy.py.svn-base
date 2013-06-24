@@ -154,7 +154,7 @@ def Role():
     pid = '''popen: ssh $usr@$ip "pgrep -u $usr -f '^$exe'" || echo PopenException: NoProcessFound '''
     version = '''popen: ssh $usr@$ip "$exe -V" '''
     set_obi_role = '''sup: $rs_admin_cmd -r $ip -p $port set_obi_role -o $obi_role'''
-    boot_strap_eof = '''sup: $rs_admin_cmd -t $boot_strap_timeout -r $ip -p $port boot_strap # ExceptionOnFail'''
+    boot_strap_eof = '''sup: $localdir/tools/rs_admin -t $boot_strap_timeout -r $ip -p $port boot_strap # ExceptionOnFail'''
     boot_strap = '''sup: $rs_admin_cmd -t $boot_strap_timeout -r $ip -p $port boot_strap'''
     print_schema = '''sh: $rs_admin_cmd -r $ip -p $port print_schema'''
     start_old_way = '''sh: ssh $usr@$ip '(cd $dir; ulimit -c unlimited; pgrep -u $usr -f "^$exe" || $server_start_environ $exe -f etc/$role.conf.$ip:$port $_rest_)' '''
@@ -166,15 +166,15 @@ def Role():
     def start_new_way(**info):
         cs_data_path = find_attr(info, "cs_data_path")
         cluster_id = find_attr(info, "cluster_id")
-        outline = '''ssh $usr@$ip '(cd $dir; ulimit -c unlimited; ulimit -s 10240; pgrep -u $usr -f "^$exe" || $server_start_environ %s )' '''
+        outline = '''ssh $usr@$ip '(cd $dir; ulimit -c unlimited; pgrep -u $usr -f "^$exe" || $server_start_environ %s )' '''
         if find_attr(info, 'tidy'):
             cmd = sub2(outline % "$exe", info)
         else:
             cmd = sub2({
-                    "rootserver" : outline % '$exe -r ${vip}:${rs0.port} -R ${mmrs} -i ${dev:-bond0} -C ${cluster_id:-1} -o "${tpl.rs_cfg}"',
-                    "updateserver" : outline % '$exe -r ${vip}:${rs0.port} -n ${app_name} -p $port -m $inner_port -i ${dev:-bond0} -o "${tpl.ups_cfg}"',
-                    "chunkserver" : outline % '$exe -r ${vip}:${rs0.port} -n ${app_name} -p $port -D ${cs_data_path:-$dir/data/cs} -i ${dev:-bond0} -o "${tpl.cs_cfg}"',
-                    "mergeserver" : outline % '$exe -r ${vip}:${rs0.port} -z $mysql_port -p $port -i ${dev:-bond0} -o "${tpl.ms_cfg}"',
+                    "rootserver" : outline % "$exe -r ${rs0.ip}:${rs0.port} -R ${mmrs} -i ${dev:-bond0} -C ${cluster_id:-1} > /dev/null 2>&1",
+                    "updateserver" : outline % "$exe -r ${rs0.ip}:${rs0.port} -n ${app_name} -p $port -m $inner_port -i ${dev:-bond0} > /dev/null 2>&1",
+                    "chunkserver" : outline % "$exe -r ${rs0.ip}:${rs0.port} -n ${app_name} -p $port -D ${cs_data_path:-$dir/data/cs} -i ${dev:-bond0} > /dev/null 2>&1",
+                    "mergeserver" : outline % "sleep 1 && $exe -r ${rs0.ip}:${rs0.port} -z $mysql_port -p $port -i ${dev:-bond0} > /dev/null 2>&1",
                     "monitorserver" : outline % "$exe -f etc/$role.conf.$ip:$port",
                     }[sub2("$role", info)], info)
         return sh(cmd)
@@ -227,7 +227,7 @@ for i in {0,1}; do for j in {0,1}; do [ -e $dir/data/ups_data/raid$$i/store$$j ]
     rs_admin_p = '''popen: $rs_admin_cmd -r ${ip} -p ${port} $_rest_'''
     reload_conf = '''sh: $ups_admin_cmd -a ${ip} -p ${port} -t reload_conf -f $dir/etc/$role.conf.$ip:$port'''
     roottable = '''popen: $localdir/tools/rs_admin -r ${ip} -p ${port} print_root_table'''
-    collect_log = '''sh: mkdir -p $collected_log_dir/$run_id && ssh $usr@$ip sync && rsync $usr@$ip:$dir/log/$role.log "$collected_log_dir/$run_id/$role.log.$ip:$port" && rsync $usr@$ip:$dir/log/$role.profile "$collected_log_dir/$run_id/$role.profile.$ip:$port"'''
+    collect_log = '''sh: mkdir -p $collected_log_dir/$run_id && ssh $usr@$ip sync && scp $usr@$ip:$dir/log/$role.log $collected_log_dir/$run_id/$role.log.$ip:$port && scp $usr@$ip:$dir/log/$role.profile $collected_log_dir/$run_id/$role.profile.$ip:$port'''
     clean_log = '''sh: ssh $usr@$ip 'rm -f $dir/log/$role.log.$ip:$port' '''
     switch_schema = '''seq: rsync rs_admin[switch_schema]'''
     return locals()
@@ -239,7 +239,7 @@ def role_op(ob, role, op, *args, **kw_args):
     return [mycall(ob, '%s.%s'%(k, op), *args, **kw_args) for k, v in sorted(ob.items(), key=lambda x: x[0]) if type(v) == dict and re.match(role, v.get('role', ''))]
 
 def obi_op(obi, op, *args, **attrs):
-    return list_merge(role_op(obi, role, op, *args, **attrs) for role in 'rootserver updateserver mergeserver chunkserver lsyncserver '.split())
+    return list_merge(role_op(obi, role, op, *args, **attrs) for role in 'rootserver updateserver mergeserver chunkserver lsyncserver proxyserver'.split())
 
 def check_ssh_connection(ip, timeout):
     return timed_popen('ssh -T %s -o ConnectTimeout=%d true'%(ip, timeout), timeout)
@@ -503,7 +503,7 @@ def ObInstance():
                 while reboot_again:
                     mysql_test.pinfo("rebooting...")
                     ret = call_(ob, 'reboot')
-                    if  ret[-1][-1][-1] != 0:
+                    if  ret[-1][-1] != 0:
                         force_info("reboot failed, retry after 60 seconds")
                         time.sleep(60)
                     else:
@@ -608,6 +608,11 @@ def ObInstance():
         if not master: raise Fail('no master ups present!')
         return call_(ob, '%s.save_log'%(master), target)
 
+    cleanup_for_test = 'seq: stop cleanup ct.stop ct.clear'
+    start_for_test = 'seq: reboot sleep[1] start_servers'
+    start_ct_for_test = 'seq: ct.reboot sleep[1] ct.start'
+    end_for_test = 'seq: stop collect_log'
+
     id = 'all: .+server id'
     pid = 'par: .+server pid'
     version = 'all: .+server version'
@@ -637,8 +642,7 @@ def ObInstance():
     exec_init_sql = '''sh: mysql -h ${ms0.ip} -P ${ms0.mysql_port} -uadmin -padmin -e "\. $init_sql_file" '''
     cs_data_prepare = 'seq: prepare_cs_data'
     switch_to_slave_obi = 'seq: set_obi_role_until_success[obi_role=OBI_SLAVE] all_do[updateserver,kill_by_name,-9] all_do[updateserver,clear_clog] all_do[updateserver,start]'
-    reboot = 'seq: check_local_bin check_ssh check_dir ct_check_local_file force_stop cleanup conf rsync mkdir ct_rsync ct_prepare rsync_cs_sstable tc_prepare touch_and_link_log_file start set_obi_role_until_success boot_strap_maybe after_reboot_hook'
-    after_reboot_hook = 'call: exec_init_sql'
+    reboot = 'seq: check_local_bin check_ssh check_dir ct_check_local_file force_stop cleanup conf rsync mkdir ct_rsync ct_prepare rsync_cs_sstable tc_prepare touch_and_link_log_file start set_obi_role_until_success boot_strap_maybe'
     reconfigure = 'seq: force_stop hosts.reconfigure'
     return locals()
 
@@ -682,7 +686,8 @@ def ClientSetAttr():
         return all(map(lambda cli: call_(cli, 'check', _quiet_=True, type=type) == 0, get_match_child(self, 'client$').values()))
     def check_new_error(**self):
         return all(map(lambda cli: call_(cli, 'check_correct', _quiet_=True, type='all') == 0, get_match_child(self, 'client$').values()))
-    configure_obi = 'call: c0.configure_obi'
+    def configure_obi(**self):
+        pass
     check_local_file = 'all: client check_local_file'
     reconfigure = 'seq: stop hosts.reconfigure'
     conf = 'all: client conf'
@@ -774,19 +779,19 @@ def OBI(obi_role='OBI_MASTER', port_suffix=None, masters=[], slaves=[], proxys=[
             deried_vars['ms%d'%(idx)] = MergeServer(slave)
         for idx, mon in enumerate(monitors):
             deried_vars['mon%d'%(idx)] = MonitorServer(mon)
-        #if any((v.get('client') == 'bigquery' or v.get('client') == 'sqltest' ) for v in get_match_child(attr, 'client').values()):
-        #    for idx, proxy in enumerate(proxys):
-        #        deried_vars['proxyserver%d'%(idx)] = ObProxy(proxy)
+        if any((v.get('client') == 'bigquery' or v.get('client') == 'sqltest' ) for v in get_match_child(attr, 'client').values()):
+            for idx, proxy in enumerate(proxys):
+                deried_vars['proxyserver%d'%(idx)] = ObProxy(proxy)
     obi = dict_updated(obi_vars, obi_role=obi_role, hosts=hosts, **dict_merge(deried_vars, attr))
     if not get_match_child(obi, '^.*server$'):
         raise Fail('ob%d: not even one server defined: default_hosts=%s!'%(obi_idx, ObCfg.default_hosts))
-    #if (any((v.get('client') == 'bigquery' or v.get('client') == 'sqltest' ) for v in get_match_child(attr, 'client').values()) and not get_match_child(obi, '^proxyserver$')):
-    #    raise Fail('ob%d: no proxy server defined, but you request use "bigquery" or "seqltest" as client'%(obi_idx))
+    if (any((v.get('client') == 'bigquery' or v.get('client') == 'sqltest' ) for v in get_match_child(attr, 'client').values()) and not get_match_child(obi, '^proxyserver$')):
+        raise Fail('ob%d: no proxy server defined, but you request use "bigquery" or "seqltest" as client'%(obi_idx))
     obi.update(local_servers = ObCfg.local_servers)
     if get_match_child(obi, '^lsyncserver$'):
         obi['local_servers'] += ',lsyncserver'
-    #if get_match_child(obi, '^proxyserver$'):
-    #    obi['local_servers'] += ',proxyserver'
+    if get_match_child(obi, '^proxyserver$'):
+        obi['local_servers'] += ',proxyserver'
     if get_match_child(obi, '^monitorserver$'):
         obi['local_servers'] += ',monitorserver'
     for ct in get_match_child(obi, '^.*clientset$').values():
@@ -857,8 +862,7 @@ class ObCfg:
     home = os.path.expanduser('~')
     dir = '$home/${name}'
     ver=''
-    vip='${rs0.ip}'
-    mmrs = '${vip}:${rs0.port}'
+    mmrs = '${rs0.ip}:${rs0.port}'
     # schema = 'etc/${app_name}.schema'
     schema = 'etc/schema.ini'
     max_sstable_size=268435456
@@ -904,8 +908,8 @@ class ObCfg:
     server_start_environ = 'LD_LIBRARY_PATH=./lib:/usr/local/lib:/usr/lib:/usr/lib64:/usr/local/lib64:$LD_LIBRARY_PATH LD_PRELOAD="$server_ld_preload" $environ_extras'
     local_servers = 'rootserver,updateserver,mergeserver,chunkserver'
     local_tools = 'rs_admin,ups_admin'
-    rs_admin_cmd = '$localdir/tools$tool_ver/rs_admin'
-    ups_admin_cmd = '$localdir/tools$tool_ver/ups_admin'
+    rs_admin_cmd = '$localdir/tools$ver/rs_admin'
+    ups_admin_cmd = '$localdir/tools$ver/ups_admin'
     client_cmd = '$localdir/tools$ver/client'
     convert_switch_log = 0
     #replay_checksum_flag = 1

@@ -18,10 +18,6 @@
 
 namespace oceanbase
 {
-  namespace sql
-  {
-    class ObSQLResultSet;
-  };
   namespace common
   {
     class ObScanParam;
@@ -36,9 +32,6 @@ namespace oceanbase
 
         virtual int scan(const ObScanParam& scan_param, ObScanner &out) const = 0;
         virtual int mutate(ObMutator& mutator) = 0;
-
-        virtual int query(const char* sql, sql::ObSQLResultSet& result) const = 0;
-        virtual int modify(const char* sql) = 0;
 
       private:
         // disallow copy

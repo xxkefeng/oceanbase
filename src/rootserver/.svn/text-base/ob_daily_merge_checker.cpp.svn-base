@@ -41,8 +41,7 @@ void ObDailyMergeChecker::run(tbsys::CThread * thread, void * arg)
   {
     if (did_get_last_frozen_version)
     {
-      ObServer ups;
-      root_server_->get_update_server_info(false, ups);
+      ObServer ups = root_server_->get_update_server_info(false);
       if (0 == ups.get_ipv4())
       {
         TBSYS_LOG(INFO, "no ups right now, sleep for next round");
@@ -95,7 +94,6 @@ void ObDailyMergeChecker::run(tbsys::CThread * thread, void * arg)
         root_server_->last_frozen_time_ = 0;
         // checkpointing after done merge
         root_server_->make_checkpointing();
-        root_server_->start_build_index_if_necessary();
       }
     }
     sleep(CHECK_INTERVAL_SECOND);

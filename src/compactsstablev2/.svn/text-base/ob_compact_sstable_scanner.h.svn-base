@@ -57,7 +57,7 @@ namespace oceanbase
       };
 
     private:
-      enum ITERATE_STATUS
+      enum
       {
         ITERATE_NOT_INITIALIZED = 1,
         ITERATE_NOT_START,
@@ -87,6 +87,7 @@ namespace oceanbase
 
     public:
       ObCompactSSTableScanner();
+
       ~ObCompactSSTableScanner();
 
       /**
@@ -100,16 +101,12 @@ namespace oceanbase
 
       /**
        * get next row
+       * @param row_key: rowkey
        * @param row_value: rowvalue
        * @return
        */
-      int get_next_row(const common::ObRow*& row_value);
-      int get_next_row(const common::ObRowkey*& row_key, const common::ObRow*& row_value)
-      {
-        row_key = NULL;
-        row_value = NULL;
-        return common::OB_NOT_SUPPORTED;
-      }
+      int get_next_row(const common::ObRowkey*& row_key,
+          const common::ObRow*& row_value);
 
 
       /**
@@ -175,7 +172,7 @@ namespace oceanbase
       /**
        * build column index
        */
-      int build_column_index(const common::ObCompactStoreType row_store_type, const uint64_t table_id, const RowCountFlag row_count_flag);
+      int build_column_index(const common::ObCompactStoreType row_store_type, const uint64_t table_id);
 
       /**
        * deserialize row
@@ -288,6 +285,11 @@ namespace oceanbase
        */
       int store_and_advance_row();
 
+      /**
+       * search the column in current row according to the cursor
+       */
+      int get_column_index(const int64_t cursor, ObSSTableScanColumnIndexes::Column& column) const;
+
       int dense_dense_store_row(const int64_t scan_column_cnt);
 
       int dense_sparse_store_row(const int64_t scan_column_cnt);
@@ -303,21 +305,25 @@ namespace oceanbase
       int64_t index_array_cursor_;
 
       //status
-      ITERATE_STATUS iterate_status_;
+      int64_t iterate_status_;
       bool end_of_data_;
 
       //block scanner
       ObSSTableBlockScanner block_scanner_;
 
       //rowkey rowvalue
+      common::ObRowkey row_key_;
       common::ObRow row_value_;
       common::ObRowDesc row_desc_;
 
+      common::ObObj rowkey_buf_array_[common::OB_MAX_ROWKEY_COLUMN_NUMBER];
+      int64_t rowkey_column_cnt_;
+
       //temp row
-      uint64_t column_ids_[common::OB_MAX_COLUMN_NUMBER + 1];
-      common::ObObj column_objs_[common::OB_MAX_COLUMN_NUMBER + 1];
-      int64_t row_column_cnt_;
-      int64_t max_scan_column_offset_;
+      uint64_t column_ids_[common::OB_MAX_COLUMN_NUMBER];
+      common::ObObj column_objs_[common::OB_MAX_COLUMN_NUMBER];
+      int64_t rowvalue_column_cnt_;
+      int64_t max_column_offset_;
 
       //temp buffer
       char* uncomp_buf_;
@@ -325,34 +331,8 @@ namespace oceanbase
       char* internal_buf_;
       int64_t internal_buf_size_;
 
-      //scan flag
       ScanFlag scan_flag_;
     };
-
-    inline int ObCompactSSTableScanner::check_status() const
-    {
-      int ret = common::OB_SUCCESS;
-
-      switch (iterate_status_)
-      {
-        case ITERATE_IN_PROGRESS:
-        case ITERATE_LAST_BLOCK:
-        case ITERATE_NEED_FORWARD:
-          ret = common::OB_SUCCESS;
-          break;
-        case ITERATE_NOT_INITIALIZED:
-        case ITERATE_NOT_START:
-          ret = common::OB_NOT_INIT;
-          break;
-        case ITERATE_END:
-          ret = common::OB_ITER_END;
-          break;
-        default:
-          ret = common::OB_ERROR;
-      }
-
-      return ret;
-    }
   }//end namespace compactsstablev2
 }//end namespace oceanbase
 #endif

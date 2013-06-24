@@ -2,15 +2,15 @@
 
 dir
 14505
-http://svn.app.taobao.net/repos/oceanbase/branches/dev/oceanbase/src
+http://svn.app.taobao.net/repos/oceanbase/branches/0_4_1_release/oceanbase/src
 http://svn.app.taobao.net/repos/oceanbase
 
 
 
-2013-06-18T09:39:21.631645Z
-14499
+2013-06-19T02:28:28.345780Z
+14504
 xiaochu.yh
-has-props
+
 
 
 
@@ -25,15 +25,6 @@ has-props
 
 
 dd5f2d26-132e-4cc5-bbb5-82d5b530e537
-
-compactsstablev2
-dir
-
-clustermanager
-dir
-
-client
-dir
 
 obmysql
 dir
@@ -77,11 +68,11 @@ file
 
 
 
-2013-06-19T09:27:04.000000Z
-97a1d3ccb47d02b6c7615107e80af8f5
-2013-06-17T13:24:57.758046Z
-14478
-xiaochu.yh
+2013-06-20T08:38:40.000000Z
+a4ab003d3d43425a45d9a2e99d673c60
+2013-03-07T04:11:31.182673Z
+12408
+fangji
 
 
 
@@ -103,8 +94,17 @@ xiaochu.yh
 
 
 
-215
+222
 
 rootserver
+dir
+
+compactsstablev2
+dir
+
+clustermanager
+dir
+
+client
 dir
 

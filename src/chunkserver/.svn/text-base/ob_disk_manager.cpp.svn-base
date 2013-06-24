@@ -301,24 +301,6 @@ namespace oceanbase
       return;
     }
 
-    bool ObDiskManager::is_disk_avail(const int32_t disk_no)
-    {
-      int status = DISK_ERROR;
-      tbsys::CRLockGuard guard(lock_);
-      if (disk_no > 0 && disk_no <= OB_MAX_DISK_NUMBER)
-      {
-        int32_t index = find_disk(disk_no);
-        if (index != -1)
-        {
-          if(DISK_NORMAL == disk_[index].status_)
-          {
-            status = DISK_NORMAL;
-          }
-        }
-      }
-      return DISK_NORMAL == status;
-    }
-
     void ObDiskManager::set_disk_status(const int32_t disk_no,const ObDiskStatus stat)
     {
       tbsys::CWLockGuard guard(lock_);
@@ -376,6 +358,7 @@ namespace oceanbase
 
     const int32_t* ObDiskManager::get_disk_no_array(int32_t& disk_num) const
     {
+      tbsys::CRLockGuard guard(lock_);
       disk_num = disk_num_;
       return disk_no_array_;
     }
@@ -432,7 +415,7 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
-        char *buf = static_cast<char *>(ob_malloc(PROC_MOUNTS_FILE_SIZE)); //st.st_size in proc is 0
+        char *buf = static_cast<char *>(ob_malloc(PROC_MOUNTS_FILE_SIZE, ObModIds::OB_CS_COMMON)); //st.st_size in proc is 0
         int64_t size = 0;
         if (buf != NULL && (size = read(fileno(fp),buf,PROC_MOUNTS_FILE_SIZE - 1)) <= 0)
         {
@@ -478,4 +461,3 @@ namespace oceanbase
     }
   } /* chunkserver */
 } /* oceanbase */
-

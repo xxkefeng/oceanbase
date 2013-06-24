@@ -18,7 +18,6 @@
 #include "common/ob_string.h"
 #include "common/ob_file.h"
 #include "common/ob_rowkey.h"
-#include "common/ob_row.h"
 #include "common/bloom_filter.h"
 #include "common/ob_record_header.h"
 #include "common/compress/ob_compressor.h"
@@ -142,7 +141,6 @@ namespace oceanbase
        *         OB_ERROR
        */
       int append_row(const ObSSTableRow& row, int64_t& approx_space_usage);
-      int append_row(const common::ObRow& row, int64_t& approx_space_usage);
 
  
       /**
@@ -181,7 +179,6 @@ namespace oceanbase
       {
         return trailer_;
       }
-
     private:
       /**
        * reset sstable writer to reuse it

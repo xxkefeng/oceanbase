@@ -90,22 +90,6 @@ namespace oceanbase
         int64_t column_info_size_;
         int64_t column_cnt_;
     };
-
-    __inline__ __attribute__((always_inline)) int ObSSTableScanColumnIndexes::get_column(const int64_t index, Column& column) const
-    {
-      int ret = common::OB_SUCCESS;
-
-      if (index >= 0 && index < column_cnt_)
-      {
-        column = column_info_[index];
-      }
-      else
-      {
-        ret = common::OB_INVALID_ARGUMENT;
-      }
-
-      return ret;
-    }
   }//end namespace compactsstablev2
 }//end namespace oceanbase
 

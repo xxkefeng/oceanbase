@@ -17,15 +17,12 @@
 #define OCEANBASE_CHUNKSERVER_SCHEMA_TIMER_TASK_H_
 
 #include "common/ob_timer.h"
-#include "common/ob_server.h"
 
 namespace oceanbase
 {
   namespace common
   {
     class ObMergerSchemaManager;
-    class ObGeneralRpcStub;
-    class ObSchemaManagerV2;
   }
   namespace chunkserver
   {
@@ -40,9 +37,7 @@ namespace oceanbase
     
     public:
       // init set rpc and schema manager
-      void init(const common::ObServer & root_server, 
-          common::ObGeneralRpcStub * rpc_stub,
-          common::ObMergerSchemaManager * schema);
+      void init(ObMergerRpcProxy * rpc, common::ObMergerSchemaManager * schema);
       
       // set fetch new version
       void set_version(const int64_t local, const int64_t remote);
@@ -56,30 +51,22 @@ namespace oceanbase
     
     private:
       bool check_inner_stat(void) const; 
-      // lock and check whether need fetch new schema
-      // param  @timestamp new schema timestamp
-      //        @manager the new schema pointer
-      int fetch_new_schema(const int64_t timestamp, const common::ObSchemaManagerV2 ** manager);
     
     public:
       bool task_scheduled_;
       volatile int64_t local_version_;
       volatile int64_t remote_version_;
-      common::ObServer root_server_;                         // root server addr
-      const common::ObGeneralRpcStub * rpc_stub_;            // rpc stub bottom module
-      common::ObMergerSchemaManager * schema_manager_;
-      tbsys::CThreadMutex schema_lock_;                      // lock for update schema manager
+      ObMergerRpcProxy * rpc_proxy_;
+      common::ObMergerSchemaManager * schema_;
     };
     
-    inline void ObMergerSchemaTask::init(const common::ObServer & root_server, 
-        common::ObGeneralRpcStub * rpc_stub,
-        common::ObMergerSchemaManager * schema)
+    inline void ObMergerSchemaTask::init(ObMergerRpcProxy * rpc,
+                                         common::ObMergerSchemaManager * schema)
     {
       local_version_ = 0;
       remote_version_ = 0;
-      root_server_ = root_server;
-      rpc_stub_ = rpc_stub;
-      schema_manager_ = schema;
+      rpc_proxy_ = rpc;
+      schema_ = schema;
     }
     
     inline void ObMergerSchemaTask::set_version(const int64_t local, const int64_t server)
@@ -90,7 +77,7 @@ namespace oceanbase
 
     inline bool ObMergerSchemaTask::check_inner_stat(void) const
     {
-      return ((NULL != rpc_stub_) && (NULL != schema_manager_));
+      return ((NULL != rpc_proxy_) && (NULL != schema_));
     }
   }
 }

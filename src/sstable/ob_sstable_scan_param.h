@@ -39,32 +39,10 @@ namespace oceanbase
           assign(param);
           return *this;
         }
-        inline const common::ObNewRange& get_range() const 
-        { 
-          return is_local_index_scan() ? local_index_range_ : range_; 
-        }
-        inline common::ObNewRange& get_range()
-        { 
-          return is_local_index_scan() ? local_index_range_ : range_; 
-        }
-        //use to acquire tablet from tablet image
-        inline const common::ObNewRange& get_data_range() const { return range_; }
+        inline const common::ObNewRange& get_range() const { return range_; }
+        inline common::ObNewRange& get_range() { return range_; }
         inline void set_range(const common::ObNewRange& range) { range_ = range; }
-
-        // For local index scan.
-        // set local index scan flag implicitly
-        inline void set_local_index_range(const common::ObNewRange &range)
-        {
-          local_index_range_ = range;
-          set_local_index_scan(true);
-        }
-
-        inline const common::ObNewRange &get_local_index_range() const { return local_index_range_; }
-
-        inline uint64_t get_table_id() const
-        {
-          return is_local_index_scan() ? local_index_range_.table_id_ : range_.table_id_;
-        }
+        inline uint64_t get_table_id() const { return range_.table_id_; }
         inline const uint64_t* const get_column_id() const { return column_ids_; }
 
         inline void set_read_mode(const common::ScanFlag::SyncMode mode) 
@@ -96,9 +74,6 @@ namespace oceanbase
 
         inline void set_rowkey_column_count(const int16_t count) { scan_flag_.rowkey_column_count_ = count; }
         inline int16_t get_rowkey_column_count() const { return scan_flag_.rowkey_column_count_; }
-
-        inline void set_local_index_scan(const bool index) { scan_flag_.local_index_scan_ = index; }
-        inline bool is_local_index_scan() const { return scan_flag_.local_index_scan_; }
 
         inline void set_scan_flag(const common::ScanFlag& flag) { scan_flag_ = flag; }
         inline const common::ScanFlag get_scan_flag() const { return scan_flag_; }
@@ -137,31 +112,11 @@ namespace oceanbase
         bool is_valid() const;
         int64_t to_string(char* buf, const int64_t buf_len) const;
 
-        // serialize and deserialize
-        VIRTUAL_NEED_SERIALIZE_AND_DESERIALIZE;
-
-      private:
-        int64_t get_ranges_serialize_size(void) const;
-        int serialize_ranges(char *buf, const int64_t &buf_len, int64_t &pos) const;
-        int deserialize_ranges(const char *buf, const int64_t &data_len, int64_t &pos);
-
-        int64_t get_columns_serialize_size(void) const;
-        int serialize_columns(char *buf, const int64_t &buf_len, int64_t &pos) const;
-        int deserialize_columns(const char *buf, const int64_t &data_len, int64_t &pos);
-
-        int64_t get_basic_param_serialize_size(void) const;
-        int serialize_basic_param(char *buf, const int64_t &buf_len, int64_t &pos) const;
-        int deserialize_basic_param(const char *buf, const int64_t &data_len, int64_t &pos);
-
       private:
         common::ObNewRange range_;
-        common::ObNewRange local_index_range_;
         common::ScanFlag scan_flag_;
         uint64_t column_ids_[common::OB_MAX_COLUMN_NUMBER];
         common::ObArrayHelper<uint64_t> column_id_list_;
-
-        // rowkey obj array for deserialize.
-        common::ObObj rowkey_obj_array_[common::OB_MAX_ROWKEY_COLUMN_NUMBER * 4];
     };
 
     template <typename Param>

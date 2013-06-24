@@ -104,43 +104,17 @@ namespace oceanbase
       return expr;
     }
 
-    int32_t ObLogicalPlan::get_bit_index_by_qid(const uint64_t query_id) const
-    {
-      int64_t idx = queries_hash_.get_idx(query_id, OB_INVALID_ID);
-      return static_cast<int32_t>(idx);
-    }
-
-    int ObLogicalPlan::get_qid_by_bit_index(const int64_t index, uint64_t& query_id) const
+    int ObLogicalPlan::fill_result_set(ObResultSet& result_set, ObSQLSessionInfo* session_info, common::StackAllocator &alloc)
     {
       int ret = OB_SUCCESS;
-      uint64_t column_id = OB_INVALID_ID;
-      if ((ret = queries_hash_.get_tid_cid(index, query_id, column_id)) != OB_SUCCESS)
-      {
-        TBSYS_LOG(WARN, "can not get query_id by index %ld.", index);
-      }
-      return ret;
-    }
-      
-    int ObLogicalPlan::fill_result_set(ObResultSet& result_set, ObSqlContext *context)
-    {
-      int ret = OB_SUCCESS;
-      if (NULL == context || NULL == context->session_info_)
-      {
-        TBSYS_LOG(WARN, "invalid argument sqlcontext is null or session info is null");
-        ret = OB_ERROR;
-      }
-      else
-      {
-        result_set.set_affected_rows(0);
-        result_set.set_warning_count(0);
-        result_set.set_message("");
+      result_set.set_affected_rows(0);
+      result_set.set_warning_count(0);
+      result_set.set_message("");
 
-        ObSelectStmt *select_stmt = NULL;
-        ObResultSet::Field field;
-        ObSQLSessionInfo *session_info = context->session_info_;
-        common::StackAllocator& alloc = session_info->get_transformer_mem_pool();
-        switch(stmts_[0]->get_stmt_type())
-        {
+      ObSelectStmt *select_stmt = NULL;
+      ObResultSet::Field field;
+      switch(stmts_[0]->get_stmt_type())
+      {
         case ObStmt::T_PREPARE:
         {
           ObPrepareStmt *prepare_stmt = static_cast<ObPrepareStmt*>(stmts_[0]);
@@ -173,20 +147,6 @@ namespace oceanbase
             break;
           }
           int32_t size = select_stmt->get_select_item_size();
-          field.charsetnr_ = OB_DEFAULT_CHARACTER_SET;
-          if (select_stmt->get_table_size() > 0)
-          {
-            TableItem item = select_stmt->get_table_item(0);
-            const common::ObSchemaManagerV2 *schema_manager = context->schema_manager_;
-            if (NULL != schema_manager)
-            {
-              const ObTableSchema* table_schema = schema_manager->get_table_schema(item.ref_id_);
-              if (NULL != table_schema)
-              {
-                field.charsetnr_ = static_cast<uint16_t>(table_schema->get_charset_number());
-              }
-            }
-          }
           for (int32_t i = 0; ret == OB_SUCCESS && i < size; i++)
           {
             const SelectItem& select_item = select_stmt->get_select_item(i);
@@ -285,7 +245,6 @@ namespace oceanbase
           field.cname_ = cname;
           field.org_cname_ = cname;
           field.type_.set_type(ObVarcharType);
-          field.charsetnr_ = OB_DEFAULT_CHARACTER_SET;
           if (OB_SUCCESS != (ret = result_set.add_field_column(field)))
           {
             TBSYS_LOG(WARN, "fail to add field column to result_set. ret=%d", ret);
@@ -301,7 +260,6 @@ namespace oceanbase
         case ObStmt::T_SHOW_TABLE_STATUS:
         case ObStmt::T_SHOW_SERVER_STATUS:
         case ObStmt::T_SHOW_PARAMETERS:
-        case ObStmt::T_SHOW_INDEXES:
         {
           ObShowStmt *show_stmt = static_cast<ObShowStmt*>(stmts_[0]);
           if (show_stmt == NULL)
@@ -325,7 +283,6 @@ namespace oceanbase
           }
           field.tname_ = tname;
           field.org_tname_ = tname;
-          field.charsetnr_ = OB_DEFAULT_CHARACTER_SET;
           for (int32_t i = 0; ret == OB_SUCCESS && i < show_stmt->get_column_size(); i++)
           {
             ObString cname;
@@ -356,7 +313,6 @@ namespace oceanbase
         {
           ObString tname = ObString::make_string("show warnings");
           ObShowStmt *show_stmt = static_cast<ObShowStmt*>(stmts_[0]);
-          field.charsetnr_ = OB_DEFAULT_CHARACTER_SET;
           if (show_stmt == NULL)
           {
             TBSYS_LOG(WARN, "fail to get Show statement");
@@ -412,7 +368,6 @@ namespace oceanbase
           field.cname_ = cname;
           field.org_cname_ = cname;
           field.type_.set_type(ObVarcharType);
-          field.charsetnr_ = OB_DEFAULT_CHARACTER_SET;
           if (OB_SUCCESS != (ret = result_set.add_field_column(field)))
           {
             TBSYS_LOG(WARN, "fail to add field column to result_set. ret=%d", ret);
@@ -438,7 +393,7 @@ namespace oceanbase
           {
             ret = OB_ERR_PREPARE_STMT_UNKNOWN;
             TBSYS_LOG(USER_ERROR, "statement %.*s not prepared",
-                      execute_stmt->get_stmt_name().length(), execute_stmt->get_stmt_name().ptr());
+                execute_stmt->get_stmt_name().length(), execute_stmt->get_stmt_name().ptr());
           }
           else if ((ret = result_set.from_prepared(*stored_plan)) != OB_SUCCESS)
           {
@@ -453,12 +408,12 @@ namespace oceanbase
         }
         default:
           break;
-        }
-        if (ret == OB_SUCCESS && question_marks_count_ > 0)
-        {
-          ret = result_set.pre_assign_params_room(question_marks_count_, alloc);
-        }
       }
+      if (ret == OB_SUCCESS && question_marks_count_ > 0)
+      {
+        ret = result_set.pre_assign_params_room(question_marks_count_, alloc);
+      }
+
       return ret;
     }
 

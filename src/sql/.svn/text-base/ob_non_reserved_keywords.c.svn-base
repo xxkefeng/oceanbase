@@ -23,7 +23,6 @@
 /* List of non-reserved keywords, which are sorted by name */
 static const NonReservedKeyword None_reserved_keywords[] = {
   {"auto_increment", AUTO_INCREMENT},
-  {"charset", CHARSET},
   {"chunkserver", CHUNKSERVER},
   {"compress_method", COMPRESS_METHOD},
   {"consistent_mode", CONSISTENT_MODE},

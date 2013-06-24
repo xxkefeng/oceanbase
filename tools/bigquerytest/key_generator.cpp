@@ -32,7 +32,6 @@ KeyGenerator::~KeyGenerator()
 int KeyGenerator::init(PrefixInfo& prefix_info, BigqueryTestParam& param)
 {
   int err = 0;
-  UNUSED(param);
 
   prefix_info_ = &prefix_info;
   uint32_t local_addr = ntohl(tbsys::CNetUtil::getLocalAddr(NULL));

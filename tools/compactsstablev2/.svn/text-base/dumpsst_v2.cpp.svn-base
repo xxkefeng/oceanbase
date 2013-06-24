@@ -819,8 +819,8 @@ int DumpSSTableV2::load_display_block(
       }
       else
       {
-        begin_index = block_reader.begin();
-        end_index = block_reader.end();
+        begin_index = block_reader.begin_index();
+        end_index = block_reader.end_index();
         tmp_index = const_cast<ObSSTableBlockReader::iterator>(
             begin_index);
         printf("---block num=%ld---\n", block_id);

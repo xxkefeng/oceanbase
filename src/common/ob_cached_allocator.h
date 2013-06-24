@@ -38,7 +38,7 @@ namespace oceanbase
       private:
         // data members
         ObSpinLock lock_;
-        ObPool pool_;
+        ObPool<> pool_;
         ObArray<T*> cached_objs_;
     };
 
@@ -94,6 +94,10 @@ namespace oceanbase
           obj->~T();
           pool_.free(obj);
         }
+        else
+        {
+          obj->reset();
+        }
       }
     }
 
@@ -101,4 +105,3 @@ namespace oceanbase
 } // end namespace oceanbase
 
 #endif /* _OB_CACHED_ALLOCATOR_H */
-

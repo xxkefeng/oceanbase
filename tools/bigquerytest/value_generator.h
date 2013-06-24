@@ -77,7 +77,7 @@ class ValueRule
 class ValueGenerator
 {
   public:
-    ValueGenerator(int64_t row_num);
+    ValueGenerator();
     ~ValueGenerator();
 
   public:
@@ -86,7 +86,6 @@ class ValueGenerator
 
   private:
     PrefixInfo prefix_info_;
-    int64_t row_num_;
 };
 
 #endif //__VALUE_GENERATOR_H__

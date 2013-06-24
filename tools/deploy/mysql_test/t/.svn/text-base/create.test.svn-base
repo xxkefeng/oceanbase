@@ -35,8 +35,5 @@ create table t1 (v varchar(30), c char(3), e char(20), t varchar(256) primary ke
 
 --error 5025
 create table t1 (v varchar(30), c char(3), e char(20), t varchar(256) primary key);
-
---error 5001
-create table t2 (v varchar(20), c char(3), e char(20), t varchar(256) primary key) charset='latin';
 drop table t1;
 drop table left_table;

@@ -18,8 +18,7 @@
 #include "ob_ms_sql_request.h"
 #include "ob_ms_sql_sub_get_request.h"
 #include "common/location/ob_tablet_location_range_iterator.h"
-#include "sql/ob_sql_plan_param.h"
-#include "sql/ob_sql_get_simple_param.h"
+#include "sql/ob_sql_get_param.h"
 #include "common/ob_string_buf.h"
 #include "common/page_arena.h"
 #include "common/hash/ob_hashmap.h"
@@ -42,7 +41,10 @@ namespace oceanbase
       /// these two functions will trigger rpc event which will non-blocking rpc access cs
       static const int32_t DEFAULT_RESERVE_PARAM_COUNT = 3;
       static const int64_t DEFAULT_MAX_GET_ROWS_PER_SUBREQ = 20;
-      int set_request_param(ObSqlPlanParam &plan_param);
+      int set_request_param(ObSqlGetParam &get_param, const int64_t timeout_us,
+        const int64_t max_parellel_count = DEFAULT_MAX_PARELLEL_COUNT,
+        const int64_t max_get_rows_per_subreq = DEFAULT_MAX_GET_ROWS_PER_SUBREQ,
+        const int64_t reserve_get_param_count = DEFAULT_RESERVE_PARAM_COUNT);
       inline int set_row_desc(const common::ObRowDesc &desc);
       // issue request to Chunkservers
       int open(void);
@@ -95,9 +97,7 @@ namespace oceanbase
       bool req_dist_map_inited_;
       common::hash::ObHashMap<int64_t,int64_t,common::hash::NoPthreadDefendMode> req_dist_map_;
       common::hash::ObHashMap<int64_t,ObMsSqlSubGetRequest *,common::hash::NoPthreadDefendMode> sub_req_map_;
-      sql::ObSqlGetSimpleParam  *get_param_;
-      sql::ObPhysicalPlan * phy_plan_;
-      sql::ObHuskTabletGetV2 *op_tablet_get_;
+      sql::ObSqlGetParam  *get_param_;
       common::PageArena<int64_t,common::ModulePageAllocator> page_arena_;
       const common::ObRowDesc *row_desc_;
       SubRequestVector sub_requests_;

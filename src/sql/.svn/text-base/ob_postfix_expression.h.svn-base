@@ -63,7 +63,6 @@ namespace oceanbase
         int64_t   int_;
         float float_;
         double    double_;
-        const ObObj *unknown_;
         struct SqlCellInfo cell_;  // table_id, column_id
       }value_;
       // due to compile restriction, cant put string_ into union.

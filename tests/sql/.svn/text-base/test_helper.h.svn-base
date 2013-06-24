@@ -203,16 +203,8 @@ struct CellInfoGen
     int64_t total_columns;
 };
 
-// %store_style, %block_size, %element_count are pass to ObSSTableWriter::create_sstable.
-int write_sstable(const char* sstable_file_path, const int64_t row_num, const int64_t col_num, const CellInfoGen::Desc* desc , const int64_t size,
-    const int store_type = OB_SSTABLE_STORE_DENSE,
-    const int64_t block_size = ObSSTableBlockBuilder::SSTABLE_BLOCK_SIZE,
-    const int64_t element_count = 0);
-// %store_style, %block_size, %element_count are pass to ObSSTableWriter::create_sstable.
-int write_sstable(const ObSSTableId & sstable_id, const int64_t row_num, const int64_t col_num, const CellInfoGen::Desc* desc , const int64_t size,
-    const int store_type = OB_SSTABLE_STORE_DENSE,
-    const int64_t block_size = ObSSTableBlockBuilder::SSTABLE_BLOCK_SIZE,
-    const int64_t element_count = 0);
+int write_sstable(const char* sstable_file_path, const int64_t row_num, const int64_t col_num, const CellInfoGen::Desc* desc , const int64_t size);
+int write_sstable(const ObSSTableId & sstable_id, const int64_t row_num, const int64_t col_num, const CellInfoGen::Desc* desc , const int64_t size);
 int write_block(ObSSTableBlockBuilder& builder, const CellInfoGen& cgen, const CellInfoGen::Desc* desc , const int64_t size);
 
 
@@ -235,11 +227,7 @@ int map_row(Func func, const CellInfoGen& cgen,  const CellInfoGen::Desc* desc, 
   const CellInfoGen::Desc& key_desc = desc[0];
   int64_t row_index = 0;
   int64_t col_index = 0;
-  int64_t key_index = 0;
   ObSSTableRow row;
-  ObRowkey rowkey;
-  int64_t rowkey_count = key_desc.end_column - key_desc.start_column + 1;
-  ObObj obj_array[rowkey_count];
 
   for (int di = 1; di < size; ++di)
   {
@@ -251,15 +239,12 @@ int map_row(Func func, const CellInfoGen& cgen,  const CellInfoGen::Desc* desc, 
       row.set_table_id(CellInfoGen::table_id);
       row.set_column_group_id(d.column_group_id);
 
-      key_index = 0;
       // rowkey column
       for (col_index = key_desc.start_column ; col_index  <= key_desc.end_column; ++col_index)
       {
-        obj_array[key_index++] = cell_infos[row_index][col_index].value_;
+        err = row.add_obj(cell_infos[row_index][col_index].value_);
+        if (OB_SUCCESS != err) return err;
       }
-      rowkey.assign(obj_array, rowkey_count);
-      err = row.set_rowkey(rowkey);
-      if (OB_SUCCESS != err) return err;
       // obj column
       for (col_index = d.start_column ; col_index  <= d.end_column; ++col_index)
       {

@@ -322,6 +322,7 @@ int change_new_index(
     if (OB_SUCCESS == err && NULL != tablet)
     {
       tablet->set_merged(0);
+      tablet->set_removed(0);
     }
   }
   else if (strcmp(action, "find_tablet") == 0)
@@ -342,10 +343,11 @@ int change_new_index(
       if (OB_SUCCESS == err)
       {
         tablet->set_merged(0);
+        tablet->set_removed(0);
       }
       if (NULL != tablet)
       {
-        tablet->dec_ref();
+        image.release_tablet(tablet);
       }
     }
     err = image.end_scan_tablets();
@@ -361,7 +363,7 @@ int change_new_index(
     fprintf(stderr, "action err:%d\n", err);
   }
 
-  if (NULL != tablet) tablet->dec_ref();
+  if (NULL != tablet) image.release_tablet(tablet);
 
   return err;
 }
@@ -454,7 +456,7 @@ int find_tablet(const char* data_dir, const char* app_name,
             sstable_idx_file, disk_no, dest_tablet->get_data_version(), range_buf);
         dump_tablet(*dest_tablet, true);
         fprintf(stderr, "----------------------------------\n");
-        dest_tablet->dec_ref();
+        image.release_tablet(dest_tablet);
       }
     }
   }
@@ -567,7 +569,7 @@ int DumpSSTable::get_block_index(const char* file_name, const ObSSTableTrailer &
 
   if (0 == ret)
   {
-    block_index_buffer = (char*)ob_malloc(block_index_size + bi_size);
+    block_index_buffer = (char*)ob_malloc(block_index_size + bi_size, ObModIds::TEST);
     if (NULL == block_index_buffer)
     {
       fprintf(stderr, "malloc block index buffer failure\n");
@@ -579,7 +581,7 @@ int DumpSSTable::get_block_index(const char* file_name, const ObSSTableTrailer &
     get_content(fd, block_index_offset, block_index_size, block_index_buffer + bi_size);
     tmp_index = new (block_index_buffer) ObSSTableBlockIndexV2(block_index_size, false);
     object_size = tmp_index->get_deserialize_size();
-    base_ptr = (char*)ob_malloc(object_size);
+    base_ptr = (char*)ob_malloc(object_size, ObModIds::TEST);
     if (NULL == base_ptr)
     {
       fprintf(stderr, "malloc deserialize object buffer failure\n");
@@ -634,7 +636,7 @@ int get_block_buffer(const char* file_name,
   int compressed_data_size = 0;
   if(OB_SUCCESS == ret)
   {
-    compressed_data_ptr = (char*)ob_malloc(block_pos->block_record_size_);
+    compressed_data_ptr = (char*)ob_malloc(block_pos->block_record_size_, ObModIds::TEST);
     compressed_data_size = static_cast<int32_t>(block_pos->block_record_size_);
     if (NULL == compressed_data_ptr)
     {
@@ -675,7 +677,7 @@ int get_block_buffer(const char* file_name,
       ObCompressor* dec = reader.get_decompressor();
       if (NULL != dec)
       {
-        char* uncompressed_data_ptr = (char*)ob_malloc(max_block_size);
+        char* uncompressed_data_ptr = (char*)ob_malloc(max_block_size, ObModIds::TEST);
         ret = dec->decompress(sstable_block_data_ptr, sstable_block_data_size,
             uncompressed_data_ptr, max_block_size, real_size);
 

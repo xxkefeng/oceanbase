@@ -51,7 +51,7 @@ void ObMsSqlSubGetRequest::reset()
   rowkey_buf_.reset();
 }
 
-void ObMsSqlSubGetRequest::set_param(ObSqlGetSimpleParam & get_param)
+void ObMsSqlSubGetRequest::set_param(ObSqlGetParam & get_param)
 {
   reset();
   pget_param_ = &get_param;
@@ -63,7 +63,7 @@ int ObMsSqlSubGetRequest::add_row(const int64_t row_idx)
   int err = OB_SUCCESS;
   if (NULL == pget_param_)
   {
-    TBSYS_LOG(WARN,"set ObSqlGetSimpleParam first [pget_param_:%p]", pget_param_);
+    TBSYS_LOG(WARN,"set ObSqlGetParam first [pget_param_:%p]", pget_param_);
     err = OB_INVALID_ARGUMENT;
   }
   if ((OB_SUCCESS == err) && ((row_idx < 0) || (row_idx >= pget_param_->get_row_size())))
@@ -87,7 +87,7 @@ int ObMsSqlSubGetRequest::add_result(ObNewScanner &res)
   int err = OB_SUCCESS;
   if (NULL == pget_param_)
   {
-    TBSYS_LOG(WARN,"set ObSqlGetSimpleParam first [pget_param_:%p]", pget_param_);
+    TBSYS_LOG(WARN,"set ObSqlGetParam first [pget_param_:%p]", pget_param_);
     err = OB_INVALID_ARGUMENT;
   }
   if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = res_vec_.push_back(reinterpret_cast<int64_t>(&res)))))
@@ -107,18 +107,20 @@ int ObMsSqlSubGetRequest::add_result(ObNewScanner &res)
 /**
  * get_param 输出参数,子请求的get param
  */
-int ObMsSqlSubGetRequest::get_next_param_(ObSqlGetSimpleParam & get_param)const
+int ObMsSqlSubGetRequest::get_next_param_(ObSqlGetParam & get_param)const
 {
   int err = OB_SUCCESS;
-  get_param.reset_rowkey_list();
+  get_param.reset();
+  ObSqlReadParam & read_param = get_param;
+  // pget_param_指向全局
+  read_param = *dynamic_cast<ObSqlReadParam*>(pget_param_);
   if (NULL == pget_param_)
   {
-    TBSYS_LOG(WARN,"set ObSqlGetSimpleParam first [pget_param_:%p]", pget_param_);
+    TBSYS_LOG(WARN,"set ObSqlGetParam first [pget_param_:%p]", pget_param_);
     err = OB_INVALID_ARGUMENT;
   }
   if (OB_SUCCESS == err)
   {
-    // pget_param_指向全局
     get_param.set_table_id(pget_param_->get_renamed_table_id(), pget_param_->get_table_id());
   }
   if ((OB_SUCCESS == err) && (received_row_count_ >= row_idx_in_org_param_.size()))
@@ -132,7 +134,7 @@ int ObMsSqlSubGetRequest::get_next_param_(ObSqlGetSimpleParam & get_param)const
     if ((OB_SUCCESS != (err = get_param.add_rowkey(*pget_param_->operator [](row_idx_in_org_param_[static_cast<int32_t>(row_idx)]))))
         && (OB_SIZE_OVERFLOW != err))
     {
-      TBSYS_LOG(WARN,"fail to add row to ObSqlGetSimpleParam [err:%d]", err);
+      TBSYS_LOG(WARN,"fail to add row to ObSqlGetParam [err:%d]", err);
     }
     else if (OB_SIZE_OVERFLOW == err)
     {
@@ -155,7 +157,7 @@ int  ObMsSqlSubGetRequest::get_next_row(oceanbase::common::ObRow &row, int64_t &
   int err = OB_SUCCESS;
   if (NULL == pget_param_)
   {
-    TBSYS_LOG(WARN,"set ObSqlGetSimpleParam first [pget_param_:%p]", pget_param_);
+    TBSYS_LOG(WARN,"set ObSqlGetParam first [pget_param_:%p]", pget_param_);
     err = OB_INVALID_ARGUMENT;
   }
 
@@ -231,7 +233,7 @@ int  ObMsSqlSubGetRequest::get_next_row(oceanbase::common::ObRow &row, int64_t &
 }
 
 int ObSqlGetMerger::init(SubRequestVector *results, const int64_t res_count,
-    const ObSqlGetSimpleParam & get_param)
+    const ObSqlGetParam & get_param)
 {
   int err = OB_SUCCESS;
   if ((NULL == results) || (res_count <= 0))

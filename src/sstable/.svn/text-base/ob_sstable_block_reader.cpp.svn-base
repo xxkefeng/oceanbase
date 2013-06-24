@@ -54,7 +54,7 @@ namespace oceanbase
       return OB_SUCCESS;
     }
 
-    int ObSSTableBlockReader::deserialize_binary_rowkey(const char* buf, 
+    int ObSSTableBlockReader::deserialize_sstable_rowkey(const char* buf, 
       const int64_t data_len, ObString& key)
     {
       int ret = OB_SUCCESS;
@@ -208,38 +208,6 @@ namespace oceanbase
       return get_row_key(index, key, pos);
     }
 
-    int ObSSTableBlockReader::parse_binary_rowkey(const_iterator index, 
-        const common::ObRowkeyInfo& rowkey_info, common::ObObj* rowkey_buf_array,
-        int64_t &rowkey_column_count, int64_t &pos) const
-    {
-      int ret = OB_SUCCESS;
-      // old version sstable store binary rowkey
-      ObString binary_rowkey;
-      if (rowkey_column_count < rowkey_info.get_size())
-      {
-        TBSYS_LOG(ERROR, "parse_binary_rowkey input count=%ld < size=%ld",
-            rowkey_column_count, rowkey_info.get_size());
-        ret = OB_SIZE_OVERFLOW;
-      }
-      else if (OB_SUCCESS != ( ret = deserialize_binary_rowkey(
-              data_begin_ + index->offset_, index->size_, binary_rowkey)))
-      {
-        TBSYS_LOG(ERROR, "deserialize binary rowkey error, offset=%d, size=%d",
-            index->offset_, index->size_);
-      }
-      else if (OB_SUCCESS != (ret = ObRowkeyHelper::binary_rowkey_to_obj_array(
-              rowkey_info, binary_rowkey, rowkey_buf_array, rowkey_column_count)))
-      {
-        TBSYS_LOG(ERROR, "cannot translate binary rowkey into ObObj array.");
-      }
-      else
-      {
-        pos = sizeof(int16_t) + binary_rowkey.length();
-        rowkey_column_count = rowkey_info.get_size();
-      }
-      return ret;
-    }
-
     int ObSSTableBlockReader::get_row_key(const_iterator index, common::ObRowkey& key, int64_t &pos) const
     {
       int ret = OB_SUCCESS;
@@ -251,21 +219,32 @@ namespace oceanbase
       {
         pos = 0;
         int64_t rowkey_count = block_data_desc_.rowkey_column_count_;
-        if (OB_UNLIKELY(rowkey_count == 0))
+        if (rowkey_count == 0)
         {
-          rowkey_count = OB_MAX_ROWKEY_COLUMN_NUMBER;
-          if (OB_SUCCESS != ( ret = parse_binary_rowkey(
-                  index, *block_data_desc_.rowkey_info_, rowkey_buf_array_, rowkey_count, pos)))
+          rowkey_count = block_data_desc_.rowkey_info_->get_size();
+          // old version sstable store binary rowkey
+          ObString binary_rowkey;
+          if (OB_SUCCESS != ( ret = deserialize_sstable_rowkey(
+                  data_begin_ + index->offset_, index->size_, binary_rowkey)))
           {
-            TBSYS_LOG(ERROR, "pase binary rowkey error, offset=%d, size=%d",
+            TBSYS_LOG(ERROR, "deserialize binary rowkey error, offset=%d, size=%d",
                 index->offset_, index->size_);
+          }
+          else if (OB_SUCCESS != (ret = ObRowkeyHelper::binary_rowkey_to_obj_array(
+                  *block_data_desc_.rowkey_info_, binary_rowkey, rowkey_buf_array_, rowkey_count)))
+          {
+            TBSYS_LOG(ERROR, "cannot translate binary rowkey into ObObj array.");
+          }
+          else
+          {
+            pos = sizeof(int16_t) + binary_rowkey.length();
           }
         }
         else
         {
           int64_t count = rowkey_count;
           ret = get_objs(OB_SSTABLE_STORE_DENSE, index, pos, NULL, rowkey_buf_array_, count);
-          if (OB_UNLIKELY(OB_SUCCESS != ret || count != rowkey_count))
+          if (OB_SUCCESS != ret || count != rowkey_count)
           {
             TBSYS_LOG(ERROR, "cannot get rowkey columns ret =%d, count=%ld, rowkey_count=%ld",
                 ret , count, rowkey_count);
@@ -273,7 +252,7 @@ namespace oceanbase
           }
         }
 
-        if (OB_LIKELY(OB_SUCCESS == ret))
+        if (OB_SUCCESS == ret)
         {
           key.assign(rowkey_buf_array_, rowkey_count);
         }
@@ -308,22 +287,22 @@ namespace oceanbase
         const RowFormat format, const_iterator index,
         const bool is_full_row_columns,
         const ObSimpleColumnIndexes& query_columns, 
-        common::ObRow& value) const
+        common::ObRowkey& key, common::ObRow& value) const
     {
       int ret = OB_SUCCESS;
       if (format == OB_SSTABLE_STORE_SPARSE)
       {
-        ret = get_sparse_row(index, query_columns, value);
+        ret = get_sparse_row(index, query_columns, key, value);
       }
       else
       {
         if (is_full_row_columns)
         {
-          ret = get_dense_full_row(index, value);
+          ret = get_dense_full_row(index, key, value);
         }
         else
         {
-          ret = get_dense_row(index, query_columns, value);
+          ret = get_dense_row(index, query_columns, key, value);
         }
       }
 #ifndef _SSTABLE_NO_STAT_
@@ -333,7 +312,7 @@ namespace oceanbase
     }
 
     int ObSSTableBlockReader::get_dense_full_row(const_iterator index,
-        common::ObRow& value) const
+        common::ObRowkey& key, common::ObRow& value) const
     {
       int ret = OB_SUCCESS;
       int64_t pos = 0;
@@ -342,49 +321,54 @@ namespace oceanbase
       const char* row_start = data_begin_ + index->offset_;
       const char* row_end = row_start + index->size_;
       ObObj obj;
+      ObObj *first_obj = NULL;
 
       int64_t rowkey_count = block_data_desc_.rowkey_column_count_;
-      if (OB_UNLIKELY(rowkey_count == 0))
+      if (rowkey_count == 0)
       {
-        rowkey_count = OB_MAX_ROWKEY_COLUMN_NUMBER;
         // binary rowkey;
-        if (OB_SUCCESS != (ret = parse_binary_rowkey(index, 
-                *block_data_desc_.rowkey_info_, rowkey_buf_array_, rowkey_count, pos)))
+        if (OB_SUCCESS != (ret = get_row_key(index, key, pos)))
         {
           TBSYS_LOG(WARN, "get_binary_rowkey error, pos=%ld, ret=%d", pos, ret);
         }
         else
         {
+          rowkey_count = block_data_desc_.rowkey_info_->get_size();
           while (result_index < rowkey_count)
           {
-            if (OB_SUCCESS != (ret = value.raw_set_cell(result_index, rowkey_buf_array_[result_index])))
-            {
-              TBSYS_LOG(ERROR, "set cell [%ld] ret=%d", result_index, ret);
-              break;
-            }
+            value.raw_set_cell(result_index, *(key.get_obj_ptr() + result_index));
             ++result_index;
           }
         }
       }
 
-      // traverse rowvalue;
-      while (OB_SUCCESS == ret && row_start + pos < row_end)
+      if (OB_SUCCESS == ret)
       {
+        // traverse rowvalue;
+        while (OB_SUCCESS == ret && row_start + pos < row_end)
+        {
 
-        if (OB_SUCCESS != (ret = obj.deserialize(row_start, index->size_, pos)))
-        {
-          TBSYS_LOG(ERROR, "deserialize column value object error, ret=%d, "
-              "result_index=%ld, row_start=%p, pos=%ld, size=%d",
-              ret, result_index, row_start, pos, index->size_);
-          break;
-        }
-        else if (OB_SUCCESS != (ret = value.raw_set_cell(result_index, obj)))
-        {
-          TBSYS_LOG(ERROR, "cannot get obj at cell:%ld", result_index);
-        }
-        else
-        {
-          ++result_index;
+          if (OB_SUCCESS != (ret = obj.deserialize(row_start, index->size_, pos)))
+          {
+            TBSYS_LOG(ERROR, "deserialize column value object error, ret=%d, "
+                "result_index=%ld, row_start=%p, pos=%ld, size=%d",
+                ret, result_index, row_start, pos, index->size_);
+            break;
+          }
+          else if (OB_SUCCESS != (ret = value.raw_set_cell(result_index, obj)))
+          {
+            TBSYS_LOG(ERROR, "cannot get obj at cell:%ld", result_index);
+          }
+          else
+          {
+            // dense row, rowkey assign to ObRawRow::objs_ array directly. 
+            if (result_index == 0) 
+            { 
+              value.raw_get_cell_for_update(result_index, first_obj);
+              key.assign(first_obj, rowkey_count); 
+            }
+            ++result_index;
+          }
         }
       }
 
@@ -392,7 +376,8 @@ namespace oceanbase
     }
 
     int ObSSTableBlockReader::get_dense_row(const_iterator index,
-        const ObSimpleColumnIndexes& query_columns, common::ObRow& value) const
+        const ObSimpleColumnIndexes& query_columns, 
+        common::ObRowkey& key, common::ObRow& value) const
     {
       int ret = OB_SUCCESS;
       int64_t pos = 0;
@@ -405,61 +390,33 @@ namespace oceanbase
       const char* row_end = row_start + index->size_;
       ObObj obj ;
 
-      int64_t rowkey_count = block_data_desc_.rowkey_column_count_;
-      if (OB_UNLIKELY(rowkey_count == 0))
+      if (OB_SUCCESS != (ret = get_row_key(index, key, pos)))
       {
-        // parse binary rowkey;
-        rowkey_count = OB_MAX_ROWKEY_COLUMN_NUMBER;
-        if (OB_SUCCESS != (ret = parse_binary_rowkey(index, 
-                *block_data_desc_.rowkey_info_, rowkey_buf_array_, rowkey_count, pos)))
+        TBSYS_LOG(ERROR, "get row key error, ret=%d, index=%d,%d", 
+            ret, index->offset_, index->size_);
+      }
+
+      // traverse rowkey first;
+      while (OB_SUCCESS == ret && value_index < key.get_obj_cnt() 
+          && filled < not_null_col_num)
+      {
+        if ((result_index = query_columns.find_by_offset(value_index)) >= 0)
         {
-          TBSYS_LOG(WARN, "get_binary_rowkey error, pos=%ld, ret=%d", pos, ret);
+          value.raw_set_cell(result_index, *(key.get_obj_ptr() + value_index));
+          ++filled;
         }
-        else
-        {
-          while (value_index < rowkey_count && filled < not_null_col_num)
-          {
-            if ((result_index = query_columns.find_by_offset(value_index)) >= 0)
-            {
-              if (OB_SUCCESS != (ret = value.raw_set_cell(result_index, rowkey_buf_array_[value_index])))
-              {
-                TBSYS_LOG(ERROR, "set cell [%ld] ret=%d", result_index, ret);
-                break;
-              }
-              ++filled;
-            }
-            ++value_index;
-          }
-        }
+        ++value_index;
       }
 
       // traverse rowvalue;
-      ret = get_dense_rowvalue(row_start, row_end, pos, filled, value_index,
-          query_columns, value);
-
-      return ret;
-
-    }
-
-    int ObSSTableBlockReader::get_dense_rowvalue(const char *row_start,
-        const char *row_end, int64_t &pos, int64_t filled, int64_t value_index,
-        const ObSimpleColumnIndexes &query_columns, common::ObRow &value)
-    {
-      int ret = OB_SUCCESS;
-      int64_t result_index = 0;
-      int64_t not_null_col_num = query_columns.get_not_null_column_count();
-      ObObj obj;
-
-      while (OB_SUCCESS == ret 
-          && row_start + pos < row_end
+      while (OB_SUCCESS == ret && row_start + pos < row_end
           && filled < not_null_col_num)
       {
-        if (OB_UNLIKELY(OB_SUCCESS 
-              != (ret = obj.deserialize(row_start, row_end - row_start, pos))))
+        if (OB_SUCCESS != (ret = obj.deserialize(row_start, index->size_, pos)))
         {
           TBSYS_LOG(ERROR, "deserialize column value object error, ret=%d, "
-              "object_index=%ld, row_start=%p, pos=%ld, size=%ld",
-              ret, value_index, row_start, pos, row_end - row_start);
+              "object_index=%ld, row_start=%p, pos=%ld, size=%d",
+              ret, value_index, row_start, pos, index->size_);
           break;
         }
         else if ((result_index = query_columns.find_by_offset(value_index)) < 0)
@@ -482,19 +439,23 @@ namespace oceanbase
     }
 
     int ObSSTableBlockReader::get_sparse_row(const_iterator index,
-        const ObSimpleColumnIndexes& query_columns, common::ObRow& value) const
+        const ObSimpleColumnIndexes& query_columns, 
+        common::ObRowkey& key, common::ObRow& value) const
     {
       int ret = OB_SUCCESS;
       int64_t pos = 0;
+      int64_t column_id = 0;
       int64_t filled = 0;
       int64_t result_index = 0;
       int64_t value_index = 0;
       int64_t not_null_col_num = query_columns.get_not_null_column_count();
+      uint64_t table_id = query_columns.get_table_id();
+      bool  has_delete_row = false;
 
       const char* row_start = data_begin_ + index->offset_;
       const char* row_end = row_start + index->size_;
+      const ObRowDesc * row_desc = value.get_row_desc();
       ObObj obj;
-      ObRowkey key;
 
       if (OB_SUCCESS != (ret = get_row_key(index, key, pos)))
       {
@@ -517,45 +478,25 @@ namespace oceanbase
       value_index = 0;
 
       // traverse rowvalue;
-      ret = get_sparse_rowvalue(row_start, row_end, pos, filled, query_columns, value);
-
-      return ret;
-
-    }
-
-    int ObSSTableBlockReader::get_sparse_rowvalue(const char *row_start,
-        const char *row_end, int64_t &pos, int64_t filled,
-        const ObSimpleColumnIndexes &query_columns, common::ObRow &value)
-    {
-      int ret = OB_SUCCESS;
-      int64_t value_index = 0;
-      int64_t column_id = 0;
-      int64_t result_index = 0;
-      bool has_delete_row = false;
-      uint64_t table_id = query_columns.get_table_id();
-      int64_t not_null_col_num = query_columns.get_not_null_column_count();
-      const ObRowDesc * row_desc = value.get_row_desc();
-      ObObj obj;
-
       while (OB_SUCCESS == ret && row_start + pos < row_end
           && filled < not_null_col_num)
       {
-        if (OB_SUCCESS != (ret = obj.deserialize(row_start, row_end - row_start, pos)))
+        if (OB_SUCCESS != (ret = obj.deserialize(row_start, index->size_, pos)))
         {
           TBSYS_LOG(ERROR, "deserialize column value object error, ret=%d, "
-              "object_index=%ld, row_start=%p, pos=%ld, size=%ld",
-              ret, value_index, row_start, pos, row_end - row_start);
+              "object_index=%ld, row_start=%p, pos=%ld, size=%d",
+              ret, value_index, row_start, pos, index->size_);
         }
         else if (obj.get_type() != ObIntType || OB_SUCCESS != (ret = obj.get_int(column_id)))
         {
           TBSYS_LOG(ERROR, "sparse format, obj(%s) not column_id", to_cstring(obj));
           ret = OB_UNKNOWN_OBJ;
         }
-        else if (OB_SUCCESS != (ret = obj.deserialize(row_start, row_end - row_start, pos)))
+        else if (OB_SUCCESS != (ret = obj.deserialize(row_start, index->size_, pos)))
         {
           TBSYS_LOG(ERROR, "deserialize column value object error, ret=%d, "
-              "object_index=%ld, row_start=%p, pos=%ld, size=%ld",
-              ret, value_index, row_start, pos, row_end - row_start);
+              "object_index=%ld, row_start=%p, pos=%ld, size=%d",
+              ret, value_index, row_start, pos, index->size_);
         }
         else if (value_index == 0 && static_cast<uint64_t>(column_id) == OB_ACTION_FLAG_COLUMN_ID)
         {
