@@ -1,6 +1,0 @@
-K 13
-svn:mergeinfo
-V 156
-/branches/dev/oceanbase/src/common/ob_tsi_factory.h:5023-7412,8885-8905
-/branches/developing/trans_mvcc_dev/oceanbase/src/common/ob_tsi_factory.h:9273-10180
-END
