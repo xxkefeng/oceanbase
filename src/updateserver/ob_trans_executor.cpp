@@ -247,7 +247,7 @@ namespace oceanbase
         case OB_UPS_SHOW_SESSIONS:
         case OB_UPS_KILL_SESSION:
         case OB_END_TRANSACTION:
-          ret = TransHandlePool::push(&task, task.pkt.get_req_sign());
+          ret = TransHandlePool::push(&task);
           break;
         case OB_SEND_LOG:
         case OB_FAKE_WRITE_FOR_KEEP_ALIVE:
@@ -461,7 +461,7 @@ namespace oceanbase
         if (OB_BEGIN_TRANS_LOCKED == ret)
         {
           int tmp_ret = OB_SUCCESS;
-          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task, task.pkt.get_req_sign())))
+          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task)))
           {
             ret = tmp_ret;
           }
@@ -553,7 +553,7 @@ namespace oceanbase
         if (OB_BEGIN_TRANS_LOCKED == ret)
         {
           int tmp_ret = OB_SUCCESS;
-          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task, task.pkt.get_req_sign())))
+          if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task)))
           {
             ret = tmp_ret;
           }
@@ -688,7 +688,7 @@ namespace oceanbase
           if (OB_BEGIN_TRANS_LOCKED == ret)
           {
             int tmp_ret = OB_SUCCESS;
-            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task, task.pkt.get_req_sign())))
+            if (OB_SUCCESS != (tmp_ret = TransHandlePool::push(&task)))
             {
               ret = tmp_ret;
             }
@@ -1101,13 +1101,6 @@ namespace oceanbase
           else
           {
             session_ctx->set_trans_id(trans_id);
-          }
-        }
-        if (OB_SUCCESS == ret)
-        {
-          if (OB_SUCCESS != (ret = session_mgr_.precommit(task.sid.descriptor_)))
-          {
-            TBSYS_LOG(ERROR, "precommit(%s)=>%d", to_cstring(task.sid), ret);
           }
         }
       }
