@@ -67,5 +67,6 @@ SQL：group_min_max.test执行cs出core，原因是ob_row_store重用时有错�
 * [rootServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [updateServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [运维文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
+* [常见问题](https://github.com/alibaba/oceanbase/wiki/%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98)
 * [Project Plan](https://github.com/alibaba/oceanbase/wiki/Project-Plan) 
 
