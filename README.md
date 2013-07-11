@@ -20,53 +20,59 @@ SQL：group_min_max.test执行cs出core，原因是ob_row_store重用时有错�
 - <font color=“#F00”><b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> </font>
 - 2013/03/04，整理提交了V0.3.1代码和相关技术文档。
 
-<h1>版本特性</h1>
-
+<h1>2 版本特性</h1>
 - 使用libeasy网络框架代替了原来的tbnet，实现更高的网络处理性能
-- 全面支持mysql协议（支持所有兼容libmysql库的driver，包含终端客户端mysql程序等）
+- 全面支持mysql协议
 - 支持SQL的客户端库
-  - 提供了兼容JDBC的obdatasource库，实现OB集群内负载均衡策略
-  - 提供了二进制兼容libmysql的libobsql库，实现OB集群内负载均衡策略
 - 全面支持SQL
-  - DML语句：select, insert, replace, delete, update
-       - 支持select的大部分常用语法，包括任意复杂单表查询、集合交并差操作、受限的join、受限的子查询等
-       - 支持的数据类型包括int, varchar, timestamp, float, double等
-  - DDL语句：create table, drop table
-  - 支持SQL事务
-       - Start transaction, commit, rollback
-       - SELECT FOR UPDATE
-       - 实现了READ-COMMITED隔离级别的MVCC并发控制
-  - 用户权限控制  
-       - Create user, drop user, rename user, alter user, set password等
-       - Grant, revoke等
-  - 服务器端Prepared statement
-       - 支持SQL语句prepare, execute, drop prepare等
-       - 支持兼容mysql二进制协议的prepared statement
-  - 其他语句
-       - 通过set语句支持用户自定义变量
-       - Show tables, show variables, show grants, show warnings, show columns, describe等
-       - Explain
 - 易用性改进
-  - 引入了内部表机制，很多SQL功能基于内部表实现
-       - Schema使用内部表管理，废除了schema配置文件
-       - 引入了内部trigger通知机制
-       - OB自身的配置使用内部表管理
-  - 自监控
-       - OB自身的监控信息可以通过查询内部表获得
 
- 
+[详细列表](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4-%E7%89%88%E6%9C%AC%E7%89%B9%E6%80%A7) 
 
-<h1>资源列表</h1>
-* [OceanBase架构](https://github.com/alibaba/oceanbase/wiki/OceanBase%E6%9E%B6%E6%9E%84%E4%BB%8B%E7%BB%8D)
-* [OceanBase安装部署](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97)
+<h1>3 文档导读</h1>
+<table width="100%"  border="1" frame="all" rules="all">
+  <tr>
+    <td width=7% bgcolor="B0B0B0"><b>序号</b></div></td>
+    <td width=33% bgcolor="B0B0B0"><b>文档名称</b></td>
+    <td width=60% bgcolor="B0B0B0"><b>使用说明</b></td>
+  </tr>
+  <tr>
+    <td width="7%"><div align="center">1</div></td>
+    <td width="33%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase%E6%9E%B6%E6%9E%84%E4%BB%8B%E7%BB%8D" target="_blank">《OceanBase架构》</a></td>
+    <td width="60%">该文档主要介绍OceanBase数据库的功能、架构、特点和工作模式等信息。</td>
+  </tr>
+  <tr>
+    <td width="7%"><div align="center">2</div></td>
+    <td width="33%"><a href="/alibaba/oceanbase/wiki/OceanBase-0.4-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97" target="_blank">《OceanBase 0.4 安装指南》</a></td>
+    <td width="60%">该文档主要介绍OceanBase数据库的安装过程。</td>
+  </tr>
+  <tr>
+    <td width="7%"><div align="center">3</div></td>
+    <td width="33%"><a href="/alibaba/oceanbase/wiki/OceanBase%E5%AE%A2%E6%88%B7%E7%AB%AF-%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97" target="_blank">《OceanBase 客户端 用户指南》</a></td>
+    <td width="60%">该文档主要介绍OceanBase数据库的Java客户端和C客户端的使用方法。</td>
+  </tr>
+  <tr>
+    <td width="7%"><div align="center">4</div></td>
+    <td width="33%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL-%E5%8F%82%E8%80%83%E6%8C%87%E5%8D%97" target="_blank">《OceanBase SQL 参考指南》</a></td>
+    <td width="60%">该文档主要介绍OceanBase数据库支持的SQL语言、语法规则和使用方法等。</td>
+  </tr>
+</table>
+
+<h1>4 其他资源列表</h1>
 * [OceanBase SQL 用户参考手册](https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL-%E7%94%A8%E6%88%B7%E5%8F%82%E8%80%83%E6%89%8B%E5%86%8C)
 * [OceanBase SQL管理员手册](https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL%E7%AE%A1%E7%90%86%E5%91%98%E6%89%8B%E5%86%8C)
-* [OceanBase客户端使用指南](https://github.com/alibaba/oceanbase/wiki/OceanBase%E5%AE%A2%E6%88%B7%E7%AB%AF-%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97)
 * [ChunkServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [mergeServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [rootServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [updateServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/updateserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [运维文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
-* [常见问题](https://github.com/alibaba/oceanbase/wiki/%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98)
 * [Project Plan](https://github.com/alibaba/oceanbase/wiki/Project-Plan) 
 
+<h1>5 联系我们</h1>
+ <p align="left">如果您有任何疑问或是想了解OceanBase的最新开源动态消息，请联系我们：</p>
+  <p align="left"><b>支付宝（中国）网络技术有限公司·OceanBase团队</b></p>
+  <p align="left">地址：杭州市万塘路18号黄龙时代广场B座</p>
+  <p align="left">邮编：310099</p>
+  <p align="left">邮箱： <a href="mailto:rongxuan.lc@alipay.com">rongxuan.lc@alipay.com</a></p>
+  <p align="left"> 新浪微博：<a href="http://weibo.com/u/2356115944">http://weibo.com/u/2356115944</a></p>
+  <p align="left">技术交流群（阿里旺旺）：853923637</p>
