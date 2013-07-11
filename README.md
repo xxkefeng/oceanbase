@@ -6,7 +6,7 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 从模块划分的角度看，OceanBase可以划分为四个模块：主控服务器RootServer、更新服务器UpdateServer、基准数据服务器ChunkServer以及合并服务器MergeServer。OceanBase系统内部按照时间线将数据划分为基准数据和增量数据，基准数据是只读的，所有的修改更新到增量数据中，系统内部通过合并操作定期将增量数据融合到基准数据中。
 
 <h1>1 最新动态</h1>
-<font color=“#F00”><b>2013/06/19，合并最新的bugfix和特性到0.41分支上：</b> </font>
+<font color=“#0000E3”><b>2013/06/19，合并最新的bugfix和特性到0.41分支上：</b> </font>
 
 【重要】RootServer: Chunk Server在合并失败后，如果发现其他两个副本已经成功合并，会本地直接删除失败的副本，以前的版本RootServer并没有处理主动删除replica的情况;
 
@@ -17,7 +17,7 @@ SQL：group_min_max.test执行cs出core，原因是ob_row_store重用时有错�
 [查看发布说明](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4.1-1209%E5%8F%91%E5%B8%83%E8%AF%B4%E6%98%8E)
 
 <h1>2 发行日志</h1>
-- <font color=“#F00”><b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> </font>
+- <font color=“#0000E3”><b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> </font>
 - 2013/03/04，整理提交了V0.3.1代码和相关技术文档。
 
 <h1>3 版本特性</h1>
