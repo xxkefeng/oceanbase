@@ -72,6 +72,6 @@ SQL：group_min_max.test执行cs出core，原因是ob_row_store重用时有错�
   <p align="left"><b>支付宝（中国）网络技术有限公司·OceanBase团队</b></p>
   <p align="left">地址：杭州市万塘路18号黄龙时代广场B座</p>
   <p align="left">邮编：310099</p>
-  <p align="left">邮箱： <a href="mailto:alipay-oceanbase-support@list.alibaba-inc.com">rongxuan.lc@alipay.com</a></p>
+  <p align="left">邮箱： <a href="mailto:alipay-oceanbase-support@list.alibaba-inc.com">alipay-oceanbase-support@list.alibaba-inc.com</a></p>
   <p align="left"> 新浪微博：<a href="http://weibo.com/u/2356115944">http://weibo.com/u/2356115944</a></p>
   <p align="left">技术交流群（阿里旺旺）：853923637</p>
