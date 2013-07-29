@@ -12,9 +12,9 @@
 /**
  * 读取OceanBase集群信息
  * 
- * @param server   fake ms information
+ * @param server   listen ms information
  *
- * @return int     return OB_SQL_SUCCESS if get cluster information from fake ms success
+ * @return int     return OB_SQL_SUCCESS if get cluster information from listen ms success
  *                                       else return OB_SQL_ERROR
  *
  */
@@ -25,6 +25,7 @@ static int get_cluster_config(ObServerInfo *server)
   int sindex = 0;
   MYSQL_RES *results = NULL;
   MYSQL_ROW record;
+  TBSYS_LOG(INFO, "real mysql init is %p, mysql_init is %p\n", g_func_set.real_mysql_init, mysql_init);
   MYSQL * mysql = (*g_func_set.real_mysql_init)(NULL);
   if (NULL != mysql)
   {
@@ -46,6 +47,7 @@ static int get_cluster_config(ObServerInfo *server)
         else
         {
           uint64_t cluster_num = (*g_func_set.real_mysql_num_rows)(results);
+          TBSYS_LOG(DEBUG, "cluster num is %lu", cluster_num);
           if (cluster_num > OB_SQL_MAX_CLUSTER_NUM)
           {
             TBSYS_LOG(ERROR, "there are %lu cluster info, max cluster supported is %d",
@@ -54,31 +56,42 @@ static int get_cluster_config(ObServerInfo *server)
           }
           else
           {
-            while ((record = (*g_func_set.real_mysql_fetch_row)(results)))
+            while (OB_SQL_SUCCESS == ret 
+                   &&(record = (*g_func_set.real_mysql_fetch_row)(results)))
             {
-              g_config_update->clusters_[index].cluster_id_ = static_cast<uint32_t>(atoll(record[0]));
-              g_config_update->clusters_[index].cluster_type_ = atoll(record[1]);
-              g_config_update->clusters_[index].flow_weight_ = static_cast<int16_t>(atoll(record[2]));
-              g_config_update->clusters_[index].server_.ip_ = oceanbase::common::ObServer::convert_ipv4_addr(record[3]);
-              g_config_update->clusters_[index].server_.port_ = static_cast<uint32_t>(atoll(record[4]));
-              if (NULL == record[5])
+              if (NULL == record[0]||NULL == record[1]
+                  || NULL == record[2]||NULL == record[3]
+                  || NULL == record[4])
               {
-                g_config_update->clusters_[index].read_strategy_ = 0;
+                TBSYS_LOG(WARN, "cluster info record not complete");
+                ret = OB_SQL_ERROR;
               }
               else
               {
-                g_config_update->clusters_[index].read_strategy_ = static_cast<uint32_t>(atoll(record[5]));
-              }
+                g_config_update->clusters_[index].cluster_id_ = static_cast<uint32_t>(atoll(record[0]));
+                g_config_update->clusters_[index].cluster_type_ = atoll(record[1]);
+                g_config_update->clusters_[index].flow_weight_ = static_cast<int16_t>(atoll(record[2]));
+                g_config_update->clusters_[index].server_.ip_ = oceanbase::common::ObServer::convert_ipv4_addr(record[3]);
+                g_config_update->clusters_[index].server_.port_ = static_cast<uint32_t>(atoll(record[4]));
+                if (NULL == record[5])
+                {
+                  g_config_update->clusters_[index].read_strategy_ = 0;
+                }
+                else
+                {
+                  g_config_update->clusters_[index].read_strategy_ = static_cast<uint32_t>(atoll(record[5]));
+                }
               
-              //insert cluster ip/port to rslist
-              insert_rs_list(g_config_update->clusters_[index].server_.ip_,
-                             g_config_update->clusters_[index].server_.port_);
-              if (MASTER == g_config_update->clusters_[index].cluster_type_)
-              {
-                g_config_update->master_cluster_id_ = g_config_update->clusters_[index].cluster_id_;
+                //insert cluster ip/port to rslist
+                insert_rs_list(g_config_update->clusters_[index].server_.ip_,
+                               g_config_update->clusters_[index].server_.port_);
+                if (MASTER == g_config_update->clusters_[index].cluster_type_)
+                {
+                  g_config_update->master_cluster_id_ = g_config_update->clusters_[index].cluster_id_;
+                }
+                TBSYS_LOG(DEBUG, "cluster id is %u", g_config_update->clusters_[index].cluster_id_);
+                index++;
               }
-              TBSYS_LOG(DEBUG, "cluster id is %u", g_config_update->clusters_[index].cluster_id_);
-              index++;
             }
             TBSYS_LOG(DEBUG, "update config is %p cluster size is %d", g_config_update, index);
             g_config_update->cluster_size_ = static_cast<int16_t>(index);
@@ -117,9 +130,16 @@ static int get_cluster_config(ObServerInfo *server)
                 {
                   while ((record = (*g_func_set.real_mysql_fetch_row)(results)))
                   {
-                    g_config_update->clusters_[index].merge_server_[sindex].ip_ = oceanbase::common::ObServer::convert_ipv4_addr(record[0]);
-                    g_config_update->clusters_[index].merge_server_[sindex].port_ = static_cast<uint32_t>(atoll(record[1]));
-                    sindex++;
+                    if (NULL == record[0] || NULL == record[1])
+                    {
+                      TBSYS_LOG(WARN, "ip or port info is null");
+                    }
+                    else
+                    {
+                      g_config_update->clusters_[index].merge_server_[sindex].ip_ = oceanbase::common::ObServer::convert_ipv4_addr(record[0]);
+                      g_config_update->clusters_[index].merge_server_[sindex].port_ = static_cast<uint32_t>(atoll(record[1]));
+                      sindex++;
+                    }
                   }
                   g_config_update->clusters_[index].server_num_ = static_cast<int16_t>(sindex);
                 }
@@ -137,8 +157,8 @@ static int get_cluster_config(ObServerInfo *server)
       }
       else
       {
+        TBSYS_LOG(WARN, "do query (%s) from %s failed ret is %d", OB_SQL_QUERY_CLUSTER, get_server_str(server), ret);
         ret = OB_SQL_ERROR;
-        TBSYS_LOG(WARN, "do query (%s) from %s failed", OB_SQL_QUERY_CLUSTER, get_server_str(server));
       }
       (*g_func_set.real_mysql_close)(mysql);
     }
@@ -163,6 +183,9 @@ static void swap_config()
   g_config_update = tmp;
 }
 
+/**
+ * 集群个数，流量配置，集群类型是否变化
+ */
 static bool is_cluster_changed()
 {
   bool ret = false;
@@ -300,11 +323,11 @@ int get_ob_config()
   TBSYS_LOG(DEBUG, "rsnum is %d", g_rsnum);
   for (; index < g_rsnum; ++index)
   {
-    TBSYS_LOG(DEBUG, "fakems ip is %u, port is %u", g_rslist[index].ip_, g_rslist[index].port_);
+    TBSYS_LOG(DEBUG, "listener mergeserver ip is %u, port is %u", g_rslist[index].ip_, g_rslist[index].port_);
     ret = get_cluster_config(g_rslist + index);
     if (OB_SQL_SUCCESS == ret)
     {
-      TBSYS_LOG(DEBUG, "Get config information from fakems(%s) success", get_server_str(g_rslist + index));
+      TBSYS_LOG(DEBUG, "Get config information from listen ms(%s) success", get_server_str(g_rslist + index));
       break;
     }
     else

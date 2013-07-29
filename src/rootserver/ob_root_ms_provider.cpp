@@ -30,15 +30,25 @@ ObRootMsProvider::~ObRootMsProvider()
 int ObRootMsProvider::get_ms(ObServer & server)
 {
   static __thread int32_t last_index = -1;
-  last_index = (last_index + 1) % (int32_t)server_manager_.size();
-  int ret = server_manager_.get_next_alive_ms(last_index, server);
-  if (ret != OB_SUCCESS)
+  int ret = OB_SUCCESS;
+  int32_t server_size = (int32_t)server_manager_.size();
+  if (server_size > 0)
   {
-    TBSYS_LOG(WARN, "get next alive ms failed:index[%d], ret[%d]", last_index, ret);
+    last_index = (last_index + 1) % server_size;
+    ret = server_manager_.get_next_alive_ms(last_index, server);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "get next alive ms failed:index[%d], ret[%d]", last_index, ret);
+    }
+    else
+    {
+      TBSYS_LOG(TRACE, "get alive ms succ:index[%d], server[%s]", last_index, server.to_cstring());
+    }
   }
   else
   {
-    TBSYS_LOG(TRACE, "get alive ms succ:index[%d], server[%s]", last_index, server.to_cstring());
+    ret = OB_MS_ITER_END;
+    TBSYS_LOG(WARN, "no merge server find in server manager");
   }
   return ret;
 }

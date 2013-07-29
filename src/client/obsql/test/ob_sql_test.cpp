@@ -40,10 +40,10 @@ int main(void)
   //short         small_data;
   long long int int_data[3];
   my_bool       is_null[4]={0,0,0,0};
-  
+  //ob_sql_init();
   //int num_elements = sizeof(server_options)/ sizeof(char *);
+  //mysql_thread_init();
   mysql = mysql_init(NULL);
-  
   if (NULL == mysql)
   {
     TBSYS_LOG(ERROR, "mysql init failed");

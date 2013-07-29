@@ -94,6 +94,7 @@ int ObUpsExecutor::open()
       TBSYS_LOG(WARN, "failed to execute plan on updateserver, err=%d", ret);
       if (OB_TRANS_ROLLBACKED == ret)
       {
+        TBSYS_LOG(USER_ERROR, "transaction is rolled back");
         // reset transaction id
         ObTransID invalid_trans;
         my_phy_plan_->get_result_set()->get_session()->set_trans_id(invalid_trans);

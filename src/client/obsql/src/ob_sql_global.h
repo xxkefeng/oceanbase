@@ -31,7 +31,7 @@ extern ObGroupDataSource g_group_ds;
 extern ObSQLSelectTable *g_table;
 extern pthread_rwlock_t g_config_rwlock;
 extern ObSQLSelectMethodSet g_default_method;
-extern ob_sql_list_t g_delete_ms_list;
+extern ObSQLList g_delete_ms_list;
 //extern ObSQLRsList rslist;
 extern ObServerInfo g_rslist[OB_SQL_MAX_CLUSTER_NUM*2];
 extern int32_t g_rsnum;

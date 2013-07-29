@@ -42,7 +42,7 @@ int ObMergerRootRpcProxy::init(common::ObGeneralRpcStub *rpc_stub)
   return ret;
 }
 
-int ObMergerRootRpcProxy::async_heartbeat(const ObServer & merge_server)
+int ObMergerRootRpcProxy::async_heartbeat(const ObServer & merge_server, const int32_t sql_port)
 {
   int ret = OB_SUCCESS;
   if (!check_inner_stat())
@@ -53,7 +53,7 @@ int ObMergerRootRpcProxy::async_heartbeat(const ObServer & merge_server)
   else
   {
     /// async send heartbeat no need retry
-    ret = rpc_stub_->heartbeat_server(rpc_timeout_, root_server_, merge_server, OB_MERGESERVER);
+    ret = rpc_stub_->heartbeat_merge_server(rpc_timeout_, root_server_, merge_server, OB_MERGESERVER, sql_port);
     if (ret != OB_SUCCESS)
     {
       TBSYS_LOG(WARN, "heartbeat with root server failed:ret[%d]", ret);

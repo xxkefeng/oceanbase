@@ -158,6 +158,8 @@ namespace oceanbase
     const int OB_DUPLICATE_COLUMN = -145;
     const int OB_ENQUEUE_FAILED= -146;
     const int OB_INVALID_CONFIG = -147;
+    const int OB_WAITING_COMMIT = -148;
+    const int OB_STMT_EXPIRED = -149;
 
     //error code for chunk server -1001 ---- -2000
     const int OB_CS_CACHE_NOT_HIT = -1001;   // 缓存没有命中

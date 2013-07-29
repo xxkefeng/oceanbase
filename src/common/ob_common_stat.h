@@ -80,6 +80,7 @@ namespace oceanbase
       UPS_STAT_COMMIT_LOG_SIZE,
       UPS_STAT_COMMIT_LOG_ID,
 
+      UPS_STAT_FROZEN_VERSION,
 
       UPDATESERVER_STAT_MAX,
     };
@@ -161,7 +162,18 @@ namespace oceanbase
       SQL_SCAN_EVENT_COUNT,
       SQL_SCAN_EVENT_TIME,
 
-      // local query
+     /* memory usage statistics*/
+      MS_MEMORY_LIMIT,
+      MS_MEMORY_TOTAL,
+      MS_SQL_MU_PARSER,
+      MS_SQL_MU_TRANSFORMER,
+      MS_SQL_MU_PS_PLAN,
+      MS_SQL_MU_RPC_REQUEST,
+      MS_SQL_MU_ARRAY,
+      MS_SQL_MU_EXPR,
+      MS_SQL_MU_ROW_STORE,
+      MS_SQL_MU_SESSION,
+
       MERGESERVER_STAT_MAX,
     };
     /* common */

@@ -111,7 +111,7 @@ void ObDeleteReplicasTest::register_cs(int32_t cs_num)
   for (int i = 0; i < cs_num; ++i)
   {
     int32_t status = 0;
-    ASSERT_EQ(OB_SUCCESS, server_->regist_server(get_addr(i), false, "0.4.1.2", status));
+    ASSERT_EQ(OB_SUCCESS, server_->regist_chunk_server(get_addr(i), "0.4.1.2", status));
     TBSYS_LOG(INFO, "register cs, id=%d status=%d", i, status);
   }
 }
@@ -120,7 +120,7 @@ void ObDeleteReplicasTest::heartbeat_cs(int32_t cs_num)
 {
   for (int i = 0; i < cs_num; ++i)
   {
-    ASSERT_EQ(OB_SUCCESS, server_->receive_hb(get_addr(i), OB_CHUNKSERVER));
+    ASSERT_EQ(OB_SUCCESS, server_->receive_hb(get_addr(i), 0, OB_CHUNKSERVER));
   }
 }
 

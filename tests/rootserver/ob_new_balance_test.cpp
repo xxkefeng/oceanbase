@@ -422,7 +422,7 @@ void ObBalanceTest::register_cs(int32_t cs_num)
   for (int i = 0; i < cs_num; ++i)
   {
     int32_t status = 0;
-    ASSERT_EQ(OB_SUCCESS, server_->regist_server(get_addr(i), false, "0.4.1.2", status));
+    ASSERT_EQ(OB_SUCCESS, server_->regist_chunk_server(get_addr(i), "0.4.1.2", status));
     TBSYS_LOG(INFO, "register cs, id=%d status=%d", i, status);
   }
   TBSYS_LOG(INFO, "register %d cs end.", cs_num);
@@ -432,7 +432,7 @@ void ObBalanceTest::heartbeat_cs(int32_t cs_num)
 {
   for (int i = 0; i < cs_num; ++i)
   {
-    ASSERT_EQ(OB_SUCCESS, server_->receive_hb(get_addr(i), OB_CHUNKSERVER));
+    ASSERT_EQ(OB_SUCCESS, server_->receive_hb(get_addr(i), get_addr(i).get_port(), OB_CHUNKSERVER));
   }
 }
 
@@ -690,7 +690,7 @@ void ObBalanceTest::test_env2(BalanceTestParams &params)
 
 TEST_F(ObBalanceTest, test_half_to_half)
 {
-server_->get_boot()->set_boot_ok();
+  server_->get_boot()->set_boot_ok();
   // 2 tables, 10 cs
   BalanceTestParams params(2, 10, -1, -1);
   // distribution for table 0

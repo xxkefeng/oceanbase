@@ -132,9 +132,10 @@ int ObUpsSlaveMgr::post_log_to_slave(const char* data, const int64_t length)
       }
       slave_node = (ServerNode*)(p);
       reqs_[n_slave_last_post_].p_slave_node_ = p;
+      reqs_[n_slave_last_post_].wait_obj_.before_post();
       send_err = client_mgr->post_request(slave_node->server, OB_SEND_LOG, RPC_VERSION, log_sync_timeout_,
                                            send_buf, ObClientWaitObj::on_receive_response, &reqs_[n_slave_last_post_].wait_obj_);
-      reqs_[n_slave_last_post_].wait_obj_.reset(send_err);
+      reqs_[n_slave_last_post_].wait_obj_.after_post(send_err);
       if (OB_SUCCESS != send_err)
       {
         TBSYS_LOG(ERROR, "post_request to slave[%s] buf=%p[%ld], failed, err=%d",

@@ -21,7 +21,7 @@ namespace oceanbase
     ObTSIBlockAllocator& get_global_tsi_block_allocator()
     {
       static int64_t init_lock = 0;
-      static ObMalloc sys_allocator;
+      static ObMalloc sys_allocator(ObModIds::TSI_BLOCK_ALLOC);
       static ObTSIBlockAllocator global_tsi_block_allocator;
       while(init_lock < 2)
       {

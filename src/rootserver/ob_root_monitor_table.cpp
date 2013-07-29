@@ -297,10 +297,10 @@ int ObRootMonitorTable::fill_result(const int pos, const ServerVector & servers,
       }
       else
       {
+        ++row_count;
         TBSYS_LOG(TRACE, "add normal row succ:pos[%ld], server[%s], count[%ld]",
-                  i, servers.at(static_cast<int32_t>(i)).addr.to_cstring(), row_count);
+            i, servers.at(static_cast<int32_t>(i)).addr.to_cstring(), row_count);
       }
-      ++row_count;
     }
   }
   // add the last server row

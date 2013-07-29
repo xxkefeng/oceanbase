@@ -532,7 +532,6 @@ void ObRootServer2::start_threads()
   heart_beat_checker_.start();
   ups_heartbeat_thread_->start();
   ups_check_thread_->start();
-  TBSYS_LOG(INFO, "start threads");
 }
 
 void ObRootServer2::start_merge_check()
@@ -1295,13 +1294,13 @@ void ObRootServer2::reset_hb_time()
         && it->port_cs_ > 0)
     {
       server.set_port(it->port_cs_);
-      this->receive_hb(server, OB_CHUNKSERVER);
+      receive_hb(server, it->port_cs_, OB_CHUNKSERVER);
     }
     if (it->ms_status_ != ObServerStatus::STATUS_DEAD
         && it->port_ms_ > 0)
     {
       server.set_port(it->port_ms_);
-      this->receive_hb(server, OB_MERGESERVER);
+      receive_hb(server, it->port_ms_sql_, OB_MERGESERVER);
     }
   }
   TBSYS_LOG(INFO, "reset heartbeat time end");
@@ -1951,33 +1950,26 @@ void ObRootServer2::switch_root_table(ObRootTable2 *rt, ObTabletInfoManager *ti)
  * chunk server register
  * @param out status 0 do not start report 1 start report
  */
-int ObRootServer2::regist_server(const ObServer& server, bool is_merge, const char* server_version, int32_t& status, int64_t time_stamp)
+int ObRootServer2::regist_chunk_server(const ObServer& server, const char* server_version, int32_t& status, int64_t time_stamp)
 {
   int ret = OB_SUCCESS;
-  TBSYS_LOG(INFO, "regist server %s, is_merge %d", to_cstring(server), is_merge);
+  TBSYS_LOG(INFO, "regist chunk server:addr[%s], version[%s]", to_cstring(server), server_version);
   bool master = is_master();
   if (master)
   {
     if (time_stamp < 0)
       time_stamp = tbsys::CTimeUtil::getTime();
-
-    if (is_merge)
-    {
-      TBSYS_LOG(WARN, "Deprecated ms register, pls check ms version!");
-    }
-    else
-    {
       ret = log_worker_->regist_cs(server, server_version, time_stamp);
-    }
   }
 
   if (ret == OB_SUCCESS)
   {
+    // regist
     {
       time_stamp = tbsys::CTimeUtil::getMonotonicTime();
       tbsys::CWLockGuard guard(server_manager_rwlock_);
-      server_manager_.receive_hb(server, time_stamp, is_merge, true);
-      if (!is_merge && master)
+      server_manager_.receive_hb(server, time_stamp, false, server.get_port());
+      if (master)
       {
         commit_task(SERVER_ONLINE, OB_CHUNKSERVER, server, 0, server_version);
       }
@@ -1985,7 +1977,7 @@ int ObRootServer2::regist_server(const ObServer& server, bool is_merge, const ch
     first_cs_had_registed_ = true;
     //now we always want cs report its tablet
     status = START_REPORTING;
-    if (!is_merge && START_REPORTING == status)
+    if (START_REPORTING == status)
     {
       tbsys::CThreadGuard mutex_guard(&root_table_build_mutex_); //this for only one thread modify root_table
       tbsys::CWLockGuard root_table_guard(root_table_rwlock_);
@@ -2065,11 +2057,11 @@ void ObRootServer2::commit_task(const ObTaskType type, const ObRole role, const 
   }
 }
 
-int ObRootServer2::regist_merge_server(const common::ObServer& server,
-    int32_t sql_port, const char* server_version, int64_t time_stamp)
+int ObRootServer2::regist_merge_server(const common::ObServer& server, const int32_t sql_port,
+    const char* server_version, int64_t time_stamp)
 {
   int ret = OB_SUCCESS;
-  TBSYS_LOG(INFO, "regist merge server: [%s], sqlport: [%d], server_version: [%s]",
+  TBSYS_LOG(INFO, "regist merge server:addr[%s], sql_port[%d], server_version[%s]",
             to_cstring(server), sql_port, server_version);
   bool master = is_master();
   if (master)
@@ -2083,7 +2075,8 @@ int ObRootServer2::regist_merge_server(const common::ObServer& server,
   {
     time_stamp = tbsys::CTimeUtil::getMonotonicTime();
     tbsys::CWLockGuard guard(server_manager_rwlock_);
-    server_manager_.register_ms(server, sql_port, time_stamp);
+    // regist merge server
+    server_manager_.receive_hb(server, time_stamp, true, sql_port, true);
     if ((OB_FAKE_MS_PORT != sql_port) && master)
     {
       commit_task(SERVER_ONLINE, OB_MERGESERVER, server, sql_port, server_version);
@@ -5047,28 +5040,46 @@ bool ObRootServer2::is_master() const
   return worker_->get_role_manager()->is_master();
 }
 
-int ObRootServer2::receive_hb(const common::ObServer& server, ObRole role)
+int ObRootServer2::receive_hb(const common::ObServer& server, const int32_t sql_port, const ObRole role)
 {
   int64_t  now = tbsys::CTimeUtil::getMonotonicTime();
-  int err = OB_SUCCESS;
-  err = server_manager_.receive_hb(server,now,role == OB_MERGESERVER ? true : false);
-  if (2 == err && (role != OB_MERGESERVER))
+  int err = server_manager_.receive_hb(server, now, role == OB_MERGESERVER ? true : false, sql_port);
+  // realive or regist again
+  if (2 == err)
   {
-    TBSYS_LOG(INFO, "receive relive cs's heartbeat. need add commit log and force to report tablet");
-    if (OB_SUCCESS != (err = log_worker_->regist_cs(server, "hb server version null", now)))
+    if (role != OB_MERGESERVER)
     {
-      TBSYS_LOG(WARN, "fail to write log for regist_cs. err=%d", err);
-    }
-    else
-    {
-      err = worker_->get_rpc_stub().request_report_tablet(server);
-      if (OB_SUCCESS != err)
+      TBSYS_LOG(INFO, "receive cs alive heartbeat. need add commit log and force to report tablet");
+      if (OB_SUCCESS != (err = log_worker_->regist_cs(server, "hb server version null", now)))
       {
-        TBSYS_LOG(ERROR, "fail to force cs to report tablet info. server=%s, err=%d", server.to_cstring(), err);
+        TBSYS_LOG(WARN, "fail to write log for regist_cs. err=%d", err);
+      }
+      else
+      {
+        err = worker_->get_rpc_stub().request_report_tablet(server);
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(ERROR, "fail to force cs to report tablet info. server=%s, err=%d", server.to_cstring(), err);
+        }
       }
     }
-    // online chunkserver
-    commit_task(SERVER_ONLINE, OB_CHUNKSERVER, server, 0, "hb server version null");
+    if (is_master())
+    {
+      TBSYS_LOG(INFO, "receive server alive heartbeat without version info:server[%s]", server.to_cstring());
+      if (OB_CHUNKSERVER == role)
+      {
+        commit_task(SERVER_ONLINE, OB_CHUNKSERVER, server, 0, "hb server version null");
+      }
+      else if ((sql_port > 1024) && (OB_FAKE_MS_PORT != sql_port))
+      {
+        commit_task(SERVER_ONLINE, OB_MERGESERVER, server, sql_port, "hb server version null");
+      }
+      else
+      {
+        TBSYS_LOG(ERROR, "find old version merge server heartbeat:sql_port[%d], server[%s]",
+            sql_port, server.to_cstring());
+      }
+    }
   }
   return err;
 }

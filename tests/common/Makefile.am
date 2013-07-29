@@ -20,6 +20,7 @@ endif
 
 bin_PROGRAMS = limit_array_test                           \
                            test_array_lock                \
+                           test_cluster_server            \
                            test_server_ext                \
                            test_get_param                 \
                            test_cell_array                \
@@ -95,6 +96,7 @@ bin_PROGRAMS = limit_array_test                           \
                            test_ob_stat
 
 test_ob_config_SOURCES = test_ob_config.cpp
+test_cluster_server_SOURCES = test_cluster_server.cpp
 test_system_config_SOURCES = test_system_config.cpp
 test_array_lock_SOURCES = test_array_lock.cpp
 test_mutator_SOURCES = test_mutator.cpp

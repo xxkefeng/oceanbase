@@ -178,25 +178,6 @@ int ObMergerRpcProxy::get_last_frozen_memtable_version(int64_t & frozen_version)
   return ret;
 }
 
-int ObMergerRpcProxy::async_heartbeat(const ObServer & merge_server)
-{
-  int ret = OB_SUCCESS;
-  if (!check_inner_stat())
-  {
-    TBSYS_LOG(ERROR, "%s", "check inner stat failed");
-    ret = OB_INNER_STAT_ERROR;
-  }
-  else
-  {
-    /// async send heartbeat no need retry
-    ret = rpc_stub_->heartbeat_server(rpc_timeout_, root_server_, merge_server, OB_MERGESERVER);
-    if (ret != OB_SUCCESS)
-    {
-      TBSYS_LOG(WARN, "heartbeat with root server failed:ret[%d]", ret);
-    }
-  }
-  return ret;
-}
 
 bool ObMergerRpcProxy::check_range_param(const ObNewRange & range_param)
 {

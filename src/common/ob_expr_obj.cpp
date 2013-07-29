@@ -1322,6 +1322,7 @@ inline int ObExprObj::cast_to_int(int64_t &val) const
   if (OB_UNLIKELY(this->get_type() == ObNullType))
   {
     // TBSYS_LOG(WARN, "should not be null");
+    // NB: becareful, it is not real error, the caller need treat it as NULL
     ret = OB_INVALID_ARGUMENT;
   }
   else
@@ -1387,9 +1388,8 @@ int ObExprObj::cast_to(int32_t dest_type, ObExprObj &result, ObStringBuf &mem_bu
   ObString varchar;
   if (dest_type == ObVarcharType)
   {
-    if (OB_SUCCESS != (err = this->cast_to_varchar(varchar, mem_buf)))
+    if (OB_SUCCESS != this->cast_to_varchar(varchar, mem_buf))
     {
-      err = OB_SUCCESS;
       result.set_null();
     }
     else
@@ -1630,11 +1630,11 @@ int ObExprObj::substr(const ObExprObj &start_pos_obj, const ObExprObj &expect_le
   {
     result.set_null();
   }
-  else if (OB_SUCCESS != (ret = start_pos_obj.cast_to_int(start_pos)))
+  else if (OB_SUCCESS != start_pos_obj.cast_to_int(start_pos))
   {
     result.set_null();
   }
-  else if (OB_SUCCESS != (ret = expect_length_obj.cast_to_int(expect_length)))
+  else if (OB_SUCCESS != expect_length_obj.cast_to_int(expect_length))
   {
     result.set_null();
   }
@@ -1663,7 +1663,7 @@ int ObExprObj::substr(const int32_t start_pos, const int32_t expect_length_of_st
   {
     result.set_null();
   }
-  else if (OB_SUCCESS != (err = this->cast_to_varchar(varchar, mem_buf)))
+  else if (OB_SUCCESS != this->cast_to_varchar(varchar, mem_buf))
   {
     result.set_null();
   }
@@ -1713,9 +1713,8 @@ int ObExprObj::upper_case(ObExprObj &result, ObStringBuf &mem_buf) const
   }
   else
   {
-    if (OB_SUCCESS != (ret = this->cast_to_varchar(varchar, mem_buf)))
+    if (OB_SUCCESS != this->cast_to_varchar(varchar, mem_buf))
     {
-      ret = OB_SUCCESS;
       result.set_null();
     }
     else
@@ -1741,9 +1740,8 @@ int ObExprObj::lower_case(ObExprObj &result, ObStringBuf &mem_buf) const
   }
   else
   {
-    if (OB_SUCCESS != (ret = this->cast_to_varchar(varchar, mem_buf)))
+    if (OB_SUCCESS != this->cast_to_varchar(varchar, mem_buf))
     {
-      ret = OB_SUCCESS;
       result.set_null();
     }
     else
@@ -1771,14 +1769,14 @@ int ObExprObj::concat(const ObExprObj &other, ObExprObj &result, ObStringBuf &me
   }
   else
   {
-    if (OB_SUCCESS != (ret = this->cast_to_varchar(this_varchar, mem_buf)))
+    if (OB_SUCCESS != this->cast_to_varchar(this_varchar, mem_buf))
     {
-      TBSYS_LOG(WARN, "fail to cast obj to varchar. ret=%d", ret);
+      // TBSYS_LOG(WARN, "fail to cast obj to varchar. ret=%d", ret);
       result.set_null();
     }
-    else if (OB_SUCCESS != (ret = other.cast_to_varchar(that_varchar, mem_buf)))
+    else if (OB_SUCCESS != other.cast_to_varchar(that_varchar, mem_buf))
     {
-      TBSYS_LOG(WARN, "fail to cast obj to varchar. ret=%d", ret);
+      // TBSYS_LOG(WARN, "fail to cast obj to varchar. ret=%d", ret);
       result.set_null();
     }
     else
@@ -1829,7 +1827,7 @@ int ObExprObj::trim(const ObExprObj &trimType, const ObExprObj &trimPattern, ObE
   }
   else if (OB_SUCCESS != (err = trimPattern.cast_to_varchar(pattern, mem_buf)))
   {
-    TBSYS_LOG(WARN, "fail to get trim pattern. err=%d", err);
+    // TBSYS_LOG(WARN, "fail to get trim pattern. err=%d", err);
   }
   else if (pattern.length() <= 0)
   {
@@ -1838,7 +1836,7 @@ int ObExprObj::trim(const ObExprObj &trimType, const ObExprObj &trimPattern, ObE
   }
   else if (OB_SUCCESS != (err = this->cast_to_varchar(src, mem_buf)))
   {
-    TBSYS_LOG(WARN, "fail to get trim source. err=%d", err);
+    // TBSYS_LOG(WARN, "fail to get trim source. err=%d", err);
   }
   else
   {
@@ -1869,6 +1867,7 @@ int ObExprObj::trim(const ObExprObj &trimType, const ObExprObj &trimPattern, ObE
   else
   {
     result.set_null();
+    err = OB_SUCCESS;
   }
   return err;
 }

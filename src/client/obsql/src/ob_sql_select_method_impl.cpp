@@ -44,21 +44,23 @@ ObDataSource* consishash_mergeserver_select(ObClusterInfo *pool, const char* sql
 /* random */
 ObSQLConn* random_conn_select(ObDataSource *pool)
 {
+  ObSQLListNode *node = NULL;
   ObSQLConn* conn = NULL;
-  TBSYS_LOG(DEBUG, "pool is %p, conn_list is %p  free_conn_list is %p", pool, &pool->conn_list_, &pool->conn_list_.free_conn_list_);
-  TBSYS_LOG(DEBUG, "free list has %d connection before get", get_list_size(&pool->conn_list_.free_conn_list_));
-  TBSYS_LOG(DEBUG, "used list has %d connection before get", get_list_size(&pool->conn_list_.used_conn_list_));
-  conn = ob_sql_list_get_first(&pool->conn_list_.free_conn_list_, ObSQLConn, conn_list_node_);
+  TBSYS_LOG(DEBUG, "pool is %p, conn_list is %p  free_conn_list is %p", pool, &pool->conn_list_, &pool->conn_list_.free_list_);
+  TBSYS_LOG(DEBUG, "free list has %d connection before get", pool->conn_list_.free_list_.size_);
+  TBSYS_LOG(DEBUG, "used list has %d connection before get", pool->conn_list_.used_list_.size_);
+  node = pool->conn_list_.free_list_.head_;
+  //conn = ob_sql_list_get_first(&pool->conn_list_.free_conn_list_, ObSQLConn, conn_list_node_);
   /* end TODO */
-  if (NULL != conn)
+  if (NULL != node)
   {
     if (0 == pthread_mutex_lock(&pool->mutex_))
     {
       //ob_sql_list_get(conn, &pool->free_conn_list_, conn_list_node_, r);
-      ob_sql_list_del(&conn->conn_list_node_);
-      ob_sql_list_add_tail(&conn->conn_list_node_,  &pool->conn_list_.used_conn_list_);
-      TBSYS_LOG(DEBUG, "uesd list has %d connection after get", get_list_size(&pool->conn_list_.used_conn_list_));
-      TBSYS_LOG(DEBUG, "free list has %d connection after get", get_list_size(&pool->conn_list_.free_conn_list_));
+      ob_sql_list_del(&pool->conn_list_.free_list_, node);
+      ob_sql_list_add_tail(&pool->conn_list_.used_list_, node);
+      TBSYS_LOG(DEBUG, "uesd list has %d connection after get", pool->conn_list_.used_list_.size_);
+      TBSYS_LOG(DEBUG, "free list has %d connection after get", pool->conn_list_.free_list_.size_);
       pthread_mutex_unlock(&pool->mutex_);
     }
     else
@@ -70,6 +72,8 @@ ObSQLConn* random_conn_select(ObDataSource *pool)
   {
     TBSYS_LOG(DEBUG, "ob_sql_list_get_first(pool(%p) free conn list) is null", pool);
   }
+  TBSYS_LOG(DEBUG, "default con select get node is %p", node);
+  conn = (ObSQLConn*)node->data_;
   TBSYS_LOG(DEBUG, "default con select get con is %p", conn);
   return conn;
 }

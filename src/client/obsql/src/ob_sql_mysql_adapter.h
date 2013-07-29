@@ -37,8 +37,8 @@
  * MYSQL unused2 point to real MYSQL used when mysql_init return real MYSQL object
  * add real MYSQL to cluster->server->conn pool when call mysql_real_connect
  */
-#ifndef OB_SQL_FAKE_H_
-#define OB_SQL_FAKE_H_
+#ifndef OB_SQL_MYSQL_ADAPTER_H_
+#define OB_SQL_MYSQL_ADAPTER_H_
 #include "ob_sql_define.h"
 
 OB_SQL_CPP_START

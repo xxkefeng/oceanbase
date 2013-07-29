@@ -5,7 +5,7 @@
  * 1. 0 >= ob_error_code > OB_MAX_ERROR_CODE
  * 2. strlen(state) == 5
  */
-
+OB_ADD_SQLSTATE(OB_TRANS_ROLLBACKED, "25S03", "25S03");
 OB_ADD_SQLSTATE(OB_OBJ_TYPE_ERROR, "HY004", "S1000");
 OB_ADD_SQLSTATE(OB_INVALID_ARGUMENT, "HY000", "S1000");
 /* HY093 - invalid parameter number */

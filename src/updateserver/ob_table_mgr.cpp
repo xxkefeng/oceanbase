@@ -1097,6 +1097,24 @@ namespace oceanbase
         time_stamp_ = sst_meta.time_stamp;
         sstable_loaded_time_ = sst_meta.sstable_loaded_time;
       }
+      if (OB_SUCCESS != ret)
+      {
+        ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
+        if (NULL == ups_main)
+        {
+          TBSYS_LOG(ERROR, "get ups main fail");
+        }
+        else
+        {
+          SSTableMgr &sstable_mgr = ups_main->get_update_server().get_sstable_mgr();
+          bool remove_sstable_file = true;
+          int tmp_ret = OB_SUCCESS;
+          if (OB_SUCCESS != (tmp_ret = sstable_mgr.erase_sstable(get_sstable_id(), remove_sstable_file)))
+          {
+            TBSYS_LOG(WARN, "erase sstable from sstable_mgr fail ret=%d sstable_id=%lu", tmp_ret, get_sstable_id());
+          }
+        }
+      }
       return ret;
     }
 
@@ -3235,7 +3253,7 @@ namespace oceanbase
           {
             SSTableID sst_id = (*uncommited_iter)->get_sstable_id();
             table_allocator_.free(*uncommited_iter);
-            TBSYS_LOG(WARN, "load fail %s", sst_id.log_str());
+            TBSYS_LOG(WARN, "load rollbacked %s", sst_id.log_str());
           }
         }
         else

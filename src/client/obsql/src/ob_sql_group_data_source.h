@@ -33,14 +33,7 @@ typedef struct ob_sql_cluster_pool
   //ob_sql_list_t cluster_list_;
   ObClusterInfo clusters_[OB_SQL_MAX_CLUSTER_NUM];
   pthread_rwlock_t rwlock_;
-}ObGroupDataSource;
-
-/** 根据获得的配置文件以及MS list来初始化ObGroupSource
- *  ObGroupDataSource
- *     ----------  ObClusterInfo
- *                     ----------  ObDataSource
- */
-int init_group_ds(ObSQLGlobalConfig *config, ObGroupDataSource *gds);
+} ObGroupDataSource;
 
 /** 根据获得的配置文件以及MS list来更新全局的连接池
  *  调用之前拿到了全局读写锁

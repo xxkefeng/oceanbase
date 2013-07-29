@@ -40,7 +40,7 @@ namespace oceanbase
     class ObMalloc : public ObIAllocator
     {
       public:
-        ObMalloc() : mod_id_(0) {};
+        ObMalloc() : mod_id_(ObModIds::OB_MOD_DO_NOT_USE_ME) {};
         explicit ObMalloc(int32_t mod_id) : mod_id_(mod_id) {};
         ~ObMalloc() {};
       public:

@@ -921,7 +921,7 @@ namespace oceanbase
       if (ret == OB_SUCCESS)
       {
         int32_t status = 0; // we don't care this
-        ret = root_server_->regist_server(server, false, server_version, status, csr_ts);
+        ret = root_server_->regist_chunk_server(server, server_version, status, csr_ts);
       }
 
       return ret;

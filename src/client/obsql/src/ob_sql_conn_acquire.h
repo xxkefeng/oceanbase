@@ -72,14 +72,14 @@ int release_conn(ObSQLConn *conn);
  * @param dest     目的conn list
  * @param src      源DataSource
  */
-int move_conn_list(ObSQLConnList *dest, ObDataSource *src);
+//int move_conn_list(ObSQLConnList *dest, ObDataSource *src);
 
 /**
  * 在不同的ClusterInfo之间移动连接信息
  * @param dinfo   dest cluster info
  * @param sinfo   src  cluster info
  */
-int move_conn(ObClusterInfo *dinfo, ObClusterInfo *sinfo);
+//int move_conn(ObClusterInfo *dinfo, ObClusterInfo *sinfo);
 OB_SQL_CPP_END
 
 #endif

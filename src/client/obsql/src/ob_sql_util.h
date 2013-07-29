@@ -29,7 +29,6 @@ uint32_t trans_ip_to_int(const char* ip);
 void trans_int_to_ip(ObServerInfo *server, char *buffer, int32_t size);
 const char* get_server_str(ObServerInfo *server);
 const char* get_ip(ObServerInfo *server);
-int32_t get_list_size(ob_sql_list_t *list);
 void insert_rs_list(uint32_t ip, uint32_t port);
 void dump_delete_ms_conn();
 OB_SQL_CPP_END

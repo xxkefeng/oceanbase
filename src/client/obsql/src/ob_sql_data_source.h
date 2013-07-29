@@ -32,21 +32,13 @@ typedef struct ob_sql_connection
   MYSQL *mysql_;                 /* real mysql conn */
   ob_sql_connection_pool *pool_; /* mysql pool used when give back conn*/
   ObServerInfo cluster_;         /* cluster root server */
-  ob_sql_list_t conn_list_node_; /* connetion list member */
+  ObSQLListNode *node_;          /* conn belongs to */
 } ObSQLConn;
-
-typedef struct ob_sql_connection_list
-{
-  ob_sql_list_t delete_list_node_;
-  ob_sql_list_t free_conn_list_;
-  ob_sql_list_t used_conn_list_;
-} ObSQLConnList;
 
 //到一个MergeServer的Connection Pool
 //全局配置中的minConnection/maxConnection都是针对这个结构
 typedef struct ob_sql_connection_pool
 {
-  //int32_t size_;                /* current size of free conn pool */
   ob_sql_server_pool *cluster_; /* cluster data source belongs to */
   ObServerInfo server_;
   ObSQLConnList conn_list_;     /* conection list free/used */

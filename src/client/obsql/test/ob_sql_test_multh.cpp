@@ -62,6 +62,7 @@ int prepare_env()
       exit(0);
     }
     mysql_close(mysql);
+    sleep(30);
     mysql = mysql_init(NULL);
     if (mysql_query(mysql, "insert into test values(1,2,3), (2,3,4), (3,4,5)"))
     {
@@ -79,6 +80,36 @@ void test_query()
   
 }
 
+void run_select()
+{
+  
+  /*MYSQL *mysql = NULL;
+  mysql = mysql_init();
+  if (NULL == mysql)
+  {
+    TBSYS_LOG(ERROR, "");
+    exit(-1);
+  }
+  else
+  {
+    //
+  }*/
+}
+
+void run_insert()
+{
+  
+}
+
+void run_update()
+{
+  
+}
+
+void run_replace()
+{
+  
+}
 
 static void * task(void *arg)
 {

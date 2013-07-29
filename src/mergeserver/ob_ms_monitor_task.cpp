@@ -70,10 +70,7 @@ void ObMergerMonitorTask::runTimerTask(void)
       }
     }
     old_drop_counter_ = new_drop_counter;
-    /// print all module memory usage 
+    /// print all module memory usage
     ob_print_mod_memory_usage();
   }
 }
-
-
-

@@ -187,7 +187,7 @@ DEFINE_DESERIALIZE(ObFilter)
   int ret = OB_SUCCESS;
   ObObj obj;
   int64_t expr_count = 0, i = 0;
-  //reset();
+  destroy_sql_expression_dlist(filters_);
   if (OB_SUCCESS != (ret = obj.deserialize(buf, data_len, pos)))
   {
     TBSYS_LOG(WARN, "fail to deserialize expr count. ret=%d", ret);
@@ -225,6 +225,7 @@ DEFINE_DESERIALIZE(ObFilter)
 
 void ObFilter::assign(const ObFilter &other)
 {
+  destroy_sql_expression_dlist(filters_);
   dlist_for_each_const(ObSqlExpression, p, other.filters_)
   {
     ObSqlExpression *expr = ObSqlExpression::alloc();

@@ -33,6 +33,8 @@ typedef enum enum_sql_type
   OB_SQL_BEGIN_TRANSACTION,
   OB_SQL_END_TRANSACTION,
   OB_SQL_CONSISTENCE_REQUEST,
+  OB_SQL_DDL,
+  OB_SQL_WRITE,
 } ObSQLType;
 
 typedef struct ob_sql_rs_list
@@ -63,14 +65,9 @@ typedef enum ob_sql_cluster_type
 
 typedef struct ob_sql_select_table
 {
-  //pthread_mutex_t table_mutex_;
-  //uint32_t master_cluster_id_;  /* using when dealing consistence request */
   ObClusterInfo *master_cluster_;
-  //int32_t slot_num_;
   volatile uint32_t master_count_;
   volatile uint32_t cluster_index_;
-  //volatile uint64_t info_;        /* 32bit index + 32bit master ahead count */
-  //uint32_t ids_[OB_SQL_SLOT_NUM]; /* slot_num_ * sizeof(int32_t) cluster id */
   ObClusterInfo *clusters_[OB_SQL_SLOT_NUM];
 } ObSQLSelectTable;
 
@@ -93,10 +90,9 @@ typedef struct ob_sql_cluster_config
   uint32_t cluster_id_;
   int16_t flow_weight_;
   int16_t server_num_;
-  ObServerInfo server_;          /* fake mergeserver where to query cluster info*/
+  ObServerInfo server_;         /* listen ms info */
   ObServerInfo merge_server_[OB_SQL_MAX_MS_NUM];
   ObSQLSelectMsTable *table_;
-  //ObSQLSelectMethodSet select_method_;
   uint32_t read_strategy_;
 } ObSQLClusterConfig;
 

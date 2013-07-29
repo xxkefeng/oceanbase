@@ -478,6 +478,7 @@ int ObMySQLLoginer::write_data(int fd, char* buffer, size_t length)
 int ObMySQLLoginer::read_data(int fd, char* buffer, size_t length)
 {
   int ret = OB_SUCCESS;
+  static const int64_t timeout = 1000000;//1s
   if (fd < 0 || NULL == buffer || length <= 0)
   {
     TBSYS_LOG(ERROR, "invalid argument fd=%d, buffer=%p, length=%zd", fd, buffer, length);
@@ -487,22 +488,39 @@ int ObMySQLLoginer::read_data(int fd, char* buffer, size_t length)
   {
     char* buff = buffer;
     ssize_t count = 0;
+    int64_t trycount = 0;
+    int64_t start_time = tbsys::CTimeUtil::getTime();
     while (OB_SUCCESS == ret && length > 0 && (count = read(fd, buff, length)) != 0)
     {
-      if (-1 == count)
+      trycount ++;
+      if (trycount % 100 == 0 && tbsys::CTimeUtil::getTime() - start_time > timeout)
       {
-        if (errno == EINTR || errno == EAGAIN)
-        {
-          continue;
-        }
-        else
-        {
-          ret = OB_ERROR;
-          TBSYS_LOG(ERROR, "read data faild, errno is %d, errstr is %s", errno, strerror(errno));
-        }
+        TBSYS_LOG(WARN, "read data(fd=%d) timeout. try read count is %ld, count is %zu, length left is %zu, errno is %d,"
+                  "errstring is %s start_time is %ld", fd, trycount, count, length, errno, strerror(errno), start_time);
+        ret = OB_ERROR;
       }
-      buff += count;
-      length -= count;
+      if (OB_SUCCESS == ret)
+      {
+        if (-1 == count)
+        {
+          if (errno == EINTR || errno == EAGAIN)
+          {
+            continue;
+          }
+          else
+          {
+            ret = OB_ERROR;
+            TBSYS_LOG(ERROR, "read data faild, errno is %d, errstr is %s", errno, strerror(errno));
+          }
+        }
+        buff += count;
+        length -= count;
+      }
+    }
+    if (0 != length)
+    {
+      ret = OB_ERROR;
+      TBSYS_LOG(WARN, "read not return enough data need %zu more bytes", length);
     }
   }
   return ret;

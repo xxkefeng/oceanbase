@@ -23,6 +23,8 @@ namespace oceanbase
       OB_DROP_MEM_TABLE = 107,
       OB_PREPARE_SCHEMA = 108,
       OB_HEARTBEAT = 110,
+      // 0.4 version
+      OB_MERGE_SERVER_HEARTBEAT = 111,
       OB_TRANSFER_TABLETS = 113,
       OB_RESULT = 114,
       OB_BATCH_GET_REQUEST = 115,

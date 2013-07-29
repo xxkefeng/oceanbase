@@ -27,7 +27,8 @@ namespace oceanbase
     {
       ObClientWaitObj();
       ~ObClientWaitObj();
-      void reset(const int post_err);
+      void before_post();
+      void after_post(const int post_err);
       int receive_packet(ObPacket* packet);
       static int on_receive_response(easy_request_t* r);
       int wait(ObDataBuffer& response, const int64_t timeout_us);

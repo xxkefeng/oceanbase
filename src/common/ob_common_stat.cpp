@@ -69,6 +69,7 @@ const char *ObStatSingleton::ups_map[] = {
 
   "commit_log_size",
   "commit_log_id",
+  "frozen_version",
 
 };
 
@@ -131,6 +132,17 @@ const char *ObStatSingleton::ms_map[] = {
   // sql scan
   "scan_event_count",
   "scan_event_time",
+  // memory
+  "ms_memory_limit",
+  "ms_memory_total",
+  "ms_memory_parser",
+  "ms_memory_transformer",
+  "ms_memory_ps_plan",
+  "ms_memory_rpc_request",
+  "ms_memory_sql_array",
+  "ms_memory_expression",
+  "ms_memory_row_store",
+  "ms_memory_session",
 };
 
 const char *ObStatSingleton::sql_map[] = {

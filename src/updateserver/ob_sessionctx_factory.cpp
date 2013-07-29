@@ -193,6 +193,11 @@ namespace oceanbase
       }
     }
 
+    bool RWSessionCtx::is_frozen() const
+    {
+      return (stat_ == ST_FROZEN);
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     SessionCtxFactory::SessionCtxFactory() : mod_(ObModIds::OB_UPS_SESSION_CTX),

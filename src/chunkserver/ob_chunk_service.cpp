@@ -3790,7 +3790,6 @@ namespace oceanbase
         OB_STAT_SET(CHUNKSERVER, INDEX_META_OLD_VER_TABLETS_NUM, image_stat.old_ver_tablets_num_);
         OB_STAT_SET(CHUNKSERVER, INDEX_META_OLD_VER_MERGED_TABLETS_NUM, image_stat.old_ver_merged_tablets_num_);
         OB_STAT_SET(CHUNKSERVER, INDEX_META_NEW_VER_TABLETS_NUM, image_stat.new_ver_tablets_num_);
-        OB_STAT_SET(CHUNKSERVER, INDEX_MU_DEFAULT, ob_get_mod_memory_usage(ObModIds::OB_MOD_DEFAULT));
         OB_STAT_SET(CHUNKSERVER, INDEX_MU_NETWORK, ob_get_mod_memory_usage(ObModIds::OB_COMMON_NETWORK));
         OB_STAT_SET(CHUNKSERVER, INDEX_MU_THREAD_BUFFER, ob_get_mod_memory_usage(ObModIds::OB_THREAD_BUFFER));
         OB_STAT_SET(CHUNKSERVER, INDEX_MU_TABLET, ob_get_mod_memory_usage(ObModIds::OB_CS_TABLET_IMAGE));

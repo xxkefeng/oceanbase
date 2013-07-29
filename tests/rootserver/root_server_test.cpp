@@ -259,7 +259,7 @@ void create_root_table(ObRootServer2* root_server)
 
 }
 //由于其他功能还不完善, 测试暂时不加
-TEST(ObRootServer2Test2, regist_server)
+TEST(ObRootServer2Test2, regist_chunk_server)
 {
   ObRootServer2* root_server = NULL;
   ObServer server(ObServer::IPV4, "10.10.10.1", 1001);
@@ -274,7 +274,7 @@ TEST(ObRootServer2Test2, regist_server)
   int status;
   sleep(3);
 
-  int ret = root_server->regist_server(server, false, "0.4.1.2", status);
+  int ret = root_server->regist_chunk_server(server, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
 
   ObChunkServerManager& server_manager = tester.get_server_manager();
@@ -299,9 +299,9 @@ TEST(ObRootServer2Test2, init_report)
   root_server->start_threads();
   int status;
   sleep(3);
-  int ret = root_server->regist_server(server, false, "0.4.1.2", status);
+  int ret = root_server->regist_chunk_server(server, "0.4.1.2", status);
   ASSERT_EQ(ret, OB_SUCCESS);
-  ret = root_server->regist_server(server2, false, "0.4.1.2", status);
+  ret = root_server->regist_chunk_server(server2, "0.4.1.2", status);
   ASSERT_EQ(ret, OB_SUCCESS);
   // now we have two cs
 
@@ -442,9 +442,9 @@ TEST(ObRootServer2Test2, update_capacity_info)
   root_server->get_boot()->set_boot_ok();
   int status;
   sleep(3);
-  int ret = root_server->regist_server(server, false, "0.4.1.2", status);
+  int ret = root_server->regist_chunk_server(server, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
-  root_server->regist_server(server2, false, "0.4.1.2", status);
+  root_server->regist_chunk_server(server2, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
   // now we have two cs
 
@@ -477,9 +477,9 @@ TEST(ObRootServer2Test2, migrate_over)
   root_server->get_boot()->set_boot_ok();
   int status;
   sleep(2);
-  int ret = root_server->regist_server(server, false, "0.4.1.2", status);
+  int ret = root_server->regist_chunk_server(server, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
-  ret = root_server->regist_server(server2, false, "0.4.1.2", status);
+  ret = root_server->regist_chunk_server(server2, "0.4.1.2", status);
   ASSERT_EQ(OB_SUCCESS, ret);
   // now we have two cs
 
@@ -595,7 +595,7 @@ TEST(ObRootServer2Test2, migrate_over)
 
     }
   }
-  root_server->regist_server(server3, false, "0.4.1.2", status);
+  root_server->regist_chunk_server(server3, "0.4.1.2", status);
   info1.range_.table_id_ = 10001;
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
@@ -629,7 +629,7 @@ TEST(ObRootServer2Test2, migrate_over)
   }
   ASSERT_TRUE(found_server2);
   ASSERT_TRUE(found_server3);
-  root_server->regist_server(server4, false, "0.4.1.2", status);
+  root_server->regist_chunk_server(server4, "0.4.1.2", status);
   pos = server_manager.find_by_ip(server4);
   int server4_index = static_cast<int32_t>(pos - server_manager.begin());
   root_server->migrate_over(info1.range_, server2, server4, false, 1);
@@ -675,10 +675,10 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
 
   int status;
   sleep(1);
-  root_server->regist_server(server1, false, "0.4.1.2", status);
-  root_server->regist_server(server2, false, "0.4.1.2", status);
-  root_server->regist_server(server3, false, "0.4.1.2", status);
-  root_server->regist_server(server4, false, "0.4.1.2", status);
+  root_server->regist_chunk_server(server1, "0.4.1.2", status);
+  root_server->regist_chunk_server(server2, "0.4.1.2", status);
+  root_server->regist_chunk_server(server3, "0.4.1.2", status);
+  root_server->regist_chunk_server(server4, "0.4.1.2", status);
   // now we have two cs
 
 root_server->get_boot()->set_boot_ok();
@@ -696,7 +696,7 @@ root_server->get_boot()->set_boot_ok();
   rt_q->dump();
   //cs start again
   TBSYS_LOG(INFO," ------------------- server start again -------------------");
-  root_server->regist_server(server3, false, "0.4.1.2", status);
+  root_server->regist_chunk_server(server3, "0.4.1.2", status);
   ObTabletReportInfoList report_list1;
   ObTabletReportInfoList report_list2;
   ObTabletReportInfoList report_list3;
@@ -803,8 +803,8 @@ void MigrateTestEnv::setup()
 
   // 2. cs register
   int status;
-  ASSERT_EQ(OB_SUCCESS, rs->regist_server(cs1_, false, "0.4.1.2", status));
-  ASSERT_EQ(OB_SUCCESS, rs->regist_server(cs2_, false, "0.4.1.2", status));
+  ASSERT_EQ(OB_SUCCESS, rs->regist_chunk_server(cs1_, "0.4.1.2", status));
+  ASSERT_EQ(OB_SUCCESS, rs->regist_chunk_server(cs2_, "0.4.1.2", status));
 
   rs->get_boot()->set_boot_ok();
   // 3. cs1 report tablets replicas

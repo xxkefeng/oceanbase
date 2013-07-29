@@ -66,6 +66,7 @@ void ObDailyMergeChecker::run(tbsys::CThread * thread, void * arg)
     if (root_server_->is_master() && (root_server_->last_frozen_time_ > 0))
     {
       // check all tablet merged finish and root table is integrated
+      int64_t frozen_version = root_server_->get_last_frozen_version();
       if (!root_server_->check_all_tablet_merged())
       {
         if (now > last_check_timestamp + CHECK_DROP_INTERVAL)
@@ -90,7 +91,7 @@ void ObDailyMergeChecker::run(tbsys::CThread * thread, void * arg)
       else
       {
         // write the log for qa & dba
-        TBSYS_LOG(INFO, "build new root table ok");
+        TBSYS_LOG(INFO, "build new root table ok:last_version[%ld]", frozen_version);
         root_server_->last_frozen_time_ = 0;
         // checkpointing after done merge
         root_server_->make_checkpointing();

@@ -5,7 +5,7 @@ ObSQLGlobalConfig g_config_array[OB_SQL_CONFIG_NUM];
 ObSQLGlobalConfig *g_config_using = g_config_array + 0;
 ObSQLGlobalConfig *g_config_update = g_config_array + 1;
 
-ob_sql_list_t g_delete_ms_list;
+ObSQLList g_delete_ms_list;
 
 /* 真实连接的连接池 */
 ObGroupDataSource g_group_ds;

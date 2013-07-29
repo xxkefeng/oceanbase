@@ -62,13 +62,20 @@ namespace oceanbase
                              DEFAULT_VERSION, server, sql_port, server_version, status);
     }
 
-    // heartbeat rpc through register server interface
+    // chunk server heartbeat rpc
     int ObGeneralRpcStub::heartbeat_server(const int64_t timeout, const ObServer & root_server,
-        const ObServer & merge_server, const ObRole server_role) const
+        const ObServer & chunk_server, const ObRole server_role) const
     {
       return post_request_2(root_server, timeout, OB_HEARTBEAT, NEW_VERSION,
-          ObTbnetCallback::default_callback, NULL,
-          merge_server, static_cast<int32_t>(server_role));
+          ObTbnetCallback::default_callback, NULL, chunk_server, static_cast<int32_t>(server_role));
+    }
+
+    // merge server heartbeat rpc
+    int ObGeneralRpcStub::heartbeat_merge_server(const int64_t timeout, const ObServer & root_server,
+        const ObServer & merge_server, const ObRole server_role, const int32_t sql_port) const
+    {
+      return post_request_3(root_server, timeout, OB_MERGE_SERVER_HEARTBEAT, NEW_VERSION + 1,
+          ObTbnetCallback::default_callback, NULL, merge_server, static_cast<int32_t>(server_role), sql_port);
     }
 
     int ObGeneralRpcStub::find_server(const int64_t timeout, const ObServer & root_server,
@@ -223,7 +230,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObGeneralRpcStub::ups_apply(const int64_t timeout, const ObServer & server, 
+    int ObGeneralRpcStub::ups_apply(const int64_t timeout, const ObServer & server,
         const ObMutator & mutate_param) const
     {
       return send_1_return_0(server, timeout, OB_WRITE, DEFAULT_VERSION, mutate_param);

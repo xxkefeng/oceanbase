@@ -68,7 +68,7 @@ let $b=deploy_get_value(ob2.mysql_p select value-50>0 from (select * from __all_
 --echo $b
 
 
-let $a=deploy_get_value(ob1.mysql_p select value>0 from (select * from __all_server_stat) tt where svr_type='mergeserver' and name like 'sql_replace_count' and svr_port!=$mlms);
+let $a=deploy_get_value(ob1.mysql_p select value>1 from (select * from __all_server_stat) tt where svr_type='mergeserver' and name like 'sql_replace_count' and svr_port!=$mlms);
 let $b=deploy_get_value(ob2.mysql_p select value>0 from (select * from __all_server_stat) tt where svr_type='mergeserver' and name like 'sql_replace_count' and svr_port!=$slms);
 --echo master cluster replace count
 --echo $a

@@ -178,7 +178,7 @@ int ObGeneralRootRpcProxy::scan_root_table(ObTabletLocationCache * cache,
   return ret;
 }
 
-void ObGeneralRootRpcProxy::find_tablet_item(const uint64_t table_id, const ObRowkey & row_key, 
+void ObGeneralRootRpcProxy::find_tablet_item(const uint64_t table_id, const ObRowkey & row_key,
     const ObRowkey & start_key, const ObRowkey & end_key, const ObServer & addr, ObNewRange & range,
     bool & find, ObTabletLocationList & list, ObTabletLocationList & location)
 {

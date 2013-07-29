@@ -23,8 +23,10 @@ sleep 10;
 
 deploy ob1.create_client;
 create table t1(c1 int primary key, c2 varchar(20));
+sleep 60;
 
 --disable_query_log
+--disable_result_log
 let $cnt=500;
 while($cnt)
 {
@@ -33,7 +35,6 @@ while($cnt)
    eval select /*+ read_consistency(weak)*/* from t1;       
    dec $cnt;
 }
---enable_query_log
 
 let $master_ups=deploy_get_value(ob1.get_master_ups);
 let $slave_ups=deploy_get_value(ob1.get_slave_ups);

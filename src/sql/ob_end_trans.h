@@ -76,10 +76,11 @@ namespace oceanbase
                   ret, to_cstring(req_));
         if (OB_TRANS_ROLLBACKED == ret)
         {
-          // reset transaction id
-          ObTransID invalid_trans;
-          my_phy_plan_->get_result_set()->get_session()->set_trans_id(invalid_trans);
+          TBSYS_LOG(USER_ERROR, "transaction is rolled back");
         }
+        // reset transaction id
+        ObTransID invalid_trans;
+        my_phy_plan_->get_result_set()->get_session()->set_trans_id(invalid_trans);
       }
       else
       {

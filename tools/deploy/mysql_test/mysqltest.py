@@ -15,6 +15,7 @@ from os import chdir, getcwd, makedirs
 from os.path import basename, join, dirname, realpath
 from time import strftime, time
 import sys
+from filter import *
 
 def my_mkdir(path):
     try:
@@ -254,6 +255,25 @@ class Manager:
         if "exclude" not in self.opt:
             self.opt["exclude"] = None
         self.test_set = filter(lambda k: k not in self.opt["exclude"], self.test_set)
+        if "filter" in self.opt:
+            if self.opt["filter"]=="c":
+                exclude_list = c_list
+            elif self.opt["filter"]=="cp":
+                exclude_list = cp_list
+            elif self.opt["filter"]=="j":
+                exclude_list = j_list
+            elif self.opt["filter"]=="jp":
+                exclude_list = jp_list
+            elif self.opt["filter"]=="o":
+                exclude_list = o_list
+            elif self.opt["filter"]=="op":
+                exclude_list = op_list
+            else:
+                exclude_list = []
+            self.test_set = filter(lambda k: k not in exclude_list, self.test_set)
+            #print self.test_set
+        self.test_set = sorted(self.test_set)
+            
 
     def shrink_errmsg(self, errmsg):
         if type(errmsg) == str:
@@ -299,7 +319,7 @@ class Manager:
         else:
             self.log_fp.write('%s INFO: [ %s ] case failed!\n' % (strftime("%Y-%m-%d %X"), result["name"]))
             self.log_fp.write("%s\n" % str(result["errput"]).strip())
-            pfail( strftime('%m/%d/%Y %X') + self.shrink_errmsg(result["errput"]))
+            pfail(self.shrink_errmsg(result["errput"]))
 
         if self.after_one:
             self.after_one(self)

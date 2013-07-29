@@ -246,7 +246,6 @@ int init_func_set(FuncSet *set)
   }
 
   native_client_version = (*set->real_mysql_get_client_version)();
-
   set->real_mysql_get_host_info = reinterpret_cast<const char* (*)(MYSQL*)>(dlsym(handle, "mysql_get_host_info"));
   if ((error = dlerror()) != NULL)  {
     fprintf (stderr, "%s\n", error);

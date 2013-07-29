@@ -17,117 +17,53 @@
 #ifndef OB_SQL_LIST_H_
 #define OB_SQL_LIST_H_
 
+
+
 /**
- * 列表，参考kernel上的list.h
+ * 列表
  */
 #include "ob_sql_define.h"
-
+#include <string.h>
+#include <stdint.h>
 OB_SQL_CPP_START
-
-// from kernel list
-typedef struct ob_sql_list_t ob_sql_list_t;
-
-struct ob_sql_list_t {
-    ob_sql_list_t *next, *prev;
+enum ObSQLListType
+{
+  OBSQLCONN = 0,
+  OBSQLCONNLIST,
 };
 
-#define OB_SQL_LIST_HEAD_INIT(name) {&(name), &(name)}
-#define ob_sql_list_init(ptr) do {                \
-        (ptr)->next = (ptr);                    \
-        (ptr)->prev = (ptr);                    \
-    } while (0)
-
-static inline void __ob_sql_list_add(ob_sql_list_t *list,
-                                   ob_sql_list_t *prev, ob_sql_list_t *next)
+typedef struct ob_sql_list_node
 {
-    next->prev = list;
-    list->next = next;
-    list->prev = prev;
-    prev->next = list;
-}
-// list head to add it after
-static inline void ob_sql_list_add_head(ob_sql_list_t *list, ob_sql_list_t *head)
+  void *data_;
+  ob_sql_list_node *prev_;
+  ob_sql_list_node *next_;
+} ObSQLListNode;
+
+typedef struct ob_sql_list
 {
-    __ob_sql_list_add(list, head, head->next);
-}
-// list head to add it before
-static inline void ob_sql_list_add_tail(ob_sql_list_t *list, ob_sql_list_t *head)
+  ObSQLListType type_;
+  int32_t size_;
+  ObSQLListNode *head_;
+  ObSQLListNode *tail_;
+} ObSQLList;
+
+typedef struct ob_sql_conn_list
 {
-    __ob_sql_list_add(list, head->prev, head);
-}
-static inline void __ob_sql_list_del(ob_sql_list_t *prev, ob_sql_list_t *next)
-{
-    next->prev = prev;
-    prev->next = next;
-}
-// deletes entry from list
-static inline void ob_sql_list_del(ob_sql_list_t *entry)
-{
-    __ob_sql_list_del(entry->prev, entry->next);
-    ob_sql_list_init(entry);
-}
-// tests whether a list is empty
-static inline int ob_sql_list_empty(const ob_sql_list_t *head)
-{
-    return (head->next == head);
-}
-// move list to new_list
-static inline void ob_sql_list_movelist(ob_sql_list_t *list, ob_sql_list_t *new_list)
-{
-    if (!ob_sql_list_empty(list)) {
-        new_list->prev = list->prev;
-        new_list->next = list->next;
-        new_list->prev->next = new_list;
-        new_list->next->prev = new_list;
-        ob_sql_list_init(list);
-    } else {
-        ob_sql_list_init(new_list);
-    }
-}
-// join list to head
-static inline void ob_sql_list_join(ob_sql_list_t *list, ob_sql_list_t *head)
-{
-    if (!ob_sql_list_empty(list)) {
-        ob_sql_list_t *first = list->next;
-        ob_sql_list_t *last = list->prev;
-        ob_sql_list_t *at = head->prev;
+  ObSQLList free_list_;
+  ObSQLList used_list_;
+} ObSQLConnList;
 
-        first->prev = at;
-        at->next = first;
-        last->next = head;
-        head->prev = last;
-    }
-}
+int ob_sql_list_init(ObSQLList *list, ObSQLListType type);
 
-// get last
-#define ob_sql_list_get_last(list, type, member)                              \
-    ob_sql_list_empty(list) ? NULL : ob_sql_list_entry((list)->prev, type, member)
-
-// get first
-#define ob_sql_list_get_first(list, type, member)                             \
-    ob_sql_list_empty(list) ? NULL : ob_sql_list_entry((list)->next, type, member)
-
-// caller should make sure list has more than n elements
-#define ob_sql_list_get(pos, head, member, n)                      \
-    for (pos = ob_sql_list_entry((head)->next, typeof(*pos), member);         \
-            &pos->member != (head) && n-- > 0;                                         \
-            pos = ob_sql_list_entry(pos->member.next, typeof(*pos), member))
+int ob_sql_list_add_before(ObSQLList *list, ObSQLListNode *pos, ObSQLListNode *node);
+int ob_sql_list_add_after(ObSQLList *list, ObSQLListNode *pos, ObSQLListNode *node);
+int ob_sql_list_del(ObSQLList *list, ObSQLListNode *node);
+int ob_sql_list_add_head(ObSQLList *list, ObSQLListNode *node);
+int ob_sql_list_add_tail(ObSQLList *list, ObSQLListNode *node);
+int ob_sql_list_empty(ObSQLList &list);
 
 
-#define ob_sql_list_entry(ptr, type, member) ({                               \
-        const typeof( ((type *)0)->member ) *__mptr = (ptr);                \
-        (type *)( (char *)__mptr - offsetof(type,member) );})
 
-#define ob_sql_list_for_each_entry(pos, head, member)                         \
-    for (pos = ob_sql_list_entry((head)->next, typeof(*pos), member);         \
-         &pos->member != (head);                                        \
-         pos = ob_sql_list_entry(pos->member.next, typeof(*pos), member))
-
-#define ob_sql_list_for_each_entry_safe(pos, n, head, member)                 \
-    for (pos = ob_sql_list_entry((head)->next, typeof(*pos), member),         \
-            n = ob_sql_list_entry(pos->member.next, typeof(*pos), member);    \
-            &pos->member != (head);                                         \
-            pos = n, n = ob_sql_list_entry(n->member.next, typeof(*n), member))
 
 OB_SQL_CPP_END
 

@@ -35,9 +35,9 @@
 #define OB_SQL_CONFIG_NUM 2
 #define OB_SQL_SLOT_PER_MS 100
 #define OB_SQL_MAGIC 0xF0ECAB
-#define OB_SQL_CONFIG_DEFAULT_DIR "/home/admin/"
-#define OB_SQL_CONFIG_NAME "obsql.config"
-#define OB_SQL_CONFIG_ENV "OB_SQL_CONFIG_DIR"
+
+#define OB_SQL_CONFIG_DEFAULT_NAME "/home/admin/libobsql.conf"
+#define OB_SQL_CONFIG_ENV "OB_SQL_CONFIG"
 #define OB_SQL_CONFIG_LOG "logfile"
 #define OB_SQL_CONFIG_URL "initurl"
 #define OB_SQL_CONFIG_LOG_LEVEL "loglevel"
@@ -52,6 +52,11 @@
 #define OB_SQL_START_TRANSACTION "start"
 #define OB_SQL_COMMIT "commit"
 #define OB_SQL_ROLLBACK "rollback"
+#define OB_SQL_CREATE "create"
+#define OB_SQL_DROP "drop"
+//#define OB_SQL_REPLACE_OP "repalce"
+//#define OB_SQL_INSERT_OP "insert"
+//#define OB_SQL_UPDATE_OP "update"
 
 #define OB_SQL_UPDATE_INTERVAL 30 /* 30 seconds */
 #define OB_SQL_RECYCLE_INTERVAL 45
@@ -65,13 +70,10 @@
 #define OB_SQL_SLOT_NUM 100
 
 /** SQL QUERY for mergeserver list */
-
-  
-//#define OB_SQL_QUERY_CLUSTER "select cluster_id,cluster_role,cluster_flow_percent,cluster_vip,cluster_port from __all_cluster"
 #define OB_SQL_QUERY_CLUSTER "select cluster_id,cluster_role,cluster_flow_percent,cluster_vip,cluster_port,read_strategy from __all_cluster"
-//#define OB_SQL_QUERY_SERVER "select server_ipv4,server_port from __all_server where server_type=3 and cluster_id="
 #define OB_SQL_QUERY_SERVER "select svr_ip,svr_port from __all_server where svr_type='mergeserver' and cluster_id="
 #define OB_SQL_CLIENT_VERSION "select /*+ client(libobsql) client_version(4.0.1) mysql_driver(18.0) */ 'client_version'"
+
 /*  */
 #define OB_SQL_MAX_CLUSTER_NUM 5
 #define OB_SQL_MAX_SLAVE_CLUSTER_NUM 16
@@ -88,7 +90,8 @@
 #define OB_CLIENT_INFO  "oceanbasae V4.0 client"
 #define OB_CLIENT_VERSION 400010 //means 4.0.1
 #define OB_SQL_CLIENT_VERSION_51_MIN
-#define OB_SQL_CLIENT_VERSION_55_MIN 50500
+//#define OB_SQL_CLIENT_VERSION_55_MIN 50500
+#define OB_SQL_CLIENT_VERSION_55_MIN 60000
 #define OB_SQL_USER "admin"
 #define OB_SQL_PASS "admin"
 #define OB_SQL_DB "test"

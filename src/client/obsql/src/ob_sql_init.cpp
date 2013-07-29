@@ -13,7 +13,7 @@ using namespace oceanbase::common;
 //define global var
 
 pthread_mutex_t init_mutex = PTHREAD_MUTEX_INITIALIZER;
-
+pthread_mutexattr_t attr;
 static int parseValue(char *str, char *key, char *val)
 {
   char           *p, *p1, *name, *value;
@@ -52,7 +52,7 @@ static int parseValue(char *str, char *key, char *val)
   return 0;
 }
 
-static int get_config(char *filename, ObSQLConfig *config)
+static int get_config(const char *filename, ObSQLConfig *config)
 {
   int ret = OB_SQL_SUCCESS;
   FILE *fp;
@@ -124,98 +124,82 @@ static int get_config(char *filename, ObSQLConfig *config)
   return ret;
 }
 
-static void read_env(const char* config_dir, char *config_file)
+static const char* read_env()
 {
-  char *env_config = getenv(OB_SQL_CONFIG_ENV);
-  if (NULL != env_config)
+  const char* config_file = getenv(OB_SQL_CONFIG_ENV);
+  if (NULL == config_file)
   {
-    if (*(env_config + strlen(env_config) -1) == '/')
+    config_file = OB_SQL_CONFIG_DEFAULT_NAME;
+  }
+  return config_file;
+}
+
+static int load_config()
+{
+  int ret = OB_SQL_SUCCESS;
+  const char *config_file = read_env();
+  ret = get_config(config_file, &g_sqlconfig);
+  if (OB_SQL_SUCCESS != ret)
+  {
+    TBSYS_LOG(WARN, "failed to get config %s", config_file);
+  }
+  return ret;
+}
+
+int __attribute__((constructor))ob_sql_init()
+{
+  int ret = OB_SQL_SUCCESS;
+  ::mallopt(M_MMAP_THRESHOLD, OB_SQL_DEFAULT_MMAP_THRESHOLD);
+  ob_init_memory_pool();
+  //load client config
+  ret = load_config();
+  if (OB_SQL_SUCCESS == ret)
+  {
+    //init log
+    TBSYS_LOGGER.setFileName(g_sqlconfig.logfile_, true);
+    //TBSYS_LOGGER.setFileName(g_sqlconfig.logfile_);
+    TBSYS_LOGGER.setLogLevel(g_sqlconfig.loglevel_);
+
+    //set min max conn
+    g_config_using->min_conn_size_ = static_cast<int16_t>(g_sqlconfig.min_conn_);
+    g_config_using->max_conn_size_ = static_cast<int16_t>(g_sqlconfig.max_conn_);
+    g_config_update->min_conn_size_ = static_cast<int16_t>(g_sqlconfig.min_conn_);
+    g_config_update->max_conn_size_ = static_cast<int16_t>(g_sqlconfig.max_conn_);
+
+    //加载libmysqlclient中的函数
+    ret = init_func_set(&g_func_set);
+    if (OB_SQL_SUCCESS != ret)
     {
-      memcpy(config_file, env_config, strlen(env_config));
-      memcpy(config_file + strlen(env_config), OB_SQL_CONFIG_NAME, strlen(OB_SQL_CONFIG_NAME));
+      TBSYS_LOG(ERROR, "load real mysql function symbol from libmysqlclient failed");
+      exit(-1);
     }
     else
     {
-      memcpy(config_file, env_config, strlen(env_config));
-      *(config_file + strlen(env_config)) = '/';
-      memcpy(config_file + strlen(env_config) + 1, OB_SQL_CONFIG_NAME, strlen(OB_SQL_CONFIG_NAME));
+      TBSYS_LOG(INFO, "new ob_sql_init libmysqlclient native functions loaded");
+      //从配置服务器获取配置 初始化连接池 集群选择表
+      if (OB_SQL_SUCCESS != start_update_worker(g_sqlconfig.url_))
+      {
+        TBSYS_LOG(ERROR, "get config from url failed url is %s", g_sqlconfig.url_);
+        ret = OB_SQL_ERROR;
+        exit(-1);
+      }
+      else
+      {
+        g_inited = 1;
+        //初始化连接回收链表启动回收线程
+        ob_sql_list_init(&g_delete_ms_list, OBSQLCONNLIST);                     // recycle connection list
+        ret = start_recycle_worker();
+        if (OB_SQL_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "recycle worker start failed");
+        }
+      }
     }
   }
   else
   {
-    memcpy(config_file, config_dir, strlen(config_dir));
-    memcpy(config_file + strlen(config_dir), OB_SQL_CONFIG_NAME, strlen(OB_SQL_CONFIG_NAME));
-  }
-}
-
-int ob_sql_init()
-{
-  int ret = OB_SQL_SUCCESS;
-  if (0 == g_inited)
-  {
-    const char *config_dir = OB_SQL_CONFIG_DEFAULT_DIR;
-    char config_file[OB_SQL_MAX_FILENAME_LEN];
-    memset(config_file, 0, OB_SQL_MAX_FILENAME_LEN);
-    //ObSQLConfig sqlconfig;
-    //memset(&sqlconfig, 0, sizeof(ObSQLConfig));
-    pthread_mutex_lock(&init_mutex);
-    //double check
-    if (0 == g_inited)
-    {
-      ::mallopt(M_MMAP_THRESHOLD, OB_SQL_DEFAULT_MMAP_THRESHOLD);
-      ob_init_memory_pool();
-      //读环境变量
-      read_env(config_dir, config_file);
-      //读取配置文件
-      ret = get_config(config_file, &g_sqlconfig);
-      if (OB_SQL_SUCCESS == ret)
-      {
-        //init log
-        TBSYS_LOGGER.setFileName(g_sqlconfig.logfile_, true);
-        TBSYS_LOGGER.setLogLevel(g_sqlconfig.loglevel_);
-
-        //set min max conn
-        g_config_using->min_conn_size_ = static_cast<int16_t>(g_sqlconfig.min_conn_);
-        g_config_using->max_conn_size_ = static_cast<int16_t>(g_sqlconfig.max_conn_);
-        g_config_update->min_conn_size_ = static_cast<int16_t>(g_sqlconfig.min_conn_);
-        g_config_update->max_conn_size_ = static_cast<int16_t>(g_sqlconfig.max_conn_);
-
-        //加载libmsyqlclient中的函数
-        ret = init_func_set(&g_func_set);
-        if (OB_SQL_SUCCESS != ret)
-        {
-          TBSYS_LOG(ERROR, "load real mysql function symbol from libmysqlclient failed");
-        }
-        else
-        {
-          TBSYS_LOG(INFO, "new ob_sql_init libmysqlclient native functions loaded");
-          g_inited = 1;
-          
-          //从配置服务器获取配置 初始化连接池 集群选择表
-          if (OB_SQL_SUCCESS != start_update_worker(g_sqlconfig.url_))
-          {
-            TBSYS_LOG(ERROR, "get config from url failed url is %s", g_sqlconfig.url_);
-            ret = OB_SQL_ERROR;
-            exit(-1);
-          }
-          else
-          {
-            //初始化选择方法
-            //g_default_method.select_ms = default_mergeserver_select; // consisten hash
-            //g_default_method.select_conn = default_conn_select;      // round robbin
-
-            //初始化连接回收链表启动回收线程
-            ob_sql_list_init(&g_delete_ms_list);                     // recycle connection list
-            ret = start_recycle_worker();
-            if (OB_SQL_SUCCESS != ret)
-            {
-              TBSYS_LOG(ERROR, "recycle worker start failed");
-            }
-          }
-        }
-      }
-    }
-    pthread_mutex_unlock(&init_mutex);
+    TBSYS_LOG(WARN, "load config failed");
+    exit(-1);
   }
   return ret;
 }

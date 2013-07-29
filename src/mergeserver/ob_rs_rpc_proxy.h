@@ -43,7 +43,7 @@ namespace oceanbase
 
       // merge server heartbeat with root server
       // param  @merge_server localhost merge server addr
-      int async_heartbeat(const common::ObServer & merge_server);
+      int async_heartbeat(const common::ObServer & merge_server, const int32_t sql_port);
 
       // fetch newest schema
       int fetch_newest_schema(common::ObMergerSchemaManager * schema_manager,

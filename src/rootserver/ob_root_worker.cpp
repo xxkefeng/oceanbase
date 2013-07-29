@@ -319,7 +319,6 @@ namespace oceanbase
         root_server_.reset_hb_time();
       }
 
-      TBSYS_LOG(INFO, "init");
       if (ret == OB_SUCCESS)
       {
         TBSYS_LOG(INFO, "[NOTICE] master start step5");
@@ -782,6 +781,7 @@ namespace oceanbase
         case OB_FETCH_SCHEMA_VERSION:
         case OB_RS_GET_LAST_FROZEN_VERSION:
         case OB_HEARTBEAT:
+        case OB_MERGE_SERVER_HEARTBEAT:
         case OB_GET_PROXY_LIST:
         case OB_RS_CHECK_ROOTTABLE:
         case OB_GET_UPDATE_SERVER_INFO:
@@ -914,9 +914,9 @@ namespace oceanbase
                 ob_reset_err_msg();
                 my_buffer->reset();
                 ObDataBuffer thread_buff(my_buffer->current(), my_buffer->remain());
+                // wirte queue
                 if ((void*)WRITE_THREAD_FLAG == args)
                 {
-                  //write stuff
                   TBSYS_LOG(DEBUG, "handle packet, packe code is %d", packet_code);
                   switch(packet_code)
                   {
@@ -986,6 +986,7 @@ namespace oceanbase
                     break;
                   }
                 }
+                // read queue
                 else
                 {
                   TBSYS_LOG(DEBUG, "handle packet, packe code is %d", packet_code);
@@ -1011,6 +1012,9 @@ namespace oceanbase
                       break;
                     case OB_HEARTBEAT:
                       return_code = rt_heartbeat(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_MERGE_SERVER_HEARTBEAT:
+                      return_code = rt_heartbeat_ms(version, *in_buf, req, channel_id, thread_buff);
                       break;
                     case OB_DUMP_CS_INFO:
                       return_code = rt_dump_cs_info(version, *in_buf, req, channel_id, thread_buff);
@@ -1122,7 +1126,8 @@ namespace oceanbase
                 }
                 if (OB_SUCCESS != return_code)
                 {
-                  TBSYS_LOG(DEBUG, "call func error packet_code is %d return code is %d", packet_code, return_code);
+                  TBSYS_LOG(DEBUG, "call func error packet_code is %d return code is %d client %s",
+                      packet_code, return_code, get_peer_ip(ob_packet->get_request()));
                 }
               }
               else
@@ -1876,7 +1881,7 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         TBSYS_LOG(DEBUG,"receive server register,is_merge_server %d",is_merge_server ? 1 : 0);
-        result_msg.result_code_ = root_server_.regist_server(server, is_merge_server, server_version, status);
+        result_msg.result_code_ = root_server_.regist_chunk_server(server, server_version, status);
       }
       if (OB_SUCCESS == ret)
       {
@@ -1901,7 +1906,6 @@ namespace oceanbase
         send_response(OB_SERVER_REGISTER_RESPONSE, MY_VERSION, out_buff, req, channel_id);
       }
       return ret;
-
     }
 
     int ObRootWorker::rt_register_ms(const int32_t version, common::ObDataBuffer& in_buff,
@@ -1978,7 +1982,6 @@ namespace oceanbase
         send_response(OB_SERVER_REGISTER_RESPONSE, MY_VERSION, out_buff, req, channel_id);
       }
       return ret;
-
     }
 
     int ObRootWorker::rt_migrate_over(const int32_t version, common::ObDataBuffer& in_buff,
@@ -2125,6 +2128,8 @@ namespace oceanbase
       return ret;
 
     }
+
+    // for chunk server
     int ObRootWorker::rt_heartbeat(const int32_t version, common::ObDataBuffer& in_buff,
         easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
@@ -2145,8 +2150,7 @@ namespace oceanbase
           TBSYS_LOG(ERROR, "server.deserialize error");
         }
       }
-
-      if (version == MY_VERSION)
+      if ((OB_SUCCESS == ret) && (version == MY_VERSION))
       {
         ret = serialization::decode_vi32(in_buff.get_data(), in_buff.get_capacity(),
             in_buff.get_position(), reinterpret_cast<int32_t *>(&role));
@@ -2157,7 +2161,56 @@ namespace oceanbase
       }
       if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
       {
-        result_msg.result_code_ = root_server_.receive_hb(server,role);
+        result_msg.result_code_ = root_server_.receive_hb(server, server.get_port(), role);
+      }
+      easy_request_wakeup(req);
+      return ret;
+    }
+    // for merge server
+    int ObRootWorker::rt_heartbeat_ms(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      static const int MY_VERSION = 3;
+      common::ObResultCode result_msg;
+      result_msg.result_code_ = OB_SUCCESS;
+      UNUSED(req);
+      UNUSED(channel_id);
+      UNUSED(out_buff);
+      int ret = OB_SUCCESS;
+      ObServer server;
+      ObRole role = OB_MERGESERVER;
+      int32_t sql_port = 0;
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        ret = server.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "server.deserialize failed");
+        }
+      }
+      // role
+      if (OB_SUCCESS == ret)
+      {
+        ret = serialization::decode_vi32(in_buff.get_data(), in_buff.get_capacity(),
+            in_buff.get_position(), reinterpret_cast<int32_t *>(&role));
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "decoe role failed:ret[%d]", ret);
+        }
+      }
+      // sql port
+      if ((OB_SUCCESS == ret) && (MY_VERSION == version))
+      {
+        ret = serialization::decode_vi32(in_buff.get_data(), in_buff.get_capacity(),
+            in_buff.get_position(), &sql_port);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "decode sql port failed:ret[%d]", ret);
+        }
+      }
+      if ((OB_SUCCESS == ret) && (OB_SUCCESS == result_msg.result_code_))
+      {
+        result_msg.result_code_ = root_server_.receive_hb(server, sql_port, role);
       }
       easy_request_wakeup(req);
       return ret;

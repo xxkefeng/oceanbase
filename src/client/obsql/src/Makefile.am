@@ -19,7 +19,7 @@ libobsql_la_SOURCES =                                                   \
   ob_sql_ms_select.h               ob_sql_ms_select.cpp                 \
   ob_sql_mysql_adapter.h           ob_sql_mysql_adapter.cpp             \
   ob_sql_define.h                                                       \
-  ob_sql_list.h                                                         \
+  ob_sql_list.h                    ob_sql_list.cpp                      \
   ob_sql_select_method.h                                                \
   ob_sql_select_method_impl.h     ob_sql_select_method_impl.cpp         \
   ob_sql_global.h                 ob_sql_global.cpp                     \

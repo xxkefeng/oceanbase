@@ -1945,7 +1945,7 @@ int ObTransformer::gen_phy_table(
           ObArray<ObRowkey> rowkey_array;
           // TODO: rowkey obj storage needed. varchar use orginal buffer, will be copied later
           PageArena<ObObj,ModulePageAllocator> rowkey_objs_allocator(
-              PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_MOD_DEFAULT));
+              PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_SQL_TRANSFORMER));
           // ObObj rowkey_objs[OB_MAX_ROWKEY_COLUMN_NUMBER];
 
           if (OB_SUCCESS != (ret = sql_read_strategy.get_read_method(rowkey_array, rowkey_objs_allocator, read_method)))

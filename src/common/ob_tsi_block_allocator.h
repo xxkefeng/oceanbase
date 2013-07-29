@@ -140,7 +140,7 @@ namespace oceanbase
         const static int64_t DEFAULT_NORMAL_BLOCK_GLIMIT = 1024;
         const static int64_t DEFAULT_BIG_BLOCK_GLIMIT = 256;
       public:
-        ObTSIBlockAllocator(): inited_(false), mod_id_(0), allocator_(NULL),
+        ObTSIBlockAllocator(): inited_(false), mod_id_(ObModIds::TSI_BLOCK_ALLOC), allocator_(NULL),
                                normal_block_size_(NORMAL_BLOCK_SIZE),
                                big_block_size_(BIG_BLOCK_SIZE),
                                normal_block_tclimit_(DEFAULT_NORMAL_BLOCK_TCLIMIT),

@@ -12,6 +12,8 @@ sleep 10;
 deploy ob1.create_client;
 create table t1(c1 int primary key, c2 varchar(20));
 
+
+--disable_result_log
 let $cnt=500;
 while($cnt)
 {

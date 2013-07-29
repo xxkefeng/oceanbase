@@ -27,6 +27,7 @@
 #include "common/ob_timer.h"
 #include "common/ob_new_scanner.h"
 #include "common/ob_transaction.h"
+#include "common/ob_spin_lock.h"
 #include "ob_id_map.h"
 #include "ob_ups_mutator.h"
 #include "ob_inc_seq.h"
@@ -165,6 +166,23 @@ namespace oceanbase
         {
           session_timeout_ = timeout;
         };
+
+        bool is_session_expired() const
+        {
+          int64_t cur_time = tbsys::CTimeUtil::getTime();
+          bool bret = ((cur_time - session_start_time_) > session_timeout_
+                      || (cur_time - last_active_time_) > session_idle_time_);
+          if (bret)
+          {
+            TBSYS_LOG(WARN, "session expired, sd=%u ctx=%p cur_time=%ld "
+                      "session_start_time=%ld session_timeout=%ld "
+                      "last_active_time=%ld session_idle_time=%ld",
+                      session_descriptor_, this, cur_time,
+                      session_start_time_, session_timeout_,
+                      last_active_time_, session_idle_time_);
+          }
+          return bret;
+        };
         
         int64_t get_stmt_timeout() const
         {
@@ -211,6 +229,15 @@ namespace oceanbase
           return tlog_buffer_;
         };
 
+        void lock_session()
+        {
+          session_lock_.lock();
+        };
+        void unlock_session()
+        {
+          session_lock_.unlock();
+        };
+
       private:
         const SessionType type_;
         SessionMgr &host_;
@@ -223,6 +250,7 @@ namespace oceanbase
         int64_t last_active_time_;
         uint32_t session_descriptor_;
         mutable common::TraceLog::LogBuffer tlog_buffer_;
+        common::ObSpinLock session_lock_;
     };
 
     class CallbackMgr
@@ -442,7 +470,7 @@ namespace oceanbase
     class KillZombieDuty : public common::ObTimerTask
     {
       public:
-        static const int64_t SCHEDULE_PERIOD = 10L * 1000000L;
+        static const int64_t SCHEDULE_PERIOD = 1L * 1000000L;
       public:
         KillZombieDuty() {};
         virtual ~KillZombieDuty() {};

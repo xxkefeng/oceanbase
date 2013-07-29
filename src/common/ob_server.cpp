@@ -146,13 +146,17 @@ namespace oceanbase
     }
 
     bool ObServer::operator ==(const ObServer& rv) const
-    {/*
+    {
       bool res = true;
       if (version_ != rv.version_)
       {
         res = false;
       }
-      if (res)
+      else if (port_ != rv.port_)
+      {
+        res = false;
+      }
+      else
       {
         if (version_ == IPV4)
         {
@@ -171,14 +175,8 @@ namespace oceanbase
             res = false;
           }
         }
-        else
-        {
-          assert(false); //never reach this
-        }
-
       }
-      */
-      return (!(*this < rv)) && (!(rv < *this));
+      return res;
     }
     bool ObServer::compare_by_ip(const ObServer& rv) const
     {
@@ -200,12 +198,18 @@ namespace oceanbase
       }
       return res;
     }
+
     bool ObServer::operator < (const ObServer& rv) const
     {
       bool res = compare_by_ip(rv);
-      if (!res)
+      // a >= b
+      if (false == res)
       {
-        res = port_ < rv.port_;
+        // b >= a
+        if (false == rv.compare_by_ip(*this))
+        {
+          res = port_ < rv.port_;
+        }
       }
       return res;
     }

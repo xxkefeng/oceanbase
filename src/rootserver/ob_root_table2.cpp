@@ -429,8 +429,9 @@ int ObRootTable2::check_tablet_version_merged(const int64_t tablet_version, cons
   }
   if (!is_merged)
   {
-    TBSYS_LOG(INFO, "already have %d tablet not safely merged to version[%ld], merging_count[%d], safe_count[%ld]",
-        fail_count, tablet_version, merging_count, safe_count);
+    TBSYS_LOG(INFO, "there are %d tablet not safity the veriosn[%ld] and safe_copy_count[%ld], the mering tablet count=%d",
+        fail_count, tablet_version, safe_count, merging_count);
+
   }
   return err;
 }

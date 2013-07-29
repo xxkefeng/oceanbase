@@ -2,7 +2,7 @@
  //
  // ob_trans_executor.cpp updateserver / Oceanbase
  //
- // Copyright (C) 2010, 2012 Taobao.com, Inc.
+ // Copyright (C) 2010, 2012, 2013 Taobao.com, Inc.
  //
  // Created on 2012-08-30 by Yubai (yubai.lk@taobao.com)
  //
@@ -611,7 +611,7 @@ namespace oceanbase
       else if (OB_SUCCESS != (ret = get_session_type(req.trans_id_, type)))
       {
         UPS.response_result(req.rollback_? OB_SUCCESS: ret, task.pkt);
-        TBSYS_LOG(ERROR, "get_session_type(%s)=>%d", to_cstring(req.trans_id_), ret);
+        TBSYS_LOG(WARN, "get_session_type(%s)=>%d", to_cstring(req.trans_id_), ret);
       }
       else
       {
@@ -621,7 +621,9 @@ namespace oceanbase
           task.sid = req.trans_id_;
           if (OB_SUCCESS != (ret = TransCommitThread::push(&task)))
           {
-            UPS.response_result(ret, task.pkt);
+            TBSYS_LOG(ERROR, "push task=%p to TransCommitThread fail, ret=%d %s", &task, ret, to_cstring(req.trans_id_));
+            session_mgr_.end_session(req.trans_id_.descriptor_, true);
+            UPS.response_result(OB_TRANS_ROLLBACKED, task.pkt);
           }
           else
           {
@@ -673,6 +675,12 @@ namespace oceanbase
         if (OB_SUCCESS != (ret = session_guard.fetch_session(phy_plan.get_trans_id(), session_ctx)))
         {
           TBSYS_LOG(USER_ERROR, "Session has been killed, error %d, \'%s\'", ret, to_cstring(phy_plan.get_trans_id()));
+        }
+        else if (session_ctx->get_stmt_start_time() >= task.pkt.get_receive_ts())
+        {
+          TBSYS_LOG(ERROR, "maybe an expired request, will skip it, last_stmt_start_time=%ld receive_ts=%ld",
+                    session_ctx->get_stmt_start_time(), task.pkt.get_receive_ts());
+          ret = OB_STMT_EXPIRED;
         }
         else
         {
@@ -847,6 +855,12 @@ namespace oceanbase
         TBSYS_LOG(WARN, "fetch ctx fail session_descriptor=%u", session_descriptor);
         ret = OB_ERR_UNEXPECTED;
       }
+      else if (session_ctx->is_session_expired())
+      {
+        session_mgr_.revert_ctx(session_descriptor);
+        session_ctx = NULL;
+        ret = OB_TRANS_ROLLBACKED;
+      }
       else
       {
         FILL_TRACE_BUF(session_ctx->get_tlog_buffer(), "start handle get, packet wait=%ld start_time=%ld timeout=%ld src=%s",
@@ -932,6 +946,12 @@ namespace oceanbase
       {
         TBSYS_LOG(WARN, "fetch ctx fail session_descriptor=%u", session_descriptor);
         ret = OB_ERR_UNEXPECTED;
+      }
+      else if (session_ctx->is_session_expired())
+      {
+        session_mgr_.revert_ctx(session_descriptor);
+        session_ctx = NULL;
+        ret = OB_TRANS_ROLLBACKED;
       }
       else
       {
@@ -1096,7 +1116,13 @@ namespace oceanbase
           {
             ret = OB_LOG_TOO_LARGE;
             TBSYS_LOG(ERROR, "mutator.size[%ld] too large",
-                      session_ctx->get_ups_mutator().get_serialize_size());
+                session_ctx->get_ups_mutator().get_serialize_size());
+          }
+          else if (session_ctx->is_frozen())
+          {
+            TBSYS_LOG(ERROR, "session stat is frozen, maybe request duplicate, sd=%u",
+                session_ctx->get_session_descriptor());
+            ret = OB_WAITING_COMMIT;
           }
           else
           {

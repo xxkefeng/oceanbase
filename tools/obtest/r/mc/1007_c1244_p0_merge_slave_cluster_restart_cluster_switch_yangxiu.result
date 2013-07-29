@@ -18,6 +18,7 @@ c1	c2
 4	4
 ob1.major_freeze
 ob2.restart
+ob2.rs0.set_obi_role OBI_SLAVE
 insert into t1 values(5,1),(6,2),(7,3),(8,4);
 select * from t1;
 c1	c2

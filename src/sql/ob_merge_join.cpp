@@ -457,7 +457,7 @@ int ObMergeJoin::inner_get_next_row(const common::ObRow *&row)
         {
           if (OB_ITER_END == ret)
           {
-            TBSYS_LOG(INFO, "end of right child op");
+            TBSYS_LOG(DEBUG, "end of right child op");
             is_right_iter_end_ = true;
             if (!right_cache_.is_empty())
             {

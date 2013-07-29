@@ -1,6 +1,7 @@
 #ifndef __OB_CLUSTER_SERVER_H_
 #define __OB_CLUSTER_SERVER_H_
 
+#include "utility.h"
 #include "ob_server.h"
 #include "ob_define.h"
 #include "ob_vector.h"
@@ -9,14 +10,6 @@ namespace oceanbase
 {
   namespace common
   {
-    static const char * RoleName[] =
-    {
-      "err",
-      "rs",
-      "cs",
-      "ms",
-      "ups"
-    };
     struct ObClusterServer
     {
       ObRole role;
@@ -28,7 +21,7 @@ namespace oceanbase
       bool operator < (const ObClusterServer & other) const
       {
         bool bret = false;
-        int ret = strcmp(RoleName[role], RoleName[other.role]);
+        int ret = strcmp(print_role(role), print_role(other.role));
         if (0 == ret)
         {
           char ip1[OB_IP_STR_BUFF] = "";
@@ -36,8 +29,12 @@ namespace oceanbase
           addr.ip_to_string(ip1, sizeof (ip1));
           other.addr.ip_to_string(ip2, sizeof (ip2));
           ret = strcmp(ip1, ip2);
+          if (0 == ret)
+          {
+            ret = addr.get_port() - other.addr.get_port();
+          }
         }
-        bret = ret < 0;
+        bret = (ret < 0);
         return bret;
       }
     };

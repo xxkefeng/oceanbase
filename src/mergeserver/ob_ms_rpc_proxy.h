@@ -71,10 +71,6 @@ namespace oceanbase
       // set min fetch update server list interval
       void set_min_interval(const int64_t interval);
 
-      // merge server heartbeat with root server
-      // param  @merge_server localhost merge server addr
-      int async_heartbeat(const common::ObServer & merge_server);
-
       // fetch update server list
       int fetch_update_server_list(int32_t & count);
 

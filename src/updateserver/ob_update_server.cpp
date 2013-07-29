@@ -1247,6 +1247,7 @@ namespace oceanbase
       {
         TBSYS_LOG(INFO, "report succ frozen version=%ld", last_frozen_version);
       }
+      OB_STAT_SET(UPDATESERVER, UPS_STAT_FROZEN_VERSION, last_frozen_version);
       return ret;
     }
 

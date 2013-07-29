@@ -75,7 +75,7 @@ int ObMsSqlRequest::reset()
     TBSYS_LOG(WARN, "release all processed event failed:request[%lu], ret[%d]",
         request_id_, ret);
   }
-  buffer_pool_.reset();
+  buffer_pool_.clear();
   finish_queue_.reset();
   // bugfix #224057, if queue is not clear, will cause deadlock
   waiting_queue_.clear();

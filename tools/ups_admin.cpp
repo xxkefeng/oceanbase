@@ -30,7 +30,7 @@
 #include "updateserver/ob_update_server_config.h"
 #include "test_utils.h"
 
-int64_t timeout = 10 * 1000 * 1000L;
+int64_t timeout = 30 * 1000 * 1000L;
 
 void print_scanner(ObScanner &scanner)
 {

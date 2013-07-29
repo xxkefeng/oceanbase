@@ -860,7 +860,7 @@ namespace oceanbase
 
         if (OB_SUCCESS == err)
         {
-          err = root_rpc_->async_heartbeat(merge_server_->get_self());
+          err = root_rpc_->async_heartbeat(merge_server_->get_self(), (int32_t)merge_server_->get_config().obmysql_port);
           if (err != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR, "heartbeat to root server failed:ret[%d]", err);
@@ -2241,6 +2241,24 @@ namespace oceanbase
         table_id = sql_scan_param_ptr->get_table_id();
         if (OB_ALL_SERVER_STAT_TID == table_id)
         {
+          /// update memory usage statistics
+          OB_STAT_SET(MERGESERVER, MS_MEMORY_LIMIT, ob_get_memory_size_limit());
+          OB_STAT_SET(MERGESERVER, MS_MEMORY_TOTAL, ob_get_memory_size_handled());
+          OB_STAT_SET(MERGESERVER, MS_SQL_MU_PARSER, ob_get_mod_memory_usage(ObModIds::OB_SQL_PARSER));
+          OB_STAT_SET(MERGESERVER, MS_SQL_MU_TRANSFORMER, ob_get_mod_memory_usage(ObModIds::OB_SQL_TRANSFORMER));
+          OB_STAT_SET(MERGESERVER, MS_SQL_MU_PS_PLAN, ob_get_mod_memory_usage(ObModIds::OB_SQL_PS_TRANS)
+                      + ob_get_mod_memory_usage(ObModIds::OB_SQL_RESULT_SET_DYN)
+                      + ob_get_mod_memory_usage(ObModIds::OB_SQL_PHY_PLAN));
+          OB_STAT_SET(MERGESERVER, MS_SQL_MU_RPC_REQUEST, ob_get_mod_memory_usage(ObModIds::OB_SQL_RPC_REQUEST));
+          OB_STAT_SET(MERGESERVER, MS_SQL_MU_ARRAY, ob_get_mod_memory_usage(ObModIds::OB_SQL_ARRAY));
+          OB_STAT_SET(MERGESERVER, MS_SQL_MU_EXPR, ob_get_mod_memory_usage(ObModIds::OB_SQL_EXPR));
+          OB_STAT_SET(MERGESERVER, MS_SQL_MU_ROW_STORE, ob_get_mod_memory_usage(ObModIds::OB_SQL_ROW_STORE));
+          OB_STAT_SET(MERGESERVER, MS_SQL_MU_SESSION,
+                      ob_get_mod_memory_usage(ObModIds::OB_SQL_SESSION)
+                      + ob_get_mod_memory_usage(ObModIds::OB_SQL_SESSION_POOL)
+                      + ob_get_mod_memory_usage(ObModIds::OB_SQL_SESSION_SBLOCK)
+                      + ob_get_mod_memory_usage(ObModIds::OB_SQL_SESSION_HASHMAP));
+
           new_scanner->set_range(*sql_scan_param_ptr->get_range());
           rc.result_code_ = service_monitor_->get_scanner(*new_scanner);
         }

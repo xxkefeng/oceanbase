@@ -37,7 +37,11 @@ namespace oceanbase
         {
           if (NULL != session_ctx_)
           {
-            session_ctx_->set_last_active_time(tbsys::CTimeUtil::getTime());
+            if (OB_SUCCESS == ret_)
+            {
+              session_ctx_->set_last_active_time(tbsys::CTimeUtil::getTime());
+            }
+            session_ctx_->unlock_session();
             session_mgr_.revert_ctx(session_descriptor_);
             if (OB_SUCCESS != ret_)
             {
@@ -75,6 +79,10 @@ namespace oceanbase
             TBSYS_LOG(WARN, "fetch ctx fail session_descriptor=%u", session_descriptor_);
             ret = OB_TRANS_ROLLBACKED;
           }
+          else if (session_ctx_->is_session_expired())
+          {
+            ret = OB_TRANS_ROLLBACKED;
+          }
           else if (OB_SUCCESS != (ret = session_ctx_->init_lock_info(lock_mgr_, (IsolationLevel)req.isolation_)))
           {
             TBSYS_LOG(ERROR, "init_lock_info fail ret=%d %s", ret, to_cstring(sid));
@@ -93,6 +101,7 @@ namespace oceanbase
             sid.descriptor_ = session_descriptor_;
             sid.start_time_us_ = session_ctx_->get_session_start_time();
             sid.ups_ = UPS.get_self();
+            session_ctx_->lock_session();
           }
           return ret;
         }
@@ -116,11 +125,18 @@ namespace oceanbase
             TBSYS_LOG(WARN, "fetch ctx fail session_descriptor=%u", sid.descriptor_);
             ret = OB_TRANS_ROLLBACKED;
           }
+          else if (session_ctx->is_session_expired())
+          {
+            session_mgr_.revert_ctx(sid.descriptor_);
+            session_ctx = NULL;
+            ret = OB_TRANS_ROLLBACKED;
+          }
           else if (session_ctx->get_session_descriptor() != sid.descriptor_
                    || session_ctx->get_session_start_time() != sid.start_time_us_
                    || !(UPS.get_self() == sid.ups_))
           {
             session_mgr_.revert_ctx(sid.descriptor_);
+            session_ctx = NULL;
             ret = OB_TRANS_NOT_MATCH;
             TBSYS_LOG(WARN, "session not match: id=%u, start_time=%ld, ups=%s",
                       sid.descriptor_, session_ctx->get_session_start_time(), to_cstring(sid.ups_));
@@ -129,6 +145,7 @@ namespace oceanbase
           {
             session_descriptor_ = sid.descriptor_;
             session_ctx_ = session_ctx;
+            session_ctx_->lock_session();
           }
           return ret;
         }

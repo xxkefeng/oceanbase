@@ -457,20 +457,20 @@ namespace oceanbase
       {
         if ((NULL == (scanner = sub_requests_[sub_req_idx]->get_scanner())))
         {
-          TBSYS_LOG(WARN, "scanner is NULL. no result.");
-          err = OB_ERROR;
+          TBSYS_LOG(WARN, "scanner from %s is NULL. no result.", to_cstring(prev_rpc_event.get_server()));
+          err = OB_ERR_UNEXPECTED;
         }
         if ((OB_SUCCESS == err) && (NULL == (sub_scan_param = sub_requests_[sub_req_idx]->get_scan_param())))
         {
           TBSYS_LOG(WARN, "sub scan_param is NULL. no result.");
-          err = OB_ERROR;
+          err = OB_ERR_UNEXPECTED;
         }
         bool is_req_fullfilled = false;
         int64_t fullfilled_count = 0;
         is_session_end = false;
         if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = scanner->get_is_req_fullfilled(is_req_fullfilled,fullfilled_count))))
         {
-          TBSYS_LOG(WARN,"fail to get fullfilled info from scanner [err:%d]", err);
+          TBSYS_LOG(WARN,"fail to get fullfilled info from scanner from server %s [err:%d]",to_cstring(prev_rpc_event.get_server()), err);
         }
 
         /// (a)
@@ -495,7 +495,7 @@ namespace oceanbase
           }
           else if (OB_SUCCESS != err)
           {
-            TBSYS_LOG(WARN, "fail to get next range, err=%d", err);
+            TBSYS_LOG(WARN, "fail to get next range, scanner from %s, err=%d", to_cstring(prev_rpc_event.get_server()), err);
           }
           else
           {
@@ -523,7 +523,8 @@ namespace oceanbase
             else if (prev_rpc_event.is_session_end())
             {
               // prev request not fullfilled(data too big to transfer); but session end.
-              TBSYS_LOG(INFO, "prev_rpc_event return OB_SESSION_END, end session, no need more request.");
+              TBSYS_LOG(INFO, "prev_rpc_event from %s return OB_SESSION_END, end session, no need more request.", 
+                  to_cstring(prev_rpc_event.get_server()));
               is_session_end = true;
               err = OB_ITER_END;
             }
@@ -532,7 +533,7 @@ namespace oceanbase
                     timeout_us,  next_limit_offset)))
             {
               // prev request not fullfilled(data too big to transfer); use stream request.
-              TBSYS_LOG(WARN, "fail to get session next [err:%d]", err);
+              TBSYS_LOG(WARN, "fail to get session next from %s [err:%d]", to_cstring(prev_rpc_event.get_server()), err);
             }
           }
 
@@ -654,8 +655,10 @@ namespace oceanbase
       if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = find_sub_scan_request(rpc_event,
         belong_to_this, is_first,  sub_req_idx))))
       {
-        TBSYS_LOG(WARN,"fail to find SubRequest for rpc event [rpc_event:%p,rpc_event_id:%ld,"
-          "rpc_event->client_id:%lu,this->event_id:%lu]",  rpc_event, rpc_event->get_event_id(),
+        TBSYS_LOG(WARN,"fail to find SubRequest for rpc event [from:%s,rpc_event:%p,rpc_event_id:%ld,"
+          "rpc_event->client_id:%lu,this->event_id:%lu]",  
+          to_cstring(rpc_event->get_server()),
+          rpc_event, rpc_event->get_event_id(),
           rpc_event->get_client_id(), this->get_request_id());
       }
 
@@ -663,7 +666,8 @@ namespace oceanbase
       {
         if ((OB_SUCCESS == err) && (false == belong_to_this))
         {
-          TBSYS_LOG(WARN, "Unexpected. rpc event not found! The framework should deal with this case. not here");
+          TBSYS_LOG(WARN, "Unexpected. rpc event to %s not found! The framework should deal with this case. not here",
+              to_cstring(rpc_event->get_server()));
           err = OB_ERR_UNEXPECTED;
         }
         else
@@ -680,21 +684,22 @@ namespace oceanbase
         if ((OB_SUCCESS == err) && (true == belong_to_this) && (true == is_first)
             && (OB_SUCCESS == rpc_event->get_result_code()))
         {
-          TBSYS_LOG(DEBUG, "got first finished rpc event of [sub_request:%d,us_used:%ld,"
+          TBSYS_LOG(DEBUG, "got first finished rpc event of [from:%s,sub_request:%d,us_used:%ld,"
               "request_event_id:%lu,rpc_event_id:%lu,session_id:%ld,server:%s,#rows:%ld]",
+              to_cstring(rpc_event->get_server()),
               sub_req_idx, rpc_event->get_time_used(), get_request_id(), rpc_event->get_event_id(),
               rpc_event->get_session_id(), to_cstring(rpc_event->get_server()), rpc_event->get_result().get_row_num());
           cs_result_mem_size_used_ += rpc_event->get_result().get_size();
           if ((OB_SUCCESS == err) && (NULL == (scanner = sub_requests_[sub_req_idx]->get_scanner())))
           {
-            TBSYS_LOG(WARN, "scanner is NULL. no result.");
+            TBSYS_LOG(WARN, "scanner is NULL. no result from server %s", to_cstring(rpc_event->get_server()));
             err = OB_ERROR;
           }
           if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = check_if_need_more_req(sub_req_idx, timeout_us,
             *rpc_event, is_session_end))))
           {
-            TBSYS_LOG(WARN,"fail to check if need any more request for subreq [err:%d,sub_req_idx:%d]",
-              err, sub_req_idx);
+            TBSYS_LOG(WARN,"fail to check if need any more request for subreq. event from %s [err:%d,sub_req_idx:%d]",
+                to_cstring(rpc_event->get_server()), err, sub_req_idx);
           }
 
           /// (d) add result to merger operator
@@ -703,7 +708,7 @@ namespace oceanbase
             sub_requests_[sub_req_idx]->get_query_range(),sub_requests_[sub_req_idx]->get_limit_offset(),
             finish, can_free_res, get_buffer_pool()))))
           {
-            TBSYS_LOG(WARN, "fail to add sharding result. [err=%d]", err);
+            TBSYS_LOG(WARN, "fail to add sharding result from %s. [err=%d]", to_cstring(rpc_event->get_server()), err);
           }
 
           /// dump all result that received be send to ob client
@@ -747,11 +752,11 @@ namespace oceanbase
         {
           if (OB_SUCCESS != (err = retry(sub_req_idx, rpc_event, timeout_us)))
           {
-            TBSYS_LOG(WARN, "this retry not success");
+            TBSYS_LOG(WARN, "this retry not success. server:%s", to_cstring(rpc_event->get_server()));
           }
           if (OB_ITER_END == err)
           {
-            TBSYS_LOG(WARN, "tried all replica and not successful.");
+            TBSYS_LOG(WARN, "tried all replica and not successful. last server:%s", to_cstring(rpc_event->get_server()));
             err = rpc_event->get_result_code();
           }
         }

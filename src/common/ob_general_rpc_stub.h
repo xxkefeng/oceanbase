@@ -84,6 +84,9 @@ namespace oceanbase
         int heartbeat_server(const int64_t timeout, const common::ObServer & root_server,
             const common::ObServer & merge_server, const common::ObRole server_role) const;
 
+        int heartbeat_merge_server(const int64_t timeout, const common::ObServer & root_server,
+            const common::ObServer & merge_server, const common::ObRole server_role, const int32_t sql_port) const;
+
         // get update server vip addr through root server rpc call
         // param  @timeout  action timeout
         //        @root_server root server addr
@@ -149,7 +152,7 @@ namespace oceanbase
         //        @scanner return result
         int mutate(const int64_t timeout, const common::ObServer & server,
             const common::ObMutator & mutate_param, const bool has_data, common::ObScanner & scanner) const;
-        int ups_apply(const int64_t timeout, const common::ObServer & server, 
+        int ups_apply(const int64_t timeout, const common::ObServer & server,
             const common::ObMutator & mutate_param) const;
 
         // reload config for server it self

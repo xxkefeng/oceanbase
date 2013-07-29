@@ -157,13 +157,12 @@ namespace oceanbase
          * chunk server register
          * @param out status 0 do not start report 1 start report
          */
-        int regist_server(const common::ObServer& server, bool is_merge_server, const char* server_version, int32_t& status, int64_t time_stamp = -1);
+        int regist_chunk_server(const common::ObServer& server, const char* server_version, int32_t& status, int64_t time_stamp = -1);
         /*
          * merge server register
          * @param out status 0 do not start report 1 start report
          */
-        int regist_merge_server(const common::ObServer& server,
-            int32_t sql_port, const char* server_version, int64_t time_stamp = -1);
+        int regist_merge_server(const common::ObServer& server, const int32_t sql_port, const char* server_version, int64_t time_stamp = -1);
         /*
          * chunk server更新自己的磁盘情况信息
          */
@@ -196,7 +195,7 @@ namespace oceanbase
         int find_root_table_range(const common::ObScanParam& scan_param, common::ObScanner& scanner);
         virtual int report_tablets(const common::ObServer& server, const common::ObTabletReportInfoList& tablets,
             const int64_t time_stamp);
-        int receive_hb(const common::ObServer& server,common::ObRole role);
+        int receive_hb(const common::ObServer& server, const int32_t sql_port, const common::ObRole role);
         common::ObServer get_update_server_info(bool use_inner_port) const;
         int get_master_ups(common::ObServer &ups_addr, bool use_inner_port);
         int table_exist_in_cs(const uint64_t table_id, bool &is_exist);

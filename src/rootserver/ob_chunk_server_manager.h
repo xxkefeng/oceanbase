@@ -108,13 +108,9 @@ namespace oceanbase
         iterator find_by_ip(const common::ObServer& server);
         const_iterator find_by_ip(const common::ObServer& server) const;
         const_iterator get_serving_ms() const;
-        /*
-         * root server will call this when a server regist to root or echo heart beat
-         * @return 1 new serve 2 relive server 0 heartbt
-         */
-        int receive_hb(const common::ObServer& server, int64_t time_stamp, bool is_merge_server = false, bool is_regist = false);
-        int register_ms(const common::ObServer& server, int32_t port, int64_t time_stamp);
-
+        // regist or receive heartbeat
+        int receive_hb(const common::ObServer& server, const int64_t time_stamp,
+            const bool is_merge_server = false, const int32_t sql_port = 0, const bool is_regist = false);
         int update_disk_info(const common::ObServer& server, const ObServerDiskInfo& disk_info);
         int get_array_length() const;
         ObServerStatus* get_server_status(const int32_t index);

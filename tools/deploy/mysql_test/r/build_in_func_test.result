@@ -1,6 +1,6 @@
 drop table if exists build_in_func_test_table;
-create table build_in_func_test_table (varchar_c varchar(255) primary key, date_c datetime);
-insert into build_in_func_test_table values ('hello', '2012-11-01 19:14:32');
+create table build_in_func_test_table (varchar_c varchar(255) primary key, date_c datetime,v varchar(255));
+insert into build_in_func_test_table values ('hello', '2012-11-01 19:14:32',null);
 select substr(varchar_c, 1, 1) from build_in_func_test_table;
 substr(varchar_c, 1, 1)
 h
@@ -58,6 +58,15 @@ hello
 select substr(varchar_c, -5, 3) from build_in_func_test_table;
 substr(varchar_c, -5, 3)
 hel
+select substr(v,5,10) from build_in_func_test_table;
+substr(v,5,10)
+NULL
+select substr(varchar_c,null,10) from build_in_func_test_table;
+substr(varchar_c,null,10)
+NULL
+select substr(varchar_c,2,null) from build_in_func_test_table;
+substr(varchar_c,2,null)
+NULL
 select substr(varchar_c, -6) from build_in_func_test_table;
 substr(varchar_c, -6)
 
@@ -82,6 +91,12 @@ o
 select substr(varchar_c, 6) from build_in_func_test_table;
 substr(varchar_c, 6)
 
+select substr(varchar_c,null) from build_in_func_test_table;
+substr(varchar_c,null)
+NULL
+select substr(v,1) from build_in_func_test_table;
+substr(v,1)
+NULL
 select substr(date_c, 0) from build_in_func_test_table;
 substr(date_c, 0)
 2012-11-01 19:14:32.000000
@@ -139,6 +154,9 @@ select cast(cast('12' as decimal) as datetime) from build_in_func_test_table;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'decimal) as datetime) from build_in_func_test_table' at line 1
 select cast(cast('12' as decimal) as datetime) from build_in_func_test_table;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'decimal) as datetime) from build_in_func_test_table' at line 1
+select cast(v as int) from build_in_func_test_table;
+cast(v as int)
+NULL
 select trim('aba' from 'ababa') from build_in_func_test_table;
 trim('aba' from 'ababa')
 ba
@@ -193,7 +211,16 @@ trim(LEADING 1 from cast(111 as varchar))
 select trim(TRAILING 1 from cast(111 as varchar)) from build_in_func_test_table;
 trim(TRAILING 1 from cast(111 as varchar))
 
+select trim(v) from build_in_func_test_table;
+trim(v)
+NULL
+select trim(leading v from 'v'),trim(leading varchar_c from 'he') from build_in_func_test_table;
+trim(leading v from 'v')	trim(leading varchar_c from 'he')
+NULL	he
 select coalesce(lower(null), length(lower(upper('yssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxddsd'))), 'dir') from build_in_func_test_table;
 coalesce(lower(null), length(lower(upper('yssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxddsd'))), 'dir')
 466
+select 'NAME:'||varchar_c,'ADDR:'||v from build_in_func_test_table;
+'NAME:'||varchar_c	'ADDR:'||v
+NAME:hello	NULL
 drop table build_in_func_test_table;

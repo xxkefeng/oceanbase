@@ -427,6 +427,10 @@ namespace oceanbase
         TBSYS_LOG(ERROR, "file name too long, log_dir=%s, log_id=%ld, buf_size=%ld",
                   log_dir_, file_id, sizeof(fname));
       }
+      else if ((fd_ = open(fname, OPEN_FLAG, OPEN_MODE)) >= 0)
+      {
+        TBSYS_LOG(INFO, "old %s exist, append clog to it", fname);
+      }
       else if ((NULL == select_pool_file(pool_file, sizeof(pool_file))
                 || (fd_ = reuse(pool_file, fname)) < 0)
                && (fd_ = open(fname, CREATE_FLAG, OPEN_MODE)) < 0)
@@ -434,7 +438,7 @@ namespace oceanbase
         err = OB_IO_ERROR;
         TBSYS_LOG(ERROR, "open(%s): %s", fname, strerror(errno));
       }
-      else
+      if (OB_SUCCESS == err)
       {
         cur_file_id_ = file_id;
         if (0 == min_file_id_)

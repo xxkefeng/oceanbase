@@ -35,6 +35,7 @@ class ObSessionTest: public ::testing::Test
   protected:
     void prepare_select(int s);
     void prepare_replace(int s);
+    void prepare_update(int s);
   protected:
     // data members
     MYSQL *my_;
@@ -51,6 +52,13 @@ ObSessionTest::~ObSessionTest()
 
 void ObSessionTest::SetUp()
 {
+  MYSQL my;
+  ASSERT_TRUE(NULL != mysql_init(&my));
+  fprintf(stderr, "Connecting server %s:%d...\n", HOST, PORT);
+  ASSERT_TRUE(NULL != mysql_real_connect(&my, HOST, USER, PASSWD, "test", PORT, NULL, 0));
+  int ret = mysql_query(&my, "create table if not exists session_test (c1 int primary key, c2 int, c3 int, c4 int, c5 int, c6 int ,c7 int, c8 int, c9 int, c10 int)");
+  ASSERT_EQ(0, ret);
+  mysql_close(&my);
 }
 
 void ObSessionTest::TearDown()
@@ -71,7 +79,7 @@ void ObSessionTest::prepare_select(int s)
 {
   MYSQL_STMT *stmt = mysql_stmt_init(&my_[s]);
   ASSERT_TRUE(stmt);
-  static const char* SELECT_QUERY = "select * from __first_tablet_entry where table_name = ?";
+  static const char* SELECT_QUERY = "select * from session_test where c1 = ?";
   // 1. prepare
   int ret = mysql_stmt_prepare(stmt, SELECT_QUERY, strlen(SELECT_QUERY));
   ASSERT_QUERY_RET(ret);
@@ -80,19 +88,116 @@ void ObSessionTest::prepare_select(int s)
   MYSQL_RES *prepare_meta = mysql_stmt_result_metadata(stmt);
   ASSERT_TRUE(prepare_meta);
   int num_fields = mysql_num_fields(prepare_meta);
-  ASSERT_EQ(24, num_fields);
+  ASSERT_EQ(10, num_fields);
+
+  // 2. bind params
+  MYSQL_BIND bind[1];
+  memset(bind, 0, sizeof(bind));
+/* INTEGER PARAM */
+/* This is a number type, so there is no need
+   to specify buffer_length */
+  int int_data = 0;
+  bind[0].buffer_type= MYSQL_TYPE_LONG;
+  bind[0].buffer= (char *)&int_data;
+  bind[0].is_null= 0;
+  bind[0].length= 0;
+  ret = mysql_stmt_bind_param(stmt, bind);
+  ASSERT_QUERY_RET(ret);
+  // 3. execute
+  int_data = 2;
+  ret = mysql_stmt_execute(stmt);
+  ASSERT_QUERY_RET(ret);
+  // 4. bind results
+  MYSQL_BIND row[10];
+  my_bool is_null[10];
+  my_bool error[10];
+  unsigned long length[10];
+  memset(row, 0, sizeof(row));
+  // int column
+  int row_data[10];
+  for (int i = 0; i < 10; ++i)
+  {
+    row[i].buffer_type = MYSQL_TYPE_LONG;
+    row[i].buffer = (char*)&row_data[i];
+    row[i].is_null = &is_null[i];
+    row[i].length = &length[i];
+    row[i].error = &error[i];
+  }
+  ret = mysql_stmt_bind_result(stmt, row);
+  ASSERT_QUERY_RET(ret);
+
+  // 5. fetch rows
+  fprintf(stdout, "Fetching results...\n");
+  int row_count = 0;
+  while (!mysql_stmt_fetch(stmt))
+  {
+    ++row_count;
+    fprintf(stdout, "row=%d ", row_count);
+  } // end while
+  ASSERT_EQ(0, row_count);
+  mysql_free_result(prepare_meta);
+  // 6. do not close_stmt
 }
 
 void ObSessionTest::prepare_replace(int s)
 {
   MYSQL_STMT *stmt = mysql_stmt_init(&my_[s]);
   ASSERT_TRUE(stmt);
-  static const char* SELECT_QUERY = "replace into __first_tablet_entry (table_name) values(?)";
+  static const char* SELECT_QUERY = "replace into session_test (c1) values(?)";
   // 1. prepare
   int ret = mysql_stmt_prepare(stmt, SELECT_QUERY, strlen(SELECT_QUERY));
   ASSERT_QUERY_RET(ret);
   int param_count = (int)mysql_stmt_param_count(stmt);
   ASSERT_EQ(1, param_count);
+  // 2. bind params
+  MYSQL_BIND bind[1];
+  memset(bind, 0, sizeof(bind));
+/* INTEGER PARAM */
+/* This is a number type, so there is no need
+   to specify buffer_length */
+  int int_data = 0;
+  bind[0].buffer_type= MYSQL_TYPE_LONG;
+  bind[0].buffer= (char *)&int_data;
+  bind[0].is_null= 0;
+  bind[0].length= 0;
+  ret = mysql_stmt_bind_param(stmt, bind);
+  ASSERT_QUERY_RET(ret);
+  // 3. execute
+  int_data = 0;
+  ret = mysql_stmt_execute(stmt);
+  ASSERT_QUERY_RET(ret);
+  // 4. results
+  my_ulonglong affected_rows = mysql_stmt_affected_rows(stmt);
+  ASSERT_EQ(1U, affected_rows);
+}
+
+void ObSessionTest::prepare_update(int s)
+{
+  MYSQL_STMT *stmt = mysql_stmt_init(&my_[s]);
+  ASSERT_TRUE(stmt);
+  const char* QUERY = "update session_test set c3 = c1 where c1 = ?";
+  // 1. prepare
+  int ret = mysql_stmt_prepare(stmt, QUERY, strlen(QUERY));
+  ASSERT_QUERY_RET(ret);
+  int param_count = (int)mysql_stmt_param_count(stmt);
+  ASSERT_EQ(1, param_count);
+  // 2. bind params
+  MYSQL_BIND bind[1];
+  memset(bind, 0, sizeof(bind));
+  int int_data = 0;
+  bind[0].buffer_type= MYSQL_TYPE_LONG;
+  bind[0].buffer= (char *)&int_data;
+  bind[0].is_null= 0;
+  bind[0].length= 0;
+  ret = mysql_stmt_bind_param(stmt, bind);
+  ASSERT_QUERY_RET(ret);
+  // 3. execute
+  int_data = 0;
+  ret = mysql_stmt_execute(stmt);
+  ASSERT_QUERY_RET(ret);
+  // 4. results
+  my_ulonglong affected_rows = mysql_stmt_affected_rows(stmt);
+  ASSERT_EQ(1U, affected_rows);
 }
 
 TEST_F(ObSessionTest, basic_test)
@@ -109,8 +214,18 @@ TEST_F(ObSessionTest, basic_test)
               mysql_error(&my_[s]));
       ASSERT_TRUE(0);
     }
-    prepare_select(s);
-    prepare_replace(s);
+    for (int j = 0; j < 5; ++j)
+    {
+      prepare_select(s);
+    }
+    for (int j = 0; j < 4; ++j)
+    {
+      prepare_replace(s);
+    }
+    for (int j = 0; j < 2; ++j)
+    {
+      prepare_update(s);
+    }
   }
   sleep(10);
 

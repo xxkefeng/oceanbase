@@ -131,18 +131,6 @@ const char* get_ip(ObServerInfo *server)
   return buff[ i % OB_SQL_BUFFER_NUM];
 }
 
-int32_t get_list_size(ob_sql_list_t *list)
-{
-  int32_t size = 0;
-  ObSQLConn *sconn = NULL;
-  ObSQLConn *nconn = NULL;
-  ob_sql_list_for_each_entry_safe(sconn, nconn, list, conn_list_node_)
-  {
-    size++;
-  }
-  return size;
-}
-
 void insert_rs_list(uint32_t ip, uint32_t port)
 {
   int index = 0;
@@ -165,33 +153,33 @@ void insert_rs_list(uint32_t ip, uint32_t port)
 
 void dump_delete_ms_conn()
 {
-  ObSQLConnList *slist = NULL;
-  ObSQLConnList *nlist = NULL;
-  ObSQLConn *cconn = NULL;
-  ObSQLConn *nconn = NULL;
-  TBSYS_LOG(INFO, "Dump Delete MergeSever Pool");
-  int index = 0;
-  ob_sql_list_for_each_entry_safe(slist, nlist, &g_delete_ms_list, delete_list_node_)
-  {
-    TBSYS_LOG(INFO, "list %d", index++);
-    if (!ob_sql_list_empty(&slist->used_conn_list_))
-    {
-      TBSYS_LOG(INFO,"Used connection:");
-      ob_sql_list_for_each_entry_safe(cconn, nconn, &slist->used_conn_list_, conn_list_node_)
-      {
-        TBSYS_LOG(INFO, "ds isreal mysql pointer is %p", cconn->mysql_);
-        //TBSYS_LOG(INFO, "ds is %s real mysql pointer is %p", get_server_str(&cconn->pool_->server_),cconn->mysql_);
-      }
-    }
-
-    if (!ob_sql_list_empty(&slist->free_conn_list_))
-    {
-      TBSYS_LOG(INFO, "Free connection:");
-      ob_sql_list_for_each_entry_safe(cconn, nconn, &slist->free_conn_list_, conn_list_node_)
-      {
-        TBSYS_LOG(INFO, "ds is real mysql pointer is %p", cconn->mysql_);
-        //TBSYS_LOG(INFO, "ds is %s real mysql pointer is %p", get_server_str(&cconn->pool_->server_), cconn->mysql_);
-      }
-    }
-  }
+//  ObSQLConnList *slist = NULL;
+//  ObSQLConnList *nlist = NULL;
+//  ObSQLConn *cconn = NULL;
+//  ObSQLConn *nconn = NULL;
+//  TBSYS_LOG(INFO, "Dump Delete MergeSever Pool");
+//  int index = 0;
+//  ob_sql_list_for_each_entry_safe(slist, nlist, &g_delete_ms_list, delete_list_node_)
+//  {
+//    TBSYS_LOG(INFO, "list %d", index++);
+//    if (!ob_sql_list_empty(&slist->used_conn_list_))
+//    {
+//      TBSYS_LOG(INFO,"Used connection:");
+//      ob_sql_list_for_each_entry_safe(cconn, nconn, &slist->used_conn_list_, conn_list_node_)
+//      {
+//        TBSYS_LOG(INFO, "ds isreal mysql pointer is %p", cconn->mysql_);
+//        //TBSYS_LOG(INFO, "ds is %s real mysql pointer is %p", get_server_str(&cconn->pool_->server_),cconn->mysql_);
+//      }
+//    }
+//
+//    if (!ob_sql_list_empty(&slist->free_conn_list_))
+//    {
+//      TBSYS_LOG(INFO, "Free connection:");
+//      ob_sql_list_for_each_entry_safe(cconn, nconn, &slist->free_conn_list_, conn_list_node_)
+//      {
+//        TBSYS_LOG(INFO, "ds is real mysql pointer is %p", cconn->mysql_);
+//        //TBSYS_LOG(INFO, "ds is %s real mysql pointer is %p", get_server_str(&cconn->pool_->server_), cconn->mysql_);
+//      }
+//    }
+//  }
 }

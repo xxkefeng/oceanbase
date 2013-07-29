@@ -25,11 +25,20 @@ namespace oceanbase
     ObClientWaitObj::~ObClientWaitObj()
     {}
 
-    void ObClientWaitObj::reset(const int post_err)
+    void ObClientWaitObj::before_post()
     {
       cond_.lock();
-      err_ = post_err;
-      done_count_ = (OB_SUCCESS != post_err)? 1: 0;
+      err_ = OB_SUCCESS;
+      done_count_ = 0;
+    }
+
+    void ObClientWaitObj::after_post(const int post_err)
+    {
+      if (OB_SUCCESS != post_err)
+      {
+        err_ = post_err;
+        done_count_++;
+      }
       cond_.unlock();
     }
 

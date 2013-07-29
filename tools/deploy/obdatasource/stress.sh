@@ -40,7 +40,7 @@ start()
 stop()
 {
     type=$1
-    pkill -9 -f ^$base_dir/obmonster
+    pkill -9 -f "java -cp ./obmonster.jar"
 }
 
 check()

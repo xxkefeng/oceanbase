@@ -52,7 +52,7 @@ namespace oceanbase
     ////////////////////////////////////////////////////////////////
     ObServerStatus::ObServerStatus()
       :last_hb_time_(0),last_hb_time_ms_(0),ms_status_(STATUS_DEAD),
-       status_(STATUS_DEAD), port_cs_(0), port_ms_(0), hb_retry_times_(0),
+       status_(STATUS_DEAD), port_cs_(0), port_ms_(0), port_ms_sql_(0), hb_retry_times_(0),
        register_time_(0), wait_restart_(false), can_restart_(false)
     {
     }
@@ -65,7 +65,6 @@ namespace oceanbase
     void ObServerStatus::set_hb_time_ms(int64_t hb_t)
     {
       last_hb_time_ms_ = hb_t;
-      //TBSYS_LOG(DEBUG,"last_hb_time_ms_:%ld",last_hb_time_ms_);
     }
 
     bool ObServerStatus::is_alive(int64_t now, int64_t lease) const
@@ -75,7 +74,6 @@ namespace oceanbase
 
     bool ObServerStatus::is_ms_alive(int64_t now, int64_t lease) const
     {
-      // TBSYS_LOG(DEBUG,"now:%ld,last_hb_time_ms_:%ld,lease:%ld",now,last_hb_time_ms_,lease);
       return now - last_hb_time_ms_ < lease;
     }
 
@@ -110,8 +108,8 @@ namespace oceanbase
 
     void ObServerStatus::dump(const int32_t index) const
     {
-      TBSYS_LOG(INFO, "index = %d server %s  status %d ms_status %d last_hb %ld port_cs %d port_ms %d hb_ms=%ld register=%ld",
-                index, to_cstring(server_), status_, ms_status_,last_hb_time_, port_cs_, port_ms_, last_hb_time_ms_, register_time_);
+      TBSYS_LOG(INFO, "index = %d server %s  status %d ms_status %d last_hb %ld port_cs %d port_ms %d port_ms_sql %d hb_ms=%ld register=%ld",
+          index, to_cstring(server_), status_, ms_status_, last_hb_time_, port_cs_, port_ms_, port_ms_sql_, last_hb_time_ms_, register_time_);
       disk_info_.dump();
     }
 
@@ -153,6 +151,7 @@ namespace oceanbase
       }
       return ret;
     }
+
     DEFINE_DESERIALIZE(ObServerStatus)
     {
       int ret = OB_SUCCESS;
@@ -301,63 +300,71 @@ namespace oceanbase
      * root server will call this when a server regist to root or echo heart beat
      * @return 1 new serve 2 relive server 0 heartbt
      */
-    int ObChunkServerManager::receive_hb(const ObServer& server, int64_t time_stamp, bool is_merge_server, bool is_regist)
+    int ObChunkServerManager::receive_hb(const ObServer& server, const int64_t time_stamp,
+        const bool is_merge_server, const int32_t sql_port, const bool is_regist)
     {
       int res = 0;
       iterator it = find_by_ip(server);
       if (it != end())
       {
-        if (!is_merge_server)
+        if (is_merge_server)
         {
-          TBSYS_LOG(DEBUG,"receive hb from chunkserver, ts=%ld ms=%d reg=%d",
-                    time_stamp, is_merge_server, is_regist);
-          it->set_hb_time(time_stamp);
-          if(it->status_ == ObServerStatus::STATUS_DEAD || is_regist)
+          TBSYS_LOG(DEBUG, "receive hb from mergeserver, ts=%ld is_regist=%d", time_stamp, is_regist);
+          it->set_hb_time_ms(time_stamp);
+          if (it->ms_status_ == ObServerStatus::STATUS_DEAD || is_regist)
           {
-            TBSYS_LOG(INFO, "receive relive cs heartbeat, or new cs register. server=%s", server.to_cstring());
+            res = 2;
+            TBSYS_LOG(TRACE, "receive realive ms heartbeat, or new ms register. server=%s", server.to_cstring());
             it->register_time_ = time_stamp;
-            it->status_ = ObServerStatus::STATUS_WAITING_REPORT;
-            it->server_.set_port(server.get_port());
-            if (it->port_cs_ == server.get_port() )
+            it->ms_status_ = ObServerStatus::STATUS_SERVING;
+            it->port_ms_ = server.get_port();
+            it->port_ms_sql_ = sql_port;
+            if ((it->port_ms_sql_ != 0) && (it->port_ms_sql_ != sql_port))
             {
-              res = 2;
-            }
-            else
-            {
-              it->port_cs_ = server.get_port();
-              res = 1;
+              TBSYS_LOG(ERROR, "check alive mergeserver port modified:old[%d], new[%d], server[%s]",
+                  it->port_ms_sql_, sql_port, server.to_cstring());
             }
           }
         }
         else
         {
-          TBSYS_LOG(DEBUG,"receive hb from mergeserver, ts=%ld ms=%d reg=%d",
-                    time_stamp, is_merge_server, is_regist);
-          it->port_ms_ = server.get_port();
-          it->ms_status_ = ObServerStatus::STATUS_SERVING;
-          it->set_hb_time_ms(time_stamp);
+          TBSYS_LOG(DEBUG, "receive hb from chunkserver, ts=%ld is_regist=%d", time_stamp, is_regist);
+          it->set_hb_time(time_stamp);
+          if (it->status_ == ObServerStatus::STATUS_DEAD || is_regist)
+          {
+            res = 2;
+            TBSYS_LOG(TRACE, "receive realive cs heartbeat, or new cs register. server=%s", server.to_cstring());
+            it->register_time_ = time_stamp;
+            it->status_ = ObServerStatus::STATUS_WAITING_REPORT;
+            it->server_.set_port(server.get_port());
+            it->port_cs_ = server.get_port();
+            if ((it->port_cs_ != 0) && (it->port_cs_ != server.get_port()))
+            {
+              TBSYS_LOG(ERROR, "check alive chunkserver port modified:old[%d], new[%d], server[%s]",
+                  it->port_cs_, server.get_port(), server.to_cstring());
+            }
+          }
         }
       }
       else
       {
         // new server entry
-        res = 1;
+        res = 2;
         ObServerStatus tmp_server_status;
         tmp_server_status.server_ = server;
         if (is_merge_server)
         {
-          TBSYS_LOG(DEBUG,"receive hb from mergeserver, ts=%ld ms=%d reg=%d",
-                    time_stamp, is_merge_server, is_regist);
+          TBSYS_LOG(TRACE, "receive hb from new mergeserver, server=%s ts=%ld is_regist=%d",
+              server.to_cstring(), time_stamp, is_regist);
           tmp_server_status.port_ms_ = server.get_port();
+          tmp_server_status.port_ms_sql_ = sql_port;
           tmp_server_status.ms_status_ = ObServerStatus::STATUS_SERVING;
           tmp_server_status.set_hb_time_ms(time_stamp);
-          TBSYS_LOG(WARN, "Receive hb from unregister merge server,"
-                    "Plz Restart try merge server: [%s]!", to_cstring(server));
         }
         else
         {
-          TBSYS_LOG(DEBUG,"receive hb from chunkserver, ts=%ld ms=%d reg=%d",
-                    time_stamp, is_merge_server, is_regist);
+          TBSYS_LOG(TRACE, "receive hb from new chunkserver, server=%s ts=%ld is_regist=%d",
+              server.to_cstring(), time_stamp, is_regist);
           tmp_server_status.port_cs_ = server.get_port();
           tmp_server_status.set_hb_time(time_stamp);
           tmp_server_status.status_ = ObServerStatus::STATUS_WAITING_REPORT;
@@ -366,31 +373,6 @@ namespace oceanbase
         res = servers_.push_back(tmp_server_status);
       }
       return res;
-    }
-
-    int ObChunkServerManager::register_ms(const common::ObServer& server,
-        int32_t sql_port, int64_t time_stamp)
-    {
-      int ret = 0;
-      iterator it = find_by_ip(server);
-      if (it != end())
-      {
-        it->port_ms_ = server.get_port();
-        it->port_ms_sql_ = sql_port;
-        it->ms_status_ = ObServerStatus::STATUS_SERVING;
-        it->set_hb_time_ms(time_stamp);
-      }
-      else
-      {
-        ObServerStatus server_status;
-        server_status.server_ = server;
-        server_status.port_ms_ = server.get_port();
-        server_status.port_ms_sql_ = sql_port;
-        server_status.ms_status_ = ObServerStatus::STATUS_SERVING;
-        server_status.set_hb_time_ms(time_stamp);
-        ret = servers_.push_back(server_status);
-      }
-      return ret;
     }
 
     int ObChunkServerManager::update_disk_info(const common::ObServer& server, const ObServerDiskInfo& disk_info)
@@ -1140,6 +1122,5 @@ namespace oceanbase
       }
       return ret;
     }
-
   }
 }

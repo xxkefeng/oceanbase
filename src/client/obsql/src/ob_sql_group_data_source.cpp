@@ -12,7 +12,7 @@
 
 using namespace oceanbase::common;
 /* 从集群池pool中移除一个集群spool */
-static int delete_server_pool(ObClusterInfo *spool, ObGroupDataSource *gds)
+static int delete_cluster(ObClusterInfo *spool, ObGroupDataSource *gds)
 {
   int ret = OB_SQL_SUCCESS;
   int32_t index = 0;
@@ -23,23 +23,24 @@ static int delete_server_pool(ObClusterInfo *spool, ObGroupDataSource *gds)
   for (; index < spool->csize_; ++index)
   {
     ObDataSource *ds = spool->dslist_ + index;
-    ObSQLConnList *list = reinterpret_cast<ObSQLConnList*>(ob_malloc(sizeof(ObSQLConnList), ObModIds::LIB_OBSQL));
-    if (NULL == list)
+    ObSQLListNode *node = reinterpret_cast<ObSQLListNode*>(ob_malloc(sizeof(ObSQLConnList) + sizeof(ObSQLListNode), ObModIds::LIB_OBSQL));
+    if (NULL == node)
     {
       TBSYS_LOG(ERROR, "alloc mem for ObSQLConnList failed");
       ret = OB_SQL_ERROR;
     }
     else
     {
+      node->data_ = (char*)node + sizeof(ObSQLConnList);
+      ObSQLConnList *list = (ObSQLConnList*)node->data_;
       //move connection
-      move_conn_list(list, ds);
-      //memcpy(list, &ds->conn_list_, sizeof(ObSQLConnList));
-      TBSYS_LOG(DEBUG, "ds free list is %d", get_list_size(&ds->conn_list_.free_conn_list_));
-      TBSYS_LOG(DEBUG, "ds used list is %d", get_list_size(&ds->conn_list_.used_conn_list_));
-      TBSYS_LOG(DEBUG, "new ds free list is %d", get_list_size(&list->free_conn_list_));
-      TBSYS_LOG(DEBUG, "new ds used list is %d", get_list_size(&list->used_conn_list_));
-      //memcpy(list, &ds->conn_list_, sizeof(ObSQLConnList));
-      ob_sql_list_add_tail(&list->delete_list_node_, &g_delete_ms_list);
+      //move_conn_list(list, ds);
+      memcpy(list, &ds->conn_list_, sizeof(ObSQLConnList));
+      TBSYS_LOG(DEBUG, "ds free list is %d", ds->conn_list_.free_list_.size_);
+      TBSYS_LOG(DEBUG, "ds used list is %d", ds->conn_list_.used_list_.size_);
+      TBSYS_LOG(DEBUG, "new ds free list is %d", list->free_list_.size_);
+      TBSYS_LOG(DEBUG, "new ds used list is %d", list->used_list_.size_);
+      ob_sql_list_add_tail(&g_delete_ms_list, node);
       dump_delete_ms_conn();
     }
   }
@@ -49,8 +50,8 @@ static int delete_server_pool(ObClusterInfo *spool, ObGroupDataSource *gds)
     for (; start < gds->csize_; ++start)
     {
       gds->clusters_[start - 1] = gds->clusters_[start];
-      move_conn(gds->clusters_ + start - 1, gds->clusters_ + start);
-      TBSYS_LOG(DEBUG, "%d free conn is %d", start, get_list_size(&gds->clusters_[start-1].dslist_[0].conn_list_.free_conn_list_));
+      //move_conn(gds->clusters_ + start - 1, gds->clusters_ + start);
+      TBSYS_LOG(DEBUG, "%d free conn is %d", start, gds->clusters_[start-1].dslist_[0].conn_list_.free_list_.size_);
       cidx = 0;
       for (; cidx < gds->clusters_[start -1].csize_; ++cidx)
       {
@@ -64,7 +65,7 @@ static int delete_server_pool(ObClusterInfo *spool, ObGroupDataSource *gds)
 }
 
 /* 初始化cluster info */
-static int init_cluster_info(ObSQLClusterConfig *config, ObGroupDataSource *gds, int32_t idx)
+static int init_cluster(ObSQLClusterConfig *config, ObGroupDataSource *gds, int32_t idx)
 {
   int ret = OB_SQL_SUCCESS;
   int32_t index = 0;
@@ -83,6 +84,7 @@ static int init_cluster_info(ObSQLClusterConfig *config, ObGroupDataSource *gds,
   cluster->cluster_id_ = config->cluster_id_;
   cluster->is_master_ = static_cast<int32_t>(config->cluster_type_);
   cluster->read_strategy_ = config->read_strategy_;
+  cluster->flow_weight_ = config->flow_weight_;
   pthread_rwlock_init(&(cluster->rwlock_), NULL);
 
   for (; index < config->server_num_ && OB_SQL_SUCCESS == ret; ++index)
@@ -103,7 +105,7 @@ static int init_cluster_info(ObSQLClusterConfig *config, ObGroupDataSource *gds,
   return ret;
 }
 
-static int update_server_pool(ObSQLClusterConfig config, ObClusterInfo *cluster)
+static int update_cluster(ObSQLClusterConfig config, ObClusterInfo *cluster)
 {
   int ret = OB_SQL_SUCCESS;
   int32_t index = 0;
@@ -181,7 +183,7 @@ int update_group_ds(ObSQLGlobalConfig *config, ObGroupDataSource *gds)
     }
     if (0 == exist)
     {
-      ret = delete_server_pool(scluster, gds);
+      ret = delete_cluster(scluster, gds);
       if (OB_SQL_SUCCESS != ret)
       {
         TBSYS_LOG(ERROR, "delete server pool failed");
@@ -194,7 +196,7 @@ int update_group_ds(ObSQLGlobalConfig *config, ObGroupDataSource *gds)
     }
     else
     {
-      ret = update_server_pool(config->clusters_[cindex], scluster);
+      ret = update_cluster(config->clusters_[cindex], scluster);
       if (OB_SQL_SUCCESS != ret)
       {
         TBSYS_LOG(ERROR, "update server pool failed");
@@ -220,39 +222,13 @@ int update_group_ds(ObSQLGlobalConfig *config, ObGroupDataSource *gds)
     if (0 == exist)
     {
       TBSYS_LOG(INFO, "debug us update for init cindex is %d", cindex);
-      //add pool
-      ret = init_cluster_info(config->clusters_ + cindex, gds, cindex+1);
+      //add cluster
+      ret = init_cluster(config->clusters_ + cindex, gds, cindex+1);
       if (OB_SQL_SUCCESS != ret)
       {
         TBSYS_LOG(ERROR, "init server pool failed");
         break;
       }
-    }
-  }
-  return ret;
-}
-
-int init_group_ds(ObSQLGlobalConfig *config, ObGroupDataSource *gds)
-{
-  int ret = OB_SQL_SUCCESS;
-  gds->min_conn_ = config->min_conn_size_;
-  gds->max_conn_ = config->max_conn_size_;
-  gds->size_ = config->cluster_size_;
-  gds->csize_ = 0;
-  if (0 == gds->size_)
-  {
-    TBSYS_LOG(ERROR, "cluster config error, there are %d clusters", gds->size_);
-    ret = OB_SQL_ERROR;
-  }
-  else
-  {
-    pthread_rwlock_init(&(gds->rwlock_), NULL);
-    int32_t index = 1;
-    for (;index <= gds->size_ && OB_SQL_SUCCESS == ret; ++index)
-    {
-      //init cluster info
-      TBSYS_LOG(DEBUG, "gds csize is %d", gds->csize_);
-      ret = init_cluster_info(config->clusters_ + index - 1, gds, index);
     }
   }
   return ret;

@@ -333,6 +333,8 @@ int ObMsSqlGetRequest::send_request(const int32_t sub_req_idx, const int64_t tim
   if ((OB_SUCCESS == err) && (svr_idx >= loc_list.size()))
   {
     svr_idx = random()%loc_list.size();
+    TBSYS_LOG(WARN, "all servers get dirty. pick one randomly: loc_size[%ld], retry_svr:[%s]", 
+        loc_list.size(), to_cstring(loc_list[svr_idx].server_.chunkserver_));
   }
   ObMsSqlRpcEvent *rpc_event = NULL;
   if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = ObMsSqlRequest::create(&rpc_event))))
@@ -502,8 +504,10 @@ int ObMsSqlGetRequest::process_result(const int64_t timeout_us, ObMsSqlRpcEvent 
   }
   if (sub_req_idx >= triggered_sub_request_count_)
   {
-    TBSYS_LOG(ERROR, "rpc event not belong to current request [request_id:%lu,rpc_event_id:%lu]", get_request_id(),
-      rpc_event->get_event_id());
+    TBSYS_LOG(ERROR, "rpc event not belong to current request [event server:%s,request_id:%lu,rpc_event_id:%lu]", 
+        to_cstring(rpc_event->get_server()),
+        get_request_id(),
+        rpc_event->get_event_id());
     err = OB_ERR_UNEXPECTED;
   }
   if ((OB_SUCCESS == err)
@@ -512,33 +516,43 @@ int ObMsSqlGetRequest::process_result(const int64_t timeout_us, ObMsSqlRpcEvent 
         get_param_->get_table_id(),
         *sub_requests_[sub_req_idx]->get_first_unfetched_row())))
   {
-    TBSYS_LOG(WARN,"fail to update location cache");
+    TBSYS_LOG(WARN,"fail to update location cache for server %s", to_cstring(rpc_event->get_server()));
   }
   if ((OB_SUCCESS == err)
     && (OB_SUCCESS == rpc_event->get_result_code())
     && (OB_SUCCESS != (err = sub_requests_[sub_req_idx]->add_result(rpc_event->get_result()))))
   {
-    TBSYS_LOG(WARN,"fail to add result to sub request [request_id:%lu,rpc_event_id:%lu,err:%d]", get_request_id(),
-      rpc_event->get_event_id(), err);
+    TBSYS_LOG(WARN,"fail to add result to sub request [event server:%s, request_id:%lu,rpc_event_id:%lu,err:%d]", 
+        to_cstring(rpc_event->get_server()),
+        get_request_id(),
+        rpc_event->get_event_id(), 
+        err);
   }
   if ((OB_SUCCESS == err) && (OB_SUCCESS != rpc_event->get_result_code()))
   {
     int64_t tried_times = 0;
     if ((tried_times =  sub_requests_[sub_req_idx]->retry()) > MAX_RETRY_TIMES)
     {
-      TBSYS_LOG(WARN,"sub request retry too many times [request_id:%lu,tried_times:%ld,MAX_RETRY_TIMES:%d]",
-        get_request_id(), tried_times, MAX_RETRY_TIMES);
+      TBSYS_LOG(WARN,"sub request retry too many times [last server:%s, request_id:%lu,tried_times:%ld,MAX_RETRY_TIMES:%d,result_code=%d]",
+          to_cstring(rpc_event->get_server()),
+          get_request_id(),
+          tried_times,
+          MAX_RETRY_TIMES,
+          rpc_event->get_result_code());
       err = rpc_event->get_result_code();
     }
   }
   if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = check_if_need_more_req(sub_req_idx,timeout_us, rpc_event))))
   {
-    TBSYS_LOG(WARN,"fail to send request [request_id:%lu,err:%d]", get_request_id(), err);
+    TBSYS_LOG(WARN,"fail to send request [server:%s,request_id:%lu,err:%d]", to_cstring(rpc_event->get_server()), get_request_id(), err);
   }
   if ((OB_SUCCESS == err) && (finished_sub_request_count_ > total_sub_request_count_))
   {
-    TBSYS_LOG(ERROR, "unexpected error [finished_sub_request_count_:%d,total_sub_request_count_:%d,request_id:%lu]",
-      finished_sub_request_count_, total_sub_request_count_, get_request_id());
+    TBSYS_LOG(ERROR, "unexpected error [server:%s,finished_sub_request_count_:%d,total_sub_request_count_:%d,request_id:%lu]",
+        to_cstring(rpc_event->get_server()),
+        finished_sub_request_count_, 
+        total_sub_request_count_,
+        get_request_id());
     err = OB_ERR_UNEXPECTED;
   }
   if ((OB_SUCCESS == err) && (finished_sub_request_count_ == total_sub_request_count_))

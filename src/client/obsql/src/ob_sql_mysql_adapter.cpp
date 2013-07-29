@@ -48,10 +48,6 @@ int STDCALL mysql_server_init(int argc __attribute__((unused)),
 			      char **argv __attribute__((unused)),
 			      char **groups __attribute__((unused)))
 {
-  if (0 == g_inited)
-  {
-    ob_sql_init();
-  }
   return (*g_func_set.real_mysql_server_init)(argc, argv, groups);
 }
 
@@ -63,7 +59,6 @@ void STDCALL mysql_server_end(void)
 //do nothing here same as libmysql
 MYSQL_PARAMETERS *STDCALL mysql_get_parameters(void)
 {
-  ob_sql_init();
   return (*g_func_set.real_mysql_get_parameters)();
 }
 
@@ -189,72 +184,65 @@ int STDCALL mysql_set_character_set(MYSQL *mysql, const char *csname)
   CALLREAL(mysql, mysql_set_character_set, csname);
 }
 
-//
+
 MYSQL * STDCALL mysql_init(MYSQL *mysql)
 {
   int flag = OB_SQL_SUCCESS;
-  //init ob sql
-  if (OB_SQL_ERROR == ob_sql_init())
+  if (NULL == mysql)
   {
-    TBSYS_LOG(ERROR, "libobsql init failed");
-  }
-  else
-  {
+    mysql = (MYSQL *)ob_malloc(sizeof(MYSQL), ObModIds::LIB_OBSQL);
     if (NULL == mysql)
     {
-      mysql = (MYSQL *)ob_malloc(sizeof(MYSQL), ObModIds::LIB_OBSQL);
-      if (NULL == mysql)
-      {
-        TBSYS_LOG(ERROR, "alloc mem for MYSQL failed");
-        flag = OB_SQL_ERROR;
-      }
-      else
-      {
-        memset(mysql, 0, sizeof(MYSQL));
-        (*g_func_set.real_mysql_init)(mysql);
-        ((ObSQLMySQL*)mysql)->alloc_ = 1;
-      }
+      TBSYS_LOG(ERROR, "alloc mem for MYSQL failed");
+      flag = OB_SQL_ERROR;
     }
     else
     {
-      memset(mysql,0, sizeof(MYSQL));
+      memset(mysql, 0, sizeof(MYSQL));
       (*g_func_set.real_mysql_init)(mysql);
+      ((ObSQLMySQL*)mysql)->alloc_ = 1;
     }
+  }
+  else
+  {
+    memset(mysql,0, sizeof(MYSQL));
+    (*g_func_set.real_mysql_init)(mysql);
+  }
 
-    if (OB_SQL_SUCCESS == flag)
+  if (OB_SQL_SUCCESS == flag)
+  {
+    ((ObSQLMySQL*)mysql)->magic_ = OB_SQL_MAGIC;
+    //((ObSQLMySQL*)mysql)->charset = default_client_charset_info;
+    TBSYS_LOG(DEBUG, "call acquire conn random in mysql init");
+    if (0 == pthread_rwlock_rdlock(&g_config_rwlock)) //防止g_group_ds被修改
     {
-      ((ObSQLMySQL*)mysql)->magic_ = OB_SQL_MAGIC;
-      //((ObSQLMySQL*)mysql)->charset = default_client_charset_info;
-      TBSYS_LOG(DEBUG, "call acquire conn random in mysql init");
-      if (0 == pthread_rwlock_rdlock(&g_config_rwlock)) //防止g_group_ds被修改
+      //随便选一条先
+      ObSQLConn *conn = acquire_conn_random(&g_group_ds);
+      if (NULL == conn)
       {
-        //随便选一条先
-        ObSQLConn *conn = acquire_conn_random(&g_group_ds);
-        if (NULL == conn)
-        {
-          TBSYS_LOG(WARN, "There are no connction in groupdatasource");
-          if (1 == ((ObSQLMySQL*)mysql)->alloc_)
-          {
-            ob_free(mysql);
-            mysql = NULL;
-          }
-        }
-        else
-        {
-          ((ObSQLMySQL*)mysql)->conn_ = conn;
-          ((ObSQLMySQL*)mysql)->rconn_ = conn;
-          ((ObSQLMySQL*)mysql)->wconn_ = conn;
-        }
-      }
-      else
-      {
+        TBSYS_LOG(WARN, "There are no connction in groupdatasource");
         if (1 == ((ObSQLMySQL*)mysql)->alloc_)
         {
           ob_free(mysql);
           mysql = NULL;
         }
-        TBSYS_LOG(ERROR, "pthread_rwlock_rdlock on g_config_rwlock failed");
       }
+      else
+      {
+        ((ObSQLMySQL*)mysql)->conn_ = conn;
+        ((ObSQLMySQL*)mysql)->rconn_ = conn;
+        ((ObSQLMySQL*)mysql)->wconn_ = conn;
+      }
+      pthread_rwlock_unlock(&g_config_rwlock);
+    }
+    else
+    {
+      if (1 == ((ObSQLMySQL*)mysql)->alloc_)
+      {
+        ob_free(mysql);
+        mysql = NULL;
+      }
+      TBSYS_LOG(ERROR, "pthread_rwlock_rdlock on g_config_rwlock failed");
     }
   }
   return mysql;
@@ -337,17 +325,27 @@ static MYSQL* select_connection(MYSQL *mysql, const char *q, unsigned long lengt
     {
       mysql_set_in_transaction(mysql);
       mysql_set_consistence(mysql);
+      TBSYS_LOG(INFO, "set consistence %p", mysql);
     }
     else if (OB_SQL_CONSISTENCE_REQUEST == *stype)
     {
       //never reach here now
       mysql_set_consistence(mysql);
+      TBSYS_LOG(INFO, "set consistence %p", mysql);
     }
-
-    //in transaction 选择主集群
-    if (is_in_transaction((ObSQLMySQL*)(mysql)))
+    else if (OB_SQL_DDL == *stype
+             || OB_SQL_WRITE == *stype)
     {
-      TBSYS_LOG(DEBUG, "in transaction");
+      mysql_set_consistence(mysql);
+      TBSYS_LOG(INFO, "set consistence %p", mysql);
+    }
+    //if (NULL != ((ObSQLMySQL*)mysql)->conn_ && !is_in_transaction((ObSQLMySQL*)mysql))
+    //  release_conn(((ObSQLMySQL*)mysql)->conn_);
+    //in transaction 选择主集群
+    if (is_in_transaction((ObSQLMySQL*)(mysql))
+        ||is_consistence((ObSQLMySQL*)(mysql)))
+    {
+      TBSYS_LOG(DEBUG, "in transaction or consistence");
       if (NULL == (((ObSQLMySQL*)mysql)->wconn_))
       {
         if (0 == pthread_rwlock_rdlock(&g_config_rwlock))
@@ -382,12 +380,14 @@ static MYSQL* select_connection(MYSQL *mysql, const char *q, unsigned long lengt
       TBSYS_LOG(DEBUG, "not in transaction");
       if (NULL != (((ObSQLMySQL*)mysql)->rconn_))
       {
+        TBSYS_LOG(DEBUG, "rconn not in transaction");
         ((ObSQLMySQL*)mysql)->conn_ = ((ObSQLMySQL*)mysql)->rconn_;
       }
-      else if (NULL != (((ObSQLMySQL*)mysql)->wconn_))
+      /*else if (NULL != (((ObSQLMySQL*)mysql)->wconn_))
       {
+        TBSYS_LOG(DEBUG, "wconn not in transaction");
         ((ObSQLMySQL*)mysql)->conn_ = ((ObSQLMySQL*)mysql)->wconn_;
-      }
+        }*/
       else
       {
         if (0 == pthread_rwlock_rdlock(&g_config_rwlock))
@@ -398,14 +398,14 @@ static MYSQL* select_connection(MYSQL *mysql, const char *q, unsigned long lengt
           ObSQLConn *conn = acquire_conn(cluster, q, length);
           if (NULL != conn)
           {
-            if (1 == cluster->is_master_)
-            {
-              ((ObSQLMySQL*)mysql)->wconn_ = conn;
-            }
-            else
-            {
-              ((ObSQLMySQL*)mysql)->rconn_ = conn;
-            }
+            //if (1 == cluster->is_master_)
+            //{
+            //  ((ObSQLMySQL*)mysql)->wconn_ = conn;
+            //}
+            //else
+            //{
+            ((ObSQLMySQL*)mysql)->rconn_ = conn;
+              //}
             ((ObSQLMySQL*)mysql)->conn_ = conn;
             TBSYS_LOG(DEBUG, "conn is %p mysql is %p", conn, conn->mysql_);
             real_mysql = ((ObSQLMySQL*)mysql)->conn_->mysql_;
@@ -457,11 +457,21 @@ int STDCALL mysql_send_query(MYSQL *mysql, const char *q, unsigned long length)
         ret = OB_SQL_ERROR;
       }
     }
-    if (OB_SQL_SUCCESS == ret &&
-        OB_SQL_END_TRANSACTION == stype)
+    TBSYS_LOG(INFO, "mysql_send_query");
+    if (OB_SQL_SUCCESS == ret)
     {
-      mysql_unset_in_transaction(mysql);
-      mysql_unset_consistence(mysql);
+      TBSYS_LOG(INFO, "stype is %d", stype);
+      if (OB_SQL_END_TRANSACTION == stype)
+      {
+        mysql_unset_in_transaction(mysql);
+        mysql_unset_consistence(mysql);
+        TBSYS_LOG(INFO, "unset consistence %p", mysql);
+      }
+      else if (OB_SQL_DDL == stype)
+      {
+        mysql_unset_consistence(mysql);
+        TBSYS_LOG(INFO, "unset consistence %p", mysql);
+      }
     }
   }
   else
@@ -481,6 +491,7 @@ int STDCALL mysql_real_query(MYSQL *mysql, const char *q, unsigned long length)
   MYSQL* real_mysql = NULL;
   if (OB_SQL_MAGIC == ((ObSQLMySQL*)mysql)->magic_)
   {
+    TBSYS_LOG(DEBUG, "magic 1 mysql handle is %p query is %s\n", mysql, q);
     real_mysql = select_connection(mysql, q, length, &stype);
     if (NULL != real_mysql)
     {
@@ -497,6 +508,12 @@ int STDCALL mysql_real_query(MYSQL *mysql, const char *q, unsigned long length)
     {
       mysql_unset_in_transaction(mysql);
       mysql_unset_consistence(mysql);
+      TBSYS_LOG(INFO, "unset consistence %p", mysql);
+    }
+    if (OB_SQL_DDL == stype)
+    {
+      mysql_unset_consistence(mysql);
+      TBSYS_LOG(INFO, "unset consistence %p", mysql);
     }
   }
   else
@@ -712,7 +729,7 @@ MYSQL_STMT * STDCALL mysql_stmt_init(MYSQL *mysql)
       && (((ObSQLMySQL*)mysql)->conn_  == ((ObSQLMySQL*)mysql)->wconn_)
       && (((ObSQLMySQL*)mysql)->conn_  == ((ObSQLMySQL*)mysql)->rconn_))
     {
-      select_connection(mysql, "create stmt", 11, &type);
+      select_connection(mysql, "select stmt", 11, &type);
     }
     ((ObSQLMySQL*)mysql)->has_stmt_ = 1;
     TBSYS_LOG(DEBUG, "stmt init user mysql is %p, mysql is %p", mysql, ((ObSQLMySQL*)mysql)->conn_->mysql_);

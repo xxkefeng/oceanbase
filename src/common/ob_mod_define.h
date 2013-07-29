@@ -43,7 +43,7 @@ namespace oceanbase
   do \
   {\
     if (ObModIds::mod_name <= ObModIds::OB_MOD_END\
-    && ObModIds::mod_name >= ObModIds::OB_MOD_DEFAULT \
+    && ObModIds::mod_name >= ObModIds::OB_MOD_DO_NOT_USE_ME \
     && ObModIds::mod_name < G_MAX_MOD_NUM) \
     {\
       OB_MOD_SET[ObModIds::mod_name].mod_id_ = ObModIds::mod_name; \
@@ -62,7 +62,7 @@ namespace oceanbase
     public:
       enum
       {
-        OB_MOD_DEFAULT = 0,
+        OB_MOD_DO_NOT_USE_ME = 0,
         /// define modules here
         // common modules
         OB_COMMON_NETWORK,
@@ -123,6 +123,7 @@ namespace oceanbase
         BLOCK_ALLOC,
         VECTOR,
         TEST,
+        TSI_BLOCK_ALLOC,
 
        // mergeserver modules
         OB_MS_CELL_ARRAY,
@@ -217,7 +218,7 @@ namespace oceanbase
 
     inline void init_ob_mod_set()
     {
-      ADD_MOD(OB_MOD_DEFAULT);
+      ADD_MOD(OB_MOD_DO_NOT_USE_ME);
       /// add modules here, modules must be first defined
       ADD_MOD(OB_COMMON_NETWORK);
       ADD_MOD(OB_THREAD_BUFFER);
@@ -276,6 +277,7 @@ namespace oceanbase
       ADD_MOD(BLOCK_ALLOC);
       ADD_MOD(VECTOR);
       ADD_MOD(TEST);
+      ADD_MOD(TSI_BLOCK_ALLOC);
 
       ADD_MOD(OB_MS_CELL_ARRAY);
       ADD_MOD(OB_MS_LOCATION_CACHE);

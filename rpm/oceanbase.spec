@@ -25,7 +25,7 @@ Vendor: TaoBao
 Prefix:%{_prefix}
 Source:%{NAME}-%{VERSION}.tar.gz
 BuildRoot: %(pwd)/%{name}-root
-BuildRequires: t-csrd-tbnet-devel >= 1.0.8 lzo >= 2.06 snappy >= 1.0.2 libaio-devel >= 0.3 t_libeasy-devel >= 1.0.16-198 openssl-devel >= 0.9.8 mysql-devel >= 5.0.77
+BuildRequires: t-csrd-tbnet-devel >= 1.0.8 lzo >= 2.06 snappy >= 1.0.2 libaio-devel >= 0.3 t_libeasy-devel >= 1.0.18-212 openssl-devel >= 0.9.8 mysql-devel >= 5.0.77
 Requires: lzo >= 2.06 snappy >= 1.0.2 libaio >= 0.3 openssl >= 0.9.8
 
 %package -n oceanbase-utils

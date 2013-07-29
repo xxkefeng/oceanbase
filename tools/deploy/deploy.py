@@ -494,6 +494,10 @@ def ObInstance():
         mgr.start()
 
 
+    def update_cluster(*args, **ob):
+        ob['extra'] = "-e\"replace into __all_cluster(cluster_vip, cluster_port,cluster_id,cluster_role,cluster_flow_percent) values('" + call_(ob, 'ms0.ip') + "', " + str(call_(ob, 'mysql_port'))+ " ,1,1,100);\""
+        return call_(ob, "obmysql")
+
     def mysqltest(*args, **ob):
         sh("sync")
         def do_before_test(mgr):
@@ -562,6 +566,8 @@ def ObInstance():
             with_cs_data = True
         if "disable-reboot" in args:
             need_reboot = False
+        if "filter" in ob:
+            opt["filter"] = ob["filter"]
         if "collect" in ob:
             if ob["collect"] == 'False':
                 need_collect = False

@@ -443,7 +443,7 @@ TEST(ob_malloc, basicTest)
     EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::OB_MS_LOCATION_CACHE), block_size);
 
     ptr = ob_malloc(size, ObModIds::TEST);
-    EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::OB_MOD_DEFAULT), block_size);
+    EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::TEST), block_size);
 
     ob_print_mod_memory_usage(true);
 
@@ -457,7 +457,7 @@ TEST(ob_malloc, basicTest)
     EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::OB_MS_LOCATION_CACHE), 0);
 
     ob_free(ptr);
-    EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::OB_MOD_DEFAULT), 0);
+    EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::TEST), 0);
 
     cache_ptr = ob_malloc(block_size,ObModIds::OB_MS_LOCATION_CACHE);
     EXPECT_EQ(ob_get_mod_memory_usage(ObModIds::OB_MS_LOCATION_CACHE), block_size+meta_size);

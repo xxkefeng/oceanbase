@@ -126,6 +126,7 @@ namespace oceanbase
         const bool volatile &is_alive() const;
         bool is_killed() const;
         void set_frozen();
+        bool is_frozen() const;
       private:
         common::ModulePageAllocator mod_;
         common::ModuleArena page_arena_;

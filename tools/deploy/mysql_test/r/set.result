@@ -123,3 +123,9 @@ max_allowed_packet	2048000
 show variables like '%ob_read_consistency%';
 variable_name	value
 ob_read_consistency	0
+drop table if exists t1;
+create table t1(c1 varchar(20) primary key, c2 int);
+replace into t1 values('s1',1);
+set @a='s1';
+update t1 set c2=0 where c1=@a;
+drop table t1;

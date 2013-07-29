@@ -200,23 +200,13 @@ int ObMultipleScanMerge::get_next_row(const ObRow *&row)
         {
           TBSYS_LOG(WARN, "fail to fuse ups row:ret[%d]", ret);
         }
-        if (OB_SUCCESS == ret)
+        else if (OB_SUCCESS != (ret = copy_rowkey(*(min_rowkey_child.row_), cur_row_, true) ))
         {
-          if (!is_cur_row_valid_)
-          {
-            if (OB_SUCCESS != (ret = copy_rowkey(*(min_rowkey_child.row_), cur_row_, true) ))
-            {
-              TBSYS_LOG(WARN, "fail to copy rowkey:ret[%d]", ret);
-            }
-          }
+          TBSYS_LOG(WARN, "fail to copy rowkey:ret[%d]", ret);
         }
-
-        if (OB_SUCCESS == ret)
+        else if (OB_SUCCESS != (ret = write_row(cur_row_) ))
         {
-          if (OB_SUCCESS != (ret = write_row(cur_row_) ))
-          {
-            TBSYS_LOG(WARN, "fail to write row:ret[%d]", ret);
-          }
+          TBSYS_LOG(WARN, "fail to write row:ret[%d]", ret);
         }
 
         if (OB_SUCCESS == ret)

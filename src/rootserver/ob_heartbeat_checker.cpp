@@ -144,7 +144,7 @@ void ObHeartbeatChecker::run(tbsys::CThread * thread, void * arg)
             tmp_server = it->server_;
             tmp_server.set_port(it->port_ms_);
             root_server_->server_manager_.set_server_down_ms(it);
-            if (master)
+            if (master && it->port_ms_sql_ != OB_FAKE_MS_PORT)
             {
               // no sql port for chunkserver manager
               root_server_->commit_task(SERVER_OFFLINE, OB_MERGESERVER, tmp_server,

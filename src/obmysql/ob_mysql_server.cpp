@@ -1720,6 +1720,7 @@ namespace oceanbase
         {
           //makesure seq is continuous
           ++number;
+          req->retcode = EASY_OK;
           ret = post_packet(req, &epacket, number);
           if (OB_SUCCESS != ret)
           {
