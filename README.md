@@ -13,7 +13,7 @@ SQL: ob_tablet_get.cpp的reset方法没有实现完全，这个bug会导致selec
 
 SQL：group_min_max.test执行cs出core，原因是ob_row_store重用时有错，造成sort操作符访问到额外数据，致使比较类型出错，std::sort会core掉; 
 
-[查看发布说明](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4.1-1209%E5%8F%91%E5%B8%83%E8%AF%B4%E6%98%8E)
+[查看发布说明](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4.1-1225%E5%8F%91%E5%B8%83%E8%AF%B4%E6%98%8E)
 
 <h1>2 发行日志</h1>
 - <font color=“#0000E3”><b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> </font>
