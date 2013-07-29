@@ -7,11 +7,11 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 <h1>1 最新动态</h1>
 <font color=“#0000E3”><b>2013/06/19，合并最新的bugfix和特性到0.41分支上：</b> </font>
 
-【重要】RootServer: Chunk Server在合并失败后，如果发现其他两个副本已经成功合并，会本地直接删除失败的副本，以前的版本RootServer并没有处理主动删除replica的情况;
+【重要】UpdateServer: UPS第一次启动可能会因为重用commitlog而把最新的commitlog文件覆盖掉
 
-SQL: ob_tablet_get.cpp的reset方法没有实现完全，这个bug会导致select * from t1 as z where k1 = 1不断执行时失败；
+【重要】RootServer: 修复Merge Server下线后收到心跳回复没有重新更新回__all_server表问题
 
-SQL：group_min_max.test执行cs出core，原因是ob_row_store重用时有错，造成sort操作符访问到额外数据，致使比较类型出错，std::sort会core掉; 
+【重要】ChunkServer: ObMultipleScanMerge在合并中某个场景下可能出错 
 
 [查看发布说明](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4.1-1225%E5%8F%91%E5%B8%83%E8%AF%B4%E6%98%8E)
 
