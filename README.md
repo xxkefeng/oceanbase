@@ -5,7 +5,7 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 
 
 <h1>1 最新动态</h1>
-<font color=“#0000E3”><b>2013/06/19，合并最新的bugfix和特性到0.41分支上：</b> </font>
+<font color=“#0000E3”><b>2013/07/29，合并最新的bugfix和特性到0.41分支上：</b> </font>
 
 【重要】UpdateServer: UPS第一次启动可能会因为重用commitlog而把最新的commitlog文件覆盖掉
 
