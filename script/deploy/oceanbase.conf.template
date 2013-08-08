@@ -1,0 +1,80 @@
+#Time-stamp: <2013-04-09 13:57:08 ryan>
+# Author: 符风 <fufeng.syd@alibaba-inc.com>
+# 集群初始化工具使用的配置文件
+# 所有以#@开始的行有特殊含义不允许当注释删除
+
+#@begin_global
+[setting]
+# rs_admin工具的位置，这个绝大多数情况不用修改
+rs_admin=./bin/rs_admin
+[public]
+# appname
+appname=dbatest
+# 主集群ID
+master_cluster=cluster_1
+# 网络接口的名字，默认是bond0。放到不同的section下可以单独为那个section中的server进行配置
+devname=bond0
+[rootserver]
+# rootserver的端口
+port=2500
+[chunkserver]
+# chunkserver的端口
+port=2600
+# chunkserver机型使用的磁盘数目
+# 需要已经建立/data/{1..max_disk_num}的目录
+max_disk_num=10
+[mergeserver]
+# mergeserver的端口
+port=2800
+# mergeserver的MySQL端口
+sql_port=3030
+# 部署在rootserver上的fake ms的MySQL端口，不能修改！
+lms_port=2828
+[updateserver]
+# updateserver的端口
+port=2700
+# updateserver用于每日合并的端口
+inner_port=2710
+# updatedateserver转储用的磁盘的数目
+# 需要已经建立/data/{1..max_disk_num}的目录
+max_disk_num=4
+#@end_global
+
+#@begin_init_config
+# 各个server启动时使用的配置项
+[rootserver]
+
+[chunkserver]
+
+[mergeserver]
+
+[updateserver]
+
+#@end_init_config
+
+#@begin_cluster_1
+[rootserver]
+# rootserver的vip地址
+vip=10.246.162.160
+# 所有rootserver的ip地址
+10.246.162.160
+[updateserver]
+# 所有updateserver的ip地址
+10.246.162.160
+[chunkserver]
+# 所有chunkserver的ip地址
+10.246.162.161
+10.246.162.162
+10.246.162.163
+10.246.162.164
+[mergeserver]
+# 所有mergeserver的ip地址
+10.246.162.161
+10.246.162.162
+10.246.162.163
+10.246.162.164
+#@end_cluster_1
+
+##@begin_cluster_2
+## 所有内容可以参考cluster_1的配置
+##@end_cluster_2
