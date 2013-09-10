@@ -31,31 +31,48 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 <h1>4 文档导读</h1>
 <table width="100%"  border="1" frame="all" rules="all">
   <tr>
-    <td width=7% bgcolor="B0B0B0"><b>序号</b></div></td>
-    <td width=33% bgcolor="B0B0B0"><b>文档名称</b></td>
-    <td width=60% bgcolor="B0B0B0"><b>使用说明</b></td>
+    <td width=9% bgcolor="B0B0B0"><b>序号</b></div></td>
+    <td width=29% bgcolor="B0B0B0"><b>文档名称</b></td>
+    <td colspan="2" bgcolor="B0B0B0"><b>使用说明</b></td>
   </tr>
   <tr>
-    <td width="7%"><div align="center">1</div></td>
-    <td width="33%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase%E6%9E%B6%E6%9E%84%E4%BB%8B%E7%BB%8D" target="_blank">《OceanBase架构》</a></td>
-    <td width="60%">该文档主要介绍OceanBase数据库的功能、架构、特点和工作模式等信息。</td>
+    <td width="9%"><div align="center">1</div></td>
+    <td width="29%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-%E6%8F%8F%E8%BF%B0" target="_blank">《OceanBase 描述》</a></td>
+    <td width="55%">该文档主要介绍OceanBase数据库的架构、存储引擎和功能等信息。</td>
+    <td width="7%"><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase 描述.pdf">下载</a></td>
   </tr>
   <tr>
-    <td width="7%"><div align="center">2</div></td>
-    <td width="33%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97" target="_blank">《OceanBase 安装指南》</a></td>
-    <td width="60%">该文档主要介绍OceanBase数据库的安装过程。</td>
+    <td width="9%"><div align="center">2</div></td>
+    <td width="29%"> <a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97" target="_blank"> 《OceanBase 安装指南》</a></td>
+    <td width="55%">该文档主要介绍OceanBase数据库的安装过程。</td>
+    <td width="7%"><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase 描述.pdf"></a><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase 安装指南.pdf">下载</a></td>
   </tr>
   <tr>
-    <td width="7%"><div align="center">3</div></td>
-    <td width="33%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase%E5%AE%A2%E6%88%B7%E7%AB%AF-%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97" target="_blank">《OceanBase 客户端 用户指南》</a></td>
-    <td width="60%">该文档主要介绍OceanBase数据库的Java客户端和C客户端的使用方法。</td>
+    <td width="9%"><div align="center">3</div></td>
+    <td width="29%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8" target="_blank">《OceanBase 快速入门》</a></td>
+    <td width="55%">该文档主要介绍如何快速入门OceanBase的方法。</td>
+    <td width="7%"><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase%20%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8.pdf">下载</a></td>
   </tr>
   <tr>
-    <td width="7%"><div align="center">4</div></td>
-    <td width="33%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL-%E5%8F%82%E8%80%83%E6%8C%87%E5%8D%97" target="_blank">《OceanBase SQL 参考指南》</a></td>
-    <td width="60%">该文档主要介绍OceanBase数据库支持的SQL语言、语法规则和使用方法等。</td>
+    <td width="9%"><div align="center">4</div></td>
+    <td width="29%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase%E5%AE%A2%E6%88%B7%E7%AB%AF-%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97" target="_blank">《OceanBase 客户端 用户指南》</a></td>
+    <td width="55%">该文档主要介绍OceanBase数据库的Java客户端和C客户端的使用方法。</td>
+    <td width="7%"><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase 描述.pdf"></a><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase 客户端 用户指南.pdf">下载</a></td>
+  </tr>
+  <tr>
+    <td width="9%"><div align="center">5</div></td>
+    <td width="29%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL-%E5%8F%82%E8%80%83%E6%8C%87%E5%8D%97" target="_blank">《OceanBase SQL 参考指南》</a></td>
+    <td width="55%">该文档主要介绍OceanBase数据库支持的SQL语言、语法规则和使用方法等。</td>
+    <td width="7%"><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase 描述.pdf"></a><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase%20SQL%20%E5%8F%82%E8%80%83%E6%8C%87%E5%8D%97.pdf">下载</a></td>
+  </tr>
+  <tr>
+    <td width="9%"><div align="center">6</div></td>
+    <td width="29%"><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-%E5%8F%82%E8%80%83%E6%8C%87%E5%8D%97" target="_blank">《OceanBase 参考指南》</a></td>
+    <td width="55%">该文档主要介绍OceanBase的日志参考、系统结果码和术语等信息。</td>
+    <td width="7%"><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase 描述.pdf"></a><a href="https://raw.github.com/alibaba/oceanbase/oceanbase_0.4/doc/wiki/OceanBase 参考指南.pdf">下载</a></td>
   </tr>
 </table>
+
 
 <h1>5 其他资源列表</h1>
 * [OceanBase SQL 用户参考手册](https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL-%E7%94%A8%E6%88%B7%E5%8F%82%E8%80%83%E6%89%8B%E5%86%8C)
