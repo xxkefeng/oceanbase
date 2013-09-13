@@ -30,9 +30,9 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 
 <h1>4 资源地址</h1>
 <ul>
-<li>OceanBase源码：https://github.com/alibaba/oceanbase</li>
+<li>OceanBase 源码：https://github.com/alibaba/oceanbase</li>
 <li>OceanBase RPM包：https://github.com/alibaba/oceanbase_rpm_package</li>
-<li>OceanBase客户端RPM包：https://github.com/alibaba/oceanbase_client</li>
+<li>OceanBase 客户端 RPM包：https://github.com/alibaba/oceanbase_client</li>
 </ul>
 
 <h1>5 产品文档导读</h1>
