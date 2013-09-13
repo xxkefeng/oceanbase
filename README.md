@@ -28,7 +28,14 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 
 [详细列表](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4-%E7%89%88%E6%9C%AC%E7%89%B9%E6%80%A7) 
 
-<h1>4 文档导读</h1>
+<h1>4 资源地址</h1>
+<ul>
+<li>OceanBase源码：https://github.com/alibaba/oceanbase</li>
+<li>OceanBase RPM包：https://github.com/alibaba/oceanbase_rpm_package</li>
+<li>OceanBase客户端RPM包：https://github.com/alibaba/oceanbase_client</li>
+</ul>
+
+<h1>5 产品文档导读</h1>
 <table width="100%"  border="1" frame="all" rules="all">
   <tr>
     <td width=9% bgcolor="B0B0B0"><b>序号</b></div></td>
@@ -74,9 +81,7 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 </table>
 
 
-<h1>5 其他资源列表</h1>
-* [OceanBase SQL 用户参考手册](https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL-%E7%94%A8%E6%88%B7%E5%8F%82%E8%80%83%E6%89%8B%E5%86%8C)
-* [OceanBase SQL管理员手册](https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL%E7%AE%A1%E7%90%86%E5%91%98%E6%89%8B%E5%86%8C)
+<h1>6 其他文档列表</h1>
 * [ChunkServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/chunkserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [mergeServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/mergeserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
 * [rootServer设计文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/rootserver%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3)
@@ -84,7 +89,7 @@ OceanBase是[阿里巴巴集团](http://page.china.alibaba.com/shtml/about/ali_g
 * [运维文档](https://github.com/alibaba/oceanbase/tree/oceanbase_0.4/doc/%E4%BD%BF%E7%94%A8%E8%BF%90%E7%BB%B4)
 * [Project Plan](https://github.com/alibaba/oceanbase/wiki/Project-Plan) 
 
-<h1>6 联系我们</h1>
+<h1>7 联系我们</h1>
  <p align="left">如果您有任何疑问或是想了解OceanBase的最新开源动态消息，请联系我们：</p>
   <p align="left"><b>支付宝（中国）网络技术有限公司·OceanBase团队</b></p>
   <p align="left">地址：杭州市万塘路18号黄龙时代广场B座</p>
