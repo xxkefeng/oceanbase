@@ -33,29 +33,27 @@
 <p>OceanBase是<a href="http://page.china.alibaba.com/shtml/about/ali_group1.shtml">阿里巴巴集团</a>自主研发的可扩展的关系型数据库，OceanBase实现了跨行跨表的事务，支持数千亿条记录、数百TB数据上的SQL操作，截止到2012年8月为止，OceanBase数据库支持了阿里巴巴集团下多个重要业务的数据存储，支持业务包括收藏夹、直通车报表、天猫评价等，截止2013年4月份，OceanBase线上业务的数据量已经超过一千亿条。</p>
 
 <h1>
-<a name="1-" class="anchor" href="#1-"><span class="octicon octicon-link"></span></a>最新动态</h1>
+<a name="1-%E6%9C%80%E6%96%B0%E5%8A%A8%E6%80%81" class="anchor" href="#1-%E6%9C%80%E6%96%B0%E5%8A%A8%E6%80%81"><span class="octicon octicon-link"></span></a>1 最新动态</h1>
 
-<p><b>2013/07/29，合并最新的bugfix和特性到0.41分支上：</b> </p>
+<p><b>2013/06/19，合并最新的bugfix和特性到0.41分支上：</b> </p>
 
-<font color=“#0000E3”><b>2013/07/29，合并最新的bugfix和特性到0.41分支上：</b> </font>
+<p>【重要】RootServer: Chunk Server在合并失败后，如果发现其他两个副本已经成功合并，会本地直接删除失败的副本，以前的版本RootServer并没有处理主动删除replica的情况;</p>
 
-<p>【重要】UpdateServer: UPS第一次启动可能会因为重用commitlog而把最新的commitlog文件覆盖掉</p>
+<p>SQL: ob_tablet_get.cpp的reset方法没有实现完全，这个bug会导致select * from t1 as z where k1 = 1不断执行时失败；</p>
 
-<p>【重要】RootServer: 修复Merge Server下线后收到心跳回复没有重新更新回__all_server表问题</p>
+<p>SQL：group_min_max.test执行cs出core，原因是ob_row_store重用时有错，造成sort操作符访问到额外数据，致使比较类型出错，std::sort会core掉; </p>
 
-<p>【重要】ChunkServer: ObMultipleScanMerge在合并中某个场景下可能出错 </p>
-
-<p>[查看发布说明](https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4.1-1225%E5%8F%91%E5%B8%83%E8%AF%B4%E6%98%8E)</p>
+<p><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4.1-1209%E5%8F%91%E5%B8%83%E8%AF%B4%E6%98%8E">查看发布说明</a></p>
 
 <h1>
-<a name="2-" class="anchor" href="#2-"><span class="octicon octicon-link"></span></a>2发行日志</h1>
+<a name="2-%E5%8F%91%E8%A1%8C%E6%97%A5%E5%BF%97" class="anchor" href="#2-%E5%8F%91%E8%A1%8C%E6%97%A5%E5%BF%97"><span class="octicon octicon-link"></span></a>2 发行日志</h1>
 
 <ul>
 <li>
 <b>2013/04/28，整理提交了V0.4.1代码和相关技术文档。</b> </li>
 <li>2013/03/04，整理提交了V0.3.1代码和相关技术文档。</li>
 </ul><h1>
-<a name="3-" class="anchor" href="#3-"><span class="octicon octicon-link"></span></a>版本特性</h1>
+<a name="3-%E7%89%88%E6%9C%AC%E7%89%B9%E6%80%A7" class="anchor" href="#3-%E7%89%88%E6%9C%AC%E7%89%B9%E6%80%A7"><span class="octicon octicon-link"></span></a>3 版本特性</h1>
 
 <ul>
 <li>使用libeasy网络框架代替了原来的tbnet，实现更高的网络处理性能</li>
@@ -66,7 +64,7 @@
 </ul><p><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-0.4-%E7%89%88%E6%9C%AC%E7%89%B9%E6%80%A7">详细列表</a> </p>
 
 <h1>
-<a name="4-" class="anchor" href="#4-"><span class="octicon octicon-link"></span></a>文档导读</h1>
+<a name="4-%E6%96%87%E6%A1%A3%E5%AF%BC%E8%AF%BB" class="anchor" href="#4-%E6%96%87%E6%A1%A3%E5%AF%BC%E8%AF%BB"><span class="octicon octicon-link"></span></a>4 文档导读</h1>
 
 <table width="100%" border="1" frame="all" rules="all">
 <tr>
@@ -95,7 +93,7 @@
     <td width="60%">该文档主要介绍OceanBase数据库支持的SQL语言、语法规则和使用方法等。</td>
   </tr>
 </table><h1>
-<a name="5-" class="anchor" href="#5-"><span class="octicon octicon-link"></span></a>其他资源列表</h1>
+<a name="5-%E5%85%B6%E4%BB%96%E8%B5%84%E6%BA%90%E5%88%97%E8%A1%A8" class="anchor" href="#5-%E5%85%B6%E4%BB%96%E8%B5%84%E6%BA%90%E5%88%97%E8%A1%A8"><span class="octicon octicon-link"></span></a>5 其他资源列表</h1>
 
 <ul>
 <li><a href="https://github.com/alibaba/oceanbase/wiki/OceanBase-SQL-%E7%94%A8%E6%88%B7%E5%8F%82%E8%80%83%E6%89%8B%E5%86%8C">OceanBase SQL 用户参考手册</a></li>
@@ -108,28 +106,25 @@
 <li>
 <a href="https://github.com/alibaba/oceanbase/wiki/Project-Plan">Project Plan</a> </li>
 </ul><h1>
-<a name="6-" class="anchor" href="#6-"><span class="octicon octicon-link"></span></a>联系我们</h1>
+<a name="6-%E8%81%94%E7%B3%BB%E6%88%91%E4%BB%AC" class="anchor" href="#6-%E8%81%94%E7%B3%BB%E6%88%91%E4%BB%AC"><span class="octicon octicon-link"></span></a>6 联系我们</h1>
 
 <p></p><p align="left">如果您有任何疑问或是想了解OceanBase的最新开源动态消息，请联系我们：</p>
   <p align="left"><b>支付宝（中国）网络技术有限公司·OceanBase团队</b></p>
   <p align="left">地址：杭州市万塘路18号黄龙时代广场B座</p>
   <p align="left">邮编：310099</p>
-  <p align="left">邮箱： <a href="mailto:alipay-oceanbase-support@list.alibaba-inc.com"></a><a href="mailto:alipay-oceanbase-support@list.alibaba-inc.com">alipay-oceanbase-support@list.alibaba-inc.com</a></p>
+  <p align="left">邮箱： <a href="mailto:rongxuan.lc@alipay.com"></a><a href="mailto:rongxuan.lc@alipay.com">rongxuan.lc@alipay.com</a></p>
   <p align="left"> 新浪微博：<a href="http://weibo.com/u/2356115944"></a><a href="http://weibo.com/u/2356115944">http://weibo.com/u/2356115944</a></p>
   <p align="left">技术交流群（阿里旺旺）：853923637</p>
         </section>
 
         <aside id="sidebar">
-          <a href="https://github.com/alibaba/oceanbase/zipball/oceanbase_0.4" class="button">
+          <a href="https://github.com/alibaba/oceanbase/zipball/master" class="button">
             <small>Download</small>
             .zip file
           </a>
-          <a href="https://github.com/alibaba/oceanbase/tarball/oceanbase_0.4" class="button">
+          <a href="https://github.com/alibaba/oceanbase/tarball/master" class="button">
             <small>Download</small>
             .tar.gz file
-          </a>
-          <a href="https://github.com/alibaba/oceanbase/wiki/%E8%81%94%E7%B3%BB%E6%88%91%E4%BB%AC" class="button">
-            Contact Us
           </a>
 
           <p class="repo-owner"><a href="https://github.com/alibaba/oceanbase"></a> is maintained by <a href="https://github.com/alibaba">alibaba</a>.</p>
