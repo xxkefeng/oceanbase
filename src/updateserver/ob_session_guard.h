@@ -53,16 +53,39 @@ namespace oceanbase
           }
         }
 
+        static SessionType get_session_type(TransType type)
+        {
+          SessionType session_type = ST_READ_ONLY;
+          switch(type)
+          {
+            case READ_ONLY_TRANS:
+              session_type = ST_READ_ONLY;
+              break;
+            case READ_WRITE_TRANS:
+              session_type = ST_READ_WRITE;
+              break;
+            case INTERNAL_WRITE_TRANS:
+            case REPLAY_TRANS:
+              session_type = ST_REPLAY;
+              break;
+            default:
+              TBSYS_LOG(ERROR, "unknown trans_type=%d", type);
+              break;
+          }
+          return session_type;
+        }
+
         template<typename SessionT>
         int start_session(const ObTransReq& req, ObTransID& sid, SessionT*& ret_ctx)
         {
           int ret = OB_SUCCESS;
+          static TransSessionCallback trans_cb;
           if (sid.is_valid() || NULL != session_ctx_)
           {
             ret = OB_INIT_TWICE;
             TBSYS_LOG(ERROR, "sid[%s] is valid or session_ctx[%p] != NULL", to_cstring(sid), session_ctx_);
           }
-          else if (OB_SUCCESS != (ret = session_mgr_.begin_session((READ_ONLY_TRANS == req.type_)? ST_READ_ONLY :ST_READ_WRITE,
+          else if (OB_SUCCESS != (ret = session_mgr_.begin_session(get_session_type((TransType)req.type_),
                                                                    req.start_time_,
                                                                    req.timeout_,
                                                                    req.idle_time_,
@@ -87,9 +110,13 @@ namespace oceanbase
           {
             TBSYS_LOG(ERROR, "init_lock_info fail ret=%d %s", ret, to_cstring(sid));
           }
-          else if (OB_SUCCESS != (ret = session_ctx_->add_publish_callback(UPS.get_trigger_handler().get_trigger_callback(), NULL)))
+          else if (READ_ONLY_TRANS != req.type_ && INTERNAL_WRITE_TRANS != req.type_ && OB_SUCCESS != (ret = session_ctx_->add_free_callback(UPS.get_trigger_handler().get_trigger_callback(), NULL)))
           {
-            TBSYS_LOG(ERROR, "add_publish_callback fail ret=%d %s", ret, to_cstring(sid));
+            TBSYS_LOG(ERROR, "add_publish_callback fail ret=%d %s", ret, to_cstring(*session_ctx_));
+          }
+          else if (READ_ONLY_TRANS != req.type_ && OB_SUCCESS != (ret = session_ctx_->add_publish_callback(&trans_cb, &((RWSessionCtx*)session_ctx_)->get_uc_info())))
+          {
+            TBSYS_LOG(ERROR, "add_publish_callback(%s)=>%d", to_cstring(*session_ctx_), ret);
           }
           else if (NULL == (ret_ctx = dynamic_cast<SessionT*>(session_ctx_)))
           {
@@ -107,7 +134,7 @@ namespace oceanbase
         }
 
         template<typename SessionT>
-        int fetch_session(const ObTransID& sid, SessionT*& session_ctx)
+        int fetch_session(const ObTransID& sid, SessionT*& session_ctx, const bool check_session_expired = false)
         {
           int ret = OB_SUCCESS;
           if (!sid.is_valid())
@@ -125,7 +152,8 @@ namespace oceanbase
             TBSYS_LOG(WARN, "fetch ctx fail session_descriptor=%u", sid.descriptor_);
             ret = OB_TRANS_ROLLBACKED;
           }
-          else if (session_ctx->is_session_expired())
+          else if (check_session_expired
+                  && session_ctx->is_session_expired())
           {
             session_mgr_.revert_ctx(sid.descriptor_);
             session_ctx = NULL;
@@ -135,11 +163,11 @@ namespace oceanbase
                    || session_ctx->get_session_start_time() != sid.start_time_us_
                    || !(UPS.get_self() == sid.ups_))
           {
+            TBSYS_LOG(WARN, "session not match: id=%u, start_time=%ld, ups=%s",
+                      sid.descriptor_, session_ctx->get_session_start_time(), to_cstring(sid.ups_));
             session_mgr_.revert_ctx(sid.descriptor_);
             session_ctx = NULL;
             ret = OB_TRANS_NOT_MATCH;
-            TBSYS_LOG(WARN, "session not match: id=%u, start_time=%ld, ups=%s",
-                      sid.descriptor_, session_ctx->get_session_start_time(), to_cstring(sid.ups_));
           }
           else
           {

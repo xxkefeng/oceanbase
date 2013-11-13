@@ -320,7 +320,8 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      if (OB_SUCCESS != (ret = list_bloomfilter_.insert(table_id, row_key)))
+      UNUSED(table_id);
+      if (OB_SUCCESS != (ret = list_bloomfilter_.insert(row_key)))
       {
         TBSYS_LOG(WARN, "list bloomfilter insert error:ret=%d", ret);
       }
@@ -332,6 +333,7 @@ namespace oceanbase
         uint64_t table_id, const ObRow& row)
     {
       int ret = OB_SUCCESS;
+      UNUSED(table_id);
       const ObRowkey* rowkey = NULL;
 
       if (OB_SUCCESS != (ret = row.get_rowkey(rowkey)))
@@ -341,8 +343,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "row get rowkey error:ret=%d,row=%s,rowkey=%p",
             ret, buf, rowkey);
       }
-      else if (OB_SUCCESS != (ret = list_bloomfilter_.insert(
-              table_id, *rowkey)))
+      else if (OB_SUCCESS != (ret = list_bloomfilter_.insert(*rowkey)))
       {
         TBSYS_LOG(WARN, "list bloomfilter insert error:ret=%d", ret);
       }

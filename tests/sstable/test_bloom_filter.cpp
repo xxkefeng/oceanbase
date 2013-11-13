@@ -17,7 +17,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <iostream>
-#include "common/bloom_filter.h"
+#include "common/ob_define.h"
+#include "common/ob_malloc.h"
+#include "common/murmur_hash.h"
+#include "common/ob_bloomfilter.h"
 
 using namespace oceanbase;
 using namespace oceanbase::common;
@@ -40,41 +43,52 @@ char* random_str(uint len)
   return str;
 }
 
+struct ObStringHash
+{
+  uint64_t operator()(const ObString& key, uint64_t hash)
+  {
+    return murmurhash64A(key.ptr(), key.length(), hash);
+  }
+};
+
 TEST(BLOOM_FILTER, test)
 {
   //element count is about 32k  = 256m/ 0.3k
   uint32_t num = 1024 * 32;
-  float prob = static_cast<float>(0.1);
   uint key_len = 17;
-  BloomFilter bfilter;
+  ObBloomFilter<ObString, ObStringHash, ObTCMalloc> bfilter;
   uint i = 0;
   char *array[num];
-  int ret = bfilter.init(num, prob);
+  int ret = bfilter.init(3, 1024*1024LL*1);
   EXPECT_TRUE(OB_SUCCESS == ret);
   while(i < num) {
     char *key_str = random_str(key_len);
     array[i] = key_str;
-    bfilter.insert(key_str, key_len);
+    ObString key(0, key_len, key_str);
+    bfilter.insert(key);
     i++;
   }
-  
+
   i = 0;
   bool is_contain = false;
   while(i < num)
   {
-   is_contain = bfilter.may_contain(array[i], key_len);
-   EXPECT_EQ(true, is_contain);
-   delete [] array[i];
-   i++;
+    ObString key(0, key_len, array[i]);
+    is_contain = bfilter.may_contain(key);
+    EXPECT_EQ(true, is_contain);
+    delete [] array[i];
+    i++;
   }
-  
+
   //test not contain key
   char* out_key = new char[key_len];
   memset(out_key, 0, key_len);
-  is_contain = bfilter.may_contain(out_key, key_len);
+  ObString key(0, key_len, out_key);
+  is_contain = bfilter.may_contain(key);
   EXPECT_EQ(is_contain, false);
   memset(out_key, 1, key_len);
-  is_contain = bfilter.may_contain(out_key, key_len);
+  key.assign_ptr(out_key, key_len);
+  is_contain = bfilter.may_contain(key);
   EXPECT_EQ(is_contain, false);
   delete [] out_key;
 }

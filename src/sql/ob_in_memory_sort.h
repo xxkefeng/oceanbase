@@ -45,13 +45,11 @@ namespace oceanbase
       public:
         ObInMemorySort();
         virtual ~ObInMemorySort();
-
+        virtual void reset();
+        virtual void reuse();
         int set_sort_columns(const common::ObArray<ObSortColumn> &sort_columns);
-
-        void reset();
         int add_row(const common::ObRow &row);
         int sort_rows();
-
         // @pre sort_rows()
         virtual int get_next_row(const common::ObRow *&row);
         int get_next_compact_row(common::ObString &compact_row);

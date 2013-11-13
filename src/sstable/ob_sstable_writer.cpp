@@ -17,6 +17,7 @@
 #include "common/utility.h"
 #include "ob_sstable_writer.h"
 #include "common/serialization.h"
+#include "common/ob_row_util.h"
 
 namespace oceanbase
 {
@@ -41,7 +42,7 @@ namespace oceanbase
       : inited_(false), first_row_(true), use_binary_rowkey_(false), 
       add_row_count_(true), dio_(false), filesys_(&default_filesys_), 
       table_id_(OB_INVALID_ID), column_group_id_(OB_INVALID_ID), 
-      cur_key_buf_(DEFAULT_KEY_BUF_SIZE), bf_key_buf_(DEFAULT_KEY_BUF_SIZE), 
+      cur_key_buf_(DEFAULT_KEY_BUF_SIZE),  
       offset_(0), prev_offset_(0), row_count_(0), prev_column_group_row_count_(0), 
       column_group_row_count_(0), compressor_(NULL), uncompressed_blocksize_(0), 
       compress_buf_(DEFAULT_COMPRESS_BUF_SIZE), serialize_buf_(DEFAULT_SERIALIZE_BUF_SIZE),
@@ -283,7 +284,7 @@ namespace oceanbase
                         "column_group_id=%ld), this_row(table_id=%ld, column_group_id=%ld)",
                   table_id, column_group_id, table_id_, column_group_id_);
         TBSYS_LOG(WARN, "Dump key of last row(%s) in buffer and current row(%s)",
-            to_cstring(row_key), to_cstring(cur_key_));
+            to_cstring(cur_key_), to_cstring(row_key));
         ret = OB_ERROR;
       }
       else if (!first_row_ && use_binary_rowkey_ && !row.is_binary_rowkey())
@@ -343,10 +344,12 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
+        uint64_t tmp_row_checksum = 0;
         //add row into block builder
-        ret = block_builder_.add_row(row, row_size);
+        ret = block_builder_.add_row(row, tmp_row_checksum, row_size);
         if (OB_SUCCESS == ret)
         {
+          row_checksum_ += tmp_row_checksum;
           ++column_group_row_count_;
           if (add_row_count_)
           {
@@ -392,14 +395,7 @@ namespace oceanbase
 
         if (OB_SUCCESS == ret && enable_bloom_filter_)
         {
-          if (use_binary_rowkey_)
-          {
-            ret = update_bloom_filter(column_group_id, table_id, binary_key);
-          }
-          else
-          {
-            ret = update_bloom_filter(column_group_id, table_id, row_key);
-          }
+          ret = update_bloom_filter(column_group_id, table_id, row_key);
         }
       }
 
@@ -408,6 +404,164 @@ namespace oceanbase
       return ret;
     }
 
+    int ObSSTableWriter::append_row(const ObRow& row, int64_t& approx_space_usage)
+    {
+      int ret                        = OB_SUCCESS;
+      int64_t row_size               = ObRowUtil::get_row_serialize_size(row);
+      uint64_t table_id              = OB_INVALID_ID;
+      uint64_t column_id             = 0;
+      const uint64_t column_group_id = 0;
+
+      const ObRowkey *row_key = NULL;
+
+      if (!inited_)
+      {
+        TBSYS_LOG(WARN, "sstable writer isn't inited, please create sstable first");
+        ret = OB_NOT_INIT;
+      }
+      else if (row.get_column_num() == 0)
+      {
+        TBSYS_LOG(WARN, "There is no objects in the row[%s] to append", to_cstring(row));
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (NULL == row.get_row_desc())
+      {
+        TBSYS_LOG(WARN, "row desc of row[%s] is NULL", to_cstring(row));
+      }
+      else if (OB_SUCCESS != (ret = row.get_row_desc()->get_tid_cid(0LL, table_id, column_id)))
+      {
+        TBSYS_LOG(WARN, "get_tid_cid ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = row.get_rowkey(row_key)) || NULL == row_key)
+      {
+        TBSYS_LOG(WARN, "current row[%s] does not contains rowkey.", to_cstring(row));
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (table_id == OB_INVALID_ID || table_id == 0)
+      {
+        TBSYS_LOG(WARN, "invalid row, table_id=%lu", table_id);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (NULL == row_key->get_obj_ptr() || row_key->get_obj_cnt() <= 0)
+      {
+        TBSYS_LOG(WARN, "The row to append with NULL row key, key_ptr=%p, "
+                        "key_len=%ld", row_key->get_obj_ptr(), row_key->get_obj_cnt());
+        ret = OB_ERROR;
+      }
+      /*@TODO check schema
+      else if (is_dense_format() && OB_SUCCESS != (ret = row.check_schema(schema_)))
+      {
+        TBSYS_LOG(WARN, "The objects in the row are inconsistent with the schema");
+      }
+      */
+      else if (!first_row_ && is_invalid_row_key(table_id, column_group_id, *row_key))
+      {
+        /**
+         * if the row is not the first row, need check whether the
+         * current row is greater than the previous row order by 
+         * (table_id, column_group_id, row_key) 
+         */
+        TBSYS_LOG(WARN, "Current row is not in order. last_row(table_id=%ld, "
+                        "column_group_id=%ld), this_row(table_id=%ld, column_group_id=%ld)",
+                  table_id, column_group_id, table_id_, column_group_id_);
+        TBSYS_LOG(WARN, "Dump key of last row(%s) in buffer and current row(%s)",
+            to_cstring(cur_key_), to_cstring(*row_key));
+        ret = OB_ERROR;
+      }
+      else if (first_row_)
+      {
+        //if it is first row, set table_id_ and column_group_id_
+        table_id_        = table_id;
+        column_group_id_ = column_group_id;
+      }
+
+      /**
+       * if there is not enough space in block builder to store
+       * current row, or the block data space usage in block builder
+       * is greater than the uncompressed block size, or chage the
+       * table id, or change column goupr, write the block into
+       * sstable file immediately.
+       */
+      if (OB_SUCCESS == ret && need_switch_block(table_id, column_group_id, row_size))
+      {
+        ret = write_current_block();
+
+        /**
+         * if column_group have changed, have to insert an block
+         * index item to block index builder, which has the start key
+         * of column group and zero record length.
+         */
+        if (OB_SUCCESS == ret 
+            && (table_id_ != table_id || column_group_id_ != column_group_id)
+            && OB_SUCCESS == (ret = check_row_count()))
+        {
+          if (table_id_ != table_id)
+          {
+            prev_column_group_row_count_ = 0;
+            add_row_count_ = true;
+          }
+          else if (column_group_id_ != column_group_id)
+          {
+            add_row_count_ = false;
+          }
+
+          table_id_ = table_id;
+          column_group_id_ = column_group_id;
+        }
+        else if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "failed to write current block to disk, file_name=%s, "
+                          "table_id=%lu, row_count=%ld, offset=%ld",
+                    filename_, table_id_, row_count_, offset_);
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        //add row into block builder
+        ret = block_builder_.add_row(table_id_, column_group_id_, row, row_size);
+        if (OB_SUCCESS == ret)
+        {
+          ++column_group_row_count_;
+          if (add_row_count_)
+          {
+            ++row_count_; //update row count of sstable
+          }
+        }
+        else
+        {
+          if (first_row_)
+          {
+            reset();
+          }
+          TBSYS_LOG(WARN, "Problem add row into block builder, file_name=%s, "
+                          "table_id=%lu, row_count=%ld, offset=%ld",
+                    filename_, table_id_, row_count_, offset_);
+        }
+
+        //backup current row key
+        if (OB_SUCCESS == ret)
+        {
+          ObMemBufAllocatorWrapper allocator(cur_key_buf_);
+          ret = row_key->deep_copy(cur_key_, allocator);
+        }
+
+        //if this row is the first row of sstable, store the row key as start key
+        if (OB_SUCCESS == ret && first_row_)
+        {
+          first_row_ = false;
+        }
+
+        if (OB_SUCCESS == ret && enable_bloom_filter_)
+        {
+          ret = update_bloom_filter(column_group_id, table_id, *row_key);
+        }
+      }
+
+      approx_space_usage = offset_ + block_builder_.get_block_size();
+      
+      return ret;
+    }
 
     int ObSSTableWriter::close_sstable(int64_t& trailer_offset,
                                        int64_t& sstable_size)
@@ -454,7 +608,7 @@ namespace oceanbase
       }
 
       //write bloom filter
-      if (OB_SUCCESS == ret && enable_bloom_filter_)
+      if (OB_SUCCESS == ret && enable_bloom_filter_ && row_count_ > 0)
       {
         ret = write_bloom_filter();
         if (OB_SUCCESS != ret)
@@ -554,78 +708,11 @@ namespace oceanbase
 
     int ObSSTableWriter::update_bloom_filter(const uint64_t column_group_id,
                                              const uint64_t table_id,
-                                             const ObString& row_key)
-    {
-      int ret             = OB_SUCCESS;
-      int64_t pos         = 0;
-      int64_t row_key_len = row_key.length();
-      int64_t bf_key_size = sizeof(int64_t) + row_key_len;
-      char* bf_key_buf    = NULL;
-
-      /**
-       * update bloom filter     +-----------------+----------+---------+
-       *                         + column_group_id + table_id + row_key +
-       * bollom filter key ===>  +-----------------+----------+---------+
-       */
-
-      if (OB_SUCCESS == (ret = bf_key_buf_.ensure_space(
-          bf_key_size, ObModIds::OB_SSTABLE_WRITER)))
-      {
-        bf_key_buf = bf_key_buf_.get_buffer();
-        //generate bloom filter key with table_id, column_group_id, row_key
-        if (OB_SUCCESS == (ret = encode_i16(bf_key_buf, bf_key_size, pos, 0))
-            && OB_SUCCESS == (ret = encode_i16(bf_key_buf, bf_key_size, pos, static_cast<int16_t>(column_group_id)))
-            && OB_SUCCESS == (ret = encode_i32(bf_key_buf, bf_key_size, pos, static_cast<int32_t>(table_id))))
-        {
-          memcpy(bf_key_buf + pos, row_key.ptr(), row_key_len);
-          bloom_filter_.insert(bf_key_buf, bf_key_size);
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "serialize info into bloom filter key failed table_id=%ld,"
-                    "column_group_id=%ld", table_id, column_group_id);
-        }
-      }
-
-      return ret;
-    }
-
-    int ObSSTableWriter::update_bloom_filter(const uint64_t column_group_id,
-                                             const uint64_t table_id,
                                              const ObRowkey& row_key)
     {
-      int ret             = OB_SUCCESS;
-      int64_t pos         = 0;
-      int64_t row_key_len = row_key.get_serialize_size();
-      int64_t bf_key_size = sizeof(int64_t) + row_key_len;
-      char* bf_key_buf    = NULL;
-
-      /**
-       * update bloom filter     +-----------------+----------+---------+
-       *                         + column_group_id + table_id + row_key +
-       * bollom filter key ===>  +-----------------+----------+---------+
-       */
-
-      if (OB_SUCCESS == (ret = bf_key_buf_.ensure_space(
-          bf_key_size, ObModIds::OB_SSTABLE_WRITER)))
-      {
-        bf_key_buf = bf_key_buf_.get_buffer();
-        //generate bloom filter key with table_id, column_group_id, row_key
-        if (OB_SUCCESS == (ret = encode_i16(bf_key_buf, bf_key_size, pos, 0))
-            && OB_SUCCESS == (ret = encode_i16(bf_key_buf, bf_key_size, pos, static_cast<int16_t>(column_group_id)))
-            && OB_SUCCESS == (ret = encode_i32(bf_key_buf, bf_key_size, pos, static_cast<int32_t>(table_id))))
-        {
-          row_key.serialize(bf_key_buf, bf_key_size, pos);
-          bloom_filter_.insert(bf_key_buf, bf_key_size);
-        }
-        else
-        {
-          TBSYS_LOG(WARN, "serialize info into bloom filter key failed table_id=%ld,"
-                    "column_group_id=%ld", table_id, column_group_id);
-        }
-      }
-
-      return ret;
+      UNUSED(column_group_id);
+      UNUSED(table_id);
+      return bloom_filter_.insert(row_key);
     }
     
     inline bool ObSSTableWriter::is_dense_format()
@@ -905,19 +992,19 @@ namespace oceanbase
       ret = trailer_.set_bloom_filter_record_offset(offset_);
       if (OB_SUCCESS == ret)
       {
-        ret = trailer_.set_bloom_filter_record_size(bloom_filter_.get_num_bytes()
+        ret = trailer_.set_bloom_filter_record_size(bloom_filter_.get_nbyte()
                                                     + sizeof(ObRecordHeader));
         if (OB_SUCCESS == ret)
         {
-          ret = trailer_.set_bloom_filter_hash_count(bloom_filter_.get_num_hash_functions());
+          ret = trailer_.set_bloom_filter_hash_count(bloom_filter_.get_nhash());
         }
       }
 
       if (OB_SUCCESS == ret)
       {
         //only store the bitmap of bloom filter, with uncompressed format
-        bloom_filter_buf = reinterpret_cast<const char*>(bloom_filter_.get_bitmap());
-        ret = compress_and_write(bloom_filter_buf, bloom_filter_.get_num_bytes(),
+        bloom_filter_buf = reinterpret_cast<const char*>(bloom_filter_.get_buffer());
+        ret = compress_and_write(bloom_filter_buf, bloom_filter_.get_nbyte(),
                                  BLOOM_FILTER_MAGIC, wrote_len, false);
         if (OB_SUCCESS == ret)
         {
@@ -1087,10 +1174,10 @@ namespace oceanbase
         else
         {
           offset_ += trailer_offset_size;
-          TBSYS_LOG(INFO, "close sstable='%s', checksum=%lu, table_id=%lu, "
+          TBSYS_LOG(INFO, "close sstable='%s', checksum=%lu, row_checksum=%lu, table_id=%lu, "
                           "sstable_size=%ld, row_count=%ld, sstable_block_size=%ld, "
                           "end_rowkey=%s",
-                    filename_, trailer_.get_sstable_checksum(), table_id_,
+                    filename_, trailer_.get_sstable_checksum(), row_checksum_, table_id_,
                     offset_, row_count_, uncompressed_blocksize_, to_cstring(cur_key_));
         }
       }
@@ -1114,6 +1201,7 @@ namespace oceanbase
       prev_column_group_row_count_ = 0;
       column_group_row_count_ = 0;
       sstable_checksum_ = 0;
+      row_checksum_ = 0;
       uncompressed_blocksize_ = 0;
 
       if (NULL != compressor_)
@@ -1125,9 +1213,10 @@ namespace oceanbase
       schema_.reset();
       block_builder_.reset();
       index_builder_.reset();
+      bloom_filter_.get_allocator()->set_mod_id(ObModIds::OB_SSTABLE_WRITER);
       if (enable_bloom_filter_)
       {
-        bloom_filter_.reset();
+        bloom_filter_.destroy();
         enable_bloom_filter_ = false;
       }
       frozen_time_ = 0;

@@ -81,83 +81,9 @@ namespace oceanbase
         Block* reserved_;
     };
 
-    template<typename Factory, typename T>
-    class TSIContainer
-    {
-      public:
-        enum {INIT, DOING, DONE};
-        TSIContainer(Factory& factory): create_stat_(INIT), factory_(factory) {}
-        ~TSIContainer() { clear(); }
-        T* get(){
-          int err = 0;
-          T* val = NULL;
-          while(create_stat_ != DONE)
-          {
-            if (!__sync_bool_compare_and_swap(&create_stat_, INIT, DOING))
-            {} // do nothing
-            else if (0 != (err = pthread_key_create(&key_, destroy)))
-            {
-              __sync_bool_compare_and_swap(&create_stat_, DOING, INIT);
-              TBSYS_LOG(ERROR, "pthread_key_create() fail, err=%d", err);
-              break;
-            }
-            else
-            {
-              __sync_bool_compare_and_swap(&create_stat_, DOING, DONE);
-            }
-          }
-          if (create_stat_ != DONE)
-          {}
-          else if (NULL != (val = (T*)pthread_getspecific(key_)))
-          {}
-          else if (0 != (err = factory_.new_instance(val)))
-          {}
-          else if (0 != (err = pthread_setspecific(key_, val)))
-          {}
-          if (0 != err)
-          {
-            destroy(val);
-            val = NULL;
-          }
-          return val;
-        }
-        void clear()
-        {
-          int err = 0;
-          while(create_stat_ != INIT)
-          {
-            if (!__sync_bool_compare_and_swap(&create_stat_, DONE, DOING))
-            {} // do nothing
-            else
-            {
-              if (0 != (err = pthread_key_delete(key_)))
-              {
-                TBSYS_LOG(ERROR, "pthread_key_delete() fail, err=%d", err);
-              }
-              __sync_bool_compare_and_swap(&create_stat_, DOING, INIT);
-            }
-          }
-        }
-      private:
-        static void destroy(void* arg) {
-          if (NULL != arg)
-          {
-            //(T*)arg->destroy();
-          }
-        }
-        volatile int create_stat_;
-        pthread_key_t key_;
-        Factory& factory_;
-    };
-
     class TSIStackAllocator
     {
       public:
-        struct AllocatorNode
-        {
-          AllocatorNode* next_;
-          StackAllocator allocator_;
-        };
         struct BatchAllocGuard
         {
           BatchAllocGuard(TSIStackAllocator& allocator, int& err): allocator_(allocator), err_(err)
@@ -187,15 +113,11 @@ namespace oceanbase
         void free(void* p);
         int start_batch_alloc();
         int end_batch_alloc(const bool rollback);
-        int new_instance(StackAllocator*& allocator);
         StackAllocator* get();
       private:
-        volatile uint64_t seq_;
         int64_t block_size_;
-        StackAllocator inst_allocator_;
-        AllocatorNode* head_;
         ObIAllocator* block_allocator_;
-        TSIContainer<TSIStackAllocator, StackAllocator> container_;
+        StackAllocator allocator_array_[OB_MAX_THREAD_NUM];
     };
   }; // end namespace common
 }; // end namespace oceanbase

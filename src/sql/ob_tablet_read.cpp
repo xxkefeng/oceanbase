@@ -24,11 +24,33 @@ ObTabletRead::ObTabletRead()
   :op_root_(NULL),
   is_read_consistency_(true),
   rpc_proxy_(NULL),
-  network_timeout_(0),
+  ts_timeout_us_(0),
   join_batch_count_(0),
   last_rowkey_op_(NULL),
   plan_level_(SSTABLE_DATA)
 {
+}
+
+void ObTabletRead::reset()
+{
+  op_root_ = NULL;
+  is_read_consistency_ = true;
+  rpc_proxy_ = NULL;
+  ts_timeout_us_ = 0;
+  join_batch_count_ = 0;
+  last_rowkey_op_ = NULL;
+  plan_level_ = SSTABLE_DATA;
+}
+
+void ObTabletRead::reuse()
+{
+  op_root_ = NULL;
+  is_read_consistency_ = true;
+  rpc_proxy_ = NULL;
+  ts_timeout_us_ = 0;
+  join_batch_count_ = 0;
+  last_rowkey_op_ = NULL;
+  plan_level_ = SSTABLE_DATA;
 }
 
 int ObTabletRead::open()

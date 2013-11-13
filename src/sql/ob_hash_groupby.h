@@ -32,6 +32,7 @@ namespace oceanbase
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_HASH_GROUP_BY; }
         virtual int get_next_row(const common::ObRow *&row);
 
         virtual int add_group_column(const ObSqlExpression &expr);

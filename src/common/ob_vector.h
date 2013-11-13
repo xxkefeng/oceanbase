@@ -109,6 +109,7 @@ namespace oceanbase
           int push_back(const_value_type value);
           int insert(iterator pos, const_value_type value);
           int remove(iterator pos);
+          int remove(const int32_t index);
           int remove(iterator start_pos, iterator end_pos);
           int remove_if(const_value_type value);
           template <typename ValueType, typename Predicate>

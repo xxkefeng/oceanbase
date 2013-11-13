@@ -25,6 +25,19 @@ namespace oceanbase
 {
   namespace common
   {
+    struct DebugLog
+    {
+      enum { MAGIC = 0xde6a9de6a901 };
+      DebugLog(): server_(), ctime_(0), last_ctime_(0) {}
+      ~DebugLog() {}
+      ObServer server_;
+      int64_t ctime_;
+      int64_t last_ctime_;
+      int advance();
+      int64_t to_string(char* buf, const int64_t len) const;
+      int serialize(char* buf, int64_t limit, int64_t& pos) const;
+      int deserialize(const char* buf, int64_t limit, int64_t& pos);
+    };
     class ObLogGenerator
     {
       public:
@@ -34,7 +47,7 @@ namespace oceanbase
       public:
         ObLogGenerator();
         ~ObLogGenerator();
-        int init(int64_t log_buf_size, int64_t log_file_max_size);
+        int init(int64_t log_buf_size, int64_t log_file_max_size, const ObServer* id=NULL);
         int reset();
         bool is_log_start() const;
         int start_log(const ObLogCursor& start_cursor);
@@ -59,11 +72,12 @@ namespace oceanbase
       protected:
         bool is_inited() const;
         int check_state() const;
+        bool has_log() const;
         int do_write_log(const LogCommand cmd, const char* log_data, const int64_t data_len,
                          const int64_t reserved_len);
         int check_log_file_size();
         int switch_log();
-        int write_nop();
+        int write_nop(const bool force_write=false);
         int append_eof();
       public:
         static char eof_flag_buf_[LOG_FILE_ALIGN_SIZE] __attribute__ ((aligned(DIO_ALIGN_SIZE)));
@@ -75,7 +89,9 @@ namespace oceanbase
         char* log_buf_;
         int64_t log_buf_len_;
         int64_t pos_;
+        DebugLog debug_log_;
         char empty_log_[LOG_FILE_ALIGN_SIZE * 2];
+        char nop_log_[LOG_FILE_ALIGN_SIZE * 2];
     };
 
     template<typename T>
@@ -132,6 +148,11 @@ namespace oceanbase
       if (OB_SUCCESS != (err = check_state()))
       {
         TBSYS_LOG(ERROR, "check_state()=>%d", err);
+      }
+      else if (is_frozen_)
+      {
+        err = OB_STATE_NOT_MATCH;
+        TBSYS_LOG(ERROR, "log_generator is frozen, cursor=[%s,%s]", to_cstring(start_cursor_), to_cstring(end_cursor_));
       }
       else if (OB_SUCCESS != (err = generate_log(log_buf_, log_buf_len_ - LOG_BUF_RESERVED_SIZE, pos_,
                                                  end_cursor_, cmd, data))

@@ -28,6 +28,11 @@ ObRowDescExt::ObRowDescExt(const ObRowDescExt &other)
   *this = other;
 }
 
+void ObRowDescExt::reset()
+{
+  row_desc_.reset();
+  data_type_.clear();
+}
 
 ObRowDescExt& ObRowDescExt::operator=(const ObRowDescExt &other)
 {
@@ -38,7 +43,6 @@ ObRowDescExt& ObRowDescExt::operator=(const ObRowDescExt &other)
   }
   return *this;
 }
-
 
 int ObRowDescExt::get_by_id(const uint64_t table_id, const uint64_t column_id, int64_t &idx, ObObj &data_type) const
 {

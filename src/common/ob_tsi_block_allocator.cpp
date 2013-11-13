@@ -17,6 +17,44 @@ namespace oceanbase
 {
   namespace common
   {
+#define ENABLE_MALLOC_BT 0
+    char* parray(char* buf, int64_t len, int64_t* array, int size)
+    {
+      int64_t pos = 0;
+      int64_t count = 0;
+      for(int64_t i = 0; i < size; i++)
+      {
+        count = snprintf(buf + pos, len - pos, "0x%lx ", array[i]);
+        if (count >= 0 && pos + count + 1 < len)
+        {
+          pos += count;
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "buf not enough, len=%ld, array_size=%d", len, size);
+          break;
+        }
+      }
+      buf[pos + 1] = 0;
+      return buf;
+    }
+
+    char* lbt(char* buf, int64_t len)
+    {
+      static void *addrs[100];
+      int size = backtrace(addrs, 100);
+      return parray(buf, len, (int64_t*)addrs, size);
+    }
+#undef BACKTRACE
+#define BACKTRACE(level, cond, format...) { char buf[1024]; TBSYS_LOG(level, format); TBSYS_LOG(ERROR, "backtrace: %s", lbt(buf, 1024)); }
+    void TSIBlockCache::Block::print_bt()
+    {
+      char buf1[1024];
+      char buf2[1024];
+      parray(buf1, sizeof(buf1), (int64_t*)alloc_backtraces_, alloc_bt_count_);
+      parray(buf2, sizeof(buf2), (int64_t*)free_backtraces_, free_bt_count_);
+      TBSYS_LOG(INFO, "alloc_bt: %s free_bt: %s", buf1, buf2);
+    }
     void TSIBlockCache::call_clear_block_list(BlockList* block_list)
     {
       if (NULL != block_list && NULL != block_list->host_)
@@ -27,33 +65,46 @@ namespace oceanbase
 
     void TSIBlockCache::clear_block_list(BlockList* block_list)
     {
+      int err = OB_SUCCESS;
       if (NULL != block_list)
       {
         Block* block = NULL;
         while(NULL != (block = block_list->pop()))
         {
-          global_block_list_.push(block, INT64_MAX);
+          if (OB_SUCCESS != (err = global_block_list_.push(block)))
+          {
+            TBSYS_LOG(WARN, "global_block_list.push(%p)=>%d, free to OS", block, err);
+            free_block(block);
+          }
         }
-        block_list_pool_.push(block_list);
+        if (OB_SUCCESS != (err = block_list_pool_.push(block_list)))
+        {
+          TBSYS_LOG(ERROR, "block_list_pool.push(%p)=>%d", block_list, err);
+        }
       }
     }
 
-    void TSIBlockCache::clear(ObIAllocator* allocator)
+    void TSIBlockCache::clear()
     {
       Block* block = NULL;
-      if (NULL != allocator)
+      for(int64_t i = 0; i < MAX_THREAD_NUM; i++)
       {
-        for(int64_t i = 0; i < MAX_THREAD_NUM; i++)
+        while(NULL != (block = block_list_[i].pop()))
         {
-          while(NULL != (block = block_list_[i].pop()))
-          {
-            allocator->free(block);
-          }
+          free_block(block);
         }
-        while(NULL != (block = global_block_list_.pop()))
-        {
-          allocator->free(block);
-        }
+      }
+      while(OB_SUCCESS == global_block_list_.pop(block))
+      {
+        free_block(block);
+      }
+    }
+
+    void TSIBlockCache::free_block(TSIBlockCache::Block* block)
+    {
+      if (NULL != allocator_)
+      {
+        allocator_->mod_free((void*)block, block->mod_);
       }
     }
 
@@ -97,7 +148,7 @@ namespace oceanbase
       {
         // do nothing
       }
-      else if (NULL != (block = global_block_list_.pop()))
+      else if (OB_SUCCESS == global_block_list_.pop(block))
       {
         // do nothing
       }
@@ -130,10 +181,14 @@ namespace oceanbase
       }
       else if (OB_SUCCESS == err)
       {} // do nothing
-      else if (OB_SUCCESS != (err = global_block_list_.push(block, global_limit))
-               && OB_SIZE_OVERFLOW != err)
+      else if (global_block_list_.get_total() > global_limit)
       {
-        TBSYS_LOG(ERROR, "global_block_list->push(%p, %ld)=>%d", block, global_limit, err);
+        err = OB_SIZE_OVERFLOW;
+      }
+      else if (OB_SUCCESS != (err = global_block_list_.push(block)))
+      {
+        free_block(block);
+        TBSYS_LOG(WARN, "global_block_list->push(%p, %ld)=>%d", block, global_limit, err);
       }
       return err;
     }
@@ -172,9 +227,46 @@ namespace oceanbase
       else
       {
         allocator_ = allocator;
+        normal_block_cache_.set_allocator(allocator);
+        medium_block_cache_.set_allocator(allocator);
+        big_block_cache_.set_allocator(allocator);
         inited_ = true;
       }
       return err;
+    }
+
+    void ObTSIBlockAllocator::after_alloc(Block* block)
+    {
+      if (NULL != block)
+      {
+        int ref = 0;
+        if ((ref = __sync_add_and_fetch(&block->ref_, 1)) != 1)
+        {
+          BACKTRACE(ERROR, true, "after allock ref[%d] != 1", ref);
+          block->print_bt();
+        }
+#if ENABLE_MALLOC_BT
+        block->alloc_bt_count_ = backtrace(block->alloc_backtraces_, ARRAYSIZEOF(block->alloc_backtraces_));
+        block->free_bt_count_ = 0;
+#endif
+      }
+    }
+
+    void ObTSIBlockAllocator::before_free(Block* block)
+    {
+      if (NULL != block)
+      {
+        int ref = 0;
+        if ((ref = __sync_add_and_fetch(&block->ref_, -1)) != 0)
+        {
+          BACKTRACE(ERROR, true, "before free ref[%d] != 0", ref);
+          block->print_bt();
+        }
+#if ENABLE_MALLOC_BT
+        block->free_bt_count_ = backtrace(block->free_backtraces_, ARRAYSIZEOF(block->free_backtraces_));
+        block->alloc_bt_count_ = 0;
+#endif
+      }
     }
 
     ObTSIBlockAllocator::Block* ObTSIBlockAllocator::alloc_block(const int64_t size)
@@ -212,10 +304,11 @@ namespace oceanbase
       mod_free(p, mod_id_);
     }
 
-    void* ObTSIBlockAllocator::mod_alloc(const int64_t size, const int32_t mod_id)
+    ObTSIBlockAllocator::Block* ObTSIBlockAllocator::mod_alloc_block(int64_t size, const int32_t mod_id)
     {
       int err = OB_SUCCESS;
       Block* block = NULL;
+      int64_t alloc_size = 0;
       if (!inited_)
       {
         err = OB_NOT_INIT;
@@ -226,34 +319,92 @@ namespace oceanbase
         err = OB_INVALID_ARGUMENT;
         TBSYS_LOG(ERROR, "size[%ld] <= 0", size);
       }
-      else if (normal_block_size_ == size)
+      else if (normal_block_size_ >= size)
       {
+        alloc_size = normal_block_size_;
         block = normal_block_cache_.get();
       }
-      else if (big_block_size_ == size)
+      else if (medium_block_size_ >= size)
       {
+        alloc_size = medium_block_size_;
+        block = medium_block_cache_.get();
+      }
+      else if (big_block_size_ >= size)
+      {
+        alloc_size = big_block_size_;
         block = big_block_cache_.get();
       }
       else
       {
-        TBSYS_LOG(WARN, "size[%ld] not equal %ld or %ld", size, normal_block_size_, big_block_size_);
+        alloc_size = size;
+        //TBSYS_LOG(TRACE, "alloc big block size[%ld]", size);
       }
       if (OB_SUCCESS == err && NULL == block)
       {
-        block = alloc_block(size);
+        block = alloc_block(alloc_size);
       }
       if (NULL != block)
       {
-        ob_mod_usage_update(size, mod_id);
+        block->real_size_ = size;
+        block->mod_ = mod_id;
+        after_alloc(block);
+        g_malloc_size_stat.add(size);
+        ob_mod_usage_update(alloc_size, mod_id);
+        ob_mod_usage_update(alloc_size, ObModIds::OB_MOD_TC_ALLOCATED);
+        //BACKTRACE(WARN, block->size_ > 65536, "block_size=%ld", block->size_);
       }
-      return block? block->buf_: NULL;
+      return block;
     }
 
-    void ObTSIBlockAllocator::mod_free(void* p, const int32_t mod_id)
+    ObTSIBlockAllocator::Block* ObTSIBlockAllocator::mod_realloc_block(Block* old_block, int64_t size, const int32_t mod_id)
     {
       int err = OB_SUCCESS;
-      Block* block = p? (Block*)((char*)p - sizeof(*block)): NULL;
+      Block* new_block = NULL;
+      if (size < 0)
+      {
+        err = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "realloc(block=%p, size[%ld] < 0): INVALID_ARGUMENT", old_block, size);
+      }
+      else if (NULL == old_block)
+      {}
+      else if (!old_block->check_checksum())
+      {
+        err = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "block->check_checksum() fail");
+      }
+      else if (old_block->ref_ != 1)
+      {
+        err = OB_INVALID_ARGUMENT;
+        BACKTRACE(ERROR, true, "realloc an unused block, block->buf=%p", old_block->buf_);
+        old_block->print_bt();
+      }
+      else if (old_block->size_ >= size)
+      {
+        new_block = old_block;
+        new_block->real_size_ = size;
+        old_block = NULL;
+      }
+      if (OB_SUCCESS != err || NULL != new_block)
+      {}
+      else if (NULL == (new_block = mod_alloc_block(size, mod_id)))
+      {
+        err = OB_MEM_OVERFLOW;
+        TBSYS_LOG(ERROR, "mod_alloc(%ld, %d): MEMORY_OVERFLOW", size, mod_id);
+      }
+      if (NULL != old_block && NULL != new_block)
+      {
+        memcpy(new_block->buf_, old_block->buf_, old_block->size_);
+        mod_free_block(old_block, mod_id);
+        old_block = NULL;
+      }
+      return new_block;
+    }
+
+    void ObTSIBlockAllocator::mod_free_block(Block* block, const int32_t mod_id)
+    {
+      int err = OB_SUCCESS;
       int64_t size = block? block->size_: 0;
+      int block_mod_id = block? block->mod_: 0;
       if (!inited_)
       {
         err = OB_NOT_INIT;
@@ -262,11 +413,30 @@ namespace oceanbase
       else if (NULL == block)
       {
         err = OB_INVALID_ARGUMENT;
-        TBSYS_LOG(ERROR, "p == NULL");
+        TBSYS_LOG(ERROR, "block == NULL");
       }
+      else if (block->ref_ != 1)
+      {
+        err = OB_INVALID_ARGUMENT;
+        BACKTRACE(ERROR, true, "double free, block->buf=%p", block->buf_);
+        block->print_bt();
+      }
+      else
+      {
+        before_free(block);
+      }
+      if (OB_SUCCESS != err)
+      {}
       else if (normal_block_size_ == block->size_)
       {
         if (OB_SUCCESS == normal_block_cache_.put(block, normal_block_tclimit_, normal_block_glimit_))
+        {
+          block = NULL;
+        }
+      }
+      else if (medium_block_size_ == block->size_)
+      {
+        if (OB_SUCCESS == medium_block_cache_.put(block, medium_block_tclimit_, medium_block_glimit_))
         {
           block = NULL;
         }
@@ -280,13 +450,33 @@ namespace oceanbase
       }
       else
       {
-        TBSYS_LOG(WARN, "size[%ld] not equal %ld or %ld", block->size_, normal_block_size_, big_block_size_);
+        TBSYS_LOG(TRACE, "size[%ld] not equal %ld or %ld", block->size_, normal_block_size_, big_block_size_);
       }
       if (OB_SUCCESS == err && NULL != block)
       {
         free_block(block);
       }
-      ob_mod_usage_update(-size, mod_id);
+      ob_mod_usage_update(-size, mod_id?: block_mod_id);
+      ob_mod_usage_update(-size, ObModIds::OB_MOD_TC_ALLOCATED);
+    }
+
+    void* ObTSIBlockAllocator::mod_alloc(int64_t size, const int32_t mod_id)
+    {
+      Block* block = mod_alloc_block(size, mod_id);
+      return block? block->buf_: NULL;
+    }
+
+    void ObTSIBlockAllocator::mod_free(void* p, const int32_t mod_id)
+    {
+      Block* block = p? (Block*)((char*)p - sizeof(*block)): NULL;
+      mod_free_block(block, mod_id);
+    }
+
+    void* ObTSIBlockAllocator::mod_realloc(void* p, int64_t size, const int32_t mod_id)
+    {
+      Block* old_block = p? (Block*)((char*)p - sizeof(Block)): NULL;
+      Block* new_block = mod_realloc_block(old_block, size, mod_id);
+      return new_block? new_block->buf_: NULL;
     }
   }; // end namespace common
 }; // end namespace oceanbase

@@ -30,6 +30,26 @@ ObUpdate::~ObUpdate()
 {
 }
 
+void ObUpdate::reset()
+{
+  rpc_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  mutator_.reset();
+  update_column_ids_.clear();
+  update_column_exprs_.clear();
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObUpdate::reuse()
+{
+  rpc_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  mutator_.clear();
+  update_column_ids_.clear();
+  update_column_exprs_.clear();
+  ObSingleChildPhyOperator::reset();
+}
+
 int ObUpdate::open()
 {
   int ret = OB_SUCCESS;
@@ -75,6 +95,10 @@ int ObUpdate::add_update_expr(const uint64_t column_id, const ObSqlExpression &e
   else if (OB_SUCCESS != (ret = update_column_exprs_.push_back(expr)))
   {
     TBSYS_LOG(WARN, "fail to add column expression to ObUpate operator. ret=%d", ret);
+  }
+  else
+  {
+    update_column_exprs_.at(update_column_exprs_.count() - 1).set_owner_op(this);
   }
   return ret;
 }
@@ -246,6 +270,11 @@ int ObUpdate::get_row_key(const uint64_t table_id,
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObUpdate, PHY_UPDATE);
+  }
+}
 
 int64_t ObUpdate::to_string(char* buf, const int64_t buf_len) const
 {

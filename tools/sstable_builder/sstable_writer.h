@@ -20,6 +20,7 @@
 #include "common/ob_rowkey.h"
 #include "common/bloom_filter.h"
 #include "common/ob_record_header.h"
+#include "common/ob_row.h"
 #include "common/compress/ob_compressor.h"
 
 #include "sstable/ob_sstable_schema.h"
@@ -136,6 +137,7 @@ namespace oceanbase
        *         OB_ERROR
        */
       int append_row(const sstable::ObSSTableRow& row, int64_t& approx_space_usage);
+      int append_row(const common::ObRow& row, int64_t& approx_space_usage);
 
  
       /**
@@ -325,7 +327,7 @@ namespace oceanbase
       sstable::ObSSTableBlockBuilder block_builder_;      //row data block builder
       sstable::ObSSTableBlockIndexBuilder index_builder_; //index block builder
       bool enable_bloom_filter_;                 //if enable bloom filter  
-      common::BloomFilter bloom_filter_;         //bloom filter
+      common::ObBloomFilterV1 bloom_filter_;         //bloom filter
       uint64_t sstable_checksum_;                //checksum of sstable
       sstable::ObSSTableTrailer trailer_;        //sstable trailer
 

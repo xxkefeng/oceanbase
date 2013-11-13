@@ -1181,14 +1181,15 @@ DEFINE_GET_SERIALIZE_SIZE(ObObj)
   return len;
 }
 
+
 uint32_t ObObj::murmurhash2(const uint32_t hash) const
 {
   uint32_t result = hash;
   ObObjType type = get_type();
   ObObjMeta meta;
   memset(&meta, 0, sizeof(meta));
-  meta.type_ = meta.type_;
-  meta.op_flag_ = meta.op_flag_;
+  meta.type_ = meta_.type_;
+  meta.op_flag_ = meta_.op_flag_;
 
   result = ::murmurhash2(&meta,sizeof(meta),result);
   switch (type)
@@ -1248,8 +1249,73 @@ uint32_t ObObj::murmurhash2(const uint32_t hash) const
   }
   return result;
 }
+uint64_t ObObj::murmurhash64A(const uint64_t hash) const
+{
+  uint64_t result = hash;
+  ObObjType type = get_type();
+  ObObjMeta meta;
+  memset(&meta, 0, sizeof(meta));
+  meta.type_ = meta_.type_;
+  meta.op_flag_ = meta_.op_flag_;
 
+  result = ::murmurhash64A(&meta, sizeof(meta), result);
+  switch (type)
+  {
+    case ObNullType:
+      break;
+    case ObIntType:
+      result = ::murmurhash64A(&value_.int_val, sizeof(value_.int_val), result);
+      break;
+    case ObVarcharType:
+      result = ::murmurhash64A(value_.varchar_val, val_len_, result);
+      break;
+    case ObFloatType:
+      result = ::murmurhash64A(&value_.float_val, sizeof(value_.float_val), result);
+      break;
+    case ObDoubleType:
+      result = ::murmurhash64A(&value_.double_val, sizeof(value_.double_val), result);
+      break;
+    case ObDateTimeType:
+      result = ::murmurhash64A(&value_.time_val, sizeof(value_.time_val), result);
+      break;
+    case ObPreciseDateTimeType:
+      result = ::murmurhash64A(&value_.precisetime_val, sizeof(value_.precisetime_val), result);
+      break;
+    case ObModifyTimeType:
+      result = ::murmurhash64A(&value_.modifytime_val, sizeof(value_.modifytime_val), result);
+      break;
+    case ObCreateTimeType:
+      result = ::murmurhash64A(&value_.createtime_val, sizeof(value_.createtime_val), result);
+      break;
+    case ObSeqType:
+      //TODO
+      break;
+    case ObExtendType:
+      result = ::murmurhash64A(&value_.ext_val, sizeof(value_.ext_val), result);
+      break;
+    case ObBoolType:
+      result = ::murmurhash64A(&value_.bool_val, sizeof(value_.bool_val), result);
+      break;
+    case ObDecimalType:
+      {
+        int8_t nwords = static_cast<int8_t>(meta_.dec_nwords_ + 1);
+        if (nwords <= 3)
+        {
+          result = ::murmurhash64A(reinterpret_cast<const uint64_t*>(&val_len_), static_cast<int32_t>(sizeof(uint32_t) * nwords), result);
+        }
+        else
+        {
+          result = ::murmurhash64A(value_.dec_words_, static_cast<int32_t>(sizeof(uint32_t) * nwords), result);
+        }
+        break;
+      }
+    default:
+      TBSYS_LOG(WARN, "invalid obj type: obj_type[%d]", type);
+      result = 0;
+  }
 
+  return result;
+}
 
 int64_t ObObj::checksum(const int64_t current) const
 {

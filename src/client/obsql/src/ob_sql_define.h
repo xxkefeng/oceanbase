@@ -54,6 +54,7 @@
 #define OB_SQL_ROLLBACK "rollback"
 #define OB_SQL_CREATE "create"
 #define OB_SQL_DROP "drop"
+#define OB_SQL_SELECT "select"
 //#define OB_SQL_REPLACE_OP "repalce"
 //#define OB_SQL_INSERT_OP "insert"
 //#define OB_SQL_UPDATE_OP "update"

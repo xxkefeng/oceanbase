@@ -23,7 +23,7 @@
 #include "common/ob_object.h"
 #include "common/ob_server_config.h"
 #include "common/ob_system_config.h"
-
+#include "sql/ob_sql_config_provider.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 
@@ -38,18 +38,19 @@ namespace oceanbase
     };
 
     class ObMergeServerConfig
-          : public common::ObServerConfig
+      : public common::ObServerConfig, public sql::ObSQLConfigProvider
     {
       protected:
         common::ObRole get_server_type() const
         { return OB_MERGESERVER; }
 
       public:
+        bool is_read_only() const {return read_only;};
         DEF_INT(root_server_port, "0", "(1024,65535)", "root server listen port");
-        DEF_TIME(task_left_time, "100ms", "task left time for drop ahead");
+        DEF_TIME(task_left_time, "10ms", "task left time for drop ahead");
         DEF_INT(task_queue_size, "10000", "[1,]", "task queue size");
-        DEF_INT(io_thread_count, "1", "[1,]", "io thread count for libeasy");
-        DEF_INT(task_thread_count, "10", "task thread number");
+        DEF_INT(io_thread_count, "12", "[1,]", "io thread count for libeasy");
+        DEF_INT(task_thread_count, "4", "task thread number");
         DEF_INT(log_interval_count, "100", "legacy param, used for OB0.3 Only");
         DEF_TIME(network_timeout, "2s", "timeout when communication with other server");
         DEF_TIME(frozen_version_timeout, "600s", "ups frozen version cache tiemout");
@@ -57,6 +58,7 @@ namespace oceanbase
         DEF_TIME(lease_check_interval, "6s", "lease check interval");
         DEF_CAP(location_cache_size, "32MB", "location cache size");
         DEF_TIME(location_cache_timeout, "600s", "location cache timeout");
+        DEF_TIME(vtable_location_cache_timeout, "8s", "virtual table location cache timeout");
         DEF_CAP(intermediate_buffer_size, "8MB", "intermediate buffer size to store one packet, 4 times network packet size (2M)");
         DEF_INT(memory_size_limit_percentage, "40", "(0,100]", "max percentage of totoal physical memory ms can use");
         DEF_INT(max_parellel_count, "16", "[1,]", "max parellel sub request to chunkservers for one request");
@@ -67,12 +69,31 @@ namespace oceanbase
         DEF_INT(timeout_percent, "70", "[10,80]", "max cs timeout to ms timeout, used by ms retry");
         DEF_BOOL(allow_return_uncomplete_result, "False", "allow return uncomplete result");
         DEF_TIME(slow_query_threshold, "100ms", "query time beyond this value will be treat as slow query");
-        DEF_CAP(query_cache_size, "0", "[0,]", "query cache size, 0 means disabled");
+        DEF_BOOL(lms, "False", "is listener mergeserver");
+        DEF_CAP(frozen_data_cache_size, "256MB", "frozen data cache size");
+        DEF_CAP(bloom_filter_cache_size, "256MB", "bloom filter cache size");
+        DEF_TIME(change_obi_timeout, "30s", "change obi role timeout");//30s
+        DEF_INT(check_ups_log_interval, "1", "change obi role, check ups log interval");
         //param for obmysql
         DEF_INT(obmysql_port, "3100", "(1024,65536)", "obmysql listen port");
-        DEF_INT(obmysql_io_thread_count, "4", "[1,]", "obmysql io thread count for libeasy");
-        DEF_INT(obmysql_work_thread_count, "50", "[1,]", "obmysql io thread count for doing sql task");
-        DEF_CAP(obmysql_task_queue_size, "10000", "[1,]", "obmysql task queue size");
+        DEF_INT(obmysql_io_thread_count, "8", "[1,]", "obmysql io thread count for libeasy");
+        DEF_INT(obmysql_work_thread_count, "120", "[1,]", "obmysql io thread count for doing sql task");
+        DEF_INT(obmysql_task_queue_size, "10000", "[1,]", "obmysql task queue size");
+
+        // query cache
+        DEF_STR(query_cache_type, "OFF", "query cache switch: OFF, ON");
+        DEF_INT(query_cache_size, "0", "[0,100]", "query cache size, percentage of total physical memory");
+        DEF_CAP(query_cache_max_result, "4KB", "only result set smaller than this will be cached; need reboot");
+        DEF_INT(query_cache_max_param_num, "512", "[1,]", "only result set with number of prepared statements smaller than this will be cached; need reboot");
+        DEF_TIME(query_cache_consistent_expiration_time, "10ms", "query cache expiration for consistent query");
+        DEF_TIME(query_cache_expiration_time, "10s", "query cache expiration for inconsistent query");
+
+        DEF_STR(recorder_fifo_path, "run/mergeserver.fifo", "named FIFO to read mergeserver\\'s SQL packets");
+        DEF_BOOL(read_only, "false", "This variable is off by default. When it is enabled, the server permits no updates except for system tables. ");
+        DEF_INT(io_thread_start_cpu, "-1", "start number of cpu, set affinity by io thread");
+        DEF_INT(io_thread_end_cpu,   "-1", "end number of cpu, set affinity by io thread");
+        DEF_INT(obmysql_io_thread_start_cpu, "-1", "start number of cpu, set affinity by io thread");
+        DEF_INT(obmysql_io_thread_end_cpu,   "-1", "end number of cpu, set affinity by io thread");
     };
   } /* mergeserver */
 } /* oceanbase */

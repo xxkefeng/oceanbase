@@ -36,13 +36,15 @@ namespace oceanbase
       public:
         ObTabletScanFuse();
         virtual ~ObTabletScanFuse();
-
+        virtual void reset();
+        virtual void reuse();
         int set_child(int32_t child_idx, ObPhyOperator &child_operator);
         int set_sstable_scan(ObSSTableScan *sstable_scan);
         int set_incremental_scan(ObUpsScan *incremental_scan);
 
         int open();
         int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_TABLET_SCAN_FUSE; }
         int get_next_row(const ObRow *&row);
         int get_last_rowkey(const ObRowkey *&rowkey);
         int64_t to_string(char* buf, const int64_t buf_len) const;

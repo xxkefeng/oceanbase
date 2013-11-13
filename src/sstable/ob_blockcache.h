@@ -95,7 +95,7 @@ namespace oceanbase
     {
       friend class ObBufferHandle;
       static const int64_t KVCACHE_ITEM_SIZE = 16 * 1024;      //16K
-      static const int64_t KVCACHE_BLOCK_SIZE = 1024 * 1024L;  //1M
+      static const int64_t KVCACHE_BLOCK_SIZE = 2 * 1024 * 1024L;  //2M
       static const int64_t MAX_READ_AHEAD_SIZE = 1024 * 1024L; //1M
 
     public:
@@ -241,6 +241,17 @@ namespace oceanbase
                             const uint64_t table_id,
                             const uint64_t column_group_id,
                             const bool check_crc = true);
+
+      
+      /**
+       * read block data from disk, and donot put into cache;
+       */
+      int32_t get_block_sync_io(const uint64_t sstable_id,
+                        const int64_t offset,
+                        const int64_t nbyte,
+                        ObBufferHandle& buffer_handle,
+                        const uint64_t table_id,
+                        const bool check_crc = true);
 
       /**
        * get next block in block cache, it's used to traverse the 

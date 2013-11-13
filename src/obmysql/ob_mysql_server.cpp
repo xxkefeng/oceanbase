@@ -22,7 +22,10 @@
 #include "common/ob_row.h"
 #include "common/location/ob_tablet_location_cache_proxy.h"
 #include "common/ob_obj_cast.h"
-
+#include "common/ob_libeasy_mem_pool.h"
+#include "easy_connection.h"
+#include "common/base_main.h"
+#include "common/ob_errno.h"
 using namespace oceanbase::common;
 using namespace oceanbase::common::hash;
 using namespace oceanbase::sql;
@@ -67,11 +70,11 @@ namespace oceanbase
     {
       bool ret = false;
       static const int64_t MS_MEM_RESERVED_SIZE = 1024*1024*1024L; // 1GB
-      if ((session_mgr_.size() * ObSQLSessionInfo::APPROX_MEM_USAGE_PER_SESSION)
+      if ((session_mgr_.get_session_count() * ObSQLSessionInfo::APPROX_MEM_USAGE_PER_SESSION)
           >= (ob_get_memory_size_limit() - MS_MEM_RESERVED_SIZE))
       {
         TBSYS_LOG(WARN, "there are too many sessions, session_count=%ld mem_limit=%ld",
-                  session_mgr_.size(), ob_get_memory_size_limit());
+                  session_mgr_.get_session_count(), ob_get_memory_size_limit());
         ret = true;
       }
       return ret;
@@ -125,16 +128,61 @@ namespace oceanbase
         }
       }
 
+      // init timer
+      if (OB_SUCCESS == ret)
+      {
+        if (OB_SUCCESS != (ret = timer_.init()))
+        {
+          TBSYS_LOG(ERROR, "init timer fail, ret=%d", ret);
+        }
+      }
+
       //init session mgr
       if (OB_SUCCESS == ret)
       {
+        session_mgr_.set_sql_server(this);
         ret = session_mgr_.create(hash::cal_next_prime(512));
         if (OB_SUCCESS != ret)
         {
           TBSYS_LOG(ERROR, "create session mgr failed");
         }
+        else if (OB_SUCCESS != (ret = timer_.schedule(session_mgr_, ObSQLSessionMgr::SCHEDULE_PERIOD, true)))
+        {
+          TBSYS_LOG(ERROR, "failed to schedule session timeout checker, ret=%d", ret);
+        }
       }
+
+      //init ps store
+      if (OB_SUCCESS == ret)
+      {
+        if (OB_SUCCESS != (ret = ps_store_.init(hash::cal_next_prime(512))))
+        {
+          TBSYS_LOG(ERROR, "ObPsStore init error, ret = %d", ret);
+        }
+      }
+
       login_handler_.set_obmysql_server(this);
+
+      // init query cache
+      if (OB_SUCCESS == ret)
+      {
+        if (OB_SUCCESS != (ret = sql_id_mgr_.init()))
+        {
+          TBSYS_LOG(ERROR, "ObSQLIdMgr init error, ret: %d", ret);
+        }
+        else if (OB_SUCCESS != (ret = query_cache_.init(config_)))
+        {
+          TBSYS_LOG(ERROR, "ObSQLQueryCache init error, ret: %d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        if (OB_SUCCESS != (ret = packet_recorder_.init(config_->recorder_fifo_path.str(),
+                             FIFO_STREAM_BUFF_SIZE)))
+        {
+          TBSYS_LOG(ERROR, "failed to init FIFO stream, err=%d", ret);
+        }
+      }
       //start work thread
       if (OB_SUCCESS == ret)
       {
@@ -162,6 +210,7 @@ namespace oceanbase
         close_command_queue_thread_.setThreadParameter(1, this, NULL);
         TBSYS_LOG(INFO, "start thread to handle close request");
         close_command_queue_thread_.start();
+        TBSYS_LOG(INFO, "start thread to get bloom filter");
       }
       return ret;
     }
@@ -169,151 +218,90 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       int err = OB_SUCCESS;
-      ObString get_users = ObString::make_string("SELECT u.user_name,u.user_id,u.pass_word,u.info,u.priv_all,u.priv_alter,u.priv_create,u.priv_create_user,u.priv_delete,u.priv_drop,u.priv_grant_option,u.priv_insert,u.priv_update,u.priv_select,u.priv_replace,u.is_locked  FROM __all_user u");
-      ObString get_table_privileges = ObString::make_string("SELECT t.user_id,t.table_id,t.priv_all,t.priv_alter,t.priv_create,t.priv_create_user,t.priv_delete,t.priv_drop,t.priv_grant_option,t.priv_insert,t.priv_update,t.priv_select, t.priv_replace FROM __all_table_privilege t");
-      ObString get_privilege_version = ObString::make_string("SELECT value FROM __all_sys_stat where name='ob_current_privilege_version'");
+      ObString get_users = ObString::make_string("SELECT /*+read_consistency(WEAK) */ u.user_name,u.user_id,u.pass_word,u.info,u.priv_all,u.priv_alter,u.priv_create,u.priv_create_user,u.priv_delete,u.priv_drop,u.priv_grant_option,u.priv_insert,u.priv_update,u.priv_select,u.priv_replace,u.is_locked  FROM __all_user u");
+      ObString get_table_privileges = ObString::make_string("SELECT /*+read_consistency(WEAK) */ t.user_id,t.table_id,t.priv_all,t.priv_alter,t.priv_create,t.priv_create_user,t.priv_delete,t.priv_drop,t.priv_grant_option,t.priv_insert,t.priv_update,t.priv_select, t.priv_replace FROM __all_table_privilege t");
+      ObString get_privilege_version = ObString::make_string("SELECT /*+read_consistency(WEAK) */ value FROM __all_sys_stat where name='ob_current_privilege_version'");
       ObSqlContext context;
       ObSQLSessionInfo session;
+      ObString name = ObString::make_string(OB_READ_CONSISTENCY);
+      ObObj type;
+      type.set_type(ObIntType);
+      ObObj value;
+      value.set_int(STRONG);
       if (OB_SUCCESS != (ret = session.init(block_allocator_)))
       {
         TBSYS_LOG(WARN, "failed to init context, err=%d", ret);
-        return ret;
       }
-      context.session_info_ = &session;
-      int64_t schema_version = 0;
-      while (!stop_)
+      else if (OB_SUCCESS != (ret = session.load_system_variable(name, type, value)))
       {
-        schema_version = env_.schema_mgr_->get_latest_version();
-        context.schema_manager_ = env_.schema_mgr_->get_user_schema(schema_version);
-        if (NULL == context.schema_manager_)
+        TBSYS_LOG(ERROR, "load system variable %.*s failed, ret=%d", name.length(), name.ptr(), ret);
+      }
+      else
+      {
+        session.set_version_provider(env_.merge_service_);
+        session.set_config_provider(config_);
+        context.session_info_ = &session;
+        int64_t schema_version = 0;
+        while (!stop_)
         {
-          TBSYS_LOG(INFO, "privilege related table schema not ready,schema_version=%ld", schema_version);
-          sleep(1);
-        }
-        else
-        {
-          if (NULL == context.schema_manager_->get_table_schema(OB_ALL_USER_TABLE_NAME)
-              ||
-              NULL == context.schema_manager_->get_table_schema(OB_ALL_TABLE_PRIVILEGE_TABLE_NAME))
+          schema_version = env_.schema_mgr_->get_latest_version();
+          context.schema_manager_ = env_.schema_mgr_->get_user_schema(schema_version);
+          if (NULL == context.schema_manager_)
           {
-            err = env_.schema_mgr_->release_schema(context.schema_manager_);
-            if (OB_SUCCESS != err)
-            {
-              TBSYS_LOG(WARN, "release schema manager failed,ret=%d", err);
-            }
-            context.schema_manager_ = NULL;
             TBSYS_LOG(INFO, "privilege related table schema not ready,schema_version=%ld", schema_version);
             sleep(1);
           }
           else
           {
-            TBSYS_LOG(INFO, "privilege related table schema ready");
-            break;
-          }
-        }
-      }
-      context.cache_proxy_ = env_.cache_proxy_;    // thread safe singleton
-      context.async_rpc_ = env_.async_rpc_;        // thread safe singleton
-      context.merger_rpc_proxy_ = env_.rpc_proxy_; // thread safe singleton
-      context.rs_rpc_proxy_ = env_.root_rpc_;      // thread safe singleton
-      context.merge_service_ = env_.merge_service_;
-      context.disable_privilege_check_ = true;
-      context.stat_mgr_ = env_.stat_mgr_; // thread safe
-      // direct_execute don't check privilege if flag is true, it means we are in system bootstrap progress
-      // 获取到了权限表相关schema的时候有可能__users表里面还没有数据
-      while (!stop_)
-      {
-        ObMySQLResultSet result;
-        if (OB_SUCCESS != (ret = result.init()))
-        {
-          TBSYS_LOG(ERROR, "init result set failed, ret = %d", ret);
-        }
-        else
-        {
-          context.session_info_->get_mutex().lock(); // !!!lock
-          context.session_info_->get_parser_mem_pool().reuse();
-          context.session_info_->get_transformer_mem_pool().start_batch_alloc();
-          ret = ObSql::direct_execute(get_users, result, context);
-          if (OB_SUCCESS == ret)
-          {
-            if (OB_SUCCESS != (ret = result.open()))
+            if (NULL == context.schema_manager_->get_table_schema(OB_ALL_USER_TABLE_NAME)
+                ||
+                NULL == context.schema_manager_->get_table_schema(OB_ALL_TABLE_PRIVILEGE_TABLE_NAME))
             {
-              TBSYS_LOG(WARN, "failed to open result set, ret=%d", ret);
-              // release resouce as early as possible, in case YOU FORGET
-              err = result.close();
+              err = env_.schema_mgr_->release_schema(context.schema_manager_);
               if (OB_SUCCESS != err)
               {
-                TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
+                TBSYS_LOG(WARN, "release schema manager failed,ret=%d", err);
               }
+              context.schema_manager_ = NULL;
+              TBSYS_LOG(INFO, "privilege related table schema not ready,schema_version=%ld", schema_version);
+              sleep(1);
             }
             else
             {
-              OB_ASSERT(result.is_with_rows() == true);
-              ObMySQLRow row;
-              bool has_data = false;
-              while (OB_SUCCESS == ret)
-              {
-                if (OB_SUCCESS != (ret = result.next_row(row)))
-                {
-                  if (ret == OB_ITER_END)
-                  {
-                    ret = OB_SUCCESS;
-                  }
-                  else
-                  {
-                    TBSYS_LOG(ERROR, "next row from ObMySQLResultSet failed, ret=%d", ret);
-                  }
-                  break;
-                }
-                else if(OB_SUCCESS != (ret = p_privilege->add_users_entry(*(row.get_inner_row()))))
-                {
-                  TBSYS_LOG(ERROR, "add privilege row  to system failed,ret=%d", ret);
-                }
-                else
-                {
-                  TBSYS_LOG(INFO, "get one user row, row=%s", to_cstring(*(row.get_inner_row())));
-                  has_data = true;
-                }
-              } // end while
-              err = result.close();
-              if (OB_SUCCESS != err)
-              {
-                TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
-              }
-              if (false == has_data)
-              {
-                TBSYS_LOG(INFO, "no data in __users,retry");
-                cleanup_sql_env(context, result);
-                continue;
-              }
+              TBSYS_LOG(INFO, "privilege related table schema ready");
+              break;
             }
           }
-          else
-          {
-            TBSYS_LOG(ERROR,"execute sql %.*s, failed,ret=%d", get_users.length(), get_users.ptr(), ret);
-          }
-          cleanup_sql_env(context, result);
         }
-        if (OB_SUCCESS == ret)
+        context.cache_proxy_ = env_.cache_proxy_;    // thread safe singleton
+        context.async_rpc_ = env_.async_rpc_;        // thread safe singleton
+        context.merger_rpc_proxy_ = env_.rpc_proxy_; // thread safe singleton
+        context.rs_rpc_proxy_ = env_.root_rpc_;      // thread safe singleton
+        context.merge_service_ = env_.merge_service_;
+        context.disable_privilege_check_ = true;
+        context.stat_mgr_ = env_.stat_mgr_; // thread safe
+        // direct_execute don't check privilege if flag is true, it means we are in system bootstrap progress
+        // 获取到了权限表相关schema的时候有可能__users表里面还没有数据
+        while (!stop_)
         {
-          ObMySQLResultSet result2;
-          if (OB_SUCCESS != (ret = result2.init()))
+          ObMySQLResultSet result;
+          if (OB_SUCCESS != (ret = result.init()))
           {
             TBSYS_LOG(ERROR, "init result set failed, ret = %d", ret);
           }
           else
           {
-            context.session_info_->get_mutex().lock(); // !!!lock
+            //context.session_info_->read_lock();
             context.session_info_->get_parser_mem_pool().reuse();
             context.session_info_->get_transformer_mem_pool().start_batch_alloc();
-            // direct_execute don't check privilege if flag is true, it means we are in system bootstrap progress
-            ret = ObSql::direct_execute(get_table_privileges, result2, context);
+            ret = ObSql::direct_execute(get_users, result, context);
             if (OB_SUCCESS == ret)
             {
-              if (OB_SUCCESS != (ret = result2.open()))
+              if (OB_SUCCESS != (ret = result.open()))
               {
                 TBSYS_LOG(WARN, "failed to open result set, ret=%d", ret);
-                err = result2.close();
+                // release resouce as early as possible, in case YOU FORGET
+                err = result.close();
                 if (OB_SUCCESS != err)
                 {
                   TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
@@ -321,11 +309,12 @@ namespace oceanbase
               }
               else
               {
-                OB_ASSERT(result2.is_with_rows() == true);
+                OB_ASSERT(result.is_with_rows() == true);
                 ObMySQLRow row;
+                bool has_data = false;
                 while (OB_SUCCESS == ret)
                 {
-                  if (OB_SUCCESS != (ret = result2.next_row(row)))
+                  if (OB_SUCCESS != (ret = result.next_row(row)))
                   {
                     if (ret == OB_ITER_END)
                     {
@@ -337,120 +326,193 @@ namespace oceanbase
                     }
                     break;
                   }
-                  else if(OB_SUCCESS != (ret = p_privilege->add_table_privileges_entry(*(row.get_inner_row()))))
+                  else if(OB_SUCCESS != (ret = p_privilege->add_users_entry(*(row.get_inner_row()))))
                   {
                     TBSYS_LOG(ERROR, "add privilege row  to system failed,ret=%d", ret);
                   }
                   else
                   {
-                    // do nothing
+                    TBSYS_LOG(INFO, "get one user row, row=%s", to_cstring(*(row.get_inner_row())));
+                    has_data = true;
                   }
-                }
-                err = result2.close();
+                } // end while
+                err = result.close();
                 if (OB_SUCCESS != err)
                 {
                   TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
+                }
+                if (false == has_data)
+                {
+                  TBSYS_LOG(INFO, "no data in __users,retry");
+                  cleanup_sql_env(context, result);
+                  continue;
                 }
               }
             }
             else
             {
-              TBSYS_LOG(ERROR,"execute sql %.*s, failed,ret=%d", get_table_privileges.length(), get_table_privileges.ptr(), ret);
+              TBSYS_LOG(ERROR,"execute sql %.*s, failed,ret=%d", get_users.length(), get_users.ptr(), ret);
             }
-            cleanup_sql_env(context, result2);
+            cleanup_sql_env(context, result, false);
           }
-        }
-        if (OB_SUCCESS == ret)
-        {
-          ObMySQLResultSet result3;
-          if (OB_SUCCESS != (ret = result3.init()))
+          if (OB_SUCCESS == ret)
           {
-            TBSYS_LOG(ERROR, "init result set failed, ret = %d", ret);
-          }
-          else
-          {
-            context.session_info_->get_mutex().lock(); // !!!lock
-            context.session_info_->get_parser_mem_pool().reuse();
-            context.session_info_->get_transformer_mem_pool().start_batch_alloc();
-            // direct_execute don't check privilege if flag is true, it means we are in system bootstrap progress
-            ret = ObSql::direct_execute(get_privilege_version, result3, context);
-            if (OB_SUCCESS == ret)
+            ObMySQLResultSet result2;
+            if (OB_SUCCESS != (ret = result2.init()))
             {
-              if (OB_SUCCESS != (ret = result3.open()))
+              TBSYS_LOG(ERROR, "init result set failed, ret = %d", ret);
+            }
+            else
+            {
+              //context.session_info_->read_lock();
+              context.session_info_->get_parser_mem_pool().reuse();
+              context.session_info_->get_transformer_mem_pool().start_batch_alloc();
+              // direct_execute don't check privilege if flag is true, it means we are in system bootstrap progress
+              ret = ObSql::direct_execute(get_table_privileges, result2, context);
+              if (OB_SUCCESS == ret)
               {
-                TBSYS_LOG(WARN, "failed to open result set, ret=%d", ret);
-                err = result3.close();
-                if (OB_SUCCESS != err)
+                if (OB_SUCCESS != (ret = result2.open()))
                 {
-                  TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
+                  TBSYS_LOG(WARN, "failed to open result set, ret=%d", ret);
+                  err = result2.close();
+                  if (OB_SUCCESS != err)
+                  {
+                    TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
+                  }
+                }
+                else
+                {
+                  OB_ASSERT(result2.is_with_rows() == true);
+                  ObMySQLRow row;
+                  while (OB_SUCCESS == ret)
+                  {
+                    if (OB_SUCCESS != (ret = result2.next_row(row)))
+                    {
+                      if (ret == OB_ITER_END)
+                      {
+                        ret = OB_SUCCESS;
+                      }
+                      else
+                      {
+                        TBSYS_LOG(ERROR, "next row from ObMySQLResultSet failed, ret=%d", ret);
+                      }
+                      break;
+                    }
+                    else if(OB_SUCCESS != (ret = p_privilege->add_table_privileges_entry(*(row.get_inner_row()))))
+                    {
+                      TBSYS_LOG(ERROR, "add privilege row  to system failed,ret=%d", ret);
+                    }
+                    else
+                    {
+                      // do nothing
+                    }
+                  }
+                  err = result2.close();
+                  if (OB_SUCCESS != err)
+                  {
+                    TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
+                  }
                 }
               }
               else
               {
-                OB_ASSERT(result3.is_with_rows() == true);
-                ObMySQLRow row;
-                const common::ObObj *pcell = NULL;
-                // not used
-                uint64_t table_id = OB_INVALID_ID;
-                uint64_t column_id = OB_INVALID_ID;
-                ObExprObj in;
-                ObExprObj out;
-                while (OB_SUCCESS == ret)
-                {
-                  if (OB_SUCCESS != (ret = result3.next_row(row)))
-                  {
-                    if (ret == OB_ITER_END)
-                    {
-                      ret = OB_SUCCESS;
-                    }
-                    else
-                    {
-                      TBSYS_LOG(ERROR, "next row from ObMySQLResultSet failed, ret=%d", ret);
-                    }
-                    break;
-                  }
-                  else if(OB_SUCCESS != (ret = row.get_inner_row()->raw_get_cell(0, pcell, table_id, column_id)))
-                  {
-                    TBSYS_LOG(ERROR, "raw_get_cell failed,ret=%d", ret);
-                  }
-                  else
-                  {
-                    in.assign(*pcell);
-                    ObObjCastParams params;
-                    if (OB_SUCCESS != (ret = OB_OBJ_CAST[ObVarcharType][ObIntType](params, in, out)))
-                    {
-                      TBSYS_LOG(ERROR, "varchar cast to int failed, ret=%d", ret);
-                    }
-                    else
-                    {
-                      p_privilege->set_version(out.get_int());
-                    }
-                  }
-                }
-                err = result3.close();
-                if (OB_SUCCESS != err)
-                {
-                  TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
-                }
-                if (OB_SUCCESS == ret)
-                {
-                  TBSYS_LOG(INFO, "privilege related table ready");
-                }
-                break;
+                TBSYS_LOG(ERROR,"execute sql %.*s, failed,ret=%d", get_table_privileges.length(), get_table_privileges.ptr(), ret);
               }
+              cleanup_sql_env(context, result2, false);
+            }
+          }
+          if (OB_SUCCESS == ret)
+          {
+            ObMySQLResultSet result3;
+            if (OB_SUCCESS != (ret = result3.init()))
+            {
+              TBSYS_LOG(ERROR, "init result set failed, ret = %d", ret);
             }
             else
             {
-              TBSYS_LOG(ERROR,"execute sql %.*s, failed,ret=%d", get_privilege_version.length(), get_privilege_version.ptr(), ret);
+              //context.session_info_->read_lock();
+              context.session_info_->get_parser_mem_pool().reuse();
+              context.session_info_->get_transformer_mem_pool().start_batch_alloc();
+              // direct_execute don't check privilege if flag is true, it means we are in system bootstrap progress
+              ret = ObSql::direct_execute(get_privilege_version, result3, context);
+              if (OB_SUCCESS == ret)
+              {
+                if (OB_SUCCESS != (ret = result3.open()))
+                {
+                  TBSYS_LOG(WARN, "failed to open result set, ret=%d", ret);
+                  err = result3.close();
+                  if (OB_SUCCESS != err)
+                  {
+                    TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
+                  }
+                }
+                else
+                {
+                  OB_ASSERT(result3.is_with_rows() == true);
+                  ObMySQLRow row;
+                  const common::ObObj *pcell = NULL;
+                  // not used
+                  uint64_t table_id = OB_INVALID_ID;
+                  uint64_t column_id = OB_INVALID_ID;
+                  ObExprObj in;
+                  ObExprObj out;
+                  while (OB_SUCCESS == ret)
+                  {
+                    if (OB_SUCCESS != (ret = result3.next_row(row)))
+                    {
+                      if (ret == OB_ITER_END)
+                      {
+                        ret = OB_SUCCESS;
+                      }
+                      else
+                      {
+                        TBSYS_LOG(ERROR, "next row from ObMySQLResultSet failed, ret=%d", ret);
+                      }
+                      break;
+                    }
+                    else if(OB_SUCCESS != (ret = row.get_inner_row()->raw_get_cell(0, pcell, table_id, column_id)))
+                    {
+                      TBSYS_LOG(ERROR, "raw_get_cell failed,ret=%d", ret);
+                    }
+                    else
+                    {
+                      in.assign(*pcell);
+                      ObObjCastParams params;
+                      if (OB_SUCCESS != (ret = OB_OBJ_CAST[ObVarcharType][ObIntType](params, in, out)))
+                      {
+                        TBSYS_LOG(ERROR, "varchar cast to int failed, ret=%d", ret);
+                      }
+                      else
+                      {
+                        p_privilege->set_version(out.get_int());
+                      }
+                    }
+                  }
+                  err = result3.close();
+                  if (OB_SUCCESS != err)
+                  {
+                    TBSYS_LOG(WARN, "failed to close result set,ret=%d", err);
+                  }
+                  if (OB_SUCCESS == ret)
+                  {
+                    TBSYS_LOG(INFO, "privilege related table ready");
+                  }
+                  break;
+                }
+              }
+              else
+              {
+                TBSYS_LOG(ERROR,"execute sql %.*s, failed,ret=%d", get_privilege_version.length(), get_privilege_version.ptr(), ret);
+              }
+              cleanup_sql_env(context, result3, false);
             }
-            cleanup_sql_env(context, result3);
           }
+        }// while
+        if (NULL != context.schema_manager_)
+        {
+          env_.schema_mgr_->release_schema(context.schema_manager_);
+          context.schema_manager_ = NULL;
         }
-      }// while
-      if (NULL != context.schema_manager_)
-      {
-        env_.schema_mgr_->release_schema(context.schema_manager_);
-        context.schema_manager_ = NULL;
       }
       return ret;
     }
@@ -460,15 +522,27 @@ namespace oceanbase
       int rc = EASY_OK;
       easy_listen_t* listen = NULL;
       TBSYS_LOG(DEBUG, "obmysql server start....");
+      easy_pool_set_allocator(ob_easy_realloc);
       eio_ = easy_eio_create(eio_, io_thread_count_);
       eio_->do_signal = 0;
       eio_->force_destroy_second = OB_CONNECTION_FREE_TIME_S;
       eio_->checkdrc = 1;
       eio_->support_ipv6 = 0;
+      eio_->no_redispatch = 1;
+      easy_eio_set_uthread_start(eio_, easy_on_ioth_start, this);
+      eio_->uthread_enable = 0;
       if (NULL == eio_)
       {
         ret = OB_ERROR;
         TBSYS_LOG(ERROR, "easy_eio_create error");
+      }
+      else if (OB_SUCCESS != (ret = command_queue_thread_.init()))
+      {
+        TBSYS_LOG(ERROR, "command_queue_thread.init()=>%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = close_command_queue_thread_.init()))
+      {
+        TBSYS_LOG(ERROR, "close_command_queue_thread.init()=>%d", ret);
       }
       else
       {
@@ -572,15 +646,17 @@ namespace oceanbase
       if (!stop_)
       {
         stop_ = true;
+        TBSYS_LOG(WARN, "start to stop the mysql server");
         destroy();
         if (eio_ != NULL && NULL != eio_->pool)
         {
+          TBSYS_LOG(WARN, "stop eio");
           easy_eio_stop(eio_);
           easy_eio_wait(eio_);
           easy_eio_destroy(eio_);
           eio_ = NULL;
         }
-        TBSYS_LOG(INFO, "server stoped.");
+        TBSYS_LOG(INFO, "mysql server stoped.");
       }
     }
 
@@ -602,25 +678,51 @@ namespace oceanbase
     {
       if (work_thread_count_ > 0)
       {
+        TBSYS_LOG(WARN, "stop command queue thread");
         command_queue_thread_.stop();
         close_command_queue_thread_.stop();
+        TBSYS_LOG(WARN, "wait command queue thread");
         wait_for_queue();
       }
+      TBSYS_LOG(WARN, "stop timer");
+      timer_.destroy();
+      TBSYS_LOG(WARN, "stop package recorder");
+      packet_recorder_.destroy();
     }
 
     int ObMySQLServer::login_handler(easy_connection_t* c)
     {
       int ret = OB_SUCCESS;
+      easy_addr_t addr = c->addr;
       ObSQLSessionInfo *session = NULL;
       if (OB_SUCCESS != (ret = login_handler_.login(c, session)))
       {
         if (IS_SQL_ERR(ret))
         {
-          TBSYS_LOG(WARN, "handler login failed ret is %d", ret);
+          TBSYS_LOG(WARN, "handler login failed ret is %d peer is %s", ret, inet_ntoa_r(addr));
         }
         else
         {
-          TBSYS_LOG(ERROR, "handler login failed ret is %d", ret);
+          TBSYS_LOG(WARN, "handler login failed ret is %d peer is %s", ret, inet_ntoa_r(addr));
+        }
+      }
+      else if (PACKET_RECORDER_FLAG)
+      {
+        ObMySQLCommandPacketRecord record;
+        record.socket_fd_ = c->fd;
+        record.cseq_ = c->seq;
+        record.addr_ = c->addr;
+        record.pkt_seq_ = 0;
+        record.pkt_length_ = 0;
+        record.cmd_type_ = COM_END;
+        record.obmysql_type_ = OBMYSQL_LOGIN;
+        struct iovec buffers;
+        buffers.iov_base = &record;
+        buffers.iov_len = sizeof(record);
+        int err = OB_SUCCESS;
+        if (OB_SUCCESS != (err = packet_recorder_.push(&buffers, 1)))
+        {
+          TBSYS_LOG(WARN, "failed to record MySQL packet, err=%d", err);
         }
       }
       return ret;
@@ -632,11 +734,11 @@ namespace oceanbase
       ObSqlContext context;
       ObMySQLResultSet result;
       char sql_str_buf[OB_MAX_VARCHAR_LENGTH];
-      snprintf(sql_str_buf, OB_MAX_VARCHAR_LENGTH, "SELECT name, data_type, value FROM %s;", OB_ALL_SYS_PARAM_TABLE_NAME);
+      snprintf(sql_str_buf, OB_MAX_VARCHAR_LENGTH, "SELECT /*+read_consistency(WEAK) */name, data_type, value FROM %s;", OB_ALL_SYS_PARAM_TABLE_NAME);
       ObString get_params_sql_str = ObString::make_string(sql_str_buf);
 
       int64_t schema_version = env_.schema_mgr_->get_latest_version();
-      session.get_mutex().lock(); // !!!lock
+      //session.try_read_lock(); // !!!lock
       context.session_info_ = &session;
       context.session_info_->set_current_result_set(&result);
       context.cache_proxy_ = env_.cache_proxy_;    // thread safe singleton
@@ -724,11 +826,19 @@ namespace oceanbase
           TBSYS_LOG(ERROR, "Failed to close result set");
         }
       }
-      cleanup_sql_env(context, result);
+      cleanup_sql_env(context, result, false);
       if (NULL != context.schema_manager_)
       {
         env_.schema_mgr_->release_schema(context.schema_manager_);
         context.schema_manager_ = NULL;
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        if (OB_SUCCESS != (ret = session.update_session_timeout()))
+        {
+          TBSYS_LOG(ERROR, "failed to update_session_timeout, ret=%d", ret);
+        }
       }
       return ret;
     }
@@ -802,31 +912,39 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       ObMySQLCommandPacket *del_packet = NULL;
       int64_t length = 32 + sizeof(ObMySQLCommandPacket);
-      char buffer[length];
-      int64_t pos = 0;
-      del_packet = new(buffer)ObMySQLCommandPacket();
-      del_packet->set_type(COM_DELETE_SESSION);
-
-      char *data = buffer + sizeof(ObMySQLCommandPacket);
-
-      if (OB_SUCCESS != ObMySQLUtil::store_length(data, length, key, pos))
+      char *buffer = reinterpret_cast<char*>(ob_tc_malloc(length, ObModIds::OB_DELETE_SESSION_TASK));
+      if (NULL == buffer)
       {
-        TBSYS_LOG(ERROR, "serialize key.fd_ failed, buffer=%p, len=%ld, key=%d, pos=%ld",
-                  data, length, key, pos);
+        TBSYS_LOG(ERROR, "failed to alloc mem");
+        ret = OB_ERROR;
       }
-      del_packet->set_command(data, 32);
-
-      if (OB_SUCCESS == ret)
+      else
       {
-        if (!close_command_queue_thread_.push(del_packet, (int)config_->obmysql_task_queue_size, false))
+        int64_t pos = 0;
+        del_packet = new(buffer)ObMySQLCommandPacket();
+        del_packet->set_type(COM_DELETE_SESSION);
+
+        char *data = buffer + sizeof(ObMySQLCommandPacket);
+
+        if (OB_SUCCESS != ObMySQLUtil::store_length(data, length, key, pos))
         {
-          TBSYS_LOG(WARN, "submit async task to thread queue fail task_queue_size=%s",
-                    config_->obmysql_task_queue_size.str());
-          ret = OB_ERROR;
+          TBSYS_LOG(ERROR, "serialize key.fd_ failed, buffer=%p, len=%ld, key=%d, pos=%ld",
+                    data, length, key, pos);
         }
-        else
+        del_packet->set_command(data, 32);
+
+        if (OB_SUCCESS == ret)
         {
-          //TBSYS_LOG(INFO, "submit async task succ pcode=%d", pcode);
+          if (!close_command_queue_thread_.push(del_packet, (int)config_->obmysql_task_queue_size, false))
+          {
+            TBSYS_LOG(WARN, "submit async task to thread queue fail task_queue_size=%s",
+                      config_->obmysql_task_queue_size.str());
+            ret = OB_ERROR;
+          }
+          else
+          {
+            //TBSYS_LOG(INFO, "submit async task succ pcode=%d", pcode);
+          }
         }
       }
       return ret;
@@ -846,6 +964,10 @@ namespace oceanbase
         uint8_t code = packet->get_type();
         if (COM_STMT_CLOSE == code)
         {
+          if (close_command_queue_thread_.get_queue_size() > 500)
+          {
+            TBSYS_LOG(WARN, "close command queue thread is busy, size=%d", close_command_queue_thread_.get_queue_size());
+          }
           bool bret = close_command_queue_thread_.push(packet,
                                                        (int)config_->obmysql_task_queue_size,
                                                        false);
@@ -929,7 +1051,7 @@ namespace oceanbase
         {
           ++thread_counter;
           atomic_inc(&total_counter);
-          if (0 == thread_counter % 5000)
+          if (0 == thread_counter % 100000)
           {
             TBSYS_LOG(INFO, "server statistics: current tid=%ld, thread_counter=%ld, total_counter=%lu",
                       syscall(__NR_gettid), thread_counter, total_counter);
@@ -989,43 +1111,19 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         ObMySQLSessionKey seq = static_cast<int>(key);
-        ObSQLSessionInfo *expired_session = NULL;
-        ret = session_mgr_.get(seq, expired_session);
-        if (HASH_EXIST != ret)
+        ret = session_mgr_.erase(seq);
+        if (OB_SUCCESS != ret)
         {
-          if (-1 == ret)
-          {
-            TBSYS_LOG(ERROR, "found session error, session key is %d", seq);
-          }
-          else if (HASH_NOT_EXIST == ret)
-          {
-            TBSYS_LOG(ERROR, "session not found session key is %d", seq);
-          }
+          usleep(10*1000);//sleep 10ms wait other thread unlock session mutex
+          ret = submit_session_delete_task(seq);
         }
         else
         {
-          if (OB_SUCCESS == expired_session->get_mutex().trylock()) // make sure there is no one still using the session
-          {
-            ret = OB_SUCCESS;
-            int64_t sessions_num = session_mgr_.size() - 1;
-            TBSYS_LOG(INFO, "delete expired session, session_key=%d session=%s sessions_num=%ld",
-                      seq, to_cstring(*expired_session), sessions_num);
-            session_pool_.free(expired_session);
-            expired_session = NULL;
-            ret = session_mgr_.erase(seq);
-            if (-1 == ret)
-            {
-              TBSYS_LOG(ERROR, "erase session failed, key is %d", seq);
-            }
-            OB_STAT_INC(OBMYSQL, SUCC_LOGOUT_COUNT);
-          }
-          else
-          {
-            usleep(10*1000);//sleep 10ms wait other thread unlock session mutex
-            ret = submit_session_delete_task(seq);
-          }
+          OB_STAT_INC(OBMYSQL, SUCC_LOGOUT_COUNT);
         }
       }
+      ob_tc_free(packet, ObModIds::OB_DELETE_SESSION_TASK);
+      packet = NULL;
       return ret;
     }
 
@@ -1050,16 +1148,20 @@ namespace oceanbase
       int err = OB_SUCCESS;
       int64_t start_time = tbsys::CTimeUtil::getTime();
       ObBasicStmt::StmtType inner_stmt_type = ObBasicStmt::T_NONE;
+      bool is_compound_stmt = false;
       ret = check_param(packet);
       if (OB_SUCCESS == ret)
       {
+        bool force_trace_log = REACH_TIME_INTERVAL(100*1000LL);
+        SET_FORCE_TRACE_LOG(force_trace_log);
+
         ObSqlContext context;
         ObMySQLResultSet result;
         easy_addr_t addr = get_easy_addr(packet->get_request());
         const common::ObString& q = packet->get_command();
         int32_t truncated_length = std::min(q.length(), 384);
-        FILL_TRACE_LOG("stmt=\"%.*s\"", truncated_length, q.ptr());
-        TBSYS_LOG(INFO, "start query: \"%.*s\" real_query_len=%d, peer=%s",
+        FILL_TRACE_LOG("stmt=\"%.*s\"", q.length(), q.ptr());
+        TBSYS_LOG(TRACE, "start query: \"%.*s\" real_query_len=%d, peer=%s",
                   truncated_length, q.ptr(), q.length(), inet_ntoa_r(addr));
 
         if (OB_SUCCESS != (ret = result.init()))
@@ -1073,8 +1175,17 @@ namespace oceanbase
           ret = init_sql_env(*packet, context, schema_version, result);
           if (OB_SUCCESS != ret)
           {
-            TBSYS_LOG(ERROR, "init sql env failed ret is %d", ret);
-            result.set_errcode(OB_INIT_SQL_CONTEXT_ERROR);
+            //session可能正在被删除或已被删除
+            if (OB_ENTRY_NOT_EXIST == ret || OB_LOCK_NOT_MATCH == ret
+                || OB_ERR_QUERY_INTERRUPTED == ret
+                || OB_ERR_SESSION_INTERRUPTED == ret)
+            {
+              TBSYS_LOG(WARN, "failed to init sql env ret is %d", ret);
+            }
+            else
+            {
+              TBSYS_LOG(ERROR, "init sql env failed ret is %d", ret);
+            }
             if (OB_SUCCESS != (err = send_error_packet(packet, &result)))
             {
               TBSYS_LOG(WARN, "fail to send error packet. err=%d", err);
@@ -1097,7 +1208,7 @@ namespace oceanbase
             }
             else
             {
-              ret = send_response(packet, &result, TEXT);
+              ret = send_response(packet, &result, TEXT, context.session_info_);
             }
             // release the schema after execution
             if (NULL != context.schema_manager_)
@@ -1120,15 +1231,22 @@ namespace oceanbase
               context.session_info_->set_warnings_buf();
             }
             inner_stmt_type = result.get_inner_stmt_type();
+            is_compound_stmt = result.is_compound_stmt();
             cleanup_sql_env(context, result);
           }
         }
-        PRINT_TRACE_LOG();
-        CLEAR_TRACE_LOG();
-        TBSYS_LOG(DEBUG, "end query");
+        const int64_t elapsed_time = tbsys::CTimeUtil::getTime() - start_time;
+        if (elapsed_time > config_->slow_query_threshold && force_trace_log) // 100ms
+        {
+          FORCE_PRINT_TRACE_LOG();
+        }
+        else
+        {
+          PRINT_TRACE_LOG();
+        }
+        do_stat(is_compound_stmt, inner_stmt_type, elapsed_time);
       }
 
-      do_stat(inner_stmt_type, tbsys::CTimeUtil::getTime() - start_time);
       if (OB_SUCCESS == ret)
       {
         OB_STAT_INC(OBMYSQL, SUCC_QUERY_COUNT);
@@ -1137,6 +1255,7 @@ namespace oceanbase
       {
         OB_STAT_INC(OBMYSQL, FAIL_QUERY_COUNT);
       }
+      TBSYS_LOG(DEBUG, "end query");
       return ret;
     }
 
@@ -1149,21 +1268,31 @@ namespace oceanbase
       {
         ObSqlContext context;
         ObMySQLResultSet result;
+        ObMySQLCommandPacketRecord record;
         const common::ObString& q = packet->get_command();
+        easy_addr_t addr = get_easy_addr(packet->get_request());
         int32_t truncated_length = std::min(q.length(), 384);
         FILL_TRACE_LOG("stmt=\"%.*s\"", truncated_length, q.ptr());
-        TBSYS_LOG(INFO, "start prepare: \"%.*s\" real_query_len=%d",
-                  truncated_length, q.ptr(), q.length());
+        TBSYS_LOG(INFO, "start prepare: \"%.*s\" real_query_len=%d peer is %s",
+                  truncated_length, q.ptr(), q.length(), inet_ntoa_r(addr));
+
         //1. init session && sql_context
         easy_request_t *req = packet->get_request();
-        UNUSED(req);
         int64_t schema_version = 0;
         number = packet->get_packet_header().seq_;
         ret = init_sql_env(*packet, context, schema_version, result);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(ERROR, "failed to init sql env ret is %d", ret);
-          result.set_errcode(OB_INIT_SQL_CONTEXT_ERROR);
+          if (OB_ENTRY_NOT_EXIST == ret || OB_LOCK_NOT_MATCH == ret
+              || OB_ERR_QUERY_INTERRUPTED == ret
+              || OB_ERR_SESSION_INTERRUPTED == ret)
+          {
+            TBSYS_LOG(WARN, "failed to init sql env ret is %d", ret);
+          }
+          else
+          {
+            TBSYS_LOG(ERROR, "failed to init sql env ret is %d", ret);
+          }
           if (OB_SUCCESS != (err = send_error_packet(packet, &result)))
           {
             TBSYS_LOG(WARN, "fail to send error packet. err=%d", err);
@@ -1191,10 +1320,21 @@ namespace oceanbase
           }
 
           // process result
-          if (OB_SUCCESS != ret)
+          if (OB_SUCCESS != ret ||
+              (OB_SUCCESS == ret &&
+               (result.get_field_cnt() > OB_MAX_PS_FIELD_COUNT || result.get_param_cnt() > OB_MAX_PS_PARAM_COUNT)))
           {
-            TBSYS_LOG(WARN, "stmt_prepare failed, err=%d stmt=\"%.*s\" ret is %d",
-                      ret, q.length(), q.ptr(), ret);
+            if (OB_SUCCESS == ret)
+            {
+              result.set_errcode(OB_ERR_PS_TOO_MANY_PARAM);
+              err = ObSql::stmt_close(result.get_statement_id(), context);
+              if (OB_SUCCESS != err)
+              {
+                TBSYS_LOG(WARN, "failed to close prepare statement stmt_id=%lu", result.get_statement_id());
+              }
+            }
+            TBSYS_LOG(WARN, "stmt_prepare failed, err=%d stmt=\"%.*s\" ret is %d retcode in result is %d",
+                      ret, q.length(), q.ptr(), ret, result.get_errcode());
             if (OB_SUCCESS != (err = send_error_packet(packet, &result)))
             {
               TBSYS_LOG(WARN, "fail to to send error packet. err=%d", err);
@@ -1202,7 +1342,34 @@ namespace oceanbase
           }
           else
           {
-            ret = send_stmt_prepare_response(packet, &result);
+            // statistic
+            ps_store_.get_id_mgr()->stat_prepare(result.get_sql_id());
+            if (PACKET_RECORDER_FLAG)//record ps packet with stmt_id
+            {
+              if (OB_SUCCESS == check_req(req))
+              {
+                record.socket_fd_ = req->ms->c->fd;
+                record.cseq_ = req->ms->c->seq;
+                record.addr_ = req->ms->c->addr;
+                record.pkt_seq_ = packet->get_packet_header().seq_;
+                record.pkt_length_ = q.length();
+                record.cmd_type_ = COM_STMT_PREPARE;
+                record.obmysql_type_ = OBMYSQL_PREPARE;
+                record.stmt_id_ = result.get_statement_id();
+                struct iovec buffers[2];
+                buffers[0].iov_base = &record;
+                buffers[0].iov_len = sizeof(record);
+                buffers[1].iov_base = const_cast<char*>(q.ptr());
+                buffers[1].iov_len = q.length();
+                int err = OB_SUCCESS;
+                if (OB_SUCCESS != (err = packet_recorder_.push(buffers, 2)))
+                {
+                  TBSYS_LOG(WARN, "failed to record MySQL packet, err=%d", err);
+                }
+              }
+            }
+            // send response
+            ret = send_stmt_prepare_response(packet, &result, context.session_info_);
           }
           if (context.session_info_ != NULL)
           {
@@ -1217,6 +1384,7 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         OB_STAT_INC(OBMYSQL, SUCC_PREPARE_COUNT);
+        OB_STAT_INC(SQL, SQL_PS_COUNT);
       }
       else
       {
@@ -1231,24 +1399,34 @@ namespace oceanbase
       int err = OB_SUCCESS;
       ObSqlContext context;
       ObMySQLResultSet result;
-      ObArray<ObObj> params;
-      ObArray<EMySQLFieldType> params_type;
       int64_t schema_version = 0;
       uint32_t stmt_id = 0;
       int64_t start_time = tbsys::CTimeUtil::getTime();
+      bool is_compound_stmt = false;
       ObBasicStmt::StmtType inner_stmt_type = ObBasicStmt::T_NONE;
-
+      bool force_trace_log = REACH_TIME_INTERVAL(100*1000LL);
+      SET_FORCE_TRACE_LOG(force_trace_log);
+      bool did_stat_execute = false;
       FILL_TRACE_LOG("start do_com_execute");
       ret = check_param(packet);
       if (OB_SUCCESS == ret)
       {
         //1. init session && sql_context
+        easy_request_t *req = packet->get_request();
         number = packet->get_packet_header().seq_;
         ret = init_sql_env(*packet, context, schema_version, result);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(ERROR, "failed to init sql env ret is %d", ret);
-          result.set_errcode(OB_INIT_SQL_CONTEXT_ERROR);
+          if (OB_ENTRY_NOT_EXIST == ret || OB_LOCK_NOT_MATCH == ret
+              ||OB_ERR_QUERY_INTERRUPTED == ret
+              || OB_ERR_SESSION_INTERRUPTED == ret)
+          {
+            TBSYS_LOG(WARN, "failed to init sql env ret is %d", ret);
+          }
+          else
+          {
+            TBSYS_LOG(ERROR, "failed to init sql env ret is %d", ret);
+          }
           if (OB_SUCCESS != (err = send_error_packet(packet, &result)))
           {
             TBSYS_LOG(WARN, "fail to send error packet. err=%d", err);
@@ -1258,54 +1436,42 @@ namespace oceanbase
         {
           //2. parase input packet get param
           //得到prepare的参数的类型和值
-          ret = parse_execute_params(&context, packet, params, stmt_id, params_type);
-          FILL_TRACE_LOG("stmt_id=%u params=%s", stmt_id, to_cstring(params));
-          if (OB_SUCCESS != ret)
+          ParamArrayPool::Guard param_guard(param_pool_);
+          ParamArray * param = param_pool_.get(param_guard);
+          ParamTypeArrayPool::Guard param_type_guard(param_type_pool_);
+          ParamTypeArray * param_type = param_type_pool_.get(param_type_guard);
+          if (NULL == param || NULL == param_type)
           {
+            TBSYS_LOG(ERROR, "Get param or param_type error, param: %p param_type: %p",
+                param, param_type);
+            ret = OB_ERROR;
             if (NULL != context.schema_manager_)
             {
               env_.schema_mgr_->release_schema(context.schema_manager_);
               context.schema_manager_ = NULL;
-            }
-            if (NULL != context.pp_privilege_)
-            {
-              int err = env_.privilege_mgr_->release_privilege(context.pp_privilege_);
-              if (OB_SUCCESS != err)
-              {
-                TBSYS_LOG(ERROR, "release privilege failed, ret=%d", err);
-              }
-              context.pp_privilege_ = NULL;
-            }
-            TBSYS_LOG(ERROR, "parse params from COM_STMT_EXECUTE failed");
-            if (OB_SUCCESS != (err = send_error_packet(packet, &result)))
-            {
-              TBSYS_LOG(WARN, "fail to send error packet. err=%d", err);
             }
           }
           else
           {
-            //TODO read session and call the right function
-            ret = ObSql::stmt_execute(stmt_id, params_type, params, result, context);
-            FILL_TRACE_LOG("stmt_execute");
-            // release the schema manager after parsing
-            if (NULL != context.schema_manager_)
-            {
-              env_.schema_mgr_->release_schema(context.schema_manager_);
-              context.schema_manager_ = NULL;
-            }
-            // release the privilege info after parsing
-            if (NULL != context.pp_privilege_)
-            {
-              err = env_.privilege_mgr_->release_privilege(context.pp_privilege_);
-              if (OB_SUCCESS != err)
-              {
-                TBSYS_LOG(ERROR, "release privilege failed, ret=%d", err);
-              }
-              context.pp_privilege_ = NULL;
-            }
+            ret = parse_execute_params(&context, packet, *param, stmt_id, *param_type);
+            FILL_TRACE_LOG("stmt_id=%u param=%s", stmt_id, to_cstring(*param));
             if (OB_SUCCESS != ret)
             {
-              TBSYS_LOG(WARN, "do_com_execute failed, err=%d stmt=%u", ret, stmt_id);
+              if (NULL != context.schema_manager_)
+              {
+                env_.schema_mgr_->release_schema(context.schema_manager_);
+                context.schema_manager_ = NULL;
+              }
+              if (NULL != context.pp_privilege_)
+              {
+                int err = env_.privilege_mgr_->release_privilege(context.pp_privilege_);
+                if (OB_SUCCESS != err)
+                {
+                  TBSYS_LOG(ERROR, "release privilege failed, ret=%d", err);
+                }
+                context.pp_privilege_ = NULL;
+              }
+              TBSYS_LOG(ERROR, "parse param from COM_STMT_EXECUTE failed");
               if (OB_SUCCESS != (err = send_error_packet(packet, &result)))
               {
                 TBSYS_LOG(WARN, "fail to send error packet. err=%d", err);
@@ -1313,7 +1479,149 @@ namespace oceanbase
             }
             else
             {
-              ret = send_response(packet, &result, BINARY);
+              const char * query_cache_type = config_->query_cache_type;
+              bool using_query_cache = query_cache_type != NULL
+                  && query_cache_type[0] != '\0'
+                  && (query_cache_type[0] == 'O' || query_cache_type[0] == 'o')
+                  && (query_cache_type[1] == 'N' || query_cache_type[1] == 'n');
+
+              if (using_query_cache)
+              {
+                err = access_cache(packet, stmt_id, context, *param);
+                if (OB_ENTRY_NOT_EXIST != err)
+                {
+                  // release the schema manager after parsing
+                  if (NULL != context.schema_manager_)
+                  {
+                    env_.schema_mgr_->release_schema(context.schema_manager_);
+                    context.schema_manager_ = NULL;
+                  }
+                  // release the privilege info after parsing
+                  if (NULL != context.pp_privilege_)
+                  {
+                    err = env_.privilege_mgr_->release_privilege(context.pp_privilege_);
+                    if (OB_SUCCESS != err)
+                    {
+                      TBSYS_LOG(ERROR, "release privilege failed, ret=%d", err);
+                    }
+                    context.pp_privilege_ = NULL;
+                  }
+                }
+                if (OB_SUCCESS == err)
+                {
+                  OB_STAT_INC(SQL, SQL_QUERY_CACHE_HIT);
+                  FILL_TRACE_LOG("use_query_cache=Y");
+                }
+                else
+                {
+                  OB_STAT_INC(SQL, SQL_QUERY_CACHE_MISS);
+                  if (OB_ENTRY_NOT_EXIST != err)
+                  {
+                    TBSYS_LOG(WARN, "access_cache error, err: %d", err);
+                    if (OB_SUCCESS != (err = send_error_packet(packet, &result)))
+                    {
+                      TBSYS_LOG(WARN, "fail to send error packet. err=%d", err);
+                    }
+                  }
+                }
+              }
+              if (!using_query_cache || OB_ENTRY_NOT_EXIST == err)
+              {
+                ret = ObSql::stmt_execute(stmt_id, *param_type, *param, result, context);
+                // release the schema manager after parsing
+                if (NULL != context.schema_manager_)
+                {
+                  env_.schema_mgr_->release_schema(context.schema_manager_);
+                  context.schema_manager_ = NULL;
+                }
+                // release the privilege info after parsing
+                if (NULL != context.pp_privilege_)
+                {
+                  err = env_.privilege_mgr_->release_privilege(context.pp_privilege_);
+                  if (OB_SUCCESS != err)
+                  {
+                    TBSYS_LOG(ERROR, "release privilege failed, ret=%d", err);
+                  }
+                  context.pp_privilege_ = NULL;
+                }
+                if (OB_SUCCESS != ret)
+                {
+                  TBSYS_LOG(WARN, "do_com_execute failed, err=%d stmt=%u", ret, stmt_id);
+                  if (OB_SUCCESS != (err = send_error_packet(packet, &result)))
+                  {
+                    TBSYS_LOG(WARN, "fail to send error packet. err=%d", err);
+                  }
+                }
+                else
+                {
+                  did_stat_execute = true;
+                  if (PACKET_RECORDER_FLAG)//record ps packet with stmt_id
+                  {
+                    if (OB_SUCCESS == check_req(req))
+                    {
+                      ObString query_string;
+                      ObMySQLCommandPacketRecord record;
+                      if (OB_SUCCESS == ps_store_.get_query(result.get_sql_id(), query_string))
+                      {
+                        record.socket_fd_ = req->ms->c->fd;
+                        record.cseq_ = req->ms->c->seq;
+                        record.addr_ = req->ms->c->addr;
+                        record.pkt_seq_ = packet->get_packet_header().seq_;
+                        record.pkt_length_ = packet->get_command().length();
+                        record.cmd_type_ = COM_STMT_EXECUTE;
+                        record.obmysql_type_ = OBMYSQL_EXECUTE;
+                        struct iovec buffers[3];
+                        buffers[0].iov_base = &record;
+                        buffers[0].iov_len = sizeof(record);
+                        bool trans_flag = true;
+                        int32_t newlen = static_cast<int32_t>(packet->get_command().length() + OB_MAX_PS_PARAM_COUNT*2);
+                        char* newbuf = reinterpret_cast<char*>(ob_tc_malloc(newlen, ObModIds::OB_MYSQL_PACKET));
+                        if (NULL == newbuf)
+                        {
+                          TBSYS_LOG(WARN, "can not alloc mem for new command str");
+                        }
+                        else
+                        {
+                          ret = trans_exe_command_with_type(&context, packet, newbuf, newlen, trans_flag);
+                          if (OB_SUCCESS == ret && trans_flag)
+                          {
+                            buffers[1].iov_base = newbuf;
+                            buffers[1].iov_len = newlen;
+                            record.pkt_length_ = newlen;
+                          }
+                          else
+                          {
+                            buffers[1].iov_base = packet->get_command().ptr();
+                            buffers[1].iov_len = packet->get_command().length();
+                          }
+                          buffers[2].iov_base = const_cast<char*>(query_string.ptr());
+                          buffers[2].iov_len = query_string.length();
+                          int err = OB_SUCCESS;
+                          if (OB_SUCCESS != (err = packet_recorder_.push(buffers, 3)))
+                          {
+                            TBSYS_LOG(WARN, "failed to record MySQL packet, err=%d", err);
+                          }
+                          ob_tc_free(newbuf, ObModIds::OB_MYSQL_PACKET);
+                          newbuf = NULL;
+                        }
+                      }
+                      else
+                      {
+                        TBSYS_LOG(WARN, "failed to get query, sql_id=%ld", result.get_sql_id());
+                      }
+                    }
+                  }
+                  ret = send_response(packet, &result, BINARY, context.session_info_);
+                  if (OB_SUCCESS == ret)
+                  {
+                    int err = fill_cache();
+                    if (OB_SUCCESS != err)
+                    {
+                      TBSYS_LOG(ERROR, "fill_cache error, err: %d", err);
+                    }
+                  }
+                }
+              }
             }
           }
           if (context.session_info_ != NULL)
@@ -1321,15 +1629,43 @@ namespace oceanbase
             context.session_info_->set_warnings_buf();
           }
           inner_stmt_type = result.get_inner_stmt_type();
+          is_compound_stmt = result.is_compound_stmt();
           cleanup_sql_env(context, result);
         }
       }
-      PRINT_TRACE_LOG();
-      CLEAR_TRACE_LOG();
-      TBSYS_LOG(DEBUG, "end do_com_execute");
+      // statistics
+      //
 
+      const int64_t elapsed_time = tbsys::CTimeUtil::getTime() - start_time;
+      bool is_slow = (elapsed_time > config_->slow_query_threshold);
 
-      do_stat(inner_stmt_type, tbsys::CTimeUtil::getTime() - start_time);
+      if (oceanbase::common::TraceLog::get_log_level() <= TBSYS_LOGGER._level
+          || (is_slow && force_trace_log))
+      {
+        // fill query string
+        ObString query_string;
+        if (OB_SUCCESS == ps_store_.get_query(result.get_sql_id(), query_string))
+        {
+          FILL_TRACE_LOG("stmt='%.*s'", query_string.length(), query_string.ptr());
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "failed to get query, sql_id=%ld", result.get_sql_id());
+        }
+      }
+      if (is_slow && force_trace_log) // 10ms
+      {
+        FORCE_PRINT_TRACE_LOG();
+      }
+      else
+      {
+        PRINT_TRACE_LOG();
+      }
+      do_stat(is_compound_stmt, inner_stmt_type, elapsed_time);
+      if (did_stat_execute)
+      {
+        ps_store_.get_id_mgr()->stat_execute(result.get_sql_id(), elapsed_time, is_slow);
+      }
       if (OB_SUCCESS == ret)
       {
         OB_STAT_INC(OBMYSQL, SUCC_EXEC_COUNT);
@@ -1338,6 +1674,7 @@ namespace oceanbase
       {
         OB_STAT_INC(OBMYSQL, FAIL_EXEC_COUNT);
       }
+      TBSYS_LOG(DEBUG, "end do_com_execute");
       return ret;
     }
 
@@ -1362,7 +1699,17 @@ namespace oceanbase
         ret = init_sql_env(*packet, context, schema_version, result);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(ERROR, "failed to init sql env ret is %d", ret);
+          if (OB_ENTRY_NOT_EXIST == ret || OB_LOCK_NOT_MATCH == ret
+              || OB_ERR_QUERY_INTERRUPTED == ret
+              || OB_ERR_SESSION_INTERRUPTED == ret)
+          {
+            TBSYS_LOG(WARN, "failed to init sql env ret is %d", ret);
+          }
+          else
+          {
+            TBSYS_LOG(ERROR, "failed to init sql env ret is %d", ret);
+          }
+          easy_request_wakeup(packet->get_request());
           // No response is sent back to the client.
         }
         else
@@ -1393,7 +1740,9 @@ namespace oceanbase
           else
           {
             // No response is sent back to the client.
+            OB_STAT_INC(SQL, SQL_PS_COUNT, -1);
           }
+          easy_request_wakeup(packet->get_request());
           if (context.session_info_ != NULL)
           {
             context.session_info_->set_warnings_buf();
@@ -1401,7 +1750,6 @@ namespace oceanbase
           cleanup_sql_env(context, result);
         }
       }
-      easy_request_wakeup(packet->get_request());
       PRINT_TRACE_LOG();
       CLEAR_TRACE_LOG();
       TBSYS_LOG(DEBUG, "end do_com_stmt_close");
@@ -1431,8 +1779,8 @@ namespace oceanbase
         result.set_affected_rows(0);
         result.set_warning_count(0);
         result.set_message("server is ok");
-        TBSYS_LOG(INFO, "start do_com_ping: \"%.*s\"", packet->get_command().length(), packet->get_command().ptr());
-        ret = send_ok_packet(packet, &result);
+        TBSYS_LOG(DEBUG, "start do_com_ping peer=%s", inet_ntoa_r(addr));
+        ret = send_ok_packet(packet, &result, 0);
         if (OB_SUCCESS != ret)
         {
           TBSYS_LOG(ERROR, "send ok packet to client(%s) failed ret is %d",
@@ -1513,11 +1861,12 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMySQLServer::send_response(ObMySQLCommandPacket* packet, ObMySQLResultSet* result, MYSQL_PROTOCOL_TYPE type)
+    int ObMySQLServer::send_response(ObMySQLCommandPacket* packet, ObMySQLResultSet* result,
+                                     MYSQL_PROTOCOL_TYPE type, sql::ObSQLSessionInfo *session)
     {
       int ret = OB_SUCCESS;
       int err = OB_SUCCESS;
-      if (NULL == packet || NULL == result || NULL == packet->get_request())
+      if (NULL == packet || NULL == result || NULL == packet->get_request() || NULL == session)
       {
         TBSYS_LOG(ERROR, "invalid argument packet is %p, result is %p, req is %p",
                   packet, result, packet->get_request());
@@ -1531,11 +1880,25 @@ namespace oceanbase
         if (OB_SUCCESS != (ret = result->open()))
         {
           ObString err_msg = ob_get_err_msg();
-          TBSYS_LOG(WARN, "failed to open result set, err=%d, msg=%.*s", ret, err_msg.length(), err_msg.ptr());
+          if (OB_ERR_WHEN_UNSATISFIED != ret)
+          {
+            TBSYS_LOG(WARN, "failed to open result set, err=%d, msg=%.*s", ret, err_msg.length(), err_msg.ptr());
+            if (OB_ERR_QUERY_INTERRUPTED == ret
+              || OB_ERR_SESSION_INTERRUPTED == ret)
+            {
+              result->set_message("Query execution was interrupted");
+            }
+            else if (OB_ERR_UNKNOWN_SESSION_ID == ret)
+            {
+              result->set_message("Unknown thread id");
+            }
+          }
+
           if (OB_SUCCESS != (err = send_error_packet(packet, result)))
           {
             TBSYS_LOG(WARN, "fail to send error packet. err=%d", err);
           }
+
           if (OB_SUCCESS != result->close())
           {
             TBSYS_LOG(WARN, "close result set failed");
@@ -1543,11 +1906,22 @@ namespace oceanbase
         }
         else
         {
+          // the server status must be got after the plan opened
+          uint16_t server_status = 0;
+          if (session->get_autocommit())
+          {
+            server_status |= SERVER_STATUS_AUTOCOMMIT;
+          }
+          if (session->get_trans_id().is_valid())
+          {
+            server_status |= SERVER_STATUS_IN_TRANS;
+          }
+
           FILL_TRACE_LOG("open");
           bool select = result->is_with_rows();
           if (select)
           {
-            ret = send_result_set(req, result, type);
+            ret = send_result_set(req, result, type, server_status, session->get_charset());
             //send error packet if some error when sending resultset
             //except OB_CONNECT_ERROR which means connection lost
             if (OB_SUCCESS != ret && OB_CONNECT_ERROR != ret)
@@ -1565,7 +1939,7 @@ namespace oceanbase
           }
           else //send result for update/insert/delete
           {
-            ret = send_ok_packet(packet, result);
+            ret = send_ok_packet(packet, result, server_status);
             if (OB_SUCCESS != ret)
             {
               TBSYS_LOG(ERROR, "send ok packet to client(%s) failed ret is %d",
@@ -1595,44 +1969,51 @@ namespace oceanbase
       ObMySQLSessionKey key = packet.get_request()->ms->c->seq;
       ObSQLSessionInfo *info = NULL;
       ret = session_mgr_.get(key, info);
-      if (HASH_EXIST != ret)
+      if (OB_SUCCESS != ret)
       {
-        if (-1 == ret)
-        {
-          TBSYS_LOG(ERROR, "found session error, session key is %d", key);
-        }
-        else if (HASH_NOT_EXIST == ret)
-        {
-          TBSYS_LOG(ERROR, "session not found session key is %d", key);
-        }
+        TBSYS_LOG(WARN, "failed get session key is %d ret is %d", key, ret);
       }
       else
       {
-        info->get_mutex().lock(); // !!!lock
+        info->mutex_lock(); // !!!lock
         TBSYS_LOG(DEBUG, "get session, addr=%p key=%d info=%s",
                   info, key, to_cstring(*info));
-        ret = OB_SUCCESS;
         context.session_info_ = info;
-        context.session_info_->set_current_result_set(&result);
-
+        context.session_mgr_ = &session_mgr_;
+        context.sql_id_mgr_ = &sql_id_mgr_;
         schema_version = env_.schema_mgr_->get_latest_version();
         context.schema_manager_ = env_.schema_mgr_->get_user_schema(schema_version); // reference count
         const ObPrivilege **pp_privilege = NULL;
         ret = env_.privilege_mgr_->get_newest_privilege(pp_privilege);
         if (OB_SUCCESS != ret)
         {
-          info->get_mutex().unlock(); // !!!unlock when error
           TBSYS_LOG(ERROR, "can 't get privilege information, internal server error, ret=%d", ret);
+          ret = OB_ERR_SERVER_IN_INIT;
         }
         else if (NULL == context.schema_manager_)
         {
-          info->get_mutex().unlock(); // !!!unlock when error
           TBSYS_LOG(WARN, "fail to get user schema. schema_version=%ld", schema_version);
           result.set_message("fail to get user schema.");
-          ret = OB_ERROR;
+          ret = OB_ERR_SERVER_IN_INIT;
+        }
+        else if (QUERY_KILLED == context.session_info_->get_session_state())
+        {
+          context.session_info_->set_session_state(SESSION_SLEEP);
+          context.session_info_->update_last_active_time();
+          context.session_info_->set_current_result_set(NULL);
+          result.set_message("Query execution was interrupted");
+          ret = OB_ERR_QUERY_INTERRUPTED;
+        }
+        else if (SESSION_KILLED == context.session_info_->get_session_state())
+        {
+          TBSYS_LOG(INFO, "SESSION_KILLED");
+          context.session_info_->set_current_result_set(NULL);
+          result.set_message("Session was intgerrupted");
+          ret = OB_ERR_SESSION_INTERRUPTED;
         }
         else
         {
+          context.ps_store_ = &ps_store_;
           context.merger_schema_mgr_ = env_.schema_mgr_;
           context.privilege_mgr_ = env_.privilege_mgr_;
           context.cache_proxy_ = env_.cache_proxy_;    // thread safe singleton
@@ -1645,10 +2026,24 @@ namespace oceanbase
           // reuse memory pool for parser
           context.session_info_->get_parser_mem_pool().reuse();
           context.session_info_->get_transformer_mem_pool().start_batch_alloc();
-          // note that the session is locked now
+          context.session_info_->set_query_start_time(tbsys::CTimeUtil::getTime());
+          ret = store_query_string(packet, context);
+          if (OB_SUCCESS == ret)
+          {
+            context.session_info_->set_current_result_set(&result);
+            context.session_info_->set_session_state(QUERY_ACTIVE);
+          }
+          else
+          {
+            TBSYS_LOG(ERROR, "store query string failed ret=%d", ret);
+          }
         }
+        FILL_TRACE_LOG("session_id=%d", context.session_info_->get_session_id());
         if (ret != OB_SUCCESS)
         {
+          //unlock first
+          info->mutex_unlock();
+          info->unlock();
           if (NULL != context.schema_manager_)
           {
             int err = env_.schema_mgr_->release_schema(context.schema_manager_);
@@ -1667,23 +2062,36 @@ namespace oceanbase
             }
             context.pp_privilege_ = NULL;
           }
+          if (OB_ERR_QUERY_INTERRUPTED != ret
+              && OB_ERR_SESSION_INTERRUPTED != ret)
+          {
+            ret = OB_INIT_SQL_CONTEXT_ERROR;
+          }
         }
       }
       result.set_errcode(ret);
       return ret;
     }
 
-    void ObMySQLServer::cleanup_sql_env(ObSqlContext &context, ObMySQLResultSet &result)
+    void ObMySQLServer::cleanup_sql_env(ObSqlContext &context, ObMySQLResultSet &result, bool unlock)
     {
       bool reuse_mem = !result.is_prepare_stmt();
       result.reset();
       OB_ASSERT(context.session_info_);
       context.session_info_->get_parser_mem_pool().reuse();
       context.session_info_->get_transformer_mem_pool().end_batch_alloc(reuse_mem);
-      context.session_info_->get_mutex().unlock(); // !!!unlock
+      context.session_info_->set_current_result_set(NULL);
+      context.session_info_->set_session_state(SESSION_SLEEP);
+      context.session_info_->update_last_active_time();
+      if (unlock)
+      {
+        context.session_info_->mutex_unlock(); // !!!unlock
+        context.session_info_->unlock();
+      }
       TBSYS_LOG(DEBUG, "stack allocator reuse_mem=%c", reuse_mem?'Y':'N');
 #ifdef __OB_MTRACE__
       ob_print_mod_memory_usage();
+      ob_print_phy_operator_stat();
 #endif
     }
 
@@ -1711,7 +2119,7 @@ namespace oceanbase
           }
           else
           {
-            snprintf(msg_buf, 64, "unknown internal error, errno=%d", -result->get_errcode());
+            snprintf(msg_buf, 64, "OB-%d: %s", -result->get_errcode(), ob_strerror(result->get_errcode()));
             message = ObString::make_string(msg_buf); // default error message
           }
         }
@@ -1774,7 +2182,7 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMySQLServer::send_ok_packet(ObMySQLCommandPacket* packet, ObMySQLResultSet *result)
+    int ObMySQLServer::send_ok_packet(ObMySQLCommandPacket* packet, ObMySQLResultSet *result, uint16_t server_status)
     {
       int ret = OB_SUCCESS;
       if (NULL == packet || NULL == packet->get_request())
@@ -1790,8 +2198,8 @@ namespace oceanbase
         ObMySQLOKPacket ok;
         ok.set_affected_rows(result->get_affected_rows());
         ok.set_warning_count(static_cast<uint16_t>(result->get_warning_count()));
-        //TODO get server status from resultset
-        ok.set_server_status(0x22);
+        ok.set_server_status(server_status);
+        FILL_TRACE_LOG("server_status=0x%hX", server_status);
         ObString message(ObString(static_cast<int32_t>(strlen(result->get_message())),
                                   static_cast<int32_t>(strlen(result->get_message())),
                                   const_cast<char*>(result->get_message())));
@@ -1813,10 +2221,11 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMySQLServer::send_stmt_prepare_response(ObMySQLCommandPacket* packet, ObMySQLResultSet* result)
+    int ObMySQLServer::send_stmt_prepare_response(ObMySQLCommandPacket* packet, ObMySQLResultSet* result,
+                                                  ObSQLSessionInfo *session)
     {
       int ret = OB_SUCCESS;
-      if (NULL == packet || NULL == result || NULL == packet->get_request())
+      if (NULL == packet || NULL == result || NULL == packet->get_request() || NULL == session)
       {
         TBSYS_LOG(ERROR, "should not reache here, invalid argument"
                   "packet is %p, result is %p, req is %p", packet, result, packet->get_request());
@@ -1827,42 +2236,34 @@ namespace oceanbase
         TBSYS_LOG(TRACE, "query result=(%s)", to_cstring(*result));
         easy_request_t *req = packet->get_request();
         easy_addr_t addr = get_easy_addr(req);
-        if (OB_SUCCESS != (ret = result->open()))
+        //send spr packet following with param && field  no need open result
+        uint16_t server_status = 0;
+        if (session->get_autocommit())
         {
-          ObString err_msg = ob_get_err_msg();
-          TBSYS_LOG(WARN, "failed to open result set, err=%d, msg=%.*s", ret, err_msg.length(), err_msg.ptr());
-          ret = send_error_packet(packet, result);
-          if (OB_SUCCESS != result->close())
-          {
-            TBSYS_LOG(WARN, "close result set failed");
-          }
+          server_status |= SERVER_STATUS_AUTOCOMMIT;
         }
-        else
+        if (session->get_trans_id().is_valid())
         {
-          //send spr packet following with param && field
-          if (result->get_field_cnt() > 0 || result->get_param_cnt() > 0)
-          {
-            ret = send_stmt_prepare_result_set(packet, result);
-            if (OB_SUCCESS != ret)
-            {
-              TBSYS_LOG(ERROR, "send stmt prepare result set to client %s failed ret is %d", inet_ntoa_r(addr), ret);
-            }
-          }
-          else                  // send only spr packet
-          {
-            ret = send_spr_packet(packet, result);
-          }
-          ret = result->close();
+          server_status |= SERVER_STATUS_IN_TRANS;
+        }
+
+        if (result->get_field_cnt() > 0 || result->get_param_cnt() > 0)
+        {
+          ret = send_stmt_prepare_result_set(packet, result, server_status, session->get_charset());
           if (OB_SUCCESS != ret)
           {
-            TBSYS_LOG(ERROR, "close result set failed ret is %d", ret);
+            TBSYS_LOG(ERROR, "send stmt prepare result set to client %s failed ret is %d", inet_ntoa_r(addr), ret);
           }
+        }
+        else                  // send only spr packet
+        {
+          ret = send_spr_packet(packet, result);
         }
       }
       return ret;
     }
 
-    int ObMySQLServer::parse_execute_params(ObSqlContext *context, ObMySQLCommandPacket *packet, ObArray<ObObj>& params, uint32_t &stmt_id, ObArray<EMySQLFieldType>& params_type)
+    int ObMySQLServer::parse_execute_params(ObSqlContext *context, ObMySQLCommandPacket *packet, ObIArray<ObObj>& params, uint32_t &stmt_id, ObIArray<EMySQLFieldType>& params_type)
     {
       int ret = OB_SUCCESS;
       if (NULL == packet)
@@ -1883,18 +2284,18 @@ namespace oceanbase
         ObMySQLUtil::get_uint4(payload, stmt_id);
         payload += 5;           // skip flags && iteration-count
 
-        ObResultSet* rsset = context->session_info_->get_plan(stmt_id);
-        if (NULL == rsset)
+        ObPsSessionInfo *sinfo = NULL;
+        ret = context->session_info_->get_ps_session_info(stmt_id, sinfo);
+        if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(ERROR, "can not find ObResultSet for stmt_id = %u", stmt_id);
-          ret = OB_ERROR;
+          TBSYS_LOG(ERROR, "can not find ObSQLSessionInfo for stmt_id = %u", stmt_id);
         }
         else
         {
-          param_count = context->session_info_->get_plan(stmt_id)->get_param_columns().count();
-          const common::ObArray<EMySQLFieldType> &types = context->session_info_->get_plan(stmt_id)->get_params_type();
-          TBSYS_LOG(DEBUG, "ps expected param_count=%ld, data_len=%d remain=%ld",
-                    param_count, length, payload - start);
+          param_count = sinfo->params_.count();
+          const common::ObIArray<EMySQLFieldType> &types = sinfo->params_type_;
+          TBSYS_LOG(DEBUG, "ps expected param_count=%ld, data_len=%d remain=%ld type_count=%ld",
+                    param_count, length, payload - start, types.count());
           if (param_count > 0 && payload - start < length)
           {
             int64_t bitmap_bytes = (param_count + 7) / 8;
@@ -1986,6 +2387,10 @@ namespace oceanbase
               if (OB_SUCCESS != ret)
               {
                 params_type.clear();
+              }
+              else if (1 == bound_flag)
+              {
+                sinfo->params_type_ = params_type;
               }
             }
           }
@@ -2143,6 +2548,7 @@ namespace oceanbase
         tmval.tm_hour = hour;
         tmval.tm_min = min;
         tmval.tm_sec = second;
+        tmval.tm_isdst = -1;
         time_t tm = mktime(&tmval);
         value = tm * 1000000 + microsecond;
       }
@@ -2152,7 +2558,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMySQLServer::send_result_set(easy_request_t *req, ObMySQLResultSet *result, MYSQL_PROTOCOL_TYPE type)
+    int ObMySQLServer::send_result_set(easy_request_t *req, ObMySQLResultSet *result,
+                                       MYSQL_PROTOCOL_TYPE type, uint16_t server_status, uint16_t charset)
     {
       int ret = OB_SUCCESS;
       int64_t buffer_length = 0;
@@ -2164,25 +2571,23 @@ namespace oceanbase
       }
       else
       {
-        //基于结果集都是很小的假设每次都在message申请6k内存，尽可能的把所有的数据包都放到这个内存里面去
-        //如果能够放下那么直接调用异步发送接口 工作线程不用等待IO线程发包
-        //如果发现6k不能放下所有结果，先发送序列化好的包，等待IO线程发送完毕以便复用这个6k的内存
         easy_addr_t addr = get_easy_addr(req);
-        easy_buf_t* buf = reinterpret_cast<easy_buf_t*>(easy_pool_alloc(req->ms->pool, OB_MYSQL_PACKET_BUFF_SIZE));
+        easy_buf_t* buf = reinterpret_cast<easy_buf_t*>(easy_pool_alloc(req->ms->pool, OB_MAX_PACKET_LENGTH));
         if (NULL != buf)
         {
+          FILL_TRACE_LOG("server_status=0x%hX", server_status);
           char *data_buffer = reinterpret_cast<char *>(buf + 1);
-          buffer_length = OB_MYSQL_PACKET_BUFF_SIZE - sizeof(easy_buf_t);
+          buffer_length = OB_MAX_PACKET_LENGTH - sizeof(easy_buf_t);
           init_easy_buf(buf, data_buffer, req, buffer_length);
           if (OB_SUCCESS != (ret = process_resheader_packet(buf, buffer_pos, req, result)))
           {
             TBSYS_LOG(WARN, "process resheasder packet failed dest is %s ret is %d", inet_ntoa_r(addr), ret);
           }
-          else if (OB_SUCCESS != (ret = process_field_packets(buf, buffer_pos, req, result, true)))
+          else if (OB_SUCCESS != (ret = process_field_packets(buf, buffer_pos, req, result, true, charset)))
           {
             TBSYS_LOG(WARN, "process field packet failed dest is %s ret is %d", inet_ntoa_r(addr), ret);
           }
-          else if (OB_SUCCESS != (ret = process_eof_packet(buf, buffer_pos, req, result)))
+          else if (OB_SUCCESS != (ret = process_eof_packet(buf, buffer_pos, req, result, server_status)))
           {
             TBSYS_LOG(WARN, "process field eof packet failed dest is %s ret is %d", inet_ntoa_r(addr), ret);
           }
@@ -2190,7 +2595,7 @@ namespace oceanbase
           {
             TBSYS_LOG(WARN, "process row packet failed dest is %s ret is %d", inet_ntoa_r(addr), ret);
           }
-          else if (OB_SUCCESS != (ret = process_eof_packet(buf, buffer_pos, req, result)))
+          else if (OB_SUCCESS != (ret = process_eof_packet(buf, buffer_pos, req, result, server_status)))
           {
             TBSYS_LOG(WARN, "process row eof packet failed dest is %s ret is %d", inet_ntoa_r(addr), ret);
           }
@@ -2215,7 +2620,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMySQLServer::send_stmt_prepare_result_set(ObMySQLCommandPacket *packet, ObMySQLResultSet *result)
+    int ObMySQLServer::send_stmt_prepare_result_set(ObMySQLCommandPacket *packet, ObMySQLResultSet *result,
+                                                    uint16_t server_status, uint16_t charset)
     {
       int ret = OB_SUCCESS;
       int64_t buffer_length = 0;
@@ -2229,11 +2635,11 @@ namespace oceanbase
       {
         easy_request_t *req = packet->get_request();
         easy_addr_t addr = get_easy_addr(req);
-        easy_buf_t* buf = reinterpret_cast<easy_buf_t*>(easy_pool_alloc(req->ms->pool, OB_MYSQL_PACKET_BUFF_SIZE));
+        easy_buf_t* buf = reinterpret_cast<easy_buf_t*>(easy_pool_alloc(req->ms->pool, OB_MAX_PACKET_LENGTH));
         if (NULL != buf && NULL != req)
         {
           char *data_buffer = reinterpret_cast<char *>(buf + 1);
-          buffer_length = OB_MYSQL_PACKET_BUFF_SIZE - sizeof(easy_buf_t);
+          buffer_length = OB_MAX_PACKET_LENGTH - sizeof(easy_buf_t);
           init_easy_buf(buf, data_buffer, req, buffer_length);
           //send spr packet following with param && field
           if (result->get_field_cnt() > 0 || result->get_param_cnt() > 0)
@@ -2246,11 +2652,11 @@ namespace oceanbase
               if (result->get_param_cnt() > 0)
               {
                 // 发送param columns
-                if (OB_SUCCESS != (ret = process_field_packets(buf, buffer_pos, req, result, false)))
+                if (OB_SUCCESS != (ret = process_field_packets(buf, buffer_pos, req, result, false, charset)))
                 {
                   TBSYS_LOG(WARN, "process param packets failed dest is %s ret is %d", inet_ntoa_r(addr), ret);
                 }
-                else if (OB_SUCCESS != (ret = process_eof_packet(buf, buffer_pos, req, result)))
+                else if (OB_SUCCESS != (ret = process_eof_packet(buf, buffer_pos, req, result, server_status)))
                 {
                   TBSYS_LOG(WARN, "process param eof failed dest is %s ret is %d", inet_ntoa_r(addr), ret);
                 }
@@ -2258,11 +2664,11 @@ namespace oceanbase
 
               if (OB_SUCCESS == ret && result->get_field_cnt() > 0)
               {
-                if (OB_SUCCESS != (ret = process_field_packets(buf, buffer_pos, req, result, true)))
+                if (OB_SUCCESS != (ret = process_field_packets(buf, buffer_pos, req, result, true, charset)))
                 {
                   TBSYS_LOG(WARN, "send field packet to client(%s) failed ret is %d", inet_ntoa_r(addr), ret);
                 }
-                else if (OB_SUCCESS != (ret = process_eof_packet(buf, buffer_pos, req, result)))
+                else if (OB_SUCCESS != (ret = process_eof_packet(buf, buffer_pos, req, result, server_status)))
                 {
                   TBSYS_LOG(WARN, "send field eof packet to client(%s) failed ret is %d", inet_ntoa_r(addr), ret);
                 }
@@ -2355,7 +2761,7 @@ namespace oceanbase
     }
 
     int ObMySQLServer::process_field_packets(easy_buf_t *&buff, int64_t &buff_pos,
-                              easy_request_t *req, ObMySQLResultSet *result, bool is_field)
+                              easy_request_t *req, ObMySQLResultSet *result, bool is_field, uint16_t charset)
     {
       int ret = OB_SUCCESS;
       if (NULL == buff || NULL == req || NULL == result)
@@ -2381,6 +2787,7 @@ namespace oceanbase
         while (OB_SUCCESS ==ret &&
                OB_SUCCESS == (ret = (result->*get_next)(field)))
         {
+          field.set_charset(charset);
           ObMySQLFieldPacket fpacket(&field);
           fpacket.set_seq(static_cast<uint8_t>(number+1));
           ret = process_single_packet(buff, buff_pos, req, &fpacket);
@@ -2416,7 +2823,8 @@ namespace oceanbase
     }
 
     int ObMySQLServer::process_eof_packet(easy_buf_t *&buff, int64_t &buff_pos,
-                                          easy_request_t *req, ObMySQLResultSet *result)
+                                          easy_request_t *req, ObMySQLResultSet *result,
+                                          uint16_t server_status)
     {
       int ret = OB_SUCCESS;
       if (NULL == buff || NULL == req || NULL == result)
@@ -2431,6 +2839,7 @@ namespace oceanbase
         ObMySQLEofPacket eof;
         eof.set_warning_count(static_cast<uint16_t>(result->get_warning_count()));
         eof.set_seq(static_cast<uint8_t>(number+1));
+        eof.set_server_status(server_status);
         ret = process_single_packet(buff, buff_pos, req, &eof);
         if (OB_SUCCESS != ret)
         {
@@ -2497,6 +2906,16 @@ namespace oceanbase
             {
               result->set_message("request timeout");
             }
+            else if (ret == OB_ERR_QUERY_INTERRUPTED)
+            {
+              TBSYS_LOG(WARN, "Query killed");
+              result->set_message("Query execution was interrupted");
+            }
+            else if (ret == OB_ERR_SESSION_INTERRUPTED)
+            {
+              TBSYS_LOG(WARN, "Session killed peer is %s", get_peer_ip(req));
+              result->set_message("Query execution was interrupted");
+            }
             TBSYS_LOG(WARN, "failed to get next row, err=%d", ret);
           }
         }
@@ -2550,36 +2969,7 @@ namespace oceanbase
           {
             if (OB_ARRAY_OUT_OF_RANGE == ret || OB_SIZE_OVERFLOW == ret)
             {
-              //buffer size > 6k 表示buffer的大小已经是2M了
-              if (OB_MYSQL_PACKET_BUFF_SIZE < buff->end - buff->pos)
-              {
-                TBSYS_LOG(ERROR, "do not support packet larger than %ld ret is %d", OB_MAX_PACKET_LENGTH, ret);
-              }
-              else
-              {
-                TBSYS_LOG(WARN, "packet size is larger than 6k, try alloc 2M buffer");
-                //alloc a 2m buffer
-                buff = reinterpret_cast<easy_buf_t*>(easy_pool_alloc(req->ms->pool, OB_MAX_PACKET_LENGTH));
-                if (NULL != buff)
-                {
-                  char *data_buffer = reinterpret_cast<char *>(buff + 1);
-                  int64_t buffer_length = OB_MAX_PACKET_LENGTH - sizeof(easy_buf_t);
-                  init_easy_buf(buff, data_buffer, req, buffer_length);
-                  ret = packet->encode(buff->pos, buff->end - buff->pos, buff_pos);
-                  if (OB_ARRAY_OUT_OF_RANGE == ret || OB_SIZE_OVERFLOW == ret)
-                  {
-                    TBSYS_LOG(ERROR, "do not support packet larger than %ld ret is %d", OB_MAX_PACKET_LENGTH, ret);
-                  }
-                  else if (OB_SUCCESS != ret)
-                  {
-                    TBSYS_LOG(ERROR, "serialize packet(%p) failed ret is %d", packet, ret);
-                  }
-                }
-                else
-                {
-                  TBSYS_LOG(ERROR, "alloc memory from message failed");
-                }
-              }
+              TBSYS_LOG(ERROR, "do not support packet larger than %ld ret is %d", OB_MAX_PACKET_LENGTH, ret);
             }
           }
         }
@@ -2607,12 +2997,14 @@ namespace oceanbase
         if (NULL != buf)
         {
           OB_STAT_INC(OBMYSQL, SQL_QUERY_BYTES, buf->last - buf->pos);
+          query_cache_.append_ongoing_res(buf);
         }
         easy_client_wait_t wait_obj;
         wait_obj.done_count = 0;
         easy_client_wait_init(&wait_obj);
         req->client_wait = &wait_obj;
         req->retcode = EASY_AGAIN;
+        req->waiting = 1;
         //io线程被唤醒，r->opacket被挂过去,send_response->easy_connection_request_done
         easy_request_wakeup(req);
         // IO线程回调 int ObMySQLCallback::process(easy_request_t* r)的时候唤醒工作线程
@@ -2643,6 +3035,7 @@ namespace oceanbase
         if (NULL != buf)
         {
           OB_STAT_INC(OBMYSQL, SQL_QUERY_BYTES, buf->last - buf->pos);
+          query_cache_.append_ongoing_res(buf);
         }
         req->retcode = EASY_OK;
         //io线程被唤醒，r->opacket被挂过去,send_response->easy_connection_request_done
@@ -2651,34 +3044,306 @@ namespace oceanbase
       return ret;
     }
 
-    int ObMySQLServer::do_stat(ObBasicStmt::StmtType stmt_type, int64_t consumed_time)
+    int ObMySQLServer::post_raw_bytes(easy_request_t * req, const char * bytes, int64_t len)
     {
-      switch(stmt_type)
+      int ret = OB_SUCCESS;
+
+      if (NULL == req || NULL == bytes || len <= 0)
       {
-        case ObBasicStmt::T_SELECT:
-          OB_STAT_INC(OBMYSQL, SQL_SELECT_COUNT);
-          OB_STAT_INC(OBMYSQL, SQL_SELECT_TIME, consumed_time);
-          break;
-        case ObBasicStmt::T_INSERT:
-          OB_STAT_INC(OBMYSQL, SQL_INSERT_COUNT);
-          OB_STAT_INC(OBMYSQL, SQL_INSERT_TIME, consumed_time);
-          break;
-        case ObBasicStmt::T_REPLACE:
-          OB_STAT_INC(OBMYSQL, SQL_REPLACE_COUNT);
-          OB_STAT_INC(OBMYSQL, SQL_REPLACE_TIME, consumed_time);
-          break;
-        case ObBasicStmt::T_UPDATE:
-          OB_STAT_INC(OBMYSQL, SQL_UPDATE_COUNT);
-          OB_STAT_INC(OBMYSQL, SQL_UPDATE_TIME, consumed_time);
-          break;
-        case ObBasicStmt::T_DELETE:
-          OB_STAT_INC(OBMYSQL, SQL_DELETE_COUNT);
-          OB_STAT_INC(OBMYSQL, SQL_DELETE_TIME, consumed_time);
-          break;
-        default:
-          break;
+        TBSYS_LOG(ERROR, "invalid arguments, req: %p bytes: %p len: %ld", req, bytes, len);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        easy_addr_t addr = get_easy_addr(req);
+        easy_buf_t * buf = reinterpret_cast<easy_buf_t *>(
+            easy_pool_alloc(req->ms->pool, static_cast<uint32_t>(sizeof(easy_buf_t) + len)));
+        if (NULL == buf)
+        {
+          TBSYS_LOG(ERROR, "easy_pool_alloc failed");
+          ret = OB_ERROR;
+        }
+        else
+        {
+          char * data_buffer = reinterpret_cast<char *>(buf + 1);
+          init_easy_buf(buf, data_buffer, req, len);
+          buf->last = buf->pos + len;
+          memcpy(buf->pos, bytes, len);
+          req->opacket = reinterpret_cast<void*>(buf);
+          ret = post_raw_packet(req);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(ERROR, "post packet to client(%s) failed ret is %d", inet_ntoa_r(addr), ret);
+          }
+        }
+      }
+
+      return ret;
+    }
+
+    int ObMySQLServer::do_stat(
+        bool is_compound_stmt,
+        ObBasicStmt::StmtType stmt_type,
+        int64_t consumed_time)
+    {
+      // we don't need to use atomic operation to update these statistics
+      static int64_t total_mutate_count = 0;
+      static int64_t total_mutate_elapsed = 0;
+      static int64_t total_select_count = 0;
+      static int64_t total_select_elapsed = 0;
+      static int64_t real_start = tbsys::CTimeUtil::getTime();
+
+      if (is_compound_stmt)
+      {
+        OB_STAT_INC(OBMYSQL, SQL_COMPOUND_COUNT);
+        OB_STAT_INC(OBMYSQL, SQL_COMPOUND_TIME, consumed_time);
+        ++total_select_count;
+        total_select_elapsed += consumed_time;
+      }
+      else
+      {
+        switch(stmt_type)
+        {
+          case ObBasicStmt::T_SELECT:
+            OB_STAT_INC(OBMYSQL, SQL_SELECT_COUNT);
+            OB_STAT_INC(OBMYSQL, SQL_SELECT_TIME, consumed_time);
+            ++total_select_count;
+            total_select_elapsed += consumed_time;
+            break;
+          case ObBasicStmt::T_INSERT:
+            OB_STAT_INC(OBMYSQL, SQL_INSERT_COUNT);
+            OB_STAT_INC(OBMYSQL, SQL_INSERT_TIME, consumed_time);
+            ++total_mutate_count;
+            total_mutate_elapsed += consumed_time;
+            break;
+          case ObBasicStmt::T_REPLACE:
+            OB_STAT_INC(OBMYSQL, SQL_REPLACE_COUNT);
+            OB_STAT_INC(OBMYSQL, SQL_REPLACE_TIME, consumed_time);
+            ++total_mutate_count;
+            total_mutate_elapsed += consumed_time;
+            break;
+          case ObBasicStmt::T_UPDATE:
+            OB_STAT_INC(OBMYSQL, SQL_UPDATE_COUNT);
+            OB_STAT_INC(OBMYSQL, SQL_UPDATE_TIME, consumed_time);
+            ++total_mutate_count;
+            total_mutate_elapsed += consumed_time;
+            break;
+          case ObBasicStmt::T_DELETE:
+            OB_STAT_INC(OBMYSQL, SQL_DELETE_COUNT);
+            OB_STAT_INC(OBMYSQL, SQL_DELETE_TIME, consumed_time);
+            ++total_mutate_count;
+            total_mutate_elapsed += consumed_time;
+            break;
+          default:
+            break;
+        }
+      }
+
+      if ((total_mutate_count + total_select_count) % 500000 == 0)
+      {
+        // log QPS/TPC
+        int64_t real_end = tbsys::CTimeUtil::getTime();
+        int64_t total_real_elapsed = real_end - real_start;
+        int64_t elapsed_sec = total_real_elapsed / 1000000;
+        int64_t qps = (elapsed_sec == 0) ? 0 : (total_select_count / elapsed_sec);
+        int64_t tps = (elapsed_sec == 0) ? 0 : (total_mutate_count / elapsed_sec);
+        int64_t qrt = (total_select_count == 0) ? 0 : (total_select_elapsed / total_select_count);
+        TBSYS_LOG(INFO, "[QPS] qps=%ld tps=%ld rt=%ld select_count=%ld "
+                  "mutate_count=%ld select_elapsed=%ld mutate_elapsed=%ld",
+                  qps, tps, qrt, total_select_count,
+                  total_mutate_count, total_select_elapsed, total_mutate_elapsed);
+        // clear
+        total_mutate_count = 0;
+        total_mutate_elapsed = 0;
+        total_select_count = 0;
+        total_select_elapsed = 0;
+        real_start = real_end;
+      }
+      if (OB_UNLIKELY(REACH_TIME_INTERVAL(600LL*1000*1000)))
+      {
+        ps_store_.get_id_mgr()->print();
       }
       return OB_SUCCESS;
+    }
+
+    int ObMySQLServer::access_cache(ObMySQLCommandPacket * packet, uint32_t stmt_id,
+        ObSqlContext & context, const ObIArray<ObObj> & param)
+    {
+      int ret = OB_SUCCESS;
+      int err = OB_SUCCESS;
+      ObResWrapper cache_res;
+      ObResultSet * stored_result = NULL;
+      if(NULL == (stored_result = context.session_info_->get_plan(stmt_id)))
+      {
+        ret = OB_ERR_PREPARE_STMT_UNKNOWN;
+        TBSYS_LOG(USER_ERROR, "statement not prepared, stmt_id=%u", stmt_id);
+      }
+      else if (ObBasicStmt::T_SELECT != stored_result->get_stmt_type())
+      {
+        query_cache_.stop_ongoing_res();
+        ret = OB_ENTRY_NOT_EXIST;
+      }
+      else
+      {
+        ret = query_cache_.prepare_ongoing_res(stored_result->get_query_string_id(),
+            param, cache_res);
+        if (OB_SUCCESS != ret && OB_ENTRY_NOT_EXIST != ret)
+        {
+          TBSYS_LOG(ERROR, "prepare_ongoing_res error, ret: %d", ret);
+          query_cache_.stop_ongoing_res();
+        }
+        else if (OB_SUCCESS == ret)
+        {
+          easy_request_t * req = packet->get_request();
+          if (NULL == req)
+          {
+            TBSYS_LOG(ERROR, "get_request failed");
+            ret = OB_ERROR;
+          }
+          else
+          {
+            ret = post_raw_bytes(req, cache_res.value.res, cache_res.value.res_len);
+            if (OB_SUCCESS != ret)
+            {
+              TBSYS_LOG(ERROR, "post_raw_bytes error, ret: %d", ret);
+            }
+          }
+          err = query_cache_.revert(cache_res);
+          if (OB_SUCCESS != err)
+          {
+            TBSYS_LOG(ERROR, "ObSQLQueryCache revert error, err: %d", err);
+          }
+        }
+      }
+      return ret;
+    }
+
+    int ObMySQLServer::fill_cache()
+    {
+      int ret = query_cache_.finish_ongoing_res();
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(ERROR, "finish_ongoing_res error, ret: %d", ret);
+      }
+      return ret;
+    }
+
+    int ObMySQLServer::store_query_string(const ObMySQLCommandPacket& packet, ObSqlContext &context)
+    {
+      int ret = OB_SUCCESS;
+      uint8_t code = packet.get_type();
+      if (COM_STMT_EXECUTE != code)//stmt execute will store prepare sql in ObSql::stmt_execute
+      {
+        if (COM_QUERY == code || COM_STMT_PREPARE)
+        {
+          ret = context.session_info_->store_query_string(packet.get_command());
+        }
+        else
+        {
+          ObString command;
+          int len = 0;
+          char buff[32];
+          if (COM_PING == code)
+          {
+            len = snprintf(buff, 32, "ping");
+          }
+          else if (COM_STMT_CLOSE == code)
+          {
+            len = snprintf(buff, 32, "stmt close");
+          }
+          else if (COM_QUIT == code)
+          {
+            len = snprintf(buff, 32, "quit");
+          }
+          else if (COM_DELETE_SESSION == code)
+          {
+            len = snprintf(buff, 32, "delete session");
+          }
+          command.assign_ptr(buff, static_cast<ObString::obstr_size_t>(len));
+          ret = context.session_info_->store_query_string(command);
+        }
+      }
+      return ret;
+    }
+
+    int ObMySQLServer::trans_exe_command_with_type(ObSqlContext* context, ObMySQLCommandPacket* packet, char* buf, int32_t &len, bool& trans_flag)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == packet|| NULL == context)
+      {
+        TBSYS_LOG(ERROR, "invalid argument context=%p, packet=%p, should not reach here", context, packet);
+      }
+      else
+      {
+        trans_flag = false;
+        char *newbuf = buf;
+        char *payload = packet->get_command().ptr();
+        char *start = payload;
+        int32_t buflen = len;
+        int32_t length = static_cast<int32_t>(packet->get_command().length());
+        int8_t bound_flag = 0;
+        uint8_t type = 0;
+        int64_t param_count = 0;
+        uint32_t stmt_id = 0;
+        ObMySQLUtil::get_uint4(payload, stmt_id);
+        payload += 5;           // skip flags && iteration-count
+
+        ObPsSessionInfo *sinfo = NULL;
+        ret = context->session_info_->get_ps_session_info(stmt_id, sinfo);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "can not find ObSQLSessionInfo for stmt_id = %u", stmt_id);
+        }
+        else
+        {
+          param_count = sinfo->params_.count();
+          const common::ObIArray<EMySQLFieldType> &types = sinfo->params_type_;
+          if (param_count > 0 && payload - start < length)
+          {
+            int64_t bitmap_bytes = (param_count + 7) / 8;
+            payload += bitmap_bytes;
+            // new-params-bound-flag
+            ObMySQLUtil::get_int1(payload, bound_flag);
+            if (payload -start < length) //if has param
+            {
+              if (1 == bound_flag)
+              {
+                trans_flag = false;
+              }
+              else
+              {
+                //copy data
+                if (buflen > length + param_count*2)
+                {
+                  trans_flag = true;
+                  memcpy(newbuf, start, 9+bitmap_bytes);
+                  newbuf += 9+bitmap_bytes;
+                  //bound flag
+                  int1store(newbuf, 1);
+                  newbuf += 1;
+                  //cons type info
+                  for (int32_t index = 0; index < param_count; ++index)
+                  {
+                    type = static_cast<uint8_t>(types.at(index));
+                    int1store(newbuf, type);
+                    newbuf += 2;//skip flag 1byte not used
+                  }
+                  //copy param
+                  int32_t len_left = length - static_cast<int32_t>(payload - start);
+                  memcpy(newbuf, payload, len_left);
+                  newbuf += len_left;
+                  len = static_cast<int32_t>(newbuf - buf);
+                }
+                else
+                {
+                  TBSYS_LOG(WARN, "buf is not enough  buflen=%d, need%ld", len, length+param_count*2);
+                }
+              }
+            }
+          }
+        }
+      }
+      return ret;
     }
   }
 }

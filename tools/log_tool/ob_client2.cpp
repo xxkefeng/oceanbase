@@ -21,6 +21,7 @@
 #include "common/ob_scan_param.h"
 #include "common/ob_mutator.h"
 #include "common/ob_ups_info.h"
+#include "common/ob_pcap.h"
 #include "updateserver/ob_ups_mutator.h"
 #include "ob_utils.h"
 #include "ob_client2.h"
@@ -42,6 +43,7 @@ const int64_t MAX_N_COLUMNS = 1<<12;
 const char* _usages = "Usages:\n"
   "\t# You can set env var 'log_level' to 'DEBUG'/'WARN'...\n"
   "\t#         set env var 'n_transport' to a number\n"
+  "\t%1$s malloc_stress ip:port limit\n # in MB"
   "\t%1$s send ip:port packet file\n"
   "\t%1$s desc rs_ip:rs_port table\n"
   "\t%1$s get_obi_role rs_ip:rs_port\n"
@@ -57,12 +59,14 @@ const char* _usages = "Usages:\n"
   "\t# default scan args: columns='*', rowkey=[min,max], limit=10, server=ms\n"
   "\t%1$s set rs_ip:rs_port table column rowkey value server\n"
   "\t# default set args: server=ms\n"
+  "\t%1$s pfetch #pfetch_cmd=''\n"
   "\t%1$s randset rs table=any server=ups n_row=-1\n"
-  "\tno_randstr=0 dist=[urand|fixed|seq] write_type=[mutator|insert|upcond|ping|test_sync_delay] %1$s stress rs server=mmups|ups|ms|ip:port duration=-1 start=write_start_id end=-1 write=1 scan=1 mget=1 write_size=1 scan_size=1 mget_size=1\n"
+  "\tno_randstr=0 dist=[urand|fixed|seq] need_send=true table=any table2=any write_type=[pcap|mutator|msmutate|insert|upcond|ping|test_sync_delay] %1$s stress rs server=mmups|ups|ms|ip:port duration=-1 start=write_start_id end=-1 write=1 scan=1 mget=1 write_size=1 scan_size=1 mget_size=1\n"
   "\t# default args: write_type=write server=ms duration=-1\n"
   "\t%1$s send_mutator rs log_file server=ups\n"
   "\t%1$s get_log_sync_delay_stat ups\n"
   "\t%1$s sync_delay rs\n"
+  "\t%1$s post_stress svr size\n"
   "\t%1$s get_clog_stat ups\n"
   "\t%1$s get_clog_status ups\n"
   "\t%1$s ip2str ip\n"
@@ -294,6 +298,7 @@ class ClientWorker
     bool is_finish() {
       return finish_write_thread_count_ + finish_scan_thread_count_ + finish_mget_thread_count_ == get_thread_count();
     }
+    RPC* get_rpc(){ return rpc_; }
   protected:
     static int do_work(ClientWorker* self){
       int err = OB_SUCCESS;
@@ -369,7 +374,7 @@ class ClientWorker
           int64_t last_write_us0 = last_write_us_;
           int64_t last_scan_us0 = last_scan_us_;
           int64_t last_mget_us0 = last_mget_us_;
-          last_time_ = tbsys::CTimeUtil::getTime(); 
+          last_time_ = tbsys::CTimeUtil::getTime();
           last_write_ = worker_->write_seq_;
           last_scan_ = worker_->scan_seq_;
           last_mget_ = worker_->mget_seq_;
@@ -391,16 +396,26 @@ class ClientWorker
             );
           return err;
         }
+        BaseClient& get_client();
         int monitor(int64_t duration) {
           int err = OB_SUCCESS;
           int64_t interval = MONITOR_INTERVAL_US;
+          AsyncReqReporter async_mon(get_client().get_async_monitor());
           start_time_ = tbsys::CTimeUtil::getTime(); 
           start_write_ = worker_->write_seq_;
           start_scan_ = worker_->scan_seq_;
           start_mget_ = worker_->mget_seq_;
           while(!worker_->is_finish() && OB_SUCCESS == err && (duration < 0 || last_time_ < start_time_ + duration)){
             usleep(static_cast<useconds_t>(interval));
-            err = report();
+            if (0 == strcmp(_cfg("write_type", "msmutate"), "pcap"))
+            {
+              async_mon.report();
+              last_time_ = tbsys::CTimeUtil::getTime(); 
+            }
+            else
+            {
+              err = report();
+            }
           }
           return err;
         }
@@ -633,9 +648,9 @@ struct RPC : public BaseClient
 {
   RPC(): is_init_(false) {}
   ~RPC() { if (is_init_)destroy(); }
-  int initialize(int64_t n_transport=1) {
+  int initialize(int64_t n_transport=1, int64_t dedicate_thread_num=1) {
     int err = OB_SUCCESS;
-    if (OB_SUCCESS == (err = BaseClient::initialize(n_transport)))
+    if (OB_SUCCESS == (err = BaseClient::initialize(n_transport, dedicate_thread_num)))
     {
       is_init_ = true;
     }
@@ -712,6 +727,16 @@ struct RPC : public BaseClient
     //   printf("%s\n", cbuf);
     // }
     printf("not supported.\n");
+    return err;
+  }
+
+  int malloc_stress(const char* svr, const int64_t limit)
+  {
+    int err = OB_SUCCESS;
+    if (OB_SUCCESS != (err = send_request(svr, OB_MALLOC_STRESS, limit, _dummy_)))
+    {
+      TBSYS_LOG(ERROR, "send_request(MALLOC_STRESS)=>%d", err);
+    }
     return err;
   }
 
@@ -1063,7 +1088,7 @@ struct RPC : public BaseClient
   int ping_req(ObServer& server, int64_t idx, int64_t worker_id, int64_t& rt)
   {
     int err = OB_SUCCESS;
-    if (OB_SUCCESS != (err = send_request(server, OB_PING_REQUEST, _dummy_, _dummy_, worker_id, &rt)))
+    if (OB_SUCCESS != (err = send_request(server, OB_DIRECT_PING, _dummy_, _dummy_, worker_id, &rt)))
     {
       TBSYS_LOG(ERROR, "send_ping(server=%s, iter=[%ld])=>%d", server.to_cstring(), idx, err);
     }
@@ -1284,23 +1309,85 @@ struct RPC : public BaseClient
     return err;
   }
 
+  int pfetch(int64_t limit)
+  {
+    int err = OB_SUCCESS;
+    ObPacket::tsi_req_sign() = 0;
+    char pkt_cbuf[OB_MAX_PACKET_LENGTH];
+    ObPFetcher pf(getenv("pfetch_cmd"), 21, 32);
+    ObPacket pkt;
+    int64_t count = 0;
+    while(OB_EAGAIN == err || OB_SUCCESS == err)
+    {
+      pkt.get_buffer()->set_data(pkt_cbuf, sizeof(pkt_cbuf));
+      if (OB_SUCCESS != (err = pf.get_match_packet(&pkt, OB_PHY_PLAN_EXECUTE))
+          && OB_EAGAIN != err)
+      {
+        TBSYS_LOG(ERROR, "get_match_packet(PHY_PLAN_EXECUTE)=>%d, stop client", err);
+        err = OB_CANCELED;
+      }
+      else if (OB_EAGAIN == err)
+      {}
+      else
+      {
+        pkt.get_buffer()->set_data(pkt.get_buffer()->get_data(), pkt.get_buffer()->get_position());
+        count++;
+        if (limit > 0 && count > limit)
+        {
+          break;
+        }
+        TBSYS_LOG(INFO, "hash=%ld", pkt.get_req_sign());
+      }
+    }
+    TBSYS_LOG(INFO, "pkt_cnt=%ld", count);
+    return err;
+  }
+
   int write_req(ObServer& server, ObSchemaManagerV2& schema_mgr, int64_t start, int64_t end, int64_t worker_id, int64_t& rt)
   {
     int err = OB_SUCCESS;
     int send_err = OB_SUCCESS;
     const char* table = _cfg("table","any");
+    //const char* table2 = _cfg("table2","any");
     char cbuf[MAX_BUF_SIZE];
     ObDataBuffer buf(cbuf, sizeof(cbuf));
     ObMutator mutator;
     const char* write_type = getenv("write_type")?: "mutator";
-    ObPacket::tsi_req_sign() = start;
-    if (0 == strcmp(write_type, "mutator"))
+    const bool need_send = (0 == strcmp(_cfg("need_send", "true"), "true"));
+    ObPacket::tsi_req_sign() = 0;
+    static __thread char pkt_cbuf[OB_MAX_PACKET_LENGTH];
+    if (0 == strcmp(write_type, "pcap"))
+    {
+      static ObPFetcher pf(getenv("pfetch_cmd"), 21, 32);
+      ObPacket packet;
+      packet.get_buffer()->set_data(pkt_cbuf, sizeof(pkt_cbuf));
+      while (OB_EAGAIN == (err = pf.get_match_packet(&packet, OB_MS_MUTATE)))
+        ;
+      if (OB_SUCCESS != err)
+      {
+        TBSYS_LOG(ERROR, "get_match_packet(PHY_PLAN_EXECUTE)=>%d, stop client", err);
+        err = OB_CANCELED;
+      }
+      else if (need_send && OB_SUCCESS != (send_err = post_request(server, packet.get_packet_code(), *packet.get_buffer())))
+      {
+        err = send_err;
+        if (OB_ERR_PRIMARY_KEY_DUPLICATE != err)
+        {
+          TBSYS_LOG(ERROR, "send_write(server=%s, iter=[%ld,%ld])=>%d", to_cstring(server), start, end, send_err);
+        }
+      }
+      else
+      {
+        TBSYS_LOG(DEBUG, "%s replay[%ld, %ld] OK!", to_cstring(server), start, end);
+      }
+    }
+    else if (0 == strcmp(write_type, "mutator"))
     {
       if (OB_SUCCESS != (err = build_rand_batch_mutator(buf, mutator, start, end, schema_mgr, table)))
       {
         TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
       }
-      else if (OB_SUCCESS != (send_err = send_request(server, OB_WRITE, mutator, _dummy_, worker_id, &rt)))
+      else if (need_send && OB_SUCCESS != (send_err = send_request(server, OB_WRITE, mutator, _dummy_, worker_id, &rt)))
       {
         err = send_err;
         TBSYS_LOG(ERROR, "send_write(server=%s, iter=[%ld,%ld])=>%d", to_cstring(server), start, end, send_err);
@@ -1310,16 +1397,33 @@ struct RPC : public BaseClient
         TBSYS_LOG(DEBUG, "%s mutate[%ld, %ld] OK!", to_cstring(server), start, end);
       }
     }
-    else if (0 == strcmp(write_type, "insert"))
+    if (0 == strcmp(write_type, "msmutate"))
     {
-      #if ROWKEY_IS_OBJ
-      PhyPlanBuilder builder(table, start, schema_mgr);
-      ObPhysicalPlan plan;
-      if (OB_SUCCESS != (err = builder.build_insert(plan, end - start)))
+      if (OB_SUCCESS != (err = build_rand_batch_mutator(buf, mutator, start, end, schema_mgr, table)))
       {
         TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
       }
-      else if (OB_SUCCESS != (send_err = send_request(server, OB_PHY_PLAN_EXECUTE, plan, _dummy_, worker_id, &rt)))
+      else if (need_send && OB_SUCCESS != (send_err = send_request(server, OB_MS_MUTATE, mutator, _dummy_, worker_id, &rt)))
+      {
+        err = send_err;
+        TBSYS_LOG(ERROR, "send_write(server=%s, iter=[%ld,%ld])=>%d", to_cstring(server), start, end, send_err);
+      }
+      else
+      {
+        TBSYS_LOG(DEBUG, "%s msmutate[%ld, %ld] OK!", to_cstring(server), start, end);
+      }
+    }
+    else if (0 == strcmp(write_type, "insert"))
+    {
+#undef ROWKEY_IS_OBJ
+      #if ROWKEY_IS_OBJ
+      PhyPlanBuilder builder(schema_mgr);
+      ObPhysicalPlan* plan = NULL;
+      if (OB_SUCCESS != (err = builder.build_insert_plan(plan, table, start, end - start)))
+      {
+        TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
+      }
+      else if (need_send && OB_SUCCESS != (send_err = send_request(server, OB_PHY_PLAN_EXECUTE, *plan, _dummy_, worker_id, &rt)))
       {
         err = send_err;
         if (OB_ERR_PRIMARY_KEY_DUPLICATE != err)
@@ -1336,13 +1440,13 @@ struct RPC : public BaseClient
     else if (0 == strcmp(write_type, "upcond"))
     {
       #if ROWKEY_IS_OBJ
-      PhyPlanBuilder builder(table, start, schema_mgr);
-      ObPhysicalPlan plan;
-      if (OB_SUCCESS != (err = builder.build_upcond(plan, end - start)))
+      PhyPlanBuilder builder(schema_mgr);
+      ObPhysicalPlan* plan = NULL;
+      if (OB_SUCCESS != (err = builder.build_upcond_plan(plan, table, table2, start, end - start)))
       {
         TBSYS_LOG(ERROR, "mutate_func()=>%d", err);
       }
-      else if (OB_SUCCESS != (send_err = send_request(server, OB_PHY_PLAN_EXECUTE, plan, _dummy_, worker_id, &rt)))
+      else if (need_send && OB_SUCCESS != (send_err = send_request(server, OB_PHY_PLAN_EXECUTE, *plan, _dummy_, worker_id, &rt)))
       {
         err = send_err;
         if (OB_ERR_PRIMARY_KEY_DUPLICATE != err)
@@ -1413,8 +1517,9 @@ struct RPC : public BaseClient
     int err = OB_SUCCESS;
     ClientWorker worker;
     ClientWorker::Monitor monitor(&worker);
-    TBSYS_LOG(INFO, "stress(rs=%s, server=%s, duration=%ld, range=[%ld,%ld), thread=%ld:%ld:%ld, req_size=%ld:%ld:%ld, table=%s)",
-              rs, server, duration, start, end, write_thread, scan_thread, mget_thread, write_size, scan_size, mget_size, getenv("table"));
+    TBSYS_LOG(INFO, "stress(rs=%s, server=%s, duration=%ld, range=[%ld,%ld), thread=%ld:%ld:%ld, req_size=%ld:%ld:%ld, table=%s, write_type=%s)",
+              rs, server, duration, start, end, write_thread, scan_thread, mget_thread, write_size, scan_size, mget_size,
+              getenv("table"), getenv("write_type"));
     if (OB_SUCCESS != (err = worker.init(this, rs, server, start, end,
                                          write_thread, scan_thread, mget_thread, write_size, scan_size, mget_size)))
     {
@@ -1431,6 +1536,32 @@ struct RPC : public BaseClient
     return err;
   }
 
+  int post_stress(const char* svr, int64_t size)
+  {
+    int err = OB_SUCCESS;
+    char* cbuf = NULL;
+    ObDataBuffer buf;
+    if (NULL == (cbuf = (char*)ob_malloc(size, ObModIds::OB_COMMON_NETWORK)))
+    {
+      err = OB_MEM_OVERFLOW;
+    }
+    else
+    {
+      buf.set_data(cbuf, size);
+      memset(cbuf, 0x42, size);
+      buf.get_position() = size;
+      while(true)
+      {
+        if (OB_SUCCESS != (err = post_request(svr, OB_PING_REQUEST, buf)))
+        {
+          TBSYS_LOG(ERROR, "post_request(%s)=>%d", svr, err);
+          usleep(1000000);
+        }
+      }
+      free(cbuf);
+    }
+    return err;
+  }
   int send_mutator(const char* rs, const char* log_file, const char* _ups)
   {
     int err = OB_SUCCESS;
@@ -1691,7 +1822,9 @@ int ClientWorker::write(int64_t idx) {
   int64_t interval = 100000;
   const char* write_type = getenv("write_type")?: "mutator";
   const bool fixed_row = (0 == strcmp(_cfg("dist", "urand"), "fixed"));
-  if (0 == strcmp(write_type, "mutator") || 0 == strcmp(write_type, "delete")
+  if (0 == strcmp(write_type, "pcap")
+      || 0 == strcmp(write_type, "mutator") || 0 == strcmp(write_type, "msmutate")
+      || 0 == strcmp(write_type, "delete")
       || 0 == strcmp(write_type, "insert") || 0 == strcmp(write_type, "upcond"))
   {
     int64_t write_req_size = 0;
@@ -1724,7 +1857,7 @@ int ClientWorker::write(int64_t idx) {
       {
         __sync_fetch_and_add(&write_us_, rt);
       }
-      if(keep_going_on_err_ && OB_SUCCESS != err)
+      if(keep_going_on_err_ && OB_SUCCESS != err && OB_CANCELED != err)
       {
         err = OB_SUCCESS;
         usleep(static_cast<useconds_t>(interval));
@@ -1763,11 +1896,17 @@ int ClientWorker::write(int64_t idx) {
   }
   else if (0 == strcmp(write_type, "ping"))
   {
-    for(; !stop_ && OB_SUCCESS == err && (end_ < 0 || write_seq_ < end_);) {
-      write_seq = __sync_fetch_and_add(&write_seq_, 1);
-      if (OB_SUCCESS != (err = rpc_->ping_req(server, write_seq, idx, rt)))
+    for(; !stop_ && OB_SUCCESS == err && (end_ < 0 || write_seq_ < end_);){
+      RpcCfg* cfg = NULL;
+      RpcCfgSrc::Guard guard(cfg, cfg_src_);
+      write_seq = __sync_fetch_and_add(&write_seq_, write_req_size_);
+      if (NULL == cfg)
       {
-        __sync_fetch_and_add(&write_fail_count_, 1);
+        TBSYS_LOG(DEBUG, "cfg is not OK.");
+      }
+      else if (OB_SUCCESS != (err = rpc_->ping_req(cfg->server_, write_seq, idx, rt)))
+      {
+        __sync_fetch_and_add(&write_fail_count_, write_req_size_);
         TBSYS_LOG(ERROR, "ping_req([%ld], id=%ld)=>%d", write_seq, idx, err);
       }
       else
@@ -1942,6 +2081,10 @@ int ClientWorker::scan(int64_t idx) {
   }
   return err;
 }
+BaseClient& ClientWorker::Monitor::get_client()
+{
+  return *worker_->get_rpc();
+}
 
 #define report_error(err, ...) if (OB_SUCCESS != err)TBSYS_LOG(ERROR, __VA_ARGS__);
 #include "cmd_args_parser.h"
@@ -1956,9 +2099,13 @@ int main(int argc, char *argv[])
   {
     TBSYS_LOG(ERROR, "ob_init_memory_pool()=>%d", err);
   }
-  else if (OB_SUCCESS != (err = rpc.initialize(atoll(getenv("n_transport")?:"1"))))
+  else if (OB_SUCCESS != (err = rpc.initialize(_cfgi("n_transport", "2"), _cfgi("n_dedicate_transport", "1"))))
   {
     TBSYS_LOG(ERROR, "rpc.initialize()=>%d", err);
+  }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.malloc_stress, StrArg(server), IntArg(limit)):OB_NEED_RETRY))
+  {
+    report_error(err, "malloc_stress()=>%d", err);
   }
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.send, StrArg(server), IntArg(packet), StrArg(file)):OB_NEED_RETRY))
   {
@@ -2021,7 +2168,7 @@ int main(int argc, char *argv[])
   }
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.stress, StrArg(rs), StrArg(server, "ups"),
                                            IntArg(duration, "-1"), IntArg(start, "1"), IntArg(end, "-1"),
-                                           IntArg(write, "1"), IntArg(scan, "1"), IntArg(mget, "1"),
+                                           IntArg(write, "1"), IntArg(scan, "0"), IntArg(mget, "0"),
                                            IntArg(write_size, "1"), IntArg(scan_size, "1"), IntArg(mget_size, "1")):OB_NEED_RETRY))
   {
     report_error(err, "stress()=>%d", err);
@@ -2038,6 +2185,10 @@ int main(int argc, char *argv[])
   {
     report_error(err, "sync_delay()=>%d", err);
   }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.post_stress, StrArg(svr), IntArg(size, "512")):OB_NEED_RETRY))
+  {
+    report_error(err, "post_stress()=>%d", err);
+  }
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.get_clog_stat, StrArg(ups)):OB_NEED_RETRY))
   {
     report_error(err, "get_clog_stat()=>%d", err);
@@ -2053,6 +2204,10 @@ int main(int argc, char *argv[])
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.ts2str, IntArg(ts)):OB_NEED_RETRY))
   {
     report_error(err, "ts2str()=>%d", err);
+  }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, rpc.pfetch, IntArg(limit, "-1")):OB_NEED_RETRY))
+  {
+    report_error(err, "pfetch()=>%d", err);
   }
   else
   {

@@ -18,13 +18,28 @@
 #include "common/ob_row.h"
 #include "ob_phy_operator_type.h"
 #include "common/ob_define.h"
+#include "common/ob_allocator.h"
+#include "common/ob_tc_factory.h"
+#include "common/ob_mod_define.h"
+
+#define DECLARE_PHY_OPERATOR_ASSIGN \
+  virtual int assign(const ObPhyOperator* other)
+
+#define PHY_OPERATOR_ASSIGN(TypeName) \
+  int TypeName::assign(const ObPhyOperator* other)
+
+#define CAST_TO_INHERITANCE(TypeName) \
+  const TypeName *o_ptr = static_cast<const TypeName*>(other);
+
+//typedef oceanbase::common::ObArray<oceanbase::sql::ObSqlExpression, oceanbase::common::ModulePageAllocator, oceanbase::common::ObArrayExpressionCallBack<oceanbase::sql::ObSqlExpression> > ObArraySqlEx;
 namespace oceanbase
 {
   namespace sql
   {
+
     class ObPhysicalPlan;
     /// 物理运算符接口
-    class ObPhyOperator
+    class ObPhyOperator: public common::DLink
     {
       public:
         ObPhyOperator();
@@ -56,6 +71,12 @@ namespace oceanbase
         /// 关闭物理运算符。释放资源，关闭子运算符等。
         /// @note If the operator is closed successfully, it could be opened and used again.
         virtual int close() = 0;
+
+        /// 将对象重置到构造时的状态，包括变量重置、内存释放等等。
+        virtual void reset() = 0;
+
+        /// 将对象重置到构造时的状态，但是可能不释放某些重新申请很耗时的资源，如内存等。
+        virtual void reuse() = 0;
 
         /**
          * 获得下一行的引用
@@ -90,27 +111,75 @@ namespace oceanbase
          * @param the_plan
          */
         void set_phy_plan(ObPhysicalPlan *the_plan);
+        ObPhysicalPlan *get_phy_plan();
 
+        /// phy operator id which is unique in the physical plan
+        void set_id(uint64_t id);
+        uint64_t get_id() const;
+
+        DECLARE_PHY_OPERATOR_ASSIGN;
         VIRTUAL_NEED_SERIALIZE_AND_DESERIALIZE;
+
+        static ObPhyOperator* alloc(ObPhyOperatorType type);
+        static void free(ObPhyOperator *op);
       private:
         DISALLOW_COPY_AND_ASSIGN(ObPhyOperator);
       protected:
         int64_t magic_;
         ObPhysicalPlan *my_phy_plan_; //< the physical plan object who owns this operator. Use this->my_phy_plan_->my_result_set_->my_session_ to get the environment.
+        uint64_t id_;
     };
 
     inline ObPhyOperator::ObPhyOperator()
       :magic_(0xABCD1986ABCD1986),
-       my_phy_plan_(NULL)
+       my_phy_plan_(NULL),
+       id_(common::OB_INVALID_ID)
     {
     }
-
     inline void ObPhyOperator::set_phy_plan(ObPhysicalPlan *the_plan)
     {
       my_phy_plan_ = the_plan;
     }
+    inline ObPhysicalPlan* ObPhyOperator::get_phy_plan()
+    {
+      return my_phy_plan_;
+    }
+    typedef common::ObGlobalFactory<ObPhyOperator, PHY_END, common::ObModIds::OB_SQL_PS_STORE_OPERATORS> ObPhyOperatorGFactory;
+    typedef common::ObTCFactory<ObPhyOperator, PHY_END, common::ObModIds::OB_SQL_PS_STORE_OPERATORS> ObPhyOperatorTCFactory;
 
+    inline void ObPhyOperator::set_id(uint64_t id)
+    {
+      id_ = id;
+    }
+
+    inline uint64_t ObPhyOperator::get_id() const
+    {
+      return id_;
+    }
+
+    inline ObPhyOperator* ObPhyOperator::alloc(ObPhyOperatorType type)
+    {
+      ObPhyOperator *ret =  ObPhyOperatorTCFactory::get_instance()->get(type);
+      if (OB_LIKELY(NULL != ret))
+      {
+        OB_PHY_OP_INC(type);
+      }
+      return ret;
+    }
+
+    inline void ObPhyOperator::free(ObPhyOperator *op)
+    {
+      if (OB_LIKELY(NULL != op))
+      {
+        OB_PHY_OP_DEC(op->get_type());
+      }
+      ObPhyOperatorTCFactory::get_instance()->put(op);
+    }
   } // end namespace sql
 } // end namespace oceanbase
+
+
+#define REGISTER_PHY_OPERATOR(OP, OP_TYPE) \
+  REGISTER_CREATOR(oceanbase::sql::ObPhyOperatorGFactory, ObPhyOperator, OP, OP_TYPE)
 
 #endif /* _OB_PHY_OPERATOR_H */

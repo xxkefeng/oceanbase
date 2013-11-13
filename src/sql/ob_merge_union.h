@@ -30,6 +30,9 @@ namespace oceanbase
         virtual ~ObMergeUnion();
         virtual int open();
         virtual int close();
+        virtual void reset();
+        virtual void reuse();
+        virtual ObPhyOperatorType get_type() const { return PHY_MERGE_UNION; }
         /**
          * 获得下一行的引用
          * @note 在下次调用get_next或者close前，返回的row有效
@@ -42,6 +45,8 @@ namespace oceanbase
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         virtual int set_distinct(bool is_distinct);
+
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         int cons_row_desc();
         int do_distinct(ObPhyOperator *op, const common::ObRow *&row);

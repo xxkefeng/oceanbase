@@ -34,6 +34,23 @@ ObSSTableScan::~ObSSTableScan()
 {
 }
 
+void ObSSTableScan::reset()
+{
+  iterator_ = NULL;
+  last_rowkey_ = NULL;
+  sstable_version_ = 0;
+  row_counter_ = 0;
+}
+
+void ObSSTableScan::reuse()
+{
+  iterator_ = NULL;
+  last_rowkey_ = NULL;
+  sstable_version_ = 0;
+  row_counter_ = 0;
+}
+
+
 int ObSSTableScan::set_child(int32_t child_idx, ObPhyOperator &child_operator)
 {
   int ret = OB_NOT_IMPLEMENT;
@@ -41,6 +58,12 @@ int ObSSTableScan::set_child(int32_t child_idx, ObPhyOperator &child_operator)
   UNUSED(child_operator);
   TBSYS_LOG(WARN, "not implement");
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObSSTableScan, PHY_SSTABLE_SCAN);
+  }
 }
 
 int64_t ObSSTableScan::to_string(char* buf, const int64_t buf_len) const
@@ -146,10 +169,22 @@ int ObSSTableScan::open_scan_context(const sstable::ObSSTableScanParam& param, c
     TBSYS_LOG(ERROR, "cannot acquire tablet with scan range: %s, version: %ld",
         to_cstring(scan_param_.get_range()), query_version);
   }
-  else if (NULL != scan_context_.tablet_ && scan_context_.tablet_->is_removed())
+  else if (NULL != scan_context_.tablet_ && (scan_context_.tablet_->is_removed()
+           || scan_context_.tablet_->get_range().compare_with_startkey2(scan_param_.get_range()) > 0))
   {
-    TBSYS_LOG(INFO, "tablet is removed, can't scan, tablet_range=%s",
-        to_cstring(scan_context_.tablet_->get_range()));
+    /**
+     * if tablet is removed or tablet_range.start_key > scan_range.start_key, cs 
+     * can't scan this tablet and return data to ms. for example: 
+     * tablet C (0,10] splits to tablet A (0,5] and tablet B (5, 10], and tablet 
+     * A is migrated to other cs, then if ms scan range (0,10] from this cs, 
+     * this cs can't scan tablet B (5,10] and return data to ms, otherwise ms 
+     * can't scan the rest range (0,5] from other cs, the result is incorrect. 
+     * for this case, cs just refuse this scan, and return error code
+     * OB_CS_TABLET_NOT_EXIST, and ms must scan the range (0,5] first.
+     */
+    TBSYS_LOG(WARN, "tablet is removed or tablet_range.start_key > scan_range.start_key, "
+                    "can't scan, tablet_range=%s, scan_range=%s",
+        to_cstring(scan_context_.tablet_->get_range()), to_cstring(scan_param_.get_range()));
     ret = scan_context_.tablet_image_->release_tablet(scan_context_.tablet_);
     if (OB_SUCCESS != ret)
     {

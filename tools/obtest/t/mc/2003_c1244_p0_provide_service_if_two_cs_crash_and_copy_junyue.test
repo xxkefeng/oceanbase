@@ -12,16 +12,15 @@ deploy ob1.mysql alter system set merge_delay_for_lsync='1s' server_type=chunkse
 deploy ob1.mysql alter system set min_drop_cache_wait_time='1s' server_type=chunkserver;
 sleep 10;
 
-# 
+#
 deploy ob1.prepare;
 deploy ob1.start_check 1 99;
 deploy ob1.major_freeze;
 deploy ob1.check_cs_version 2;
 deploy ob1.prepare;
-deploy ob1.check_cs_sstable 45;
+deploy ob1.check_cs_sstable 51;
 deploy ob1.cs0.force_stop;
 deploy ob1.cs1.force_stop;
 sleep 60;
-deploy ob1.check_cs_sstable 30,2;
+deploy ob1.check_cs_sstable 34,2;
 deploy ob1.stop_check;
-

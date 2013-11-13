@@ -575,6 +575,34 @@ TEST_F(ObPostfixExpressionTest, like_func)
   ASSERT_EQ(OB_SUCCESS, p18.calc(row, result18));
   ASSERT_EQ(OB_SUCCESS, result18->get_bool(b18));
   ASSERT_EQ(true, b18);
+	//==================================================
+  sql::ObPostfixExpression p19;
+  memset(target, 0, sizeof(target));
+  target[0] = 'a';
+  target[1] = 'b';
+  target[2] = 'c';
+	target[3] = 'x';
+  item_left.string_.assign_ptr(target, 4);
+  memset(pattern, 0, sizeof(pattern));
+  pattern[0] = '%';
+  pattern[1] = '%';
+  pattern[2] = 'x';
+  item_right.type_ = T_STRING;
+  item_right.string_.assign_ptr(pattern, 3);
+
+  p19.add_expr_item(item_left);
+  p19.add_expr_item(item_right);
+  p19.add_expr_item(item_like);
+  p19.add_expr_item_end();
+  memset(buff, 0, sizeof(buff));
+  p19.to_string(buff, 1024);
+  printf("buff=%s\n", buff);
+
+  const ObObj *result19 = NULL;
+  bool b19 = false;
+  ASSERT_EQ(OB_SUCCESS, p19.calc(row, result19));
+  ASSERT_EQ(OB_SUCCESS, result19->get_bool(b19));
+  ASSERT_EQ(true, b19);
 
 
 }

@@ -18,7 +18,8 @@
 
 #include "common/roottable/ob_ms_provider.h"
 #include "ob_chunk_server_manager.h"
-
+#include "ob_root_server_config.h"
+#include "ob_root_rpc_stub.h"
 namespace oceanbase
 {
   namespace rootserver
@@ -27,10 +28,12 @@ namespace oceanbase
     class ObRootMsProvider:public common::ObMsProvider
     {
     public:
-      ObRootMsProvider(const ObChunkServerManager & server_manager);
+      ObRootMsProvider(ObChunkServerManager & server_manager);
       virtual ~ObRootMsProvider();
+      void init(ObRootServerConfig & config, ObRootRpcStub & rpc_stub);
     public:
       int get_ms(common::ObServer & server);
+      int get_ms(common::ObServer & server, const bool query_master_cluster);
       // not implement this abstract interface
       int get_ms(const common::ObScanParam & param, int64_t retry_num, common::ObServer& server)
       {
@@ -40,7 +43,13 @@ namespace oceanbase
         return common::OB_NOT_IMPLEMENT;
       }
     private:
-      const ObChunkServerManager & server_manager_;
+      // get master cluster merge server
+      int get_ms(const common::ObServer & master_rs, common::ObServer & server);
+    private:
+      bool init_;
+      ObChunkServerManager & server_manager_;
+      ObRootServerConfig *config_;
+      ObRootRpcStub *rpc_stub_;
     };
   } // end namespace rootserver
 } // end namespace oceanbase

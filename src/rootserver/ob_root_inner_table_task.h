@@ -38,6 +38,8 @@ namespace oceanbase
       int process_head_task(void);
       // update all server table
       int modify_all_server_table(const ObRootAsyncTaskQueue::ObSeqTask & task);
+      // update all cluster table
+      int modify_all_cluster_table(const ObRootAsyncTaskQueue::ObSeqTask & task);
     private:
       // every run process task timeout
       const static int64_t MAX_TIMEOUT = 2000000; // 2s

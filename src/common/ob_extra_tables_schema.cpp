@@ -34,7 +34,7 @@ int ObExtraTablesSchema::first_tablet_entry_schema(TableSchema& table_schema)
   table_schema.rowkey_column_num_ = 1;
   table_schema.replica_num_ = OB_SAFE_COPY_COUNT;
   // @TODO
-  table_schema.max_used_column_id_ = first_tablet_entry_cid::READ_STATIC_ID;
+  table_schema.max_used_column_id_ = first_tablet_entry_cid::SCHEMA_VERSION_ID;
   table_schema.create_mem_version_ = 1;
   table_schema.max_rowkey_length_ = OB_MAX_TABLE_NAME_LENGTH;
   strncpy(table_schema.compress_func_name_, OB_DEFAULT_COMPRESS_FUNC_NAME, OB_MAX_TABLE_NAME_LENGTH);
@@ -141,6 +141,7 @@ int ObExtraTablesSchema::first_tablet_entry_schema(TableSchema& table_schema)
       ObIntType,  //column_type
       sizeof(int64_t), //column length
       false); //is nullable
+  /*这个column的实际含义和名字不符，为了兼容，取这个名字，实际含义是consistency level*/
   ADD_COLUMN_SCHEMA("is_read_static", //column_name
       first_tablet_entry_cid::READ_STATIC_ID, //column_id
       0, //rowkey_id
@@ -170,6 +171,21 @@ int ObExtraTablesSchema::first_tablet_entry_schema(TableSchema& table_schema)
       0, //rowkey_id
       ObVarcharType,  //column_type
       OB_MAX_EXPIRE_CONDITION_LENGTH, //column length
+      true); //is nullable
+  /*
+   * 暂时去掉这个列，以和0.4.1的schema兼容
+  ADD_COLUMN_SCHEMA("comment_str",
+      first_tablet_entry_cid::COMMENT_STR_ID, //column_id
+      0, //rowkey_id
+      ObVarcharType,  //column_type
+      OB_MAX_TABLE_COMMENT_LENGTH, //column length
+      true); //is nullable
+      */
+  ADD_COLUMN_SCHEMA("schema_version",
+      first_tablet_entry_cid::SCHEMA_VERSION_ID, //column_id
+      0, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
       true); //is nullable
   ADD_COLUMN_SCHEMA("tablet_block_size", //column_name
       first_tablet_entry_cid::SSTABLE_BLOCK_SIZE_ID, //column_id
@@ -474,6 +490,13 @@ int ObExtraTablesSchema::all_cluster_schema(TableSchema& table_schema)
       ObIntType,
       sizeof (int64_t),
       false);
+  ADD_COLUMN_SCHEMA("rootserver_port",
+      column_id++,
+      0,
+      ObIntType,
+      sizeof(int64_t),
+      false);
+
   ADD_COLUMN_SCHEMA("gm_create", //column_name
       OB_CREATE_TIME_COLUMN_ID,//column_id
       0, //rowkey_id
@@ -1122,6 +1145,163 @@ int ObExtraTablesSchema::all_server_stat_schema(TableSchema & table_schema)
       0, //rowkey_id
       ObIntType,  //column_type
       sizeof(int64_t), //column length
+      false); //is nullable
+  return ret;
+}
+
+int ObExtraTablesSchema::all_server_session_schema(TableSchema & table_schema)
+{
+  int ret = OB_SUCCESS;
+
+  table_schema.init_as_inner_table();
+  strcpy(table_schema.table_name_, OB_ALL_SERVER_SESSION_TABLE_NAME);
+  table_schema.table_id_ = OB_ALL_SERVER_SESSION_TID;
+  table_schema.rowkey_column_num_ = 1;
+  table_schema.max_used_column_id_ = OB_APP_MIN_COLUMN_ID + 9;
+  table_schema.max_rowkey_length_ = TEMP_ROWKEY_LENGTH;
+
+/*
+  |------------------------ columns same as mysql ----------------------------| extra column of Oceanbase|
+  +-----+------+-----------+------+---------+------+-------+------------------+--------------+-----------+
+  | Id  | User | Host      | db   | Command | Time | State | Info             | MergeServer  | Index     |
+  +-----+------+-----------+------+---------+------+-------+------------------+--------------+-----------+
+*/
+ int column_id = OB_APP_MIN_COLUMN_ID;
+  ADD_COLUMN_SCHEMA("id", //column_name
+      column_id ++, //column_id
+      1, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("username", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObVarcharType,  //column_type
+      512, //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("host", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObVarcharType,  //column_type
+      128, //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("db", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObVarcharType,  //column_type
+      128, //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("command", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObVarcharType,  //column_type
+      1024, //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("timeelapse", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("state", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObVarcharType,  //column_type
+      128, //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("info", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObVarcharType,  //column_type
+      128, //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("mergeserver", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObVarcharType,  //column_type
+      128, //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("index", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
+      false); //is nullable
+  return ret;
+}
+
+
+int ObExtraTablesSchema::all_statement_schema(TableSchema & table_schema)
+{
+  int ret = OB_SUCCESS;
+
+  table_schema.init_as_inner_table();
+  strcpy(table_schema.table_name_, OB_ALL_STATEMENT_TABLE_NAME);
+  table_schema.table_id_ = OB_ALL_STATEMENT_TID;
+  table_schema.rowkey_column_num_ = 3;
+  table_schema.max_used_column_id_ = OB_APP_MIN_COLUMN_ID + 9;
+  table_schema.max_rowkey_length_ = TEMP_ROWKEY_LENGTH;
+
+ int column_id = OB_APP_MIN_COLUMN_ID;
+  ADD_COLUMN_SCHEMA("svr_ip", //column_name
+      column_id ++, //column_id
+      1, //rowkey_id
+      ObVarcharType,  //column_type
+      SERVER_IP_LENGTH, //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("svr_port", //column_name
+      column_id ++, //column_id
+      2, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("statement", //column_name
+      column_id ++, //column_id
+      3, //rowkey_id
+      ObVarcharType,  //column_type
+      1024, //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("id", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("prepare_count", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("execute_count", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("avg_execute_usec", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("slow_count", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObIntType,  //column_type
+      sizeof(int64_t), //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("create_time", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObPreciseDateTimeType,  //column_type
+      sizeof(ObPreciseDateTimeType), //column length
+      false); //is nullable
+  ADD_COLUMN_SCHEMA("last_active_time", //column_name
+      column_id ++, //column_id
+      0, //rowkey_id
+      ObPreciseDateTimeType,  //column_type
+      sizeof(ObPreciseDateTimeType), //column length
       false); //is nullable
   return ret;
 }

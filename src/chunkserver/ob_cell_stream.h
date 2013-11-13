@@ -93,6 +93,18 @@ namespace oceanbase
           timeout_time_ = 0;
         }
       }
+
+      void set_timeout(const int64_t timeout)
+      {
+        if (timeout > 0)
+        {
+          time_out_ = timeout;
+        }
+        else
+        {
+          time_out_ = 0;
+        }
+      }
     
     protected:
       // check init and scan or get

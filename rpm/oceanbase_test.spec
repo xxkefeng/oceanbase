@@ -25,7 +25,8 @@ Vendor: TaoBao
 Prefix:%{_prefix}
 Source:%{NAME}-%{VERSION}.tar.gz
 BuildRoot: %(pwd)/%{name}-root
-Requires: lzo >= 2.06 snappy >= 1.0.2 libaio >= 0.3 openssl >= 0.9.8 perl-DBI
+Requires: lzo = 20:2.0.6 snappy = 20:1.1.2 libaio >= 0.3 openssl >= 0.9.8 perl-DBI
+AutoReqProv: no
 
 %package -n oceanbase-utils
 summary: OceanBase utility programs
@@ -37,7 +38,8 @@ Release: %{RELEASE}
 summary: OceanBase client library
 group: Development/Libraries
 Version: %VERSION
-Requires: curl >= 7.21.4 mysql-devel >= 5.0.77
+BuildRequires: t-db-congo-drcmessage >= 0.1.1 tb-lua-dev >= 5.1.4
+Requires: clrl >= 7.15.5 mysql-devel >= 5.1.0
 Release: %{RELEASE}
 
 %description
@@ -63,6 +65,16 @@ make %{?_smp_mflags}
 
 %install
 make DESTDIR=$RPM_BUILD_ROOT install
+pushd $RPM_BUILD_DIR/%{NAME}-%{VERSION}/src/mrsstable
+mvn assembly:assembly
+cp target/mrsstable-1.0.1-SNAPSHOT-jar-with-dependencies.jar $RPM_BUILD_ROOT/%{_prefix}/bin/mrsstable.jar
+popd
+
+mkdir -p $RPM_BUILD_ROOT%{_prefix}/mrsstable_lib_6u
+cp $RPM_BUILD_ROOT%{_prefix}/lib/liblzo_1.0.so     $RPM_BUILD_ROOT%{_prefix}/mrsstable_lib_6u/
+cp $RPM_BUILD_ROOT%{_prefix}/lib/libmrsstable.so   $RPM_BUILD_ROOT%{_prefix}/mrsstable_lib_6u/
+cp $RPM_BUILD_ROOT%{_prefix}/lib/libnone.so        $RPM_BUILD_ROOT%{_prefix}/mrsstable_lib_6u/
+cp $RPM_BUILD_ROOT%{_prefix}/lib/libsnappy_1.0.so  $RPM_BUILD_ROOT%{_prefix}/mrsstable_lib_6u/
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -73,22 +85,30 @@ rm -rf $RPM_BUILD_ROOT
 %dir %{_prefix}/bin
 %dir %{_prefix}/lib
 %config(noreplace) %{_prefix}/etc/schema.ini
-%config(noreplace) %{_prefix}/etc/lsyncserver.conf.template
+%config %{_prefix}/etc/lsyncserver.conf.template
 %config %{_prefix}/etc/sysctl.conf
 %config %{_prefix}/etc/snmpd.conf
+%config %{_prefix}/etc/importserver.conf.template
+%config %{_prefix}/etc/importcli.conf.template
+%config %{_prefix}/etc/configuration.xml.template
+%config %{_prefix}/etc/proxyserver.conf.template
 %{_prefix}/bin/rootserver
 %{_prefix}/bin/updateserver
 %{_prefix}/bin/mergeserver
 %{_prefix}/bin/chunkserver
+%{_prefix}/bin/proxyserver
 %{_prefix}/bin/rs_admin
 %{_prefix}/bin/ups_admin
+%{_prefix}/bin/log_tool
 %{_prefix}/bin/cs_admin
 %{_prefix}/bin/ob_ping
 %{_prefix}/bin/str2checkpoint
 %{_prefix}/bin/checkpoint2str
 %{_prefix}/bin/lsyncserver
 %{_prefix}/bin/dumpsst
-%{_prefix}/bin/log_reader
+%{_prefix}/bin/importserver.py
+%{_prefix}/bin/importcli.py
+%{_prefix}/bin/mrsstable.jar
 %{_prefix}/lib/liblzo_1.0.a
 %{_prefix}/lib/liblzo_1.0.la
 %{_prefix}/lib/liblzo_1.0.so
@@ -109,6 +129,18 @@ rm -rf $RPM_BUILD_ROOT
 %{_prefix}/lib/libsnappy_1.0.so
 %{_prefix}/lib/libsnappy_1.0.so.0
 %{_prefix}/lib/libsnappy_1.0.so.0.0.0
+%{_prefix}/mrsstable_lib_5u/liblzo_1.0.so
+%{_prefix}/mrsstable_lib_5u/libmrsstable.so
+%{_prefix}/mrsstable_lib_5u/libnone.so
+%{_prefix}/mrsstable_lib_5u/libsnappy_1.0.so
+%{_prefix}/mrsstable_lib_5u/liblzo2.so
+%{_prefix}/mrsstable_lib_5u/libsnappy.so
+%{_prefix}/mrsstable_lib_6u/liblzo_1.0.so
+%{_prefix}/mrsstable_lib_6u/libmrsstable.so
+%{_prefix}/mrsstable_lib_6u/libnone.so
+%{_prefix}/mrsstable_lib_6u/libsnappy_1.0.so
+%{_prefix}/mrsstable_lib_6u/liblzo2.so
+%{_prefix}/mrsstable_lib_6u/libsnappy.so
 %{_prefix}/bin/oceanbase.pl
 %config %{_prefix}/etc/oceanbase.conf.template
 %{_prefix}/tests/
@@ -121,8 +153,15 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(0755, admin, admin)
 %{_prefix}/lib/libobsql.so.0.0.0
 %{_prefix}/lib/libobsql.a
+%{_prefix}/lib/liboblog.so.1.0.0
+%{_prefix}/lib/liboblog.a
 %config(noreplace) %{_prefix}/etc/libobsql.conf
 %config(noreplace) %{_prefix}/etc/libobsqlrc
+%config(noreplace) %{_prefix}/etc/liboblog.conf
+%config(noreplace) %{_prefix}/etc/liboblog.partition.lua
+%dir %{_prefix}/include
+%{_prefix}/include/ob_define.h
+%{_prefix}/include/liboblog.h
 
 %post
 chown -R admin:admin $RPM_INSTALL_PREFIX

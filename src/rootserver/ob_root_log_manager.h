@@ -31,12 +31,15 @@ namespace oceanbase
         ~ObRootLogManager();
 
       public:
-        int init(ObRootServer2* root_server, common::ObSlaveMgr* slave_mgr);
+        int init(ObRootServer2* root_server, common::ObSlaveMgr* slave_mgr, const common::ObServer* server);
 
         /// @brief replay all commit log from replay point
         /// after initialization, invoke this method to replay all commit log
         int replay_log();
         int do_after_recover_check_point();
+        int write_log_hook(const bool is_master,
+                           const ObLogCursor start_cursor, const ObLogCursor end_cursor,
+                           const char* log_data, const int64_t data_len);
 
         int recover_checkpoint(uint64_t ckpt_id);
 

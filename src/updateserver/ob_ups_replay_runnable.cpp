@@ -103,7 +103,10 @@ void ObUpsReplayRunnable::run(tbsys::CThread* thread, void* arg)
     else if (OB_SUCCESS != (err = log_mgr_->replay_log())
         && OB_NEED_RETRY != err && OB_NEED_WAIT != err)
     {
-      TBSYS_LOG(ERROR, "log_mgr.replay()=>%d", err);
+      if (OB_CANCELED != err)
+      {
+        TBSYS_LOG(ERROR, "log_mgr.replay()=>%d", err);
+      }
     }
     else if (OB_NEED_RETRY == err)
     {

@@ -19,6 +19,8 @@
 #include "common/ob_array.h"
 #include "common/hash/ob_hashset.h"
 #include "common/ob_row_store.h"
+#include "common/ob_se_array.h"
+#include "common/ob_vector.h"
 #include <stdint.h>
 namespace oceanbase
 {
@@ -30,11 +32,11 @@ namespace oceanbase
         ObAggregateFunction();
         ~ObAggregateFunction();
         void reset();
-
+        void reuse();
         void set_int_div_as_double(bool did);
         bool get_int_div_as_double() const;
 
-        int init(const ObRowDesc &input_row_desc, common::ObArray<ObSqlExpression> &aggr_columns);
+        int init(const ObRowDesc &input_row_desc, ObExpressionArray &aggr_columns);
         void destroy();
         const ObRow& get_curr_row() const;
         const ObRowDesc& get_row_desc() const;
@@ -66,15 +68,17 @@ namespace oceanbase
         void destroy_dedup_sets();
       private:
         // data members
-        common::ObArray<ObSqlExpression> *aggr_columns_;
+        ObExpressionArray *aggr_columns_;
         ObRowDesc row_desc_;
         ObRow curr_row_;        // current row for output
-        ObExprObj aggr_cells_[common::OB_ROW_MAX_COLUMNS_COUNT];
-        ObExprObj aux_cells_[common::OB_ROW_MAX_COLUMNS_COUNT];      // to store count for avg()
+        ObExprObj empty_expr_obj_;
+        common::ObSEArray<ObExprObj, OB_PREALLOCATED_NUM> aggr_cells_;
+        common::ObSEArray<ObExprObj, OB_PREALLOCATED_NUM> aux_cells_;// to store count for avg()
         char* varchar_buffs_[common::OB_ROW_MAX_COLUMNS_COUNT];
         int64_t varchar_buffs_count_;
         common::ObRowStore row_store_;
         ObRowDesc dedup_row_desc_;
+        //不能使用ObSEArray
         DedupSet dedup_sets_[common::OB_ROW_MAX_COLUMNS_COUNT];
         bool did_int_div_as_double_;
     };

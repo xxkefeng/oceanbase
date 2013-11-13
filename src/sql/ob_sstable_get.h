@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_sstable_get.h 
+ * ob_sstable_get.h
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -34,6 +34,9 @@ namespace oceanbase
 
         int open();
         int close();
+        virtual void reset();
+        virtual void reuse();
+        virtual ObPhyOperatorType get_type() const { return PHY_SSTABLE_GET; }
         int get_next_row(const common::ObRowkey *&rowkey, const common::ObRow *&row);
         int get_row_desc(const common::ObRowDesc *&row_desc) const;
         int set_child(int32_t child_idx, ObPhyOperator &child_operator);
@@ -58,5 +61,3 @@ namespace oceanbase
 }
 
 #endif /* _OB_SSTABLE_GET_H */
-
-

@@ -16,8 +16,8 @@ alter system set tablet_replicas_num='3' server_type=rootserver;
 ob1.$master_ups.stop
 ob1.ms2.stop
 ob1.ms0.stop
-ob1.check_cs_sstable 600
-ob2.check_cs_sstable 600
+ob1.check_cs_sstable 606
+ob2.check_cs_sstable 606
 select * from t1;
 a	b
 -1	-1

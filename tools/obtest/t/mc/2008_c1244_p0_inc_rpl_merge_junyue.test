@@ -18,11 +18,11 @@ sleep 60;
 deploy ob1.major_freeze;
 deploy ob1.check_cs_version 2;
 
-deploy ob1.check_cs_sstable 30;
-deploy ob2.check_cs_sstable 30;
+deploy ob1.check_cs_sstable 34;
+deploy ob2.check_cs_sstable 34;
 
 alter system set tablet_replicas_num=3 server_type=rootserver;
 sleep 120;
-deploy ob1.check_cs_sstable 45;
-deploy ob2.check_cs_sstable 45;
+deploy ob1.check_cs_sstable 51;
+deploy ob2.check_cs_sstable 51;
 deploy ob1.stop_check;

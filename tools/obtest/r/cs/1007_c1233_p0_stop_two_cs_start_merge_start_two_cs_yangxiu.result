@@ -4,9 +4,7 @@ ob1.source include/merge.inc
 ob1.prepare
 ob1.start_check
 ob1.cs0.stop
-ob1.cs1.stop
 ob1.major_freeze
 ob1.cs0.start
-ob1.cs1.start
 ob1.check_cs_version 2
 ob1.stop_check

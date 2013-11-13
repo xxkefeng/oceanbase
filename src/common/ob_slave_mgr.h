@@ -22,6 +22,7 @@
 #include "ob_link.h"
 #include "ob_common_rpc_stub.h"
 #include "ob_lease_common.h"
+#include "ob_log_cursor.h"
 
 namespace oceanbase
 {
@@ -111,9 +112,9 @@ namespace oceanbase
       /// @retval OB_PARTIAL_FAILED 同步Slave过程中有失败
       /// @retval otherwise 其他错误
       virtual int send_data(const char* data, const int64_t length);
-      virtual int post_log_to_slave(const char* data, const int64_t length);
-      virtual int wait_post_log_to_slave(const char* data, const int64_t length);
-
+        virtual int post_log_to_slave(const ObLogCursor& start_cursor, const ObLogCursor& end_cursor, const char* data, const int64_t length);
+        virtual int wait_post_log_to_slave(const char* data, const int64_t length, int64_t& delay_us);
+        virtual int64_t get_acked_clog_id() const { return 0; }
       /// @brief 获取Slave个数
       /// @retval slave_num_ Slave个数
       inline int get_num() const {return slave_num_;}

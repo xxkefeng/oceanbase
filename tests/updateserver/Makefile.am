@@ -46,7 +46,6 @@ endif
 #               test_trans_mgr \
 #               test_session_mgr \
 #               test_fifo_allocator \
-#               test_queue_thread \
 #               test_lock_mgr \
 #               test_lock_filter \
 #               test_inc_scan \
@@ -69,10 +68,8 @@ bin_PROGRAMS = test_ups_mutator \
                test_resource_pool \
                test_session_mgr \
                test_fifo_allocator \
-               test_queue_thread \
                test_lock_mgr \
                test_lock_filter \
-               test_inc_scan \
                test_memtable_modify \
                test_log_data_writer \
                test_async_rw_log \
@@ -92,7 +89,6 @@ test_transfer_sstable_query_SOURCES = test_transfer_sstable_query.cpp test_disk_
 test_trans_mgr_SOURCES = test_trans_mgr.cpp
 test_session_mgr_SOURCES = test_session_mgr.cpp
 test_fifo_allocator_SOURCES = test_fifo_allocator.cpp
-test_queue_thread_SOURCES = test_queue_thread.cpp
 test_lock_mgr_SOURCES = test_lock_mgr.cpp
 test_resource_pool_SOURCES = test_resource_pool.cpp
 #test_lighty_hash_SOURCES = test_lighty_hash.cpp

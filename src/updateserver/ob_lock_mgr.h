@@ -64,8 +64,8 @@ namespace oceanbase
 
     class LockMgr;
     class RWSessionCtx;
-    typedef RWSessionCtx RPSessionCtx;
-    
+    class RPSessionCtx;
+
     class RPLockInfo : public ILockInfo // Replay lock info
     {
       public:
@@ -87,6 +87,7 @@ namespace oceanbase
 
     class RCLockInfo : public ILockInfo // Read commited lock info
     {
+      static const int64_t LOCK_WAIT_TIME = 10L * 1000L; // 10ms
       public:
         RCLockInfo(RWSessionCtx &session_ctx);
         ~RCLockInfo();
@@ -110,7 +111,7 @@ namespace oceanbase
         LockMgr();
         ~LockMgr();
       public:
-        ILockInfo *assign(const common::IsolationLevel level, RWSessionCtx &session_ctx);
+        ILockInfo *assign(const common::IsolationLevel level, BaseSessionCtx &session_ctx);
     };
   }
 }

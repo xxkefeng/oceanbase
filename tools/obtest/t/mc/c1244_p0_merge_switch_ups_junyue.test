@@ -54,6 +54,8 @@ if($new_master == $old_master)
     --echo switch slave cluster ups fail
 }
 
+sleep 15;
+
 # new data
 replace into t1 values(1,1),(2,2),(3,3),(4,4);
 insert into t1 values(5,1),(6,2),(7,3),(8,4);

@@ -2,7 +2,7 @@
  //
  // ob_trace_log.h / hash / common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
  // Created on 2010-09-01 by Yubai (yubai.lk@taobao.com)
  //
@@ -34,13 +34,22 @@
 #define INC_TRACE_LOG_LEVEL() oceanbase::common::TraceLog::inc_log_level()
 #define DEC_TRACE_LOG_LEVEL() oceanbase::common::TraceLog::dec_log_level()
 #define SET_TRACE_LOG_LEVEL(level) oceanbase::common::TraceLog::set_log_level(level)
+#define SET_FORCE_TRACE_LOG(force) oceanbase::common::TraceLog::get_logbuffer().set_force_log(force)
 
 #define CLEAR_TRACE_LOG() oceanbase::common::TraceLog::clear_log(oceanbase::common::TraceLog::get_logbuffer())
 #define FILL_TRACE_LOG(_fmt_, args...) \
-    if (oceanbase::common::TraceLog::get_log_level() <= TBSYS_LOGGER._level) \
+    if (oceanbase::common::TraceLog::get_log_level() <= TBSYS_LOGGER._level || oceanbase::common::TraceLog::get_logbuffer().force_log_) \
     { \
       oceanbase::common::TraceLog::fill_log(oceanbase::common::TraceLog::get_logbuffer(), "f=[%s] " _fmt_, __FUNCTION__, ##args); \
     }
+#define FORCE_PRINT_TRACE_LOG()                                         \
+  {                                                                     \
+    TBSYS_LOGGER.logMessage(TBSYS_LOG_NUM_LEVEL(TBSYS_LOGGER._level), "[%ld][%ld][%ld][%ld] %stotal_timeu=%ld", \
+                            pthread_self(), GETTID(), tbsys::CLogger::get_cur_tv().tv_sec, tbsys::CLogger::get_cur_tv().tv_usec, \
+                            oceanbase::common::TraceLog::get_logbuffer().buffer, \
+                            tbsys::CTimeUtil::getTime() - oceanbase::common::TraceLog::get_logbuffer().start_timestamp); \
+    CLEAR_TRACE_LOG();                                                  \
+  }
 #define PRINT_TRACE_LOG() \
   { \
     if (oceanbase::common::TraceLog::get_log_level() <= TBSYS_LOGGER._level) \
@@ -99,7 +108,10 @@ namespace oceanbase
           int64_t cur_pos;
           int64_t prev_timestamp;
           int64_t start_timestamp;
+          bool force_log_;
           char buffer[LOG_BUFFER_SIZE];
+
+          void set_force_log(bool force) {force_log_ = force;};
         };
       public:
         static void clear_log(LogBuffer &log_buffer);
@@ -138,4 +150,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_COMMON_FILL_LOG_H_
-

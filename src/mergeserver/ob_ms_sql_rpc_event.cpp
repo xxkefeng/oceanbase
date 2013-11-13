@@ -17,11 +17,16 @@ ObMsSqlRpcEvent::ObMsSqlRpcEvent()
   client_request_id_ = OB_INVALID_ID;
   client_request_ = NULL;
   timeout_us_ = 0;
+  channel_id_ = 0;
   timestamp_ = 0;
 }
 
 ObMsSqlRpcEvent::~ObMsSqlRpcEvent()
 {
+  //TBSYS_LOG(INFO, "destroy event[%p] client_request_id_[%ld] client_request_[%p]"
+  //    "start_ts[%ld] end_ts[%ld] elapsed[%ld]",
+  //    this, client_request_id_, client_request_, start_time_us_, end_time_us_,
+  //    end_time_us_ - start_time_us_);
   reset();
 }
 
@@ -31,14 +36,6 @@ void ObMsSqlRpcEvent::reset(void)
   ObCommonSqlRpcEvent::reset();
   client_request_id_ = OB_INVALID_ID;
   client_request_ = NULL;
-}
-
-void ObMsSqlRpcEvent::invalidate(void)
-{
-  lock_.lock();
-  client_request_id_ = OB_INVALID_ID;
-  client_request_ = NULL;
-  lock_.unlock();
 }
 
 uint64_t ObMsSqlRpcEvent::get_client_id(void) const
@@ -76,17 +73,16 @@ int ObMsSqlRpcEvent::parse_packet(ObPacket * packet, void * args)
   UNUSED(args);
   if (NULL == packet)
   {
-    //ret = OB_INPUT_PARAM_ERROR; //TODO do not throw error for libeasy callback timeout error will be ignore
     ret = OB_RESPONSE_TIME_OUT;
-    TBSYS_LOG(WARN, "check packet is NULL:server[%s], client[%lu], event[%lu]",
+    TBSYS_LOG(WARN, "message timeout, packet from chunkserver[%s] is NULL, request_id[%lu], event_id[%lu]",
         server_.to_cstring(), client_request_id_, get_event_id());
   }
   else
   {
-    ret = deserialize_packet(*dynamic_cast<ObPacket *>(packet), ObCommonSqlRpcEvent::get_result());
+    ret = deserialize_packet(*packet, ObCommonSqlRpcEvent::get_result());
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(WARN, "deserialize packet failed:server[%s], client[%lu], event[%lu], ret[%d]",
+      TBSYS_LOG(WARN, "deserialize packet from server[%s] failed, request_id[%lu], event_id[%lu], ret[%d]",
           server_.to_cstring(), client_request_id_, ObCommonSqlRpcEvent::get_event_id(), ret);
     }
   }
@@ -109,27 +105,35 @@ int ObMsSqlRpcEvent::handle_packet(ObPacket * packet, void * args)
     ret = parse_packet(packet, args);
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(WARN, "parse the packet failed:server[%s], client[%lu], event[%lu], ptr[%p]",
+      TBSYS_LOG(WARN, "parse packet from server[%s] failed, request_id[%lu], event_id[%lu], rpc_event[%p]",
           server_.to_cstring(), client_request_id_, get_event_id(), this);
       /// set result code, maybe timeout packet, connection errors.
-      ObCommonSqlRpcEvent::set_result_code(ret);
+      if (NULL != args && 1 == reinterpret_cast<easy_connection_t*>(args)->conn_has_error)
+      {
+        ObCommonSqlRpcEvent::set_result_code(OB_CONN_ERROR);
+      }
+      else
+      {
+        ObCommonSqlRpcEvent::set_result_code(ret);
+      }
     }
 
-    ObPacket* obpacket = dynamic_cast<ObPacket*>(packet);
+    ObPacket* obpacket = packet;
     if (NULL != obpacket)
     {
-      TBSYS_LOG(DEBUG, "get packet succ:server[%s], event_id[%lu], time_used[%ld],"
+      TBSYS_LOG(DEBUG, "get packet from server[%s] success, event_id[%lu], time_used[%ld],"
           "result code=%d, packet code=%d, session_id=%ld",
           server_.to_cstring(), get_event_id(), get_time_used(), get_result_code(),
           obpacket->get_packet_code(), obpacket->get_session_id());
     }
-    lock_.lock();
+    //lock_.lock();
     if (client_request_ == NULL)
     {
-      TBSYS_LOG(WARN, "handle invalid packet. destroy event");
+      TBSYS_LOG(WARN, "rpc event(%p) unknown status, destroy myself, event_id[%lu] "
+          "request_id[%lu], req_type[%d]",
+          this, this->get_event_id(), this->get_client_id(), this->get_req_type());
       this->~ObMsSqlRpcEvent();
-      ob_free(this);
-      // !!! destroy myself!
+      ob_tc_free(this);
     }
     else
     {
@@ -137,14 +141,16 @@ int ObMsSqlRpcEvent::handle_packet(ObPacket * packet, void * args)
       /// not check the event valid only push to the finish queue
       if (OB_SUCCESS != (ret = client_request_->signal(*this)))
       {
+        TBSYS_LOG(WARN, "failed to push event to finish queue, destroy myself, req_type[%s], request_id[%lu], ret=%d",
+            (this->get_req_type() == SCAN_RPC) ? "SCAN":"GET", this->get_client_id(), ret);
         OB_ASSERT(magic_ == 0x1234abcd);
         this->~ObMsSqlRpcEvent();
-        ob_free(this);
+        ob_tc_free(this);
       }
       else
       {
-        OB_ASSERT(magic_ == 0x1234abcd);
-        lock_.unlock();
+        //OB_ASSERT(magic_ == 0x1234abcd);
+        //lock_.unlock();
       }
     }
   }

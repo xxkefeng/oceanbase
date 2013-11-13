@@ -113,13 +113,16 @@ namespace oceanbase
       public:
         int open();
         int close();
+        virtual sql::ObPhyOperatorType get_type() const { return sql::PHY_ROW_ITER_ADAPTOR; }
+
         int get_next_row(const ObRow *&row);
         int get_next_row(const ObRowkey *&rowkey, const ObRow *&row);
         int get_row_desc(const ObRowDesc *&row_desc) const;
         int64_t to_string(char* buf, const int64_t buf_len) const;
       public:
         void set_cell_iter(ObIterator *cell_iter, const ObRowDesc &row_desc, const bool deep_copy);
-        void reset();
+        virtual void reset();
+        virtual void reuse();
       private:
         ModulePageAllocator mod_;
         ModuleArena allocator_;

@@ -44,14 +44,23 @@ static long get_thread_no(void)
   return no;
 }
 
-ObPacketQueueThread::ObPacketQueueThread()
+timespec* mktimespec(timespec* ts, const int64_t time_ns)
+{
+  const int64_t NS_PER_SEC = 1000000000;
+  ts->tv_sec = time_ns / NS_PER_SEC;
+  ts->tv_nsec = time_ns % NS_PER_SEC;
+  return ts;
+}
+
+ObPacketQueueThread::ObPacketQueueThread(int queue_capacity)
 {
   _stop = 0;
+  mktimespec(&timeout_, 3000000000);
   wait_finish_ = false;
   waiting_ = false;
   handler_ = NULL;
   args_ = NULL;
-  queue_.init();
+  queue_.init(queue_capacity, NULL);
   session_id_ = 1;
   next_wait_map_.create(MAX_THREAD_COUNT);
   max_waiting_thread_count_  = 0;
@@ -62,6 +71,7 @@ ObPacketQueueThread::ObPacketQueueThread()
 ObPacketQueueThread::~ObPacketQueueThread()
 {
   stop();
+  queue_.destroy();
   next_wait_map_.destroy();
   if (NULL != next_packet_buffer_)
   {
@@ -92,18 +102,15 @@ void ObPacketQueueThread::setThreadParameter(int thread_count, ObPacketQueueHand
 
 void ObPacketQueueThread::stop(bool wait_finish)
 {
-  cond_.lock();
   _stop = true;
   wait_finish_ = wait_finish;
-  cond_.broadcast();
-  cond_.unlock();
 }
 
-bool ObPacketQueueThread::push(ObPacket* packet, int max_queue_len, bool block)
+bool ObPacketQueueThread::push(ObPacket* packet,int max_queue_len, bool block, bool deep_copy)
 {
   if (_stop || _thread == NULL)
   {
-    return true;
+    return false;
   }
 
   if (is_next_packet(packet))
@@ -114,64 +121,17 @@ bool ObPacketQueueThread::push(ObPacket* packet, int max_queue_len, bool block)
     }
     return true;
   }
-
   if (max_queue_len > 0 && queue_.size() >= max_queue_len)
   {
-    pushcond_.lock();
-    waiting_ = true;
-    while (_stop == false && queue_.size() >= max_queue_len && block)
+    if (!block)
     {
-      pushcond_.wait(1000);
-    }
-    waiting_ = false;
-    if (queue_.size() >= max_queue_len && !block)
-    {
-      pushcond_.unlock();
       return false;
     }
-    pushcond_.unlock();
-
-    if (_stop)
-    {
-      return true;
-    }
   }
-
-  cond_.lock();
-  queue_.push(packet);
-  cond_.signal();
-  cond_.unlock();
+  queue_.push(packet, NULL, block, deep_copy);
   return true;
 }
 
-void ObPacketQueueThread::pushQueue(ObPacketQueue& packet_queue, int max_queue_len)
-{
-  if (_stop)
-  {
-    return;
-  }
-
-  if (max_queue_len > 0 && queue_.size() >= max_queue_len)
-  {
-    pushcond_.lock();
-    waiting_ = true;
-    while (_stop == false && queue_.size() >= max_queue_len)
-    {
-      pushcond_.wait(1000);
-    }
-    waiting_ = false;
-    pushcond_.unlock();
-    if (_stop)
-    {
-      return;
-    }
-  }
-
-  cond_.lock();
-  packet_queue.move_to(&queue_);
-  cond_.signal();
-  cond_.unlock();
-}
 void ObPacketQueueThread::set_ip_port(const IpPort & ip_port)
 {
   ip_port_ = ip_port;
@@ -203,6 +163,7 @@ int64_t ObPacketQueueThread::get_session_id(ObPacket* packet) const
   return session_id;
 }
 
+//将包拷到了线程池内部
 ObPacket* ObPacketQueueThread::clone_next_packet(ObPacket* packet, int64_t thread_no) const
 {
   char *clone_packet_ptr = NULL;
@@ -265,6 +226,7 @@ bool ObPacketQueueThread::wakeup_next_thread(ObPacket* packet)
         TBSYS_LOG(WARN, "rewrite set session =%ld packet=%p error,hash_ret=%d",
             session_id, wait_object.packet_, hash_ret);
       }
+      //唤醒对应的工作线程开始工作
       next_cond_[wait_object.thread_no_].signal();
       ret = true;
     }
@@ -344,6 +306,7 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
 
   while (OB_SUCCESS == ret)
   {
+    //waiting_thread_count_ 等待流式接口的包的线程的个数
     oldv = waiting_thread_count_;
     if (oldv > max_waiting_thread_count_)
     {
@@ -365,9 +328,11 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
         next_request = wait_object.packet_;
         ret = OB_NET_SESSION_END;
       }
+      // prepare_for_next_request的时候packet_置为NULL
       else if (NULL == wait_object.packet_)
       {
         int32_t timeout_ms = static_cast<int32_t>(timeout/1000);
+        //被IO线程唤醒
         if (timeout_ms > 0 && next_cond_[wait_object.thread_no_].wait(timeout_ms))
         {
           hash_ret = next_wait_map_.get(session_id, wait_object);
@@ -383,6 +348,7 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
           }
           else
           {
+            //在hash表中存在，要么是session end，要么是普通的流式接口包
             if (wait_object.is_session_end())
             {
               next_request = wait_object.packet_;
@@ -397,17 +363,19 @@ int ObPacketQueueThread::wait_for_next_request(int64_t session_id, ObPacket* &ne
         }
         else
         {
+          // 超时
           next_request = NULL;
           ret = OB_RESPONSE_TIME_OUT; //WAIT_TIMEOUT;
         }
       }
       else
       {
+        //已经取到包了
         // check if already got the request..
         next_request = wait_object.packet_;
       }
 
-      // clear last packet
+      // clear last packet,收到流式接口后，又将packet_ 置为NULL
       wait_object.packet_ = NULL;
       int overwrite = 1;
       hash_ret = next_wait_map_.set(session_id, wait_object, overwrite);
@@ -438,31 +406,14 @@ void ObPacketQueueThread::run(tbsys::CThread* thread, void* args)
   ObServer *host = GET_TSI_MULT(ObServer, TSI_COMMON_OBSERVER_1);
   *host = host_;
   ObPacket* packet = NULL;
+  void *task = NULL;
   while (!_stop)
   {
-    cond_.lock();
-    while (!_stop && queue_.size() == 0)
+    if (OB_SUCCESS != queue_.pop(task, &timeout_))
     {
-      cond_.wait();
+      continue;
     }
-    if (_stop)
-    {
-      cond_.unlock();
-      break;
-    }
-
-    packet = (ObPacket*)queue_.pop();
-    cond_.unlock();
-
-    if (waiting_)
-    {
-      pushcond_.lock();
-      pushcond_.signal();
-      pushcond_.unlock();
-    }
-
-    if (packet == NULL) continue;
-
+    packet = reinterpret_cast<ObPacket*>(task);
     if (handler_)
     {
       TBSYS_LOG(DEBUG, "pop packet code is %d", packet->get_packet_code());
@@ -493,11 +444,13 @@ void ObPacketQueueThread::run(tbsys::CThread* thread, void* args)
       PROFILE_LOG(DEBUG, HANDLE_PACKET_END_TIME PCODE, ed, packet->get_packet_code());
     }
   }
-  cond_.lock();
   while (queue_.size() > 0)
   {
-    packet = (ObPacket*)queue_.pop();
-    cond_.unlock();
+    if (OB_SUCCESS != queue_.pop(task, &timeout_))
+    {
+      continue;
+    }
+    packet = reinterpret_cast<ObPacket*>(task);
     if (handler_ && wait_finish_)
     {
       TBSYS_LOG(DEBUG, "pop packet code is %d", packet->get_packet_code());
@@ -528,13 +481,10 @@ void ObPacketQueueThread::run(tbsys::CThread* thread, void* args)
       handler_->handlePacketQueue(packet, args_);
       int64_t ed = tbsys::CTimeUtil::getTime();
       //这里已经有了chid id了
-      PROFILE_LOG(DEBUG, HANDLE_PACKET_END_TIME PCODE, ed, packet->get_packet_code());
+      PROFILE_LOG(DEBUG, HANDLE_PACKET_END_TIME PCODE, ed);
     }
-    cond_.lock();
   }
-  cond_.unlock();
 }
-
 void ObPacketQueueThread::clear()
 {
   _stop = false;

@@ -30,9 +30,11 @@ namespace oceanbase
       public:
         ObTabletGetFuse();
         virtual ~ObTabletGetFuse() {}
-
+        virtual void reset();
+        virtual void reuse();
         int open();
         int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_TABLET_GET_FUSE; }
         int get_next_row(const common::ObRow *&row);
 
         int set_sstable_get(ObRowkeyPhyOperator *sstable_get);

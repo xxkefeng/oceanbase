@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_sstable_get.cpp 
+ * ob_sstable_get.cpp
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -24,6 +24,20 @@ ObSSTableGet::ObSSTableGet()
   row_iter_(false),
   last_rowkey_(NULL)
 {
+}
+
+void ObSSTableGet::reset()
+{
+  tablet_manager_ = NULL;
+  get_param_ = NULL;
+  tablet_version_ = 0;
+  row_desc_.reset();
+  last_rowkey_ = NULL;
+}
+
+void ObSSTableGet::reuse()
+{
+  reset();
 }
 
 int ObSSTableGet::get_row_desc(const common::ObRowDesc *&row_desc) const
@@ -124,6 +138,12 @@ int ObSSTableGet::get_next_row(const common::ObRowkey *&rowkey, const common::Ob
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObSSTableGet, PHY_SSTABLE_GET);
+  }
+}
+
 int64_t ObSSTableGet::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -142,6 +162,3 @@ int ObSSTableGet::get_last_rowkey(const common::ObRowkey *&rowkey)
   rowkey = last_rowkey_;
   return OB_SUCCESS;
 }
-
-
-

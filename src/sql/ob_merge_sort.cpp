@@ -31,6 +31,55 @@ ObMergeSort::~ObMergeSort()
 {
 }
 
+void ObMergeSort::reset()
+{
+  int ret = OB_SUCCESS;
+  if (run_file_.is_opened())
+  {
+    if (OB_SUCCESS != (ret = run_file_.close()))
+    {
+      TBSYS_LOG(WARN, "failed to close run file, err=%d", ret);
+    }
+  }
+  if ('\0' != run_filename_buf_[0])
+  {
+    struct stat stat_buf;
+    if (0 == stat(run_filename_buf_, &stat_buf))
+    {
+      if (0 != unlink(run_filename_buf_))
+      {
+        TBSYS_LOG(WARN, "failed to remove tmp run file, err=%s", strerror(errno));
+      }
+    }
+  }
+  heap_array_.clear();
+  dump_run_count_ = 0;
+  row_desc_ = NULL;
+}
+
+void ObMergeSort::reuse()
+{
+  int ret = OB_SUCCESS;
+  if (run_file_.is_opened())
+  {
+    if (OB_SUCCESS != (ret = run_file_.close()))
+    {
+      TBSYS_LOG(WARN, "failed to close run file, err=%d", ret);
+    }
+  }
+  struct stat stat_buf;
+  if (0 == stat(run_filename_buf_, &stat_buf))
+  {
+    if (0 != unlink(run_filename_buf_))
+    {
+      TBSYS_LOG(WARN, "failed to remove tmp run file, err=%s", strerror(errno));
+    }
+  }
+  heap_array_.clear();
+  dump_run_count_ = 0;
+  row_desc_ = NULL;
+}
+
 void ObMergeSort::set_sort_columns(const common::ObArray<ObSortColumn> &sort_columns)
 {
   sort_columns_ = &sort_columns;
@@ -50,28 +99,6 @@ int ObMergeSort::set_run_filename(const common::ObString &filename)
     run_filename_.assign_ptr(run_filename_buf_, filename.length());
   }
   return ret;
-}
-
-void ObMergeSort::reset()
-{
-  int ret = OB_SUCCESS;
-  if (run_file_.is_opened())
-  {
-    if (OB_SUCCESS != (ret = run_file_.close()))
-    {
-      TBSYS_LOG(WARN, "failed to close run file, err=%d", ret);
-    }
-  }
-  struct stat stat_buf;
-  if (0 == stat(run_filename_buf_, &stat_buf))
-  {
-    if (0 != unlink(run_filename_buf_))
-    {
-      TBSYS_LOG(WARN, "failed to remove tmp run file, err=%s", strerror(errno));
-    }
-  }
-  dump_run_count_ = 0;
-  row_desc_ = NULL;
 }
 
 int ObMergeSort::dump_run(ObInMemorySort &rows)

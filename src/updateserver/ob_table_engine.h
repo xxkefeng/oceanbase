@@ -50,6 +50,12 @@ namespace oceanbase
       std::pair<int64_t, int64_t> get_size_and_cnt() const;
     };
 
+    struct ObUndoNode
+    {
+      ObCellInfoNode *head;
+      ObUndoNode *next;
+    };
+
     class ObCellInfoNodeIterable
     {
       protected:
@@ -127,17 +133,28 @@ namespace oceanbase
       inline int64_t hash() const
       {
         common::ObRowkey rk(const_cast<ObObj*>(row_key), rk_length);
-        return (rk.murmurhash2(0) + table_id);
+        //return (rk.murmurhash2(0) + table_id);
+        return (rk.murmurhash64A(0) + table_id);
       };
       inline bool operator == (const TEHashKey &other) const
       {
         bool bret = false;
-        common::ObRowkey rk1(const_cast<ObObj*>(row_key), rk_length);
-        common::ObRowkey rk2(const_cast<ObObj*>(other.row_key), other.rk_length);
         if (table_id == other.table_id
-            && rk1 == rk2)
+            && other.rk_length == rk_length)
         {
           bret = true;
+          for (int64_t i = 0; i < rk_length && bret; i++)
+          {
+            if (common::ObNullType == row_key[i].get_type()
+                || common::ObNullType == other.row_key[i].get_type())
+            {
+              bret = (common::ObNullType == row_key[i].get_type()) && (common::ObNullType == other.row_key[i].get_type());
+            }
+            else
+            {
+              bret = (0 == row_key[i].compare_same_type(other.row_key[i]));
+            }
+          }
         }
         return bret;
       };
@@ -155,7 +172,8 @@ namespace oceanbase
       };
       inline int64_t hash() const
       {
-        return row_key.murmurhash2(0) + table_id;
+        //return row_key.murmurhash2(0) + table_id;
+        return row_key.murmurhash64A(0) + table_id;
       };
       inline void checksum(common::ObBatchChecksum &bc) const
       {
@@ -222,6 +240,7 @@ namespace oceanbase
     struct TEValueUCInfo;
     struct TEValue
     {
+      ObUndoNode *undo_list; // tevalue的bit copy必须先复制undolist
       uint8_t index_stat;
       int16_t cell_info_cnt;
       int16_t cell_info_size; // 单位为1K
@@ -243,6 +262,7 @@ namespace oceanbase
         list_tail = NULL;
         cur_uc_info = NULL;
         row_lock.reset();
+        undo_list = NULL;
       };
       inline const char *log_str() const
       {
@@ -250,10 +270,10 @@ namespace oceanbase
         static __thread char BUFFER[2][BUFFER_SIZE];
         static __thread uint64_t i = 0;
         snprintf(BUFFER[i % 2], BUFFER_SIZE, "index_stat=%hhu cell_info_cnt=%hd cell_info_size=%hdKB "
-                "list_head=%p list_tail=%p cur_uc_info=%p lock_uid=%x lock_nref=%u",
+                "list_head=%p list_tail=%p cur_uc_info=%p lock_uid=%x lock_nref=%u undo_list=%p",
                  index_stat, cell_info_cnt, cell_info_size,
                  list_head, list_tail, cur_uc_info,
-                 row_lock.uid_, row_lock.n_ref_);
+                 row_lock.uid_, row_lock.n_ref_, undo_list);
         return BUFFER[i++ % 2];
       };
       inline const char *log_list()

@@ -10,6 +10,7 @@ LDADD = $(top_builddir)/src/common/roottable/libroottable.a \
         $(top_builddir)/src/common/libcommon.a              \
         $(top_builddir)/src/sql/libsql.a                    \
         $(top_builddir)/src/common/libcommon.a              \
+				$(top_builddir)/src/common/timezone/libtimezone.a          \
         ${EASY_LIB_PATH}/libeasy.a                          \
         ${TBLIB_ROOT}/lib/libtbsys.a
 
@@ -25,7 +26,8 @@ pub_source =                                                                \
   ob_root_admin_cmd.h                                                       \
   ob_root_admin2.h                                                          \
   ob_root_stat.h                                                            \
-  ob_daily_merge_checker.h             ob_daily_merge_checker.cpp           \
+  ob_root_server_state.h               ob_root_server_state.cpp             \
+	ob_daily_merge_checker.h             ob_daily_merge_checker.cpp           \
   ob_heartbeat_checker.h               ob_heartbeat_checker.cpp             \
   ob_rs_trigger_event_util.h           ob_rs_trigger_event_util.cpp         \
   ob_root_inner_table_task.h           ob_root_inner_table_task.cpp         \
@@ -62,7 +64,13 @@ pub_source =                                                                \
   ob_root_server_config.h              ob_root_server_config.cpp            \
   ob_root_monitor_table.h              ob_root_monitor_table.cpp            \
   ob_rs_after_restart_task.h           ob_rs_after_restart_task.cpp         \
-  ob_root_reload_config.h              ob_root_reload_config.cpp
+  ob_root_operation_helper.h           ob_root_operation_helper.cpp         \
+	ob_root_operation_data.h             ob_root_operation_data.cpp           \
+	ob_rs_schema_operation.h             ob_rs_schema_operation.cpp           \
+	ob_root_table_operation.h            ob_root_table_operation.cpp          \
+	ob_root_timer_task.h                 ob_root_timer_task.cpp               \
+	ob_root_reload_config.h              ob_root_reload_config.cpp            \
+  ob_data_source_mgr.h                 ob_data_source_mgr.cpp
 
 
 noinst_LIBRARIES = librootserver.a

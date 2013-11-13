@@ -10,10 +10,10 @@ extern "C" {
 /*
  * Class:     com_taobao_mrsstable_SSTableBuilder
  * Method:    init
- * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)I
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)I
  */
 JNIEXPORT jint JNICALL Java_com_taobao_mrsstable_SSTableBuilder_init
-  (JNIEnv *, jobject, jstring, jstring, jstring, jstring, jboolean);
+  (JNIEnv *, jobject, jstring, jstring, jstring, jboolean);
 
 /*
  * Class:     com_taobao_mrsstable_SSTableBuilder

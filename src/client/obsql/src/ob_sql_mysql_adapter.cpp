@@ -27,6 +27,31 @@ my_bool is_consistence(ObSQLMySQL *mysql)
   return mysql->is_consistence_;
 }
 
+my_bool need_retry(ObSQLMySQL *mysql)
+{
+  my_bool ret = 1;
+  if (is_in_transaction(mysql))
+  {
+    ret = 0;
+  }
+  return ret;
+}
+
+void mysql_set_retry(ObSQLMySQL *mysql)
+{
+  mysql->retry_ = 1;
+}
+
+void mysql_unset_retry(ObSQLMySQL *mysql)
+{
+  mysql->retry_ = 0;
+}
+
+my_bool is_retry(ObSQLMySQL *mysql)
+{
+  return mysql->retry_;
+}
+
 void mysql_set_in_transaction(MYSQL *mysql)
 {
   ObSQLMySQL *ob_mysql = (ObSQLMySQL*)mysql;
@@ -48,7 +73,14 @@ int STDCALL mysql_server_init(int argc __attribute__((unused)),
 			      char **argv __attribute__((unused)),
 			      char **groups __attribute__((unused)))
 {
-  return (*g_func_set.real_mysql_server_init)(argc, argv, groups);
+  if (0 == g_inited) //not inited
+  {
+    return 1;//error
+  }
+  else
+  {
+    return (*g_func_set.real_mysql_server_init)(argc, argv, groups);
+  }
 }
 
 void STDCALL mysql_server_end(void)
@@ -109,17 +141,17 @@ MYSQL_FIELD_OFFSET STDCALL mysql_field_tell(MYSQL_RES *res)
 
 unsigned int STDCALL mysql_field_count(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_field_count);
+  CALLREALWITHJUDGE(mysql, mysql_field_count);
 }
 
 my_ulonglong STDCALL mysql_affected_rows(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_affected_rows);
+  CALLREALWITHJUDGE(mysql, mysql_affected_rows);
 }
 
 my_ulonglong STDCALL mysql_insert_id(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_insert_id);
+  CALLREALWITHJUDGE(mysql, mysql_insert_id);
 }
 
 unsigned int STDCALL mysql_errno(MYSQL *mysql)
@@ -160,34 +192,39 @@ const char *STDCALL mysql_sqlstate(MYSQL *mysql)
 
 unsigned int STDCALL mysql_warning_count(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_warning_count);
+  CALLREALWITHJUDGE(mysql, mysql_warning_count);
 }
 
 const char * STDCALL mysql_info(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_info);
+  CALLREALWITHJUDGE(mysql, mysql_info);
 }
 
 unsigned long STDCALL mysql_thread_id(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_thread_id);
+  CALLREALWITHJUDGE(mysql, mysql_thread_id);
 }
 
 const char * STDCALL mysql_character_set_name(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_character_set_name);
+  CALLREALWITHJUDGE(mysql, mysql_character_set_name);
 }
 
 int STDCALL mysql_set_character_set(MYSQL *mysql, const char *csname)
 {
-  TBSYS_LOG(INFO, "call real set character set user mysql is %p real mysql is %p", mysql, ((ObSQLMySQL*)mysql)->conn_->mysql_);
-  CALLREAL(mysql, mysql_set_character_set, csname);
+  CALLREALWITHJUDGE(mysql, mysql_set_character_set, csname);
 }
-
 
 MYSQL * STDCALL mysql_init(MYSQL *mysql)
 {
   int flag = OB_SQL_SUCCESS;
+  TBSYS_LOG(INFO, "mysql init called");
+  if (0 == g_inited) //not inited
+  {
+    TBSYS_LOG(INFO, "not inited");
+    return NULL;
+  }
+  
   if (NULL == mysql)
   {
     mysql = (MYSQL *)ob_malloc(sizeof(MYSQL), ObModIds::LIB_OBSQL);
@@ -198,8 +235,10 @@ MYSQL * STDCALL mysql_init(MYSQL *mysql)
     }
     else
     {
+      TBSYS_LOG(INFO, "alloc mem for MYSQL");
       memset(mysql, 0, sizeof(MYSQL));
       (*g_func_set.real_mysql_init)(mysql);
+      TBSYS_LOG(INFO, "after alloc mem for MYSQL");
       ((ObSQLMySQL*)mysql)->alloc_ = 1;
     }
   }
@@ -217,7 +256,7 @@ MYSQL * STDCALL mysql_init(MYSQL *mysql)
     if (0 == pthread_rwlock_rdlock(&g_config_rwlock)) //防止g_group_ds被修改
     {
       //随便选一条先
-      ObSQLConn *conn = acquire_conn_random(&g_group_ds);
+      ObSQLConn *conn = acquire_conn_random(&g_group_ds, (ObSQLMySQL*)mysql);
       if (NULL == conn)
       {
         TBSYS_LOG(WARN, "There are no connction in groupdatasource");
@@ -250,12 +289,12 @@ MYSQL * STDCALL mysql_init(MYSQL *mysql)
 
 my_bool STDCALL mysql_ssl_set(MYSQL *mysql, const char *key, const char *cert, const char *ca, const char *capath, const char *cipher)
 {
-  CALLREAL(mysql, mysql_ssl_set, key, cert, ca, capath, cipher);
+  CALLREALWITHJUDGE(mysql, mysql_ssl_set, key, cert, ca, capath, cipher);
 }
 
 my_bool STDCALL mysql_change_user(MYSQL *mysql, const char *user, const char *passwd, const char *db)
 {
-  CALLREAL(mysql, mysql_change_user, user, passwd, db);
+  CALLREALWITHJUDGE(mysql, mysql_change_user, user, passwd, db);
 }
 
 //do nothing if it is obsql mysql handler
@@ -280,7 +319,7 @@ MYSQL * STDCALL mysql_real_connect(MYSQL *mysql, const char *host, const char *u
 
 int STDCALL mysql_select_db(MYSQL *mysql, const char *db)
 {
-  CALLREAL(mysql, mysql_select_db, db);
+  CALLREALWITHJUDGE(mysql, mysql_select_db, db);
 }
 
 //wrapper of mysql_reql_query
@@ -333,27 +372,29 @@ static MYSQL* select_connection(MYSQL *mysql, const char *q, unsigned long lengt
       mysql_set_consistence(mysql);
       TBSYS_LOG(INFO, "set consistence %p", mysql);
     }
-    else if (OB_SQL_DDL == *stype
-             || OB_SQL_WRITE == *stype)
+    else if (OB_SQL_READ != *stype)
     {
       mysql_set_consistence(mysql);
       TBSYS_LOG(INFO, "set consistence %p", mysql);
     }
-    //if (NULL != ((ObSQLMySQL*)mysql)->conn_ && !is_in_transaction((ObSQLMySQL*)mysql))
-    //  release_conn(((ObSQLMySQL*)mysql)->conn_);
-    //in transaction 选择主集群
+
+    //选择主集群
     if (is_in_transaction((ObSQLMySQL*)(mysql))
         ||is_consistence((ObSQLMySQL*)(mysql)))
     {
-      TBSYS_LOG(DEBUG, "in transaction or consistence");
-      if (NULL == (((ObSQLMySQL*)mysql)->wconn_))
+      TBSYS_LOG(DEBUG, "query to master cluster");
+      if (is_retry((ObSQLMySQL*)mysql) || NULL == (((ObSQLMySQL*)mysql)->wconn_))
       {
         if (0 == pthread_rwlock_rdlock(&g_config_rwlock))
         {
+          if (NULL != (((ObSQLMySQL*)mysql)->wconn_))
+          {
+            release_conn(((ObSQLMySQL*)mysql)->wconn_);
+          }
           //根据流量分配和请求类型，选择集群 mysql被设置成consistence 选择主集群
           cluster = select_cluster((ObSQLMySQL*)mysql);
           //每次请求都需要根据sql做一致性hash来在特定的集群里面选择新的ms
-          ObSQLConn *conn = acquire_conn(cluster, q, length);
+          ObSQLConn *conn = acquire_conn(cluster, q, length, (ObSQLMySQL*)mysql);
           if (NULL != conn)
           {
             ((ObSQLMySQL*)mysql)->wconn_ = conn;
@@ -377,49 +418,46 @@ static MYSQL* select_connection(MYSQL *mysql, const char *q, unsigned long lengt
     }
     else
     {
-      TBSYS_LOG(DEBUG, "not in transaction");
-      if (NULL != (((ObSQLMySQL*)mysql)->rconn_))
+      TBSYS_LOG(DEBUG, "ordianry query");
+      //release connection
+      if (NULL != ((ObSQLMySQL*)mysql)->conn_)
       {
-        TBSYS_LOG(DEBUG, "rconn not in transaction");
-        ((ObSQLMySQL*)mysql)->conn_ = ((ObSQLMySQL*)mysql)->rconn_;
-      }
-      /*else if (NULL != (((ObSQLMySQL*)mysql)->wconn_))
-      {
-        TBSYS_LOG(DEBUG, "wconn not in transaction");
-        ((ObSQLMySQL*)mysql)->conn_ = ((ObSQLMySQL*)mysql)->wconn_;
-        }*/
-      else
-      {
-        if (0 == pthread_rwlock_rdlock(&g_config_rwlock))
+        ObSQLConn *rconn = ((ObSQLMySQL*)mysql)->rconn_;
+        ObSQLConn *wconn = ((ObSQLMySQL*)mysql)->wconn_;
+        pthread_rwlock_rdlock(&g_config_rwlock);
+        if (NULL != rconn)
         {
-          //根据流量分配和请求类型，选择集群
-          cluster = select_cluster((ObSQLMySQL*)mysql);
-          //每次请求都需要根据sql做一致性hash来在特定的集群里面选择新的ms
-          ObSQLConn *conn = acquire_conn(cluster, q, length);
-          if (NULL != conn)
-          {
-            //if (1 == cluster->is_master_)
-            //{
-            //  ((ObSQLMySQL*)mysql)->wconn_ = conn;
-            //}
-            //else
-            //{
-            ((ObSQLMySQL*)mysql)->rconn_ = conn;
-              //}
-            ((ObSQLMySQL*)mysql)->conn_ = conn;
-            TBSYS_LOG(DEBUG, "conn is %p mysql is %p", conn, conn->mysql_);
-            real_mysql = ((ObSQLMySQL*)mysql)->conn_->mysql_;
-          }
-          else
-          {
-            TBSYS_LOG(ERROR, "can not acquire a connection in cluster (id is %u)", cluster->cluster_id_);
-          }
-          pthread_rwlock_unlock(&g_config_rwlock);
+          release_conn(rconn);
+        }
+        else if (NULL != wconn)
+        {
+          release_conn(wconn);
+        }
+        pthread_rwlock_unlock(&g_config_rwlock);
+      }
+
+      if (0 == pthread_rwlock_rdlock(&g_config_rwlock))
+      {
+        //根据流量分配和请求类型，选择集群
+        cluster = select_cluster((ObSQLMySQL*)mysql);
+        //每次请求都需要根据sql做一致性hash来在特定的集群里面选择新的ms
+        ObSQLConn *conn = acquire_conn(cluster, q, length, (ObSQLMySQL*)mysql);
+        if (NULL != conn)
+        {
+          ((ObSQLMySQL*)mysql)->rconn_ = conn;
+          ((ObSQLMySQL*)mysql)->conn_ = conn;
+          TBSYS_LOG(DEBUG, "conn is %p mysql is %p", conn, conn->mysql_);
+          real_mysql = ((ObSQLMySQL*)mysql)->conn_->mysql_;
         }
         else
         {
-          TBSYS_LOG(ERROR, "pthread_rwlock_rdlock failed on g_config_rwlock");
+          TBSYS_LOG(ERROR, "can not acquire a connection in cluster (id is %u)", cluster->cluster_id_);
         }
+        pthread_rwlock_unlock(&g_config_rwlock);
+      }
+      else
+      {
+        TBSYS_LOG(ERROR, "pthread_rwlock_rdlock failed on g_config_rwlock");
       }
     }
   }
@@ -437,7 +475,6 @@ int STDCALL mysql_send_query(MYSQL *mysql, const char *q, unsigned long length)
   int ret = 0;
   ObSQLType stype = OB_SQL_UNKNOWN;
   MYSQL* real_mysql = NULL;
-  TBSYS_LOG(DEBUG, "query is %s with read mysql handle %p", q, mysql);
   if (OB_SQL_MAGIC == ((ObSQLMySQL*)mysql)->magic_)
   {
     if (NULL == ((ObSQLMySQL*)mysql)->conn_)
@@ -467,7 +504,7 @@ int STDCALL mysql_send_query(MYSQL *mysql, const char *q, unsigned long length)
         mysql_unset_consistence(mysql);
         TBSYS_LOG(INFO, "unset consistence %p", mysql);
       }
-      else if (OB_SQL_DDL == stype)
+      else if (OB_SQL_READ != stype)
       {
         mysql_unset_consistence(mysql);
         TBSYS_LOG(INFO, "unset consistence %p", mysql);
@@ -476,6 +513,7 @@ int STDCALL mysql_send_query(MYSQL *mysql, const char *q, unsigned long length)
   }
   else
   {
+    TBSYS_LOG(DEBUG, "query is %s with real mysql handle %p", q, mysql);
     ret = (*(g_func_set.real_mysql_send_query))(mysql, q, length);
   }
   return ret;
@@ -486,16 +524,27 @@ int STDCALL mysql_send_query(MYSQL *mysql, const char *q, unsigned long length)
 int STDCALL mysql_real_query(MYSQL *mysql, const char *q, unsigned long length)
 {
   int ret = 0;
-  TBSYS_LOG(DEBUG, "1 mysql handle is %p query is %s\n", mysql, q);
+  TBSYS_LOG(DEBUG, "1 mysql handle is %p query is %s", mysql, q);
   ObSQLType stype = OB_SQL_UNKNOWN;
   MYSQL* real_mysql = NULL;
   if (OB_SQL_MAGIC == ((ObSQLMySQL*)mysql)->magic_)
   {
-    TBSYS_LOG(DEBUG, "magic 1 mysql handle is %p query is %s\n", mysql, q);
+    TBSYS_LOG(DEBUG, "magic 1 mysql handle is %p query is %s", mysql, q);
     real_mysql = select_connection(mysql, q, length, &stype);
     if (NULL != real_mysql)
     {
       ret = (*(g_func_set.real_mysql_real_query))(real_mysql, q, length);
+      //retry another mergeserver if necessary
+      if (0 != ret && need_retry((ObSQLMySQL*)mysql))
+      {
+        mysql_set_retry((ObSQLMySQL*)mysql);
+        TBSYS_LOG(DEBUG, "retry query mysql handle is %p, query is %s", mysql, q);
+        real_mysql = select_connection(mysql, q, length, &stype);
+        if (NULL != real_mysql)
+        {
+          ret = (*(g_func_set.real_mysql_real_query))(real_mysql, q, length);
+        }
+      }
     }
     else
     {
@@ -510,11 +559,12 @@ int STDCALL mysql_real_query(MYSQL *mysql, const char *q, unsigned long length)
       mysql_unset_consistence(mysql);
       TBSYS_LOG(INFO, "unset consistence %p", mysql);
     }
-    if (OB_SQL_DDL == stype)
+    if (OB_SQL_READ != stype)
     {
       mysql_unset_consistence(mysql);
       TBSYS_LOG(INFO, "unset consistence %p", mysql);
     }
+    mysql_unset_retry((ObSQLMySQL *)mysql);
   }
   else
   {
@@ -525,57 +575,57 @@ int STDCALL mysql_real_query(MYSQL *mysql, const char *q, unsigned long length)
 
 MYSQL_RES * STDCALL mysql_store_result(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_store_result);
+  CALLREALWITHJUDGE(mysql, mysql_store_result);
 }
 
 MYSQL_RES * STDCALL mysql_use_result(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_use_result);
+  CALLREALWITHJUDGE(mysql, mysql_use_result);
 }
 
 void STDCALL mysql_get_character_set_info(MYSQL *mysql, MY_CHARSET_INFO *charset)
 {
-  CALLREAL(mysql, mysql_get_character_set_info, charset);
+  CALLREALWITHJUDGE(mysql, mysql_get_character_set_info, charset);
 }
 
 int STDCALL mysql_shutdown(MYSQL *mysql, enum mysql_enum_shutdown_level shutdown_level)
 {
-  CALLREAL(mysql, mysql_shutdown, shutdown_level);
+  CALLREALWITHJUDGE(mysql, mysql_shutdown, shutdown_level);
 }
 
 int STDCALL mysql_dump_debug_info(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_dump_debug_info);
+  CALLREALWITHJUDGE(mysql, mysql_dump_debug_info);
 }
 
 int STDCALL mysql_refresh(MYSQL *mysql, unsigned int refresh_options)
 {
-  CALLREAL(mysql, mysql_refresh, refresh_options);
+  CALLREALWITHJUDGE(mysql, mysql_refresh, refresh_options);
 }
 
 int STDCALL mysql_kill(MYSQL *mysql,unsigned long pid)
 {
-  CALLREAL(mysql, mysql_kill, pid);
+  CALLREALWITHJUDGE(mysql, mysql_kill, pid);
 }
 
 int STDCALL mysql_set_server_option(MYSQL *mysql, enum enum_mysql_set_option option)
 {
-  CALLREAL(mysql, mysql_set_server_option, option);
+  CALLREALWITHJUDGE(mysql, mysql_set_server_option, option);
 }
 
 int STDCALL mysql_ping(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_ping);
+  CALLREALWITHJUDGE(mysql, mysql_ping);
 }
 
 const char * STDCALL mysql_stat(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_stat);
+  CALLREALWITHJUDGE(mysql, mysql_stat);
 }
 
 const char * STDCALL mysql_get_server_info(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_get_server_info);
+  CALLREALWITHJUDGE(mysql, mysql_get_server_info);
 }
 
 const char * STDCALL mysql_get_client_info(void)
@@ -590,50 +640,42 @@ unsigned long STDCALL mysql_get_client_version(void)
 
 const char * STDCALL mysql_get_host_info(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_get_host_info);
+  CALLREALWITHJUDGE(mysql, mysql_get_host_info);
 }
 
 unsigned long STDCALL mysql_get_server_version(MYSQL *mysql)
 {
-  if (OB_SQL_MAGIC == ((ObSQLMySQL*)mysql)->magic_)
-  {
-    CALLREAL(mysql, mysql_get_server_version);
-  }
-  else
-  {
-    return (*(g_func_set.real_mysql_get_server_version))(mysql);
-  }
+  CALLREALWITHJUDGE(mysql, mysql_get_server_version);
 }
 
 unsigned int STDCALL mysql_get_proto_info(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_get_proto_info);
+  CALLREALWITHJUDGE(mysql, mysql_get_proto_info);
 }
 
 MYSQL_RES * STDCALL mysql_list_dbs(MYSQL *mysql,const char *wild)
 {
-  CALLREAL(mysql, mysql_list_dbs, wild);
+  CALLREALWITHJUDGE(mysql, mysql_list_dbs, wild);  
 }
 
 MYSQL_RES * STDCALL mysql_list_tables(MYSQL *mysql,const char *wild)
 {
-  CALLREAL(mysql, mysql_list_tables, wild);
+  CALLREALWITHJUDGE(mysql, mysql_list_tables, wild);
 }
 
 MYSQL_RES * STDCALL mysql_list_processes(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_list_processes);
+  CALLREALWITHJUDGE(mysql, mysql_list_processes);
 }
-
 
 int STDCALL mysql_options(MYSQL *mysql,enum mysql_option option, const char *arg)
 {
-  CALLREAL(mysql, mysql_options, option, arg);
+  CALLREALWITHJUDGE(mysql, mysql_options, option, arg);
 }
 
 int STDCALL mysql_options(MYSQL *mysql,enum mysql_option option, const void *arg)
 {
-  CALLREAL(mysql, mysql_options, option, arg);
+  CALLREALWITHJUDGE(mysql, mysql_options, option, arg);
 }
 
 void STDCALL mysql_free_result(MYSQL_RES *result)
@@ -673,7 +715,7 @@ MYSQL_FIELD * STDCALL mysql_fetch_field(MYSQL_RES *result)
 
 MYSQL_RES * STDCALL mysql_list_fields(MYSQL *mysql, const char *table, const char *wild)
 {
-  CALLREAL(mysql, mysql_list_fields, table, wild);
+  CALLREALWITHJUDGE(mysql, mysql_list_fields, table, wild);
 }
 
 unsigned long STDCALL mysql_escape_string(char *to,const char *from, unsigned long from_length)
@@ -688,7 +730,7 @@ unsigned long STDCALL mysql_hex_string(char *to,const char *from, unsigned long 
 
 unsigned long STDCALL mysql_real_escape_string(MYSQL *mysql, char *to,const char *from, unsigned long length)
 {
-  CALLREAL(mysql, mysql_real_escape_string, to, from, length);
+  CALLREALWITHJUDGE(mysql, mysql_real_escape_string, to, from, length);
 }
 
 void STDCALL mysql_debug(const char *debug)
@@ -698,7 +740,7 @@ void STDCALL mysql_debug(const char *debug)
 
 void STDCALL myodbc_remove_escape(MYSQL *mysql,char *name)
 {
-  CALLREAL(mysql, myodbc_remove_escape, name);
+  CALLREALWITHJUDGE(mysql, myodbc_remove_escape, name);
 }
 
 unsigned int STDCALL mysql_thread_safe(void)
@@ -713,7 +755,7 @@ my_bool STDCALL mysql_embedded(void)
 
 my_bool STDCALL mysql_read_query_result(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_read_query_result);
+  CALLREALWITHJUDGE(mysql, mysql_read_query_result);
 }
 
 MYSQL_STMT * STDCALL mysql_stmt_init(MYSQL *mysql)
@@ -897,110 +939,114 @@ unsigned int STDCALL mysql_stmt_field_count(MYSQL_STMT *stmt)
 
 my_bool STDCALL mysql_commit(MYSQL * mysql)
 {
-  CALLREAL(mysql, mysql_commit);
+  //CALLREALWITHJUDGE(mysql, mysql_commit);
+  return (my_bool)mysql_real_query(mysql, "commit", 6);
 }
 
 my_bool STDCALL mysql_rollback(MYSQL * mysql)
 {
-  CALLREAL(mysql, mysql_rollback);
+  //CALLREALWITHJUDGE(mysql, mysql_rollback);
+  return (my_bool)mysql_real_query(mysql, "rollback", 8);
 }
 
 my_bool STDCALL mysql_autocommit(MYSQL * mysql, my_bool auto_mode)
 {
-  CALLREAL(mysql, mysql_autocommit, auto_mode);
+  //CALLREALWITHJUDGE(mysql, mysql_autocommit, auto_mode);
+  return (my_bool)mysql_real_query(mysql, auto_mode ?
+                          "set autocommit=1":"set autocommit=0",
+                          16);
 }
 
 my_bool STDCALL mysql_more_results(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_more_results);
+  CALLREALWITHJUDGE(mysql, mysql_more_results);
 }
 
 int STDCALL mysql_next_result(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_next_result);
+  CALLREALWITHJUDGE(mysql, mysql_next_result);
 }
 
 //give back to pool
 void STDCALL mysql_close(MYSQL *mysql)
 {
   ObSQLConn *conn = NULL;
-  TBSYS_LOG(INFO, "mysql_close called mysql is %p", mysql);
-  if (OB_SQL_MAGIC == ((ObSQLMySQL*)mysql)->magic_)
+  unsigned int eno = 0;
+  if (NULL != mysql)
   {
-    TBSYS_LOG(INFO, "ob mysql is %p", mysql);
-    //TODO if mysql has some error real close it and create an new connection
-    if (NULL != ((ObSQLMySQL*)mysql)->rconn_)
+    if (OB_SQL_MAGIC == ((ObSQLMySQL*)mysql)->magic_)
     {
-      conn = ((ObSQLMySQL*)mysql)->rconn_;
-      if((*g_func_set.real_mysql_errno)(conn->mysql_))
+      TBSYS_LOG(INFO, "ob mysql is %p", mysql);
+      //TODO if mysql has some error real close it and create an new connection
+      if (NULL != ((ObSQLMySQL*)mysql)->rconn_)
       {
-        TBSYS_LOG(INFO, "mysql error no is %d", (*g_func_set.real_mysql_errno)(conn->mysql_));
-        pthread_rwlock_rdlock(&g_config_rwlock);
-        reconnect(conn);
-        pthread_rwlock_unlock(&g_config_rwlock);
+        conn = ((ObSQLMySQL*)mysql)->rconn_;
+        eno = (*g_func_set.real_mysql_errno)(conn->mysql_);
+        if(eno !=0 && errno != 2006) //2006 means server gone away
+        {
+          TBSYS_LOG(INFO, "mysql error no is %d", (*g_func_set.real_mysql_errno)(conn->mysql_));
+          pthread_rwlock_rdlock(&g_config_rwlock);
+          reconnect(conn);
+          pthread_rwlock_unlock(&g_config_rwlock);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "call release conn real mysql is %p in mysql close", conn->mysql_);
+          pthread_rwlock_rdlock(&g_config_rwlock);
+          release_conn(conn);
+          pthread_rwlock_unlock(&g_config_rwlock);
+        }
       }
-      else
+      else if (NULL != ((ObSQLMySQL*)mysql)->wconn_)
       {
-        TBSYS_LOG(INFO, "call release conn real mysql is %p in mysql close", conn->mysql_);
-        pthread_rwlock_rdlock(&g_config_rwlock);
-        release_conn(conn);
-        pthread_rwlock_unlock(&g_config_rwlock);
+        conn = ((ObSQLMySQL*)mysql)->wconn_;
+        eno = (*g_func_set.real_mysql_errno)(conn->mysql_);
+        if(eno != 0 && errno != 2006)
+        {
+          TBSYS_LOG(INFO, "mysql error no is %d", (*g_func_set.real_mysql_errno)(conn->mysql_));
+          // an error occurred close connection
+          pthread_rwlock_rdlock(&g_config_rwlock);
+          reconnect(conn);
+          pthread_rwlock_unlock(&g_config_rwlock);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "call release conn real mysql is %p in mysql close", conn->mysql_);
+          pthread_rwlock_rdlock(&g_config_rwlock);
+          release_conn(conn);
+          pthread_rwlock_unlock(&g_config_rwlock);
+        }
+      }
+      ((ObSQLMySQL*)mysql)->conn_ = NULL;
+      ((ObSQLMySQL*)mysql)->rconn_ = NULL;
+      ((ObSQLMySQL*)mysql)->wconn_ = NULL;
+      ((ObSQLMySQL*)mysql)->has_stmt_ = 0;
+      if (1 == ((ObSQLMySQL*)mysql)->alloc_)
+      {
+        ob_free(mysql);
+        mysql = NULL;
       }
     }
-    else if (NULL != ((ObSQLMySQL*)mysql)->wconn_)
+    else
     {
-      conn = ((ObSQLMySQL*)mysql)->wconn_;
-      if((*g_func_set.real_mysql_errno)(conn->mysql_))
-      {
-        TBSYS_LOG(INFO, "mysql error no is %d", (*g_func_set.real_mysql_errno)(conn->mysql_));
-        // an error occurred close connection
-        pthread_rwlock_rdlock(&g_config_rwlock);
-        reconnect(conn);
-        pthread_rwlock_unlock(&g_config_rwlock);
-      }
-      else
-      {
-        TBSYS_LOG(INFO, "call release conn real mysql is %p in mysql close", conn->mysql_);
-        pthread_rwlock_rdlock(&g_config_rwlock);
-        release_conn(conn);
-        pthread_rwlock_unlock(&g_config_rwlock);
-      }
+      (*g_func_set.real_mysql_close)(mysql);
     }
-    ((ObSQLMySQL*)mysql)->conn_ = NULL;
-    ((ObSQLMySQL*)mysql)->rconn_ = NULL;
-    ((ObSQLMySQL*)mysql)->wconn_ = NULL;
-    ((ObSQLMySQL*)mysql)->has_stmt_ = 0;
-    if (1 == ((ObSQLMySQL*)mysql)->alloc_)
-    {
-      ob_free(mysql);
-      mysql = NULL;
-    }
-  }
-  else
-  {
-    (*g_func_set.real_mysql_close)(mysql);
   }
 }
 
-//void my_init(void)
-//{
-//  (*g_func_set.real_my_init)();
-//}
-
-
 const char * mysql_get_ssl_cipher(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_get_ssl_cipher);
+  CALLREALWITHJUDGE(mysql, mysql_get_ssl_cipher);
 }
 
 void mysql_set_local_infile_default(MYSQL *mysql)
 {
-  CALLREAL(mysql, mysql_set_local_infile_default);
+  CALLREALWITHJUDGE(mysql, mysql_set_local_infile_default);
 }
 
 void mysql_set_local_infile_handler(MYSQL *mysql, int (*local_infile_init)(void **, const char *, void *), int (*local_infile_read)(void *, char *, unsigned int), void (*local_infile_end)(void *), int (*local_infile_error)(void *, char*, unsigned int), void *userdata)
 {
-  CALLREAL(mysql, mysql_set_local_infile_handler, local_infile_init, local_infile_read, local_infile_end, local_infile_error, userdata);
+  CALLREALWITHJUDGE(mysql, mysql_set_local_infile_handler, local_infile_init, local_infile_read, local_infile_end, local_infile_error, userdata);
 }
 
 int STDCALL mysql_stmt_next_result(MYSQL_STMT *stmt)
@@ -1010,12 +1056,12 @@ int STDCALL mysql_stmt_next_result(MYSQL_STMT *stmt)
 
 struct st_mysql_client_plugin * mysql_client_find_plugin(MYSQL *mysql, const char *name, int type)
 {
-  CALLREAL(mysql, mysql_client_find_plugin, name, type);
+  CALLREALWITHJUDGE(mysql, mysql_client_find_plugin, name, type);
 }
 
 struct st_mysql_client_plugin * mysql_client_register_plugin(MYSQL *mysql, struct st_mysql_client_plugin *plugin)
 {
-  CALLREAL(mysql, mysql_client_register_plugin, plugin);
+  CALLREALWITHJUDGE(mysql, mysql_client_register_plugin, plugin);
 }
 
 struct st_mysql_client_plugin * mysql_load_plugin(MYSQL *mysql, const char *name, int type, int argc, ...)
@@ -1030,7 +1076,7 @@ struct st_mysql_client_plugin * mysql_load_plugin(MYSQL *mysql, const char *name
 
 struct st_mysql_client_plugin * mysql_load_plugin_v(MYSQL *mysql, const char *name, int type, int argc, va_list args)
 {
-  CALLREAL(mysql, mysql_load_plugin_v, name, type, argc, args);
+  CALLREALWITHJUDGE(mysql, mysql_load_plugin_v, name, type, argc, args);
 }
 
 int mysql_plugin_options(struct st_mysql_client_plugin *plugin, const char *option, const void *value)

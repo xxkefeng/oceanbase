@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_empty_row_filter.h 
+ * ob_empty_row_filter.h
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -27,13 +27,15 @@ namespace oceanbase
     {
       public:
         int open();
+        virtual void reset();
+        virtual void reuse();
         int get_next_row(const common::ObRow *&row);
         int get_row_desc(const common::ObRowDesc *&row_desc) const;
         int64_t to_string(char* buf, const int64_t buf_len) const;
         enum ObPhyOperatorType get_type() const;
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
-
       private:
         common::ObRowDesc cur_row_desc_;
         common::ObRow cur_row_;
@@ -42,5 +44,3 @@ namespace oceanbase
 }
 
 #endif /* _OB_EMPTY_ROW_FILTER_H */
-  
-

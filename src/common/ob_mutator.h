@@ -23,6 +23,7 @@
 #include "ob_action_flag.h"
 #include "page_arena.h"
 #include "ob_schema.h"
+#include "ob_trace_log.h"
 
 namespace oceanbase
 {
@@ -56,7 +57,7 @@ namespace oceanbase
     class ObMutator
     {
       friend class oceanbase::tests::common::TestMutatorHelper;
-      static const int64_t ALLOCATOR_PAGE_SIZE = 4L * 1024L * 1024L;
+      static const int64_t ALLOCATOR_PAGE_SIZE = 2L * 1024L * 1024L;
       public:
         enum
         {
@@ -84,10 +85,11 @@ namespace oceanbase
           FINISHED = 2,
         };
 
-        enum BarrierFlag
+        enum BarrierFlag // Bit Flag
         {
           NO_BARRIER = 0,
           ROWKEY_BARRIER = 1,
+          ROW_DML_TYPE = 0x2,
         };
 
       public:
@@ -96,6 +98,34 @@ namespace oceanbase
         virtual ~ObMutator();
         int clear();
         int reset();
+        int reuse() { return clear(); }
+        void mark()
+        {
+          mark_list_head_         = list_head_;       
+          mark_list_tail_         = list_tail_;
+          mark_cell_count_        = cell_count_;
+          mark_first_table_name_  = first_table_name_;
+          mark_last_row_key_      = last_row_key_;
+          mark_last_table_name_   = last_table_name_;
+          mark_last_table_id_     = last_table_id_;
+          mark_cell_store_size_   = cell_store_size_;
+        };
+        void rollback()
+        {
+          list_head_         = mark_list_head_;       
+          list_tail_         = mark_list_tail_;
+          if (NULL != list_tail_)
+          {
+            list_tail_->next = NULL;
+          }
+          cell_count_        = mark_cell_count_;
+          first_table_name_  = mark_first_table_name_;
+          last_row_key_      = mark_last_row_key_;
+          last_table_name_   = mark_last_table_name_;
+          last_table_id_     = mark_last_table_id_;
+          cell_store_size_   = mark_cell_store_size_;
+          TBSYS_TRACE_LOG("rollback list_head=%p list_tail=%p cell_count=%ld cell_store_size=%ld", list_head_, list_tail_, cell_count_, cell_store_size_);
+        };
       public:
         // Uses ob&db semantic, ob semantic is used by default.
         int use_ob_sem();
@@ -131,6 +161,7 @@ namespace oceanbase
         int del_row(const uint64_t table_id, const ObRowkey& row_key);
 
         int add_row_barrier();
+        int set_dml_type(const ObDmlType dml_type);
         int add_cell(const ObMutatorCellInfo& cell);
         const ObString & get_first_table_name(void) const;
         int64_t size(void) const;
@@ -143,7 +174,7 @@ namespace oceanbase
         virtual void reset_iter();
         virtual int next_cell();
         virtual int get_cell(ObMutatorCellInfo** cell);
-        virtual int get_cell(ObMutatorCellInfo** cell, bool* is_row_changed, bool* is_row_finished);
+        virtual int get_cell(ObMutatorCellInfo** cell, bool* is_row_changed, bool* is_row_finished, ObDmlType *dml_type = NULL);
 
       public:
         int pre_serialize();
@@ -152,7 +183,11 @@ namespace oceanbase
         int64_t get_serialize_size(void) const;
 
       private:
-        int add_cell(const ObMutatorCellInfo& cell, const RowChangedStat row_changed_stat, const BarrierFlag barrier_flag = NO_BARRIER);
+        int next_cell_();
+        int add_cell(const ObMutatorCellInfo& cell,
+                    const RowChangedStat row_changed_stat,
+                    const BarrierFlag barrier_flag,
+                    const ObDmlType dml_type);
 
 
       private:
@@ -162,6 +197,7 @@ namespace oceanbase
           RowChangedStat row_changed_stat;
           RowFinishedStat row_finished_stat;
           int32_t barrier_flag;
+          ObDmlType dml_type;
           CellInfoNode* next;
         };
 
@@ -203,6 +239,15 @@ namespace oceanbase
         ObRowkeyInfo rowkey_info_;
         const ObSchemaManagerV2* schema_manager_;
         char* mutator_buf_;
+
+        CellInfoNode *mark_list_head_;
+        CellInfoNode *mark_list_tail_;
+        int64_t       mark_cell_count_;
+        ObString      mark_first_table_name_;
+        ObRowkey      mark_last_row_key_;
+        ObString      mark_last_table_name_;
+        uint64_t      mark_last_table_id_;
+        int64_t       mark_cell_store_size_;
     };
   }
 }

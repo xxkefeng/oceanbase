@@ -1,6 +1,8 @@
 #include "ob_base_server.h"
 #include "ob_tbnet_callback.h"
 #include "ob_tsi_factory.h"
+#include "ob_libeasy_mem_pool.h"
+#include "easy_pool.h"
 
 namespace oceanbase
 {
@@ -19,7 +21,11 @@ namespace oceanbase
       }
     }
 
-    int ObBaseServer::initialize() { return OB_SUCCESS; }
+    int ObBaseServer::initialize()
+    {
+      tzset();
+      return OB_SUCCESS;
+    }
     int ObBaseServer::start_service() {return OB_SUCCESS; }
 
     void ObBaseServer::wait_for_queue() {}
@@ -32,23 +38,28 @@ namespace oceanbase
       }
     }
 
+
     void ObBaseServer::destroy()
     {
-      libeasy_timer_.destroy();
+      TBSYS_LOG(WARN, "base server destroyed");
     }
 
     int ObBaseServer::start(bool need_wait)
     {
       int rc = OB_SUCCESS;
       int ret = EASY_OK;
+      easy_pool_set_allocator(ob_easy_realloc);
       easy_listen_t *listen = NULL;
-
       //create io thread
       eio_ = easy_eio_create(eio_, io_thread_count_);
       eio_->do_signal = 0;
       eio_->force_destroy_second = OB_CONNECTION_FREE_TIME_S;
       eio_->checkdrc = 1;
       eio_->support_ipv6 = 0;
+      eio_->no_redispatch = 1;
+      eio_->no_delayack = 1;
+      easy_eio_set_uthread_start(eio_, easy_on_ioth_start, this);
+      eio_->uthread_enable = 0;
       if (NULL == eio_)
       {
         rc = OB_ERROR;
@@ -82,6 +93,15 @@ namespace oceanbase
             TBSYS_LOG(INFO, "listen start, port = %d", port_);
           }
         }
+        if (OB_SUCCESS == rc)
+        {
+          easy_io_thread_t *ioth = NULL;
+          easy_thread_pool_for_each(ioth, eio_->io_thread_pool, 0)
+          {
+            ev_timer_init(&ioth->user_timer, easy_timer_cb, OB_LIBEASY_STATISTICS_TIMER, OB_LIBEASY_STATISTICS_TIMER);
+            ev_timer_start(ioth->loop, &(ioth->user_timer));
+          }
+        }
 
         //start io thread
         if (rc == OB_SUCCESS)
@@ -98,21 +118,6 @@ namespace oceanbase
             rc = OB_ERROR;
           }
         }
-
-        if (rc == OB_SUCCESS)
-        {
-          rc = libeasy_timer_.init();
-        }
-        if (rc == OB_SUCCESS)
-        {
-          //START TIMER
-          rc = start_ob_libeasy_statistics_task(eio_);
-        }
-        else
-        {
-          libeasy_timer_.destroy();
-        }
-
         if (rc == OB_SUCCESS)
         {
           rc = start_service();
@@ -155,7 +160,9 @@ namespace oceanbase
       if (!stoped_)
       {
         stoped_ = true;
+        TBSYS_LOG(WARN, "start to stop the server");
         destroy();
+        TBSYS_LOG(WARN, "start to stop eio");
         if (eio_ != NULL && NULL != eio_->pool)
         {
           easy_eio_stop(eio_);
@@ -163,7 +170,7 @@ namespace oceanbase
           easy_eio_destroy(eio_);
           eio_ = NULL;
         }
-        TBSYS_LOG(INFO, "server stoped.");
+        TBSYS_LOG(WARN, "server stoped.");
       }
     }
 
@@ -278,18 +285,21 @@ namespace oceanbase
       }
       return rc;
     }
-    int ObBaseServer::start_ob_libeasy_statistics_task(easy_io_t *eio)
+    void ObBaseServer::easy_timer_cb(EV_P_ ev_timer *w, int revents)
     {
-      int ret = OB_SUCCESS;
-      OB_ASSERT(eio != NULL);
-      libeasy_statistics_.init(eio);
-      ret = libeasy_timer_.schedule(libeasy_statistics_, OB_LIBEASY_STATISTICS_INTERVAL, true);
-      if (OB_SUCCESS != ret)
+      UNUSED(w);
+      UNUSED(loop);
+      UNUSED(revents);
+      char buffer[FD_BUFFER_SIZE];
+      int64_t pos = 0;
+      databuff_printf(buffer, FD_BUFFER_SIZE, pos, "tid=%ld fds=", EASY_IOTH_SELF->tid);
+      easy_connection_t *c = NULL;
+      easy_connection_t *c2 = NULL;
+      easy_list_for_each_entry_safe(c, c2, &(EASY_IOTH_SELF->connected_list), conn_list_node)
       {
-        TBSYS_LOG(INFO, "schedual libeasy statistics failed, ret=%d", ret);
+        databuff_printf(buffer, FD_BUFFER_SIZE, pos, "%d,", c->fd);
       }
-      return ret;
+      TBSYS_LOG(INFO, "%.*s", static_cast<int>(pos), buffer);
     }
-
   } /* common */
 } /* oceanbase */

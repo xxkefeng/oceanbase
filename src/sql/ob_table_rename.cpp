@@ -20,6 +20,12 @@
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObTableRename, PHY_TABLE_RENAME);
+  }
+}
 int ObTableRename::cons_row_desc()
 {
   int ret = OB_SUCCESS;
@@ -69,5 +75,3 @@ ObPhyOperatorType ObTableRename::get_type() const
 {
   return PHY_TABLE_RENAME;
 }
-
-

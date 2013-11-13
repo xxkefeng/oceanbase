@@ -181,5 +181,27 @@ namespace oceanbase
       return (::ftruncate(fd_, length));
     }
 
+    int64_t FileUtils::get_size()
+    {
+      int64_t size =0;
+      if (fd_ < 0)
+      {
+        size = -1;
+      }
+      else
+      {
+        struct stat st;
+        if (0 != (::fstat(fd_, &st)))
+        {
+          size = -1;
+        }
+        else
+        {
+          size = st.st_size;
+        }
+      }
+      return size;
+    }
+
   }//end namespace common
 }//end namespace oceanbase

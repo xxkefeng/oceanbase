@@ -25,8 +25,8 @@ namespace oceanbase
     ObBalanceInfo::ObBalanceInfo()
       :table_sstable_total_size_(0),
        table_sstable_count_(0),
-       curr_migrate_in_num_(0),
-       curr_migrate_out_num_(0)
+       cur_in_(0),
+       cur_out_(0)
     {
     }
 
@@ -38,9 +38,8 @@ namespace oceanbase
     void ObBalanceInfo::reset()
     {
       reset_for_table();
-      curr_migrate_in_num_ = 0;
-      curr_migrate_out_num_ = 0;
-      migrate_to_.reset();
+      cur_in_ = 0;
+      cur_out_ = 0;
     }
 
     void ObBalanceInfo::reset_for_table()
@@ -49,11 +48,31 @@ namespace oceanbase
       table_sstable_total_size_ = 0;
     }
 
+    void ObBalanceInfo::inc_in()
+    {
+      atomic_inc(reinterpret_cast<uint32_t*>(&cur_in_));
+    }
+
+    void ObBalanceInfo::inc_out()
+    {
+      atomic_inc(reinterpret_cast<uint32_t*>(&cur_out_));
+    }
+
+    void ObBalanceInfo::dec_in()
+    {
+      atomic_dec(reinterpret_cast<uint32_t*>(&cur_in_));
+    }
+
+    void ObBalanceInfo::dec_out()
+    {
+      atomic_dec(reinterpret_cast<uint32_t*>(&cur_out_));
+    }
+
     ////////////////////////////////////////////////////////////////
     ObServerStatus::ObServerStatus()
       :last_hb_time_(0),last_hb_time_ms_(0),ms_status_(STATUS_DEAD),
-       status_(STATUS_DEAD), port_cs_(0), port_ms_(0), port_ms_sql_(0), hb_retry_times_(0),
-       register_time_(0), wait_restart_(false), can_restart_(false)
+      status_(STATUS_DEAD), port_cs_(0), port_ms_(0), port_ms_sql_(0), hb_retry_times_(0),
+      register_time_(0), wait_restart_(false), can_restart_(false), lms_(false)
     {
     }
     void ObServerStatus::set_hb_time(int64_t hb_t)
@@ -67,6 +86,11 @@ namespace oceanbase
       last_hb_time_ms_ = hb_t;
     }
 
+    void ObServerStatus::set_lms(bool lms)
+    {
+      lms_ = lms;
+    }
+
     bool ObServerStatus::is_alive(int64_t now, int64_t lease) const
     {
       return now - last_hb_time_ < lease;
@@ -75,6 +99,11 @@ namespace oceanbase
     bool ObServerStatus::is_ms_alive(int64_t now, int64_t lease) const
     {
       return now - last_hb_time_ms_ < lease;
+    }
+
+    bool ObServerStatus::is_lms() const
+    {
+      return lms_;
     }
 
     const char* ObServerStatus::get_cs_stat_str() const
@@ -290,7 +319,7 @@ namespace oceanbase
             && it->port_ms_ != 0)
         {
           TBSYS_LOG(DEBUG, "select serving ms port: [%d], server: [%s]",
-                    it->port_ms_, to_cstring(it->server_));
+              it->port_ms_, to_cstring(it->server_));
           break;
         }
       }
@@ -301,7 +330,7 @@ namespace oceanbase
      * @return 1 new serve 2 relive server 0 heartbt
      */
     int ObChunkServerManager::receive_hb(const ObServer& server, const int64_t time_stamp,
-        const bool is_merge_server, const int32_t sql_port, const bool is_regist)
+        const bool is_merge_server, const bool is_listen_ms, const int32_t sql_port, const bool is_regist)
     {
       int res = 0;
       iterator it = find_by_ip(server);
@@ -319,10 +348,11 @@ namespace oceanbase
             it->ms_status_ = ObServerStatus::STATUS_SERVING;
             it->port_ms_ = server.get_port();
             it->port_ms_sql_ = sql_port;
+            it->lms_ = is_listen_ms;
             if ((it->port_ms_sql_ != 0) && (it->port_ms_sql_ != sql_port))
             {
-              TBSYS_LOG(ERROR, "check alive mergeserver port modified:old[%d], new[%d], server[%s]",
-                  it->port_ms_sql_, sql_port, server.to_cstring());
+              TBSYS_LOG(ERROR, "check alive mergeserver port modified:old[%d], new[%d], server[%s], listener[%d]",
+                  it->port_ms_sql_, sql_port, server.to_cstring(), is_listen_ms);
             }
           }
         }
@@ -338,6 +368,7 @@ namespace oceanbase
             it->status_ = ObServerStatus::STATUS_WAITING_REPORT;
             it->server_.set_port(server.get_port());
             it->port_cs_ = server.get_port();
+            it->lms_ = false;
             if ((it->port_cs_ != 0) && (it->port_cs_ != server.get_port()))
             {
               TBSYS_LOG(ERROR, "check alive chunkserver port modified:old[%d], new[%d], server[%s]",
@@ -354,12 +385,13 @@ namespace oceanbase
         tmp_server_status.server_ = server;
         if (is_merge_server)
         {
-          TBSYS_LOG(TRACE, "receive hb from new mergeserver, server=%s ts=%ld is_regist=%d",
-              server.to_cstring(), time_stamp, is_regist);
+          TBSYS_LOG(TRACE, "receive hb from new mergeserver, server=%s ts=%ld is_lms=%d is_regist=%d",
+              server.to_cstring(), time_stamp, is_listen_ms, is_regist);
           tmp_server_status.port_ms_ = server.get_port();
           tmp_server_status.port_ms_sql_ = sql_port;
           tmp_server_status.ms_status_ = ObServerStatus::STATUS_SERVING;
           tmp_server_status.set_hb_time_ms(time_stamp);
+          tmp_server_status.set_lms(is_listen_ms);
         }
         else
         {
@@ -367,6 +399,7 @@ namespace oceanbase
               server.to_cstring(), time_stamp, is_regist);
           tmp_server_status.port_cs_ = server.get_port();
           tmp_server_status.set_hb_time(time_stamp);
+          tmp_server_status.set_lms(false);
           tmp_server_status.status_ = ObServerStatus::STATUS_WAITING_REPORT;
           tmp_server_status.register_time_ = time_stamp;
         }
@@ -495,7 +528,7 @@ namespace oceanbase
       return server;
     }
 
-    void ObChunkServerManager::reset_balance_info(int32_t max_migrate_out_per_cs)
+    void ObChunkServerManager::reset_balance_info()
     {
       int32_t cs_num = 0;
       ObChunkServerManager::iterator it;
@@ -507,7 +540,8 @@ namespace oceanbase
           cs_num++;
         }
       }
-      migrate_infos_.reset(cs_num, max_migrate_out_per_cs);
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      migrate_infos_.reset();
     }
 
     void ObChunkServerManager::reset_balance_info_for_table(int32_t &cs_num, int32_t &shutdown_num)
@@ -531,22 +565,25 @@ namespace oceanbase
 
     bool ObChunkServerManager::is_migrate_infos_full() const
     {
+      tbsys::CRLockGuard guard(migrate_infos_lock_);
       return migrate_infos_.is_full();
     }
 
-    int ObChunkServerManager::add_migrate_info(ObServerStatus& cs, const common::ObNewRange &range, int32_t dest_cs_idx)
+    int64_t ObChunkServerManager::get_migrate_num() const
     {
-      return cs.balance_info_.migrate_to_.add_migrate_info(range, dest_cs_idx, migrate_infos_);
+      tbsys::CRLockGuard guard(migrate_infos_lock_);
+      return migrate_infos_.get_used_count();
     }
 
-    int ObChunkServerManager::add_copy_info(ObServerStatus& cs, const common::ObNewRange &range, int32_t dest_cs_idx)
-    {
-      return cs.balance_info_.migrate_to_.add_copy_info(range, dest_cs_idx, migrate_infos_);
-    }
-
-    int32_t ObChunkServerManager::get_max_migrate_num() const
+    int64_t ObChunkServerManager::get_max_migrate_num() const
     {
       return migrate_infos_.get_size();
+    }
+
+    void ObChunkServerManager::set_max_migrate_num(int64_t size)
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      migrate_infos_.set_size(size);
     }
 
     void ObChunkServerManager::set_server_down(iterator& it)
@@ -560,7 +597,7 @@ namespace oceanbase
           TBSYS_LOG(INFO, "chunkserver %s is down", to_cstring(tmp_server));
         }
         it->status_ = ObServerStatus::STATUS_DEAD;
-        it->balance_info_.reset();
+        //it->balance_info_.reset();
       }
       return ;
     }
@@ -674,15 +711,15 @@ namespace oceanbase
           {
             switch(op)
             {
-            case SHUTDOWN:
-              TBSYS_LOG(INFO, "cancel shutting down server=%s", it->server_.to_cstring());
-              it->status_ = ObServerStatus::STATUS_SERVING;
-              break;
-            case RESTART:
-            default:
-              TBSYS_LOG(INFO, "cancel restart server=%s", it->server_.to_cstring());
-              it->wait_restart_ = false;
-              break;
+              case SHUTDOWN:
+                TBSYS_LOG(INFO, "cancel shutting down server=%s", it->server_.to_cstring());
+                it->status_ = ObServerStatus::STATUS_SERVING;
+                break;
+              case RESTART:
+              default:
+                TBSYS_LOG(INFO, "cancel restart server=%s", it->server_.to_cstring());
+                it->wait_restart_ = false;
+                break;
             }
           }
           else
@@ -1092,7 +1129,7 @@ namespace oceanbase
       for (it = begin(); it != end(); ++it)
       {
         if (ObServerStatus::STATUS_DEAD != it->ms_status_
-            && it->port_ms_sql_ != OB_FAKE_MS_PORT)
+            && !it->lms_)
         {
           ms_num++;
         }
@@ -1107,7 +1144,7 @@ namespace oceanbase
         for (it = begin(); it != end() && i < ms_num; ++it)
         {
           if (ObServerStatus::STATUS_DEAD != it->ms_status_
-              && it->port_ms_sql_ != OB_FAKE_MS_PORT)
+              && !it->lms_)
           {
             if (OB_SUCCESS != (ret = serialize_ms(it, buf, buf_len, pos)))
             {
@@ -1121,6 +1158,54 @@ namespace oceanbase
         }
       }
       return ret;
+    }
+    int ObChunkServerManager::get_ms_port(const ObServer& server, int32_t &port)const
+    {
+      int ret = OB_ERROR;
+      for (int64_t i = 0; i < servers_.get_array_index(); i++)
+      {
+        if (servers_.at(i) == NULL)
+        {
+          TBSYS_LOG(ERROR, "never reach this, bugs");
+        }
+        else
+        {
+          if (!server.compare_by_ip((servers_.at(i))->server_) && !(servers_.at(i))->server_.compare_by_ip(server))
+          {
+            ret = OB_SUCCESS;
+            port = servers_.at(i)->port_ms_;
+            break;
+          }
+        }
+      }
+      return ret;
+    }
+
+    int ObChunkServerManager::add_migrate_info(const common::ObServer& src_server,
+        const common::ObServer& dest_server, const ObDataSourceDesc& data_source_desc)
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      return migrate_infos_.add_migrate_info(src_server, dest_server, data_source_desc);
+    }
+
+    int ObChunkServerManager::free_migrate_info(const common::ObNewRange& range, const common::ObServer& src_server,
+        const common::ObServer& dest_server)
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      return migrate_infos_.free_migrate_info(range, src_server, dest_server);
+    }
+
+    bool ObChunkServerManager::check_migrate_info_timeout(int64_t timeout, common::ObServer& src_server,
+            common::ObServer& dest_server, common::ObDataSourceDesc::ObDataSourceType& type)
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      return migrate_infos_.check_migrate_info_timeout(timeout, src_server, dest_server, type);
+    }
+
+    void ObChunkServerManager::print_migrate_info()
+    {
+      tbsys::CWLockGuard guard(migrate_infos_lock_);
+      migrate_infos_.print_migrate_info();
     }
   }
 }

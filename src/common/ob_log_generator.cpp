@@ -21,6 +21,78 @@ namespace oceanbase
 {
   namespace common
   {
+    int DebugLog::advance()
+    {
+      int err = OB_SUCCESS;
+      last_ctime_ = ctime_;
+      ctime_ = tbsys::CTimeUtil::getTime();
+      return err;
+    }
+
+    int64_t DebugLog::to_string(char* buf, const int64_t len) const
+    {
+      int64_t pos = 0;
+      databuff_printf(buf, len, pos, "DebugLog(%s, ctime=%s[%ld], last_ctime=%s[%ld])", to_cstring(server_),
+                      time2str(ctime_), ctime_, time2str(last_ctime_), last_ctime_);
+      return pos;
+    }
+
+    int DebugLog::serialize(char* buf, int64_t limit, int64_t& pos) const
+    {
+      int err = OB_SUCCESS;
+      int64_t new_pos = pos;
+      if (NULL == buf || limit < 0 || pos > limit)
+      {
+        err = OB_INVALID_ARGUMENT;
+        //TBSYS_LOG(ERROR, "INVALID_ARGUMENT: buf=%p, limit=%ld, pos=%ld", buf, limit, pos);
+      }
+      else if (OB_SUCCESS != serialization::encode_i64(buf, limit, new_pos, MAGIC)
+               || OB_SUCCESS != server_.serialize(buf, limit, new_pos)
+               || OB_SUCCESS != serialization::encode_i64(buf, limit, new_pos, ctime_)
+               || OB_SUCCESS != serialization::encode_i64(buf, limit, new_pos, last_ctime_))
+      {
+        err = OB_SERIALIZE_ERROR;
+        //TBSYS_LOG(ERROR, "serialize(buf=%p, limit=%ld, pos=%ld): fail", buf, limit, pos);
+      }
+      else
+      {
+        pos = new_pos;
+      }
+      return err;
+    }
+
+    int DebugLog::deserialize(const char* buf, int64_t limit, int64_t& pos)
+    {
+      int err = OB_SUCCESS;
+      int64_t new_pos = pos;
+      int64_t magic = 0;
+      if (NULL == buf || limit < 0 || pos > limit)
+      {
+        err = OB_INVALID_ARGUMENT;
+        //TBSYS_LOG(ERROR, "INVALID_ARGUMENT: buf=%p, limit=%ld, pos=%ld", buf, limit, pos);
+      }
+      else if (OB_SUCCESS != serialization::decode_i64(buf, limit, new_pos, (int64_t*)&magic))
+      {
+        err = OB_DESERIALIZE_ERROR;
+      }
+      else if (magic != MAGIC)
+      {
+        err = OB_DESERIALIZE_ERROR;
+      }
+      else if (OB_SUCCESS != server_.deserialize(buf, limit, new_pos)
+               || OB_SUCCESS != serialization::decode_i64(buf, limit, new_pos, (int64_t*)&ctime_)
+               || OB_SUCCESS != serialization::decode_i64(buf, limit, new_pos, (int64_t*)&last_ctime_))
+      {
+        err = OB_DESERIALIZE_ERROR;
+        //TBSYS_LOG(ERROR, "deserialize(buf=%p, limit=%ld, pos=%ld): fail", buf, limit, pos);
+      }
+      else
+      {
+        pos = new_pos;
+      }
+      return err;
+    }
+
     inline int64_t get_align_padding_size(const int64_t x, const int64_t mask)
     {
       return -x & mask;
@@ -31,11 +103,11 @@ namespace oceanbase
       return !(x & mask);
     }
 
-    static int64_t calc_nop_log_len(int64_t pos)
+    static int64_t calc_nop_log_len(int64_t pos, int64_t min_log_size)
     {
       ObLogEntry entry;
       int64_t header_size = entry.get_serialize_size();
-      return get_align_padding_size(pos + header_size + 1, ObLogGenerator::LOG_FILE_ALIGN_MASK) + 1;
+      return get_align_padding_size(pos + header_size + min_log_size, ObLogGenerator::LOG_FILE_ALIGN_MASK) + min_log_size;
     }
 
     char ObLogGenerator::eof_flag_buf_[LOG_FILE_ALIGN_SIZE] __attribute__ ((aligned(DIO_ALIGN_SIZE)));
@@ -57,6 +129,7 @@ namespace oceanbase
                                       log_buf_(NULL), log_buf_len_(0), pos_(0)
     {
       memset(empty_log_, 0, sizeof(empty_log_));
+      memset(nop_log_, 0, sizeof(nop_log_));
     }
 
     ObLogGenerator:: ~ObLogGenerator()
@@ -90,7 +163,7 @@ namespace oceanbase
       return err;
     }
 
-    int ObLogGenerator::init(int64_t log_buf_size, int64_t log_file_max_size)
+    int ObLogGenerator::init(int64_t log_buf_size, int64_t log_file_max_size, const ObServer* server)
     {
       int err = OB_SUCCESS;
       int sys_err = 0;
@@ -109,6 +182,10 @@ namespace oceanbase
       }
       else
       {
+        if (NULL != server)
+        {
+          debug_log_.server_ = *server;
+        }
         log_file_max_size_ = log_file_max_size;
         log_buf_len_ = log_buf_size + LOG_FILE_ALIGN_SIZE;
         TBSYS_LOG(INFO, "log_generator.init(log_buf_size=%ld, log_file_max_size=%ld)", log_buf_size, log_file_max_size);
@@ -120,7 +197,7 @@ namespace oceanbase
     {
       return start_cursor_.is_valid();
     }
-      
+
     bool ObLogGenerator::is_clear() const
     {
       return 0 == pos_ && false == is_frozen_ && start_cursor_.equal(end_cursor_);
@@ -312,6 +389,11 @@ namespace oceanbase
       {
         err = OB_INVALID_ARGUMENT;
       }
+      else if (is_frozen_)
+      {
+        err = OB_STATE_NOT_MATCH;
+        TBSYS_LOG(ERROR, "log_generator is frozen, cursor=[%s,%s]", to_cstring(start_cursor_), to_cstring(end_cursor_));
+      }
       else if (OB_SUCCESS != (err = generate_log(log_buf_, log_buf_len_ - reserved_len, pos_,
                                                  end_cursor_, cmd, log_data, data_len))
                && OB_BUF_NOT_ENOUGH != err)
@@ -341,6 +423,11 @@ namespace oceanbase
         if (OB_SUCCESS != (err = log_entry.deserialize(log_data, data_len, pos)))
         {
           TBSYS_LOG(ERROR, "log_entry.deserialize(log_data=%p, data_len=%ld, pos=%ld)=>%d", log_data, data_len, pos, err);
+        }
+        else if (pos + log_entry.get_log_data_len() > data_len)
+        {
+          err = OB_LAST_LOG_RUINNED;
+          TBSYS_LOG(ERROR, "last_log broken, cursor=[%s,%s]", to_cstring(start_cursor), to_cstring(end_cursor));
         }
         else if (check_data_integrity && OB_SUCCESS != (err = log_entry.check_data_integrity(log_data + pos)))
         {
@@ -513,12 +600,7 @@ namespace oceanbase
 
     int ObLogGenerator::gen_keep_alive()
     {
-      int err = OB_SUCCESS;
-      if (OB_SUCCESS != (err = do_write_log(OB_LOG_NOP, empty_log_, calc_nop_log_len(pos_), 0)))
-      {
-        TBSYS_LOG(ERROR, "write_log(OB_LOG_NOP, len=%ld)=>%d", calc_nop_log_len(pos_), err);
-      }
-      return err;
+      return write_nop(/*force_write*/true);
     }
 
     int ObLogGenerator::append_eof()
@@ -553,16 +635,26 @@ namespace oceanbase
       return err;
     }
 
-    int ObLogGenerator:: write_nop()
+    int ObLogGenerator:: write_nop(const bool force_write)
     {
       int err = OB_SUCCESS;
-      if (is_aligned(pos_, LOG_FILE_ALIGN_MASK))
+      int64_t pos = 0;
+      TBSYS_LOG(TRACE, "try write nop: pos=%ld, force_write=%s", pos_, STR_BOOL(force_write));
+      if (is_aligned(pos_, LOG_FILE_ALIGN_MASK) && !force_write)
       {
-        //TBSYS_LOG(INFO, "The log is aligned");
+        TBSYS_LOG(TRACE, "The log is aligned");
       }
-      else if (OB_SUCCESS != (err = do_write_log(OB_LOG_NOP, empty_log_, calc_nop_log_len(pos_), 0)))
+      else if (OB_SUCCESS != (err = debug_log_.advance()))
       {
-        TBSYS_LOG(ERROR, "write_log(OB_LOG_NOP, len=%ld)=>%d", calc_nop_log_len(pos_), err);
+        TBSYS_LOG(ERROR, "debug_log.advance()=>%d", err);
+      }
+      else if (OB_SUCCESS != (err = debug_log_.serialize(nop_log_, sizeof(nop_log_), pos)))
+      {
+        TBSYS_LOG(ERROR, "serialize_nop_log(%s)=>%d", to_cstring(end_cursor_), err);
+      }
+      else if (OB_SUCCESS != (err = do_write_log(OB_LOG_NOP, nop_log_, calc_nop_log_len(pos_, pos), 0)))
+      {
+        TBSYS_LOG(ERROR, "write_log(OB_LOG_NOP, len=%ld)=>%d", calc_nop_log_len(pos_, pos), err);
       }
       return err;
     }
@@ -590,6 +682,11 @@ namespace oceanbase
       return err;
     }
 
+    bool ObLogGenerator::has_log() const
+    {
+      return pos_ != 0;
+    }
+
     int ObLogGenerator:: get_log(ObLogCursor& start_cursor, ObLogCursor& end_cursor, char*& buf, int64_t& len)
     {
       int err = OB_SUCCESS;
@@ -597,7 +694,7 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "check_state()=>%d", err);
       }
-      else if (!is_frozen_ && OB_SUCCESS != (err = write_nop()))
+      else if (!is_frozen_ && OB_SUCCESS != (err = write_nop(has_log())))
       {
         TBSYS_LOG(ERROR, "write_nop()=>%d", err);
       }

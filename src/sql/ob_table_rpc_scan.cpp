@@ -16,24 +16,29 @@
 #include "ob_table_rpc_scan.h"
 #include "common/utility.h"
 #include "ob_sql_read_strategy.h"
+#include "mergeserver/ob_merge_server_main.h"
 
 #define CREATE_PHY_OPERRATOR_NEW(op, type_name, physical_plan, err)    \
-  ({                                                                    \
-    op = OB_NEW(type_name, ObModIds::OB_SQL_COMMON);                                 \
+  ({err = OB_SUCCESS;                                                   \
+    op = OB_NEW(type_name, ObModIds::OB_SQL_TABLE_RPC_SCAN);            \
    if (op == NULL) \
    { \
-   err = OB_ERR_PARSER_MALLOC_FAILED; \
-   TBSYS_LOG(WARN, "Can not malloc space for %s", #type_name);  \
+     err = OB_ERR_PARSER_MALLOC_FAILED; \
+     TBSYS_LOG(WARN, "Can not malloc space for %s", #type_name);  \
    } \
    else\
    {\
-   op->set_phy_plan(physical_plan);              \
-   if ((err = physical_plan->store_phy_operator(op)) != OB_SUCCESS) \
-   { \
-   TBSYS_LOG(WARN, "Add physical operator failed");  \
-   } \
+     op->set_phy_plan(physical_plan);              \
+     ob_inc_phy_operator_stat(op->get_type());\
    } \
    op;})
+
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObTableRpcScan, PHY_TABLE_RPC_SCAN);
+  }
+}
 
 namespace oceanbase
 {
@@ -49,6 +54,98 @@ namespace oceanbase
 
     ObTableRpcScan::~ObTableRpcScan()
     {
+      if (NULL != group_)
+      {
+        ob_dec_phy_operator_stat(group_->get_type());
+        OB_DELETE(ObMergeGroupBy, ObModIds::OB_SQL_TABLE_RPC_SCAN, group_);
+        group_ = NULL;
+      }
+
+      if (NULL != scalar_agg_)
+      {
+        ob_dec_phy_operator_stat(scalar_agg_->get_type());
+        OB_DELETE(ObScalarAggregate, ObModIds::OB_SQL_TABLE_RPC_SCAN, scalar_agg_);
+        scalar_agg_ = NULL;
+      }
+    }
+
+    void ObTableRpcScan::reset()
+    {
+      if (has_rpc_)
+      {
+        rpc_scan_.reset();
+        has_rpc_ = false;
+      }
+      select_get_filter_.reset();
+      if (has_scalar_agg_)
+      {
+        if (NULL != scalar_agg_)
+        {
+          scalar_agg_->reset();
+        }
+        has_scalar_agg_ = false;
+      }
+      if (has_group_)
+      {
+        if (NULL != group_)
+        {
+          group_->reset();
+        }
+        has_group_ = false;
+      }
+      if (has_group_columns_sort_)
+      {
+        group_columns_sort_.reset();
+        has_group_columns_sort_ = false;
+      }
+      if (has_limit_)
+      {
+        limit_.reset();
+        has_limit_ = false;
+      }
+      empty_row_filter_.reset();
+      is_skip_empty_row_ = true;
+      read_method_ = ObSqlReadStrategy::USE_SCAN;
+      ObTableScan::reset();
+    }
+
+    void ObTableRpcScan::reuse()
+    {
+      if (has_rpc_)
+      {
+        rpc_scan_.reuse();
+        has_rpc_ = false;
+      }
+      select_get_filter_.reuse();
+      if (has_scalar_agg_)
+      {
+        if (NULL != scalar_agg_)
+        {
+          scalar_agg_->reuse();
+        }
+        has_scalar_agg_ = false;
+      }
+      if (has_group_)
+      {
+        if (NULL == group_)
+        {
+          group_->reuse();
+        }
+        has_group_ = false;
+      }
+      if (has_group_columns_sort_)
+      {
+        group_columns_sort_.reuse();
+        has_group_columns_sort_ = false;
+      }
+      if (has_limit_)
+      {
+        limit_.reuse();
+        has_limit_ = false;
+      }
+      empty_row_filter_.reuse();
+      is_skip_empty_row_ = true;
+      read_method_ = ObSqlReadStrategy::USE_SCAN;
     }
 
     int ObTableRpcScan::open()
@@ -157,6 +254,7 @@ namespace oceanbase
       {
         ret = child_op_->close();
       }
+
       return ret;
     }
 
@@ -188,13 +286,16 @@ namespace oceanbase
       return ret;
     }
 
-    int ObTableRpcScan::init(ObSqlContext *context, const common::ObRpcScanHint &hint)
+    int ObTableRpcScan::init(ObSqlContext *context, const common::ObRpcScanHint *hint)
     {
       int ret = OB_SUCCESS;
       if (NULL != context)
       {
-        read_method_ = hint.read_method_;
-        is_skip_empty_row_ = hint.is_get_skip_empty_row_;
+        if (hint)
+        {
+          read_method_ = hint->read_method_;
+          is_skip_empty_row_ = hint->is_get_skip_empty_row_;
+        }
         ret = rpc_scan_.init(context, hint);
         if (OB_SUCCESS == ret)
         {
@@ -240,6 +341,7 @@ namespace oceanbase
         }
         if (OB_SUCCESS == ret)
         {
+          group_->set_phy_plan(my_phy_plan_);
           if ((ret = group_columns_sort_.add_sort_column(tid, cid, true)) != OB_SUCCESS)
           {
             TBSYS_LOG(WARN, "Add sort column of TableRpcScan sort operator failed. ret=%d", ret);
@@ -322,6 +424,7 @@ namespace oceanbase
           }
           if (OB_SUCCESS == ret)
           {
+            scalar_agg_->set_phy_plan(my_phy_plan_);
             has_scalar_agg_ = true;
             if ((ret = scalar_agg_->add_aggr_column(local_expr)) != OB_SUCCESS)
             {
@@ -437,7 +540,7 @@ namespace oceanbase
         pos += group_columns_sort_.to_string(buf+pos, buf_len-pos);
         databuff_printf(buf, buf_len, pos, ">, ");
       }
-      databuff_printf(buf, buf_len, pos, "rpc_scan=<");
+      databuff_printf(buf, buf_len, pos, "\nrpc_scan=<");
       pos += rpc_scan_.to_string(buf+pos, buf_len-pos);
       databuff_printf(buf, buf_len, pos, ">)\n");
       if (NULL != child_op_)
@@ -445,6 +548,82 @@ namespace oceanbase
         pos += child_op_->to_string(buf+pos, buf_len-pos);
       }
       return pos;
+    }
+
+    PHY_OPERATOR_ASSIGN(ObTableRpcScan)
+    {
+      int ret = OB_SUCCESS;
+      CAST_TO_INHERITANCE(ObTableRpcScan);
+      reset();
+      rpc_scan_.set_phy_plan(my_phy_plan_);
+      select_get_filter_.set_phy_plan(my_phy_plan_);
+      group_columns_sort_.set_phy_plan(my_phy_plan_);
+      limit_.set_phy_plan(my_phy_plan_);
+      empty_row_filter_.set_phy_plan(my_phy_plan_);
+
+      if ((ret = rpc_scan_.assign(&o_ptr->rpc_scan_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign rpc_scan_ failed. ret=%d", ret);
+      }
+      else if ((ret = select_get_filter_.assign(&o_ptr->select_get_filter_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign select_get_filter_ failed. ret=%d", ret);
+      }
+      else if ((ret = group_columns_sort_.assign(&o_ptr->group_columns_sort_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign group_columns_sort_ failed. ret=%d", ret);
+      }
+      else if ((ret = limit_.assign(&o_ptr->limit_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign limit_ failed. ret=%d", ret);
+      }
+      else if ((ret = empty_row_filter_.assign(&o_ptr->empty_row_filter_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign empty_row_filter_ failed. ret=%d", ret);
+      }
+      else
+      {
+        if (o_ptr->scalar_agg_)
+        {
+          if (!scalar_agg_)
+          {
+            CREATE_PHY_OPERRATOR_NEW(scalar_agg_, ObScalarAggregate, my_phy_plan_, ret);
+            if (OB_SUCCESS == ret)
+            {
+              scalar_agg_->set_phy_plan(my_phy_plan_);
+            }
+          }
+          if (ret == OB_SUCCESS
+            && (ret = scalar_agg_->assign(o_ptr->scalar_agg_)) != OB_SUCCESS)
+          {
+            TBSYS_LOG(WARN, "Assign scalar_agg_ failed. ret=%d", ret);
+          }
+        }
+        if (o_ptr->group_)
+        {
+          if (!group_)
+          {
+            CREATE_PHY_OPERRATOR_NEW(group_, ObMergeGroupBy, my_phy_plan_, ret);
+            if (OB_SUCCESS == ret)
+            {
+              group_->set_phy_plan(my_phy_plan_);
+            }
+          }
+          if (ret == OB_SUCCESS
+            && (ret = group_->assign(o_ptr->group_)) != OB_SUCCESS)
+          {
+            TBSYS_LOG(WARN, "Assign group_ failed. ret=%d", ret);
+          }
+        }
+        has_rpc_ = o_ptr->has_rpc_;
+        has_scalar_agg_ = o_ptr->has_scalar_agg_;
+        has_group_ = o_ptr->has_group_;
+        has_group_columns_sort_ = o_ptr->has_group_columns_sort_;
+        has_limit_ = o_ptr->has_limit_;
+        is_skip_empty_row_ = o_ptr->is_skip_empty_row_;
+        read_method_ = o_ptr->read_method_;
+      }
+      return ret;
     }
 
     DEFINE_SERIALIZE(ObTableRpcScan)

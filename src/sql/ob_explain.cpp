@@ -33,6 +33,22 @@ ObExplain::~ObExplain()
 {
 }
 
+void ObExplain::reset()
+{
+  verbose_ = false;
+  been_read_ = false;
+  row_desc_.reset();
+  str_buf_.reset();
+}
+
+void ObExplain::reuse()
+{
+  verbose_ = false;
+  been_read_ = false;
+  row_desc_.reset();
+  str_buf_.reuse();
+}
+
 int ObExplain::open()
 {
   int ret = OB_SUCCESS;
@@ -116,4 +132,11 @@ int64_t ObExplain::to_string(char* buf, const int64_t buf_len) const
     pos += child_op_->to_string(buf + pos, buf_len - pos);
   }
   return pos;
+}
+
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObExplain, PHY_EXPLAIN);
+  }
 }

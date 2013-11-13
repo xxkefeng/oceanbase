@@ -21,6 +21,6 @@ ob1.cs2.set status=enable
 ob1.ms2.start
 ob1.cs2.start
 ob1.cs0.force_stop
-ob1.check_cs_sstable 400,2
-ob2.check_cs_sstable 400
+ob1.check_cs_sstable 404,2
+ob2.check_cs_sstable 404
 ob1.stop_check

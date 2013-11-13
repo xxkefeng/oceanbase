@@ -110,8 +110,12 @@ namespace oceanbase
         ObChunkMerge &get_chunk_merge() ;
         ObCompactSSTableMemThread& get_cache_thread();
         ObBypassSSTableLoader& get_bypass_sstable_loader();
+        int uninstall_disk(int32_t disk_no);
+        int install_disk(const int32_t disk_no);
 
         int report_tablets();
+
+        int delete_tablet_on_rootserver(const common::ObVector<ObTablet*>& delete_tablets);
 
         int report_capacity_info();
 
@@ -134,6 +138,9 @@ namespace oceanbase
             const int64_t tablet_seq_num,
             const int32_t dest_disk_no,
             const uint64_t crc_sum);
+
+        int check_fetch_tablet_version(const common::ObNewRange& range,
+            const int64_t tablet_version, int64_t &old_tablet_version);
 
         void start_gc(const int64_t recycle_version);
 
@@ -192,6 +199,7 @@ namespace oceanbase
 
       public:
         inline bool is_stoped() { return !is_init_; }
+        inline bool is_disk_maintain() {return is_disk_maintain_;}
 
       public:
         struct ObGetThreadContext
@@ -251,6 +259,7 @@ namespace oceanbase
 
       private:
         bool is_init_;
+        volatile bool is_disk_maintain_;
         volatile uint64_t cur_serving_idx_;
         volatile uint64_t mgr_status_;
         volatile uint64_t max_sstable_file_seq_;

@@ -1,5 +1,5 @@
 /**
- * (C) 2010-2011 Alibaba Group Holding Limited.
+ * (C) 2010-2013 Alibaba Group Holding Limited.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -11,6 +11,7 @@
  *
  * Authors:
  *   Zhifeng YANG <zhuweng.yzf@taobao.com>
+ *   yongle.xh@alipay.com
  *
  */
 #include "ob_migrate_info.h"
@@ -19,58 +20,37 @@ using namespace oceanbase::rootserver;
 using namespace oceanbase::common;
 
 ObMigrateInfo::ObMigrateInfo()
-  :cs_idx_(OB_INVALID_INDEX),
-   stat_(STAT_INIT), keep_src_(0), 
-   reserve_(0), next_(NULL)
+  : stat_(STAT_FREE),data_source_desc_(),src_server_(),dest_server_(), start_time_(0)
 {
 }
 
 ObMigrateInfo::~ObMigrateInfo()
 {
-  cs_idx_ = OB_INVALID_INDEX;
-  stat_ = STAT_INIT;
-  next_ = NULL;
 }
 
-void ObMigrateInfo::reset(common::CharArena &allocator)
+void ObMigrateInfo::reuse()
 {
-  cs_idx_ = OB_INVALID_INDEX;
-  stat_ = STAT_INIT;
-  next_ = NULL;
-  if (NULL != range_.start_key_.ptr())
-  {
-    allocator.free((char*)range_.start_key_.ptr());
-    range_.start_key_.assign(NULL, 0);
-  }
-  if (NULL != range_.end_key_.ptr())
-  {
-    allocator.free((char*)range_.end_key_.ptr());
-    range_.end_key_.assign(NULL, 0);
-  }
+  stat_ = STAT_FREE;
+  data_source_desc_.range_.start_key_.assign(NULL, 0);
+  data_source_desc_.range_.end_key_.assign(NULL, 0);
+  data_source_desc_.uri_.assign(NULL, 0);
+  data_source_desc_.reset();
+  src_server_.reset();
+  dest_server_.reset();
+  start_time_ = 0;
+  allocator_.reuse();
 }
 
-bool ObMigrateInfo::is_init() const
+const char* ObMigrateInfo::get_status() const
 {
-  return NULL == next_
-    && OB_INVALID_INDEX == cs_idx_
-    && STAT_INIT == stat_
-    && NULL == range_.start_key_.ptr()
-    && NULL == range_.end_key_.ptr();
-}
-
-const char* ObMigrateInfo::get_stat_str() const
-{
-  const char* ret = "ERR";
+  const char* ret = "ERROR";
   switch(stat_)
   {
-    case STAT_INIT:
-      ret = "INIT";
+    case STAT_FREE:
+      ret = "FREE";
       break;
-    case STAT_SENT:
-      ret = "SENT";
-      break;
-    case STAT_DONE:
-      ret = "DONE";
+    case STAT_USED:
+      ret = "USED";
       break;
     default:
       break;
@@ -80,207 +60,151 @@ const char* ObMigrateInfo::get_stat_str() const
 
 ////////////////////////////////////////////////////////////////
 ObMigrateInfos::ObMigrateInfos()
-  :infos_(NULL), size_(0), alloc_idx_(0)
+  :size_(0)
 {
 }
 
 ObMigrateInfos::~ObMigrateInfos()
 {
-  if (NULL != infos_)
-  {
-    for (int i = 0; i < size_; ++i)
-    {
-      infos_[i].reset(key_allocator_);
-    }
-    delete [] infos_;
-    infos_ = NULL;
-  }
-  size_ = 0;
-  alloc_idx_ = 0;
 }
 
-void ObMigrateInfos::reset(int32_t cs_num, int32_t max_migrate_out_per_cs)
+void ObMigrateInfos::set_size(int64_t size)
 {
-  if (NULL == infos_)
+  if (size > MAX_MIGRATE_INFO_NUM)
   {
-    size_ = cs_num * max_migrate_out_per_cs;
-    infos_ = new(std::nothrow) ObMigrateInfo[size_];
-    if (NULL == infos_)
-    {
-      TBSYS_LOG(ERROR, "no memory");
-    }
-  }
-  else if (size_ < cs_num * max_migrate_out_per_cs)
-  {
-    for (int i = 0; i < size_; ++i)
-    {
-      infos_[i].reset(key_allocator_);
-    }
-    delete [] infos_;
-    size_ = cs_num * max_migrate_out_per_cs;
-    infos_ = new(std::nothrow) ObMigrateInfo[size_];
-    if (NULL == infos_)
-    {
-      TBSYS_LOG(ERROR, "no memory");
-    }
+    TBSYS_LOG(ERROR, "max migrate concurrency is %lu, can't set it as %lu, set it as %lu.",
+        MAX_MIGRATE_INFO_NUM, size, MAX_MIGRATE_INFO_NUM);
+    size_ = MAX_MIGRATE_INFO_NUM;
   }
   else
   {
-    for (int i = 0; i < size_; ++i)
-    {
-      infos_[i].reset(key_allocator_);
-    }
+    size_ = size;
   }
-  alloc_idx_ = 0;
+
+  TBSYS_LOG(INFO, "current max migrate concurrency is %lu", size_);
 }
 
-ObMigrateInfo *ObMigrateInfos::alloc_info()
+
+void ObMigrateInfos::reset()
 {
-  ObMigrateInfo *ret = NULL;
-  if (alloc_idx_ < size_)
+  for (int i = 0; i < MAX_MIGRATE_INFO_NUM; ++i)
   {
-    ret = infos_ + alloc_idx_;
-    alloc_idx_++;
+    infos_[i].reuse();
   }
-  return ret;
-}
-
-CharArena& ObMigrateInfos::get_allocator()
-{
-  return key_allocator_;
 }
 
 bool ObMigrateInfos::is_full() const
 {
-  return alloc_idx_ >= size_;
+  bool ret = true;
+  for(int64_t i=0; i<size_; ++i)
+  {
+    if (infos_[i].stat_ == ObMigrateInfo::STAT_FREE)
+    {
+      ret = false;
+    }
+  }
+  return ret;
 }
 
-////////////////////////////////////////////////////////////////    
-ObCsMigrateTo::ObCsMigrateTo()
-  :info_head_(NULL), info_tail_(NULL), count_(0), reserve_(0)
+int64_t ObMigrateInfos::get_used_count() const
 {
+  int64_t count = 0;
+  for(int64_t i=0; i<MAX_MIGRATE_INFO_NUM; ++i)
+  {
+    if (infos_[i].stat_ == ObMigrateInfo::STAT_USED)
+    {
+      ++count;
+    }
+  }
+  return count;
 }
 
-ObCsMigrateTo::~ObCsMigrateTo()
-{
-  reset();
-}
-
-void ObCsMigrateTo::reset()
-{
-  info_head_ = NULL;
-  info_tail_ = NULL;
-  count_ = 0;
-}
-
-ObMigrateInfo *ObCsMigrateTo::head()
-{
-  return info_head_;
-}
-
-ObMigrateInfo *ObCsMigrateTo::tail()
-{
-  return info_tail_;
-}
-
-const ObMigrateInfo *ObCsMigrateTo::head() const
-{
-  return info_head_;
-}
-
-const ObMigrateInfo *ObCsMigrateTo::tail() const
-{
-  return info_tail_;
-}
-
-int32_t ObCsMigrateTo::count() const
-{
-  return count_;
-}
-
-int ObCsMigrateTo::add_migrate_info(const common::ObNewRange &range, int32_t dest_cs_idx, int8_t keep_src, ObMigrateInfos &infos)
+int ObMigrateInfos::add_migrate_info(const common::ObServer& src_server,
+    const common::ObServer& dest_server, const common::ObDataSourceDesc& data_source_desc)
 {
   int ret = OB_SUCCESS;
   ObMigrateInfo* minfo = NULL;
-  if (OB_INVALID_INDEX == dest_cs_idx)
+  for(int64_t i=0; i<MAX_MIGRATE_INFO_NUM; ++i)
   {
-    TBSYS_LOG(ERROR, "BUG invalid cs index");
-    ret = OB_INVALID_ARGUMENT;
-  }
-  else if (NULL == (minfo = infos.alloc_info()))
-  {
-    ret = OB_ARRAY_OUT_OF_RANGE;
-  }
-  else if (!minfo->is_init())
-  {
-    TBSYS_LOG(ERROR, "BUG element is not init");
-    ret = OB_ERROR;
-  }
-  else if (OB_SUCCESS != (ret = range.start_key_.deep_copy(minfo->range_.start_key_, infos.get_allocator())))
-  {
-    TBSYS_LOG(ERROR, "clone start key error");
-  }
-  else if (OB_SUCCESS != (ret = range.end_key_.deep_copy(minfo->range_.end_key_, infos.get_allocator())))
-  {
-    if (NULL != minfo->range_.start_key_.ptr())
+    if (infos_[i].stat_ == ObMigrateInfo::STAT_USED &&
+        infos_[i].data_source_desc_.range_ == data_source_desc.range_)
     {
-      infos.get_allocator().free((char*)minfo->range_.start_key_.ptr());
-      minfo->range_.start_key_.assign(NULL, 0);
+      ret = OB_ROOT_MIGRATE_INFO_EXIST;
+      break;
     }
   }
-  else
+
+  if (OB_SUCCESS == ret)
   {
-    minfo->cs_idx_ = dest_cs_idx;
-    minfo->range_.table_id_ = range.table_id_;
-    minfo->range_.border_flag_ = range.border_flag_;
-    minfo->keep_src_ = keep_src;
-    count_++;
-    if (NULL == info_head_)
+    for(int64_t i=0; i<size_; ++i)
     {
-      info_head_ = info_tail_ = minfo;
+      if (infos_[i].stat_ == ObMigrateInfo::STAT_FREE)
+      {
+        minfo = &infos_[i];
+        break;
+      }
+    }
+
+    if (NULL == minfo)
+    {
+      ret = OB_ROOT_MIGRATE_CONCURRENCY_FULL;
+      TBSYS_LOG(WARN, "no free migrate info found, failed to add migrate info, max_size=%ld", size_);
     }
     else
     {
-      info_tail_->next_ = minfo;
-      info_tail_ = minfo;
+      if (OB_SUCCESS != (ret = data_source_desc.range_.start_key_.deep_copy(
+              minfo->data_source_desc_.range_.start_key_, minfo->allocator_)))
+      {
+        TBSYS_LOG(ERROR, "clone start key error, ret=%d", ret);
+        minfo->reuse();
+      }
+      else if (OB_SUCCESS != (ret = data_source_desc.range_.end_key_.deep_copy(
+              minfo->data_source_desc_.range_.end_key_, minfo->allocator_)))
+      {
+        TBSYS_LOG(ERROR, "clone end key error, ret=%d", ret);
+        minfo->reuse();
+      }
+      else if (OB_SUCCESS != (ret = ob_write_string(minfo->allocator_, data_source_desc.uri_, minfo->data_source_desc_.uri_)))
+      {
+        TBSYS_LOG(ERROR, "clone uri error, ret=%d", ret);
+        minfo->reuse();
+      }
+      else
+      {
+        minfo->data_source_desc_.type_ = data_source_desc.type_;
+        minfo->data_source_desc_.range_.table_id_ = data_source_desc.range_.table_id_;
+        minfo->data_source_desc_.range_.border_flag_ = data_source_desc.range_.border_flag_;
+        minfo->data_source_desc_.sstable_version_ = data_source_desc.sstable_version_;
+        minfo->data_source_desc_.tablet_version_ = data_source_desc.tablet_version_;
+        minfo->data_source_desc_.keep_source_ = data_source_desc.keep_source_;
+        minfo->src_server_ = src_server;
+        minfo->dest_server_ = dest_server;
+        minfo->start_time_ = tbsys::CTimeUtil::getTime();
+        minfo->stat_ = ObMigrateInfo::STAT_USED;
+        TBSYS_LOG(DEBUG, "new migrate info: %s %s", to_cstring(dest_server), to_cstring(data_source_desc));
+      }
     }
   }
+
   return ret;
 }
 
-int ObCsMigrateTo::clone_string(common::CharArena &allocator, const common::ObString &in, common::ObString &out)
+int ObMigrateInfos::get_migrate_info(const common::ObNewRange& range, const common::ObServer& src_server,
+    const common::ObServer& dest_server, ObMigrateInfo*& info)
 {
-  int ret = OB_SUCCESS;
-  ObString::obstr_size_t len = in.length();
-  if (0 < len)
+  int ret = OB_ROOT_MIGRATE_INFO_NOT_FOUND;
+  info = NULL;
+  for(int64_t i=0; i<MAX_MIGRATE_INFO_NUM; ++i)
   {
-    char *key = allocator.alloc(len);
-    if (NULL == key)
+    if (infos_[i].stat_ == ObMigrateInfo::STAT_FREE)
     {
-      TBSYS_LOG(ERROR, "no memory");
-      ret = OB_ALLOCATE_MEMORY_FAILED;
+      continue;
     }
-    else
+    else if (infos_[i].data_source_desc_.range_ == range &&
+        infos_[i].src_server_ == src_server &&
+        infos_[i].dest_server_ == dest_server)
     {
-      memcpy(key, in.ptr(), len);
-      out.assign(key, len);
-    }
-  }
-  return ret;
-}
-
-int ObCsMigrateTo::set_migrate_done(const ObNewRange &range, int32_t dest_cs_idx)
-{
-  int ret = OB_ENTRY_NOT_EXIST;
-
-  ObMigrateInfo *minfo = info_head_;
-  for (int i = 0; i < count_ && NULL != minfo; ++i, minfo = minfo->next_)
-  {
-    if (ObMigrateInfo::STAT_SENT == minfo->stat_
-        && minfo->cs_idx_ == dest_cs_idx
-        && minfo->range_.equal(range))
-    {
-      minfo->stat_ = ObMigrateInfo::STAT_DONE;
+      info = &infos_[i];
       ret = OB_SUCCESS;
       break;
     }
@@ -288,12 +212,67 @@ int ObCsMigrateTo::set_migrate_done(const ObNewRange &range, int32_t dest_cs_idx
   return ret;
 }
 
-int ObCsMigrateTo::add_migrate_info(const common::ObNewRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos)
+int ObMigrateInfos::free_migrate_info(const common::ObNewRange& range, const common::ObServer& src_server,
+    const common::ObServer& dest_server)
 {
-  return add_migrate_info(range, dest_cs_idx, 0, infos);
+  int ret = OB_SUCCESS;
+  ObMigrateInfo* info = NULL;
+  if (OB_SUCCESS != (ret = get_migrate_info(range, src_server, dest_server, info)))
+  {
+    TBSYS_LOG(WARN, "no migrate info found for range=%s src_server=%s dest_server=%s",
+        to_cstring(range), to_cstring(src_server), to_cstring(dest_server));
+    print_migrate_info();
+  }
+  else
+  {
+    info->reuse();
+  }
+  return ret;
 }
 
-int ObCsMigrateTo::add_copy_info(const common::ObNewRange &range, int32_t dest_cs_idx, ObMigrateInfos &infos)
+bool ObMigrateInfos::check_migrate_info_timeout(int64_t timeout, common::ObServer& src_server,
+            common::ObServer& dest_server, common::ObDataSourceDesc::ObDataSourceType& type)
 {
-  return add_migrate_info(range, dest_cs_idx, 1, infos);
+  bool has_timeout = false;
+  int64_t cur_time = tbsys::CTimeUtil::getTime();
+  for (int64_t i=0; i< MAX_MIGRATE_INFO_NUM; ++i)
+  {
+    if (infos_[i].stat_ == ObMigrateInfo::STAT_USED && infos_[i].start_time_ + timeout < cur_time)
+    {
+      src_server = infos_[i].src_server_;
+      dest_server = infos_[i].dest_server_;
+      type = infos_[i].data_source_desc_.type_;
+      has_timeout = true;
+      TBSYS_LOG(WARN, "loading data timeout: type=%s range=%s src_server=%s"
+          " dest_server=%s, start_time=%s cur_time=%s",
+          infos_[i].data_source_desc_.get_type(),
+          to_cstring(infos_[i].data_source_desc_.range_),
+          to_cstring(infos_[i].src_server_),
+          to_cstring(infos_[i].dest_server_),
+          time2str(infos_[i].start_time_),
+          time2str(cur_time));
+      infos_[i].reuse();
+      break;
+    }
+  }
+  return has_timeout;
+}
+
+void ObMigrateInfos::print_migrate_info()
+{
+  int64_t count = 0;
+  for (int64_t i=0; i< MAX_MIGRATE_INFO_NUM; ++i)
+  {
+    if (infos_[i].stat_ == ObMigrateInfo::STAT_USED)
+    {
+      ++count;
+      ObMigrateInfo & info = infos_[i];
+      TBSYS_LOG(INFO, "migrate info[%ld], start_time=%s dest_cs=%s src_cs=%s range=%s keep_src=%c tablet_version=%ld",
+          i, time2str(info.start_time_), to_cstring(info.dest_server_),
+          to_cstring(info.src_server_), to_cstring(info.data_source_desc_.range_),
+          info.data_source_desc_.keep_source_?'Y':'N', info.data_source_desc_.tablet_version_);
+    }
+  }
+
+  TBSYS_LOG(INFO, "migrate info: total concurrency migrate task is %ld", count);
 }

@@ -16,6 +16,7 @@
  */
 #include <getopt.h>
 #include <unistd.h>
+#include <locale.h>
 #include "tbsys.h"
 #include "mock_client.h"
 #include "common/ob_scanner.h"
@@ -364,11 +365,11 @@ void memory_watch(MockClient &client)
   {
     fprintf(stdout, "memory_watch err=%d\n", err);
     fprintf(stdout, "memory_info_version=%ld\n", memory_info.version);
-    fprintf(stdout, "total_size=%ld\n", memory_info.total_size);
-    fprintf(stdout, "cur_limit_size=%ld\n", memory_info.cur_limit_size);
-    fprintf(stdout, "memtable_used=%ld\n", memory_info.table_mem_info.memtable_used);
-    fprintf(stdout, "memtable_total=%ld\n", memory_info.table_mem_info.memtable_total);
-    fprintf(stdout, "memtable_limit=%ld\n", memory_info.table_mem_info.memtable_limit);
+    fprintf(stdout, "total_size\t=% '15ld\n", memory_info.total_size);
+    fprintf(stdout, "cur_limit_size\t=% '15ld\n", memory_info.cur_limit_size);
+    fprintf(stdout, "memtable_used\t=% '15ld\n", memory_info.table_mem_info.memtable_used);
+    fprintf(stdout, "memtable_total\t=% '15ld\n", memory_info.table_mem_info.memtable_total);
+    fprintf(stdout, "memtable_limit\t=% '15ld\n", memory_info.table_mem_info.memtable_limit);
   }
 }
 
@@ -384,11 +385,11 @@ void memory_limit(const char *memory_limit, const char *memtable_limit, MockClie
   {
     fprintf(stdout, "memory_limit err=%d\n", err);
     fprintf(stdout, "memory_info_version=%ld\n", memory_info.version);
-    fprintf(stdout, "total_size=%ld\n", memory_info.total_size);
-    fprintf(stdout, "cur_limit_size=%ld\n", memory_info.cur_limit_size);
-    fprintf(stdout, "memtable_used=%ld\n", memory_info.table_mem_info.memtable_used);
-    fprintf(stdout, "memtable_total=%ld\n", memory_info.table_mem_info.memtable_total);
-    fprintf(stdout, "memtable_limit=%ld\n", memory_info.table_mem_info.memtable_limit);
+    fprintf(stdout, "total_size\t=% '15ld\n", memory_info.total_size);
+    fprintf(stdout, "cur_limit_size\t=% '15ld\n", memory_info.cur_limit_size);
+    fprintf(stdout, "memtable_used\t=% '15ld\n", memory_info.table_mem_info.memtable_used);
+    fprintf(stdout, "memtable_total\t=% '15ld\n", memory_info.table_mem_info.memtable_total);
+    fprintf(stdout, "memtable_limit\t=% '15ld\n", memory_info.table_mem_info.memtable_limit);
   }
 }
 
@@ -1051,6 +1052,7 @@ void parse_cmd_line(int argc, char **argv, CmdLineParam &clp)
 
 int main(int argc, char** argv)
 {
+  setlocale(LC_ALL, "");
   TBSYS_LOGGER.setFileName("ups_admin.log", true);
   TBSYS_LOG(INFO, "ups_admin start==================================================");
   ob_init_memory_pool();

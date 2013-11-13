@@ -110,7 +110,7 @@ namespace oceanbase
       int err = OB_SUCCESS;
 
       sel_replica = ObChunkServerTaskDispatcher::get_instance()->select_cs(reinterpret_cast<ObChunkServerItem*>(cs_replicas_),
-        total_replica_count_, last_tried_replica_idx_, query_range_);
+        total_replica_count_, last_tried_replica_idx_);
 
       if (sel_replica < 0 || sel_replica >= total_replica_count_)
       {

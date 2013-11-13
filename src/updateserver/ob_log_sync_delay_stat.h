@@ -42,6 +42,7 @@ namespace oceanbase
       int reset();
       int reset_max_delay();
       int set_delay_warn_time_us(const int64_t delay_warn_time_us);
+      int set_delay_tolerable_time_us(const int64_t delay_tolerable_time_us);
       int set_report_interval_us(const int64_t report_interval_us);
       int set_max_n_lagged_log_allowed(const int64_t max_n_lagged_log_allowed);
       int add_log_replay_event(const int64_t log_id, const int64_t mutation_time, const int64_t master_log_id);
@@ -54,6 +55,7 @@ namespace oceanbase
       NEED_SERIALIZE_AND_DESERIALIZE;
       ObEventAccumulator delay_accumulator_;
       int64_t delay_warn_time_us_;
+      int64_t delay_tolerable_time_us_;
       int64_t last_mutation_time_us_;
       int64_t last_replay_time_us_;
       int64_t catchup_seq_;

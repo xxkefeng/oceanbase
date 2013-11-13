@@ -686,7 +686,8 @@ struct BuilderAdapter
 
   int operator()(const ObSSTableRow& row)
   {
-    int err = writer_.add_row(row);
+    uint64_t row_checksum = 0;
+    int err = writer_.add_row(row, row_checksum);
     return err;
   }
   ObSSTableBlockBuilder &writer_;

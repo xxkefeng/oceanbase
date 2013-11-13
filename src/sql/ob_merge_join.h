@@ -32,12 +32,17 @@ namespace oceanbase
       public:
         ObMergeJoin();
         virtual ~ObMergeJoin();
+        virtual void reset();
+        virtual void reuse();
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_MERGE_JOIN; }
         virtual int set_join_type(const ObJoin::JoinType join_type);
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+        
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         int normal_get_next_row(const common::ObRow *&row);
         int inner_get_next_row(const common::ObRow *&row);

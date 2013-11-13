@@ -15,6 +15,7 @@
 #include "ob_ms_request.h"
 #include "ob_ms_get_request.h"
 #include "ob_ms_async_rpc.h"
+#include "ob_chunk_server_task_dispatcher.h"
 #include "common/ob_trace_log.h"
 #include "common/utility.h"
 #include "common/ob_action_flag.h"
@@ -111,7 +112,7 @@ int ObMergerGetRequest::distribute_request()
       break;
     }
     // for each row, choose chunkserver randomly
-    int32_t svr_idx = static_cast<int32_t>(random()%loc_list.size());
+    int32_t svr_idx = ObChunkServerTaskDispatcher::get_instance()->select_cs(loc_list);
     int64_t sub_req_idx = -1;
     int64_t same_cs_subreq_idx = -1;
     int64_t ip = loc_list[svr_idx].server_.chunkserver_.get_ipv4();

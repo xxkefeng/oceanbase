@@ -19,11 +19,10 @@ sleep 10;
 
 #two cs down
 deploy ob1.cs0.stop;
-deploy ob1.cs1.stop;
 
 #wait for merge done
 sleep 150;
-deploy ob1.check_cs_version 2,2;
+deploy ob1.check_cs_version 2,3;
 
 deploy ob1.stop_check;
 

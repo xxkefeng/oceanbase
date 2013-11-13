@@ -39,9 +39,11 @@ OB_SQL_CPP_START
  * @param cluster      集群信息
  * @param sql          sql语句
  * @param length       sql语句的长度
+ * @param mysql        用户层mysql handler
  */
 ObSQLConn* acquire_conn(ObClusterInfo* cluster,
-                        const char* sql, unsigned long length);
+                        const char* sql, unsigned long length,
+                        ObSQLMySQL *mysql);
 
 /**
  * 根据传入的算法从指定集群中找到相应的连接
@@ -52,7 +54,7 @@ ObSQLConn* acquire_conn(ObClusterInfo* cluster,
  * @param sql          sql语句
  * @param length       sql语句的长度
  */
-ObSQLConn* acquire_conn_random(ObGroupDataSource *pool);
+ObSQLConn* acquire_conn_random(ObGroupDataSource *pool, ObSQLMySQL *mysql);
 
 /**
  * 关闭当前连接，新建一条到同一个DS的连接

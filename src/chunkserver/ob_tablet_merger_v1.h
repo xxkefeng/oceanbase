@@ -46,6 +46,8 @@ namespace oceanbase
     class ObTabletMerger
     {
       public:
+        static const int64_t DEFAULT_ESTIMATE_ROW_COUNT = 256*1024LL;
+      public:
         ObTabletMerger(ObChunkMerge& chunk_merge, ObTabletManager& manager);
         virtual ~ObTabletMerger();
 

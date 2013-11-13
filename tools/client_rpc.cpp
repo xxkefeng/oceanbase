@@ -60,8 +60,18 @@ ObClientRpcStub::~ObClientRpcStub()
 }
 
 
+int ObClientRpcStub::request_report_tablet()
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS == ret)
+  {
+    ret = send_0_return_0(remote_server_, DEFAULT_TIMEOUT, OB_RS_REQUEST_REPORT_TABLET, DEFAULT_VERSION);
+  }
+  return ret;
+}
+
 int ObClientRpcStub::initialize(const ObServer & remote_server,
-    const ObClientManager * rpc_frame)
+    const ObClientManager * rpc_frame, const int64_t timeout)
 {
   int ret = OB_SUCCESS;
   if (OB_SUCCESS != (ret = init(&frame_buffer_, rpc_frame)))
@@ -72,6 +82,7 @@ int ObClientRpcStub::initialize(const ObServer & remote_server,
   else
   {
     remote_server_ = remote_server;
+    timeout_ = timeout;
   }
   return ret;
 }
@@ -101,6 +112,10 @@ int ObClientRpcStub::rs_dump_cs_info(ObChunkServerManager &obcsm)
   return send_0_return_1(remote_server_, DEFAULT_TIMEOUT, OB_DUMP_CS_INFO, DEFAULT_VERSION, obcsm);
 }
 
+int ObClientRpcStub::cs_disk_maintain(const int8_t is_install, const int32_t disk_no)
+{
+  return send_2_return_0(remote_server_, 5 * DEFAULT_TIMEOUT, OB_CS_DISK_MAINTAIN, DEFAULT_VERSION, is_install, disk_no);
+}
 
 int ObClientRpcStub::fetch_stats(oceanbase::common::ObStatManager &obsm)
 {
@@ -140,7 +155,7 @@ int ObClientRpcStub::get_tablet_info(const uint64_t table_id, const char* table_
 {
   int ret = OB_SUCCESS;
   int32_t index = 0;
-  const int64_t timeout = 1000000;
+  const int64_t timeout = timeout_ > 0 ? timeout_ : 10000000;  //10s
   if (OB_INVALID_ID == table_id || size <= 0)
   {
     TBSYS_LOG(ERROR,"invalid table id");
@@ -266,9 +281,10 @@ int ObClientRpcStub::get_tablet_info(const uint64_t table_id, const char* table_
   return ret;
 }
 
-int ObClientRpcStub::migrate_tablet(const ObServer& dest, const ObNewRange& range, bool keep_src)
+int ObClientRpcStub::migrate_tablet(const ObDataSourceDesc &desc)
 {
-  return send_3_return_0(remote_server_, DEFAULT_TIMEOUT, OB_CS_MIGRATE, DEFAULT_VERSION, range, dest, keep_src);
+  static const int NEW_VERSION = 3;
+  return send_1_return_0(remote_server_, DEFAULT_TIMEOUT, OB_CS_MIGRATE, NEW_VERSION, desc);
 }
 
 int ObClientRpcStub::create_tablet(const ObNewRange& range, const int64_t last_frozen_version)
@@ -343,10 +359,68 @@ int ObClientRpcStub::load_sstables(const ObTableImportInfoList& table_list)
   return ret;
 }
 
+int ObClientRpcStub::cs_show_disk(int32_t* disk_no, bool* avail, int32_t &disk_num)
+{
+  int ret = OB_SUCCESS;
+  const int32_t CS_SHOW_DISK_VERSION = 1;
+  ObDataBuffer data_buffer;
+  const int64_t timeout = timeout_ > 0 ? timeout_ : 10000000;  //10s
+
+  if (OB_SUCCESS != (ret = get_frame_buffer(data_buffer)))
+  {
+    TBSYS_LOG(ERROR, "failed to alloc in_buffer, ret=%d", ret);
+  }
+  else
+  {
+    common::ObResultCode rc;
+    int64_t pos = 0;
+
+    if (OB_SUCCESS != (ret =
+          rpc_frame_->send_request(remote_server_, OB_CS_SHOW_DISK,
+            CS_SHOW_DISK_VERSION, timeout, data_buffer)))
+    {
+      TBSYS_LOG(WARN, "failed to send request to server: %s, timeout=%ld ret=%d",
+          to_cstring(remote_server_), timeout, ret);
+    }
+    else if (OB_SUCCESS != (ret = rc.deserialize(data_buffer.get_data(), data_buffer.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "failed to deserialize rc, ret:%d", ret);
+    }
+    else if (OB_SUCCESS != rc.result_code_)
+    {
+      ret = rc.result_code_;
+      TBSYS_LOG(ERROR, "failed show disk, ret:%d", ret);
+    }
+    else
+    {
+      if (OB_SUCCESS != (ret = serialization::decode_i32(data_buffer.get_data(), data_buffer.get_position(), pos, &disk_num)))
+      {
+        TBSYS_LOG(ERROR, "failed to deserialize disk num, ret:%d", ret);
+      }
+      else
+      {
+        for (int32_t i = 0; i < disk_num && i < common::OB_MAX_DISK_NUMBER; i++)
+        {
+          if (OB_SUCCESS == ret)
+          {
+            ret = serialization::decode_i32(data_buffer.get_data(), data_buffer.get_position(), pos, &disk_no[i]);
+          }
+
+          if (OB_SUCCESS == ret)
+          {
+            ret = serialization::decode_bool(data_buffer.get_data(), data_buffer.get_position(), pos, &avail[i]);
+          }
+        }
+      }
+    }
+  }
+  return ret;
+}
+
 int ObClientRpcStub::stop_server(bool restart)
 {
   int ret = OB_SUCCESS;
-  const int64_t timeout = 1000000;
+  const int64_t timeout = timeout_ > 0 ? timeout_ : 10000000;  //10s
   const int buff_size = sizeof(ObPacket) + 32;
   char buff[buff_size];
   ObDataBuffer msgbuf(buff, buff_size);
@@ -494,7 +568,7 @@ int ObClientRpcStub::get_frame_buffer(oceanbase::common::ObDataBuffer & data_buf
 int ObClientRpcStub::fetch_cs_sstable_dist(const ObServer& server, const int64_t table_version,
     std::list<std::pair<ObNewRange, ObString> >& sstable_list, oceanbase::common::ModuleArena& arena)
 {
-  const int64_t timeout = 1000000; // 10s
+  const int64_t timeout = timeout_ > 0 ? timeout_ : 10000000;  //10s
   int ret = OB_SUCCESS;
   ObDataBuffer in_buffer;
   ObDataBuffer out_buffer;
@@ -635,6 +709,65 @@ int ObClientRpcStub::fetch_cs_sstable_dist(const ObServer& server, const int64_t
       {
         TBSYS_LOG(WARN, "failed to post end to server %s, ret=%d", to_cstring(server), rpc_ret);
       }
+    }
+  }
+
+  return ret;
+}
+
+int ObClientRpcStub::get_bloom_filter(const oceanbase::common::ObNewRange& range, 
+    const int64_t tablet_version, const int64_t bf_version, ObString& bf_buffer)
+{
+  return ObGeneralRpcStub::get_bloom_filter(DEFAULT_TIMEOUT, remote_server_, 
+      range, tablet_version, bf_version, bf_buffer);
+}
+
+int ObClientRpcStub::fetch_bypass_table_id(ObBypassTaskInfo& info)
+{
+  int ret = OB_SUCCESS;
+  const int64_t timeout = timeout_ > 0 ? timeout_ : 10000000;  //10s
+  ObDataBuffer data_buff;
+  ret = get_frame_buffer(data_buff);
+
+  ret = info.serialize(data_buff.get_data(),data_buff.get_capacity(),
+    data_buff.get_position());
+  if (OB_SUCCESS != ret)
+  {
+    TBSYS_LOG(ERROR, "serialize import table task info into buffer failed,"
+        "cap=%ld pos=%ld ret=%d", data_buff.get_capacity(), data_buff.get_position(), ret);
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    ret = rpc_frame_->send_request(remote_server_,
+        OB_RS_PREPARE_BYPASS_PROCESS, DEFAULT_VERSION, timeout, data_buff);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "post request to root server for load_bypass_sstables failed"
+          " ret[%d].",  ret);
+    }
+  }
+
+  int64_t pos = 0;
+  if (OB_SUCCESS == ret)
+  {
+    ObResultCode result_code;
+    if (OB_SUCCESS != (ret =
+          result_code.deserialize(data_buff.get_data(), data_buff.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "deserialize result_code failed:cap[%ld] pos[%ld], ret[%d].",
+          data_buff.get_position(), pos, ret);
+    }
+    else if (OB_SUCCESS != result_code.result_code_)
+    {
+      ret = result_code.result_code_;
+      TBSYS_LOG(ERROR, "root server return error code: %d", ret);
+    }
+    else if (OB_SUCCESS != (ret =
+          info.deserialize(data_buff.get_data(), data_buff.get_position(), pos)))
+    {
+      TBSYS_LOG(ERROR, "deserialize bybpass table info failed: cap[%ld] pos[%ld] ret[%d]",
+          data_buff.get_position(), pos, ret);
     }
   }
 

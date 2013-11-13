@@ -22,9 +22,9 @@ a	b
 ob1.stop_check
 ob1.stop
 ob2.stop
-ob1.start
+ob1.nstart
 ob1.rs0.set_obi_role OBI_MASTER
-ob2.start
+ob2.nstart
 insert into t1 values(5,1),(6,2);
 select * from t1;
 a	b

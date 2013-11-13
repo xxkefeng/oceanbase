@@ -44,7 +44,7 @@ delete from t1 where pk=1;
 
 connection conn2;
 begin;
---error 23
+--error 5049
 delete from t1 where pk=1;
 ROLLBACK;
 
@@ -90,7 +90,7 @@ connection conn2;
 begin;
 delete from t1 where pk=3;
 delete from t1 where pk=4;
---error 23
+--error 5049
 delete from  t1 where pk=1;
 ROLLBACK;
 

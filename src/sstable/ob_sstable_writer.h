@@ -18,6 +18,7 @@
 #include "common/ob_string.h"
 #include "common/ob_file.h"
 #include "common/ob_rowkey.h"
+#include "common/ob_row.h"
 #include "common/bloom_filter.h"
 #include "common/ob_record_header.h"
 #include "common/compress/ob_compressor.h"
@@ -141,6 +142,7 @@ namespace oceanbase
        *         OB_ERROR
        */
       int append_row(const ObSSTableRow& row, int64_t& approx_space_usage);
+      int append_row(const common::ObRow& row, int64_t& approx_space_usage);
 
  
       /**
@@ -179,6 +181,11 @@ namespace oceanbase
       {
         return trailer_;
       }
+
+      uint64_t get_row_checksum() const
+      {
+        return row_checksum_;
+      }
     private:
       /**
        * reset sstable writer to reuse it
@@ -212,10 +219,6 @@ namespace oceanbase
       int update_bloom_filter(const uint64_t column_group_id,
                               const uint64_t table_id,
                               const common::ObRowkey& key); 
-
-      int update_bloom_filter(const uint64_t column_group_id,
-                              const uint64_t table_id,
-                              const common::ObString& key); 
       /**
        * check whether write sstable with dense foramt 
        * 
@@ -321,7 +324,6 @@ namespace oceanbase
       common::ObRowkey cur_key_;                 //current key
       common::ObString cur_binary_key_;          //current binary key
       common::ObMemBuf cur_key_buf_;             //current key buffer
-      common::ObMemBuf bf_key_buf_;              //bloom filter key buf
                                                 
       int64_t offset_;                           //current offset of sstable
       int64_t prev_offset_;                      //previous offset of sstable
@@ -337,10 +339,11 @@ namespace oceanbase
       ObSSTableBlockBuilder block_builder_;      //row data block builder
       ObSSTableBlockIndexBuilder index_builder_; //index block builder
       bool enable_bloom_filter_;                 //if enable bloom filter  
-      common::BloomFilter bloom_filter_;         //bloom filter
+      common::ObBloomFilterV1 bloom_filter_;         //bloom filter
       uint64_t sstable_checksum_;                //checksum of sstable
       ObSSTableTrailer trailer_;                 //sstable trailer
       int64_t frozen_time_;                      //frozen time
+      int64_t row_checksum_;                     //sum of the row checksum
     };
   } // namespace oceanbase::sstable
 } // namespace Oceanbase

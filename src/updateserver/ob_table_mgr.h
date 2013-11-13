@@ -58,6 +58,7 @@
 #include "common/ob_column_filter.h"
 #include "ob_memtable.h"
 #include "ob_memtable_rowiter.h"
+#include "ob_inc_seq.h"
 
 namespace oceanbase
 {
@@ -259,6 +260,11 @@ namespace oceanbase
           using namespace common;
           return GET_TSI_MULT(common::ColumnFilter, TSI_UPS_COLUMN_FILTER_1);
         };
+        inline static common::ObScanParam *get_tsi_scanparam()
+        {
+          using namespace common;
+          return GET_TSI_MULT(common::ObScanParam, TSI_UPS_SCAN_PARAM_2);
+        };
       protected:
         static const int64_t MAX_TABLE_UTILS_NUM = common::OB_UPS_MAX_MINOR_VERSION_NUM;
         TableItem &table_item_;
@@ -353,13 +359,18 @@ namespace oceanbase
         void destroy_sstable_meta();
         void pre_load_sstable_block_index();
         int get_endkey(const uint64_t table_id, common::ObTabletInfo &ci);
+        bool check_sstable_checksum(const uint64_t remote_sstable_checksum);
       private:
         uint64_t sstable_id_;
         common::ModulePageAllocator mod_;
         common::ModuleArena allocator_;
         sstable::ObSSTableReader *sstable_reader_;
+        uint64_t remote_sstable_checksum_;
+        common::ObSpinLock sstable_reader_lock_;
     };
 
+    typedef MemTableEntity InMemTableEntity;
+    class TableMgr;
     class TableItem
     {
       public:
@@ -374,12 +385,14 @@ namespace oceanbase
           DROPING = 6,  // 正在释放
           DROPED = 7,   // 内存表已释放 可作为起始状态
         };
+        const static int64_t DEFAULT_INMEMTABLE_HASH_SIZE = 1000000;
       public:
         TableItem();
         ~TableItem();
       public:
-        ITableEntity *get_table_entity(int64_t &sstable_percent);
+        ITableEntity *get_table_entity(int64_t &sstable_percent, uint64_t table_id=OB_INVALID_ID);
         MemTable &get_memtable();
+        MemTable &get_inmemtable();
         int init_sstable_meta();
         Stat get_stat() const;
         void set_stat(const Stat stat);
@@ -396,13 +409,19 @@ namespace oceanbase
         bool erase_sstable();
         int get_schema(CommonSchemaManagerWrapper &sm) const;
         int get_endkey(const uint64_t table_id, common::ObTabletInfo &ci);
+        bool check_sstable_checksum(const uint64_t remote_sstable_checksum)
+        {return sstable_entity_.check_sstable_checksum(remote_sstable_checksum);};
+      protected:
+        int load_inmemtable(ObUpsTableMgr& table_mgr, SessionMgr& session_mgr, LockMgr& lock_mgr);
       public:
         int64_t inc_ref_cnt();
         int64_t dec_ref_cnt();
       private:
+        InMemTableEntity inmemtable_entity_;
         MemTableEntity memtable_entity_;
         SSTableEntity sstable_entity_;
         Stat stat_;
+        bool is_inmemtable_ready_;
         volatile int64_t ref_cnt_;
         uint64_t clog_id_;
         MemTableRowIterator row_iter_;
@@ -460,7 +479,8 @@ namespace oceanbase
         int acquire_table(const common::ObVersionRange &version_range,
                           uint64_t &max_version,
                           TableList &table_list,
-                          bool &is_final_minor);
+                          bool &is_final_minor,
+                          uint64_t table_id=OB_INVALID_ID);
         // 释放一组table entity
         void revert_table(const TableList &table_list);
 
@@ -537,6 +557,8 @@ namespace oceanbase
         void set_merged_version(const uint64_t merged_version, const int64_t merged_timestamp);
 
         ITableEntity::ResourcePool &get_resource_pool();
+
+        int check_sstable_checksum(const uint64_t version, const uint64_t remote_sstable_checksum);
       private:
         TableItem *freeze_active_(const uint64_t new_version);
         void revert_memtable_(TableItem *table_item);
@@ -550,7 +572,8 @@ namespace oceanbase
         bool inited_;
         bool sstable_scan_finished_;
         TableItemAllocator table_allocator_;
-        common::SpinRWLock map_lock_;
+        //common::SpinRWLock map_lock_;
+        RWLock map_lock_;
         TableItemMap table_map_;
 
         uint64_t cur_major_version_;

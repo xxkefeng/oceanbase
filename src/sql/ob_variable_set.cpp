@@ -17,19 +17,52 @@
 #include "mergeserver/ob_ms_rpc_proxy.h"
 #include "common/ob_obj_cast.h"
 #include "common/ob_trace_log.h"
+#include "common/ob_common_stat.h"
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
 ObVariableSet::ObVariableSet()
   : variable_nodes_(), rpc_(NULL), table_id_(OB_INVALID_ID)
-  , rowkey_info_(), name_cid_(OB_INVALID_ID), type_cid_(OB_INVALID_ID)
-  , type_type_(ObMinType), value_cid_(OB_INVALID_ID), value_type_(ObMinType)
+  , rowkey_info_(), name_cid_(OB_INVALID_ID)
+  , value_cid_(OB_INVALID_ID), value_type_(ObMinType)
   , mutator_()
 {
 }
 
 ObVariableSet::~ObVariableSet()
 {
+  destroy_variable_nodes();
+}
+
+void ObVariableSet::reset()
+{
+  destroy_variable_nodes();
+  rpc_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  name_cid_ = OB_INVALID_ID;
+  value_cid_ = OB_INVALID_ID;
+  value_type_ = ObMinType;
+  mutator_.reset();
+}
+
+void ObVariableSet::reuse()
+{
+  destroy_variable_nodes();
+  rpc_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  name_cid_ = OB_INVALID_ID;
+  value_cid_ = OB_INVALID_ID;
+  value_type_ = ObMinType;
+  mutator_.clear();
+}
+
+void ObVariableSet::destroy_variable_nodes()
+{
+  for (int i = 0; i < variable_nodes_.count(); i++)
+  {
+    ObSqlExpression::free(variable_nodes_.at(i).variable_expr_);
+  }
+  variable_nodes_.clear();
 }
 
 int ObVariableSet::open()
@@ -37,8 +70,7 @@ int ObVariableSet::open()
   int ret = OB_SUCCESS;
   if (variable_nodes_.count() <= 0 || rpc_ == NULL
     || table_id_ == OB_INVALID_ID || rowkey_info_.get_size() == 0
-    || name_cid_ == OB_INVALID_ID || type_cid_ == OB_INVALID_ID
-    || value_cid_ == OB_INVALID_ID)
+    || name_cid_ == OB_INVALID_ID || value_cid_ == OB_INVALID_ID)
   {
     ret = OB_ERR_GEN_PLAN;
     TBSYS_LOG(WARN, "Variable set statement is not initiated");
@@ -69,16 +101,22 @@ int ObVariableSet::process_variables_set()
 {
   int ret = OB_SUCCESS;
   bool need_global_change = false;
+  ObRow val_row;
+  const ObObj *value_obj = NULL;
   ObSQLSessionInfo *session = my_phy_plan_->get_result_set()->get_session();
   for (int64_t i = 0; ret == OB_SUCCESS && i < variable_nodes_.count(); i++)
   {
     VariableSetNode& node = variable_nodes_.at(i);
-    if (!node.is_system_variable_)
+    if ((ret = node.variable_expr_->calc(val_row, value_obj)) != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "Calculate variable value failed. ret=%d", ret);
+    }
+    else if (!node.is_system_variable_)
     {
       // user defined tmp variable
       if ((ret = session->replace_variable(
                     node.variable_name_,
-                    node.variable_value_)) != OB_SUCCESS)
+                    *value_obj)) != OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "set variable to session plan failed. ret=%d, name=%.*s",
             ret, node.variable_name_.length(), node.variable_name_.ptr());
@@ -89,7 +127,7 @@ int ObVariableSet::process_variables_set()
       // set session system variable
       if ((ret = session->update_system_variable(
                     node.variable_name_,
-                    node.variable_value_)) != OB_SUCCESS)
+                    *value_obj)) != OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "set variable to session plan failed. ret=%d, name=%.*s",
             ret, node.variable_name_.length(), node.variable_name_.ptr());
@@ -102,15 +140,24 @@ int ObVariableSet::process_variables_set()
         ObObj obj_type;
         obj_type.set_type(ObIntType);
         const ObObj *res_obj = NULL;
-        if (OB_SUCCESS != (ret = obj_cast(node.variable_value_, obj_type, int_obj, res_obj)))
+        if (OB_SUCCESS != (ret = obj_cast(*value_obj, obj_type, int_obj, res_obj)))
         {
-          TBSYS_LOG(WARN, "failed to cast to int, obj=%s", to_cstring(node.variable_value_));
+          TBSYS_LOG(WARN, "failed to cast to int, obj=%s", to_cstring(*value_obj));
         }
         else
         {
           ret = res_obj->get_int(int_val);
           OB_ASSERT(OB_SUCCESS == ret);
-          ret = int_val ? set_autocommit() : clear_autocommit();
+          if (int_val)
+          {
+            ret = set_autocommit();
+            OB_STAT_INC(OBMYSQL, SQL_AUTOCOMMIT_ON_COUNT);
+          }
+          else
+          {
+            ret = clear_autocommit();
+            OB_STAT_INC(OBMYSQL, SQL_AUTOCOMMIT_OFF_COUNT);
+          }
         }
       }
     }
@@ -184,22 +231,9 @@ int ObVariableSet::process_variables_set()
         varchar.assign_ptr(key_varchar_buff[OB_MAX_ROWKEY_COLUMN_NUMBER], OB_MAX_VARCHAR_LENGTH);
         ObObj &casted_cell = casted_cells[OB_MAX_ROWKEY_COLUMN_NUMBER];
         casted_cell.set_varchar(varchar);
-        value.set_int(type_type_);
-        ObObj type_type;
         ObObj value_type;
-        type_type.set_type(type_type_);
         value_type.set_type(value_type_);
-        if (OB_SUCCESS != (ret = obj_cast(value, type_type, casted_cell, res_cell)))
-        {
-          TBSYS_LOG(WARN, "Failed to cast obj, err=%d", ret);
-          break;
-        }
-        else if (OB_SUCCESS != (ret = mutator_.update(table_id_, rowkey, type_cid_, *res_cell)))
-        {
-          TBSYS_LOG(WARN, "Failed to update cell, err=%d", ret);
-          break;
-        }
-        else if (OB_SUCCESS != (ret = obj_cast(node.variable_value_, value_type, casted_cell, res_cell)))
+        if (OB_SUCCESS != (ret = obj_cast(*value_obj, value_type, casted_cell, res_cell)))
         {
           TBSYS_LOG(WARN, "Failed to cast obj, err=%d", ret);
           break;
@@ -226,6 +260,12 @@ int ObVariableSet::process_variables_set()
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObVariableSet, PHY_VARIABLE_SET);
+  }
+}
+
 int64_t ObVariableSet::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -233,9 +273,9 @@ int64_t ObVariableSet::to_string(char* buf, const int64_t buf_len) const
   for (int64_t i = 0; i < variable_nodes_.count(); i++)
   {
     const VariableSetNode& node = variable_nodes_.at(i);
-    databuff_printf(buf, buf_len, pos, "<variable name=%.*s, variable value=",
+    databuff_printf(buf, buf_len, pos, "<variable name=%.*s, variable expr=",
         node.variable_name_.length(), node.variable_name_.ptr());
-    pos += node.variable_value_.to_string(buf + pos, buf_len - pos);
+    pos += node.variable_expr_->to_string(buf + pos, buf_len - pos);
     if (i == variable_nodes_.count() - 1)
       databuff_printf(buf, buf_len, pos, ">");
     else
@@ -252,7 +292,7 @@ int ObVariableSet::set_autocommit()
   if (session->get_autocommit())
   {
     // do nothing
-    TBSYS_LOG(DEBUG, "in autocommit=1");
+    TBSYS_LOG(DEBUG, "already in autocommit=1");
   }
   else
   {
@@ -270,6 +310,8 @@ int ObVariableSet::set_autocommit()
       }
       else
       {
+        TBSYS_LOG(WARN, "autocommit unfinished transaction when set autocommit=1, trans_id=%s",
+                  to_cstring(req.trans_id_));
         FILL_TRACE_LOG("autocommit trans");
         // reset transaction id
         ObTransID invalid_trans;

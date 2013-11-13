@@ -193,7 +193,9 @@ namespace oceanbase
     public:
       typedef common::KeyValueCache<ObSSTableRowCacheKey, 
               ObSSTableRowCacheValue, KVCACHE_ITEM_SIZE, 
-              KVCACHE_BLOCK_SIZE> KVCache;
+              KVCACHE_BLOCK_SIZE, 
+              common::KVStoreCacheComponent::SingleObjFreeList,
+              common::hash::SpinReadWriteDefendMode> KVCache;
       typedef common::CacheHandle Handle;
 
     public:

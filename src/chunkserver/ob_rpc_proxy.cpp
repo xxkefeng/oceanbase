@@ -32,7 +32,10 @@ namespace oceanbase
   {
     using namespace oceanbase::common;
 
-    ObMergerRpcProxy::ObMergerRpcProxy():ups_list_lock_(tbsys::WRITE_PRIORITY)
+    ObMergerRpcProxy::ObMergerRpcProxy():
+      ups_list_lock_(tbsys::WRITE_PRIORITY),
+      mm_ups_list_lock_(tbsys::WRITE_PRIORITY),
+      master_master_ups_()
     {
       init_ = false;
       rpc_stub_ = NULL;
@@ -45,6 +48,8 @@ namespace oceanbase
       black_list_timeout_ = 60 * 1000 * 1000L;
       fetch_schema_timestamp_ = 0;
       schema_manager_ = NULL;
+
+      fetch_mm_ups_timestamp_ = 0;
     }
 
     ObMergerRpcProxy::ObMergerRpcProxy(
@@ -98,7 +103,6 @@ namespace oceanbase
       }
       return ret;
     }
-
     int ObMergerRpcProxy::fetch_update_server_list(int32_t & count)
     {
       int ret = OB_SUCCESS;
@@ -110,8 +114,7 @@ namespace oceanbase
       else
       {
         ObUpsList list;
-        ret = rpc_stub_->fetch_server_list(rpc_timeout_, root_server_, list);
-        if (ret != OB_SUCCESS)
+        if (OB_SUCCESS != (ret = rpc_stub_->fetch_server_list(rpc_timeout_, root_server_, list)))
         {
           TBSYS_LOG(WARN, "fetch server list from root server %s failed:ret[%d]",
               to_cstring(root_server_), ret);
@@ -123,7 +126,7 @@ namespace oceanbase
           modify_ups_list(list);
           // check finger print changed
           uint64_t finger_print = ob_crc64(&list, sizeof(list));
-          if (finger_print != cur_finger_print_)
+          if (list.ups_count_ != 0 && finger_print != cur_finger_print_)
           {
             TBSYS_LOG(INFO, "ups list changed succ:cur[%lu], new[%lu], ups_count[%d]",
                 cur_finger_print_, finger_print, count);
@@ -492,7 +495,6 @@ namespace oceanbase
               }
               else
               {
-                tbsys::CWLockGuard lock(ups_list_lock_);
                 update_server_ = server;
               }
 
@@ -507,7 +509,6 @@ namespace oceanbase
                 }
                 else
                 {
-                  tbsys::CWLockGuard lock(ups_list_lock_);
                   inconsistency_update_server_ = server;
                 }
               }
@@ -520,10 +521,91 @@ namespace oceanbase
         }
       }
       // renew master update server addr
-      tbsys::CWLockGuard lock(ups_list_lock_);
+      tbsys::CThreadGuard lock(&update_lock_);
       server = need_master ? update_server_ : inconsistency_update_server_;
       return ret;
     }
+
+
+    int ObMergerRpcProxy::get_master_master_update_server(const bool renew, ObServer & master_master_ups)
+    {
+      int ret = OB_SUCCESS;
+      bool is_master_addr_invalid = false;
+      {
+        tbsys::CRLockGuard lock(mm_ups_list_lock_);
+        is_master_addr_invalid = (0 == master_master_ups_.get_ipv4());
+      }
+      if (true == renew || is_master_addr_invalid)
+      {
+        int64_t timestamp = tbsys::CTimeUtil::getTime();
+        if (timestamp - fetch_mm_ups_timestamp_ > min_fetch_interval_ || is_master_addr_invalid)
+        {
+          tbsys::CThreadGuard lock(&mm_update_lock_);
+          timestamp = tbsys::CTimeUtil::getTime();
+          if (timestamp - fetch_mm_ups_timestamp_ > min_fetch_interval_ || is_master_addr_invalid)
+          {
+            TBSYS_LOG(DEBUG, "renew fetch update server list");
+            fetch_mm_ups_timestamp_ = timestamp;
+            // renew the udpate server list
+            if (OB_SUCCESS != (ret = get_inst_master_ups(root_server_, master_master_ups)))
+            {
+              TBSYS_LOG(WARN, "fail to get master master ups. ret=%d", ret);
+            }
+            else
+            {
+              tbsys::CWLockGuard lock(mm_ups_list_lock_);
+              master_master_ups_ = master_master_ups;
+              TBSYS_LOG(DEBUG, "master_master_ups_=%s", to_cstring(master_master_ups_));
+            }
+          }
+          else
+          {
+            TBSYS_LOG(DEBUG, "fetch update server list by other thread");
+          }
+        }
+      }
+      // renew master update server addr
+      tbsys::CWLockGuard lock (mm_ups_list_lock_);
+      master_master_ups = master_master_ups_;
+      return ret;
+    }
+
+    int ObMergerRpcProxy::get_inst_master_ups(const common::ObServer &root_server, common::ObServer &ups_master)
+    {
+      int err = OB_SUCCESS;
+      common::ObServer master_inst_rs;
+
+      // query who is master instance rootserver according to OBI_ROLE
+      if (OB_SUCCESS == err)
+      {
+        if (OB_SUCCESS != (err = get_master_obi_rs(root_server, master_inst_rs)))
+        {
+          TBSYS_LOG(WARN, "fail to get master obi rootserver addr. err=%d", err);
+        }
+      }
+      // ask the master instance rs for master master ups addr
+      if (OB_SUCCESS == err)
+      {
+        if (OB_SUCCESS != (err = rpc_stub_->get_master_ups_info(rpc_timeout_, master_inst_rs, ups_master)))
+        {
+          TBSYS_LOG(WARN, "fail to get master obi ups addr. master_inst_rs=%s, err=%d", master_inst_rs.to_cstring(), err);
+        }
+      }
+      return err;
+    }
+
+    int ObMergerRpcProxy::get_master_obi_rs(const common::ObServer &rootserver,
+        common::ObServer &master_obi_rs)
+    {
+      int ret = OB_SUCCESS;
+      if (OB_SUCCESS != (ret = rpc_stub_->get_master_obi_rs(rpc_timeout_, rootserver, master_obi_rs)))
+      {
+        TBSYS_LOG(WARN, "get master ob rootservre fail, ret: [%d]", ret);
+      }
+      return ret;
+    }
+
+
 
     bool ObMergerRpcProxy::check_range_param(const ObNewRange & range_param)
     {
@@ -586,16 +668,25 @@ namespace oceanbase
       {
         // add vip update server to list
         TBSYS_LOG(DEBUG, "check ups count is zero:count[%d]", list.ups_count_);
-        ObUpsInfo info;
-        info.addr_ = update_server_;
-        // set inner port to update server port
-        info.inner_port_ = inconsistency_update_server_.get_port();
-        info.ms_read_percentage_ = 100;
-        info.cs_read_percentage_ = 100;
-        list.ups_count_ = 1;
-        list.ups_array_[0] = info;
-        list.sum_ms_percentage_ = 100;
-        list.sum_cs_percentage_ = 100;
+        if (update_server_.get_port() == 0 || update_server_.get_ipv4() == 0)
+        {
+          TBSYS_LOG(INFO, "can't get ups list from rootserver, and prev ups is None");
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "can't get ups list from rootserver, using prev ups: [%s]",
+                    to_cstring(update_server_));
+          ObUpsInfo info;
+          info.addr_ = update_server_;
+          // set inner port to update server port
+          info.inner_port_ = inconsistency_update_server_.get_port();
+          info.ms_read_percentage_ = 100;
+          info.cs_read_percentage_ = 100;
+          list.ups_count_ = 1;
+          list.ups_array_[0] = info;
+          list.sum_ms_percentage_ = 100;
+          list.sum_cs_percentage_ = 100;
+        }
       }
       else
       {
@@ -629,34 +720,30 @@ namespace oceanbase
     {
       int ret = OB_ERROR;
       ObServer update_server;
-      for (int64_t i = 0; i <= rpc_retry_times_; ++i)
+      int64_t end_time = time_out + tbsys::CTimeUtil::getTime();
+      for (int64_t i = 0; tbsys::CTimeUtil::getTime() < end_time; ++i)
       {
-        ret = get_update_server((OB_NOT_MASTER == ret), update_server);
+        bool need_renew = ((OB_NOT_MASTER == ret) || (OB_RESPONSE_TIME_OUT == ret));
+        ret = get_master_master_update_server(need_renew, update_server);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(WARN, "get master update server failed:ret[%d]", ret);
           break;
         }
         ret = rpc_stub->get((time_out > 0) ? time_out : rpc_timeout_, update_server, get_param, scanner);
-        if (OB_INVALID_START_VERSION == ret)
+        if (false == check_need_retry_ups(ret))
         {
-          OB_STAT_INC(CHUNKSERVER, FAIL_CS_VERSION_COUNT);
-          TBSYS_LOG(WARN, "check chunk server data version failed:ret[%d]", ret);
           break;
-        }
-        else if (OB_NOT_MASTER == ret)
-        {
-          TBSYS_LOG(WARN, "get from update server check role failed:ret[%d]", ret);
-        }
-        else if (ret != OB_SUCCESS)
-        {
-          TBSYS_LOG(WARN, "get from update server failed:ret[%d]", ret);
         }
         else
         {
-          break;
+          TBSYS_LOG(WARN, "ups get fail. retry. ret=%d, i=%ld, rpc_timeout_=%ld.", ret, i, rpc_timeout_);
+          usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME * (i + 1)));
         }
-        usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME * (i + 1)));
+      }
+      if (OB_INVALID_START_VERSION == ret)
+      {
+        OB_STAT_INC(CHUNKSERVER, FAIL_CS_VERSION_COUNT);
       }
       return ret;
     }
@@ -669,49 +756,46 @@ namespace oceanbase
       int32_t retry_times = 0;
       int32_t cur_index = -1;
       int32_t max_count = 0;
+      int32_t server_count = update_server_list_.ups_count_;
 
-      //LOCK BLOCK
+      if (0 == server_count)
+      {
+        TBSYS_LOG(INFO, "no ups right now local, updating...");
+        if (OB_SUCCESS != (ret = fetch_update_server_list(server_count)))
+        {
+          TBSYS_LOG(WARN, "fetch update server list fail, ret: [%d]", ret);
+        }
+        else if (0 == server_count)
+        {
+          ret = OB_UPS_NOT_EXIST;
+          TBSYS_LOG(WARN, "no update server available right now, ret: [%d]", ret);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "update local ups list"
+                    " info successfully! Got [%d] ups.", server_count);
+        }
+      }
+      if (OB_SUCCESS == ret)
       {
         tbsys::CRLockGuard lock(ups_list_lock_);
-        int32_t server_count = max_count = update_server_list_.ups_count_;
-        if (0 == server_count)
+        max_count = server_count;
+        cur_index = ObReadUpsBalance::select_server(update_server_list_, server_type);
+        if (cur_index < 0)
         {
-          TBSYS_LOG(INFO, "no ups right now local, updating...");
-          if (OB_SUCCESS != (ret = fetch_update_server_list(server_count)))
-          {
-            TBSYS_LOG(WARN, "fetch update server list fail, ret: [%d]", ret);
-          }
-          else if (0 == server_count)
-          {
-            ret = OB_UPS_NOT_EXIST;
-            TBSYS_LOG(WARN, "no update server available right now, ret: [%d]", ret);
-          }
-          else
-          {
-            TBSYS_LOG(INFO, "update local ups list"
-                      " info successfully! Got [%d] ups.", server_count);
-          }
+          TBSYS_LOG(WARN, "select server failed:count[%d], index[%d]", server_count, cur_index);
+          ret = OB_ENTRY_NOT_EXIST;
         }
-        if (OB_SUCCESS == ret)
+        else
         {
-          max_count = server_count;
-          cur_index = ObReadUpsBalance::select_server(update_server_list_, server_type);
-          if (cur_index < 0)
+          ObUpsBlackList& black_list =
+            (MERGE_SERVER == server_type) ? black_list_ : ups_black_list_for_merge_;
+          // bring back to alive no need write lock
+          if (black_list.get_valid_count() <= 0)
           {
-            TBSYS_LOG(WARN, "select server failed:count[%d], index[%d]", server_count, cur_index);
-            ret = OB_ENTRY_NOT_EXIST;
-          }
-          else
-          {
-            ObUpsBlackList& black_list =
-              (MERGE_SERVER == server_type) ? black_list_ : ups_black_list_for_merge_;
-            // bring back to alive no need write lock
-            if (black_list.get_valid_count() <= 0)
-            {
-              TBSYS_LOG(WARN, "check all the update server not invalid:count[%d]",
-                        black_list.get_valid_count());
-              black_list.reset();
-            }
+            TBSYS_LOG(WARN, "check all the update server not invalid:count[%d]",
+                      black_list.get_valid_count());
+            black_list.reset();
           }
         }
       }
@@ -817,34 +901,30 @@ namespace oceanbase
     {
       int ret = OB_ERROR;
       ObServer update_server;
-      for (int64_t i = 0; i <= rpc_retry_times_; ++i)
+      int64_t end_time = rpc_timeout_ + tbsys::CTimeUtil::getTime();
+      for (int64_t i = 0; tbsys::CTimeUtil::getTime() < end_time; ++i)
       {
-        ret = get_update_server((OB_NOT_MASTER == ret), update_server);
+        bool need_renew = ((OB_NOT_MASTER == ret) || (OB_RESPONSE_TIME_OUT == ret));
+        ret = get_master_master_update_server(need_renew, update_server);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(WARN, "get master update server failed:ret[%d]", ret);
           break;
         }
         ret = rpc_stub->scan((time_out > 0) ? time_out : rpc_timeout_, update_server, scan_param, scanner);
-        if (OB_INVALID_START_VERSION == ret)
+        if (false == check_need_retry_ups(ret))
         {
-          OB_STAT_INC(CHUNKSERVER, FAIL_CS_VERSION_COUNT);
-          TBSYS_LOG(WARN, "check chunk server %s data version failed:ret[%d]", to_cstring(update_server), ret);
           break;
-        }
-        else if (OB_NOT_MASTER == ret)
-        {
-          TBSYS_LOG(WARN, "get from update server %s check role failed:ret[%d]", to_cstring(update_server), ret);
-        }
-        else if (ret != OB_SUCCESS)
-        {
-          TBSYS_LOG(WARN, "get from update server %s failed:ret[%d]", to_cstring(update_server), ret);
         }
         else
         {
-          break;
+          TBSYS_LOG(WARN, "ups scan fail. retry. ret=%d, i=%ld, rpc_timeout_=%ld ups[%s]", ret, i, rpc_timeout_, to_cstring(update_server));
+          usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME * (i + 1)));
         }
-        usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME * (i + 1)));
+      }
+      if (OB_INVALID_START_VERSION == ret)
+      {
+        OB_STAT_INC(CHUNKSERVER, FAIL_CS_VERSION_COUNT);
       }
       return ret;
     }
@@ -908,49 +988,46 @@ namespace oceanbase
       int32_t cur_index = -1;
       int32_t max_count = 0;
       int32_t retry_times = 0;
+      int32_t server_count = update_server_list_.ups_count_;
 
-      //LOCK BLOCK
+      if (0 == server_count)
+      {
+        TBSYS_LOG(INFO, "no ups right now local, updating...");
+        if (OB_SUCCESS != (ret = fetch_update_server_list(server_count)))
+        {
+          TBSYS_LOG(WARN, "fetch update server list fail, ret: [%d]", ret);
+        }
+        else if (0 == server_count)
+        {
+          ret = OB_UPS_NOT_EXIST;
+          TBSYS_LOG(WARN, "no update server available right now, ret: [%d]", ret);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "update local ups list"
+                    " info successfully! Got [%d] ups.", server_count);
+        }
+      }
+      if (OB_SUCCESS == ret)
       {
         tbsys::CRLockGuard lock(ups_list_lock_);
-        int32_t server_count = max_count = update_server_list_.ups_count_;
-        if (0 == server_count)
+        max_count = server_count;
+        cur_index = ObReadUpsBalance::select_server(update_server_list_, server_type);
+        if (cur_index < 0)
         {
-          TBSYS_LOG(INFO, "no ups right now local, updating...");
-          if (OB_SUCCESS != (ret = fetch_update_server_list(server_count)))
-          {
-            TBSYS_LOG(WARN, "fetch update server list fail, ret: [%d]", ret);
-          }
-          else if (0 == server_count)
-          {
-            ret = OB_UPS_NOT_EXIST;
-            TBSYS_LOG(WARN, "no update server available right now, ret: [%d]", ret);
-          }
-          else
-          {
-            TBSYS_LOG(INFO, "update local ups list"
-                      " info successfully! Got [%d] ups.", server_count);
-          }
+          TBSYS_LOG(WARN, "select server failed:count[%d], index[%d]", server_count, cur_index);
+          ret = OB_ENTRY_NOT_EXIST;
         }
-        if (OB_SUCCESS == ret)
+        else
         {
-          max_count = server_count;
-          cur_index = ObReadUpsBalance::select_server(update_server_list_, server_type);
-          if (cur_index < 0)
+          ObUpsBlackList& black_list =
+            (MERGE_SERVER == server_type) ? black_list_ : ups_black_list_for_merge_;
+          // bring back to alive no need write lock
+          if (black_list.get_valid_count() <= 0)
           {
-            TBSYS_LOG(WARN, "select server failed:count[%d], index[%d]", server_count, cur_index);
-            ret = OB_ENTRY_NOT_EXIST;
-          }
-          else
-          {
-            ObUpsBlackList& black_list =
-              (MERGE_SERVER == server_type) ? black_list_ : ups_black_list_for_merge_;
-            // bring back to alive no need write lock
-            if (black_list.get_valid_count() <= 0)
-            {
-              TBSYS_LOG(WARN, "check all the update server not invalid:count[%d]",
-                        black_list.get_valid_count());
-              black_list.reset();
-            }
+            TBSYS_LOG(WARN, "check all the update server not invalid:count[%d]",
+                      black_list.get_valid_count());
+            black_list.reset();
           }
         }
       }

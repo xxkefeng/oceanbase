@@ -167,6 +167,19 @@ namespace oceanbase
           //return ht_.atomic(key, callback, preproc_);
           return ht_.atomic(key, callback);
         };
+
+        /**
+         * thread safe scan, will add read lock to the bucket, the modification to the value is forbidden
+         *
+         * @param callback
+         * @return 0 in case success
+         *         -1 in case not initialized
+         */
+        template<class _callback>
+        int foreach(_callback &callback)
+        {
+            return ht_.foreach(callback);
+        }
         // 返回  -1表示有错误发生
         // 返回  HASH_EXIST表示结点存在并删除成功
         // 返回  HASH_NOT_EXIST表示结点不存在不用删除

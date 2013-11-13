@@ -62,7 +62,7 @@ namespace oceanbase
       public:
         virtual ~ObIUpsTableMgr() {};
       public:
-        virtual int apply(RWSessionCtx &session_ctx, common::ObIterator &iter) = 0;
+        virtual int apply(RWSessionCtx &session_ctx, common::ObIterator &iter, const common::ObDmlType dml_type) = 0;
         virtual UpsSchemaMgr &get_schema_mgr() = 0;
     };
     class ObUpsTableMgr : public ObIUpsTableMgr
@@ -70,6 +70,7 @@ namespace oceanbase
       friend class TestUpsTableMgrHelper;
       friend bool get_key_prefix(const TEKey &te_key, TEKey &prefix_key);
       const static int64_t LOG_BUFFER_SIZE = 1024 * 1024 * 2;
+      public:
       struct FreezeParamHeader
       {
         int32_t version;
@@ -194,7 +195,7 @@ namespace oceanbase
         int pre_process(const bool using_id, common::ObMutator& ups_mutator, const common::IToken *token);
         int apply(const bool using_id, UpsTableMgrTransHandle &handle, ObUpsMutator &ups_mutator, common::ObScanner *scanner);
         int apply(const bool using_id, RWSessionCtx &session_ctx, ILockInfo &lock_info, common::ObMutator &mutator);
-        int apply(RWSessionCtx &session_ctx, common::ObIterator &iter);
+        int apply(RWSessionCtx &session_ctx, common::ObIterator &iter, const common::ObDmlType dml_type);
         int replay(ObUpsMutator& ups_mutator, const ReplayType replay_type);
         int replay_mgt_mutator(ObUpsMutator& ups_mutator, const ReplayType replay_type);
         int set_schemas(const CommonSchemaManagerWrapper &schema_manager);
@@ -264,6 +265,7 @@ namespace oceanbase
 
         int load_sstable_bypass(SSTableMgr &sstable_mgr, int64_t &loaded_num);
         int check_cur_version();
+        int commit_check_sstable_checksum(const uint64_t sstable_id, const uint64_t checksum);
 
         void update_merged_version(ObUpsRpcStub &rpc_stub, const common::ObServer &root_server, const int64_t timeout_us);
 
@@ -356,6 +358,7 @@ namespace oceanbase
         static const int64_t RPC_TIMEOUT = 2 * 1000L * 1000L; // rpc timeout used by client wrapper
 
       private:
+        ThreadSpecificBuffer my_thread_buffer_;
         char *log_buffer_;
         common::ObSpinLock schema_lock_;
         UpsSchemaMgr schema_mgr_;

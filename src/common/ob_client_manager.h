@@ -36,7 +36,11 @@ namespace oceanbase
       public:
         int initialize(easy_io_t *eio, easy_io_handler_pt* handler, const int64_t max_request_timeout = 5000000);
 
+        int set_dedicate_thread_num(const int n);
         void set_error(const int err);
+        int post_request_using_dedicate_thread(const ObServer& server, const int32_t pcode, const int32_t version,
+                                               const int64_t timeout, const ObDataBuffer& in_buffer,
+                                               easy_io_process_pt handler, void* args, int thread_idx=0) const;
         /**
          * post request (%in_buffer) to %server, and do not care repsonse from %server.
          */
@@ -143,6 +147,7 @@ namespace oceanbase
                            const int64_t timeout, const ObDataBuffer& in_buffer,
                            int64_t size, easy_session_t *& session) const;
 
+        int post_session_using_dedicate_thread(easy_session_t* s, int thread_idx = 0) const;
         /**
          * post packet in session
          * to addr not wait for response
@@ -163,6 +168,7 @@ namespace oceanbase
       private:
         int error_;
         int32_t inited_;
+        int dedicate_thread_num_;
         mutable int64_t max_request_timeout_;
         easy_io_t* eio_;
         easy_io_handler_pt* handler_;

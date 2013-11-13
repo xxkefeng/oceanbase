@@ -178,6 +178,21 @@ namespace oceanbase
       }
       return res;
     }
+
+    bool ObServer::operator !=(const ObServer& rv) const
+    {
+      bool res = false;
+      if (*this == rv)
+      {
+        res = false;
+      }
+      else
+      {
+        res = true;
+      }
+      return res;
+    }
+
     bool ObServer::compare_by_ip(const ObServer& rv) const
     {
       bool res = true;
@@ -194,6 +209,36 @@ namespace oceanbase
         else if (version_ == IPV6)
         {
           res = memcmp(ip.v6_, rv.ip.v6_, sizeof(uint32_t) * 4) < 0;
+        }
+      }
+      return res;
+    }
+
+    bool ObServer::is_same_ip(const ObServer& rv) const
+    {
+      bool res = true;
+      if (version_ != rv.version_)
+      {
+        res = false;
+      }
+      else
+      {
+        if (version_ == IPV4)
+        {
+          if (ip.v4_ != rv.ip.v4_)
+          {
+            res = false;
+          }
+        }
+        else if (version_ == IPV6)
+        {
+          if (ip.v6_[0] != rv.ip.v6_[0] ||
+              ip.v6_[1] != rv.ip.v6_[1] ||
+              ip.v6_[2] != rv.ip.v6_[2] ||
+              ip.v6_[3] != rv.ip.v6_[3] )
+          {
+            res = false;
+          }
         }
       }
       return res;

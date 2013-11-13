@@ -24,12 +24,15 @@
 #include "ob_column_def.h"
 #include "ob_alter_table_stmt.h"
 #include "ob_alter_sys_cnf_stmt.h"
+#include "ob_kill_stmt.h"
 #include "parse_malloc.h"
 #include "common/ob_define.h"
 #include "common/ob_array.h"
 #include "common/ob_string_buf.h"
 #include "common/utility.h"
 #include "common/ob_schema_service.h"
+#include "common/ob_obi_role.h"
+#include "ob_change_obi_stmt.h"
 #include <stdint.h>
 
 using namespace oceanbase::common;
@@ -82,6 +85,14 @@ int resolve_deallocate_stmt(
     ParseNode* node,
     uint64_t& query_id);
 int resolve_alter_sys_cnf_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id);
+int resolve_kill_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id);
+int resolve_change_obi(
     ResultPlan* result_plan,
     ParseNode* node,
     uint64_t& query_id);
@@ -601,6 +612,14 @@ int resolve_create_table_stmt(
       option_node = node->children_[3]->children_[i];
       switch (option_node->type_)
       {
+        case T_JOIN_INFO:
+          str.assign_ptr(
+              const_cast<char*>(option_node->children_[0]->str_value_),
+              static_cast<int32_t>(option_node->children_[0]->value_));
+          if ((ret = create_table_stmt->set_join_info(str)) != OB_SUCCESS)
+            snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+                "Set JOIN_INFO failed");
+          break;
         case T_EXPIRE_INFO:
           str.assign_ptr(
               (char*)(option_node->children_[0]->str_value_),
@@ -616,6 +635,12 @@ int resolve_create_table_stmt(
         case T_TABLET_BLOCK_SIZE:
           create_table_stmt->set_tablet_block_size(option_node->children_[0]->value_);
           break;
+        case T_TABLET_ID:
+          create_table_stmt->set_table_id(
+                                 *result_plan,
+                                 static_cast<uint64_t>(option_node->children_[0]->value_)
+                                 );
+          break;
         case T_REPLICA_NUM:
           create_table_stmt->set_replica_num(static_cast<int32_t>(option_node->children_[0]->value_));
           break;
@@ -626,14 +651,22 @@ int resolve_create_table_stmt(
               );
           if ((ret = create_table_stmt->set_compress_method(str)) != OB_SUCCESS)
             snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
-                "Set EXPIRE_INFO failed");
+                "Set COMPRESS_METHOD failed");
           break;
         case T_USE_BLOOM_FILTER:
           create_table_stmt->set_use_bloom_filter(option_node->children_[0]->value_ ? true : false);
           break;
         case T_CONSISTENT_MODE:
-          if (option_node->value_ == 1)
-            create_table_stmt->set_read_static(true);
+          create_table_stmt->set_consistency_level(option_node->value_);
+          break;
+        case T_COMMENT:
+          str.assign_ptr(
+              (char*)(option_node->children_[0]->str_value_),
+              static_cast<int32_t>(strlen(option_node->children_[0]->str_value_))
+              );
+          if ((ret = create_table_stmt->set_comment_str(str)) != OB_SUCCESS)
+            snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+                "Set COMMENT failed");
           break;
         default:
           /* won't be here */
@@ -870,7 +903,7 @@ int resolve_show_stmt(
   uint64_t  sys_table_id = OB_INVALID_ID;
   ParseNode *show_table_node = NULL;
   ParseNode *condition_node = NULL;
-  OB_ASSERT(node && node->type_ >= T_SHOW_TABLES && node->type_ <= T_SHOW_GRANTS);
+  OB_ASSERT(node && node->type_ >= T_SHOW_TABLES && node->type_ <= T_SHOW_PROCESSLIST);
   query_id = OB_INVALID_ID;
 
   ObLogicalPlan* logical_plan = NULL;
@@ -965,6 +998,11 @@ int resolve_show_stmt(
           condition_node = node->children_[0];
           show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_PARAMETERS);
           sys_table_name.str_value_ = OB_PARAMETERS_SHOW_TABLE_NAME;
+          break;
+        case T_SHOW_PROCESSLIST:
+          show_stmt = new(show_stmt) ObShowStmt(name_pool, ObBasicStmt::T_SHOW_PROCESSLIST);
+          show_stmt->set_full_process(node->value_ == 1? true: false);
+          show_stmt->set_show_table(OB_ALL_SERVER_SESSION_TID);
           break;
         default:
           /* won't be here */
@@ -1444,6 +1482,148 @@ int resolve_alter_sys_cnf_stmt(
   return ret;
 }
 
+int resolve_change_obi(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  UNUSED(query_id);
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_CHANGE_OBI && node->num_child_ >= 2);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObChangeObiStmt* change_obi_stmt = NULL;
+  ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+  ObLogicalPlan *logical_plan = NULL;
+  if (result_plan->plan_tree_ == NULL)
+  {
+    logical_plan = (ObLogicalPlan*)parse_malloc(sizeof(ObLogicalPlan), result_plan->name_pool_);
+    if (logical_plan == NULL)
+    {
+      ret = OB_ERR_PARSER_MALLOC_FAILED;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObLogicalPlan");
+    }
+    else
+    {
+      logical_plan = new(logical_plan) ObLogicalPlan(name_pool);
+      result_plan->plan_tree_ = logical_plan;
+    }
+  }
+  else
+  {
+    logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
+  }
+
+  if (ret == OB_SUCCESS)
+  {
+    change_obi_stmt = (ObChangeObiStmt*)parse_malloc(sizeof(ObChangeObiStmt), result_plan->name_pool_);
+    if (change_obi_stmt == NULL)
+    {
+      ret = OB_ERR_PARSER_MALLOC_FAILED;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObChangeObiStmt");
+    }
+    else
+    {
+      change_obi_stmt = new(change_obi_stmt) ObChangeObiStmt(name_pool);
+      query_id = logical_plan->generate_query_id();
+      change_obi_stmt->set_query_id(query_id);
+      if ((ret = logical_plan->add_query(change_obi_stmt)) != OB_SUCCESS)
+      {
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not add ObChangeObiStmt to logical plan");
+      }
+      else
+      {
+        OB_ASSERT(node->children_[0]->type_ == T_SET_MASTER 
+            || node->children_[0]->type_ == T_SET_SLAVE 
+            || node->children_[0]->type_ == T_SET_MASTER_SLAVE);
+        OB_ASSERT(node->children_[1]&& node->children_[1]->type_ == T_STRING);
+        change_obi_stmt->set_target_server_addr(node->children_[1]->str_value_);
+        if (node->children_[0]->type_ == T_SET_MASTER)
+        {
+          change_obi_stmt->set_target_role(ObiRole::MASTER);
+        }
+        else if (node->children_[0]->type_ == T_SET_SLAVE)
+        {
+          change_obi_stmt->set_target_role(ObiRole::SLAVE);
+        }
+        else // T_SET_MASTER_SLAVE
+        {
+          if (node->children_[2] != NULL)
+          {
+            OB_ASSERT(node->children_[2]->type_ == T_FORCE);
+            change_obi_stmt->set_force(true);
+          }
+        }
+      }
+    }
+  }
+  return ret;
+}
+int resolve_kill_stmt(
+    ResultPlan* result_plan,
+    ParseNode* node,
+    uint64_t& query_id)
+{
+  OB_ASSERT(result_plan);
+  OB_ASSERT(node && node->type_ == T_KILL && node->num_child_ == 3);
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  ObKillStmt* kill_stmt = NULL;
+  ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
+  ObLogicalPlan *logical_plan = NULL;
+  if (result_plan->plan_tree_ == NULL)
+  {
+    logical_plan = (ObLogicalPlan*)parse_malloc(sizeof(ObLogicalPlan), result_plan->name_pool_);
+    if (logical_plan == NULL)
+    {
+      ret = OB_ERR_PARSER_MALLOC_FAILED;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObLogicalPlan");
+    }
+    else
+    {
+      logical_plan = new(logical_plan) ObLogicalPlan(name_pool);
+      result_plan->plan_tree_ = logical_plan;
+    }
+  }
+  else
+  {
+    logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
+  }
+
+  if (ret == OB_SUCCESS)
+  {
+    kill_stmt = (ObKillStmt*)parse_malloc(sizeof(ObKillStmt), result_plan->name_pool_);
+    if (kill_stmt == NULL)
+    {
+      ret = OB_ERR_PARSER_MALLOC_FAILED;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not malloc ObKillStmt");
+    }
+    else
+    {
+      kill_stmt = new(kill_stmt) ObKillStmt(name_pool);
+      query_id = logical_plan->generate_query_id();
+      kill_stmt->set_query_id(query_id);
+      if ((ret = logical_plan->add_query(kill_stmt)) != OB_SUCCESS)
+      {
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+          "Can not add ObKillStmt to logical plan");
+      }
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    OB_ASSERT(node->children_[0]&& node->children_[0]->type_ == T_BOOL);
+    OB_ASSERT(node->children_[1]&& node->children_[1]->type_ == T_BOOL);
+    OB_ASSERT(node->children_[2]);
+    kill_stmt->set_is_global(node->children_[0]->value_ == 1? true: false);
+    kill_stmt->set_thread_id(node->children_[2]->value_);
+    kill_stmt->set_is_query(node->children_[1]->value_ == 1? true: false);
+  }
+  return ret;
+}
 
 ////////////////////////////////////////////////////////////////
 int resolve(ResultPlan* result_plan, ParseNode* node)
@@ -1550,6 +1730,7 @@ int resolve(ResultPlan* result_plan, ParseNode* node)
       case T_SHOW_WARNINGS:
       case T_SHOW_GRANTS:
       case T_SHOW_PARAMETERS:
+      case T_SHOW_PROCESSLIST :
       {
         ret = resolve_show_stmt(result_plan, node, query_id);
         break;
@@ -1620,6 +1801,12 @@ int resolve(ResultPlan* result_plan, ParseNode* node)
         break;
       case T_ALTER_SYSTEM:
         ret = resolve_alter_sys_cnf_stmt(result_plan, node, query_id);
+        break;
+      case T_KILL:
+        ret = resolve_kill_stmt(result_plan, node, query_id);
+        break;
+      case T_CHANGE_OBI:
+        ret = resolve_change_obi(result_plan, node, query_id);
         break;
       default:
         TBSYS_LOG(ERROR, "unknown top node type=%d", node->type_);

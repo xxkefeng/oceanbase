@@ -14,6 +14,7 @@
 
 #include "ob_ms_sql_request.h"
 #include "ob_ms_sql_get_request.h"
+#include "ob_chunk_server_task_dispatcher.h"
 #include "ob_ms_async_rpc.h"
 #include "common/ob_trace_log.h"
 #include "common/utility.h"
@@ -26,7 +27,6 @@ using namespace oceanbase::mergeserver;
 ObMsSqlGetRequest::ObMsSqlGetRequest():
   page_arena_(PageArena<int64_t, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_MS_GET_EVENT))
 {
-  req_dist_map_inited_ = false;
   reserve_get_param_count_ = 0;
   total_sub_request_count_ = 0;
   memset(same_cs_get_row_count_, 0, sizeof(same_cs_get_row_count_));
@@ -84,15 +84,6 @@ int ObMsSqlGetRequest::set_request_param(ObSqlGetParam &get_param, const int64_t
   }
   // get request的get param
   get_param_ = &get_param;
-  if (!req_dist_map_inited_ && (OB_SUCCESS == err) && (0 != req_dist_map_.create(HASH_BUCKET_NUM)))
-  {
-    TBSYS_LOG(WARN,"fail to create hash map for request distribution");
-    err = OB_ALLOCATE_MEMORY_FAILED;
-  }
-  if (OB_SUCCESS == err)
-  {
-    req_dist_map_inited_ = true;
-  }
   timeout_us_ = timeout_us;
   return err;
 }
@@ -152,12 +143,12 @@ int ObMsSqlGetRequest::distribute_request()
       err = OB_DATA_NOT_SERVE;
       break;
     }
-
+    
     // for each row, choose chunkserver randomly
-    int32_t svr_idx = static_cast<int32_t>(random()%loc_list.size());
+    int32_t svr_idx = ObChunkServerTaskDispatcher::get_instance()->select_cs(loc_list);
     int64_t sub_req_idx = -1;
     int64_t same_cs_subreq_idx = -1;
-    int64_t ip = loc_list[svr_idx].server_.chunkserver_.get_ipv4();
+    int64_t ip = loc_list[svr_idx].server_.chunkserver_.get_ipv4(); 
     if (req_dist_map_.get(ip, sub_req_idx) == oceanbase::common::hash::HASH_EXIST
         && sub_req_idx >= 0)
     {
@@ -191,6 +182,7 @@ int ObMsSqlGetRequest::distribute_request()
         }
         else
         {
+          total_sub_request_count_ ++;
           sub_request->reset();
           sub_request->init(page_arena_);
           if (NULL != row_desc_)
@@ -213,6 +205,7 @@ int ObMsSqlGetRequest::distribute_request()
         if (OB_SUCCESS == err)
         {
           sub_request->set_last_svr_ipv4(loc_list[svr_idx].server_.chunkserver_.get_ipv4());
+          sub_request->set_first_cs_addr(loc_list[svr_idx].server_.chunkserver_);
         }
         // start a new sub request for this server
         if (true == is_subreq_full)
@@ -280,7 +273,6 @@ int ObMsSqlGetRequest::alloc_sub_request(ObMsSqlSubGetRequest *&sub_req)
   }
   else
   {
-    total_sub_request_count_ ++;
     TBSYS_LOG(DEBUG, "alloc sub request, sub_req=%p, total_sub_request_count_=%d",sub_req, total_sub_request_count_);
   }
   return err;
@@ -290,71 +282,90 @@ int ObMsSqlGetRequest::send_request(const int32_t sub_req_idx, const int64_t tim
 {
   int err = OB_SUCCESS;
   //ObSqlGetParam *cur_get_param = NULL;
-  ObSqlGetParam cur_get_param;
   OB_ASSERT(sub_req_idx < sub_requests_.size());
   ObMsSqlSubGetRequest &sub_request = *sub_requests_[sub_req_idx];
+  ObServer cs_addr;
   //从大请求的get param中抽取出子请求的get param
   if ((OB_SUCCESS == err)
-    && (OB_SUCCESS != (err = sub_request.get_cur_param(cur_get_param)))
+    && (OB_SUCCESS != (err = sub_request.get_cur_param(cur_sub_get_param_)))
     && (OB_ITER_END != err))
   {
     TBSYS_LOG(WARN,"fail to get next param of sub request [request_id:%lu,sub_req_idx:%d,err:%d]",
       get_request_id(), sub_req_idx, err);
   }
-  ObTabletLocationList loc_list;
-  loc_list.set_buffer(ObMsSqlRequest::get_buffer_pool());
-  int64_t row_idx = 0;
-  if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = get_cache_proxy()->get_tablet_location(
-    cur_get_param.get_table_id(), *(cur_get_param[row_idx]), loc_list))))
+  if (sub_request.get_retry_times() == 0)
   {
-    TBSYS_LOG(WARN,"fail to get tablet location [err:%d,table_id:%lu,rowkey:%s]", err,
-      cur_get_param.get_table_id(), to_cstring(*(cur_get_param[row_idx])));
+    cs_addr = sub_request.get_first_cs_addr();
   }
-  if ((OB_SUCCESS == err) && (0 >= loc_list.size()))
+  else
   {
-    TBSYS_LOG(WARN,"fail to get tablet location [table_id:%lu,rowkey:%s]",
-      cur_get_param.get_table_id(), to_cstring(*(cur_get_param[row_idx])));
-    err = OB_DATA_NOT_SERVE;
-  }
-  int64_t svr_idx = 0;
-  for (svr_idx = 0;(svr_idx < loc_list.size()) && (OB_SUCCESS == err); svr_idx ++)
-  {
-    if (loc_list[svr_idx].server_.chunkserver_.get_ipv4() == sub_request.get_last_svr_ipv4())
+    ObTabletLocationList loc_list;
+    loc_list.set_buffer(ObMsSqlRequest::get_buffer_pool());
+    int64_t row_idx = 0;
+    if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = get_cache_proxy()->get_tablet_location(
+      cur_sub_get_param_.get_table_id(), *(cur_sub_get_param_[row_idx]), loc_list))))
     {
-      if (sub_request.get_last_svr_ipv4() == sub_request.get_fail_svr_ipv4())
-      {
-        svr_idx = (svr_idx + 1)%loc_list.size();
-        TBSYS_LOG(INFO, "sub req retry [request_id:%lu,sub_req_idx:%d,tried_times:%ld,retry_svr:%s]", get_request_id(),
-          sub_req_idx, sub_request.get_retry_times(), to_cstring(loc_list[svr_idx].server_.chunkserver_));
-      }
-      break;
+      TBSYS_LOG(WARN,"fail to get tablet location [err:%d,table_id:%lu,rowkey:%s]", err,
+        cur_sub_get_param_.get_table_id(), to_cstring(*(cur_sub_get_param_[row_idx])));
     }
-  }
-  if ((OB_SUCCESS == err) && (svr_idx >= loc_list.size()))
-  {
-    svr_idx = random()%loc_list.size();
-    TBSYS_LOG(WARN, "all servers get dirty. pick one randomly: loc_size[%ld], retry_svr:[%s]", 
-        loc_list.size(), to_cstring(loc_list[svr_idx].server_.chunkserver_));
+    if ((OB_SUCCESS == err) && (0 >= loc_list.size()))
+    {
+      TBSYS_LOG(WARN,"fail to get tablet location [table_id:%lu,rowkey:%s]",
+        cur_sub_get_param_.get_table_id(), to_cstring(*(cur_sub_get_param_[row_idx])));
+      err = OB_DATA_NOT_SERVE;
+    }
+    int64_t svr_idx = 0;
+    for (svr_idx = 0;(svr_idx < loc_list.size()) && (OB_SUCCESS == err); svr_idx ++)
+    {
+      if (loc_list[svr_idx].server_.chunkserver_.get_ipv4() == sub_request.get_last_svr_ipv4())
+      {
+        if (sub_request.get_last_svr_ipv4() == sub_request.get_fail_svr_ipv4())
+        {
+          svr_idx = (svr_idx + 1)%loc_list.size();
+          TBSYS_LOG(INFO, "sub req retry [request_id:%lu,sub_req_idx:%d,tried_times:%ld,retry_svr:%s]", get_request_id(),
+            sub_req_idx, sub_request.get_retry_times(), to_cstring(loc_list[svr_idx].server_.chunkserver_));
+        }
+        break;
+      }
+    }
+    if ((OB_SUCCESS == err) && (svr_idx >= loc_list.size()))
+    {
+      svr_idx = random()%loc_list.size();
+      TBSYS_LOG(WARN, "all servers get dirty. pick one randomly: loc_size[%ld], retry_svr:[%s]", 
+          loc_list.size(), to_cstring(loc_list[svr_idx].server_.chunkserver_));
+    }
+    cs_addr = loc_list[svr_idx].server_.chunkserver_;
   }
   ObMsSqlRpcEvent *rpc_event = NULL;
-  if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = ObMsSqlRequest::create(&rpc_event))))
-  {
-    TBSYS_LOG(WARN,"fail to create ObMsSqlRpcEvent [err:%d]", err);
-  }
   if (OB_SUCCESS == err)
   {
-    // TBSYS_LOG(INFO, "req cs:%s", to_cstring(loc_list[svr_idx].server_.chunkserver_));
-    rpc_event->set_server(loc_list[svr_idx].server_.chunkserver_);
-    FILL_TRACE_LOG("get_cs=%s", to_cstring(loc_list[svr_idx].server_.chunkserver_));
-    if (OB_SUCCESS != (err = get_rpc()->get(static_cast<int64_t>(timeout_us * get_timeout_percent() / 100),
-            loc_list[svr_idx].server_.chunkserver_,cur_get_param,*rpc_event)))
+    if (OB_SUCCESS != (err = ObMsSqlRequest::create(&rpc_event)))
     {
-      TBSYS_LOG(WARN,"fail to send request to server [request_id:%lu,err:%d]", get_request_id(),err);
+      TBSYS_LOG(WARN,"fail to create ObMsSqlRpcEvent [err:%d]", err);
     }
     else
     {
-      sub_request.set_last_rpc_event(*rpc_event);
-      sub_request.set_last_svr_ipv4(loc_list[svr_idx].server_.chunkserver_.get_ipv4());
+      rpc_event->set_server(cs_addr);
+      FILL_TRACE_LOG("get_cs=%s", to_cstring(cs_addr));
+      if (OB_SUCCESS != (err = get_rpc()->get(static_cast<int64_t>(timeout_us * get_timeout_percent() / 100),
+              cs_addr,cur_sub_get_param_,*rpc_event)))
+      {
+        TBSYS_LOG(WARN,"fail to send request to server [request_id:%lu,err:%d]", get_request_id(),err);
+        int e = ObMsSqlRequest::destroy(rpc_event);
+        if (OB_SUCCESS != e)
+        {
+          TBSYS_LOG(WARN, "fail to destroy rpc_event. [e=%d]", e);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "rpc_event destroyed.");
+        }
+      }
+      else
+      {
+        sub_request.set_last_rpc_event(*rpc_event);
+        sub_request.set_last_svr_ipv4(cs_addr.get_ipv4());
+      }
     }
   }
   ObMsSqlRequest::get_buffer_pool().reset();

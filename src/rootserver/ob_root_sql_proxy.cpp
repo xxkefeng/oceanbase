@@ -20,15 +20,44 @@
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
 
-ObRootSQLProxy::ObRootSQLProxy(const ObChunkServerManager & server_manager, ObRootRpcStub & rpc_stub)
+ObRootSQLProxy::ObRootSQLProxy(ObChunkServerManager & server_manager, ObRootServerConfig & config, ObRootRpcStub & rpc_stub)
     :ms_provider_(server_manager), rpc_stub_(rpc_stub)
 {
+  ms_provider_.init(config, rpc_stub);
 }
 
 ObRootSQLProxy::~ObRootSQLProxy()
 {
 }
-
+int ObRootSQLProxy::query(const bool query_master_cluster, const int64_t retry_times, const int64_t timeout, const common::ObString & sql)
+{
+  int ret = OB_SUCCESS;
+  ObServer server;
+  int64_t count = 0;
+  do
+  {
+    ret = ms_provider_.get_ms(server, query_master_cluster);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "get ms failed:ret[%d]", ret);
+    }
+    else
+    {
+      ret = rpc_stub_.execute_sql(server, sql, timeout);
+      if (ret != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "execute sql failed:sql[%.*s], retry[%ld], ret[%d]",
+            sql.length(), sql.ptr(), count, ret);
+      }
+      else
+      {
+        TBSYS_LOG(TRACE, "query inner table. ms=%s", to_cstring(server));
+      }
+    }
+    ++count;
+  } while ((ret != OB_SUCCESS) && (count <= retry_times));
+  return ret;
+}
 int ObRootSQLProxy::query(const int64_t retry_times, const int64_t timeout, const common::ObString & sql)
 {
   int ret = OB_SUCCESS;

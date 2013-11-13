@@ -27,6 +27,9 @@
 #include "common/ob_obj_cast.h"
 #include "common/ob_schema.h"
 #include "sql/ob_item_type_str.h"
+#include "ob_result_set.h"
+#include "ob_sql_session_info.h"
+
 using namespace oceanbase::sql;
 
 namespace oceanbase
@@ -184,9 +187,6 @@ namespace oceanbase
       ObPostfixExpression::sys_func_length, // SYS_FUNC_LENGTH
       ObPostfixExpression::sys_func_substr, // SYS_FUNC_SUBSTR
       ObPostfixExpression::sys_func_cast,             // SYS_FUNC_CAST
-      ObPostfixExpression::sys_func_cur_time,         // SYS_FUNC_CUR_TIME
-      ObPostfixExpression::sys_func_cur_date,         // SYS_FUNC_CUR_DATE
-      ObPostfixExpression::sys_func_cur_timestamp,    // SYS_FUNC_CUR_TIMESTAMP
       ObPostfixExpression::sys_func_cur_user,         // SYS_FUNC_CUR_USER
       ObPostfixExpression::sys_func_trim,             // SYS_FUNC_TRIM
       ObPostfixExpression::sys_func_lower,            // SYS_FUNC_LOWER
@@ -196,6 +196,8 @@ namespace oceanbase
       ObPostfixExpression::sys_func_unhex,         // SYS_FUNC_UNHEX
       ObPostfixExpression::sys_func_ip_to_int,         // SYS_FUNC_IP_TO_INT
       ObPostfixExpression::sys_func_int_to_ip,         // SYS_FUNC_INT_TO_IP
+      ObPostfixExpression::sys_func_greatest,         // SYS_FUNC_GREATEST
+      ObPostfixExpression::sys_func_least,            // SYS_FUNC_LEAST
     };
 
     const char* const ObPostfixExpression::SYS_FUNCS_NAME[SYS_FUNC_NUM] =
@@ -203,9 +205,6 @@ namespace oceanbase
       "length",
       "substr",
       "cast",
-      "current_time",
-      "current_date",
-      "current_timestamp",
       "current_user",
       "trim",
       "lower",
@@ -214,7 +213,9 @@ namespace oceanbase
       "hex",
       "unhex",
       "ip2int",
-      "int2ip"
+      "int2ip",
+      "greatest",
+      "least"
     };
 
     int32_t ObPostfixExpression::SYS_FUNCS_ARGS_NUM[SYS_FUNC_NUM] =
@@ -223,9 +224,6 @@ namespace oceanbase
       TWO_OR_THREE,
       2,
       0,
-      0,
-      0,
-      0,
       3,/*trim*/
       1,
       1,
@@ -233,14 +231,18 @@ namespace oceanbase
       1,
       1,
       1,
-      1
+      1,
+      MORE_THAN_ZERO,
+      MORE_THAN_ZERO,
     };
 
     ObPostfixExpression::ObPostfixExpression()
       :expr_(64*1024, ModulePageAllocator(ObModIds::OB_SQL_EXPR)),
        stack_(NULL),
        did_int_div_as_double_(false),
-       str_buf_(ObModIds::OB_SQL_EXPR, DEF_STRING_BUF_SIZE)
+       str_buf_(ObModIds::OB_SQL_EXPR, DEF_STRING_BUF_SIZE),
+       owner_op_(NULL),
+       calc_buf_(ObModIds::OB_SQL_EXPR_CALC, DEF_STRING_BUF_SIZE)
     {
     }
 
@@ -253,6 +255,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       int i = 0;
       this->expr_.clear();
+      this->calc_buf_.clear();
       if (OB_SUCCESS != (ret = str_buf_.reset()))
       {
         TBSYS_LOG(WARN, "fail to reset string buffer");
@@ -260,6 +263,7 @@ namespace oceanbase
       else if (&other != this)
       {
         ObObj obj;
+        this->set_owner_op(other.owner_op_);
         expr_.reserve(other.expr_.count());
         for (i = 0; i < other.expr_.count(); i++)
         {
@@ -303,9 +307,6 @@ namespace oceanbase
       OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_LENGTH)
       OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_SUBSTR)
       OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_CAST)
-      OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_CUR_TIME)
-      OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_CUR_DATE)
-      OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_CUR_TIMESTAMP)
       OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_CUR_USER)
       OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_TRIM)
       OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_LOWER)
@@ -315,6 +316,8 @@ namespace oceanbase
       OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_UNHEX)
       OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_IP_TO_INT)
       OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_INT_TO_IP)
+      OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_GREATEST)
+      OB_POSTFIX_EXPRESSION_GET_SYS_FUNC(SYS_FUNC_LEAST)
       else
       {
         ret = OB_ERR_UNKNOWN_SYS_FUNC;
@@ -410,16 +413,33 @@ namespace oceanbase
           else if (OB_SUCCESS != (ret = expr_.push_back(obj)))
           {}
           break;
-        case T_QUESTIONMARK:
-        case T_SYSTEM_VARIABLE:
-        case T_TEMP_VARIABLE:
-          item_type.set_int(CONST_OBJ);
-          obj.set_ext(item.value_.int_);
-          TBSYS_LOG(DEBUG, "expr system variable ptr=%p",
-                    (void*)item.value_.int_);
+        case T_CUR_TIME:
+          item_type.set_int(CUR_TIME_OP);
+          obj.set_int(item.value_.int_);
           if (OB_SUCCESS != (ret = expr_.push_back(item_type)))
           {}
           else if (OB_SUCCESS != (ret = expr_.push_back(obj)))
+          {}
+          break;
+        case T_QUESTIONMARK:
+          item_type.set_int(PARAM_IDX);
+          obj.set_int(item.value_.int_);
+          if (OB_SUCCESS != (ret = expr_.push_back(item_type)))
+          {}
+          else if (OB_SUCCESS != (ret = expr_.push_back(obj)))
+          {}
+          break;
+        case T_SYSTEM_VARIABLE:
+        case T_TEMP_VARIABLE:
+          item_type.set_int(item.type_ == T_SYSTEM_VARIABLE ? SYSTEM_VAR : TEMP_VAR);
+          obj.set_varchar(item.string_);
+          if (OB_SUCCESS != (ret = str_buf_.write_obj(obj, &obj2)))
+          {
+            TBSYS_LOG(WARN, "fail to write variable name to string buffer. err=%d", ret);
+          }
+          else if (OB_SUCCESS != (ret = expr_.push_back(item_type)))
+          {}
+          else if (OB_SUCCESS != (ret = expr_.push_back(obj2)))
           {}
           break;
         case T_NULL:
@@ -486,6 +506,13 @@ namespace oceanbase
           {}
           else if (OB_SUCCESS != (ret = expr_.push_back(obj2)))
           {}
+          break;
+        case T_CUR_TIME_OP:
+          item_type.set_int(UPS_TIME_OP);
+          if (OB_SUCCESS != (ret = expr_.push_back(item_type)))
+          {
+            TBSYS_LOG(WARN, "failed to push item_type, ret=%d", ret);
+          }
           break;
         case T_FUN_SYS:
           item_type.set_int(OP);
@@ -577,8 +604,10 @@ namespace oceanbase
       {
         stack_ = stack->stack_;
         extra_params->did_int_div_as_double_ = did_int_div_as_double_;
+        calc_buf_.reuse();
       }
-
+      bool quick_path = false;
+      const ObObj *var = NULL;
       while (OB_SUCCESS == ret)
       {
         // 获得数据类型:列id、数字、操作符、结束标记
@@ -636,32 +665,47 @@ namespace oceanbase
               }
               else
               {
-                const ObObj *cell = NULL;
-                if (OB_SUCCESS != (ret = row.get_cell(static_cast<uint64_t>(value),
-                                                      static_cast<uint64_t>(value2), cell)))
+                if (4 == expr_.count())
                 {
-                  TBSYS_LOG(WARN, "fail to get cell from row. err=%d tid=%ld cid=%ld",
-                            ret, value, value2);
+                  // quick path
+                  if (OB_SUCCESS != (ret = row.get_cell(static_cast<uint64_t>(value),
+                                                      static_cast<uint64_t>(value2), composite_val)))
+                  {
+                    TBSYS_LOG(WARN, "fail to get cell from row. err=%d tid=%ld cid=%ld",
+                              ret, value, value2);
+                  }
+                  quick_path = true;
                 }
                 else
                 {
-                  stack_[idx_i++].assign(*cell);
+                  const ObObj *cell = NULL;
+                  if (OB_SUCCESS != (ret = row.get_cell(static_cast<uint64_t>(value),
+                                                        static_cast<uint64_t>(value2), cell)))
+                  {
+                    TBSYS_LOG(WARN, "fail to get cell from row. err=%d tid=%ld cid=%ld",
+                              ret, value, value2);
+                  }
+                  else
+                  {
+                    stack_[idx_i++].assign(*cell);
+                  }
                 }
               }
               break;
             case CONST_OBJ:
-              if (expr_[idx].get_type() == ObExtendType)
+              stack_[idx_i++].assign(expr_[idx++]);
+              break;
+            case PARAM_IDX:
+            case SYSTEM_VAR:
+            case TEMP_VAR:
+            case CUR_TIME_OP:
+              if (OB_SUCCESS == (ret = get_var_obj(static_cast<ObPostExprNodeType>(type), expr_[idx++], var)))
               {
-                int64_t obj_addr = common::OB_INVALID_ID;
-                expr_[idx++].get_ext(obj_addr);
-                TBSYS_LOG(DEBUG, "get ext value=%s addr=%p",
-                          to_cstring(*(reinterpret_cast<ObObj *>(obj_addr))),
-                          (void*)obj_addr);
-                stack_[idx_i++].assign(*(reinterpret_cast<ObObj *>(obj_addr)));
+                stack_[idx_i++].assign(*var);
               }
               else
               {
-                stack_[idx_i++].assign(expr_[idx++]);
+                TBSYS_LOG(WARN, "Can not get value ObObj. err=%d", ret);
               }
               break;
             case OP:
@@ -682,7 +726,7 @@ namespace oceanbase
               else
               {
                 extra_params->operand_count_ = static_cast<int32_t>(value2);
-                extra_params->str_buf_ = &str_buf_;
+                extra_params->str_buf_ = &calc_buf_;
                 if (OB_UNLIKELY(T_FUN_SYS == value))
                 {
                   if(OB_SUCCESS != (ret = expr_[idx++].get_int(sys_func)))
@@ -722,17 +766,102 @@ namespace oceanbase
                 }
               }
               break;
+            case UPS_TIME_OP:
+              if (OB_SUCCESS != (ret = sys_func_current_timestamp(stack_, idx_i, result, *extra_params)))
+              {
+                TBSYS_LOG(WARN, "failed to call sys_func_current_timestamp, err=%d", ret);
+              }
+              else
+              {
+                stack_[idx_i++] = result;
+              }
+              break;
             default:
               ret = OB_ERR_UNEXPECTED;
               TBSYS_LOG(WARN,"unexpected [type:%ld]", type);
               break;
           } // end switch
         }   // end else
+        if (quick_path)
+          break;
       } // end while
 
       return ret;
     }
 
+    int ObPostfixExpression::get_var_obj(
+        ObPostExprNodeType type,
+        const ObObj& expr_node,
+        const ObObj*& val) const
+    {
+      int ret = OB_SUCCESS;
+      ObResultSet *result_set = NULL;
+      if (type != PARAM_IDX && type != SYSTEM_VAR && type != TEMP_VAR && type != CUR_TIME_OP)
+      {
+        val = &expr_node;
+      }
+      else
+      {
+        if (!owner_op_ || !owner_op_->get_phy_plan()
+          || !(result_set = owner_op_->get_phy_plan()->get_result_set()))
+        {
+          ret = OB_ERR_UNEXPECTED;
+          TBSYS_LOG(WARN, "Can not get result set.err=%d", ret);
+        }
+        else if (type == PARAM_IDX)
+        {
+          int64_t param_idx = OB_INVALID_INDEX;
+          if ((ret = expr_node.get_int(param_idx)) != OB_SUCCESS)
+          {
+            TBSYS_LOG(ERROR, "Can not get param index, ret=%d", ret);
+          }
+          else if (param_idx < 0 || param_idx >= result_set->get_params().count())
+          {
+            ret = OB_ERR_ILLEGAL_INDEX;
+            TBSYS_LOG(ERROR, "Wrong index of question mark position, pos = %ld\n", param_idx);
+          }
+          else
+          {
+            val = result_set->get_params().at(param_idx);
+          }
+        }
+        else if (type == SYSTEM_VAR || type == TEMP_VAR)
+        {
+          ObString var_name;
+          ObSQLSessionInfo *session_info = result_set->get_session();
+          if (!session_info)
+          {
+            ret = OB_ERR_UNEXPECTED;
+            TBSYS_LOG(WARN, "Can not get session info.err=%d", ret);
+          }
+          else if ((ret = expr_node.get_varchar(var_name)) != OB_SUCCESS)
+          {
+            TBSYS_LOG(ERROR, "Can not get variable name");
+          }
+          else if (type == SYSTEM_VAR
+            && (val = session_info->get_sys_variable_value(var_name)) == NULL)
+          {
+            ret = OB_ERR_VARIABLE_UNKNOWN;
+            TBSYS_LOG(USER_ERROR, "System variable %.*s does not exists", var_name.length(), var_name.ptr());
+          }
+          else if (type == TEMP_VAR
+            && (val = session_info->get_variable_value(var_name)) == NULL)
+          {
+            ret = OB_ERR_VARIABLE_UNKNOWN;
+            TBSYS_LOG(USER_ERROR, "Variable %.*s does not exists", var_name.length(), var_name.ptr());
+          }
+        }
+        else if (type == CUR_TIME_OP)
+        {
+          if ((val = result_set->get_cur_time_place()) == NULL)
+          {
+            ret = OB_ERR_UNEXPECTED;
+            TBSYS_LOG(WARN, "Can not get current time. err=%d", ret);
+          }
+        }
+      }
+      return ret;
+    }
 
     int ObPostfixExpression::is_const_expr(bool &is_type) const
     {
@@ -865,13 +994,13 @@ namespace oceanbase
     }
 
     bool ObPostfixExpression::is_simple_condition(bool real_val, uint64_t &column_id, int64_t &cond_op,
-                                                  ObObj &const_val) const
+                                                  ObObj &const_val, ObPostExprNodeType *val_type) const
     {
       int err = OB_SUCCESS;
       int64_t type_val = -1;
+      int64_t v_type = -1;
       int64_t cid = OB_INVALID_ID;
       bool is_simple_cond_type = false;
-
 
       do{
         if (expr_.count() == (3+2+3+1)) /*cid(3) + const_operand(2) + operator(3) + end(1) */
@@ -902,12 +1031,13 @@ namespace oceanbase
             // not int val, pass
             break;
           }
-          else if (OB_SUCCESS != (err = expr_[3].get_int(type_val)))
+          else if (OB_SUCCESS != (err = expr_[3].get_int(v_type)))
           {
             TBSYS_LOG(WARN, "fail to get int value.err=%d", err);
             break;
           }
-          else if (type_val != CONST_OBJ)
+          else if (v_type != CONST_OBJ && v_type != PARAM_IDX
+            && v_type != SYSTEM_VAR && v_type != TEMP_VAR && v_type != CUR_TIME_OP)
           {
             break;
           }
@@ -943,16 +1073,26 @@ namespace oceanbase
           /* (4) result */
           else
           {
-            if (real_val && ObExtendType == expr_[4].get_type()) // question mark
+            if (real_val)
             {
-              int64_t obj_addr = common::OB_INVALID_ID;
-              expr_[4].get_ext(obj_addr);
-              const_val = *(reinterpret_cast<ObObj *>(obj_addr));
-              TBSYS_LOG(DEBUG, "using variable, const_val=%s", to_cstring(const_val));
+              const ObObj *var_ptr = NULL;
+              if ((err = get_var_obj(static_cast<ObPostExprNodeType>(v_type), expr_[4], var_ptr)) == OB_SUCCESS)
+              {
+                const_val = *var_ptr;
+              }
+              else
+              {
+                TBSYS_LOG(WARN, "Fail to get real value.err=%d", err);
+                break;
+              }
             }
             else
             {
               const_val = expr_[4];
+            }
+            if (val_type)
+            {
+              *val_type = static_cast<ObPostExprNodeType>(v_type);
             }
             column_id = (uint64_t)cid;
             cond_op = type_val;
@@ -967,7 +1107,8 @@ namespace oceanbase
                                                 ObObj &cond_start, ObObj &cond_end) const
     {
       int err = OB_ERROR;
-      int64_t type_val = -1;
+      int64_t type_val1 = -1;
+      int64_t type_val2 = -1;
       int64_t cid = OB_INVALID_ID;
       bool is_simple_cond_type = false;
       do{
@@ -979,12 +1120,12 @@ namespace oceanbase
             // not int val, pass
             break;
           }
-          else if(OB_SUCCESS != (err = expr_[0].get_int(type_val)))
+          else if(OB_SUCCESS != (err = expr_[0].get_int(type_val1)))
           {
             TBSYS_LOG(WARN, "fail to get int value.err=%d", err);
             break;
           }
-          else if (type_val != COLUMN_IDX)
+          else if (type_val1 != COLUMN_IDX)
           {
             break;
           }
@@ -999,12 +1140,13 @@ namespace oceanbase
             // not int val, pass
             break;
           }
-          else if (OB_SUCCESS != (err = expr_[3].get_int(type_val)))
+          else if (OB_SUCCESS != (err = expr_[3].get_int(type_val1)))
           {
             TBSYS_LOG(WARN, "fail to get int value.err=%d", err);
             break;
           }
-          else if (type_val != CONST_OBJ)
+          else if (type_val1 != CONST_OBJ && type_val1 != PARAM_IDX
+            && type_val1 != SYSTEM_VAR && type_val1 != TEMP_VAR && type_val1 != CUR_TIME_OP)
           {
             break;
           }
@@ -1013,37 +1155,41 @@ namespace oceanbase
             // not int val, pass
             break;
           }
-          else if (OB_SUCCESS != (err = expr_[5].get_int(type_val)))
+          else if (OB_SUCCESS != (err = expr_[5].get_int(type_val2)))
           {
             TBSYS_LOG(WARN, "fail to get int value.err=%d", err);
             break;
           }
-          else if (type_val != CONST_OBJ)
+          else if (type_val2 != CONST_OBJ && type_val2 != PARAM_IDX
+            && type_val2 != SYSTEM_VAR && type_val2 != TEMP_VAR && type_val2 != CUR_TIME_OP)
           {
             break;
           }
           else
           {
-            if (real_val && ObExtendType == expr_[4].get_type()) // question mark
+            if (real_val)
             {
-              int64_t obj_addr = common::OB_INVALID_ID;
-              expr_[4].get_ext(obj_addr);
-              cond_start = *(reinterpret_cast<ObObj *>(obj_addr));
-              TBSYS_LOG(DEBUG, "using variable, cond_start=%s", to_cstring(cond_start));
+              const ObObj *val = NULL;
+              if (OB_SUCCESS == (err = get_var_obj(static_cast<ObPostExprNodeType>(type_val1), expr_[4], val)))
+              {
+                cond_start = *val;
+              }
+              else
+              {
+                break;
+              }
+              if (OB_SUCCESS == (err = get_var_obj(static_cast<ObPostExprNodeType>(type_val2), expr_[6], val)))
+              {
+                cond_end = *val;
+              }
+              else
+              {
+                break;
+              }
             }
             else
             {
               cond_start = expr_[4];
-            }
-            if (real_val && ObExtendType == expr_[6].get_type()) // question mark
-            {
-              int64_t obj_addr = common::OB_INVALID_ID;
-              expr_[6].get_ext(obj_addr);
-              cond_end = *(reinterpret_cast<ObObj *>(obj_addr));
-              TBSYS_LOG(DEBUG, "using variable, cond_end=%s", to_cstring(cond_end));
-            }
-            else
-            {
               cond_end = expr_[6];
             }
           }
@@ -1058,12 +1204,12 @@ namespace oceanbase
             // not int val, pass
             break;
           }
-          else if (OB_SUCCESS != (err = expr_[7].get_int(type_val)))
+          else if (OB_SUCCESS != (err = expr_[7].get_int(type_val2)))
           {
             TBSYS_LOG(WARN, "fail to get int value.err=%d", err);
             break;
           }
-          else if (type_val != OP)
+          else if (type_val2 != OP)
           {
             break;
           }
@@ -1072,12 +1218,12 @@ namespace oceanbase
             // not int val, pass
             break;
           }
-          else if (OB_SUCCESS != (err = expr_[8].get_int(type_val)))
+          else if (OB_SUCCESS != (err = expr_[8].get_int(type_val2)))
           {
             TBSYS_LOG(WARN, "fail to get int value.err=%d", err);
             break;
           }
-          else if (type_val != T_OP_BTW)
+          else if (type_val2 != T_OP_BTW)
           {
             break;
           }
@@ -1085,7 +1231,7 @@ namespace oceanbase
           {
             /* result */
             column_id = (uint64_t)cid;
-            cond_op = type_val;
+            cond_op = type_val2;
             is_simple_cond_type = true;
             err = OB_SUCCESS;
           }
@@ -1114,20 +1260,29 @@ namespace oceanbase
       {
         for (i = 0; i < expr_.count(); i++)
         {
-          if (OB_UNLIKELY(expr_[i].get_type() == ObExtendType))
+          int64_t type = BEGIN_TYPE;
+          int64_t num = 0;
+          if (OB_SUCCESS != (ret = expr_[i].get_int(type)))
           {
-            int64_t obj_addr = common::OB_INVALID_ID;
-            ObObj *val = NULL;
-            ObObj tmp_val;
-            if (OB_SUCCESS != (ret = expr_[i].get_ext(obj_addr)))
+            TBSYS_LOG(WARN, "Fail to get type. unexpected! ret=%d idx=%d", ret, i);
+            ret = OB_ERR_UNEXPECTED;
+            break;
+          }
+          else if (type == PARAM_IDX || type == SYSTEM_VAR || type == TEMP_VAR || type == CUR_TIME_OP)
+          {
+            ObObj new_type;
+            new_type.set_int(CONST_OBJ);
+            const ObObj *val = NULL;
+            if (OB_SUCCESS != (ret = new_type.serialize(buf, buf_len, pos)))
             {
-              TBSYS_LOG(WARN,"get_ext error [err:%d]", ret);
+              TBSYS_LOG(WARN, "Fail to serialize type CONST_OBJ");
               break;
             }
-            else if ((val = reinterpret_cast<ObObj *>(obj_addr)) == NULL)
+            else if (i >= expr_.count() - 1
+              || OB_SUCCESS != (ret = get_var_obj(static_cast<ObPostExprNodeType>(type), expr_[++i], val)))
             {
               ret = OB_ERR_UNEXPECTED;
-              TBSYS_LOG(WARN,"Wrong place holder address [err:%d]", ret);
+              TBSYS_LOG(WARN,"Get value ObObj failed [err:%d]", ret);
               break;
             }
             else if (OB_SUCCESS != (ret = val->serialize(buf, buf_len, pos)))
@@ -1135,11 +1290,54 @@ namespace oceanbase
               TBSYS_LOG(WARN, "fail to serialize expr[%d]. ret=%d", i, ret);
               break;
             }
+            continue;
           }
-          else if (OB_SUCCESS != (ret = expr_[i].serialize(buf, buf_len, pos)))
+          else if (type == OP)
           {
-            TBSYS_LOG(WARN, "fail to serialize expr[%d]. ret=%d count=%ld", i, ret, expr_.count());
+            num = 3;
+            int64_t op_type = 0;
+            if (OB_SUCCESS != (ret = expr_[i+1].get_int(op_type)))
+            {
+              TBSYS_LOG(WARN, "Fail to get op type. unexpected! ret=%d idx=%d", ret, i+1);
+              ret = OB_ERR_UNEXPECTED;
+              break;
+            }
+            else if (T_FUN_SYS == op_type)
+            {
+              ++num;
+            }
+          }
+          else if (type == COLUMN_IDX)
+          {
+            num = 3;
+          }
+          else if (type == CONST_OBJ)
+          {
+            num = 2;
+          }
+          else if (type == END || type == UPS_TIME_OP)
+          {
+            num = 1;
+          }
+          else
+          {
+            TBSYS_LOG(WARN, "Unkown type %ld", type);
+            ret = OB_ERR_UNEXPECTED;
             break;
+          }
+          for (int64_t j = 0; j < num; j++)
+          {
+            if (i >= expr_.count()
+              || OB_SUCCESS != (ret = expr_[i].serialize(buf, buf_len, pos)))
+            {
+              ret = OB_ERR_UNEXPECTED;
+              TBSYS_LOG(WARN, "Fail to serialize expr[%d]. ret=%d count=%ld", i, ret, expr_.count());
+              break;
+            }
+            else if (j < num - 1)
+            {
+              i++;
+            }
           }
         }
       }
@@ -1148,7 +1346,7 @@ namespace oceanbase
 
     // single row expression checker
     // ONLY: (x,x,x) in ((x,x,x))
-    bool ObPostfixExpression::is_simple_in_expr(const ObRowkeyInfo &info, ObArray<ObRowkey> &rowkey_array,
+    bool ObPostfixExpression::is_simple_in_expr(bool real_val, const ObRowkeyInfo &info, ObIArray<ObRowkey> &rowkey_array,
         common::PageArena<ObObj,common::ModulePageAllocator> &rowkey_objs_allocator) const
     {
       int err = OB_SUCCESS;
@@ -1216,7 +1414,7 @@ namespace oceanbase
           {
             // TBSYS_LOG(DEBUG, "not simple in expr. len=%ld. dim=%ld", len, dim);
           }
-          else if (dim == info.get_size())
+          else if (dim >= info.get_size())
           {
             len = len - (dim * 3 + 6); // 3 = COLUMN_IDX, TID, CID
             if (len == 0)
@@ -1256,16 +1454,28 @@ namespace oceanbase
                     for (index = 0; index < rowkey_column_count; index++)
                     {
                       // TODO: check every T_OP_ROW dim, all must be equal. currently skipped this step
-                      const int64_t offset = val_idx + row * single_row_len + (index * 2 + 1); // 2=CONST,VALUE
-                      if (ObExtendType == expr_.at(offset).get_type())
+                      const int64_t type_offset = val_idx + row * single_row_len + (index * 2);
+                      const int64_t val_offset = val_idx + row * single_row_len + (index * 2 + 1); // 2=CONST,VALUE
+                      int64_t type = 0;
+                      const ObObj *val = NULL;
+                      if (OB_SUCCESS != (err = expr_.at(type_offset).get_int(type)))
                       {
-                        int64_t obj_addr = common::OB_INVALID_ID;
-                        expr_.at(offset).get_ext(obj_addr);
-                        rowkey_objs[index] = *(reinterpret_cast<ObObj *>(obj_addr));
+                        TBSYS_LOG(ERROR, "Can not get value type. err=%d", err);
+                      }
+                      else if (real_val)
+                      {
+                        if (OB_SUCCESS != (err = get_var_obj(static_cast<ObPostExprNodeType>(type), expr_.at(val_offset), val)))
+                        {
+                          TBSYS_LOG(ERROR, "Can not get value. err=%d", err);
+                        }
+                        else
+                        {
+                          rowkey_objs[index] = *val;
+                        }
                       }
                       else
                       {
-                        rowkey_objs[index] = expr_.at(offset);
+                        rowkey_objs[index] = expr_.at(val_offset);
                       }
                       // TBSYS_LOG(DEBUG, "index=%ld, at=%ld, val=%s", index, offset, to_cstring(rowkey_objs[index]));
                     }
@@ -1360,13 +1570,80 @@ namespace oceanbase
     DEFINE_GET_SERIALIZE_SIZE(ObPostfixExpression)
     {
       int64_t size = 0;
-      int i = 0;
       ObObj obj;
       obj.set_int(expr_.count());
       size += obj.get_serialize_size();
-      for (i = 0; i < expr_.count(); i++)
+      for (int i = 0; i < expr_.count(); i++)
       {
-        size += expr_[i].get_serialize_size();
+        int64_t type = BEGIN_TYPE;
+        int64_t num = 0;
+        if (OB_SUCCESS != expr_[i].get_int(type))
+        {
+          TBSYS_LOG(WARN, "Fail to get type. unexpected! idx=%d", i);
+          break;
+        }
+        else if (type == PARAM_IDX || type == SYSTEM_VAR || type == TEMP_VAR || type == CUR_TIME_OP)
+        {
+          ObObj new_type;
+          new_type.set_int(CONST_OBJ);
+          const ObObj *val = NULL;
+          size += new_type.get_serialize_size();
+          if (i >= expr_.count() - 1
+            || OB_SUCCESS != get_var_obj(static_cast<ObPostExprNodeType>(type), expr_[++i], val))
+          {
+            TBSYS_LOG(WARN,"Get value ObObj failed ");
+            break;
+          }
+          size += val->get_serialize_size();
+          continue;
+        }
+        else if (type == OP)
+        {
+          num = 3;
+          int64_t op_type = 0;
+          if (OB_SUCCESS != expr_[i + 1].get_int(op_type))
+          {
+            TBSYS_LOG(WARN, "Fail to get op type. unexpected! idx=%d", i+1);
+            break;
+          }
+          else if (T_FUN_SYS == op_type)
+          {
+            ++num;
+          }
+        }
+        else if (type == COLUMN_IDX)
+        {
+          num = 3;
+        }
+        else if (type == CONST_OBJ)
+        {
+          num = 2;
+        }
+        else if (type == END || type == UPS_TIME_OP)
+        {
+          num = 1;
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "Unkown type %ld", type);
+          break;
+        }
+        for (int64_t j = 0; j < num; j++)
+        {
+          if (i >= expr_.count())
+          {
+            TBSYS_LOG(WARN, "Fail to serialize expr[%d]. count=%ld", i, expr_.count());
+            break;
+          }
+          else
+          {
+            size += expr_[i].get_serialize_size();
+          }
+          if (j < num - 1)
+          {
+            i++;
+          }
+        }
       }
       return size;
     }
@@ -2207,39 +2484,13 @@ namespace oceanbase
       return err;
     }
 
-    inline int ObPostfixExpression::sys_func_cur_time(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params)
+    inline int ObPostfixExpression::sys_func_current_timestamp(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params)
     {
       UNUSED(stack_i);
       UNUSED(idx_i);
       UNUSED(params);
 
-      struct timeval t;
-      gettimeofday(&t, NULL);
-      result.set_datetime(static_cast<int64_t>(t.tv_sec));
-      return OB_SUCCESS;
-    }
-
-    inline int ObPostfixExpression::sys_func_cur_date(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params)
-    {
-      UNUSED(stack_i);
-      UNUSED(idx_i);
-      UNUSED(params);
-
-      struct timeval t;
-      gettimeofday(&t, NULL);
-      result.set_datetime(static_cast<int64_t>(t.tv_sec));
-      return OB_SUCCESS;
-    }
-
-    inline int ObPostfixExpression::sys_func_cur_timestamp(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params)
-    {
-      UNUSED(stack_i);
-      UNUSED(idx_i);
-      UNUSED(params);
-
-      struct timeval t;
-      gettimeofday(&t, NULL);
-      result.set_precise_datetime(static_cast<int64_t>(t.tv_sec * 1000LL * 1000LL + t.tv_usec));
+      result.set_precise_datetime(tbsys::CTimeUtil::getTime());
       return OB_SUCCESS;
     }
 
@@ -2360,6 +2611,135 @@ namespace oceanbase
       }
       return err;
     }
+
+    inline int ObPostfixExpression::sys_func_greatest(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params)
+    {
+      int err = OB_SUCCESS;
+      ObObj obj;
+      if (NULL == stack_i)
+      {
+        TBSYS_LOG(WARN, "stack pointer is NULL.");
+        err = OB_INVALID_ARGUMENT;
+      }
+      else if (idx_i < params.operand_count_)
+      {
+        TBSYS_LOG(WARN, "no enough operand in the stack. current size:%d", idx_i);
+        err = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        int i = params.operand_count_;
+        int cmp = 0;
+        ObExprObj *greatest = NULL;
+        result.set_null();
+        
+        if (i > 0)
+        {
+          greatest = &stack_i[idx_i - i];
+          i--;
+        }
+
+        for (; i > 0; i--)
+        {
+          if (OB_SUCCESS == (err = stack_i[idx_i-i].compare(*greatest, cmp)))
+          {
+            if (0 < cmp)
+            {
+              greatest = &stack_i[idx_i-i];
+            }
+          }
+          else
+          {
+            break;
+          }
+        }
+        if (OB_SUCCESS == err)
+        {
+          if (NULL != greatest)
+          {
+            greatest->to(obj);
+            result.assign(obj);
+            idx_i -= params.operand_count_;
+          }
+          else
+          {
+            err = OB_INVALID_ARGUMENT;
+          }
+        }
+        else if (OB_RESULT_UNKNOWN == err)
+        {
+          result.set_null(); // default is null
+          idx_i -= params.operand_count_;
+          err = OB_SUCCESS;
+        }
+      }
+      return err;
+    }
+
+    inline int ObPostfixExpression::sys_func_least(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params)
+    {
+      int err = OB_SUCCESS;
+      ObObj obj;
+      if (NULL == stack_i)
+      {
+        TBSYS_LOG(WARN, "stack pointer is NULL.");
+        err = OB_INVALID_ARGUMENT;
+      }
+      else if (idx_i < params.operand_count_)
+      {
+        TBSYS_LOG(WARN, "no enough operand in the stack. current size:%d", idx_i);
+        err = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        int i = params.operand_count_;
+        int cmp = 0;
+        ObExprObj *greatest = NULL;
+        result.set_null();
+        
+        if (i > 0)
+        {
+          greatest = &stack_i[idx_i - i];
+          i--;
+        }
+
+        for (; i > 0; i--)
+        {
+          if (OB_SUCCESS == (err = stack_i[idx_i-i].compare(*greatest, cmp)))
+          {
+            if (0 > cmp)
+            {
+              greatest = &stack_i[idx_i-i];
+            }
+          }
+          else
+          {
+            break;
+          }
+        }
+        if (OB_SUCCESS == err)
+        {
+          if (NULL != greatest)
+          {
+            greatest->to(obj);
+            result.assign(obj);
+            idx_i -= params.operand_count_;
+          }
+          else
+          {
+            err = OB_INVALID_ARGUMENT;
+          }
+        }
+        else if (OB_RESULT_UNKNOWN == err)
+        {
+          result.set_null(); // default is null
+          idx_i -= params.operand_count_;
+          err = OB_SUCCESS;
+        }
+      }
+      return err;
+    }
+
 
     inline int ObPostfixExpression::concat_func(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params)
     {
@@ -2551,6 +2931,28 @@ namespace oceanbase
             databuff_printf(buf, buf_len, pos, "|");
             idx++;
             break;
+          case CUR_TIME_OP:
+            databuff_printf(buf, buf_len, pos, "current_timestamp()");
+            idx++;  // skip place holder
+            break;
+          case PARAM_IDX:
+            if (OB_SUCCESS  != (err = expr_[idx++].get_int(value)))
+            {
+              TBSYS_LOG(WARN,"get_int error [err:%d]", err);
+            }
+            else
+            {
+              databuff_printf(buf, buf_len, pos, "PARAM<%ld>|", value);
+            }
+            break;
+          case SYSTEM_VAR:
+            databuff_printf(buf, buf_len, pos, "@@");
+            pos += expr_[idx++].to_string(buf+pos, buf_len-pos);
+            break;
+          case TEMP_VAR:
+            databuff_printf(buf, buf_len, pos, "@");
+            pos += expr_[idx++].to_string(buf+pos, buf_len-pos);
+            break;
           case OP:
             // 根据OP的类型，从堆栈中弹出1个或多个操作数，进行计算
             if (OB_SUCCESS != (err = expr_[idx++].get_int(value)))
@@ -2591,6 +2993,7 @@ namespace oceanbase
             }
             break;
           default:
+            databuff_printf(buf, buf_len, pos, "unexpected [type:%ld]", type);
             err = OB_ERR_UNEXPECTED;
             TBSYS_LOG(WARN,"unexpected [type:%ld]", type);
             break;

@@ -465,6 +465,10 @@ namespace oceanbase
         {
           return size_;
         };
+        void reset()
+        {
+          clear();
+        };
 
       private:
         node_holder_t root_;

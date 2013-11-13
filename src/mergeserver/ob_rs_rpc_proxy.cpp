@@ -42,7 +42,8 @@ int ObMergerRootRpcProxy::init(common::ObGeneralRpcStub *rpc_stub)
   return ret;
 }
 
-int ObMergerRootRpcProxy::async_heartbeat(const ObServer & merge_server, const int32_t sql_port)
+int ObMergerRootRpcProxy::async_heartbeat(const ObServer & merge_server, const int32_t sql_port,
+    const bool is_listen_ms)
 {
   int ret = OB_SUCCESS;
   if (!check_inner_stat())
@@ -53,7 +54,8 @@ int ObMergerRootRpcProxy::async_heartbeat(const ObServer & merge_server, const i
   else
   {
     /// async send heartbeat no need retry
-    ret = rpc_stub_->heartbeat_merge_server(rpc_timeout_, root_server_, merge_server, OB_MERGESERVER, sql_port);
+    ret = rpc_stub_->heartbeat_merge_server(rpc_timeout_, root_server_, merge_server,
+        OB_MERGESERVER, sql_port, is_listen_ms);
     if (ret != OB_SUCCESS)
     {
       TBSYS_LOG(WARN, "heartbeat with root server failed:ret[%d]", ret);
@@ -400,5 +402,40 @@ int ObMergerRootRpcProxy::alter_table(const common::AlterTableSchema& alter_sche
   }
   return ret;
 }
-
-
+int ObMergerRootRpcProxy::set_obi_role(const ObServer &rs, const int64_t timeout, const ObiRole &obi_role)
+{
+  int ret = OB_SUCCESS;
+  ret = rpc_stub_->set_obi_role(rs, timeout, obi_role);
+  if (OB_SUCCESS != ret)
+  {
+    TBSYS_LOG(WARN, "set obi role to server[%s] failed, ret=%d", to_cstring(rs), ret);
+  }
+  return ret;
+}
+int ObMergerRootRpcProxy::get_obi_role(const int64_t timeout_us, const common::ObServer& root_server, common::ObiRole &obi_role) const
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = rpc_stub_->get_obi_role(timeout_us, root_server, obi_role)))
+  {
+    TBSYS_LOG(WARN, "get obi role from rootserver[%s] failed, ret=%d", to_cstring(root_server), ret);
+  }
+  return ret;
+}
+int ObMergerRootRpcProxy::set_master_rs_vip_port_to_cluster(const ObServer &rs, const int64_t timeout, const char *new_master_ip, const int32_t new_master_port)
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = rpc_stub_->set_master_rs_vip_port_to_cluster(rs, timeout, new_master_ip, new_master_port)))
+  {
+    TBSYS_LOG(WARN, "set new master rs vip port to rs[%s] failed, ret=%d", to_cstring(rs), ret);
+  }
+  return ret;
+}
+int ObMergerRootRpcProxy::fetch_master_ups(const ObServer &rootserver, ObServer & master_ups)
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = rpc_stub_->fetch_update_server(rpc_timeout_, rootserver, master_ups)))
+  {
+    TBSYS_LOG(ERROR, "fetch master ups in this cluster failed, ret=%d", ret);
+  }
+  return ret;
+}

@@ -30,6 +30,26 @@ int main(int argc, char *argv[])
   mallopt(M_MMAP_MAX, DEFAULT_MMAP_MAX_VAL);
   ob_init_memory_pool();
   tbsys::WarningBuffer::set_warn_log_on(true);
+
+  int err = ObPhyOperatorGFactory::get_instance()->init();
+  if (0 != err)
+  {
+    fprintf(stderr, "failed to init global factory\n");
+    abort();
+  }
+  err = ObPhyPlanGFactory::get_instance()->init();
+  if (0 != err)
+  {
+    fprintf(stderr, "failed to init global factory\n");
+    abort();
+  }
+  err = ObPsStoreItemGFactory::get_instance()->init();
+  if (0 != err)
+  {
+    fprintf(stderr, "failed to init global factory\n");
+    abort();
+  }
+
   //easy_pool_set_allocator(ob_malloc);
   BaseMain* mergeServer = ObMergeServerMain::get_instance();
   if (NULL == mergeServer)

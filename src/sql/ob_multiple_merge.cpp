@@ -30,6 +30,20 @@ ObMultipleMerge::~ObMultipleMerge()
 {
 }
 
+void ObMultipleMerge::reset()
+{
+  allocator_.reuse();
+  child_num_ = 0;
+  is_ups_row_ = true;
+}
+
+void ObMultipleMerge::reuse()
+{
+  allocator_.reuse();
+  child_num_ = 0;
+  is_ups_row_ = true;
+}
+
 int ObMultipleMerge::get_row_desc(const ObRowDesc *&row_desc) const
 {
   int ret = OB_SUCCESS;
@@ -123,6 +137,15 @@ int ObMultipleMerge::copy_rowkey(const ObRow &row, ObRow &result_row, bool deep_
 void ObMultipleMerge::set_is_ups_row(bool is_ups_row)
 {
   is_ups_row_ = is_ups_row;
+}
+
+PHY_OPERATOR_ASSIGN(ObMultipleMerge)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObMultipleMerge);
+  reset();
+  is_ups_row_ = o_ptr->is_ups_row_;
+  return ret;
 }
 
 DEFINE_SERIALIZE(ObMultipleMerge)

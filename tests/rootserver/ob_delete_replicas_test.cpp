@@ -120,7 +120,7 @@ void ObDeleteReplicasTest::heartbeat_cs(int32_t cs_num)
 {
   for (int i = 0; i < cs_num; ++i)
   {
-    ASSERT_EQ(OB_SUCCESS, server_->receive_hb(get_addr(i), 0, OB_CHUNKSERVER));
+    ASSERT_EQ(OB_SUCCESS, server_->receive_hb(get_addr(i), 0, false, OB_CHUNKSERVER));
   }
 }
 

@@ -30,6 +30,7 @@ namespace oceanbase
 {
   namespace rootserver
   {
+    class ObRootTable2;
     class ObRestartServer
     {
     public:

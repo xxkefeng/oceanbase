@@ -24,6 +24,9 @@
 #include "mergeserver/ob_ms_rpc_proxy.h"
 #include "mergeserver/ob_rs_rpc_proxy.h"
 #include "ob_sql_session_info.h"
+#include "ob_sql_session_mgr.h"
+#include "ob_sql_id_mgr.h"
+#include "ob_ps_store.h"
 #include "common/location/ob_tablet_location_cache_proxy.h"
 #include "common/ob_privilege_manager.h"
 #include "common/ob_schema_manager.h"
@@ -46,7 +49,10 @@ namespace oceanbase
       oceanbase::mergeserver::ObMergerRpcProxy *merger_rpc_proxy_;
       oceanbase::mergeserver::ObMergerRootRpcProxy *rs_rpc_proxy_;
       const oceanbase::mergeserver::ObMergeServerService *merge_service_;
+      ObPsStore *ps_store_;     /* Ps Global Store */
       ObSQLSessionInfo *session_info_;
+      ObSQLSessionMgr *session_mgr_;
+      ObSQLIdMgr * sql_id_mgr_;
       const oceanbase::common::ObPrivilege **pp_privilege_;
       bool disable_privilege_check_;
       bool is_prepare_protocol_;
@@ -66,6 +72,7 @@ namespace oceanbase
         rs_rpc_proxy_(NULL),
         merge_service_(NULL),
         session_info_(NULL),
+        session_mgr_(NULL),
         pp_privilege_(NULL),
         disable_privilege_check_(false),
         is_prepare_protocol_(false),

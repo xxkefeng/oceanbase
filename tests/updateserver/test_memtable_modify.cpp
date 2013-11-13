@@ -49,7 +49,7 @@ class MockUpsTableMgr : public ObIUpsTableMgr
     {
     };
   public:
-    int apply(RWSessionCtx &session_ctx, ObIterator &iter)
+    int apply(RWSessionCtx &session_ctx, ObIterator &iter, const ObDmlType dml_type)
     {
       int ret = OB_SUCCESS;
       if (OB_SUCCESS != (ret = session_ctx.add_callback_info(session_ctx,
@@ -61,7 +61,7 @@ class MockUpsTableMgr : public ObIUpsTableMgr
       else
       {
         session_ctx.get_ups_mutator().get_mutator().reset();
-        if (OB_SUCCESS != (ret = mock_active_memtable_.set(session_ctx, iter)))
+        if (OB_SUCCESS != (ret = mock_active_memtable_.set(session_ctx, iter, dml_type)))
         {
           TBSYS_LOG(WARN, "set to memtable fail ret=%d", ret);
         }

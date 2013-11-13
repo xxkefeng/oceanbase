@@ -220,6 +220,21 @@ namespace oceanbase
       }
 
     template <typename T, typename Allocator>
+      int ObVector<T, Allocator>::remove(const int32_t index)
+      {
+        int ret = OB_SUCCESS;
+        if (index >= 0 && index < size())
+        {
+          ret = remove(mem_begin_ + index);
+        }
+        else
+        {
+          ret = OB_ENTRY_NOT_EXIST;
+        }
+        return ret;
+      }
+
+    template <typename T, typename Allocator>
       int ObVector<T, Allocator>::remove_if(const_value_type value)
       {
         int ret = OB_SUCCESS;

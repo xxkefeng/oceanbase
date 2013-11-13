@@ -27,12 +27,13 @@ namespace oceanbase
       public:
         ObDeallocate();
         virtual ~ObDeallocate();
-
+        virtual void reset();
+        virtual void reuse();
         void set_stmt_id(const uint64_t stmt_id);
-
         /// execute the prepare statement
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_DEALLOCATE; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         /// @note always return OB_ITER_END
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;

@@ -23,6 +23,20 @@ namespace oceanbase
 {
   namespace obmysql
   {
+    // StatusFlags http://dev.mysql.com/doc/internals/en/status-flags.html
+    static const uint16_t SERVER_STATUS_IN_TRANS = 0x0001; // a transaction is active
+    static const uint16_t SERVER_STATUS_AUTOCOMMIT = 0x0002; // auto-commit is enabled
+    static const uint16_t SERVER_MORE_RESULTS_EXISTS = 0x0008;
+    static const uint16_t SERVER_STATUS_NO_GOOD_INDEX_USED = 0x0010;
+    static const uint16_t SERVER_STATUS_NO_INDEX_USED = 0x0020;
+    static const uint16_t SERVER_STATUS_CURSOR_EXISTS = 0x0040;
+    static const uint16_t SERVER_STATUS_LAST_ROW_SENT = 0x0080;
+    static const uint16_t SERVER_STATUS_DB_DROPPED = 0x0100;
+    static const uint16_t SERVER_STATUS_NO_BACKSLASH_ESCAPES = 0x0200;
+    static const uint16_t SERVER_STATUS_METADATA_CHANGED = 0x0400;
+    static const uint16_t SERVER_QUERY_WAS_SLOW = 0x0800;
+    static const uint16_t SERVER_PS_OUT_PARAMS = 0x1000;
+
     class ObMySQLPacket
     {
       public:

@@ -27,22 +27,38 @@ ObTabletScan::ObTabletScan()
 {
 }
 
+ObTabletScan::~ObTabletScan()
+{
+}
+
 void ObTabletScan::reset(void)
 {
-  op_root_ = NULL;
+  sql_scan_param_ = NULL;
   op_ups_scan_.reset();
   op_tablet_join_.reset();
-  op_rename_.clear();
-  op_filter_.clear();
-  op_project_.clear();
+  op_rename_.reset();
+  op_filter_.reset();
+  op_project_.reset();
   op_scalar_agg_.reset();
   op_group_columns_sort_.reset();
   op_group_.reset();
-  op_limit_.clear();
+  op_limit_.reset();
+  ObTabletRead::reset();
 }
 
-ObTabletScan::~ObTabletScan()
+void ObTabletScan::reuse(void)
 {
+  sql_scan_param_ = NULL;
+  op_ups_scan_.reuse();
+  op_tablet_join_.reuse();
+  op_rename_.reuse();
+  op_filter_.reuse();
+  op_project_.reuse();
+  op_scalar_agg_.reuse();
+  op_group_columns_sort_.reuse();
+  op_group_.reuse();
+  op_limit_.reuse();
+  ObTabletRead::reuse();
 }
 
 bool ObTabletScan::has_incremental_data() const
@@ -106,7 +122,7 @@ int ObTabletScan::need_incremental_data(
     {
       TBSYS_LOG(WARN, "ups scan set ups rpc stub fail:ret[%d]", ret);
     }
-    else if(OB_SUCCESS != (ret = op_ups_scan->set_network_timeout(network_timeout_)))
+    else if(OB_SUCCESS != (ret = op_ups_scan->set_ts_timeout_us(ts_timeout_us_)))
     {
       TBSYS_LOG(WARN, "set ups scan timeout fail:ret[%d]", ret);
     }
@@ -118,7 +134,10 @@ int ObTabletScan::need_incremental_data(
 
   if(OB_SUCCESS == ret)
   {
-    op_ups_scan->set_range(*(sql_scan_param_->get_range()));
+    if (OB_SUCCESS != (ret = set_ups_scan_range(*(sql_scan_param_->get_range()))))
+    {
+      TBSYS_LOG(WARN, "fail to set ups scan range");
+    }
     for (int64_t i=0;OB_SUCCESS == ret && i<basic_columns.count();i++)
     {
       if(OB_SUCCESS != (ret = op_ups_scan->add_column(basic_columns.at(i))))
@@ -165,7 +184,7 @@ int ObTabletScan::need_incremental_data(
         op_tablet_join->set_batch_count(join_batch_count_);
         op_tablet_join->set_is_read_consistency(is_read_consistency_);
         op_tablet_join->set_child(0, *op_tablet_scan_fuse);
-        op_tablet_join->set_network_timeout(network_timeout_);
+        op_tablet_join->set_ts_timeout_us(ts_timeout_us_);
         if (OB_SUCCESS != (ret = op_tablet_join->set_rpc_proxy(rpc_proxy_) ))
         {
           TBSYS_LOG(WARN, "fail to set rpc proxy:ret[%d]", ret);
@@ -211,7 +230,7 @@ bool ObTabletScan::check_inner_stat() const
 
   ret = join_batch_count_ > 0
   && NULL != sql_scan_param_
-  && network_timeout_ > 0
+  && ts_timeout_us_ > 0
   && NULL != rpc_proxy_;
 
   if (!ret)
@@ -222,11 +241,17 @@ bool ObTabletScan::check_inner_stat() const
     "rpc_proxy_[%p]",
     join_batch_count_,
     sql_scan_param_,
-    network_timeout_,
+    ts_timeout_us_,
     rpc_proxy_);
   }
 
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObTabletScan, PHY_TABLET_SCAN);
+  }
 }
 
 int64_t ObTabletScan::to_string(char* buf, const int64_t buf_len) const
@@ -363,7 +388,7 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
     op_filter = &op_filter_;
     if (OB_SUCCESS == ret)
     {
-      op_filter->assign(sql_scan_param_->get_filter());
+      op_filter->assign(&sql_scan_param_->get_filter());
       if (OB_SUCCESS != (ret = op_filter->set_child(0, *op_root_)))
       {
         TBSYS_LOG(WARN, "fail to set filter child. ret=%d", ret);
@@ -386,7 +411,7 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
     op_project = &op_project_;
     if (OB_SUCCESS == ret)
     {
-      op_project->assign(sql_scan_param_->get_project());
+      op_project->assign(&sql_scan_param_->get_project());
       if (OB_SUCCESS != (ret = op_project->set_child(0, *op_root_)))
       {
         TBSYS_LOG(WARN, "fail to set project child. ret=%d", ret);
@@ -408,7 +433,7 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
     }
     else if (sql_scan_param_->has_scalar_agg())
     {
-      op_scalar_agg_.assign(sql_scan_param_->get_scalar_agg());
+      op_scalar_agg_.assign(&sql_scan_param_->get_scalar_agg());
       // add scalar aggregation
       if (OB_SUCCESS != (ret = op_scalar_agg_.set_child(0, *op_root_)))
       {
@@ -429,8 +454,8 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
       }
       else
       {
-        op_group_columns_sort_.assign(sql_scan_param_->get_group_columns_sort());
-        op_group_.assign(sql_scan_param_->get_group());
+        op_group_columns_sort_.assign(&sql_scan_param_->get_group_columns_sort());
+        op_group_.assign(&sql_scan_param_->get_group());
       }
       if (OB_UNLIKELY(OB_SUCCESS != ret))
       {
@@ -454,7 +479,7 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
     op_limit = &op_limit_;
     if (OB_SUCCESS == ret)
     {
-      op_limit->assign(sql_scan_param_->get_limit());
+      op_limit->assign(&sql_scan_param_->get_limit());
       if (OB_SUCCESS != (ret = op_limit->set_child(0, *op_root_)))
       {
         TBSYS_LOG(WARN, "fail to set limit child. ret=%d", ret);
@@ -478,3 +503,40 @@ int ObTabletScan::create_plan(const ObSchemaManagerV2 &schema_mgr)
 
   return ret;
 }
+
+int ObTabletScan::set_ups_scan_range(const ObNewRange &scan_range)
+{
+  ObNewRange range = scan_range;
+  ObNewRange tablet_range;
+  int rc = OB_SUCCESS;
+  if (OB_SUCCESS != (rc = get_tablet_range(tablet_range)))
+  {
+    TBSYS_LOG(WARN, "get tablet range fail, rc %d", rc);
+  }
+  else
+  {
+    if (range.compare_with_startkey2(tablet_range) < 0)
+    {
+      range.start_key_ = tablet_range.start_key_;
+      range.border_flag_.unset_inclusive_start();
+      if (tablet_range.border_flag_.inclusive_start())
+      {
+        range.border_flag_.set_inclusive_start();
+      }
+      range.border_flag_.unset_min_value();
+    }
+    if (range.compare_with_endkey2(tablet_range) > 0)
+    {
+      range.end_key_ = tablet_range.end_key_;
+      range.border_flag_.unset_inclusive_end();
+      if (tablet_range.border_flag_.inclusive_end())
+      {
+        range.border_flag_.set_inclusive_end();
+      }
+      range.border_flag_.unset_max_value();
+    }
+    rc = op_ups_scan_.set_range(range);
+  }
+  return rc;
+}
+

@@ -31,6 +31,8 @@ namespace oceanbase
 
         T *alloc();
         void free(T *obj);
+        int32_t get_allocated_count() const {return allocated_count_;};
+        int32_t get_cached_count() const {return cached_count_;};
       private:
         // disallow copy
         ObCachedAllocator(const ObCachedAllocator &other);
@@ -40,23 +42,31 @@ namespace oceanbase
         ObSpinLock lock_;
         ObPool<> pool_;
         ObArray<T*> cached_objs_;
+        int32_t allocated_count_;
+        int32_t cached_count_;
     };
 
     template<typename T>
     ObCachedAllocator<T>::ObCachedAllocator()
-      :pool_(sizeof(T))
+      :pool_(sizeof(T)), allocated_count_(0), cached_count_(0)
     {
     }
 
     template<typename T>
     ObCachedAllocator<T>::~ObCachedAllocator()
     {
-      TBSYS_LOG(DEBUG, "free cached objs, count=%ld", cached_objs_.count());
+      //TBSYS_LOG(DEBUG, "free cached objs, count=%ld", cached_objs_.count());
       T *obj = NULL;
       while (OB_SUCCESS == cached_objs_.pop_back(obj))
       {
         obj->~T();
         pool_.free(obj);
+        --cached_count_;
+      }
+      if (0 != allocated_count_ || 0 != cached_count_)
+      {
+        TBSYS_LOG(WARN, "some allocated object is not freed, allocated_count=%d cached_count=%d",
+                  allocated_count_, cached_count_);
       }
     }
 
@@ -75,7 +85,13 @@ namespace oceanbase
         else
         {
           ret = new(p) T();
+          ++allocated_count_;
         }
+      }
+      else
+      {
+        --cached_count_;
+        ++allocated_count_;
       }
       return ret;
     }
@@ -97,7 +113,9 @@ namespace oceanbase
         else
         {
           obj->reset();
+          ++cached_count_;
         }
+        --allocated_count_;
       }
     }
 

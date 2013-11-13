@@ -42,8 +42,8 @@ bool ObRootAsyncTaskQueue::ObSeqTask::operator != (const ObSeqTask & other) cons
 
 void ObRootAsyncTaskQueue::ObSeqTask::print_info(void) const
 {
-  TBSYS_LOG(INFO, "seq task info:timestamp[%ld], timeout[%ld], remain_times[%ld], task_type[%d], server[%s]",
-      timestamp_, max_timeout_, remain_times_, type_, server_.to_cstring());
+  TBSYS_LOG(INFO, "seq task info:timestamp[%ld], timeout[%ld], remain_times[%ld], task_type[%d], server[%s], cluster_role[%d] status[%d]",
+            timestamp_, max_timeout_, remain_times_, type_, server_.to_cstring(), cluster_role_, server_status_);
 }
 
 ObRootAsyncTaskQueue::ObRootAsyncTaskQueue()

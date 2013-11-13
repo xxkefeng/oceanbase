@@ -248,7 +248,9 @@ namespace oceanbase
       ScanContext scan_context;
       manager_.build_scan_context(scan_context);
       tablet_scan_.set_scan_context(scan_context);
-      tablet_scan_.set_network_timeout(network_timeout);
+
+      int64_t now = tbsys::CTimeUtil::getTime();
+      tablet_scan_.set_ts_timeout_us(now + network_timeout);
 
       if (OB_SUCCESS != (ret = build_sql_scan_param(sstable_schema_, sql_scan_param_)))
       {

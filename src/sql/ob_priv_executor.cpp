@@ -33,6 +33,21 @@
 using namespace oceanbase;
 using namespace oceanbase::sql;
 
+void ObPrivExecutor::reset()
+{
+  stmt_ = NULL;
+  context_ = NULL;
+  result_set_out_ = NULL;
+  page_arena_.free();
+}
+
+void ObPrivExecutor::reuse()
+{
+  stmt_ = NULL;
+  context_ = NULL;
+  result_set_out_ = NULL;
+  page_arena_.reuse();
+}
 
 int ObPrivExecutor::start_transaction()
 {
@@ -63,6 +78,12 @@ int ObPrivExecutor::get_row_desc(const common::ObRowDesc *&row_desc) const
 {
   UNUSED(row_desc);
   return OB_NOT_SUPPORTED;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObPrivExecutor, PHY_PRIV_EXECUTOR);
+  }
 }
 int64_t ObPrivExecutor::to_string(char* buf, const int64_t buf_len) const
 {
@@ -683,7 +704,7 @@ int ObPrivExecutor::execute_update_user(const ObString &update_user)
     {
       TBSYS_LOG(WARN, "user not exist, sql=%.*s", update_user.length(), update_user.ptr());
       result_set_out_->set_message("user not exist");
-      ret = OB_USER_NOT_EXIST;
+      ret = OB_ERR_USER_NOT_EXIST;
     }
     int err = tmp_result.close();
     if (OB_SUCCESS != err)
@@ -806,7 +827,7 @@ int ObPrivExecutor::get_user_id_by_user_name(const ObString &user_name, int64_t 
         if (OB_ITER_END == ret)
         {
           TBSYS_LOG(WARN, "user_name: %.*s not exists, ret=%d", user_name.length(), user_name.ptr(), ret);
-          ret = OB_USER_NOT_EXIST;
+          ret = OB_ERR_USER_NOT_EXIST;
           result_set_out_->set_message("user not exists");
         }
         else

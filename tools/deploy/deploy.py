@@ -173,8 +173,8 @@ def Role():
             cmd = sub2({
                     "rootserver" : outline % "$exe -r ${rs0.ip}:${rs0.port} -R ${mmrs} -i ${dev:-bond0} -C ${cluster_id:-1} > /dev/null 2>&1",
                     "updateserver" : outline % "$exe -r ${rs0.ip}:${rs0.port} -n ${app_name} -p $port -m $inner_port -i ${dev:-bond0} > /dev/null 2>&1",
-                    "chunkserver" : outline % "$exe -r ${rs0.ip}:${rs0.port} -n ${app_name} -p $port -D ${cs_data_path:-$dir/data/cs} -i ${dev:-bond0} > /dev/null 2>&1",
-                    "mergeserver" : outline % "sleep 1 && $exe -r ${rs0.ip}:${rs0.port} -z $mysql_port -p $port -i ${dev:-bond0} > /dev/null 2>&1",
+                    "chunkserver" : outline % "$exe -r ${rs0.ip}:${rs0.port} -n ${app_name} -p $port -D ${cs_data_path:-$dir/data/cs} -i ${dev:-bond0} ${cs_extra_args} > /dev/null 2>&1",
+                    "mergeserver" : outline % "$exe -r ${rs0.ip}:${rs0.port} -z $mysql_port -p $port -i ${dev:-bond0} ${ms_extra_args} > /dev/null 2>&1",
                     "monitorserver" : outline % "$exe -f etc/$role.conf.$ip:$port",
                     }[sub2("$role", info)], info)
         return sh(cmd)
@@ -251,8 +251,9 @@ def get_load(ip):
     return float(match.group(1))
 
 def check_data_dir_permission(_dir, min_disk_space=10000000, timeout=1):
+    return 0
     ip, dir = _dir.split(':', 2)
-    cmd = '''ssh %(ip)s "mkdir -p %(dir)s && touch %(dir)s/.mark-by-deploy.$USER && test \`df /home|sed -n '/home/p' |awk '{print \$4}'\` -gt %(min_disk_space)d"'''
+    cmd = '''ssh %(ip)s "mkdir -p %(dir)s && touch %(dir)s/.mark-by-deploy.$USER && test \`df -P /home|sed -n '/home/p' |awk '{print \$4}'\` -gt %(min_disk_space)d"'''
     cmd = cmd % dict(ip=ip, dir=dir, min_disk_space=min_disk_space / 1024)
     if gcfg.get('_verbose_', False):
         print cmd
@@ -314,7 +315,7 @@ def ObInstance():
                     map(lambda ip, ret: '%s:%s'%(ip, ret == 0 and 'OK' or 'Fail'), ip_list, result))
         return 'OK'
 
-    def check_dir(timeout=1, min_disk_space=10000000, **ob):
+    def check_dir(timeout=1, min_disk_space=1000, **ob):
         dir_list = set(sub2('$usr@$ip:$data_dir/$sub_dir_list', v) for v in get_match_child(ob, '.+server$').values())
         result = async_get(async_map(lambda dir: check_data_dir_permission(dir, min_disk_space, timeout), dir_list), timeout+1)
         if any(map(lambda x: x != 0, result)):
@@ -322,7 +323,7 @@ def ObInstance():
                     pformat(map(lambda dir, ret: '%s:%s'%(dir, ret == 0 and 'OK' or 'Fail'), dir_list, result))))
         return 'OK'
 
-    def check_host(timeout=1, min_disk_space=10000000, **ob):
+    def check_host(timeout=1, min_disk_space=1000, **ob):
         ssh_spec, data_dir_spec = sub2('$usr@$ip', ob), sub2('$usr@$ip:$data_dir/$sub_dir_list', ob)
         if 0 != check_ssh_connection(ssh_spec, timeout): return 'check ssh[%s] fail!'%(ssh_spec)
         if 0 != check_data_dir_permission(data_dir_spec, min_disk_space, timeout): return 'check data_dir[%s] fail!'%(data_dir_spec)
@@ -498,12 +499,23 @@ def ObInstance():
         ob['extra'] = "-e\"replace into __all_cluster(cluster_vip, cluster_port,cluster_id,cluster_role,cluster_flow_percent) values('" + call_(ob, 'ms0.ip') + "', " + str(call_(ob, 'mysql_port'))+ " ,1,1,100);\""
         return call_(ob, "obmysql")
 
+    def quicktest(*args, **ob):
+        gcfg['_quiet_'] = True
+        mysql_test.pinfo('run libmysql quicktest ...')
+        call_(ob, "mysqltest","quick","disable-reboot"); 
+        mysql_test.pinfo('run libmysql+ps quicktest ...')
+        call_(ob, "mysqltest","quick","disable-reboot","ps"); 
+        mysql_test.pinfo('run java quicktest ...')
+        call_(ob, "mysqltest","quick","disable-reboot","java"); 
+        mysql_test.pinfo('run java+ps quicktest ...')
+        call_(ob, "mysqltest","quick","disable-reboot","java","ps"); 
+               
+
     def mysqltest(*args, **ob):
-        sh("sync")
         def do_before_test(mgr):
+            sh("sync")
             if need_reboot:
                 reboot_again = True
-                # it's an OB bug
                 while reboot_again:
                     mysql_test.pinfo("rebooting...")
                     ret = call_(ob, 'reboot')
@@ -511,13 +523,11 @@ def ObInstance():
                         force_info("reboot failed, retry after 60 seconds")
                         time.sleep(60)
                     else:
-                        time.sleep(10)
-                        ntoi = lambda x:sum([256**j*int(i) for j,i in enumerate(x.split('.'))])
-                        rs0_ip = ntoi(call_(ob, 'rs0.ip'))
-                        ob['extra'] = "-e\"replace into __all_cluster(cluster_vip, cluster_role,cluster_port,cluster_id,cluster_flow_percent) values('" + call_(ob, 'rs0.ip') + "', 1, " + str(call_(ob, 'mysql_port'))+ " ,1, 100);\""
-                        init_ret = call_(ob, "obmysql")
+                        #time.sleep(10)
+                        call_(ob, "update_cluster")
                         reboot_again = False
-                        #time.sleep(60)
+            else:
+                call_(ob, "update_cluster")
             os.putenv('OBMYSQL_PORT', str(mgr.opt["port"]))
             os.putenv('OBMYSQL_MS0', str(mgr.opt["host"]))
             os.putenv('RS0_IP', call_(ob, 'rs0.ip'))
@@ -553,11 +563,36 @@ def ObInstance():
         opt["host"] = call_(ob, 'ms0.ip')
 
         if "quick" in args or "quicktest" in args:
-            opt["test-set"] = ['create','count_distinct','join_basic','group_by_1','sq_from','compare', 'show','ps_complex','update','merge_basic']
+            opt["test-set"] = ['hints','create','count_distinct','join_basic','group_by_1','sq_from','compare', 'ps_complex', 'update','func_in']
             need_reboot = False
             need_collect = False
         if "record" in args:
             opt["record"] = True
+        if "java" in args:
+            wget="wget http://10.232.4.35:8877/mytest-1.2-SNAPSHOT-jar-with-dependencies.jar -o ./mytest.down -O ./mysql_test/java/mytest.jar"
+            target='./mysql_test/java/mytest.jar'
+
+            if os.path.exists(target) == False:
+                force_info("execute cmd: " + wget)
+                sh(wget)
+            if  os.path.exists(target) == False:
+                force_info("failed to execute cmd: " + wget)
+                sys.exit(1)
+            addr = os.getenv('PWD')+"/mysql_test/java:" + os.getenv('PATH')
+            os.environ['PATH'] = addr
+        else:
+            wget="wget http://10.232.4.35:8877/mysqltest -o mysqltest.down -O ./mysqltest"
+            target="./mysqltest"
+            if os.path.exists(target) == False:
+                force_info("execute cmd: " + wget)
+                sh(wget)
+                sh("chmod +x ./mysqltest")
+            if  os.path.exists(target) == False:
+                force_info("failed to execute cmd: " + wget)
+                sys.exit(1)
+            addr = os.getenv('PWD')+":" + os.getenv('PATH')
+            os.environ['PATH'] = addr
+                
         if "ps" in args:
             opt['ps_protocol'] = True
         elif "test" in args:

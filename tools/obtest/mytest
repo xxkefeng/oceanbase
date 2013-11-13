@@ -9,7 +9,9 @@ export LD_LIBRARY_PATH=/usr/local/staf/lib/:$LD_LIBRARY_PATH
 
 jar=`ls jar/*.jar`
 case=$1
-extra=$2
+extra1=$2
+extra2=$3
+
 if [ -z $case ] ;then
     exit 1
 fi
@@ -21,6 +23,6 @@ fi
 case=`echo $case|sed "s#\.#/#g"`
 echo $case
 
-java -Duserid=$(id -u) -cp $jar com.etao.mytest.main.MyTest  -result_file r/$case.result -test_file t/$case.test  $extra
+java -Duserid=$(id -u) -cp $jar com.etao.mytest.main.MyTest  -result_file r/$case.result -test_file t/$case.test  $extra1  $extra2
 
 #-result_file r/a.result -test_file t/a.test -record

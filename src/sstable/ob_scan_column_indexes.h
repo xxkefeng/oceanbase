@@ -79,15 +79,15 @@ namespace oceanbase
           }
           if (NULL == index_map_)
           {
-            if (NULL == (index_map_ = reinterpret_cast<int64_t*>
-                         (common::ob_malloc(sizeof(int64_t) * common::OB_MAX_COLUMN_NUMBER, common::ObModIds::OB_SSTABLE_INDEX))))
+            if (NULL == (index_map_ = reinterpret_cast<int16_t*>
+                         (common::ob_malloc(sizeof(int16_t) * common::OB_MAX_COLUMN_NUMBER, common::ObModIds::OB_SSTABLE_INDEX))))
             {
               TBSYS_LOG(WARN, "failed to allocate memory for column index array");
               ret = common::OB_ALLOCATE_MEMORY_FAILED;
             }
             else
             {
-              memset(index_map_, -1, sizeof(int64_t) * common::OB_MAX_COLUMN_NUMBER);
+              memset(index_map_, -1, sizeof(int16_t) * common::OB_MAX_COLUMN_NUMBER);
             }
           }
           return ret;
@@ -96,15 +96,11 @@ namespace oceanbase
       public:
         inline void reset()
         {
-          column_cnt_ = 0;
-          if (NULL != column_info_)
-          {
-            memset(column_info_, 0, sizeof(Column) * column_info_size_);
-          }
           if (NULL != index_map_)
           {
-            memset(index_map_, -1, sizeof(int64_t) * common::OB_MAX_COLUMN_NUMBER);
+            memset(index_map_, -1, sizeof(int16_t) * column_cnt_);
           }
+          column_cnt_ = 0;
         }
 
         inline int add_column_id(const ColumnType type, const int32_t index, const uint64_t column_id)
@@ -130,7 +126,7 @@ namespace oceanbase
             column_info_[column_cnt_].index_ = index;
             if (type != NotExist && index >= 0 && index < common::OB_MAX_COLUMN_NUMBER)
             {
-              index_map_[index] = column_cnt_;
+              index_map_[index] = static_cast<int16_t>(column_cnt_);
             }
             ++column_cnt_;
           }
@@ -197,7 +193,7 @@ namespace oceanbase
         int64_t column_cnt_;
         int64_t column_info_size_;
         Column* column_info_;
-        int64_t *index_map_;
+        int16_t *index_map_;
     };
 
     // ObSimpleColumnIndexes store a mapping of

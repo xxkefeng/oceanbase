@@ -73,6 +73,7 @@ namespace oceanbase
            DATETIME,
            */        
         OP,
+        CUR_TIME_OP,
         END,
         END_TYPE
       };

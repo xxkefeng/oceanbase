@@ -18,6 +18,7 @@ namespace oceanbase
 {
   namespace common
   {
+    extern bool PACKET_RECORDER_FLAG;
     class BaseMain
     {
       public:
@@ -45,6 +46,7 @@ namespace oceanbase
         virtual void parse_cmd_line(const int argc, char *const argv[]);
         virtual int do_work() = 0;
         char config_[OB_MAX_FILE_NAME_LENGTH];
+        char proxy_config_file_[OB_MAX_FILE_NAME_LENGTH];
         char cmd_data_dir_[OB_MAX_FILE_NAME_LENGTH];
         char cmd_prefix_dir_[OB_MAX_FILE_NAME_LENGTH];
         char cmd_rs_ip_[OB_IP_STR_BUFF];
@@ -59,6 +61,7 @@ namespace oceanbase
         int32_t cmd_port_;
         int32_t cmd_inner_port_;
         int32_t cmd_obmysql_port_;
+        char cmd_ms_type_[OB_MAX_MS_TYPE_LENGTH];
         const char *pid_dir_;
         const char *log_dir_;
         const char *server_name_;

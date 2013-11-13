@@ -11,6 +11,6 @@ cs0 not migrate
 cs1 not migrate
 cs2 not migrate
 ob1.mysql alter system set balance_tolerance_count='10' server_type=rootserver
-ob1.check_cs_sstable 200
+ob1.check_cs_sstable 202
 ob1.check_cs_balance
 ob1.stop_check

@@ -385,13 +385,26 @@ namespace oceanbase
       int64_t sstable_file_id = ::strtoll(filename, NULL, 10);
       ObSSTableId id(sstable_file_id);
 
-      if (OB_SUCCESS != manager_.get_serving_tablet_image().include_sstable(id))
+      if (OB_SUCCESS != manager_.get_serving_tablet_image().include_sstable(id)
+          && get_mtime(filename) + SCAN_RECYCLE_SSTABLE_TIME_BEFORE < tbsys::CTimeUtil::getTime())
       {
         is_expired_sstable = true;
       }
 
 
       return is_expired_sstable;
+    }
+
+    int64_t ObScanRecycler::get_mtime(const char* filename)
+    {
+      int64_t ret = 0;
+      struct stat st;
+      if (NULL != filename
+          && 0 == stat(filename, &st))
+      {
+        ret = st.st_mtime * 1000000L;
+      }
+      return ret;
     }
 
     int ObScanRecycler::do_recycle_file(

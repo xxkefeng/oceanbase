@@ -66,20 +66,29 @@ void *parse_realloc(void *ptr, size_t nbyte, void *malloc_pool)
   return new_ptr;
 }
 
-char *parse_strdup(const char *str, void *malloc_pool)
+char *parse_strndup(const char *str, size_t nbyte, void *malloc_pool)
 {
   char *new_str = NULL;
   if (str)
   {
-    size_t len = strlen(str);
-    if ((new_str = (char *)parse_malloc(len + 1, malloc_pool)) != NULL)
+    if ((new_str = (char *)parse_malloc(nbyte, malloc_pool)) != NULL)
     {
-      memmove(new_str, str, len + 1);
+      memmove(new_str, str, nbyte);
     }
     else
     {
       TBSYS_LOG(ERROR, "parse_strdup gets string buffer error");
     }
+  }
+  return new_str;
+}
+
+char *parse_strdup(const char *str, void *malloc_pool)
+{
+  char *new_str = NULL;
+  if (str)
+  {
+    new_str = parse_strndup(str, strlen(str) + 1, malloc_pool);
   }
   return new_str;
 }

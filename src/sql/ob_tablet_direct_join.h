@@ -31,7 +31,10 @@ namespace oceanbase
 
         virtual int open();
         virtual void reset();
-
+        virtual enum ObPhyOperatorType get_type() const
+        {
+          return PHY_TABLET_DIRECT_JOIN;
+        }
       private:
         int get_ups_row(const ObRowkey &rowkey, ObUpsRow &ups_row, const ObGetParam &get_param);
         int gen_get_param(ObGetParam &get_param, const ObRow &fused_row);
@@ -45,4 +48,3 @@ namespace oceanbase
 }
 
 #endif /* _OB_TABLET_DIRECT_JOIN_H */
-

@@ -125,14 +125,8 @@ namespace oceanbase
 
         if (pos != -1)
         {
-          if (pos == tasks_num_ - 1)
-          {
-            //remove the last item
-          }
-          else
-          {
-            memmove(&tokens_[pos],&tokens_[pos + 1], tasks_num_ - pos - 1);
-          }
+          memmove(&tokens_[pos], &tokens_[pos + 1],
+                  sizeof (tokens_[0]) * (tasks_num_ - pos - 1));
           --tasks_num_;
         }
       }

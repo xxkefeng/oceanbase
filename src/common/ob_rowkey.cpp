@@ -200,22 +200,42 @@ namespace oceanbase
 
     int64_t ObRowkey::to_string(char* buffer, const int64_t length) const
     {
-      int64_t total_use_size = 0;
-      int64_t use_size = 0;
-      for (int i = 0; i < obj_cnt_; ++i)
+      int64_t pos = 0;
+
+      if (is_min_row())
       {
-        use_size = obj_ptr_[i].to_string(buffer + total_use_size, length - total_use_size);
-        total_use_size += use_size;
-        if (total_use_size + 2 < length && i < obj_cnt_ - 1)
+        if (pos < length)
         {
-          buffer[total_use_size++] = ',';
-        }
-        else
-        {
-          break;
+          databuff_printf(buffer, length, pos, "MIN");
         }
       }
-      return total_use_size;
+      else if (is_max_row())
+      {
+        if (pos < length)
+        {
+          databuff_printf(buffer, length, pos, "MAX");
+        }
+      }
+      else
+      {
+        for (int i = 0; i < obj_cnt_; ++i)
+        {
+          if (pos < length)
+          {
+            databuff_printf(buffer, length, pos, "%s", to_cstring(obj_ptr_[i]));
+            if (i < obj_cnt_ - 1)
+            {
+              databuff_printf(buffer, length, pos, ",");
+            }
+          }
+          else
+          {
+            break;
+          }
+        }
+      }
+
+      return pos;
     }
 
     int64_t ObRowkey::checksum(const int64_t current) const
@@ -253,6 +273,19 @@ namespace oceanbase
         for (int64_t i = 0; i < obj_cnt_; i++)
         {
           ret = obj_ptr_[i].murmurhash2(ret);
+        }
+      }
+      return ret;
+    }
+
+    uint64_t ObRowkey::murmurhash64A(const uint64_t hash) const
+    {
+      uint64_t ret = hash;
+      if (0 < obj_cnt_ && NULL != obj_ptr_)
+      {
+        for (int64_t i = 0; i < obj_cnt_; i ++)
+        {
+          ret = obj_ptr_[i].murmurhash64A(ret);
         }
       }
       return ret;

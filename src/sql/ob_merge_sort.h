@@ -33,15 +33,13 @@ namespace oceanbase
       public:
         ObMergeSort();
         virtual ~ObMergeSort();
-
+        virtual void reset();
+        virtual void reuse();
         int set_run_filename(const common::ObString &filename);
         void set_sort_columns(const common::ObArray<ObSortColumn> &sort_columns);
-
-        void reset();
         int dump_run(ObInMemorySort &rows);
         void set_final_run(ObInMemorySort &rows);
         int build_merge_heap();
-
         /// @pre build_heap()
         virtual int get_next_row(const common::ObRow *&row);
       private:

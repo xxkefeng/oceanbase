@@ -5,7 +5,7 @@
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
  *
- * Time-stamp: <2013-04-23 17:24:23 fufeng.syd>
+ * Time-stamp: <2013-10-16 15:16:13 fufeng.syd>
  * Version: $Id$
  * Filename: ob_config_manager.h
  *
@@ -29,6 +29,7 @@ namespace oceanbase
 {
   namespace common
   {
+    class ObMsProvider;
     class ObConfigManager
     {
         friend class UpdateTask;
@@ -46,6 +47,7 @@ namespace oceanbase
                  const ObClientManager &client_mgr,
                  ObTimer &timer);
         int init(MsList &mslist, const ObClientManager &client_mgr, ObTimer &timer);
+        int init(ObMsProvider &ms_provider, const ObClientManager &client_mgr, ObTimer &timer);
 
         /* manual dump to file named by path */
         int dump2file(const char *path = NULL) const;
@@ -58,6 +60,9 @@ namespace oceanbase
 
         /* Reload config really */
         int reload_config();
+
+        /* get alive ms */
+        void get_ms(ObServer &ms_server);
 
         int update_local();
         int got_version(int64_t version);
@@ -87,6 +92,7 @@ namespace oceanbase
         ObServer ms_self_;
         const ObClientManager *client_mgr_;
         MsList *mslist_;
+        ObMsProvider *ms_provider_;
         ObSystemConfig system_config_;
         ObServerConfig &server_config_;
         int64_t newest_version_;
@@ -98,8 +104,9 @@ namespace oceanbase
 
     inline ObConfigManager::ObConfigManager(ObServerConfig &server_config,
                                             ObReloadConfig &reload_config)
-      : timer_(NULL), server_config_(server_config),
-        newest_version_(1), current_version_(1), reload_config_func_(reload_config)
+      : timer_(NULL), client_mgr_(NULL), mslist_(NULL), ms_provider_(NULL),
+        server_config_(server_config), newest_version_(1), current_version_(1),
+        reload_config_func_(reload_config)
     {
       dump_path_[0] = '\0';
     }

@@ -29,9 +29,9 @@ deploy ob1.cs2.start;
 
 #wait for migrate
 sleep 120;
-deploy ob1.check_cs_sstable 200;
+deploy ob1.check_cs_sstable 201;
 deploy ob1.check_cs_balance;
-deploy ob2.check_cs_sstable 200;
+deploy ob2.check_cs_sstable 201;
 deploy ob2.check_cs_balance;
 
 deploy ob1.stop_check;

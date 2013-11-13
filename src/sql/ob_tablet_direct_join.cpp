@@ -91,7 +91,7 @@ int ObTabletDirectJoin::get_ups_row(const ObRowkey &rowkey, ObUpsRow &ups_row, c
   {
     if(OB_SUCCESS == ret && get_param.get_cell_size() > 0)
     {
-      ups_multi_get_.reset();
+      ups_multi_get_.reuse();
       ups_multi_get_.set_get_param(get_param);
       ups_multi_get_.set_row_desc(ups_row_desc_);
 
@@ -137,3 +137,8 @@ int ObTabletDirectJoin::get_ups_row(const ObRowkey &rowkey, ObUpsRow &ups_row, c
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObTabletDirectJoin, PHY_TABLET_DIRECT_JOIN);
+  }
+}

@@ -23,12 +23,32 @@ using namespace common;
 
 void ObTabletGet::reset()
 {
-  sql_get_param_ = NULL;
   tablet_manager_ = NULL;
-  op_project_.clear();
-  op_tablet_join_.reset();
-  op_rename_.clear();
+  op_sstable_get_.reset();
+  get_param_.reset();
+  sql_get_param_ = NULL;
+  ups_mget_row_desc_.reset();
+
   op_ups_multi_get_.reset();
+  op_tablet_get_fuse_.reset();
+  op_tablet_join_.reset();
+  op_project_.reset();
+  op_rename_.reset();
+}
+
+void ObTabletGet::reuse()
+{
+  tablet_manager_ = NULL;
+  op_sstable_get_.reuse();
+  get_param_.reset();
+  sql_get_param_ = NULL;
+  ups_mget_row_desc_.reset();
+
+  op_ups_multi_get_.reuse();
+  op_tablet_get_fuse_.reuse();
+  op_tablet_join_.reuse();
+  op_project_.reuse();
+  op_rename_.reuse();
 }
 
 int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
@@ -62,6 +82,8 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
   if (OB_SUCCESS == ret)
   {
     get_param_.reset(true);
+    get_param_.set_is_result_cached(sql_get_param_->get_is_result_cached());
+    get_param_.set_is_read_consistency(sql_get_param_->get_is_read_consistency());
     for (int64_t i = 0; OB_SUCCESS == ret && i < sql_get_param_->get_row_size(); i ++)
     {
       cell_info.row_key_ = *(sql_get_param_->operator[](i));
@@ -148,7 +170,7 @@ int ObTabletGet::create_plan(const ObSchemaManagerV2 &schema_mgr)
     op_project = &op_project_;
     if (OB_SUCCESS == ret)
     {
-      op_project->assign(sql_get_param_->get_project());
+      op_project->assign(&sql_get_param_->get_project());
       if (OB_SUCCESS != (ret = op_project->set_child(0, *op_root_)))
       {
         TBSYS_LOG(WARN, "fail to set project child. ret=%d", ret);
@@ -221,7 +243,7 @@ int ObTabletGet::need_incremental_data(
     {
       TBSYS_LOG(WARN, "ups scan set ups rpc stub fail:ret[%d]", ret);
     }
-    else if(OB_SUCCESS != (ret = op_ups_multi_get->set_network_timeout(network_timeout_)))
+    else if(OB_SUCCESS != (ret = op_ups_multi_get->set_ts_timeout_us(ts_timeout_us_)))
     {
       TBSYS_LOG(WARN, "set ups scan timeout fail:ret[%d]", ret);
     }
@@ -274,7 +296,7 @@ int ObTabletGet::need_incremental_data(
         op_tablet_join->set_batch_count(join_batch_count_);
         op_tablet_join->set_is_read_consistency(is_read_consistency_);
         op_tablet_join->set_child(0, *op_tablet_get_fuse);
-        op_tablet_join->set_network_timeout(network_timeout_);
+        op_tablet_join->set_ts_timeout_us(ts_timeout_us_);
         if (OB_SUCCESS != (ret = op_tablet_join->set_rpc_proxy(rpc_proxy_) ))
         {
           TBSYS_LOG(WARN, "fail to set rpc proxy:ret[%d]", ret);
@@ -340,6 +362,12 @@ int ObTabletGet::set_tablet_manager(chunkserver::ObTabletManager *tablet_manager
     tablet_manager_ = tablet_manager;
   }
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObTabletGet, PHY_TABLET_GET);
+  }
 }
 
 int64_t ObTabletGet::to_string(char* buf, const int64_t buf_len) const

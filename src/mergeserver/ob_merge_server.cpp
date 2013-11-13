@@ -6,6 +6,7 @@
 #include "ob_merge_callback.h"
 #include "common/ob_tbnet_callback.h"
 #include "common/utility.h"
+#include "common/ob_mod_define.h"
 
 using namespace oceanbase::common;
 
@@ -18,7 +19,9 @@ namespace oceanbase
       : log_count_(0), log_interval_count_(DEFAULT_LOG_INTERVAL),
         config_mgr_(config_mgr), ms_config_(ms_config),
         response_buffer_(RESPONSE_PACKET_BUFFER_SIZE),
-        rpc_buffer_(RESPONSE_PACKET_BUFFER_SIZE)
+        rpc_buffer_(RESPONSE_PACKET_BUFFER_SIZE),
+        scan_req_pool_(common::ObModIds::OB_MS_SQL_SCAN_REQ_POOL),
+        get_req_pool_(common::ObModIds::OB_MS_SQL_GET_REQ_POOL)
     {
     }
 
@@ -48,6 +51,20 @@ namespace oceanbase
       return ret;
     }
 
+    int ObMergeServer::set_sql_session_mgr(sql::ObSQLSessionMgr* session_mgr)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == session_mgr)
+      {
+        ret = OB_ERROR;
+      }
+      else
+      {
+        service_.set_sql_session_mgr(session_mgr);
+      }
+      return ret;
+    }
+
     bool ObMergeServer::is_stoped() const
     {
       return stoped_;
@@ -64,8 +81,6 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (OB_SUCCESS == ret)
       {
-        TBSYS_LOG(INFO, "dump config after reload config succ");
-        ms_config_.print();
         ob_set_memory_size_limit(ms_config_.memory_size_limit_percentage
                                  * sysconf(_SC_PHYS_PAGES)
                                  * sysconf(_SC_PAGE_SIZE) / 100);
@@ -90,6 +105,18 @@ namespace oceanbase
       {
         ret = service_.reload_config();
       }
+
+      if (OB_SUCCESS == ret)
+      {
+        TBSYS_LOG(INFO, "enlarge frozen_data_cache_size to: %ld",
+            static_cast<int64_t>(ms_config_.frozen_data_cache_size));
+        frozen_data_cache_.enlarge_total_size(ms_config_.frozen_data_cache_size);
+
+        TBSYS_LOG(INFO, "enlarge bloom_filter_cache_size to: %ld",
+            static_cast<int64_t>(ms_config_.bloom_filter_cache_size));
+        insert_cache_.enlarge_total_size(ms_config_.bloom_filter_cache_size);
+      }
+
       return ret;
     }
 
@@ -165,6 +192,23 @@ namespace oceanbase
 
       if (ret == OB_SUCCESS)
       {
+        ret = frozen_data_cache_.init(ms_config_.frozen_data_cache_size);
+      }
+      if (ret == OB_SUCCESS)
+      {
+        ret = insert_cache_.init(ms_config_.bloom_filter_cache_size);
+      }
+      if (ret == OB_SUCCESS)
+      {
+        ret = scan_req_pool_.init();
+      }
+      if (ret == OB_SUCCESS)
+      {
+        ret = get_req_pool_.init();
+      }
+
+      if (ret == OB_SUCCESS)
+      {
         ret = task_timer_.init();
       }
 
@@ -172,7 +216,6 @@ namespace oceanbase
       {
         ret = client_manager_.initialize(eio_, &server_handler_);
       }
-
       if (ret == OB_SUCCESS)
       {
         ret = ObSingleServer::initialize();
@@ -188,9 +231,15 @@ namespace oceanbase
 
     void ObMergeServer::destroy()
     {
+      TBSYS_LOG(WARN, "stop task timer");
       task_timer_.destroy();
-      service_.destroy();
+      TBSYS_LOG(WARN, "stop bloomfilter queue thread");
+      bloom_filter_queue_thread_.stop();
+      bloom_filter_queue_thread_.wait();
+      TBSYS_LOG(WARN, "stop single server");
       ObSingleServer::destroy();
+      TBSYS_LOG(WARN, "stop mergeserver service");
+      service_.destroy();
     }
 
     int ObMergeServer::init_root_server()
@@ -271,6 +320,7 @@ namespace oceanbase
     void ObMergeServer::handle_timeout_packet(ObPacket* base_packet)
     {
       handle_no_response_request(base_packet);
+      ObSingleServer::handle_timeout_packet(base_packet);
     }
     int ObMergeServer::do_request(common::ObPacket* base_packet)
     {
@@ -279,44 +329,48 @@ namespace oceanbase
       int32_t packet_code = ob_packet->get_packet_code();
       int32_t version = ob_packet->get_api_version();
       int32_t channel_id = ob_packet->get_channel_id();
-      ret = ob_packet->deserialize();
-      if (OB_SUCCESS == ret)
+      ObDataBuffer* in_buffer = ob_packet->get_buffer();
+      ThreadSpecificBuffer::Buffer* thread_buffer = response_buffer_.get_buffer();
+      easy_request_t* request = ob_packet->get_request();
+      if (NULL == request || NULL == request->ms || NULL == request->ms->c)
+      {
+        TBSYS_LOG(ERROR, "req or req->ms or req->ms->c is NUll should not reach this");
+      }
+      else if (NULL == in_buffer || NULL == thread_buffer)
+      {
+        TBSYS_LOG(ERROR, "in_buffer = %p or out_buffer=%p cannot be NULL.",
+            in_buffer, thread_buffer);
+      }
+      else
       {
         FILL_TRACE_LOG("start handle client=%s request packet wait=%ld",
                        get_peer_ip(base_packet->get_request()),
                        tbsys::CTimeUtil::getTime() - ob_packet->get_receive_ts());
-        ObDataBuffer* in_buffer = ob_packet->get_buffer();
-        if (NULL == in_buffer)
-        {
-          TBSYS_LOG(ERROR, "%s", "in_buffer is NUll should not reach this");
-        }
-        else
-        {
-          easy_request_t* request = ob_packet->get_request();
-          if (NULL == request || NULL == request->ms || NULL == request->ms->c)
-          {
-            TBSYS_LOG(ERROR, "req or req->ms or req->ms->c is NUll should not reach this");
-          }
-          else
-          {
-            ThreadSpecificBuffer::Buffer* thread_buffer = response_buffer_.get_buffer();
-            if (NULL != thread_buffer)
-            {
-              thread_buffer->reset();
-              ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
-              //TODO read thread stuff multi thread
-              ret = service_.do_request(ob_packet->get_receive_ts(), packet_code, version,
-                                        channel_id, request, *in_buffer, out_buffer,
-                                        ob_packet->get_source_timeout() - (tbsys::CTimeUtil::getTime() - ob_packet->get_receive_ts()));
-            }
-            else
-            {
-              TBSYS_LOG(ERROR, "%s", "get thread buffer error, ignore this packet");
-            }
-          }
-        }
+        thread_buffer->reset();
+        ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
+        //TODO read thread stuff multi thread
+        ret = service_.do_request(ob_packet->get_receive_ts(), packet_code, version,
+            channel_id, request, *in_buffer, out_buffer,
+            ob_packet->get_source_timeout() - (tbsys::CTimeUtil::getTime() - ob_packet->get_receive_ts()));
       }
       return ret;
+    }
+    void ObMergeServer::on_ioth_start()
+    {
+      int64_t affinity_start_cpu = ms_config_.io_thread_start_cpu;
+      int64_t affinity_end_cpu = ms_config_.io_thread_end_cpu;
+      if (0 <= affinity_start_cpu
+          && affinity_start_cpu <= affinity_end_cpu)
+      {
+        static volatile int64_t cpu = 0;
+        int64_t local_cpu = __sync_fetch_and_add(&cpu, 1) % (affinity_end_cpu - affinity_start_cpu + 1) + affinity_start_cpu;
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(local_cpu, &cpuset);
+        int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+        TBSYS_LOG(INFO, "io thread setaffinity tid=%ld ret=%d cpu=%ld start=%ld end=%ld",
+                  GETTID(), ret, local_cpu, affinity_start_cpu, affinity_end_cpu);
+      }
     }
   } /* mergeserver */
 } /* oceanbase */

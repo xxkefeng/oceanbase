@@ -9,7 +9,13 @@
 #include "common/ob_client_manager.h"
 #include "common/ob_config_manager.h"
 #include "common/ob_privilege_manager.h"
+#include "common/ob_obj_pool.h"
 #include "ob_merge_server_service.h"
+#include "ob_frozen_data_cache.h"
+#include "ob_insert_cache.h"
+#include "ob_bloom_filter_task_queue_thread.h"
+#include "ob_ms_sql_scan_request.h"
+#include "ob_ms_sql_get_request.h"
 
 namespace oceanbase
 {
@@ -56,14 +62,37 @@ namespace oceanbase
         common::ObMergerSchemaManager *get_schema_mgr() const{return service_.get_schema_mgr();}
         common::ObTabletLocationCacheProxy *get_cache_proxy() const{return service_.get_cache_proxy();}
         common::ObStatManager* get_stat_manager() const { return service_.get_stat_manager(); }
-        
+
+        int set_sql_session_mgr(sql::ObSQLSessionMgr* mgr);
+        void set_sql_id_mgr(sql::ObSQLIdMgr* mgr) {service_.set_sql_id_mgr(mgr);};
         inline const ObMergeServerService &get_service() const
         {
           return service_;
         }
+
         inline ObPrivilegeManager* get_privilege_manager()
         {
           return &privilege_mgr_;
+        }
+        inline ObFrozenDataCache & get_frozen_data_cache()
+        {
+          return frozen_data_cache_;
+        }
+        inline common::ObObjPool<mergeserver::ObMsSqlScanRequest> & get_scan_req_pool()
+        {
+          return scan_req_pool_;
+        }
+        inline common::ObObjPool<mergeserver::ObMsSqlGetRequest> & get_get_req_pool()
+        {
+          return get_req_pool_;
+        }
+        inline ObInsertCache & get_insert_cache()
+        {
+          return insert_cache_;
+        }
+        inline ObBloomFilterTaskQueueThread & get_bloom_filter_task_queue_thread()
+        {
+          return bloom_filter_queue_thread_;
         }
 
       private:
@@ -72,6 +101,7 @@ namespace oceanbase
         int set_self(const char* dev_name, const int32_t port);
         // handle no response request add timeout as process time for monitor info
         void handle_no_response_request(common::ObPacket * base_packet);
+        void on_ioth_start();
 
       private:
         static const int64_t DEFAULT_LOG_INTERVAL = 100;
@@ -88,6 +118,12 @@ namespace oceanbase
         common::ObServer root_server_;
         ObMergeServerService service_;
         common::ObPrivilegeManager privilege_mgr_;
+        ObFrozenDataCache frozen_data_cache_;
+        ObInsertCache insert_cache_;
+        ObBloomFilterTaskQueueThread bloom_filter_queue_thread_;
+        common::ObObjPool<mergeserver::ObMsSqlScanRequest> scan_req_pool_;
+        common::ObObjPool<mergeserver::ObMsSqlGetRequest> get_req_pool_;
+
     };
   } /* mergeserver */
 } /* oceanbase */

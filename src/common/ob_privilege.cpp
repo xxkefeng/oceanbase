@@ -1391,7 +1391,7 @@ void ObPrivilege::privilege_to_string(const ObBitSet<> &privileges, char *buf, c
 
 void ObPrivilege::print_info() const
 {
-  hash::ObHashMap<ObString, User, hash::NoPthreadDefendMode>::const_iterator iter = username_map_.begin();
+  NameUserMap::const_iterator iter = username_map_.begin();
   for (;iter != username_map_.end(); ++iter)
   {
     TBSYS_LOG(INFO, "user[%.*s]", iter->first.length(), iter->first.ptr());

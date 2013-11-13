@@ -9,6 +9,7 @@ LIBTOOLFLAGS=--preserve-dup-deps
 LDADD = ${top_builddir}/src/common/libcommon.a \
     ${top_builddir}/src/sql/libsql.a \
     ${top_builddir}/src/common/libcommon.a \
+    ${top_builddir}/src/updateserver/libupdateserver.a \
     ${EASY_LIB_PATH}/libeasy.a \
     ${TBLIB_ROOT}/lib/libtbsys.a -lcrypt
 
@@ -72,6 +73,7 @@ bin_PROGRAMS = limit_array_test                           \
                            test_ob_log_generator          \
                            test_qlock                     \
                            test_ob_seq_queue              \
+                           test_mutex_scheduling           \
                            test_stack_allocator           \
                            test_tsi_block_allocator       \
                            test_ob_composite_column       \
@@ -92,8 +94,18 @@ bin_PROGRAMS = limit_array_test                           \
                            test_new_scanner_helper        \
                            test_iterator_adaptor          \
                            test_system_config             \
-                           test_ob_config\
-                           test_ob_stat
+                           test_ob_config                 \
+                           test_ob_stat                   \
+                           test_ob_kv_storecache_perf     \
+                           test_ob_packet_queue_thread_perf \
+                           test_pthread_mutex_perf        \
+                           test_pthread_cond_perf         \
+                           test_queue_thread              \
+                           test_balance_filter						\
+                           test_futex_perf\
+                           test_ob_tbnet_callback\
+                           ob_tc_factory_test
+
 
 test_ob_config_SOURCES = test_ob_config.cpp
 test_cluster_server_SOURCES = test_cluster_server.cpp
@@ -154,6 +166,7 @@ test_qlock_SOURCES = test_qlock.cpp
 test_ob_log_generator_SOURCES = test_ob_log_generator.cpp
 test_ob_seq_queue_SOURCES = test_ob_seq_queue.cpp
 test_stack_allocator_SOURCES = test_stack_allocator.cpp
+test_mutex_scheduling_SOURCES = test_mutex_scheduling.cpp
 test_tsi_block_allocator_SOURCES = test_tsi_block_allocator.cpp
 test_rowkey_helper_SOURCES = test_rowkey_helper.cpp test_rowkey_helper.h
 test_rowkey_SOURCES = test_rowkey.cpp
@@ -170,7 +183,16 @@ test_ob_privilege_manager_SOURCES=test_ob_privilege_manager.cpp
 ob_row_test_SOURCES=ob_row_test.cpp
 ob_se_array_test_SOURCES=ob_se_array_test.cpp
 ob_sql_get_param_test_SOURCES=ob_sql_get_param_test.cpp
+test_ob_kv_storecache_perf_SOURCES=test_ob_kv_storecache_perf.cpp
+test_ob_packet_queue_thread_perf_SOURCES=test_ob_packet_queue_thread_perf.cpp
+test_pthread_mutex_perf_SOURCES=test_pthread_mutex_perf.cpp
+test_pthread_cond_perf_SOURCES=test_pthread_cond_perf.cpp
+test_queue_thread_SOURCES = test_queue_thread.cpp
+test_balance_filter_SOURCES = test_balance_filter.cpp
+test_futex_perf_SOURCES=test_futex_perf.cpp
+ob_tc_factory_test_SOURCES=ob_tc_factory_test.cpp
 
+test_ob_tbnet_callback_SOURCES=test_ob_tbnet_callback.cpp
 SUBDIRS = hash compress
 
 DIST_SUBDIRS = hash compress

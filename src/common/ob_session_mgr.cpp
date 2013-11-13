@@ -3,7 +3,7 @@
 #include "ob_atomic.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
-__thread ObSessionManager::SessionInfo * oceanbase::common::ObSessionManager::thread_session_info_ = NULL; 
+__thread ObSessionManager::SessionInfo * oceanbase::common::ObSessionManager::thread_session_info_ = NULL;
 volatile uint32_t ObSessionManager::session_id_generator_ = ObSessionManager::INVALID_SESSION_ID;
 
 oceanbase::common::ObSessionManager::ObSessionManager()
@@ -32,7 +32,7 @@ ObSessionManager::SessionInfo *oceanbase::common::ObSessionManager::get_session_
     }
     else
     {
-      TBSYS_LOG(WARN,"too many session workers [MAX_SESSION_WORKER_COUNT:%u,cur_count:%lu]", 
+      TBSYS_LOG(WARN,"too many session workers [MAX_SESSION_WORKER_COUNT:%u,cur_count:%lu]",
         MAX_SESSION_WORKER_COUNT, idx);
     }
   }
@@ -43,10 +43,10 @@ ObSessionManager::SessionInfo *oceanbase::common::ObSessionManager::get_session_
   return res;
 }
 
-int oceanbase::common::ObSessionManager::session_begin(const ObScanParam & scan_param, 
+int oceanbase::common::ObSessionManager::session_begin(const ObScanParam & scan_param,
   const uint64_t peer_port,  uint64_t &session_id, const pthread_t tid, const pid_t pid)
 {
-  int err = OB_SUCCESS; 
+  int err = OB_SUCCESS;
   SessionInfo * session_info = NULL;
   session_id = gen_session_id();
   session_info = get_session_info(static_cast<uint32_t>(session_id));
@@ -61,7 +61,7 @@ int oceanbase::common::ObSessionManager::session_begin(const ObScanParam & scan_
     session_info->begin(session_id, tid, pid);
   }
   int64_t buf_size = sizeof(session_info->infos_);
-  if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = scan_param.to_str(session_info->infos_, 
+  if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = scan_param.to_str(session_info->infos_,
     buf_size, pos))))
   {
     TBSYS_LOG(WARN,"fail to get ObScanParam str expression [err:%d]", err);
@@ -70,7 +70,7 @@ int oceanbase::common::ObSessionManager::session_begin(const ObScanParam & scan_
   {
     time_t start_time_sec = session_info->start_time_/1000000;
     struct tm t;
-    localtime_r(&start_time_sec,&t); 
+    localtime_r(&start_time_sec,&t);
     pos += snprintf(session_info->infos_ + pos,(buf_size - pos > 0)?(buf_size - pos):0,
       "; peer:%s; start_time:%04d/%02d/%02d-%02d:%02d:%02d.%06ld; tid:%lu; pid:%lu; session_id:%lu", inet_ntoa_r(peer_port),
       t.tm_year + 1900,
@@ -87,10 +87,10 @@ int oceanbase::common::ObSessionManager::session_begin(const ObScanParam & scan_
   return err;
 }
 
-int oceanbase::common::ObSessionManager::session_begin(const ObGetParam & get_param, 
+int oceanbase::common::ObSessionManager::session_begin(const ObGetParam & get_param,
   const uint64_t peer_port, uint64_t &session_id, const pthread_t tid, const pid_t pid)
 {
-  int err = OB_SUCCESS; 
+  int err = OB_SUCCESS;
   SessionInfo * session_info = NULL;
   session_id = gen_session_id();
   session_info = get_session_info(static_cast<uint32_t>(session_id));
@@ -113,7 +113,7 @@ int oceanbase::common::ObSessionManager::session_begin(const ObGetParam & get_pa
   {
     time_t start_time_sec = session_info->start_time_/1000000;
     struct tm t;
-    localtime_r(&start_time_sec,&t); 
+    localtime_r(&start_time_sec,&t);
     pos += snprintf(session_info->infos_ + pos,(buf_size - pos > 0)?(buf_size - pos):0,
       "; peer:%s; start_time:%04d/%02d/%02d-%02d:%02d:%02d.%06ld; tid:%lu; pid:%lu; session_id:%lu", inet_ntoa_r(peer_port),
       t.tm_year + 1900,
@@ -147,7 +147,7 @@ int oceanbase::common::ObSessionManager::session_end(const uint64_t session_id)
     if (!session_info->end(session_id))
     {
       TBSYS_LOG(WARN,"fail to end session [session_id:%lu,session_info->session_id:%lu,"
-        "session_info->alive:%hhu]", session_id, session_info->session_id(), 
+        "session_info->alive:%hhu]", session_id, session_info->session_id(),
         session_info->alive(session_id));
       err = OB_ERROR;
     }
@@ -207,10 +207,10 @@ void oceanbase::common::ObSessionManager::get_sessions(char *buf, int64_t buf_si
       do
       {
         msg_len = 0;
-        session_seq_lock = session_info->seq_lock(); 
+        session_seq_lock = session_info->seq_lock();
         if (session_info->alive())
         {
-          msg_len = snprintf(buf + pos, (buf_size-pos>0)?(buf_size-pos):0, "%s; used_time:%ld\n", 
+          msg_len = snprintf(buf + pos, (buf_size-pos>0)?(buf_size-pos):0, "%s; used_time:%ld\n",
             session_info->infos_, now - session_info->start_time_);
         }
       }while (session_seq_lock != session_info->seq_lock());

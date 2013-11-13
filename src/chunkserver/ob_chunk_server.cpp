@@ -20,6 +20,7 @@
 #include "ob_chunk_callback.h"
 #include "common/ob_config_manager.h"
 #include "common/ob_profile_log.h"
+#include "common/ob_profile_fill_log.h"
 
 using namespace oceanbase::common;
 
@@ -441,8 +442,11 @@ namespace oceanbase
     void ObChunkServer::destroy()
     {
       ObSingleServer::destroy();
-      tablet_manager_.destroy();
+      TBSYS_LOG(INFO, "single server stoped.");
       service_.destroy();
+      TBSYS_LOG(INFO, "destory service_.");
+      tablet_manager_.destroy();
+      TBSYS_LOG(INFO, "destory tablet_manager_, server exit.");
       //TODO maybe need more destroy
     }
 
@@ -473,9 +477,16 @@ namespace oceanbase
       int64_t network_timeout = ob_packet->get_source_timeout();
       int64_t wait_time = 0;
       easy_request_t* req = ob_packet->get_request();
+      ObDataBuffer* in_buffer = ob_packet->get_buffer();
+      ThreadSpecificBuffer::Buffer* thread_buffer = response_buffer_.get_buffer();
       if (NULL == req || NULL == req->ms || NULL == req->ms->c)
       {
         TBSYS_LOG(ERROR, "req or req->ms or req->ms->c is NULL, should not reach here");
+      }
+      else if (NULL == in_buffer || NULL == thread_buffer)
+      {
+        TBSYS_LOG(ERROR, "in_buffer = %p or out_buffer=%p cannot be NULL.", 
+            in_buffer, thread_buffer);
       }
       else
       {
@@ -483,42 +494,30 @@ namespace oceanbase
             || OB_SQL_GET_REQUEST == packet_code || OB_SQL_SCAN_REQUEST == packet_code)
         {
           wait_time = tbsys::CTimeUtil::getTime() - receive_time;
+          FILL_TRACE_LOG("process request, packet_code=%d, wait_time=%ld",
+              packet_code, wait_time);
           PROFILE_LOG(DEBUG, "request from peer=%s, wait_time_in_queue=%ld, packet_code=%d",
                          get_peer_ip(ob_packet->get_request()), wait_time, packet_code);
+          PFILL_SET_TRACE_ID(ob_packet->get_trace_id());
+          PFILL_SET_PCODE(packet_code);
+          PFILL_SET_WAIT_SQL_QUEUE_TIME(wait_time);
           OB_STAT_INC(CHUNKSERVER, INDEX_META_REQUEST_COUNT);
           OB_STAT_INC(CHUNKSERVER, INDEX_META_QUEUE_WAIT_TIME, wait_time);
         }
 
-        ret = ob_packet->deserialize();
-        if (OB_SUCCESS == ret)
-        {
-          int64_t timeout_time = get_process_timeout_time(receive_time, network_timeout);
-          ObDataBuffer* in_buffer = ob_packet->get_buffer();
-          if (NULL == in_buffer)
-          {
-            TBSYS_LOG(ERROR, "in_buffer is NUll should not reach this");
-          }
-          else
-          {
-            ThreadSpecificBuffer::Buffer* thread_buffer =
-              response_buffer_.get_buffer();
-            if (NULL != thread_buffer)
-            {
-              thread_buffer->reset();
-              ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
-              //TODO read thread stuff multi thread
-              TBSYS_LOG(DEBUG, "handle packet, packe code is %d, packet:%p",
-                        packet_code, ob_packet);
-              ret = service_.do_request(receive_time, packet_code,
-                                        version, channel_id, req,
-                                        *in_buffer, out_buffer, timeout_time);
-            }
-            else
-            {
-              TBSYS_LOG(ERROR, "get thread buffer error, ignore this packet");
-            }
-          }
-        }
+        int64_t timeout_time = get_process_timeout_time(receive_time, network_timeout);
+        thread_buffer->reset();
+        ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
+        //TODO read thread stuff multi thread
+        TBSYS_LOG(DEBUG, "handle packet, packe code is %d, packet:%p",
+            packet_code, ob_packet);
+        PFILL_ITEM_START(handle_request_time);
+        ret = service_.do_request(receive_time, packet_code,
+            version, channel_id, req,
+            *in_buffer, out_buffer, timeout_time);
+        PFILL_ITEM_END(handle_request_time);
+        PFILL_CS_PRINT();
+        PFILL_CLEAR_LOG();
       }
       return ret;
     }

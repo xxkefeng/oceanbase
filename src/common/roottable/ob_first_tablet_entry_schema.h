@@ -62,7 +62,10 @@ namespace oceanbase
       static const uint64_t ROWKEY_SPLIT_ID = 38;
       static const uint64_t EXPIRE_CONDITION_ID = 39;
       static const uint64_t SSTABLE_BLOCK_SIZE_ID = 40;
+      //static const uint64_t CONSISTENCY_LEVEL_ID = 41;
       static const uint64_t READ_STATIC_ID = 41;
+      static const uint64_t COMMENT_STR_ID = 42;
+      static const uint64_t SCHEMA_VERSION_ID = 43;
 
       /// UNUSED ////
       static const uint64_t REPLICA1_IPV4 = 51;

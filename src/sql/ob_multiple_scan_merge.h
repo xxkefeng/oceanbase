@@ -45,13 +45,15 @@ namespace oceanbase
       public:
         ObMultipleScanMerge();
         virtual ~ObMultipleScanMerge() {}
-
+        virtual void reset();
+        virtual void reuse();
         int get_next_row(const ObRow *&row);
         int open();
         int close();
         enum ObPhyOperatorType get_type() const{return PHY_MULTIPLE_SCAN_MERGE;};
         int64_t to_string(char *buf, int64_t buf_len) const;
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         int write_row(ObRow &row);
 

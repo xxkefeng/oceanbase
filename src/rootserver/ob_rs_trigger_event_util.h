@@ -34,9 +34,9 @@ namespace oceanbase
     public:
       static int slave_boot_strap(common::ObTriggerEvent & trigger);
       static int notify_slave_refresh_schema(common::ObTriggerEvent & trigger);
-      static int create_table(common::ObTriggerEvent & trigger);
+      static int create_table(common::ObTriggerEvent & trigger, const uint64_t table_id = 0);
       static int alter_table(common::ObTriggerEvent & trigger);
-      static int drop_tables(common::ObTriggerEvent & trigger);
+      static int drop_tables(common::ObTriggerEvent & trigger, const uint64_t table_id);
     };
   } // end namespace rootserver
 }

@@ -47,9 +47,9 @@ while($count < 41)
 --disable_parsing
 while($id )
 {
-    eval SELECT j1.* from sbtest as j1,sbtest as j2 where j1.id=j2.id and j1.id=$id;
+    eval SELECT j1.* from sbtest as j1,sbtest as j2 where j1.id=j2.id and j1.id=$id and j2.id=$id;
     dec $id;
 }
 --enable_parsing
 --enable_query_log
-eval SELECT j1.* from sbtest as j1,sbtest as j2 where j1.id=j2.id and j1.id=$id;
+eval SELECT j1.* from sbtest as j1,sbtest as j2 where j1.id=j2.id and j1.id=$id and j2.id=$id;

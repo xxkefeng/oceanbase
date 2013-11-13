@@ -46,7 +46,8 @@ namespace oceanbase
       public:
         ObUpsScan();
         virtual ~ObUpsScan();
-
+        virtual void reset();
+        virtual void reuse();
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
 
@@ -54,6 +55,7 @@ namespace oceanbase
         virtual int add_column(const uint64_t &column_id);
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_UPS_SCAN; }
         virtual int get_next_row(const common::ObRowkey *&rowkey, const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         /**
@@ -61,14 +63,43 @@ namespace oceanbase
          */
         virtual int set_range(const ObNewRange &range);
         void set_version_range(const ObVersionRange &version_range);
-        virtual void reset();
 
         bool is_result_empty() const;
 
-        inline int set_network_timeout(int64_t network_timeout);
         inline void set_is_read_consistency(bool is_read_consistency)
         {
           is_read_consistency_ = is_read_consistency;
+        }
+
+        inline int set_ts_timeout_us(int64_t ts_timeout_us)
+        {
+          int ret = OB_SUCCESS;
+          if (ts_timeout_us > 0)
+          {
+            ts_timeout_us_ = ts_timeout_us;
+          }
+          else
+          {
+            ret = OB_INVALID_ARGUMENT;
+          }
+          return ret;
+        }
+
+        inline bool is_timeout(int64_t *remain_us /*= NULL*/) const
+        {
+          int64_t now = tbsys::CTimeUtil::getTime();
+          if (NULL != remain_us)
+          {
+            if (OB_LIKELY(ts_timeout_us_ > 0))
+            {
+              *remain_us = ts_timeout_us_ - now;
+            }
+            else
+            {
+              *remain_us = INT64_MAX; // no timeout
+            }
+          }
+          return (ts_timeout_us_ > 0 && now > ts_timeout_us_);
         }
 
       private:
@@ -89,25 +120,10 @@ namespace oceanbase
         ObRowDesc row_desc_;
         ObStringBuf range_str_buf_;
         ObSqlUpsRpcProxy *rpc_proxy_;
-        int64_t network_timeout_;
+        int64_t ts_timeout_us_;
         int64_t row_counter_;
         bool is_read_consistency_;
     };
-
-    int ObUpsScan::set_network_timeout(int64_t network_timeout)
-    {
-      int ret = OB_SUCCESS;
-      if(network_timeout <= 0)
-      {
-        ret = OB_INVALID_ARGUMENT;
-        TBSYS_LOG(WARN, "network_timeout should be positive[%ld]", network_timeout);
-      }
-      else
-      {
-        network_timeout_ = network_timeout;
-      }
-      return ret;
-    }
   } // end namespace sql
 } // end namespace oceanbase
 

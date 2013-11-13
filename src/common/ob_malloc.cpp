@@ -21,11 +21,23 @@
 #include "ob_thread_mempool.h"
 #include "ob_tsi_factory.h"
 #include "utility.h"
+#include "ob_tsi_block_allocator.h"
 #include <algorithm>
 #ifdef __OB_MTRACE__
 #include <execinfo.h>
 #endif
 
+namespace oceanbase
+{
+  namespace common
+  {
+    ObTSIBlockAllocator& get_global_tsi_block_allocator()
+    {
+      static ObTSIBlockAllocator tsi_block_allocator;
+      return tsi_block_allocator;
+    }
+  }
+}
 namespace
 {
   /// @warning 这里使用了gcc的扩展属性，以及一些不常使用的语言特征，目的是解决
@@ -70,12 +82,48 @@ namespace
   {
     return *g_memory_pool;
   }
-
 }
+
+namespace oceanbase
+{
+  namespace common
+  {
+    void *ob_tc_malloc(const int64_t nbyte, const int32_t mod_id)
+    {
+      return get_global_tsi_block_allocator().mod_alloc(nbyte, mod_id);
+    }
+
+    void ob_tc_free(void *ptr, const int32_t mod_id)
+    {
+      get_global_tsi_block_allocator().mod_free(ptr, mod_id);
+    }
+
+    void *ob_tc_realloc(void* ptr, const int64_t nbyte, const int32_t mod_id)
+    {
+      return get_global_tsi_block_allocator().mod_realloc(ptr, nbyte, mod_id);
+    }
+  }
+}
+
 
 int oceanbase::common::ob_init_memory_pool(int64_t block_size)
 {
-  return get_fixed_memory_pool_instance().init(block_size,1, g_mod_set);
+  int ret = OB_SUCCESS;
+  static ObMalloc sys_allocator;
+  sys_allocator.set_mod_id(ObModIds::OB_MOD_TC_TOTAL);
+  if (OB_SUCCESS != (ret = get_fixed_memory_pool_instance().init(block_size,1, g_mod_set)))
+  {
+    TBSYS_LOG(ERROR, "fixed_memory_pool.init(block_size=%ld)=>%d", block_size, ret);
+  }
+  else if (OB_SUCCESS != (ret = get_global_tsi_block_allocator().init(&sys_allocator)))
+  {
+    TBSYS_LOG(ERROR, "tsi_block_allocator.init()=>%d", ret);
+  }
+  else
+  {
+    get_global_tsi_block_allocator().set_mod_id(ObModIds::OB_MOD_TCDEFAULT);
+  }
+  return ret;
 }
 
 void oceanbase::common::ob_mod_usage_update(const int64_t delta, const int32_t mod_id)
@@ -199,10 +247,11 @@ void oceanbase::common::ob_safe_free(void *&ptr, const int32_t mod_id)
 void oceanbase::common::ob_print_mod_memory_usage(bool print_to_std)
 {
   g_memory_pool->print_mod_memory_usage(print_to_std);
+  TBSYS_LOG(INFO, "malloc size distribution\n%s", to_cstring(g_malloc_size_stat));
   for (uint32_t i = 0; i < ARRAYSIZEOF(MON_BLOCK_SIZE_ARRAY); ++i)
   {
     TBSYS_LOG(INFO, "[BLOCK_STAT] size=%ld times=%ld", MON_BLOCK_SIZE_ARRAY[i], MON_BLOCK_ARRAY[i]);
-  } // end for
+  } // end for 
 }
 
 int64_t oceanbase::common::ob_get_mod_memory_usage(int32_t mod_id)
@@ -228,6 +277,13 @@ int64_t oceanbase::common::ob_get_memory_size_limit()
 int64_t oceanbase::common::ob_get_memory_size_handled()
 {
   return get_fixed_memory_pool_instance().get_memory_size_handled();
+}
+
+int64_t oceanbase::common::ob_get_memory_size_used()
+{
+  oceanbase::common::ObFixedMemPool & fixed_pool = get_fixed_memory_pool_instance();
+  return fixed_pool.get_memory_size_handled()
+         - (fixed_pool.get_block_size() * fixed_pool.get_free_block_num());
 }
 
 oceanbase::common::ObMemBuffer::ObMemBuffer()

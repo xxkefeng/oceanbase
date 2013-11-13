@@ -3,7 +3,7 @@
 
 #include <tbsys.h>
 #include "common/ob_define.h"
-#include "common/ob_bloomfilter.h"
+#include "common/bloom_filter.h"
 #include "common/ob_rowkey.h"
 #include "common/ob_record_header_v2.h"
 #include "common/ob_range2.h"
@@ -97,7 +97,7 @@ namespace oceanbase
       int set_table_range(const common::ObNewRange& range);
 
       inline int add_table_bloomfilter(
-          const common::TableBloomFilter& table_bloomfilter)
+          const common::ObBloomFilterV1& table_bloomfilter)
       {
         int ret = common::OB_SUCCESS;
         (void)table_bloomfilter;
@@ -202,7 +202,7 @@ namespace oceanbase
       TableRangeStruct table_range_array_[2];
       int64_t table_range_array_flag_;
 
-      common::TableBloomFilter table_bloomfilter_;
+      common::ObBloomFilterV1 table_bloomfilter_;
       
       ObSSTableBlockIndex block_index_;
       common::ObRowkey block_endkey_;

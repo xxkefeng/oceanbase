@@ -111,6 +111,7 @@ namespace oceanbase
     int get_sstable_directory(const int32_t disk_no, char *path, const int64_t path_len);
 
     int get_recycle_directory(const int32_t disk_no, char *path, const int64_t path_len);
+    int get_recycle_path(const ObSSTableId& sstable_id, char *path, const int64_t path_len);
 
     /**
      * get tablet index file path

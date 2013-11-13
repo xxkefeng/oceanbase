@@ -3,9 +3,11 @@
 #include "root_server_tester.h"
 #include "rootserver/ob_root_server2.h"
 #include "common/ob_tablet_info.h"
+#include "common/ob_data_source_desc.h"
 #include "rootserver/ob_root_meta2.h"
 #include "rootserver/ob_root_table2.h"
 #include "../common/test_rowkey_helper.h"
+
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
@@ -47,8 +49,6 @@ void print(const ObString& p)
 }
 void create_root_table(ObRootServer2* root_server)
 {
-  char buf1[10][30];
-  char buf2[10][30];
   ObServer server1(ObServer::IPV4, "10.10.10.1", 1001);
   ObServer server2(ObServer::IPV4, "10.10.10.2", 1001);
   ObServer server3(ObServer::IPV4, "10.10.10.3", 1001);
@@ -80,9 +80,6 @@ void create_root_table(ObRootServer2* root_server)
 
   info1.range_.border_flag_.set_inclusive_end();
   info1.range_.border_flag_.unset_inclusive_start();
-  info1.range_.start_key_.set_min_row();
-  info1.range_.start_key_ = make_rowkey(buf1[0], 30, &allocator_);
-  info1.range_.end_key_ = make_rowkey(buf2[0], 30, &allocator_);
   info1.range_.start_key_ = make_rowkey("aa1", &allocator_);
   info1.range_.end_key_ = make_rowkey("ba1", &allocator_);
   location.chunkserver_ = server1;
@@ -609,7 +606,21 @@ TEST(ObRootServer2Test2, migrate_over)
   pos = server_manager.find_by_ip(server2);
   int server2_index = static_cast<int32_t>(pos - server_manager.begin());
 
-  root_server->migrate_over(info1.range_, server2, server3, true, 1);
+  ObServer dest_server = server3;
+  ObDataSourceDesc desc1;
+  desc1.type_ = ObDataSourceDesc::OCEANBASE_INTERNAL;
+  desc1.range_ = info1.range_;
+  desc1.src_server_ = server2;
+  desc1.sstable_version_ = 2;
+  desc1.tablet_version_ = 1;
+  desc1.keep_source_ = true;
+  const int64_t occupy_size = 1024;
+  const uint64_t crc_sum = 12345678;
+  const uint64_t row_checksum = 12345678;
+  const int64_t row_count =23456789;
+  const int32_t migrate_result = 0;
+
+  ASSERT_EQ(0, root_server->migrate_over(migrate_result, desc1, occupy_size, crc_sum, row_checksum, row_count));
 
   t_tb->find_range(info1.range_, start, end);
   bool found_server3 =false;
@@ -632,7 +643,9 @@ TEST(ObRootServer2Test2, migrate_over)
   root_server->regist_chunk_server(server4, "0.4.1.2", status);
   pos = server_manager.find_by_ip(server4);
   int server4_index = static_cast<int32_t>(pos - server_manager.begin());
-  root_server->migrate_over(info1.range_, server2, server4, false, 1);
+  dest_server = server4;
+  desc1.keep_source_ = false;
+  ASSERT_EQ(0, root_server->migrate_over(migrate_result, desc1, occupy_size, crc_sum, row_checksum, row_count));
   TBSYS_LOG(INFO, "check migrate 2->4 ");
 
   found_server2 = false;
@@ -681,8 +694,8 @@ TEST(ObRootServer2Test2, cs_stop_start_data_keep)
   root_server->regist_chunk_server(server4, "0.4.1.2", status);
   // now we have two cs
 
-root_server->get_boot()->set_boot_ok();
-  TBSYS_LOG(INFO, "will start test");
+  root_server->get_boot()->set_boot_ok();
+  TBSYS_LOG(INFO, "will start test cs_stop_start_data_keep");
   //tester.init_root_table_by_report();
 
   //all commond sended.
@@ -763,6 +776,7 @@ root_server->get_boot()->set_boot_ok();
   report_info.tablet_info_ = info1;
   report_info.tablet_location_ = location;
   report_list3.add_tablet(report_info);
+  TBSYS_LOG(INFO, "start to report tablets");
   root_server->report_tablets(server3, report_list3,0);
   sleep(1);
   rt_q->dump();
@@ -862,7 +876,21 @@ TEST(ObRootServer2Test2, migrate_over2_1)
   roottable->server_off_line(static_cast<int32_t>(it - csmgr.begin()), now);
 
   // 5. report migrate over
-  rs->migrate_over(env.info1_.range_, env.cs1_, env.cs2_, true, env.tablet_version_);
+  ObServer dest_server = env.cs2_;
+  ObDataSourceDesc desc1;
+  desc1.type_ = ObDataSourceDesc::OCEANBASE_INTERNAL;
+  desc1.range_ = env.info1_.range_;
+  desc1.src_server_ = env.cs1_;
+  desc1.sstable_version_ = 2;
+  desc1.tablet_version_ = env.tablet_version_;
+  desc1.keep_source_ = true;
+  const int64_t occupy_size = 1024;
+  const uint64_t crc_sum = 12345678;
+  const uint64_t row_checksum = 12345678;
+  const int64_t row_count =23456789;
+  const int32_t migrate_result = 0;
+
+  ASSERT_EQ(0, rs->migrate_over(migrate_result, desc1, occupy_size, crc_sum, row_checksum, row_count));
 
   // 6. verify
   ObRootTable2::const_iterator it1, it2;
@@ -893,7 +921,22 @@ TEST(ObRootServer2Test2, migrate_over2_2)
   roottable->server_off_line(static_cast<int32_t>(it - csmgr.begin()), now);
 
   // 5. report migrate over
-  rs->migrate_over(env.info1_.range_, env.cs1_, env.cs2_, false, env.tablet_version_);
+  ObServer dest_server = env.cs2_;
+  ObDataSourceDesc desc1;
+  desc1.type_ = ObDataSourceDesc::OCEANBASE_INTERNAL;
+  desc1.range_ = env.info1_.range_;
+  desc1.src_server_ = env.cs1_;
+  desc1.sstable_version_ = 2;
+  desc1.tablet_version_ = env.tablet_version_;
+  desc1.keep_source_ = false;
+  const int64_t occupy_size = 1024;
+  const uint64_t crc_sum = 12345678;
+  const uint64_t row_checksum = 12345678;
+  const int64_t row_count =23456789;
+  const int32_t migrate_result = 0;
+
+  ASSERT_EQ(0, rs->migrate_over(migrate_result, desc1, occupy_size, crc_sum, row_checksum, row_count));
+
   ObRootTable2::const_iterator it1, it2;
   ASSERT_EQ(OB_SUCCESS, roottable->find_range(env.info1_.range_, it1, it2));
   ASSERT_EQ(it1, it2);
@@ -922,7 +965,22 @@ TEST(ObRootServer2Test2, migrate_over2_3)
   roottable->server_off_line(static_cast<int32_t>(it - csmgr.begin()), now);
 
   // 5. report migrate over
-  rs->migrate_over(env.info1_.range_, env.cs1_, env.cs2_, true, env.tablet_version_);
+  ObServer dest_server = env.cs2_;
+  ObDataSourceDesc desc1;
+  desc1.type_ = ObDataSourceDesc::OCEANBASE_INTERNAL;
+  desc1.range_ = env.info1_.range_;
+  desc1.src_server_ = env.cs1_;
+  desc1.sstable_version_ = 2;
+  desc1.tablet_version_ = env.tablet_version_;
+  desc1.keep_source_ = true;
+  const int64_t occupy_size = 1024;
+  const uint64_t crc_sum = 12345678;
+  const uint64_t row_checksum = 12345678;
+  const int64_t row_count =23456789;
+  const int32_t migrate_result = 0;
+
+  ASSERT_EQ(0, rs->migrate_over(migrate_result, desc1, occupy_size, crc_sum, row_checksum, row_count));
+
   ObRootTable2::const_iterator it1, it2;
   ASSERT_EQ(OB_SUCCESS, roottable->find_range(env.info1_.range_, it1, it2));
   ASSERT_EQ(it1, it2);
@@ -951,7 +1009,23 @@ TEST(ObRootServer2Test2, migrate_over2_4)
   roottable->server_off_line(static_cast<int32_t>(it - csmgr.begin()), now);
 
   // 5. report migrate over
-  rs->migrate_over(env.info1_.range_, env.cs1_, env.cs2_, false, env.tablet_version_);
+  //rs->migrate_over(env.info1_.range_, env.cs1_, env.cs2_, false, env.tablet_version_);
+  ObServer dest_server = env.cs2_;
+  ObDataSourceDesc desc1;
+  desc1.type_ = ObDataSourceDesc::OCEANBASE_INTERNAL;
+  desc1.range_ = env.info1_.range_;
+  desc1.src_server_ = env.cs1_;
+  desc1.sstable_version_ = 2;
+  desc1.tablet_version_ = env.tablet_version_;
+  desc1.keep_source_ = false;
+  const int64_t occupy_size = 1024;
+  const uint64_t crc_sum = 12345678;
+  const uint64_t row_checksum = 12345678;
+  const int64_t row_count =23456789;
+  const int32_t migrate_result = 0;
+
+  ASSERT_EQ(0, rs->migrate_over(migrate_result, desc1, occupy_size, crc_sum, row_checksum, row_count));
+
   ObRootTable2::const_iterator it1, it2;
   ASSERT_EQ(OB_SUCCESS, roottable->find_range(env.info1_.range_, it1, it2));
   ASSERT_EQ(it1, it2);

@@ -84,3 +84,18 @@ int ObStartTrans::open()
   }
   return ret;
 }
+
+PHY_OPERATOR_ASSIGN(ObStartTrans)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObStartTrans);
+  rpc_ = NULL;
+  req_ = o_ptr->req_;
+  return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObStartTrans, PHY_START_TRANS);
+  }
+}

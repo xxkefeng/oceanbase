@@ -258,6 +258,7 @@ namespace oceanbase
           // find the next wildcard '%',not include ordinary %
           p3 = p2 + 1;
           int escape_suc_count = 0;
+          bool last_star = false;
           while (p3 < len2)
           {
             if (pattern[p3] == ESCAPE)
@@ -276,6 +277,10 @@ namespace oceanbase
             // find the next wildcard %
             else if (pattern[p3] == '%')
             {
+              if (p3 == len2 - 1)
+              {
+                last_star = true;
+              }
               break;
             }
             else
@@ -289,7 +294,7 @@ namespace oceanbase
           int literal_len = p3 - p2 - 1;
           int real_len = literal_len - escape_suc_count;
           // means ordinary '%' is the last character of pattern string
-          if (literal_len == 0)
+          if (last_star == true && literal_len == 0)
           {
             is_matched = true;
             break;

@@ -57,7 +57,7 @@ namespace oceanbase
       /// @param [in] log_file_max_size 日志文件最大长度限制
       /// @param [in] slave_mgr ObSlaveMgr用于同步日志
       int init(const char* log_dir, const int64_t log_file_max_size, ObSlaveMgr *slave_mgr,
-               int64_t log_sync_type, MinAvailFileIdGetter* min_avail_fid_getter = NULL);
+               int64_t log_sync_type, MinAvailFileIdGetter* min_avail_fid_getter = NULL, const ObServer* server=NULL);
 
       int reset_log();
 
@@ -76,6 +76,8 @@ namespace oceanbase
       int start_log(const ObLogCursor& start_cursor);
       int start_log_maybe(const ObLogCursor& start_cursor);
       int get_flushed_cursor(ObLogCursor& log_cursor) const;
+      int get_filled_cursor(ObLogCursor& log_cursor) const;
+      bool is_all_flushed() const;
       int64_t get_file_size() const {return log_writer_.get_file_size();};
       int64_t to_string(char* buf, const int64_t len) const;
 
@@ -94,6 +96,9 @@ namespace oceanbase
       int write_log(const LogCommand cmd, const T& data);
 
       int write_keep_alive_log();
+
+        int async_flush_log(int64_t& end_log_id, TraceLog::LogBuffer &tlog_buffer = oceanbase::common::TraceLog::get_logbuffer());
+        int64_t get_flushed_clog_id();
       /// @brief 将缓冲区中的日志写入磁盘
       /// flush_log首相将缓冲区中的内容同步到Slave机器
       /// 然后写入磁盘
@@ -158,7 +163,6 @@ namespace oceanbase
         ObLogDataWriter log_writer_;
         int64_t net_warn_threshold_us_;
         int64_t disk_warn_threshold_us_;
-      private:
         int64_t last_net_elapse_;  //上一次写日志网络同步耗时
         int64_t last_disk_elapse_;  //上一次写日志磁盘耗时
         int64_t last_flush_log_time_; // 上次刷磁盘的时间

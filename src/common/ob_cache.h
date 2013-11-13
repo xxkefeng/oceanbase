@@ -25,6 +25,8 @@
 #include "murmur_hash.h"
 #include "Time.h"
 #include "ob_atomic.h"
+#include "ob_range2.h"
+#include "ob_spin_lock.h"
 
 namespace oceanbase
 {
@@ -106,7 +108,7 @@ namespace oceanbase
       /// @fn 查询cache项
       /// @warning cache_pair持有指向cache内部的指针，此处应该get到const的cache_pair，
       ///          但是，暂时没有想到好的实现方法，因此使用者不能够修改得到的cache_pair
-      virtual int get(const ObString &key, ObCachePair &cache_pair) = 0;
+      virtual int get(const common::ObNewRange &key, ObCachePair &cache_pair) = 0;
 
       /// @fn 归还cache项目；cache_pair可以是通过malloc得到，也可以是通过get得到；
       ///       前一种情况出现在获取内存后产生cache_pair的数据的过程中失败，使用者无需
@@ -114,7 +116,7 @@ namespace oceanbase
       virtual int revert(ObCachePair & cache_pair) = 0;
 
       /// @fn 删除cache项
-      virtual int remove(const ObString &key) = 0;
+      virtual int remove(const common::ObNewRange &key) = 0;
 
       /// @fn clear all cache item
       virtual int clear() = 0;
@@ -654,16 +656,18 @@ namespace oceanbase
         return err;
       }
 
-      virtual int get(const ObString &key, ObCachePair &cache_pair)
+      virtual int get(const common::ObNewRange &key, ObCachePair &cache_pair)
       {
         int err = OB_SUCCESS;
         CacheItemHead   *item = NULL;
         LRUMemBlockHead *block = NULL;
+        /*
         if (key.ptr() == NULL || key.length() <= 0)
         {
           TBSYS_LOG(WARN, "argument error [key.ptr:%p,key.length:%d]",key.ptr(), key.length());
           err = oceanbase::common::OB_INVALID_ARGUMENT;
         }
+        */
         /// @warning 这里必须调用revert，否则会发生死锁
         cache_pair.revert();
         if (OB_SUCCESS == err && !inited_)
@@ -740,7 +744,7 @@ namespace oceanbase
       ///     TBSYS_LOG(WARN, "argument error [key.ptr:%p,key.length:%d]",key.ptr(), key.length());
       ///     err = oceanbase::common::OB_INVALID_ARGUMENT;
       ///   }
-      ///   tbsys::CThreadGuard guard(&mutex_);
+      ///   ObSpinLockGuard guard(lock_);
       ///   if (OB_SUCCESS == err && !inited_)
       ///   {
       ///     TBSYS_LOG(WARN, "cache not initialized yet");
@@ -765,15 +769,17 @@ namespace oceanbase
       ///   return err;
       /// }
 
-      virtual int remove(const ObString &key)
+      virtual int remove(const ObNewRange &key)
       {
         int err = OB_SUCCESS;
         CacheItemHead   *item = NULL;
+        /*
         if (key.ptr() == NULL || key.length() <= 0)
         {
           TBSYS_LOG(WARN, "argument error [key.ptr:%p,key.length:%d]",key.ptr(), key.length());
           err = oceanbase::common::OB_INVALID_ARGUMENT;
         }
+        */
         if (OB_SUCCESS == err && !inited_)
         {
           TBSYS_LOG(WARN, "cache not initialized yet");

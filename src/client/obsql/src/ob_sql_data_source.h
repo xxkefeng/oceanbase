@@ -32,6 +32,7 @@ typedef struct ob_sql_connection
   MYSQL *mysql_;                 /* real mysql conn */
   ob_sql_connection_pool *pool_; /* mysql pool used when give back conn*/
   ObServerInfo cluster_;         /* cluster root server */
+  ObServerInfo ds_server_;
   ObSQLListNode *node_;          /* conn belongs to */
 } ObSQLConn;
 

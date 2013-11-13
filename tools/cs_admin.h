@@ -50,6 +50,12 @@ enum
   CMD_DELETE_TABLE = 20,
   CMD_LOAD_SSTABLES = 21,
   CMD_DUMP_SSTABLE_DIST = 22,
+  CMD_GET_BLOOM_FILTER = 23,
+  CMD_INSTALL_DISK = 29,
+  CMD_UNINSTALL_DISK = 30,
+  CMD_SHOW_DISK = 31,
+  CMD_FETCH_BYPASS_TABLE_ID = 34,
+  CMD_REQUEST_REPORT_TABLET = 35,
   CMD_MAX,
 };
 
@@ -97,7 +103,7 @@ class GFactory
   public:
     GFactory();
     ~GFactory();
-    int initialize(const oceanbase::common::ObServer& chunk_server);
+    int initialize(const oceanbase::common::ObServer& chunk_server, const int64_t timeout);
     int stop();
     static GFactory& get_instance() { return instance_; }
     inline ObClientRpcStub& get_rpc_stub() { return rpc_stub_; }
@@ -109,6 +115,7 @@ class GFactory
     ObClientRpcStub rpc_stub_;
     oceanbase::common::ObBaseClient client_;
     std::map<std::string, int> cmd_map_;
+    int64_t timeout_;
 };
 
 

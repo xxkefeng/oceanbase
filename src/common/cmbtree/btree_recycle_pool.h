@@ -71,7 +71,7 @@ namespace oceanbase
           int32_t  do_free_                      (int64_t max_reserved_num);
           int32_t  free_node_                    (TRecycleNode * node);
 
-          static const int64_t DEFAULT_BTREE_NODE_ALARM_NUM= 100000;
+          static const int64_t DEFAULT_BTREE_NODE_ALARM_NUM= 10000000;
           static const int64_t DEFAULT_LOCK_TIME           = 10000;
           static const int64_t DEFAULT_LOCK_RESERVED_NUM   = 20;
           static const int64_t DEFAULT_LOCK_BTREE_NODE_NUM = 1000;
@@ -286,7 +286,8 @@ namespace oceanbase
                                < max_reserved_num)
                         && NULL != oldest_recycle_node_
                         && oldest_recycle_node_ != cur_recycle_node_
-                        && oldest_recycle_node_->get_ref() == 0))
+                        && oldest_recycle_node_->get_ref() == 0
+                        && oldest_recycle_node_->get_next() != NULL))
         {
           CMBTREE_CHECK_TRUE(oldest_recycle_node_->get_ref() >= 0,
               "Fatal error: reference count is less than 0");

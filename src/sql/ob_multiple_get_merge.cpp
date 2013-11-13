@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * /home/jianming.cjq/ss_g/src/sql/ob_multiple_get_merge.cpp 
+ * /home/jianming.cjq/ss_g/src/sql/ob_multiple_get_merge.cpp
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -19,6 +19,16 @@
 
 using namespace oceanbase;
 using namespace sql;
+
+void ObMultipleGetMerge::reset()
+{
+  ObMultipleMerge::reset();
+}
+
+void ObMultipleGetMerge::reuse()
+{
+  ObMultipleMerge::reuse();
+}
 
 int ObMultipleGetMerge::open()
 {
@@ -106,10 +116,13 @@ int ObMultipleGetMerge::get_next_row(const ObRow *&row)
         }
         else
         {
-          TBSYS_LOG(WARN, "fail to get next row:ret[%d]", ret);
+          if (!IS_SQL_ERR(ret))
+          {
+            TBSYS_LOG(WARN, "fail to get next row:ret[%d]", ret);
+          }
         }
       }
-      
+
       if (OB_SUCCESS == ret)
       {
         TBSYS_LOG(DEBUG, "multiple get merge child[%d] row[%s]", i, to_cstring(*tmp_row));
@@ -125,7 +138,7 @@ int ObMultipleGetMerge::get_next_row(const ObRow *&row)
           }
         }
       }
-      
+
     }
     if (OB_SUCCESS == ret)
     {
@@ -140,6 +153,12 @@ int ObMultipleGetMerge::get_next_row(const ObRow *&row)
     row = &cur_row_;
   }
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObMultipleGetMerge, PHY_MULTIPLE_GET_MERGE);
+  }
 }
 
 int64_t ObMultipleGetMerge::to_string(char *buf, int64_t buf_len) const
@@ -158,4 +177,11 @@ int64_t ObMultipleGetMerge::to_string(char *buf, int64_t buf_len) const
   return pos;
 }
 
+PHY_OPERATOR_ASSIGN(ObMultipleGetMerge)
+{
+  int ret = OB_SUCCESS;
+  cur_row_.reset(false, ObRow::DEFAULT_NULL);
+  ret = ObMultipleMerge::assign(other);
+  return ret;
+}
 

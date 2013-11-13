@@ -15,3 +15,11 @@ obmonster.skip-trx=${skip_trx}
 obmonster.trx-num=${max_trx}
 obmonster.time=${max_time}
 obmonster.commit-num=${commit_num}
+
+obmonster.sleep=0
+obmonster.reconnect=0
+obmonster.stmt-per-query=0
+obmonster.ps-cache=enable
+obmonster.smart-prepare=disable
+
+obmonster.client-type=java

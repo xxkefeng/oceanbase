@@ -68,6 +68,25 @@ namespace oceanbase
           /* 指示左表哪些列是从右表取过来的 */
           ObArray<JoinInfo> join_column_;
 
+          int64_t to_string(char* buf, const int64_t buf_len) const
+          {
+            int64_t pos = 0;
+            databuff_printf(buf, buf_len, pos, "left tid[%lu]", left_table_id_);
+            databuff_printf(buf, buf_len, pos, "right tid[%lu]", right_table_id_);
+            databuff_printf(buf, buf_len, pos, " join condtion:");
+            for (int64_t i = 0; i < join_condition_.count(); i ++)
+            {
+              databuff_printf(buf, buf_len, pos, "%lu, ", join_condition_.at(i));
+            }
+            databuff_printf(buf, buf_len, pos, " join column:");
+            for (int64_t i = 0; i < join_column_.count(); i ++)
+            {
+              databuff_printf(buf, buf_len, pos, "<%lu, %lu>, ", 
+                join_column_.at(i).left_column_id_, join_column_.at(i).right_column_id_);
+            }
+            return pos;
+          }
+
           public:
             TableJoinInfo();
         };
@@ -76,18 +95,15 @@ namespace oceanbase
       public:
         ObTabletJoin();
         virtual ~ObTabletJoin();
-
+        virtual void reset();
+        virtual void reuse();
         int set_child(int32_t child_idx, ObPhyOperator &child_operator);
-
         virtual int open();
         virtual int close();
-        virtual void reset();
-
         int get_next_row(const ObRow *&row);
         int64_t to_string(char* buf, const int64_t buf_len) const;
-        int get_row_desc(const common::ObRowDesc *&row_desc) const; 
-
-        void set_network_timeout(int64_t network_timeout);
+        int get_row_desc(const common::ObRowDesc *&row_desc) const;
+        void set_ts_timeout_us(int64_t ts_timeout_us);
         inline void set_batch_count(const int64_t batch_count);
         inline void set_table_join_info(const TableJoinInfo &table_join_info);
         inline void set_is_read_consistency(bool is_read_consistency)
@@ -111,7 +127,7 @@ namespace oceanbase
         friend class test::ObTabletJoinTest_gen_ups_row_desc_Test;
         friend class test::ObTabletJoinTest_get_right_table_rowkey_Test;
         friend class test::ObTabletJoinTest_fetch_fused_row_Test;
-        
+
       protected:
         // disallow copy
         ObTabletJoin(const ObTabletJoin &other);

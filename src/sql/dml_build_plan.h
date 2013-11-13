@@ -18,7 +18,8 @@
 #define DML_BUILD_PLAN_H_
 
 #include "parse_node.h"
-#include "sql/ob_stmt.h"
+#include "parse_malloc.h"
+#include "sql/ob_logical_plan.h"
 #include "common/ob_vector.h"
 #include <stdint.h>
 
@@ -34,6 +35,7 @@
 #define T_UPDATE_LIMIT    5
 #define T_AGG_LIMIT       6
 #define T_VARIABLE_VALUE_LIMIT 7
+#define T_WHEN_LIMIT      8
 
 extern int resolve_select_stmt(
     ResultPlan* result_plan,

@@ -52,26 +52,91 @@ int ObRootInnerTableTask::modify_all_server_table(const ObRootAsyncTaskQueue::Ob
   // write server info to internal table
   char buf[OB_MAX_SQL_LENGTH] = "";
   int32_t server_port = task.server_.get_port();
-  int32_t inner_port = task.inner_port_;
   char ip_buf[OB_MAX_SERVER_ADDR_SIZE] = "";
   if (false == task.server_.ip_to_string(ip_buf, sizeof(ip_buf)))
   {
     ret = OB_INVALID_ARGUMENT;
     TBSYS_LOG(WARN, "convert server ip to string failed:ret[%d]", ret);
   }
-  else if (task.type_ == SERVER_ONLINE)
+  else
   {
-    const char * sql_temp = "REPLACE INTO __all_server(cluster_id, svr_type,"
-      " svr_ip, svr_port, inner_port, svr_role, svr_version) VALUES(%d,\'%s\',\'%s\',%u,%u,%d,\'%s\');";
-    snprintf(buf, sizeof (buf), sql_temp, cluster_id_, print_role(task.role_),
-        ip_buf, server_port, inner_port, 0, task.server_version_);
+    switch (task.type_)
+    {
+      case SERVER_ONLINE:
+      {
+        const char * sql_temp = "REPLACE INTO __all_server(cluster_id, svr_type,"
+          " svr_ip, svr_port, inner_port, svr_role, svr_version)"
+          " VALUES(%d,\'%s\',\'%s\',%u,%u,%d,\'%s\');";
+        snprintf(buf, sizeof (buf), sql_temp, cluster_id_, print_role(task.role_),
+            ip_buf, server_port, task.inner_port_, task.server_status_, task.server_version_);
+        break;
+      }
+      case SERVER_OFFLINE:
+      {
+        const char * sql_temp = "DELETE FROM __all_server WHERE svr_type=\'%s\' AND"
+          " svr_ip=\'%s\' AND svr_port=%d AND cluster_id=%d;";
+        snprintf(buf, sizeof (buf), sql_temp, print_role(task.role_),
+            ip_buf, server_port, cluster_id_);
+        break;
+      }
+      case ROLE_CHANGE:
+      {
+        const char * sql_temp = "REPLACE INTO __all_server(cluster_id, svr_type,"
+          " svr_ip, svr_port, inner_port, svr_role) VALUES(%d,\'%s\',\'%s\',%u,%u,%d);";
+        snprintf(buf, sizeof (buf), sql_temp, cluster_id_, print_role(task.role_),
+            ip_buf, server_port, task.inner_port_, task.server_status_);
+        break;
+      }
+      default:
+      {
+        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(WARN, "check input param failed:task_type[%d]", task.type_);
+      }
+    }
   }
-  else if (task.type_ == SERVER_OFFLINE)
+  if (OB_SUCCESS == ret)
   {
-    const char * sql_temp = "DELETE FROM __all_server WHERE svr_type=\'%s\' AND"
-      " svr_ip=\'%s\' AND svr_port=%d AND cluster_id=%d AND svr_role=0;";
-    snprintf(buf, sizeof (buf), sql_temp, print_role(task.role_),
-        ip_buf, server_port, cluster_id_);
+    ObString sql;
+    sql.assign_ptr(buf, static_cast<ObString::obstr_size_t>(strlen(buf)));
+    ret = proxy_->query(true, RETRY_TIMES, TIMEOUT, sql);
+    if (OB_SUCCESS == ret)
+    {
+      TBSYS_LOG(INFO, "process inner task succ:task_id[%lu], timestamp[%ld], sql[%s]",
+          task.get_task_id(), task.get_task_timestamp(), buf);
+    }
+  }
+  return ret;
+}
+
+int ObRootInnerTableTask::modify_all_cluster_table(const ObRootAsyncTaskQueue::ObSeqTask & task)
+{
+  int ret = OB_SUCCESS;
+  // write cluster info to internal table
+  char buf[OB_MAX_SQL_LENGTH] = "";
+
+  if (task.type_ == LMS_ONLINE)
+  {
+    char ip_buf[OB_MAX_SERVER_ADDR_SIZE] = "";
+    if (false == task.server_.ip_to_string(ip_buf, sizeof(ip_buf)))
+    {
+      ret = OB_INVALID_ARGUMENT;
+      TBSYS_LOG(WARN, "convert server ip to string failed:ret[%d]", ret);
+    }
+    else
+    {
+      const char * sql_temp = "REPLACE INTO %s"
+        "(cluster_id, cluster_vip, cluster_port)"
+        "VALUES(%d, \'%s\',%u);";
+      snprintf(buf, sizeof (buf), sql_temp, OB_ALL_CLUSTER, cluster_id_, ip_buf,
+               task.server_.get_port());
+    }
+  }
+  else if (task.type_ == OBI_ROLE_CHANGE)
+  {
+    const char * sql_temp = "REPLACE INTO %s"
+      "(cluster_id, cluster_role)"
+      "VALUES(%d, %d);";
+    snprintf(buf, sizeof (buf), sql_temp, OB_ALL_CLUSTER, cluster_id_, task.cluster_role_);
   }
   else
   {
@@ -82,7 +147,7 @@ int ObRootInnerTableTask::modify_all_server_table(const ObRootAsyncTaskQueue::Ob
   {
     ObString sql;
     sql.assign_ptr(buf, static_cast<ObString::obstr_size_t>(strlen(buf)));
-    ret = proxy_->query(RETRY_TIMES, TIMEOUT, sql);
+    ret = proxy_->query(true, RETRY_TIMES, TIMEOUT, sql);
     if (OB_SUCCESS == ret)
     {
       TBSYS_LOG(INFO, "process inner task succ:task_id[%lu], timestamp[%ld], sql[%s]",
@@ -127,10 +192,17 @@ int ObRootInnerTableTask::process_head_task(void)
   {
     switch (task.type_)
     {
+    case ROLE_CHANGE:
     case SERVER_ONLINE:
     case SERVER_OFFLINE:
       {
         ret = modify_all_server_table(task);
+        break;
+      }
+    case OBI_ROLE_CHANGE:
+    case LMS_ONLINE:
+      {
+        ret = modify_all_cluster_table(task);
         break;
       }
     default:
@@ -156,4 +228,3 @@ int ObRootInnerTableTask::process_head_task(void)
   }
   return ret;
 }
-

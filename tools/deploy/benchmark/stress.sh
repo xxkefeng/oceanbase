@@ -23,7 +23,9 @@ start()
         privilege_args="--mysql-user=$ob_user --mysql-password=$ob_password --oltp-schema-path=$base_dir/oltp.sql"
         simon_args="--oltp-simon-host=$simon_host --oltp-simon-port=$simon_port --oltp-simon-cluster=$simon_cluster"
 
-        if [ $test_mode = "read" ];then
+        if [ $test_mode = "mix" ];then
+                 args="--max-time=$max_seconds --max-requests=$max_requests --num-threads=$test_threads  --oltp-dist-type=uniform --oltp-skip-trx=on --oltp-test-mode=complex --oltp-range-size=$range_size --oltp-point-selects=$point_query --oltp-simple-ranges=$range_query --oltp-sum-ranges=$range_sum_query --oltp-order-ranges=$range_order_query --oltp-distinct-ranges=$range_distinct_query --oltp-join-point-selects=$point_join_query --oltp-join-simple-ranges=$range_join_query --oltp-join-sum-ranges=$range_sum_join_query --oltp-join-order-ranges=$range_order_join_query --oltp-join-distinct-ranges=$range_distinct_join_query --oltp-replaces=$replace_query  --oltp-index-updates=$update_query --oltp-deletes=$delete_query"
+        elif [ $test_mode = "read" ];then
              if [ $total -eq 0 ];then
                  # use default 
                  args="--max-time=$max_seconds --max-requests=$max_requests --num-threads=$test_threads  --oltp-dist-type=uniform --oltp-skip-trx=on --oltp-read-only=on --oltp-test-mode=complex --oltp-range-size=$range_size"

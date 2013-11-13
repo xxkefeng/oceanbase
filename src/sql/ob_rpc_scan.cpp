@@ -22,8 +22,10 @@
 #include "mergeserver/ob_merge_server_main.h"
 #include "mergeserver/ob_ms_sql_get_request.h"
 #include "ob_sql_read_strategy.h"
+#include "ob_duplicate_indicator.h"
 #include "common/ob_profile_type.h"
 #include "common/ob_profile_log.h"
+#include "mergeserver/ob_insert_cache.h"
 using namespace oceanbase;
 using namespace oceanbase::common;
 using namespace oceanbase::sql;
@@ -31,9 +33,13 @@ using namespace oceanbase::mergeserver;
 
 ObRpcScan::ObRpcScan() :
   timeout_us_(0),
+  sql_scan_request_(NULL),
+  sql_get_request_(NULL),
   scan_param_(NULL),
   get_param_(NULL),
   read_param_(NULL),
+  is_scan_(false),
+  is_get_(false),
   cache_proxy_(NULL),
   async_rpc_(NULL),
   session_info_(NULL),
@@ -43,7 +49,13 @@ ObRpcScan::ObRpcScan() :
   table_id_(OB_INVALID_ID),
   base_table_id_(OB_INVALID_ID),
   start_key_buf_(NULL),
-  end_key_buf_(NULL)
+  end_key_buf_(NULL),
+  is_rpc_failed_(false),
+  need_cache_frozen_data_(false),
+  cache_bloom_filter_(false),
+  rowkey_not_exists_(false),
+  insert_cache_iter_counter_(0),
+  insert_cache_need_revert_(false)
 {
   sql_read_strategy_.set_rowkey_info(rowkey_info_);
 }
@@ -54,8 +66,43 @@ ObRpcScan::~ObRpcScan()
   this->destroy();
 }
 
+void ObRpcScan::reset()
+{
+  this->destroy();
+  timeout_us_ = 0;
+  read_param_ = NULL;
+  get_param_ = NULL;
+  scan_param_ = NULL;
+  is_scan_ = false;
+  is_get_ = false;
+  cache_proxy_ = NULL;
+  async_rpc_ = NULL;
+  session_info_ = NULL;
+  merge_service_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  base_table_id_ = OB_INVALID_ID;
+  start_key_buf_ = NULL;
+  end_key_buf_ = NULL;
+  is_rpc_failed_ = false;
+  need_cache_frozen_data_ = false;
+  cache_bloom_filter_ = false;
+  rowkey_not_exists_ = false;
+  frozen_data_.clear();
+  cached_frozen_data_.reset();
+  insert_cache_iter_counter_ = 0;
+  cleanup_request();
+  //cur_row_.reset(false, ObRow::DEFAULT_NULL);
+  cur_row_desc_.reset();
+  sql_read_strategy_.destroy();
+  insert_cache_need_revert_ = false;
+}
 
-int ObRpcScan::init(ObSqlContext *context, const common::ObRpcScanHint &hint)
+void ObRpcScan::reuse()
+{
+  reset();
+}
+
+int ObRpcScan::init(ObSqlContext *context, const common::ObRpcScanHint *hint)
 {
   int ret = OB_SUCCESS;
   if (NULL == context)
@@ -86,69 +133,69 @@ int ObRpcScan::init(ObSqlContext *context, const common::ObRpcScanHint &hint)
     else
     {
       cache_proxy_ = context->cache_proxy_;
-      sql_scan_request_.set_tablet_location_cache_proxy(cache_proxy_);
-      sql_get_request_.set_tablet_location_cache_proxy(cache_proxy_);
       async_rpc_ = context->async_rpc_;
-      sql_scan_request_.set_merger_async_rpc_stub(async_rpc_);
-      sql_get_request_.set_merger_async_rpc_stub(async_rpc_);
       session_info_ = context->session_info_;
       merge_service_ = context->merge_service_;
       // copy
       rowkey_info_ = schema->get_rowkey_info();
     }
   }
-  this->set_hint(hint);
-  if (hint_.read_method_ == ObSqlReadStrategy::USE_SCAN)
+  obj_row_not_exists_.set_ext(ObActionFlag::OP_ROW_DOES_NOT_EXIST);
+  if (hint)
   {
-    OB_ASSERT(NULL == scan_param_);
-    scan_param_ = OB_NEW(ObSqlScanParam, ObModIds::OB_SQL_SCAN_PARAM);
-    if (NULL == scan_param_)
+    this->set_hint(*hint);
+    if (hint_.read_method_ == ObSqlReadStrategy::USE_SCAN)
     {
-      TBSYS_LOG(WARN, "no memory");
-      ret = OB_ALLOCATE_MEMORY_FAILED;
-    }
-    else
-    {
-      read_param_ = scan_param_;
-    }
-  }
-  else if (hint_.read_method_ == ObSqlReadStrategy::USE_GET)
-  {
-    OB_ASSERT(NULL == get_param_);
-    get_param_ = OB_NEW(ObSqlGetParam, ObModIds::OB_SQL_GET_PARAM);
-    if (NULL == get_param_)
-    {
-      TBSYS_LOG(WARN, "no memory");
-      ret = OB_ALLOCATE_MEMORY_FAILED;
-    }
-    else
-    {
-      read_param_ = get_param_;
-    }
-    if (OB_SUCCESS == ret && hint_.is_get_skip_empty_row_)
-    {
-      ObSqlExpression special_column;
-      special_column.set_tid_cid(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
-      if (OB_SUCCESS != (ret = ObSqlExpressionUtil::make_column_expr(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, special_column)))
+      OB_ASSERT(NULL == scan_param_);
+      scan_param_ = OB_NEW(ObSqlScanParam, ObModIds::OB_SQL_SCAN_PARAM);
+      if (NULL == scan_param_)
       {
-        TBSYS_LOG(WARN, "fail to create column expression. ret=%d", ret);
-      }
-      else if (OB_SUCCESS != (ret = get_param_->add_output_column(special_column)))
-      {
-        TBSYS_LOG(WARN, "fail to add special is-row-empty-column to project. ret=%d", ret);
+        TBSYS_LOG(WARN, "no memory");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
       }
       else
       {
-        TBSYS_LOG(DEBUG, "add special column to read param");
+        scan_param_->set_phy_plan(get_phy_plan());
+        read_param_ = scan_param_;
       }
     }
-
-
-  }
-  else
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "read method must be either scan or get. method=%d", hint_.read_method_);
+    else if (hint_.read_method_ == ObSqlReadStrategy::USE_GET)
+    {
+      OB_ASSERT(NULL == get_param_);
+      get_param_ = OB_NEW(ObSqlGetParam, ObModIds::OB_SQL_GET_PARAM);
+      if (NULL == get_param_)
+      {
+        TBSYS_LOG(WARN, "no memory");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else
+      {
+        get_param_->set_phy_plan(get_phy_plan());
+        read_param_ = get_param_;
+      }
+      if (OB_SUCCESS == ret && hint_.is_get_skip_empty_row_)
+      {
+        ObSqlExpression special_column;
+        special_column.set_tid_cid(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
+        if (OB_SUCCESS != (ret = ObSqlExpressionUtil::make_column_expr(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, special_column)))
+        {
+          TBSYS_LOG(WARN, "fail to create column expression. ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = get_param_->add_output_column(special_column)))
+        {
+          TBSYS_LOG(WARN, "fail to add special is-row-empty-column to project. ret=%d", ret);
+        }
+        else
+        {
+          TBSYS_LOG(DEBUG, "add special column to read param");
+        }
+      }
+    }
+    else
+    {
+      ret = OB_INVALID_ARGUMENT;
+      TBSYS_LOG(WARN, "read method must be either scan or get. method=%d", hint_.read_method_);
+    }
   }
   return ret;
 }
@@ -214,7 +261,6 @@ int ObRpcScan::cast_range(ObNewRange &range)
 
 int ObRpcScan::create_scan_param(ObSqlScanParam &scan_param)
 {
-  int64_t start_create_scan_param = tbsys::CTimeUtil::getTime();
   int ret = OB_SUCCESS;
   ObNewRange range;
   // until all columns and filters are set, we could know the exact range
@@ -231,10 +277,8 @@ int ObRpcScan::create_scan_param(ObSqlScanParam &scan_param)
   {
     TBSYS_LOG(WARN, "fail to set range to scan param. ret=%d", ret);
   }
-  int64_t end_create_scan_param = tbsys::CTimeUtil::getTime();
-  PROFILE_LOG(DEBUG, CREATE_SCAN_PARAM, end_create_scan_param - start_create_scan_param);
-  TBSYS_LOG(INFO, "dump scan range: %s", to_cstring(range));
   TBSYS_LOG(DEBUG, "scan_param=%s", to_cstring(scan_param));
+  TBSYS_LOG(TRACE, "dump scan range: %s", to_cstring(range));
   return ret;
 }
 
@@ -263,24 +307,7 @@ int ObRpcScan::fill_read_param(ObSqlReadParam &dest_param)
 {
   int ret = OB_SUCCESS;
   ObObj val;
-  int64_t read_consistency_val = 0;
   OB_ASSERT(NULL != session_info_);
-  if (OB_SUCCESS != (ret = session_info_->get_sys_variable_value(ObString::make_string("ob_read_consistency"), val)))
-  {
-    const ObMergeServerService &service
-      = ObMergeServerMain::get_instance()->get_merge_server().get_service();
-    read_consistency_val = service.check_instance_role(true);
-    dest_param.set_is_read_consistency(read_consistency_val);
-    ret = OB_SUCCESS;
-  }
-  else if (OB_SUCCESS != (ret = val.get_int(read_consistency_val)))
-  {
-    TBSYS_LOG(WARN, "wrong obj type for ob_read_consistency, err=%d", ret);
-  }
-  else
-  {
-    dest_param.set_is_read_consistency(read_consistency_val);
-  }
   if (OB_SUCCESS == ret)
   {
     dest_param.set_is_result_cached(true);
@@ -293,12 +320,29 @@ int ObRpcScan::fill_read_param(ObSqlReadParam &dest_param)
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObRpcScan, PHY_RPC_SCAN);
+  }
+}
+
 int64_t ObRpcScan::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
   databuff_printf(buf, buf_len, pos, "RpcScan(");
+  pos += hint_.to_string(buf+pos, buf_len-pos);
+  databuff_printf(buf, buf_len, pos, ", ");
   pos += read_param_->to_string(buf+pos, buf_len-pos);
   databuff_printf(buf, buf_len, pos, ")");
+  //databuff_printf(buf, buf_len, pos, "RpcScan(row_desc=");
+  //pos += cur_row_desc_.to_string(buf+pos, buf_len-pos);
+  //databuff_printf(buf, buf_len, pos, ", ");
+  //pos += sql_read_strategy_.to_string(buf+pos, buf_len-pos);
+  //databuff_printf(buf, buf_len, pos, ", read_param=");
+  //pos += hint_.to_string(buf+pos, buf_len-pos);
+  //databuff_printf(buf, buf_len, pos, ", ");
+  //pos += read_param_->to_string(buf+pos, buf_len-pos);
+  //databuff_printf(buf, buf_len, pos, ")");
   return pos;
 }
 
@@ -319,107 +363,303 @@ void ObRpcScan::set_hint(const common::ObRpcScanHint &hint)
 
 int ObRpcScan::open()
 {
-  int64_t start_open_rpc_scan = tbsys::CTimeUtil::getTime();
   int ret = OB_SUCCESS;
-  timeout_us_ = hint_.timeout_us;
-
-  OB_ASSERT(my_phy_plan_);
-  if (hint_.only_frozen_version_data_)
+  if (NULL == (sql_scan_request_ = ObMergeServerMain::get_instance()->get_merge_server().get_scan_req_pool().alloc()))
   {
-    ObVersion frozen_version = my_phy_plan_->get_curr_frozen_version();
-    read_param_->set_data_version(frozen_version);
-    FILL_TRACE_LOG("static_data_version=%s", to_cstring(frozen_version));
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+    TBSYS_LOG(WARN, "alloc scan request from scan request pool failed, ret=%d", ret);
   }
-  read_param_->set_is_only_static_data(hint_.only_static_data_);
-  FILL_TRACE_LOG("only_static=%c", hint_.only_static_data_?'Y':'N');
-  if (NULL == cache_proxy_ || NULL == async_rpc_)
+  else if (NULL == (sql_get_request_ = ObMergeServerMain::get_instance()->get_merge_server().get_get_req_pool().alloc()))
   {
-    ret = OB_NOT_INIT;
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+    TBSYS_LOG(WARN, "alloc get request from get request pool failed, ret=%d", ret);
   }
-
-
-  if (OB_SUCCESS == ret)
+  else
   {
-    TBSYS_LOG(DEBUG, "read_method_ [%s]", hint_.read_method_ == ObSqlReadStrategy::USE_SCAN ? "SCAN" : "GET");
-    // common initialization
-    cur_row_.set_row_desc(cur_row_desc_);
-    FILL_TRACE_LOG("open %s", to_cstring(cur_row_desc_));
-  }
-  // Scan
-  if (OB_SUCCESS == ret && hint_.read_method_ == ObSqlReadStrategy::USE_SCAN)
-  {
-    int64_t start_cons_scan = tbsys::CTimeUtil::getTime();
-    if (OB_SUCCESS != (ret = sql_scan_request_.initialize()))
+    sql_scan_request_->set_tablet_location_cache_proxy(cache_proxy_);
+    sql_get_request_->set_tablet_location_cache_proxy(cache_proxy_);
+    sql_scan_request_->set_merger_async_rpc_stub(async_rpc_);
+    sql_get_request_->set_merger_async_rpc_stub(async_rpc_);
+    if (NULL != session_info_)
     {
-      TBSYS_LOG(WARN, "initialize sql_scan_request failed, ret=%d", ret);
+      ///  query timeout for sql level
+      ObObj val;
+      int64_t query_timeout = 0;
+      if (OB_SUCCESS == session_info_->get_sys_variable_value(ObString::make_string(OB_QUERY_TIMEOUT_PARAM), val))
+      {
+        if (OB_SUCCESS != val.get_int(query_timeout))
+        {
+          TBSYS_LOG(WARN, "fail to get query timeout from session, ret=%d", ret);
+          query_timeout = 0; // use default
+        }
+      }
+
+      if (OB_APP_MIN_TABLE_ID > base_table_id_)
+      {
+        // internal table
+        // BUGFIX: this timeout value should not be larger than the plan timeout 
+        // (see ob_transformer.cpp/int ObResultSet::open())
+        // bug ref: http://bugfree.corp.taobao.com/bug/252871
+        hint_.timeout_us = std::max(query_timeout, OB_DEFAULT_STMT_TIMEOUT); // prevent bad config, min timeout=3sec
+      }
+      else
+      {
+        // app table
+        if (query_timeout > 0)
+        {
+          hint_.timeout_us = query_timeout;
+        }
+        else
+        {
+          // use default hint_.timeout_us, usually 10 sec
+        }
+      }
+      TBSYS_LOG(DEBUG, "query timeout is %ld", hint_.timeout_us);
     }
-    else
+
+    timeout_us_ = hint_.timeout_us;
+    OB_ASSERT(my_phy_plan_);
+    FILL_TRACE_LOG(" hint.read_consistency=%s ", get_consistency_level_str(hint_.read_consistency_));
+    if (hint_.read_consistency_ == common::FROZEN)
     {
-      sql_scan_request_.alloc_request_id();
-      if (OB_SUCCESS != (ret = sql_scan_request_.init(REQUEST_EVENT_QUEUE_SIZE, ObModIds::OB_SQL_RPC_SCAN)))
-      {
-        TBSYS_LOG(WARN, "fail to init sql_scan_event. ret=%d", ret);
-      }
-      else if (OB_SUCCESS != (ret = create_scan_param(*scan_param_)))
-      {
-        TBSYS_LOG(WARN, "fail to create scan param. ret=%d", ret);
-      }
+      ObVersion frozen_version = my_phy_plan_->get_curr_frozen_version();
+      read_param_->set_data_version(frozen_version);
+      FILL_TRACE_LOG("static_data_version = %s", to_cstring(frozen_version));
+    }
+    read_param_->set_is_only_static_data(hint_.read_consistency_ == STATIC);
+    read_param_->set_is_read_consistency(hint_.read_consistency_ == STRONG);
+    FILL_TRACE_LOG("only_static = %c", read_param_->get_is_only_static_data() ? 'Y' : 'N');
+
+    if (NULL == cache_proxy_ || NULL == async_rpc_)
+    {
+      ret = OB_NOT_INIT;
     }
 
     if (OB_SUCCESS == ret)
     {
-      sql_scan_request_.set_timeout_percent((int32_t)merge_service_->get_config().timeout_percent);
-      if(OB_SUCCESS != (ret = sql_scan_request_.set_request_param(*scan_param_, hint_)))
+      TBSYS_LOG(DEBUG, "read_method_ [%s]", hint_.read_method_ == ObSqlReadStrategy::USE_SCAN ? "SCAN" : "GET");
+      // common initialization
+      cur_row_.set_row_desc(cur_row_desc_);
+      FILL_TRACE_LOG("open %s", to_cstring(cur_row_desc_));
+    }
+    // update语句的need_cache_frozen_data_ 才会被设置为true
+    ObFrozenDataCache & frozen_data_cache = ObMergeServerMain::
+        get_instance()->get_merge_server().get_frozen_data_cache();
+    if (frozen_data_cache.get_in_use() && need_cache_frozen_data_ && (hint_.read_consistency_ == FROZEN))
+    {
+      int64_t size = 0;
+      if (OB_SUCCESS != (ret = read_param_->set_table_id(table_id_, base_table_id_)))
       {
-        TBSYS_LOG(WARN, "fail to set request param. max_parallel=%ld, ret=%d",
-            hint_.max_parallel_count, ret);
+        TBSYS_LOG(ERROR, "set_table_id error, ret: %d", ret);
+      }
+      else
+      {
+        size = read_param_->get_serialize_size();
+      }
+      if (OB_SUCCESS != ret)
+      {}
+      else if (OB_SUCCESS != (ret = frozen_data_key_buf_.alloc_buf(size)))
+      {
+        TBSYS_LOG(ERROR, "ObFrozenDataKeyBuf alloc_buf error, ret: %d", ret);
+      }
+      else if (OB_SUCCESS != (ret = read_param_->serialize(frozen_data_key_buf_.buf,
+              frozen_data_key_buf_.buf_len, frozen_data_key_buf_.pos)))
+      {
+        TBSYS_LOG(ERROR, "ObSqlReadParam serialize error, ret: %d", ret);
+      }
+      else
+      {
+        frozen_data_key_.frozen_version = my_phy_plan_->get_curr_frozen_version();
+        frozen_data_key_.param_buf = frozen_data_key_buf_.buf;
+        frozen_data_key_.len = frozen_data_key_buf_.pos;
+        ret = frozen_data_cache.get(frozen_data_key_, cached_frozen_data_);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "ObFrozenDataCache get_frozen_data error, ret: %d", ret);
+        }
+        else if (cached_frozen_data_.has_data())
+        {
+          OB_STAT_INC(SQL, SQL_UPDATE_CACHE_HIT);
+          cached_frozen_data_.set_row_desc(cur_row_desc_);
+        }
+        else
+        {
+          OB_STAT_INC(SQL, SQL_UPDATE_CACHE_MISS);
+        }
       }
     }
-    int64_t end_cons_scan = tbsys::CTimeUtil::getTime();
-    PROFILE_LOG(DEBUG, CONS_SQL_SCAN_REQUEST, end_cons_scan - start_cons_scan);
-  }
-  // Get
-  if (OB_SUCCESS == ret && hint_.read_method_ == ObSqlReadStrategy::USE_GET)
-  {
-    int64_t start_cons_get = tbsys::CTimeUtil::getTime();
-    get_row_desc_.reset();
-    sql_get_request_.alloc_request_id();
-    if (OB_SUCCESS != (ret = sql_get_request_.init(REQUEST_EVENT_QUEUE_SIZE, ObModIds::OB_SQL_RPC_GET)))
+
+    if (!cached_frozen_data_.has_data())
     {
-      TBSYS_LOG(WARN, "fail to init sql_scan_event. ret=%d", ret);
-    }
-    else if (OB_SUCCESS != (ret = create_get_param(*get_param_)))
-    {
-      TBSYS_LOG(WARN, "fail to create scan param. ret=%d", ret);
-    }
-    else if (OB_SUCCESS != (ret = cons_row_desc(*get_param_, get_row_desc_)))
-    {
-      TBSYS_LOG(WARN, "fail to get row desc:ret[%d]", ret);
-    }
-    else if (OB_SUCCESS != (ret = sql_get_request_.set_row_desc(get_row_desc_)))
-    {
-      TBSYS_LOG(WARN, "fail to set row desc:ret[%d]", ret);
-    }
-    else if(OB_SUCCESS != (ret = sql_get_request_.set_request_param(*get_param_, timeout_us_)))
-    {
-      TBSYS_LOG(WARN, "fail to set request param. max_parallel=%ld, ret=%d",
-          hint_.max_parallel_count, ret);
-    }
-    int64_t end_cons_get = tbsys::CTimeUtil::getTime();
-    PROFILE_LOG(DEBUG, CONS_SQL_GET_REQUEST, end_cons_get - start_cons_get);
-    if (OB_SUCCESS == ret)
-    {
-      sql_get_request_.set_timeout_percent((int32_t)merge_service_->get_config().timeout_percent);
-      if (OB_SUCCESS != (ret = sql_get_request_.open()))
+      // Scan
+      if (OB_SUCCESS == ret && hint_.read_method_ == ObSqlReadStrategy::USE_SCAN)
       {
-        TBSYS_LOG(WARN, "fail to open get request. ret=%d", ret);
+        is_scan_ = true;
+        if (OB_SUCCESS != (ret = sql_scan_request_->initialize()))
+        {
+          TBSYS_LOG(WARN, "initialize sql_scan_request failed, ret=%d", ret);
+        }
+        else
+        {
+          sql_scan_request_->alloc_request_id();
+          if (OB_SUCCESS != (ret = sql_scan_request_->init(REQUEST_EVENT_QUEUE_SIZE, ObModIds::OB_SQL_RPC_SCAN)))
+          {
+            TBSYS_LOG(WARN, "fail to init sql_scan_event. ret=%d", ret);
+          }
+          else if (OB_SUCCESS != (ret = create_scan_param(*scan_param_)))
+          {
+            TBSYS_LOG(WARN, "fail to create scan param. ret=%d", ret);
+          }
+        }
+
+        if (OB_SUCCESS == ret)
+        {
+          sql_scan_request_->set_timeout_percent((int32_t)merge_service_->get_config().timeout_percent);
+          if(OB_SUCCESS != (ret = sql_scan_request_->set_request_param(*scan_param_, hint_)))
+          {
+            TBSYS_LOG(WARN, "fail to set request param. max_parallel=%ld, ret=%d",
+                hint_.max_parallel_count, ret);
+          }
+        }
       }
+      // Get
+      if (OB_SUCCESS == ret && hint_.read_method_ == ObSqlReadStrategy::USE_GET)
+      {
+        // insert and select
+        is_get_ = true;
+        get_row_desc_.reset();
+        sql_get_request_->alloc_request_id();
+        if (OB_SUCCESS != (ret = sql_get_request_->init(REQUEST_EVENT_QUEUE_SIZE, ObModIds::OB_SQL_RPC_GET)))
+        {
+          TBSYS_LOG(WARN, "fail to init sql_scan_event. ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = create_get_param(*get_param_)))
+        {
+          TBSYS_LOG(WARN, "fail to create scan param. ret=%d", ret);
+        }
+        else
+        {
+          // 暂时只处理单行
+          // 只有insert语句的cache_bloom_filter_才会设置为true
+          ObInsertCache & insert_cache = ObMergeServerMain::get_instance()->get_merge_server().get_insert_cache();
+          if (insert_cache.get_in_use() && cache_bloom_filter_ && get_param_->get_row_size() == 1)
+          {
+            int err = OB_SUCCESS;
+            ObTabletLocationList loc_list;
+            loc_list.set_buffer(tablet_location_list_buf_);
+            const ObRowkey *rowkey = (*get_param_)[0];
+            if (OB_SUCCESS == (err = cache_proxy_->get_tablet_location(get_param_->get_table_id(), *rowkey, loc_list)))
+            {
+              const ObNewRange &tablet_range = loc_list.get_tablet_range();
+              InsertCacheKey key;
+              key.range_ = tablet_range;
+              int64_t version = my_phy_plan_->get_curr_frozen_version();
+              key.tablet_version_ = (reinterpret_cast<ObVersion*>(&version))->major_;
+              if (OB_SUCCESS == (err = insert_cache.get(key, value_)))
+              {
+                if (!value_.bf_->may_contain(*rowkey))
+                {
+                  OB_STAT_INC(SQL,SQL_INSERT_CACHE_HIT);
+                  // rowkey not exists
+                  rowkey_not_exists_ = true;
+                }
+                else
+                {
+                  OB_STAT_INC(SQL,SQL_INSERT_CACHE_MISS);
+                }
+                insert_cache_need_revert_ = true;
+              }
+              else if (OB_ENTRY_NOT_EXIST == err)
+              {
+                OB_STAT_INC(SQL,SQL_INSERT_CACHE_MISS);
+                // go on
+                char *buff = reinterpret_cast<char*>(ob_tc_malloc(
+                      sizeof(ObBloomFilterTask) + rowkey->get_deep_copy_size(),
+                      ObModIds::OB_MS_UPDATE_BLOOM_FILTER));
+                if (buff == NULL)
+                {
+                  err = OB_ALLOCATE_MEMORY_FAILED;
+                  TBSYS_LOG(ERROR, "malloc failed, ret=%d", err);
+                }
+                else
+                {
+                  ObBloomFilterTask *task = new (buff) ObBloomFilterTask();
+                  task->table_id = get_param_->get_table_id();
+                  char *obj_buf = buff + sizeof(ObBloomFilterTask);
+                  // deep copy task->key
+                  common::AdapterAllocator alloc;
+                  alloc.init(obj_buf);
+                  if (OB_SUCCESS != (err = rowkey->deep_copy(task->rowkey, alloc)))
+                  {
+                    TBSYS_LOG(ERROR, "deep copy rowkey failed, err=%d", err);
+                  }
+                  else
+                  {
+                    err = ObMergeServerMain::get_instance()->get_merge_server().get_bloom_filter_task_queue_thread().push(task);
+                    if (OB_SUCCESS != err && OB_TOO_MANY_BLOOM_FILTER_TASK != err)
+                    {
+                      TBSYS_LOG(ERROR, "push task to bloom_filter_task_queue failed,ret=%d", err);
+                    }
+                    else if (OB_TOO_MANY_BLOOM_FILTER_TASK == err)
+                    {
+                      TBSYS_LOG(DEBUG, "push task to bloom_filter_task_queue failed, ret=%d", err);
+                    }
+                    else
+                    {
+                      TBSYS_LOG(DEBUG, "PUSH TASK SUCCESS");
+                    }
+                  }
+                  if (OB_SUCCESS != err)
+                  {
+                    task->~ObBloomFilterTask();
+                    ob_tc_free(reinterpret_cast<void*>(task));
+                  }
+                }
+              }// OB_ENTRY_NOT_EXIST == err
+              else
+              {
+                //go on
+                TBSYS_LOG(ERROR, "get from insert cache failed, err=%d", err);
+              }
+            }
+            else
+            {
+              //go on
+              TBSYS_LOG(ERROR, "get tablet location failed, table_id=%lu,rowkey=%s, err=%d", get_param_->get_table_id(), to_cstring(*rowkey), err);
+            }
+          }
+        }
+        if (!rowkey_not_exists_)
+        {
+          if (OB_SUCCESS != (ret = cons_row_desc(*get_param_, get_row_desc_)))
+          {
+            TBSYS_LOG(WARN, "fail to get row desc:ret[%d]", ret);
+          }
+          else if (OB_SUCCESS != (ret = sql_get_request_->set_row_desc(get_row_desc_)))
+          {
+            TBSYS_LOG(WARN, "fail to set row desc:ret[%d]", ret);
+          }
+          else if(OB_SUCCESS != (ret = sql_get_request_->set_request_param(*get_param_, timeout_us_)))
+          {
+            TBSYS_LOG(WARN, "fail to set request param. max_parallel=%ld, ret=%d",
+                hint_.max_parallel_count, ret);
+          }
+          if (OB_SUCCESS == ret)
+          {
+            sql_get_request_->set_timeout_percent((int32_t)merge_service_->get_config().timeout_percent);
+            if (OB_SUCCESS != (ret = sql_get_request_->open()))
+            {
+              TBSYS_LOG(WARN, "fail to open get request. ret=%d", ret);
+            }
+          }
+        }
+      }//Get
     }
-    int64_t end_open_sql_get_request = tbsys::CTimeUtil::getTime();
-    PROFILE_LOG(DEBUG, OPEN_SQL_GET_REQUEST, end_open_sql_get_request - end_cons_get);
+    if (OB_SUCCESS != ret)
+    {
+      is_rpc_failed_ = true;
+    }
   }
-  int64_t end_open_rpc_scan = tbsys::CTimeUtil::getTime();
-  PROFILE_LOG(DEBUG, OPEN_RPC_SCAN, end_open_rpc_scan - start_open_rpc_scan);
   return ret;
 }
 
@@ -448,24 +688,92 @@ void ObRpcScan::destroy()
     ob_free(scan_param_);
     scan_param_ = NULL;
   }
+  cleanup_request();
 }
 
 int ObRpcScan::close()
 {
   int ret = OB_SUCCESS;
-  sql_scan_request_.close();
-  sql_scan_request_.reset();
-  if (NULL != scan_param_)
+  ObFrozenDataCache & frozen_data_cache = ObMergeServerMain::
+      get_instance()->get_merge_server().get_frozen_data_cache();
+  if (cached_frozen_data_.has_data())
   {
-    scan_param_->reset_local();
+    ret = frozen_data_cache.revert(cached_frozen_data_);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(ERROR, "ObFrozenDataCache revert error, ret: %d", ret);
+    }
   }
-  sql_get_request_.close();
-  sql_get_request_.reset();
-  if (NULL != get_param_)
+  else if (frozen_data_cache.get_in_use() && need_cache_frozen_data_ && (hint_.read_consistency_ == FROZEN))
   {
-    get_param_->reset_local();
+    if (!is_rpc_failed_)
+    {
+      int err = frozen_data_cache.put(frozen_data_key_, frozen_data_);
+      if (OB_SUCCESS != err)
+      {
+        TBSYS_LOG(ERROR, "ObFrozenDataCache put error, err: %d", err);
+      }
+    }
+    frozen_data_.reuse();
   }
+  if (is_scan_)
+  {
+    sql_scan_request_->close();
+    sql_scan_request_->reset();
+    if (NULL != scan_param_)
+    {
+      scan_param_->reset_local();
+    }
+    is_scan_ = false;
+  }
+  if (is_get_)
+  {
+    sql_get_request_->close();
+    sql_get_request_->reset();
+    if (NULL != get_param_)
+    {
+      get_param_->reset_local();
+    }
+    is_get_ = false;
+    tablet_location_list_buf_.reuse();
+    rowkey_not_exists_ = false;
+    if (insert_cache_need_revert_)
+    {
+      if (OB_SUCCESS == (ret = ObMergeServerMain::get_instance()->get_merge_server().get_insert_cache().revert(value_)))
+      {
+        value_.reset();
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "revert bloom filter failed, ret=%d", ret);
+      }
+      insert_cache_need_revert_ = false;
+    }
+    //rowkeys_exists_.clear();
+  }
+  insert_cache_iter_counter_ = 0;
+  cleanup_request();
   return ret;
+}
+void ObRpcScan::cleanup_request()
+{
+  int tmp_ret = OB_SUCCESS;
+  if (sql_scan_request_ != NULL)
+  {
+    if (OB_SUCCESS != (tmp_ret = ObMergeServerMain::get_instance()->get_merge_server().get_scan_req_pool().free(sql_scan_request_)))
+    {
+      TBSYS_LOG(WARN, "free scan request back to scan req pool failed, ret=%d", tmp_ret);
+    }
+    sql_scan_request_ = NULL;
+  }
+  if (sql_get_request_ != NULL)
+  {
+    if (OB_SUCCESS != (tmp_ret = ObMergeServerMain::get_instance()->get_merge_server().get_get_req_pool().free(sql_get_request_)))
+    {
+      TBSYS_LOG(WARN, "free get request back to get req pool failed, ret=%d", tmp_ret);
+    }
+    sql_get_request_ = NULL;
+  }
 }
 
 int ObRpcScan::get_row_desc(const common::ObRowDesc *&row_desc) const
@@ -486,20 +794,70 @@ int ObRpcScan::get_row_desc(const common::ObRowDesc *&row_desc) const
 int ObRpcScan::get_next_row(const common::ObRow *&row)
 {
   int ret = OB_SUCCESS;
-  if (ObSqlReadStrategy::USE_SCAN == hint_.read_method_)
+  if (rowkey_not_exists_)
   {
-    ret = get_next_compact_row(row); // 可能需要等待CS返回
-  }
-  else if (ObSqlReadStrategy::USE_GET == hint_.read_method_)
-  {
-    ret = sql_get_request_.get_next_row(cur_row_);
+    if (insert_cache_iter_counter_ == 0)
+    {
+      row_not_exists_.set_row_desc(cur_row_desc_);
+      int err = OB_SUCCESS;
+      if (OB_SUCCESS != (err = row_not_exists_.set_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, obj_row_not_exists_)))
+      {
+        TBSYS_LOG(ERROR, "set cell failed, err=%d", err);
+      }
+      else
+      {
+        row = &row_not_exists_;
+        insert_cache_iter_counter_ ++;
+        ret = OB_SUCCESS;
+      }
+    }
+    else if (insert_cache_iter_counter_ == 1)
+    {
+      ret = OB_ITER_END;
+    }
   }
   else
   {
-    TBSYS_LOG(WARN, "not init. read_method_=%d", hint_.read_method_);
-    ret = OB_NOT_INIT;
+    if (cached_frozen_data_.has_data())
+    {
+      ret = cached_frozen_data_.get_next_row(row);
+      if (OB_SUCCESS != ret && OB_ITER_END != ret)
+      {
+        TBSYS_LOG(ERROR, "ObCachedFrozenData get_next_row error, ret: %d", ret);
+      }
+    }
+    else
+    {
+      if (ObSqlReadStrategy::USE_SCAN == hint_.read_method_)
+      {
+        ret = get_next_compact_row(row); // 可能需要等待CS返回
+      }
+      else if (ObSqlReadStrategy::USE_GET == hint_.read_method_)
+      {
+        ret = sql_get_request_->get_next_row(cur_row_);
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "not init. read_method_=%d", hint_.read_method_);
+        ret = OB_NOT_INIT;
+      }
+      row = &cur_row_;
+      if (ObMergeServerMain::get_instance()->get_merge_server().get_frozen_data_cache().get_in_use()
+          && need_cache_frozen_data_ && (hint_.read_consistency_ == FROZEN) && OB_SUCCESS == ret)
+      {
+        int64_t cur_size_counter;
+        ret = frozen_data_.add_row(*row, cur_size_counter);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "ObRowStore add_row error, ret: %d", ret);
+        }
+      }
+    }
   }
-  row = &cur_row_;
+  if (OB_SUCCESS != ret && OB_ITER_END != ret)
+  {
+    is_rpc_failed_ = true;
+  }
   return ret;
 }
 
@@ -522,13 +880,18 @@ int ObRpcScan::get_next_compact_row(const common::ObRow *&row)
       can_break = true;
       ret = OB_PROCESS_TIMEOUT;
     }
-    else if (OB_LIKELY(OB_SUCCESS == (ret = sql_scan_request_.get_next_row(cur_row_))))
+    else if (OB_UNLIKELY(NULL != my_phy_plan_ && my_phy_plan_->is_terminate(ret)))
+    {
+      can_break = true;
+      TBSYS_LOG(WARN, "execution was terminated ret is %d", ret);
+    }
+    else if (OB_LIKELY(OB_SUCCESS == (ret = sql_scan_request_->get_next_row(cur_row_))))
     {
       // got a row without block,
       // no need to check timeout, leave this work to upper layer
       can_break = true;
     }
-    else if (OB_ITER_END == ret && sql_scan_request_.is_finish())
+    else if (OB_ITER_END == ret && sql_scan_request_->is_finish())
     {
       // finish all data
       // can break;
@@ -539,7 +902,7 @@ int ObRpcScan::get_next_compact_row(const common::ObRow *&row)
       // need to wait for incomming data
       can_break = false;
       timeout_us_ = std::min(timeout_us_, remain_us);
-      if( OB_SUCCESS != (ret = sql_scan_request_.wait_single_event(timeout_us_)))
+      if( OB_SUCCESS != (ret = sql_scan_request_->wait_single_event(timeout_us_)))
       {
         if (timeout_us_ <= 0)
         {
@@ -624,21 +987,42 @@ int ObRpcScan::cons_get_rows(ObSqlGetParam &get_param)
 {
   int ret = OB_SUCCESS;
   int64_t idx = 0;
-  ObArray<ObRowkey> rowkey_array;
+  get_rowkey_array_.clear();
   // TODO lide.wd: rowkey obj storage needed. varchar use orginal buffer, will be copied later
   PageArena<ObObj,ModulePageAllocator> rowkey_objs_allocator(
-      PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_SQL_COMMON));
+      PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_SQL_RPC_SCAN2));
   // try  'where (k1,k2,kn) in ((a,b,c), (e,f,g))'
-  if (OB_SUCCESS != (ret = sql_read_strategy_.find_rowkeys_from_in_expr(rowkey_array, rowkey_objs_allocator)))
+  if (OB_SUCCESS != (ret = sql_read_strategy_.find_rowkeys_from_in_expr(true, get_rowkey_array_, rowkey_objs_allocator)))
   {
     TBSYS_LOG(WARN, "fail to find rowkeys in IN operator. ret=%d", ret);
   }
-  else if (rowkey_array.count() > 0)
+  else if (get_rowkey_array_.count() > 0)
   {
-    for (idx = 0; idx < rowkey_array.count(); idx++)
+    ObDuplicateIndicator indicator;
+    bool is_dup = false;
+    if (get_rowkey_array_.count() > 1)
     {
+      if ((ret = indicator.init(get_rowkey_array_.count())) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Init ObDuplicateIndicator failed:ret[%d]", ret);
+      }
+    }
+    for (idx = 0; idx < get_rowkey_array_.count(); idx++)
+    {
+      if (OB_UNLIKELY(get_rowkey_array_.count() > 1))
+      {
+        if (OB_SUCCESS != (ret = indicator.have_seen(get_rowkey_array_.at(idx), is_dup)))
+        {
+          TBSYS_LOG(WARN, "Check duplication failed, err=%d", ret);
+          break;
+        }
+        else if (is_dup)
+        {
+          continue;
+        }
+      }
       //深拷贝，从rowkey_objs_allocator 拷贝到了allocator_中
-      if (OB_SUCCESS != (ret = get_param.add_rowkey(rowkey_array.at(idx), true)))
+      if (OB_SUCCESS != (ret = get_param.add_rowkey(get_rowkey_array_.at(idx), true)))
       {
         TBSYS_LOG(WARN, "fail to add rowkey to get param. ret=%d", ret);
         break;
@@ -646,15 +1030,15 @@ int ObRpcScan::cons_get_rows(ObSqlGetParam &get_param)
     }
   }
   // try  'where k1=a and k2=b and kn=n', only one rowkey
-  else if (OB_SUCCESS != (ret = sql_read_strategy_.find_rowkeys_from_equal_expr(rowkey_array, rowkey_objs_allocator)))
+  else if (OB_SUCCESS != (ret = sql_read_strategy_.find_rowkeys_from_equal_expr(true, get_rowkey_array_, rowkey_objs_allocator)))
   {
     TBSYS_LOG(WARN, "fail to find rowkeys from where equal condition, ret=%d", ret);
   }
-  else if (rowkey_array.count() > 0)
+  else if (get_rowkey_array_.count() > 0)
   {
-    for (idx = 0; idx < rowkey_array.count(); idx++)
+    for (idx = 0; idx < get_rowkey_array_.count(); idx++)
     {
-      if (OB_SUCCESS != (ret = get_param.add_rowkey(rowkey_array.at(idx), true)))
+      if (OB_SUCCESS != (ret = get_param.add_rowkey(get_rowkey_array_.at(idx), true)))
       {
         TBSYS_LOG(WARN, "fail to add rowkey to get param. ret=%d", ret);
         break;
@@ -711,6 +1095,7 @@ int ObRpcScan::get_min_max_rowkey(const ObArray<ObRowkey> &rowkey_array, ObObj *
 int ObRpcScan::add_filter(ObSqlExpression* expr)
 {
   int ret = OB_SUCCESS;
+  expr->set_owner_op(this);
   if (OB_SUCCESS != (ret = sql_read_strategy_.add_filter(*expr)))
   {
     TBSYS_LOG(WARN, "fail to add filter to sql read strategy:ret[%d]", ret);
@@ -764,7 +1149,7 @@ int ObRpcScan::cons_row_desc(const ObSqlGetParam &sql_get_param, ObRowDesc &row_
 
   if (OB_SUCCESS == ret)
   {
-    const common::ObArray<ObSqlExpression> &columns = sql_get_param.get_project().get_output_columns();
+    const common::ObSEArray<ObSqlExpression, OB_PREALLOCATED_NUM, common::ModulePageAllocator, ObArrayExpressionCallBack<ObSqlExpression> > &columns = sql_get_param.get_project().get_output_columns();
     for (int64_t i = 0; OB_SUCCESS == ret && i < columns.count(); i ++)
     {
       const ObSqlExpression &expr = columns.at(i);
@@ -779,7 +1164,7 @@ int ObRpcScan::cons_row_desc(const ObSqlGetParam &sql_get_param, ObRowDesc &row_
   {
     if ( sql_get_param.get_row_size() <= 0 )
     {
-      ret = OB_ERROR;
+      ret = OB_ERR_LACK_OF_ROWKEY_COL;
       TBSYS_LOG(WARN, "should has a least one row");
     }
     else
@@ -788,5 +1173,64 @@ int ObRpcScan::cons_row_desc(const ObSqlGetParam &sql_get_param, ObRowDesc &row_
     }
   }
 
+  return ret;
+}
+
+PHY_OPERATOR_ASSIGN(ObRpcScan)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObRpcScan);
+  reset();
+  rowkey_info_ = o_ptr->rowkey_info_;
+  table_id_ = o_ptr->table_id_;
+  base_table_id_ = o_ptr->base_table_id_;
+  hint_ = o_ptr->hint_;
+  need_cache_frozen_data_ = o_ptr->need_cache_frozen_data_;
+  cache_bloom_filter_ = o_ptr->cache_bloom_filter_;
+  if ((ret = cur_row_desc_.assign(o_ptr->cur_row_desc_)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "Assign ObRowDesc failed, ret=%d", ret);
+  }
+  else if ((ret = sql_read_strategy_.assign(&o_ptr->sql_read_strategy_, this)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "Assign ObSqlReadStrategy failed, ret=%d", ret);
+  }
+  else if (o_ptr->scan_param_)
+  {
+    scan_param_ = OB_NEW(ObSqlScanParam, ObModIds::OB_SQL_SCAN_PARAM);
+    if (NULL == scan_param_)
+    {
+      TBSYS_LOG(WARN, "no memory");
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    }
+    else
+    {
+      scan_param_->set_phy_plan(get_phy_plan());
+      read_param_ = scan_param_;
+      if ((ret = scan_param_->assign(o_ptr->scan_param_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign Scan param failed, ret=%d", ret);
+      }
+    }
+  }
+  else if (o_ptr->get_param_)
+  {
+    get_param_ = OB_NEW(ObSqlGetParam, ObModIds::OB_SQL_GET_PARAM);
+    if (NULL == get_param_)
+    {
+      TBSYS_LOG(WARN, "no memory");
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    }
+    else
+    {
+      get_param_->set_phy_plan(get_phy_plan());
+      read_param_ = get_param_;
+      if ((ret = get_param_->assign(o_ptr->get_param_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign Get param failed, ret=%d", ret);
+      }
+    }
+  }
+  sql_read_strategy_.set_rowkey_info(rowkey_info_);
   return ret;
 }

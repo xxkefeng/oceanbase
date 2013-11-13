@@ -90,8 +90,16 @@ int64_t ObRowDesc::to_string(char* buf, const int64_t buf_len) const
   databuff_printf(buf, buf_len, pos, "rowkey_cell_count[%ld],", rowkey_cell_count_);
   for (int64_t i = 0; i < cells_desc_count_; ++i)
   {
-    databuff_printf(buf, buf_len, pos, "<%lu,%lu>,",
-        cells_desc_[i].table_id_, cells_desc_[i].column_id_);
+    if (OB_INVALID_ID == cells_desc_[i].table_id_)
+    {
+      databuff_printf(buf, buf_len, pos, "<NULL,%lu>,",
+                      cells_desc_[i].column_id_);
+    }
+    else
+    {
+      databuff_printf(buf, buf_len, pos, "<%lu,%lu>,",
+                      cells_desc_[i].table_id_, cells_desc_[i].column_id_);
+    }
   }
   return pos;
 }
@@ -128,6 +136,43 @@ int ObRowDesc::hash_insert(const uint64_t table_id, const uint64_t column_id, co
     TBSYS_LOG(WARN, "duplicated cell desc, tid=%lu cid=%lu new_idx=%ld",
               table_id, column_id, index);
   }
+  return ret;
+}
+
+
+ObRowDesc & ObRowDesc::operator = (const ObRowDesc & r)
+{
+  int err = 0;
+  hash_map_.clear();
+  cells_desc_count_ = 0;
+  rowkey_cell_count_ = r.rowkey_cell_count_;
+  for (int64_t i = 0; i < r.cells_desc_count_; i++)
+  {
+    err = add_column_desc(r.cells_desc_[i].table_id_, r.cells_desc_[i].column_id_);
+    if (OB_SUCCESS != err)
+    {
+      TBSYS_LOG(ERROR, "add_column_desc error, err: %d r: %s", err, to_cstring(r));
+      break;
+    }
+  }
+  return *this;
+}
+
+int ObRowDesc::assign(const ObRowDesc& other)
+{
+  int ret = OB_SUCCESS;
+  reset();
+  for (int64_t i = 0; i < other.cells_desc_count_; i++)
+  {
+    uint64_t table_id = OB_INVALID_ID;
+    uint64_t column_id = OB_INVALID_ID;
+    if ((ret = other.get_tid_cid(i, table_id, column_id)) != OB_SUCCESS
+      || (ret = add_column_desc(table_id, column_id)) != OB_SUCCESS)
+    {
+      break;
+    }
+  }
+  rowkey_cell_count_ = other.rowkey_cell_count_;
   return ret;
 }
 

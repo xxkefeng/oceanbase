@@ -42,7 +42,7 @@ deploy ob1.mysql alter system set balance_tolerance_count='10' server_type=roots
 
 #check migrate
 sleep 60;
-deploy ob1.check_cs_sstable 200;
+deploy ob1.check_cs_sstable 201;
 deploy ob1.check_cs_balance;
 
 deploy ob1.stop_check;

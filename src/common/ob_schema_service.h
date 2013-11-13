@@ -22,6 +22,7 @@
 #include "ob_object.h"
 #include "ob_string.h"
 #include "ob_array.h"
+#include "ob_hint.h"
 
 namespace oceanbase
 {
@@ -39,6 +40,18 @@ namespace oceanbase
       uint64_t right_table_id_;
       char right_column_name_[OB_MAX_COLUMN_NAME_LENGTH];
       uint64_t right_column_id_;
+
+      int64_t to_string(char* buf, const int64_t buf_len) const
+      {
+        int64_t pos = 0;
+        databuff_printf(buf, buf_len, pos, "left_table:tname[%s], tid[%lu], cname[%s], cid[%lu]",
+          left_table_name_, left_table_id_, left_column_name_, left_column_id_);
+        databuff_printf(buf, buf_len, pos, "right_table:tname[%s], tid[%lu], cname[%s], cid[%lu]",
+          right_table_name_, right_table_id_, right_column_name_, right_column_id_);
+        return pos;
+      }
+
+      NEED_SERIALIZE_AND_DESERIALIZE;
     };
 
     /* 表单column描述，对应于__all_all_column内部表 */
@@ -102,13 +115,14 @@ namespace oceanbase
       char table_name_[OB_MAX_TABLE_NAME_LENGTH];
       char compress_func_name_[OB_MAX_TABLE_NAME_LENGTH];
       char expire_condition_[OB_MAX_EXPIRE_CONDITION_LENGTH];
+      char comment_str_[OB_MAX_TABLE_COMMENT_LENGTH];
       uint64_t table_id_;
       TableType table_type_;
       LoadType load_type_;
       TableDefType table_def_type_;
       bool is_use_bloomfilter_;
       bool is_pure_update_table_;
-      bool is_read_static_;
+      int64_t consistency_level_;
       int64_t rowkey_split_;
       int32_t rowkey_column_num_;
       int32_t replica_num_;
@@ -118,6 +132,7 @@ namespace oceanbase
       int64_t tablet_max_size_;
       int64_t max_rowkey_length_;
       int64_t merge_write_sstable_version_;
+      int64_t schema_version_;
       uint64_t create_time_column_id_;
       uint64_t modify_time_column_id_;
       ObArray<ColumnSchema> columns_;
@@ -131,7 +146,7 @@ namespace oceanbase
            table_def_type_(USER_DEFINED),
            is_use_bloomfilter_(false),
            is_pure_update_table_(false),
-           is_read_static_(false),
+           consistency_level_(NO_CONSISTENCY),
            rowkey_split_(0),
            rowkey_column_num_(0),
            replica_num_(OB_SAFE_COPY_COUNT),
@@ -141,12 +156,14 @@ namespace oceanbase
           tablet_max_size_(OB_DEFAULT_MAX_TABLET_SIZE),
           max_rowkey_length_(0),
           merge_write_sstable_version_(DEFAULT_SSTABLE_VERSION),
+          schema_version_(0),
           create_time_column_id_(OB_CREATE_TIME_COLUMN_ID),
           modify_time_column_id_(OB_MODIFY_TIME_COLUMN_ID)
       {
         table_name_[0] = '\0';
         compress_func_name_[0] = '\0';
         expire_condition_[0] = '\0';
+        comment_str_[0] = '\0';
       }
 
       inline void init_as_inner_table()
@@ -164,7 +181,7 @@ namespace oceanbase
         strcpy(this->compress_func_name_, OB_DEFAULT_COMPRESS_FUNC_NAME);
         this->is_use_bloomfilter_ = false;
         this->is_pure_update_table_ = false;
-        this->is_read_static_ = false;
+        this->consistency_level_ = NO_CONSISTENCY;
         this->rowkey_split_ = 0;
         this->merge_write_sstable_version_ = DEFAULT_SSTABLE_VERSION;
         this->create_time_column_id_ = OB_CREATE_TIME_COLUMN_ID;
@@ -200,6 +217,19 @@ namespace oceanbase
         for(int64_t i = 0; i < columns_.count(); i++)
         {
           if (columns_.at(i).column_id_ == column_id)
+          {
+            ret = &columns_.at(i);
+            break;
+          }
+        }
+        return ret;
+      }
+      inline ColumnSchema* get_column_schema(const char * column_name)
+      {
+        ColumnSchema *ret = NULL;
+        for(int64_t i = 0; i < columns_.count(); i++)
+        {
+          if (strcmp(column_name, columns_.at(i).column_name_) == 0)
           {
             ret = &columns_.at(i);
             break;
@@ -315,10 +345,11 @@ namespace oceanbase
         virtual int get_table_schema(const ObString& table_name, TableSchema& table_schema) = 0;
         virtual int create_table(const TableSchema& table_schema) = 0;
         virtual int drop_table(const ObString& table_name) = 0;
-        virtual int alter_table(const AlterTableSchema& table_schema) = 0;
+        virtual int alter_table(const AlterTableSchema& table_schema, const int64_t old_schema_version) = 0;
         virtual int get_table_id(const ObString& table_name, uint64_t& table_id) = 0;
         virtual int get_table_name(uint64_t table_id, ObString& table_name) = 0;
         virtual int get_max_used_table_id(uint64_t &max_used_tid) = 0;
+        virtual int modify_table_id(TableSchema& table_schema, const int64_t new_table_id) = 0;
         virtual int set_max_used_table_id(const uint64_t max_used_tid) = 0;
     };
 

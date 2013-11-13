@@ -26,6 +26,17 @@ ObDeallocate::~ObDeallocate()
 {
 }
 
+void ObDeallocate::reset()
+{
+  stmt_id_ = OB_INVALID_ID;
+}
+
+void ObDeallocate::reuse()
+{
+  stmt_id_ = OB_INVALID_ID;
+}
+
+
 int ObDeallocate::open()
 {
   int ret = OB_SUCCESS;
@@ -55,6 +66,12 @@ int ObDeallocate::delete_plan_from_session()
     TBSYS_LOG(WARN, "remove statment from session failed. ret=%d", ret);
   }
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObDeallocate, PHY_DEALLOCATE);
+  }
 }
 
 int64_t ObDeallocate::to_string(char* buf, const int64_t buf_len) const

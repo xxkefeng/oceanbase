@@ -33,6 +33,28 @@ ObTabletScanFuse::~ObTabletScanFuse()
 {
 }
 
+void ObTabletScanFuse::reset()
+{
+  sstable_scan_ = NULL;
+  incremental_scan_ = NULL;
+  last_sstable_row_ = NULL;
+  last_incr_row_ = NULL;
+  sstable_rowkey_ = NULL;
+  incremental_rowkey_ = NULL;
+  last_rowkey_ = NULL;
+}
+
+void ObTabletScanFuse::reuse()
+{
+  sstable_scan_ = NULL;
+  incremental_scan_ = NULL;
+  last_sstable_row_ = NULL;
+  last_incr_row_ = NULL;
+  sstable_rowkey_ = NULL;
+  incremental_rowkey_ = NULL;
+  last_rowkey_ = NULL;
+}
+
 bool ObTabletScanFuse::check_inner_stat()
 {
   bool ret = true;
@@ -302,6 +324,12 @@ int ObTabletScanFuse::compare_rowkey(const ObRowkey &rowkey1, const ObRowkey &ro
   return rowkey1.compare(rowkey2);
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObTabletScanFuse, PHY_TABLET_SCAN_FUSE);
+  }
+}
+
 int64_t ObTabletScanFuse::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -342,4 +370,3 @@ int ObTabletScanFuse::get_last_rowkey(const ObRowkey *&rowkey)
   rowkey = last_rowkey_;
   return ret;
 }
-

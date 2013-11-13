@@ -62,6 +62,7 @@ namespace oceanbase
       double get_max_req_process_cs_timeout_percent();
 
     public:
+      /*
       void TEST_get_sub_requests(const ObMergerSubGetRequest *& reqs, int64_t & req_count)const
       {
         reqs = sub_requests_;
@@ -75,6 +76,7 @@ namespace oceanbase
       {
         return finished_sub_request_count_;
       }
+      */
     private:
       int distribute_request();
       int send_request(const int64_t sub_req_idx, const int64_t timeout_us);
@@ -87,8 +89,8 @@ namespace oceanbase
       static const int64_t HASH_BUCKET_NUM = 4096;
       static const int64_t MAX_ROW_COLUMN_COUNT = common::OB_MAX_COLUMN_NUMBER * 4;
       bool sealed_;
-      ObGetMerger merger_operator_;
       ObMergerSubGetRequest sub_requests_[MAX_SUBREQUEST_NUM];
+      ObGetMerger merger_operator_;
       int16_t same_cs_get_row_count_[MAX_SUBREQUEST_NUM];
       int32_t total_sub_request_count_;
       int32_t finished_sub_request_count_;

@@ -83,6 +83,21 @@ namespace oceanbase
         ret = serialization::encode_vi64(buf, buf_len, pos, crc_sum_);
 
       if (ret == OB_SUCCESS)
+        ret = serialization::encode_vi64(buf, buf_len, pos, row_checksum_);
+
+      if (ret == OB_SUCCESS)
+        ret = serialization::encode_i16(buf, buf_len, pos, version_);
+
+      if (ret == OB_SUCCESS)
+        ret = serialization::encode_i16(buf, buf_len, pos, reserved16_);
+
+      if (ret == OB_SUCCESS)
+        ret = serialization::encode_i32(buf, buf_len, pos, reserved32_);
+
+      if (ret == OB_SUCCESS)
+        ret = serialization::encode_i64(buf, buf_len, pos, reserved64_);
+
+      if (ret == OB_SUCCESS)
         ret = range_.serialize(buf, buf_len, pos);
 
       return ret;
@@ -98,6 +113,21 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
         ret = serialization::decode_vi64(buf, data_len, pos, reinterpret_cast<int64_t *>(&crc_sum_));
+
+      if (OB_SUCCESS == ret)
+        ret = serialization::decode_vi64(buf, data_len, pos, reinterpret_cast<int64_t *>(&row_checksum_));
+
+      if (OB_SUCCESS == ret)
+        ret = serialization::decode_i16(buf, data_len, pos, &version_);
+
+      if (OB_SUCCESS == ret)
+        ret = serialization::decode_i16(buf, data_len, pos, &reserved16_);
+
+      if (OB_SUCCESS == ret)
+        ret = serialization::decode_i32(buf, data_len, pos, &reserved32_);
+
+      if (OB_SUCCESS == ret)
+        ret = serialization::decode_i64(buf, data_len, pos, &reserved64_);
 
       if (OB_SUCCESS == ret)
       {
@@ -119,6 +149,11 @@ namespace oceanbase
       total_size += serialization::encoded_length_vi64(row_count_);
       total_size += serialization::encoded_length_vi64(occupy_size_);
       total_size += serialization::encoded_length_vi64(crc_sum_);
+      total_size += serialization::encoded_length_vi64(row_checksum_);
+      total_size += serialization::encoded_length_i16(version_);
+      total_size += serialization::encoded_length_i16(reserved16_);
+      total_size += serialization::encoded_length_i32(reserved32_);
+      total_size += serialization::encoded_length_i64(reserved64_);
       total_size += range_.get_serialize_size();
 
       return total_size;

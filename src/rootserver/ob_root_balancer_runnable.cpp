@@ -23,6 +23,7 @@ ObRootBalancerRunnable::ObRootBalancerRunnable(ObRootServerConfig &config,
                                                common::ObRoleMgr &role_mgr)
   : config_(config), balancer_(balancer), role_mgr_(role_mgr)
 {
+  balancer_.set_balancer_thread(this);
 }
 
 ObRootBalancerRunnable::~ObRootBalancerRunnable()
@@ -52,33 +53,19 @@ void ObRootBalancerRunnable::run(tbsys::CThread *thread, void *arg)
   }
 
   TBSYS_LOG(INFO, "[NOTICE] balance working");
-  bool did_migrating = false;
   while (!_stop)
   {
     if (is_master() || role_mgr_.get_role() == ObRoleMgr::STANDALONE)
     {
-      if (config_.enable_balance
-          || config_.enable_rereplication)
-      {
-        balancer_.do_balance(did_migrating);
-      }
+      balancer_.do_balance_or_load();
     }
     else
     {
       TBSYS_LOG(DEBUG, "not the master");
     }
-    int64_t sleep_us = 0;
-    if (did_migrating)
-    {
-      sleep_us = MIN_BALANCE_WORKER_SLEEP_US;
-    }
-    else
-    {
-      // idle
-      sleep_us = config_.balance_worker_idle_time;
-      TBSYS_LOG(TRACE, "balance worker idle, sleep [%s]",
-                config_.balance_worker_idle_time.str());
-    }
+
+    int64_t sleep_us = config_.balance_worker_idle_time;
+    TBSYS_LOG(TRACE, "balance worker idle, sleep [%s]", config_.balance_worker_idle_time.str());
     int sleep_ms = static_cast<int32_t>(sleep_us/1000);
     balance_worker_sleep_cond_.wait(sleep_ms);
   } // end while

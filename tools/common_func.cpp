@@ -276,7 +276,7 @@ int parse_object(const char* object_str, ObObj& obj)
           obj.set_datetime(strtoll(dst[1], NULL, 10));
           break;
         case ObPreciseDateTimeType:
-          obj.set_datetime(strtoll(dst[1], NULL, 10));
+          obj.set_precise_datetime(strtoll(dst[1], NULL, 10));
           break;
         case ObSeqType:
           //TODO
@@ -712,21 +712,23 @@ void dump_multi_version_tablet_image(ObMultiVersionTabletImage & image, bool loa
 int dump_tablet(const ObTablet & tablet, const bool dump_sstable)
 {
   // dump sstable info
-  const common::ObArray<sstable::ObSSTableId>& sstable_id_list_
+  const common::ObSEArray<sstable::ObSSTableId, 1>& sstable_id_list_
     = tablet.get_sstable_id_list();
   int64_t size = sstable_id_list_.count();
 
   // dump tablet basic info
   fprintf(stderr, "range=%s, data version=%ld, disk_no=%d, "
-      "merged=%d, removed=%d, last do expire version=%ld, seq num=%ld, sstable version=%d, sstable count=%ld\n",
+      "merged=%d, removed=%d, last do expire version=%ld, seq num=%ld, sstable version=%d,"
+      "row count=%ld, occupy_size=%ld, data_checksum=%ld, row_checksum=%ld",
       to_cstring(tablet.get_range()), tablet.get_data_version(), tablet.get_disk_no(),
       tablet.is_merged(), tablet.is_removed(), tablet.get_last_do_expire_version(), tablet.get_sequence_num(),
-      tablet.get_sstable_version(), size);
+      tablet.get_sstable_version(), tablet.get_row_count(), 
+      tablet.get_occupy_size(), tablet.get_checksum(), tablet.get_row_checksum());
 
   if (dump_sstable)
   {
     const_cast<ObTablet&>(tablet).load_sstable(tablet.get_data_version());
-    const common::ObArray<sstable::SSTableReader*> & sstable_reader_list_
+    const common::ObSEArray<sstable::SSTableReader*, 1> & sstable_reader_list_
       = tablet.get_sstable_reader_list();
     for (int64_t i = 0; i < sstable_reader_list_.count() ; ++i)
     {

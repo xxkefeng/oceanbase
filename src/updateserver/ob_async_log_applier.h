@@ -124,7 +124,7 @@ namespace oceanbase
     {
       public:
         const static int64_t REPLAY_RETRY_WAIT_TIME_US = 100 * 1000;
-        const static int64_t MEMORY_RESERVE_BEFORE_REPLAY = 100L * 1024L * 1024L;
+        const static int64_t MEM_OVERFLOW_REPORT_INTERVAL = 5 * 1000 * 1000;
       public:
         ObAsyncLogApplier();
         virtual ~ObAsyncLogApplier();

@@ -33,6 +33,7 @@ namespace oceanbase
 {
   namespace sql
   {
+    class ObWhenFilter;
     class ObTransformer
     {
       public:
@@ -64,6 +65,12 @@ namespace oceanbase
             ErrStat& err_stat,
             const uint64_t& query_id = common::OB_INVALID_ID,
             int32_t* index = NULL);
+
+        int add_cur_time_plan(
+            ObPhysicalPlan *physical_plan,
+            ErrStat& err_stat,
+            const ObCurTimeType& type);
+
         int gen_physical_replace(
             ObLogicalPlan *logical_plan,
             ObPhysicalPlan *physical_plan,
@@ -129,6 +136,12 @@ namespace oceanbase
             oceanbase::common::ObList<ObBitSet<> >& bitset_list,
             oceanbase::common::ObList<ObSqlRawExpr*>& remainder_cnd_list,
             oceanbase::common::ObList<ObSqlRawExpr*>& none_columnlize_alias);
+        int gen_physical_kill_stmt(
+          ObLogicalPlan *logical_plan,
+          ObPhysicalPlan* physical_plan,
+          ErrStat& err_stat,
+          const uint64_t& query_id,
+          int32_t* index);
         int gen_phy_table(
             ObLogicalPlan *logical_plan,
             ObPhysicalPlan *physical_plan,
@@ -232,6 +245,12 @@ namespace oceanbase
             ErrStat& err_stat,
             ObShowStmt *show_stmt,
             ObPhyOperator *&out_op);
+        int gen_phy_show_processlist(
+            ObLogicalPlan *logical_plan,
+            ObPhysicalPlan *physical_plan,
+            ErrStat& err_stat,
+            ObShowStmt *show_stmt,
+            ObPhyOperator *&out_op);
         template <class T>
         int get_stmt(
             ObLogicalPlan *logical_plan,
@@ -322,7 +341,7 @@ namespace oceanbase
             ObPhysicalPlan *physical_plan,
             const uint64_t query_id,
             ObPhysicalPlan*& new_plan,
-            int32_t *index,
+            int32_t* index,
             ErrStat& err_stat);
         int gen_phy_select_for_update(
             ObLogicalPlan *logical_plan,
@@ -367,6 +386,28 @@ namespace oceanbase
             ErrStat& err_stat,
             const uint64_t& query_id,
             int32_t* index);
+        int gen_phy_when(
+            ObLogicalPlan *logical_plan,
+            ObPhysicalPlan *physical_plan,
+            ErrStat& err_stat,
+            const uint64_t& query_id,
+            ObPhyOperator& child_op,
+            ObWhenFilter *& when_filter);
+        int merge_tables_version(ObPhysicalPlan & outer_plan, ObPhysicalPlan & inner_plan);
+
+        bool parse_join_info(const ObString &join_info, TableSchema &table_schema);
+        bool check_join_column(const int32_t column_index,
+              const char* column_name, const char* join_column_name,
+              TableSchema& schema, const ObTableSchema& join_table_schema);
+        
+        int allocate_column_id(TableSchema & table_schema);
+        int gen_physical_change_obi_stmt(
+          ObLogicalPlan *logical_plan,
+          ObPhysicalPlan* physical_plan,
+          ErrStat& err_stat,
+          const uint64_t& query_id,
+          int32_t* index);
+
       private:
         common::ObIAllocator *mem_pool_;
         ObSqlContext *sql_context_;

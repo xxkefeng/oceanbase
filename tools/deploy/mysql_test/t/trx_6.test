@@ -21,7 +21,7 @@ update t1 set money1 = money1+100 where id=2;
 
 connection conn2;
 begin;
---error 23
+--error 5049
 insert into t1 values(2,100);
 
 connection conn1;
@@ -43,7 +43,7 @@ update t1 set money1 = money1+100 where id=3;
 
 connection conn3;
 begin;
---error 23
+--error 5049
 delete from t1 where id = 3;
 
 connection conn2;

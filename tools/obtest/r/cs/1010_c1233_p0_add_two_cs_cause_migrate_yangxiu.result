@@ -14,8 +14,8 @@ ob1.cs1.set status=enable
 ob1.cs2.set status=enable
 ob1.cs1.start
 ob1.cs2.start
-ob1.check_cs_sstable 200
+ob1.check_cs_sstable 202
 ob1.check_cs_balance
-ob2.check_cs_sstable 200
+ob2.check_cs_sstable 202
 ob2.check_cs_balance
 ob1.stop_check

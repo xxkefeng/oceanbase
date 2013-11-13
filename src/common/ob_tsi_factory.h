@@ -94,6 +94,8 @@ namespace oceanbase
       TSI_CS_STATIC_DATA_SERVICE_1,
       TSI_CS_MULTI_TABLET_MERGER_1,
       TSI_CS_TABLE_IMPORT_INFO_1,
+      TSI_CS_FETCH_DATA_1,
+      TSI_CS_FETCH_DATA_2,
     };
 
     enum TSIUpdateserverType
@@ -114,7 +116,9 @@ namespace oceanbase
       TSI_UPS_CLIENT_WRAPPER_TSI_1,
       TSI_UPS_FIXED_SIZE_BUFFER_1,
       TSI_UPS_FIXED_SIZE_BUFFER_2,
+      TSI_UPS_SCAN_PARAM_2,
       TSI_UPS_SQL_SCAN_PARAM_1,
+      TSI_UPS_SQL_MULTI_SCAN_MERGE_1,
     };
 
     enum TSIMergeserverType
@@ -159,6 +163,7 @@ namespace oceanbase
       TSI_SQL_EXPR_STACK_1 = 7003,
       TSI_SQL_EXPR_EXTRA_PARAMS_1 = 7005,
       TSI_SQL_TP_ARENA_1 = 7006,
+      TSI_SQL_ROW_1 = 7007,
     };
 
     enum TSIMySQLType
@@ -176,10 +181,17 @@ namespace oceanbase
       TSI_RS_MS_PROVIDER_1,
       TSI_RS_NEW_SCANNER_1,
       TSI_RS_SQL_SCAN_PARAM_1,
+      TSI_RS_SQL_GET_PARAM_1,
+    };
+
+    enum TSIProxyserverType
+    {
+      TSI_YUNTI_PROXY_READER_1 = 10001,
+      TSI_YUNTI_PROXY_READER_2,
     };
 
     //#define GET_TSI(type) get_tsi_fatcory().get_instance<type,1>()
-    #define GET_TSI_MULT(type, num) get_tsi_fatcory().get_instance<type,num>()
+    #define GET_TSI_MULT(type, tag) get_tsi_fatcory().get_instance<type,tag>()
 
     template <class T>
     class Wrapper

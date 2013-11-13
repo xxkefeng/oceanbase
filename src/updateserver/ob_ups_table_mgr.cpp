@@ -18,6 +18,7 @@
 #include "common/ob_row_compaction.h"
 #include "ob_update_server_main.h"
 #include "ob_ups_table_mgr.h"
+#include "ob_ups_utils.h"
 //#include "ob_client_wrapper.h"
 //#include "ob_client_wrapper_tsi.h"
 
@@ -218,11 +219,21 @@ namespace oceanbase
       uint64_t new_log_file_id = 0;
       int64_t freeze_time_stamp = 0;
       ThreadSpecificBuffer my_thread_buffer;
-      ThreadSpecificBuffer::Buffer *my_buffer = my_thread_buffer.get_buffer();
+      CommonSchemaManagerWrapper schema_manager;
+      ThreadSpecificBuffer::Buffer *my_buffer = my_thread_buffer_.get_buffer();
       if (NULL == my_buffer)
       {
         TBSYS_LOG(ERROR, "get thread specific buffer fail");
         ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else if (OB_SUCCESS != (ret = schema_mgr_.get_schema_mgr(schema_manager)))
+      {
+        TBSYS_LOG(WARN, "get schema mgr fail ret=%d", ret);
+      }
+      else if (schema_manager.get_version() <= CORE_SCHEMA_VERSION)
+      {
+        ret = OB_EAGAIN;
+        TBSYS_LOG(ERROR, "try freeze but schema not ready, version=%ld", schema_manager.get_version());
       }
       else if (OB_SUCCESS == (ret = table_mgr_.try_freeze_memtable(freeze_type, new_version, frozen_version,
                                                               new_log_file_id, freeze_time_stamp, report_version_changed)))
@@ -231,7 +242,6 @@ namespace oceanbase
         ObUpsMutator ups_mutator;
         ObMutatorCellInfo mutator_cell_info;
         CurFreezeParam freeze_param;
-        CommonSchemaManagerWrapper schema_manager;
         ObDataBuffer out_buff(my_buffer->current(), my_buffer->remain());
 
         freeze_param.param.active_version = new_version;
@@ -418,7 +428,7 @@ namespace oceanbase
               int64_t pos = sizeof(FreezeParamHeader) + sizeof(FreezeParamV2);
               if (OB_SUCCESS == (ret = schema_manager.deserialize(data, length, pos)))
               {
-                if (OB_SCHEMA_VERSION_FOUR <= schema_manager.get_version())
+                if (OB_SCHEMA_VERSION_FOUR <= schema_manager.get_code_version())
                 {
                   ret = schema_mgr_.set_schema_mgr(schema_manager);
                 }
@@ -459,7 +469,7 @@ namespace oceanbase
               int64_t pos = sizeof(FreezeParamHeader) + sizeof(FreezeParamV3);
               if (OB_SUCCESS == (ret = schema_manager.deserialize(data, length, pos)))
               {
-                if (OB_SCHEMA_VERSION_FOUR <= schema_manager.get_version())
+                if (OB_SCHEMA_VERSION_FOUR <= schema_manager.get_code_version())
                 {
                   ret = schema_mgr_.set_schema_mgr(schema_manager);
                 }
@@ -500,13 +510,13 @@ namespace oceanbase
               int64_t pos = sizeof(FreezeParamHeader) + sizeof(FreezeParamV4);
               if (OB_SUCCESS == (ret = schema_manager.deserialize(data, length, pos)))
               {
-                if (OB_SCHEMA_VERSION_FOUR <= schema_manager.get_version())
+                if (OB_SCHEMA_VERSION_FOUR <= schema_manager.get_code_version())
                 {
                   ret = schema_mgr_.set_schema_mgr(schema_manager);
                 }
                 else
                 {
-                  TBSYS_LOG(WARN, "schema version=%ld too old, will not use", schema_manager.get_version());
+                  TBSYS_LOG(WARN, "schema version=%ld too old, will not use", schema_manager.get_code_version());
                 }
               }
               if (OB_SUCCESS == ret)
@@ -515,7 +525,8 @@ namespace oceanbase
                     && (freeze_param_v4->op_flag & FLAG_MINOR_LOAD_BYPASS
                         || freeze_param_v4->op_flag & FLAG_MAJOR_LOAD_BYPASS))
                 {
-                  ret = table_mgr_.sstable_scan_finished(SSTableID::MAX_MINOR_VERSION);
+                  int minor_num_limit = (freeze_param_v4->op_flag & FLAG_MINOR_LOAD_BYPASS)? SSTableID::MAX_MINOR_VERSION: 0;
+                  ret = table_mgr_.sstable_scan_finished(minor_num_limit);
                 }
                 else
                 {
@@ -694,6 +705,14 @@ namespace oceanbase
                     table_mgr_.get_cur_major_version(), table_mgr_.get_cur_minor_version(), last_bypass_checksum_);
         }
       }
+      else if (check_checksum_
+              && ups_mutator.is_check_sstable_checksum())
+      {
+        SSTableID sst_id = SSTableID::get_id(ups_mutator.get_cur_major_version(),
+                                            ups_mutator.get_cur_minor_version(),
+                                            ups_mutator.get_cur_minor_version());
+        ret = table_mgr_.check_sstable_checksum(sst_id.id, ups_mutator.get_sstable_checksum());
+      }
       else
       {}
       return ret;
@@ -869,7 +888,8 @@ namespace oceanbase
     }
 
     int ObUpsTableMgr :: apply(RWSessionCtx &session_ctx,
-                              ObIterator &iter)
+                              ObIterator &iter,
+                              const ObDmlType dml_type)
     {
       int ret = OB_SUCCESS;
       TableItem *table_item = NULL;
@@ -881,21 +901,13 @@ namespace oceanbase
       else
       {
         MemTable *p_active_memtable = &(table_item->get_memtable());
-        if (NULL == session_ctx.get_uc_info().host
-            && OB_SUCCESS != (ret = session_ctx.add_publish_callback(&(p_active_memtable->get_trans_cb()),
-                                                                  &(session_ctx.get_uc_info()))))
+        session_ctx.get_uc_info().host = p_active_memtable;
+        if (OB_SUCCESS != (ret = p_active_memtable->set(session_ctx, iter, dml_type))
+            && !IS_SQL_ERR(ret))
         {
-          TBSYS_LOG(WARN, "add trans cb info to session ctx fail, ret=%d", ret);
+          TBSYS_LOG(WARN, "set to memtable fail ret=%d", ret);
         }
-        else
-        {
-          session_ctx.get_uc_info().host = p_active_memtable;
-          if (OB_SUCCESS != (ret = p_active_memtable->set(session_ctx, iter)))
-          {
-            TBSYS_LOG(WARN, "set to memtable fail ret=%d", ret);
-          }
-          FILL_TRACE_BUF(session_ctx.get_tlog_buffer(), "set to memtable ret=%d", ret);
-        }
+        FILL_TRACE_BUF(session_ctx.get_tlog_buffer(), "set to memtable ret=%d", ret);
         table_mgr_.revert_active_memtable(table_item);
       }
       log_memtable_memory_info();
@@ -922,12 +934,6 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "cellinfo do not pass valid check or trans name to id fail");
           ret = OB_SCHEMA_ERROR;
-        }
-        else if (NULL == session_ctx.get_uc_info().host
-                && OB_SUCCESS != (ret = session_ctx.add_publish_callback(&(p_active_memtable->get_trans_cb()),
-                                                                    &(session_ctx.get_uc_info()))))
-        {
-          TBSYS_LOG(WARN, "add trans cb info to session ctx fail, ret=%d", ret);
         }
         else
         {
@@ -1006,7 +1012,7 @@ namespace oceanbase
     void ObUpsTableMgr :: log_memtable_memory_info()
     {
       static volatile uint64_t counter = 0;
-      static const int64_t mod = 100000;
+      static const int64_t mod = 400000;
       static int64_t last_report_ts = 0;
       if (1 == (ATOMIC_ADD(&counter, 1) % mod))
       {
@@ -1195,7 +1201,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "get tsi table_list fail");
         ret = OB_ERROR;
       }
-      else if (OB_SUCCESS != (ret = table_mgr_.acquire_table(get_param.get_version_range(), max_valid_version, *table_list, is_final_minor))
+      else if (OB_SUCCESS != (ret = table_mgr_.acquire_table(get_param.get_version_range(), max_valid_version, *table_list, is_final_minor, get_table_id(get_param)))
           || 0 == table_list->size())
       {
         TBSYS_LOG(WARN, "acquire table fail version_range=%s", range2str(get_param.get_version_range()));
@@ -1280,7 +1286,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid scan range");
         ret = OB_ERROR;
       }
-      else if (OB_SUCCESS != (ret = table_mgr_.acquire_table(scan_param.get_version_range(), max_valid_version, *table_list, is_final_minor))
+      else if (OB_SUCCESS != (ret = table_mgr_.acquire_table(scan_param.get_version_range(), max_valid_version, *table_list, is_final_minor, get_table_id(scan_param)))
               || 0 == table_list->size())
       {
         TBSYS_LOG(WARN, "acquire table fail version_range=%s", range2str(scan_param.get_version_range()));
@@ -1481,13 +1487,13 @@ namespace oceanbase
                 {
                   // at least get one row
                   TBSYS_LOG(WARN, "get or scan too long time, start_time=%ld timeout=%ld timeu=%ld row_count=%ld",
-                      start_time, timeout, g_cur_time - start_time, last_cell_idx);
+                      start_time, timeout, tbsys::CTimeUtil::getTime() - start_time, last_cell_idx);
                   err = OB_FORCE_TIME_OUT;
                 }
                 else
                 {
                   TBSYS_LOG(ERROR, "can't get any row, start_time=%ld timeout=%ld timeu=%ld",
-                      start_time, timeout, g_cur_time - start_time);
+                      start_time, timeout, tbsys::CTimeUtil::getTime() - start_time);
                   err = OB_RESPONSE_TIME_OUT;
                 }
               }
@@ -1997,6 +2003,31 @@ namespace oceanbase
       return ret;
     }
 
+    int ObUpsTableMgr::commit_check_sstable_checksum(const uint64_t sstable_id, const uint64_t checksum)
+    {
+      int ret = OB_SUCCESS;
+      SSTableID sst_id = sstable_id;
+      ObUpsMutator ups_mutator;
+      ups_mutator.set_check_sstable_checksum();
+      ups_mutator.set_cur_major_version(sst_id.major_version);
+      ups_mutator.set_cur_minor_version(sst_id.minor_version_start);
+      ups_mutator.set_sstable_checksum(checksum);
+      if (OB_SUCCESS != (ret = fill_commit_log_(ups_mutator, TraceLog::get_logbuffer())))
+      {
+        TBSYS_LOG(WARN, "fill commit log fail ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = flush_commit_log_(TraceLog::get_logbuffer())))
+      {
+        TBSYS_LOG(WARN, "flush commit log fail ret=%d", ret);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "write check sstable checksum log succ, cur_major_version=%lu cur_minor_version=%lu checksum=%lu",
+                  ups_mutator.get_cur_major_version(), ups_mutator.get_cur_minor_version(), checksum);
+      }
+      return ret;
+    }
+
     void ObUpsTableMgr::update_merged_version(ObUpsRpcStub &rpc_stub, const ObServer &root_server, const int64_t timeout_us)
     {
       int64_t oldest_memtable_size = 0;
@@ -2224,7 +2255,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "get tsi table_list fail");
         ret = OB_ERROR;
       }
-      else if (OB_SUCCESS != (ret = table_mgr_.acquire_table(get_param.get_version_range(), max_valid_version, *table_list, is_final_minor))
+      else if (OB_SUCCESS != (ret = table_mgr_.acquire_table(get_param.get_version_range(), max_valid_version, *table_list, is_final_minor, get_table_id(get_param)))
           || 0 == table_list->size())
       {
         TBSYS_LOG(WARN, "acquire table fail version_range=%s", range2str(get_param.get_version_range()));
@@ -2358,7 +2389,7 @@ namespace oceanbase
         TBSYS_LOG(WARN, "invalid scan range");
         ret = OB_ERROR;
       }
-      else if (OB_SUCCESS != (ret = table_mgr_.acquire_table(scan_param.get_version_range(), max_valid_version, *table_list, is_final_minor))
+      else if (OB_SUCCESS != (ret = table_mgr_.acquire_table(scan_param.get_version_range(), max_valid_version, *table_list, is_final_minor, get_table_id(scan_param)))
               || 0 == table_list->size())
       {
         TBSYS_LOG(WARN, "acquire table fail version_range=%s", range2str(scan_param.get_version_range()));
@@ -2562,13 +2593,13 @@ namespace oceanbase
                 {
                   // at least get one row
                   TBSYS_LOG(WARN, "get or scan too long time, start_time=%ld timeout=%ld timeu=%ld row_count=%ld",
-                      start_time, timeout, g_cur_time - start_time, last_cell_idx);
+                      start_time, timeout, tbsys::CTimeUtil::getTime() - start_time, last_cell_idx);
                   err = OB_FORCE_TIME_OUT;
                 }
                 else
                 {
                   TBSYS_LOG(ERROR, "can't get any row, start_time=%ld timeout=%ld timeu=%ld",
-                      start_time, timeout, g_cur_time - start_time);
+                      start_time, timeout, tbsys::CTimeUtil::getTime() - start_time);
                   err = OB_RESPONSE_TIME_OUT;
                 }
               }
@@ -2789,7 +2820,7 @@ namespace oceanbase
               && (start_time + timeout) < g_cur_time)
           {
             TBSYS_LOG(WARN, "get or scan too long time, start_time=%ld timeout=%ld timeu=%ld row_count=%ld",
-                      start_time, timeout, g_cur_time - start_time, row_count - 1);
+                      start_time, timeout, tbsys::CTimeUtil::getTime() - start_time, row_count - 1);
             err = OB_SIZE_OVERFLOW;
             is_timeout = true;
           }

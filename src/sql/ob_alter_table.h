@@ -34,6 +34,8 @@ namespace oceanbase
       public:
         ObAlterTable();
         virtual ~ObAlterTable();
+        virtual void reset();
+        virtual void reuse();
         // init
         void set_sql_context(ObSqlContext& context);
         common::AlterTableSchema& get_alter_table_schema();
@@ -41,6 +43,7 @@ namespace oceanbase
         /// execute the create table statement
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_ALTER_TABLE; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         /// @note always return OB_ITER_END
         virtual int get_next_row(const common::ObRow *&row);

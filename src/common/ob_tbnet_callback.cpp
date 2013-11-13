@@ -110,7 +110,7 @@ namespace oceanbase
                 req_sign = bswap_64(*reinterpret_cast<uint64_t *>(m->input->pos + 16 + 8));
                 UNUSED(trace_id);
                 UNUSED(req_sign);
-                header_size = sizeof(ob_packet_header_size) + sizeof(int16_t)/* api_version_ */ + sizeof(session_id) + sizeof(timeout) + sizeof(trace_id) + sizeof(req_sign);
+                header_size = ob_packet_header_size;
               }
 #elif _OB_VERSION>300
               // 0.4 server 接到了 0.3 的包
@@ -123,7 +123,7 @@ namespace oceanbase
               {
                 trace_id = bswap_64(*reinterpret_cast<uint64_t *>(m->input->pos + 16));
                 req_sign = bswap_64(*reinterpret_cast<uint64_t *>(m->input->pos + 16 + 8));
-                header_size = sizeof(ob_packet_header_size) + sizeof(int16_t)/* api_version_ */ + sizeof(session_id) + sizeof(timeout) + sizeof(trace_id) + sizeof(req_sign);
+                header_size = ob_packet_header_size;
               }
 #endif
               buflen = packetlen - static_cast<int>(header_size);
@@ -140,6 +140,7 @@ namespace oceanbase
               else
               {
                 packet = new(buff)ObPacket();
+                // inner buffer
                 packet->set_packet_buffer(buff + sizeof(ObPacket), buflen);
 
                 packet->set_channel_id(chid);
@@ -183,8 +184,11 @@ namespace oceanbase
                               packet->get_packet_code(), err);
                     packet = NULL;
                   }
-                  TBSYS_LOG(DEBUG, "decode packet from network packet channel is %d packet code is %d, err=%d", packet->get_channel_id(),
+                  else
+                  {
+                    TBSYS_LOG(DEBUG, "decode packet from network packet channel is %d packet code is %d, err=%d", packet->get_channel_id(),
                             packet->get_packet_code(), err);
+                  }
                 }
                 else
                 {

@@ -267,5 +267,26 @@ namespace oceanbase
       //pos += range_.to_string(buf+pos, buf_len-pos);
       return pos;
     }
+
+    int ObSqlScanParam::assign(const ObSqlReadParam* other)
+    {
+      int ret = OB_SUCCESS;
+      CAST_TO_INHERITANCE(ObSqlScanParam);
+      reset();
+      if ((ret = ObSqlReadParam::assign(other)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign ObSqlReadParam failed, ret=%d", ret);
+      }
+      else
+      {
+        deep_copy_args_ = o_ptr->deep_copy_args_;
+        scan_flag_ = o_ptr->scan_flag_;
+        if ((ret = set_range(o_ptr->range_, true)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Add ObRowkey failed, ret=%d", ret);
+        }
+      }
+      return ret;
+    }
   } /* sql */
 } /* oceanbase */

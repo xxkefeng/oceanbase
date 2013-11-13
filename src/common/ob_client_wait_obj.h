@@ -26,9 +26,10 @@ namespace oceanbase
     struct ObClientWaitObj
     {
       ObClientWaitObj();
-      ~ObClientWaitObj();
+      virtual ~ObClientWaitObj();
       void before_post();
       void after_post(const int post_err);
+      virtual void handle_response(ObPacket* packet){ UNUSED(packet); }
       int receive_packet(ObPacket* packet);
       static int on_receive_response(easy_request_t* r);
       int wait(ObDataBuffer& response, const int64_t timeout_us);

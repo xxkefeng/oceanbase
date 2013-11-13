@@ -44,7 +44,7 @@
         { \
           TBSYS_LOG(LEVEL, "BT[%d] @[%s]", i, strings[i]); \
         } \
-        free(strings); \
+        ::free(strings);                        \
       } \
     } \
   } while (false)
@@ -93,6 +93,7 @@
 
 DEFINE_HAS_MEMBER(MAX_PRINTABLE_SIZE)
 DEFINE_HAS_MEMBER(to_cstring)
+DEFINE_HAS_MEMBER(reset)
 
 namespace oceanbase
 {
@@ -137,22 +138,6 @@ namespace oceanbase
     int mem_chunk_deserialize(const char* buf, int64_t len, int64_t& pos, char* data, int64_t data_len, int64_t& real_len);
     int64_t min(const int64_t x, const int64_t y);
     int64_t max(const int64_t x, const int64_t y);
-
-    struct TrivialAllocator
-    {
-      public:
-        TrivialAllocator(const int32_t mod_id = 0) : mod_id_(mod_id) {}
-        void* alloc(const int64_t nbyte)
-        {
-          return reinterpret_cast<char*>(ob_malloc(nbyte, mod_id_));
-        }
-        void free(void* ptr)
-        {
-          ob_free(ptr, mod_id_);
-        }
-      private:
-        int32_t mod_id_;
-    };
 
     int get_double_expand_size(int64_t &new_size, const int64_t limit_size);
     /**
@@ -225,6 +210,33 @@ namespace oceanbase
       }
     }
 
+    inline const char* get_peer_ip(easy_connection_t *c)
+    {
+      static char mess[8] = "unknown";
+      if (OB_LIKELY(NULL != c))
+      {
+        return inet_ntoa_r(c->addr);
+      }
+      else
+      {
+        return mess;
+      }
+    }
+
+    inline int get_fd(easy_request_t *req)
+    {
+      if (OB_LIKELY(NULL != req
+                    && NULL != req->ms
+                    && NULL != req->ms->c))
+      {
+        return req->ms->c->fd;
+      }
+      else
+      {
+        return -1;
+      }
+    }
+
     inline void init_easy_buf(easy_buf_t *buf, char* data, easy_request_t *req, uint64_t size)
     {
       if (NULL != buf && NULL != data)
@@ -284,6 +296,8 @@ namespace oceanbase
     }
     template <>
     int64_t to_string<ObString>(const ObString &obj, char *buffer, const int64_t buffer_size);
+    template <>
+    int64_t to_string<int64_t>(const int64_t &obj, char *buffer, const int64_t buffer_size);
 
     template <typename T, int64_t BUFFER_NUM>
     const char* to_cstring(const T &obj)
@@ -318,6 +332,8 @@ namespace oceanbase
 
     template <>
     const char* to_cstring<const char*>(const char* const& str);
+    template <>
+    const char* to_cstring<int64_t>(const int64_t &v);
 
     template <typename Allocator>
       int deep_copy_ob_string(Allocator& allocator, const ObString& src, ObString& dst)
@@ -405,6 +421,35 @@ namespace oceanbase
       bool locked_;
     };
 
+    struct CountReporter
+    {
+      CountReporter(const char* id, int64_t report_mod):
+        id_(id), seq_lock_(0), report_mod_(report_mod),
+        count_(0), start_ts_(0),
+        last_report_count_(0), last_report_time_(0) {}
+      ~CountReporter() {
+        TBSYS_LOG(INFO, "%s=%ld", id_, count_);
+      }
+      void inc() {
+        int64_t count = __sync_add_and_fetch(&count_, 1);
+        if (0 == (count % report_mod_))
+        {
+          SeqLockGuard lock_guard(seq_lock_);
+          int64_t cur_ts = tbsys::CTimeUtil::getTime();
+          TBSYS_LOG(INFO, "%s=%ld:%ld\n", id_, count, 1000000 * (count - last_report_count_)/(cur_ts - last_report_time_));
+          last_report_count_ = count;
+          last_report_time_ = cur_ts;
+        }
+      }
+      const char* id_;
+      uint64_t seq_lock_;
+      int64_t report_mod_;
+      int64_t count_;
+      int64_t start_ts_;
+      int64_t last_report_count_;
+      int64_t last_report_time_;
+    };
+
     inline int64_t get_cpu_num()
     {
       return sysconf(_SC_NPROCESSORS_ONLN);
@@ -435,14 +480,140 @@ namespace oceanbase
       return ret;
     }
 
+    inline const char *str_dml_type(const ObDmlType i)
+    {
+      const char *ret = "overflow";
+      static const char *str[] = {"unknow", "replace", "insert", "update", "delete"};
+      if (0 <= i && i < (int)sizeof(str))
+      {
+        ret = str[i];
+      }
+      return ret;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    
+    template <class T,
+              uint64_t N_THREAD = 1024>
+    class ObTSIArray
+    {
+      struct ThreadNode
+      {
+        T v;
+      } CACHE_ALIGNED;
+      public:
+        ObTSIArray() : thread_num_(0)
+        {
+          int tmp_ret = pthread_key_create(&key_, NULL);
+          if (0 != tmp_ret)
+          {
+            TBSYS_LOG(ERROR, "pthread_key_create fail ret=%d", tmp_ret);
+          }
+        };
+        ~ObTSIArray()
+        {
+          pthread_key_delete(key_);
+        };
+      public:
+        T &get_tsi()
+        {
+          volatile ThreadNode* thread_node = (volatile ThreadNode*)pthread_getspecific(key_);
+          if (NULL == thread_node)
+          {
+            thread_node = &array_[__sync_fetch_and_add(&thread_num_, 1) % N_THREAD];
+            int tmp_ret = pthread_setspecific(key_, (void*)thread_node);
+            if (0 != tmp_ret)
+            {
+              TBSYS_LOG(ERROR, "pthread_setspecific fail ret=%d", tmp_ret);
+            }
+          }
+          return (T&)(thread_node->v);
+        };
+        const T &at(const uint64_t i) const
+        {
+          return (const T&)array_[i % N_THREAD].v;
+        };
+        T &at(const uint64_t i)
+        {
+          return (T&)array_[i % N_THREAD].v;
+        };
+        uint64_t get_thread_num() const
+        {
+          return thread_num_;
+        };
+        uint64_t get_thread_num()
+        {
+          return thread_num_;
+        };
+      private:
+        pthread_key_t key_                    CACHE_ALIGNED;
+        volatile uint64_t thread_num_         CACHE_ALIGNED;
+        volatile ThreadNode array_[N_THREAD]  CACHE_ALIGNED;
+    };
+
 #define REACH_TIME_INTERVAL(i) \
   ({ \
     bool bret = false; \
-    static int64_t last_time = 0; \
+    static volatile int64_t last_time = 0; \
     int64_t cur_time = tbsys::CTimeUtil::getTime(); \
     int64_t old_time = last_time; \
     if ((i + last_time) < cur_time \
         && old_time == ATOMIC_CAS(&last_time, old_time, cur_time)) \
+    { \
+      bret = true; \
+    } \
+    bret; \
+  })
+
+// exclusive first time
+#define REACH_TIME_INTERVAL_RANGE(i, j) \
+  ({ \
+    bool bret = false; \
+    static volatile int64_t last_time = tbsys::CTimeUtil::getTime(); \
+    int64_t cur_time = tbsys::CTimeUtil::getTime(); \
+    int64_t old_time = last_time; \
+    if ((j + last_time) < cur_time) \
+    { \
+      ATOMIC_CAS(&last_time, old_time, cur_time); \
+    } \
+    old_time = last_time; \
+    if ((i + last_time) < cur_time \
+        && old_time == ATOMIC_CAS(&last_time, old_time, cur_time)) \
+    { \
+      bret = true; \
+    } \
+    bret; \
+  })
+
+#define TC_REACH_TIME_INTERVAL(i) \
+  ({ \
+    bool bret = false; \
+    static __thread int64_t last_time = 0; \
+    int64_t cur_time = tbsys::CTimeUtil::getTime(); \
+    if ((i + last_time) < cur_time) \
+    { \
+      last_time = cur_time; \
+      bret = true; \
+    } \
+    bret; \
+  })
+
+#define REACH_COUNT_INTERVAL(i) \
+  ({ \
+    bool bret = false; \
+    static volatile int64_t count = 0; \
+    if (0 == (ATOMIC_ADD(&count, 1) % i)) \
+    { \
+      bret = true; \
+    } \
+    bret; \
+  })
+
+#define TC_REACH_COUNT_INTERVAL(i) \
+  ({ \
+    bool bret = false; \
+    static __thread int64_t count = 0; \
+    if (0 == (++count % i)) \
     { \
       bret = true; \
     } \

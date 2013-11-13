@@ -15,15 +15,17 @@
 #include "common/ob_range.h"
 #include "common/ob_tablet_info.h"
 #include "common/ob_log_entry.h"
-#include "rootserver/ob_chunk_server_manager.h"
 #include "common/ob_ups_info.h"
 #include "common/roottable/ob_tablet_meta_table_row.h"
+#include "ob_chunk_server_manager.h"
 namespace oceanbase
 {
   namespace rootserver
   {
     class ObRootLogManager;
     class ObRootServer2;
+    class ObRootBalancer;
+
     class ObRootLogWorker
     {
       public:
@@ -31,6 +33,7 @@ namespace oceanbase
 
       public:
         void set_root_server(ObRootServer2* root_server);
+        void set_balancer(ObRootBalancer* balancer);
         void set_log_manager(ObRootLogManager* log_manager);
         int apply(common::LogCommand cmd, const char* log_data, const int64_t& data_len);
 
@@ -41,12 +44,17 @@ namespace oceanbase
         int sync_schema(const int64_t timestamp);
         int regist_cs(const common::ObServer& server, const char* server_version, const int64_t timestamp);
         int regist_ms(const common::ObServer& server, int32_t sql_port, const char* server_version, const int64_t timestamp);
+        int regist_lms(const common::ObServer& server, int32_t sql_port, const char* server_version, const int64_t timestamp);
         int server_is_down(const common::ObServer& server, const int64_t timestamp);
         int report_cs_load(const common::ObServer& server, const int64_t capacity, const int64_t used);
-        int cs_migrate_done(const common::ObNewRange& range, const common::ObServer& src_server, const common::ObServer& dest_server,
-            const bool keep_src, const int64_t tablet_version);
+        int cs_migrate_done(const int32_t result, const ObDataSourceDesc& desc,
+            const int64_t occupy_size, const uint64_t crc_sum, const uint64_t row_checksum, const int64_t row_count);
         int report_tablets(const common::ObServer& server, const common::ObTabletReportInfoList& tablets, const int64_t timestamp);
+        int add_range_for_load_data(const common::ObTabletReportInfoList& tablets);
         int remove_table(const common::ObArray<uint64_t> &deleted_tables);
+        int add_load_table(const ObString& table_name, const uint64_t table_id, const uint64_t old_table_id,
+            const common::ObString& uri, const int64_t start_time, const int64_t tablet_version);
+        int delete_load_table(const uint64_t table_id, const int32_t status, const int64_t end_time);
         int remove_replica(const common::ObTabletReportInfo & replica);
         int delete_replicas(const common::ObServer& server, const common::ObTabletReportInfoList& replicas);
         int add_new_tablet(const common::ObTabletInfo tablet, const common::ObArray<int32_t> &chunkservers, const int64_t mem_version);
@@ -54,9 +62,12 @@ namespace oceanbase
             int** server_indexs, int* count, const int64_t mem_version);
         int cs_merge_over(const common::ObServer& server, const int64_t timestamp);
 
+        int set_frozen_version_for_brodcast(const int64_t bypass_version);
         int sync_us_frozen_version(const int64_t frozen_version, const int64_t last_frozen_time);
         int set_ups_list(const common::ObUpsList &ups_list);
         int init_first_meta(const common::ObTabletMetaTableRow &first_meta_row);
+
+        int clean_root_table();
         int got_config_version(int64_t config_version);
       private:
         int log_server(const common::LogCommand cmd, const common::ObServer& server);
@@ -65,18 +76,23 @@ namespace oceanbase
 
       public:
         int do_check_point(const char* log_data, const int64_t& log_length);
+        int do_set_bypass_version(const char* log_data, const int64_t& log_length);
         int do_schema_sync(const char* log_data, const int64_t& log_length);
         int do_cs_regist(const char* log_data, const int64_t& log_length);
         int do_ms_regist(const char* log_data, const int64_t& log_length);
+        int do_lms_regist(const char* log_data, const int64_t& log_length);
         int do_server_down(const char* log_data, const int64_t& log_length);
         int do_cs_load_report(const char* log_data, const int64_t& log_length);
         int do_cs_migrate_done(const char* log_data, const int64_t& log_length);
 
         int do_init_first_meta_row(const char* log_data, const int64_t& log_length);
         int do_report_tablets(const char* log_data, const int64_t& log_length);
+        int do_add_range_for_load_data(const char* log_data, const int64_t& log_length);
         int do_remove_replica(const char* log_data, const int64_t& log_length);
         int do_delete_replicas(const char* log_data, const int64_t& log_length);
         int do_remove_table(const char* log_data, const int64_t& log_length);
+        int do_add_load_table(const char* log_data, const int64_t& log_length);
+        int do_delete_load_table(const char* log_data, const int64_t& log_length);
 
         int do_add_new_tablet(const char* log_data, const int64_t& log_length);
         int do_batch_add_new_tablet(const char* log_data, const int64_t& log_length);
@@ -91,11 +107,13 @@ namespace oceanbase
         int do_set_ups_list(const char* log_data, const int64_t& log_length);
 
         int do_got_config_version(const char* log_data, const int64_t& log_length);
+        int do_clean_root_table(const char* log_data, const int64_t& log_length);
 
         void exit();
 
       private:
         ObRootServer2* root_server_;
+        ObRootBalancer* balancer_;
         ObRootLogManager* log_manager_;
     };
   } /* rootserver */

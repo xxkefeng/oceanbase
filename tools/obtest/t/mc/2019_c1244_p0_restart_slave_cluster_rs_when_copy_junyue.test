@@ -29,17 +29,17 @@ deploy ob1.start_check;
 # wait for slave ob create tablet
 sleep 60;
 
-deploy ob1.check_cs_sstable 200;
-deploy ob2.check_cs_sstable 200;
+deploy ob1.check_cs_sstable 202;
+deploy ob2.check_cs_sstable 202;
 
 alter system set tablet_replicas_num=2 server_type=rootserver;
-deploy ob1.cs3.check_log_until_success "begin migrate_tablet";
+deploy ob1.cs3.check_log_until_success "begin migrate data";
 
 deploy ob2.rs0.restart;
 sleep 10;
 deploy ob2.rs0.set_obi_role OBI_SLAVE;
 sleep 120;
-deploy ob1.check_cs_sstable 400;
-deploy ob2.check_cs_sstable 400;
+deploy ob1.check_cs_sstable 404;
+deploy ob2.check_cs_sstable 404;
 sleep 30;
 deploy ob1.stop_check;

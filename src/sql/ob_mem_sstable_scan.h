@@ -17,9 +17,11 @@
 #ifndef _OB_MEM_SSTABLE_SCAN_H
 #define _OB_MEM_SSTABLE_SCAN_H 1
 
+#include "common/ob_row.h"
+#include "common/ob_row_desc.h"
+#include "common/ob_row_store.h"
 #include "ob_phy_operator.h"
 #include "ob_values.h"
-#include "ob_table_rpc_scan.h"
 namespace oceanbase
 {
   namespace sql
@@ -29,7 +31,8 @@ namespace oceanbase
       public:
         ObMemSSTableScan();
         virtual ~ObMemSSTableScan();
-
+        virtual void reset();
+        virtual void reuse();
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
@@ -38,16 +41,16 @@ namespace oceanbase
         virtual int get_next_row(const common::ObRow *&row);
         virtual int close();
         virtual ObPhyOperatorType get_type() const;
-        void set_tmp_table(ObValues *tmp_table) {tmp_table_ = tmp_table;};
+        void set_tmp_table(uint64_t subquery_id) {tmp_table_subquery_ = subquery_id;};
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
-
       private:
-        ObRow cur_row_;
-        ObRowDesc cur_row_desc_;
-        ObRowStore row_store_;
+        common::ObRow cur_row_;
+        common::ObRowDesc cur_row_desc_;
+        common::ObRowStore row_store_;
         bool from_deserialize_;
-        ObValues *tmp_table_;
+        uint64_t tmp_table_subquery_;
     };
   }
 }

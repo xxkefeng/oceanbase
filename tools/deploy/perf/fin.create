@@ -6,7 +6,7 @@ extension2 varchar(32),
 req_extension varchar(4000),
 res_extension varchar(4000),
 gmt_create datetime,
-gmt_modified datetime);
+gmt_modified datetime) compress_method = 'none';
 
 ## table 2
 create table fin_influx_inst(
@@ -21,7 +21,7 @@ inst_result_description varchar(256),
 gmt_settle datetime,
 gmt_resp datetime,
 gmt_create datetime,
-gmt_modified datetime);
+gmt_modified datetime) compress_method = 'none';
 
 ## table 3 fin_settle_serial_map
 create table fin_settle_serial_map(
@@ -32,7 +32,7 @@ finance_exchange_code varchar(32),
 gmt_create datetime,
 gmt_modified datetime,
 primary key(settle_serial_no, finance_exchange_code)
-);
+) compress_method = 'none';
 
 ## table 4 fin_influx_terminal
 create table fin_influx_terminal(
@@ -52,7 +52,7 @@ exchange_amount    int,
 exchange_currency  char(3),
 extension     varchar(4000),
 primary key(influx_id, term_trace_no)
-);
+) compress_method = 'none';
 
 ## table 5 fin_info_transaction
 create table fin_info_transaction(
@@ -73,7 +73,7 @@ result_code     varchar(16),
 result_description      varchar(256),
 inst_result_code        varchar(16),
 inst_result_description varchar(256)
-);
+) compress_method = 'none';
 
 ## table 6 fin_influx_terminal_unique
 create table fin_influx_terminal_unique(
@@ -85,7 +85,7 @@ term_trace_no   varchar(6),
 gmt_create      datetime,
 gmt_modified    datetime,
 primary key(inst_id, term_batch_no, inst_merchant_no, term_trace_no, inst_terminal_no)
-);
+) compress_method = 'none';
 
 
 ## table 7 fin_request_no_unique
@@ -96,7 +96,7 @@ gmt_create      datetime,
 gmt_modified    datetime,
 influx_id       varchar(64),
 primary key(request_identify, request_biz_no)
-);
+) compress_method = 'none';
 
 
 ## table 8 fin_settle_serial_unique
@@ -106,7 +106,7 @@ settle_serial_no        varchar(64),
 gmt_create      datetime,
 gmt_modified    datetime,
 primary key(finance_exchange_code, settle_serial_no)
-);
+) compress_method = 'none';
 
 ## table 9 fin_influx_transaction
 create table fin_influx_transaction(
@@ -146,7 +146,7 @@ gmt_settle      datetime,
 gmt_create      datetime,
 gmt_modified    datetime,
 primary key(payer_account_no, gmt_create, influx_id)
-);
+) compress_method = 'none';
 
 ### table 10 idx_influxid_pay_account_no
 
@@ -156,7 +156,7 @@ gmt_create datetime,
 gmt_modified datetime,
 influx_id       varchar(64),
 primary key(influx_id)
-);
+) compress_method = 'none';
 
 
 ### table 11 fin_influx_payer
@@ -182,7 +182,7 @@ bill_type       varchar(8),
 gmt_create      datetime,
 gmt_modified    datetime,
 primary key(inst_account_no, gmt_create, influx_id)
-);
+) compress_method = 'none';
 
 
 
@@ -194,7 +194,7 @@ gmt_create      datetime,
 influx_id       varchar(64),
 virtual_col1    int,
 primary key(bill_no,payer_account_no,gmt_create,influx_id)
-);
+) compress_method = 'none';
 # bill_no+inst_account_no+gmt_create+influx_id+influx_id
 
 ## table 13 idx2_fin_influx_payer
@@ -205,4 +205,4 @@ payer_account_no varchar(32),
 influx_id       varchar(64),
 virtual_col1    int,
 primary key(inst_account_no,payer_account_no,gmt_create,influx_id)
-);
+) compress_method = 'none';

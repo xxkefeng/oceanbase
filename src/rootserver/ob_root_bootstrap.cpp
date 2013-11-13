@@ -376,6 +376,19 @@ int ObBootstrap::bootstrap_sys_tables(void)
       TBSYS_LOG(WARN, "failed to create table for __all_server_stat, err=%d", ret);
     }
   }
+
+  // create table __all_server_session
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = ObExtraTablesSchema::all_server_session_schema(table_schema)))
+    {
+      TBSYS_LOG(WARN, "failed to get schema of __all_server_session, err=%d", ret);
+    }
+    else if (OB_SUCCESS != (ret = create_sys_table(table_schema)))
+    {
+      TBSYS_LOG(WARN, "failed to create table for __all_server_session, err=%d", ret);
+    }
+  }
   // create table __all_sys_config_stat
   if (OB_SUCCESS == ret)
   {
@@ -386,6 +399,18 @@ int ObBootstrap::bootstrap_sys_tables(void)
     else if (OB_SUCCESS != (ret = create_sys_table(table_schema)))
     {
       TBSYS_LOG(WARN, "failed to create empty tablet for __all_sys_config_stat, err=%d", ret);
+    }
+  }
+  // create table __all_statement
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = ObExtraTablesSchema::all_statement_schema(table_schema)))
+    {
+      TBSYS_LOG(WARN, "failed to get schema of __all_statement, err=%d", ret);
+    }
+    else if (OB_SUCCESS != (ret = create_sys_table(table_schema)))
+    {
+      TBSYS_LOG(WARN, "failed to create table for __all_statement, err=%d", ret);
     }
   }
   return ret;
@@ -490,7 +515,9 @@ int ObBootstrap::init_all_cluster()
   else
   {
     ObServer server;
-    ObRootMsProvider ms_provider(root_server_.get_server_manager());
+    ObRootMsProvider ms_provider(const_cast<ObChunkServerManager&>(root_server_.get_server_manager()));
+    ms_provider.init(const_cast<ObRootServerConfig&>(config),
+        const_cast<ObRootRpcStub&>(root_server_.get_rpc_stub()));
     for (int64_t i = 0; i < config.retry_times; i++)
     {
       if (OB_SUCCESS != (ret = ms_provider.get_ms(server)))
@@ -638,9 +665,9 @@ int ObBootstrap::init_all_sys_stat()
   return ret;
 }
 
-const char* svn_version();
-const char* build_date();
-const char* build_time();
+extern const char* svn_version();
+extern const char* build_date();
+extern const char* build_time();
 
 int ObBootstrap::init_all_sys_param()
 {
@@ -736,10 +763,10 @@ int ObBootstrap::init_all_sys_param()
     INSERT_ALL_SYS_PARAM_ROW(
         ret,
         acc,
-        "ob_read_consistency",
+        OB_READ_CONSISTENCY,
         ObIntType,
-        "1",
-        "");
+        "3",
+        "read consistency level:4=STRONG, 3=WEAK, 2=FROZEN, 1=STATIC, 0=NONE");
     char version_comment[256];
     snprintf(version_comment, 256, "OceanBase %s (r%s) (Built %s %s)",
              PACKAGE_VERSION, svn_version(), build_date(), build_time());
@@ -764,6 +791,36 @@ int ObBootstrap::init_all_sys_param()
         ObBoolType,
         "true",
         "");
+    char query_timeout_str[64];
+    snprintf(query_timeout_str, 64, "%ld", OB_DEFAULT_STMT_TIMEOUT);
+    INSERT_ALL_SYS_PARAM_ROW(
+        ret,
+        acc,
+        OB_QUERY_TIMEOUT_PARAM,
+        ObIntType,
+        query_timeout_str,
+        "Query timeout in microsecond(us)");
+    INSERT_ALL_SYS_PARAM_ROW(
+        ret,
+        acc,
+        "wait_timeout",
+        ObIntType,
+        "0",
+        "The number of seconds the server waits for activity on a noninteractive connection before closing it.");
+    INSERT_ALL_SYS_PARAM_ROW(
+        ret,
+        acc,
+        "interactive_timeout",
+        ObIntType,
+        "0",
+        "The number of seconds the server waits for activity on an interactive connection before closing it.");
+    INSERT_ALL_SYS_PARAM_ROW(
+        ret,
+        acc,
+        "ob_charset",
+        ObVarcharType,
+        "gbk",
+        "The Character set return to client");
 #undef INSERT_ALL_SYS_PARAM_ROW
   }
   return ret;

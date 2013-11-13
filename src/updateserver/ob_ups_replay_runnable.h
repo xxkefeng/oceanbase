@@ -52,7 +52,6 @@ namespace oceanbase
         bool wait_start();
         // 等待线程结束
         void stop();
-        void wait();
         virtual void clear();
         void set_replay_wait_time_us(const int64_t wait_time){ replay_wait_time_us_ = wait_time; }
         void set_fetch_log_wait_time_us(const int64_t wait_time){ fetch_log_wait_time_us_ = wait_time; }

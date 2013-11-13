@@ -19,6 +19,7 @@ namespace oceanbase
       void set_insert_table(uint64_t id);
       void set_insert_query(uint64_t id);
       void set_replace(bool is_replace);
+      void set_values_size(int64_t size);
       int add_value_row(oceanbase::common::ObArray<uint64_t>& value_row);
       bool is_replace() const;
       uint64_t get_table_id() const;
@@ -56,6 +57,11 @@ namespace oceanbase
       {
         set_stmt_type(ObBasicStmt::T_INSERT);
       }
+    }
+
+    inline void ObInsertStmt::set_values_size(int64_t size)
+    {
+      return value_vectors_.reserve(size);
     }
 
     inline bool ObInsertStmt::is_replace() const

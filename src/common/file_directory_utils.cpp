@@ -254,7 +254,7 @@ namespace oceanbase
         bRet = false;
       }
 
-      while (!readdir_r (dir, &dirent, &result) && result && bRet)
+      while (bRet && !readdir_r (dir, &dirent, &result) && result)
       {
         char *name = result->d_name;
         if (((name[0] == '.') && (name[1] == '\0'))

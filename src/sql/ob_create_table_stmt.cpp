@@ -26,9 +26,10 @@ ObCreateTableStmt::ObCreateTableStmt(ObStringBuf* name_pool)
   next_column_id_ = OB_APP_MIN_COLUMN_ID;
   tablet_max_size_ = -1; //FIX ME
   tablet_block_size_ = -1;
+  table_id_ = OB_INVALID_ID;
   replica_num_ = OB_SAFE_COPY_COUNT;
   use_bloom_filter_ = false;
-  read_static_ = false;
+  consistency_level_ = NO_CONSISTENCY;
   if_not_exists_ = false;
 }
 
@@ -67,6 +68,34 @@ int ObCreateTableStmt::set_table_name(ResultPlan& result_plan, const ObString& t
   return ret;
 }
 
+int ObCreateTableStmt::set_table_id(ResultPlan& result_plan, const uint64_t table_id)
+{
+  int& ret = result_plan.err_stat_.err_code_ = OB_SUCCESS;
+  ObSchemaChecker* schema_checker = NULL;
+  schema_checker = static_cast<ObSchemaChecker*>(result_plan.schema_checker_);
+  if (schema_checker == NULL)
+  {
+    ret = OB_ERR_SCHEMA_UNSET;
+    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG, "schema(s) are not set");
+  }
+  else if (schema_checker->get_table_schema(table_id) != NULL)
+  {
+    ret = OB_ERR_TABLE_DUPLICATE;
+    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG, 
+             "Table with id=%lu already exists", table_id);
+  }
+  else
+  {
+    table_id_ = table_id;
+  }
+  return ret;
+}
+
+int ObCreateTableStmt::set_join_info(const common::ObString& join_info)
+{
+  return ob_write_string(*name_pool_, join_info, join_info_);
+}
+
 int ObCreateTableStmt::set_expire_info(const common::ObString& expire_info)
 {
   return ob_write_string(*name_pool_, expire_info, expire_info_);
@@ -75,6 +104,11 @@ int ObCreateTableStmt::set_expire_info(const common::ObString& expire_info)
 int ObCreateTableStmt::set_compress_method(const common::ObString& compress_method)
 {
   return ob_write_string(*name_pool_, compress_method, compress_method_);
+}
+
+int ObCreateTableStmt::set_comment_str(const common::ObString& comment_str)
+{
+  return ob_write_string(*name_pool_, comment_str, comment_str_);
 }
 
 int ObCreateTableStmt::add_primary_key_part(ResultPlan& result_plan, const ObString& column_name)

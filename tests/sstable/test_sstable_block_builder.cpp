@@ -172,7 +172,8 @@ void build_rowkey_info(ObRowkeyInfo& rowkey_info)
 
         ret = block_builder.init();
         EXPECT_TRUE(OB_SUCCESS == ret);
-        ret = block_builder.add_row(row);
+        uint64_t row_checksum = 0;
+        ret = block_builder.add_row(row, row_checksum);
         EXPECT_TRUE(OB_SUCCESS == ret);
 
         EXPECT_EQ(1, block_builder.get_row_count());
@@ -197,7 +198,7 @@ void build_rowkey_info(ObRowkeyInfo& rowkey_info)
         row.add_obj(tmp_obj);
         EXPECT_EQ(3+key.get_obj_cnt(), row.get_obj_count());
        
-        ret = block_builder.add_row(row);
+        ret = block_builder.add_row(row, row_checksum);
         EXPECT_TRUE(OB_ERROR == ret);
       }
 
@@ -242,7 +243,8 @@ void build_rowkey_info(ObRowkeyInfo& rowkey_info)
             break;
           }
           build_row(i, row);
-          ret = block_builder.add_row(row);
+          uint64_t row_checksum = 0;
+          ret = block_builder.add_row(row, row_checksum);
           if (ret == OB_SUCCESS)
           {
             i++;
@@ -281,7 +283,8 @@ void build_rowkey_info(ObRowkeyInfo& rowkey_info)
         while (true)
         {
           build_row(i, row);
-          ret = block_builder.add_row(row);
+          uint64_t row_checksum = 0;
+          ret = block_builder.add_row(row, row_checksum);
           ASSERT_EQ(ret , OB_SUCCESS);
 
           i++;
@@ -315,7 +318,9 @@ void build_rowkey_info(ObRowkeyInfo& rowkey_info)
 
         ret = block_builder.init();
         EXPECT_TRUE(OB_SUCCESS == ret);
-        ret = block_builder.add_row(row);
+        
+        uint64_t row_checksum = 0;
+        ret = block_builder.add_row(row, row_checksum);
         EXPECT_TRUE(OB_ERROR == ret);
       }
 
@@ -361,7 +366,8 @@ void build_rowkey_info(ObRowkeyInfo& rowkey_info)
         ret = block_builder.init();
         EXPECT_TRUE(OB_SUCCESS == ret);
         build_large_row(row);
-        ret = block_builder.add_row(row);
+        uint64_t row_checksum = 0;
+        ret = block_builder.add_row(row, row_checksum);
         //fprintf(stderr, "block buffer size is %ld\n", block_builder.get_block_data_size()
         //      + block_builder.get_row_index_size());
         EXPECT_TRUE(OB_SUCCESS == ret);
@@ -438,7 +444,8 @@ void build_rowkey_info(ObRowkeyInfo& rowkey_info)
             row.add_obj(tmp_obj);
           }
 
-          ret = block_builder.add_row(row);
+          uint64_t row_checksum = 0;
+          ret = block_builder.add_row(row, row_checksum);
           EXPECT_TRUE(ret == OB_SUCCESS);
 
           i++;

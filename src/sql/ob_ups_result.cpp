@@ -83,7 +83,7 @@ namespace oceanbase
     int ObUpsResult::set_scanner(const ObNewScanner &scanner)
     {
       int ret = OB_SUCCESS;
-      char *buffer = (char*)allocator_.alloc(OB_MAX_PACKET_LENGTH);
+      char *buffer = (char*)allocator_.alloc(scanner.get_serialize_size());
       int64_t pos = 0;
       if (NULL == buffer)
       {
@@ -160,6 +160,9 @@ namespace oceanbase
       warning_iter_ = NULL;
       warning_count_ = 0;
       scanner_.reuse(); // TODO wait scanner support set_allocator
+      scanner_sel_buffer_ = 0;
+      scanner_sel_length_ = 0;
+      trans_id_.reset();
     }
 
     int ObUpsResult::serialize_warning_list_(char* buf, const int64_t buf_len, int64_t& pos) const

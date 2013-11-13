@@ -14,7 +14,7 @@
  *     - This is a shared library used to invoke google perf tools start and stop
  */
 
-#include "profiler.h"
+#include <google/profiler.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>

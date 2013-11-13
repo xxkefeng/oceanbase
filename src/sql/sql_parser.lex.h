@@ -221,6 +221,7 @@ void yyfree (void * ,yyscan_t yyscanner );
 #ifdef YY_HEADER_EXPORT_START_CONDITIONS
 #define INITIAL 0
 #define hint 1
+#define sq 2
 
 #endif
 
@@ -338,9 +339,9 @@ extern int yylex \
 #undef YY_DECL
 #endif
 
-#line 665 "sql_parser.l"
+#line 769 "sql_parser.l"
 
 
-#line 345 "sql_parser.lex.h"
+#line 346 "sql_parser.lex.h"
 #undef yyIN_HEADER
 #endif /* yyHEADER_H */

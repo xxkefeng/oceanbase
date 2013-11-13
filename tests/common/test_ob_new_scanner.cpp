@@ -109,6 +109,7 @@ TEST(TestObNewScanner, add_row_serialize)
   bool tmp_is_fulfilled = true;
   EXPECT_EQ(OB_SUCCESS, sc.set_is_req_fullfilled(tmp_is_fulfilled, 0));
   EXPECT_EQ(OB_SUCCESS, sc.serialize(buffer, 2048, pos));
+  EXPECT_EQ(sc.get_serialize_size(), pos);
   EXPECT_EQ(OB_SUCCESS, sc_dest.deserialize(buffer, 2048, pos_dest));
   EXPECT_EQ(pos, pos_dest);
   EXPECT_EQ(OB_SUCCESS, sc.get_range(sc_range));
@@ -314,6 +315,8 @@ TEST_F(ObNewScannerTest, serialize)
   char buf[1024];
   int64_t pos = 0;
   OK(new_scanner.serialize(buf, sizeof(buf), pos));
+  int64_t size = new_scanner.get_serialize_size();
+  ASSERT_EQ(size, pos);
 
   printf("serialize len [%ld]\n", pos);
 

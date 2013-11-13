@@ -458,7 +458,7 @@ namespace oceanbase
           uint8_t nv = ov | 0x01;
           if (ov == ATOMIC_CAS(&(init_units_[unit_pos]), ov, nv))
           {
-            int64_t ms_size = std::min((bucket_num_ - bucket_pos) * sizeof(Node), (uint64_t)INIT_UNIT_SIZE);
+            int64_t ms_size = std::min((bucket_num_ * sizeof(Node) - unit_pos * INIT_UNIT_SIZE), (uint64_t)INIT_UNIT_SIZE);
             memset((char*)buckets_ + unit_pos * INIT_UNIT_SIZE, -1, ms_size);
             ATOMIC_SUB(&uninit_unit_num_, 1);
             init_units_[unit_pos] = 0x80;

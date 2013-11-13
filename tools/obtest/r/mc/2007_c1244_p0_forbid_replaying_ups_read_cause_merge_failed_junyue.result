@@ -9,11 +9,11 @@ ob1.start_check 1 1000000
 ob1.major_freeze
 ob1.check_cs_version 2
 ob2.check_cs_version 2
-ob1.prepare m
+ob1.prepare
 ob1.major_freeze
 ob1.check_cs_version 3
 ob2.check_cs_version 3
-ob1.prepare m
+ob1.prepare
 ob1.major_freeze
 ob1.check_cs_version 4
 ob2.check_cs_version 4

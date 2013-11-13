@@ -39,11 +39,7 @@ namespace oceanbase
       fprintf(stderr, "SVN_VERSION: %s\n", svn_version());
       fprintf(stderr, "BUILD_TIME: %s %s\n", build_date(), build_time());
       fprintf(stderr, "BUILD_FLAGS: %s\n\n", build_flags());
-      fprintf(stderr, "Copyright (c) 2007-2012 Taobao Inc.\n");
-
-      TBSYS_LOG(INFO, "oceanbase-root start svn_version=[%s] "
-                "build_data=[%s] build_time=[%s]", svn_version(), build_date(),
-                build_time());
+      fprintf(stderr, "Copyright (c) 2007-2013 Taobao Inc.\n");
     }
 
     static const int START_REPORT_SIG = 49;
@@ -60,7 +56,10 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       char dump_config_path[OB_MAX_FILE_NAME_LENGTH];
-      print_version();
+
+      TBSYS_LOG(INFO, "oceanbase-root start svn_version=[%s] "
+                "build_date=[%s] build_time=[%s]", svn_version(), build_date(),
+                build_time());
 
       rs_reload_config_.set_root_server(worker.get_root_server());
 
@@ -158,6 +157,8 @@ namespace oceanbase
       {
         case SIGTERM:
         case SIGINT:
+          signal(SIGINT, SIG_IGN);
+          signal(SIGTERM, SIG_IGN);
           TBSYS_LOG(INFO, "stop signal received");
           worker.stop();
           break;

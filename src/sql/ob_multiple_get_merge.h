@@ -28,10 +28,13 @@ namespace oceanbase
       public:
         int open();
         int close();
+        virtual void reset();
+        virtual void reuse();
         int get_next_row(const ObRow *&row);
         enum ObPhyOperatorType get_type() const{return PHY_MULTIPLE_GET_MERGE;};
         int64_t to_string(char *buf, int64_t buf_len) const;
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         ObRow cur_row_;
     };

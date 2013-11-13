@@ -134,7 +134,7 @@ namespace
 }
 
 oceanbase::common::ObBaseMemPool::ObBaseMemPool()
-:mem_size_handled_(0), mem_size_limit_(INT64_MAX),mem_size_default_mod_(0),mem_size_each_mod_(NULL),mod_set_(NULL)
+:mem_size_handled_(0), mem_size_limit_(INT64_MAX),mem_size_default_mod_(),mem_size_each_mod_(NULL),mod_set_(NULL)
 {
 }
 
@@ -155,17 +155,17 @@ int64_t oceanbase::common::ObBaseMemPool::get_mod_memory_usage(int32_t mod_id)
   int64_t result = 0;
   if ((NULL == mod_set_)  || (NULL == mem_size_each_mod_))
   {
-    result = mem_size_default_mod_;
+    result = mem_size_default_mod_.value();
   }
   else
   {
     if (mod_id < 0 || mod_id >= mod_set_->get_max_mod_num())
     {
-      result = mem_size_each_mod_[0];
+      result = mem_size_each_mod_[0].value();
     }
     else
     {
-      result = mem_size_each_mod_[mod_id];
+      result = mem_size_each_mod_[mod_id].value();
     }
   }
   return result;
@@ -173,14 +173,14 @@ int64_t oceanbase::common::ObBaseMemPool::get_mod_memory_usage(int32_t mod_id)
 
 void oceanbase::common::ObBaseMemPool::print_mod_memory_usage(bool print_to_std)
 {
-  TBSYS_LOG(INFO, "[MEMORY] total=% 12ld direct_size=% 12ld direct_block=%ld",
+  TBSYS_LOG(INFO, "[MEMORY] total=% '15ld direct_size=% '15ld direct_block=%'ld",
             mem_size_handled_, direct_allocated_mem_size_, direct_allocated_block_num_);
   if ((NULL == mod_set_)  || (NULL == mem_size_each_mod_))
   {
-    TBSYS_LOG(INFO, "total used memory size:%ld", mem_size_default_mod_);
+    TBSYS_LOG(INFO, "total used memory size:%'ld", mem_size_default_mod_.value());
     if (print_to_std)
     {
-      fprintf(stderr, "total used memory size:%ld\n", static_cast<int64_t>(mem_size_default_mod_));
+      fprintf(stderr, "total used memory size:%'ld\n", mem_size_default_mod_.value());
     }
   }
   else
@@ -189,39 +189,22 @@ void oceanbase::common::ObBaseMemPool::print_mod_memory_usage(bool print_to_std)
     {
       if (mod_set_->get_mod_name(mod_idx) != NULL)
       {
-        if (mem_size_each_mod_[mod_idx] > 0)
+        int64_t cv = mem_size_each_mod_[mod_idx].value();
+        if (cv != 0)
         {
-          TBSYS_LOG(INFO, "[MEMORY] size=% 12ld mod=%s",
-                    mem_size_each_mod_[mod_idx], mod_set_->get_mod_name(mod_idx));
+          TBSYS_LOG(INFO, "[MEMORY] size=% '15ld mod=%s",
+                    cv, mod_set_->get_mod_name(mod_idx));
           if (print_to_std)
           {
-            fprintf(stderr, "module size static [mod:%s,size:%ld]\n", mod_set_->get_mod_name(mod_idx),
-                static_cast<int64_t>(mem_size_each_mod_[mod_idx]));
+            fprintf(stderr, "module size static [mod:%s,size:%'ld]\n",
+                mod_set_->get_mod_name(mod_idx), cv);
           }
         }
       }
     }
   }
-  //malloc_stats();
+  malloc_stats();
 }
-
-void oceanbase::common::ObBaseMemPool::mod_usage_update(const int64_t delta, const int32_t mod_id)
-{
-  int32_t real_mod_id = mod_id;
-  if ((NULL == mod_set_)  || (NULL == mem_size_each_mod_) )
-  {
-    __sync_fetch_and_add(&mem_size_default_mod_, delta);
-  }
-  else
-  {
-    if (mod_id <= 0 || mod_id >= mod_set_->get_max_mod_num())
-    {
-      real_mod_id = 0;
-    }
-    __sync_fetch_and_add(&mem_size_each_mod_[real_mod_id], delta);
-  }
-}
-
 void oceanbase::common::ObBaseMemPool::mod_malloc(const int64_t size, const int32_t mod_id)
 {
   mod_usage_update(size, mod_id);
@@ -237,14 +220,10 @@ int oceanbase::common::ObBaseMemPool::init(const ObMemPoolModSet * mod_set)
   int err = OB_SUCCESS;
   if (NULL != mod_set && mod_set->get_max_mod_num() > 0)
   {
-    mem_size_each_mod_ = new int64_t[mod_set->get_max_mod_num()];
+    mem_size_each_mod_ = new TCCounter[mod_set->get_max_mod_num()];
     if (NULL == mem_size_each_mod_)
     {
       err = OB_ALLOCATE_MEMORY_FAILED;
-    }
-    else
-    {
-      memset(mem_size_each_mod_, 0x00, sizeof(int64_t)*mod_set->get_max_mod_num());
     }
   }
   if (OB_SUCCESS == err)
@@ -274,7 +253,7 @@ int64_t oceanbase::common::ObBaseMemPool::set_memory_size_limit(const int64_t me
   return mem_size_limit_;
 }
 
-int64_t oceanbase::common::ObBaseMemPool::get_memory_size_limit()
+int64_t oceanbase::common::ObBaseMemPool::get_memory_size_limit() const
 {
   return mem_size_limit_;
 }
@@ -414,8 +393,8 @@ int64_t oceanbase::common::ObFixedMemPool::get_used_block_num() const
 
 void oceanbase::common::ObFixedMemPool::print_mod_memory_usage(bool print_to_std)
 {
-  TBSYS_LOG(INFO, "[MEMORY] mem_block_size=%ld item_size=%ld used_block=%ld free_block=%ld",
-            mem_block_size_, mem_fixed_item_size_, used_mem_block_num_, free_mem_block_num_);
+  TBSYS_LOG(INFO, "[MEMORY] mem_block_size=%ld item_size=%ld used_block=%ld free_block=%ld free_limit=%ld",
+            mem_block_size_, mem_fixed_item_size_, used_mem_block_num_, free_mem_block_num_, get_free_block_limit_());
   if (print_to_std)
   {
     fprintf(stderr, "module size static [used_mem_block_num_:%ld,free_mem_block_num_:%ld,"
@@ -596,7 +575,11 @@ void * oceanbase::common::ObFixedMemPool::malloc_(const int64_t nbyte,const int3
   errno = result_errno;
   return result;
 }
-
+static const int64_t MAX_FREE_BLOCK_LIMIT = 5*1024*1024*1024LL;
+int64_t  oceanbase::common::ObFixedMemPool::get_free_block_limit_() const
+{
+  return std::min(get_memory_size_limit()/2, MAX_FREE_BLOCK_LIMIT) / mem_block_size_;
+}
 
 void  oceanbase::common::ObFixedMemPool::free_(const void *ptr)
 {
@@ -631,7 +614,7 @@ void  oceanbase::common::ObFixedMemPool::free_(const void *ptr)
       block_info = item_info->mother_block_;
       if (!check_mem_pool_item_info(*item_info))
       {
-        TBSYS_LOG(ERROR, "memory corrupt [addr:%p,"
+        BACKTRACE(ERROR, true, "memory corrupt [addr:%p,"
                   "MemPoolItemInfo::magic_:%u,"
                   "MemPoolItemInfo::mother_block_:%p,"
                   "MemBlockInfo::magic_:%u,"
@@ -663,10 +646,21 @@ void  oceanbase::common::ObFixedMemPool::free_(const void *ptr)
         size_free = block_info->block_size_;
         if (block_info->ref_num_ == 0)
         {
-          block_info->block_link_.remove();
-          free_mem_block_list_.insert_next(block_info->block_link_);
-          free_mem_block_num_ ++;
-          used_mem_block_num_ --;
+          if (get_free_block_limit_() <= (free_mem_block_num_ + 1))
+          {
+            // we have cached too many blocks, free it directly
+            used_mem_block_num_ --;
+            mem_size_handled_ -= block_info->block_size_;
+            block_info->block_link_.remove();
+            need_free = true;
+          }
+          else
+          {
+            block_info->block_link_.remove();
+            free_mem_block_list_.insert_next(block_info->block_link_);
+            free_mem_block_num_ ++;
+            used_mem_block_num_ --;
+          }
         }
       }
     }

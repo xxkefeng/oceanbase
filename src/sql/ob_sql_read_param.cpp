@@ -13,7 +13,7 @@ namespace oceanbase
     ObSqlReadParam::ObSqlReadParam() :
       is_read_master_(0), is_result_cached_(0), data_version_(OB_NEWEST_DATA_VERSION),
       table_id_(OB_INVALID_ID), renamed_table_id_(OB_INVALID_ID), only_static_data_(false),
-      project_(), scalar_agg_(), group_(), group_columns_sort_(), limit_(), filter_(),
+      project_(), scalar_agg_(NULL), group_(NULL), group_columns_sort_(), limit_(), filter_(),
       has_project_(false), has_scalar_agg_(false), has_group_(false), has_group_columns_sort_(false),
       has_limit_(false), has_filter_(false)
     {
@@ -27,24 +27,35 @@ namespace oceanbase
       data_version_ = OB_NEWEST_DATA_VERSION;
       table_id_ = OB_INVALID_ID;
       renamed_table_id_ = OB_INVALID_ID;
-      project_.reset();
-      if (NULL != scalar_agg_)
+      if (has_scalar_agg_)
       {
-        scalar_agg_->reset();
+        if (NULL != scalar_agg_)
+        {
+          scalar_agg_->reset();
+        }
+        has_scalar_agg_ = false;
       }
-      if (NULL != group_)
+      if (has_group_)
       {
-        group_->reset();
+        if (NULL != group_)
+        {
+          group_->reset();
+        }
+        has_group_ = false;
       }
-
-      group_columns_sort_.reset();
-      limit_.reset();
+      if (has_limit_)
+      {
+        limit_.reset();
+        has_limit_ = false;
+      }
+      if (has_group_columns_sort_)
+      {
+        group_columns_sort_.reset();
+        has_group_columns_sort_ = false;
+      }
       filter_.reset();
+      project_.reset();
       has_project_ = false;
-      has_scalar_agg_ = false;
-      has_group_ = false;
-      has_group_columns_sort_ = false;
-      has_limit_ = false;
       has_filter_ = false;
     }
 
@@ -69,7 +80,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (OB_SUCCESS == ret)
       {
-        project_.assign(project);
+        project_.assign(&project);
         has_project_ = true;
       }
       return ret;
@@ -95,7 +106,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (OB_SUCCESS == ret)
       {
-        group_columns_sort_.assign(sort);
+        group_columns_sort_.assign(&sort);
         has_group_columns_sort_ = true;
       }
       return ret;
@@ -106,7 +117,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (OB_SUCCESS == ret)
       {
-        filter_.assign(filter);
+        filter_.assign(&filter);
         has_filter_ = true;
       }
       return ret;
@@ -139,6 +150,10 @@ namespace oceanbase
         if (NULL == group_)
         {
           group_ = OB_NEW(ObMergeGroupBy, ObModIds::OB_SQL_MERGE_GROUPBY);
+          if (group_)
+          {
+            group_->set_phy_plan(project_.get_phy_plan());
+          }
         }
         if (NULL == group_)
         {
@@ -179,6 +194,10 @@ namespace oceanbase
         if (NULL == scalar_agg_)
         {
           scalar_agg_ = OB_NEW(ObScalarAggregate, ObModIds::OB_SQL_SCALAR_AGGR);
+          if (scalar_agg_)
+          {
+            scalar_agg_->set_phy_plan(project_.get_phy_plan());
+          }
         }
         if (NULL == scalar_agg_)
         {
@@ -187,6 +206,7 @@ namespace oceanbase
         }
         else if ((ret = scalar_agg_->add_aggr_column(expr)) != OB_SUCCESS)
         {
+
           TBSYS_LOG(WARN, "Add aggregate function of ObSqlReadParam scalar aggregate operator failed. ret=%d", ret);
         }
       }
@@ -203,7 +223,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (OB_SUCCESS == ret)
       {
-        limit_.assign(limit);
+        limit_.assign(&limit);
         has_limit_ = true;
       }
       return ret;
@@ -228,7 +248,21 @@ namespace oceanbase
       return limit_;
     }
 
-
+    void ObSqlReadParam::set_phy_plan(ObPhysicalPlan *the_plan)
+    {
+      project_.set_phy_plan(the_plan);
+      if (scalar_agg_)
+      {
+        scalar_agg_->set_phy_plan(the_plan);
+      }
+      if (group_)
+      {
+        group_->set_phy_plan(the_plan);
+      }
+      group_columns_sort_.set_phy_plan(the_plan);
+      limit_.set_phy_plan(the_plan);
+      filter_.set_phy_plan(the_plan);
+    }
 
     ////////////////////// SERIALIZATION ///////////////////////
     int ObSqlReadParam::serialize_basic_param(char * buf, const int64_t buf_len, int64_t & pos) const
@@ -296,7 +330,6 @@ namespace oceanbase
           ret = OB_INVALID_ARGUMENT;
         }
       }
-
       if (OB_SUCCESS == ret)
       {
         obj.set_bool(only_static_data_);
@@ -305,7 +338,6 @@ namespace oceanbase
           TBSYS_LOG(WARN, "fail to serialize bool:ret[%d]", ret);
         }
       }
-
       return ret;
     }
 
@@ -449,7 +481,6 @@ namespace oceanbase
     {
       ObObj obj;
       int ret = OB_SUCCESS;
-
       // BASIC_PARAM_FIELD
       if (OB_SUCCESS == ret)
       {
@@ -723,7 +754,6 @@ namespace oceanbase
       // only_static_data
       obj.set_bool(only_static_data_);
       total_size += obj.get_serialize_size();
-
       return total_size;
     }
 
@@ -731,7 +761,6 @@ namespace oceanbase
     {
       ObObj obj;
       int64_t total_size = 0;
-
       // BASIC_PARAM_FIELD
       obj.set_ext(ObActionFlag::BASIC_PARAM_FIELD);
       total_size += obj.get_serialize_size();
@@ -792,7 +821,7 @@ namespace oceanbase
       has_project_ = other.has_project_;
       if (other.has_project_)
       {
-        project_.assign(other.project_);
+        project_.assign(&other.project_);
       }
       has_scalar_agg_ = other.has_scalar_agg_;
       if (other.has_scalar_agg_)
@@ -807,7 +836,7 @@ namespace oceanbase
         }
         else
         {
-          scalar_agg_->assign(*other.scalar_agg_);
+          scalar_agg_->assign(other.scalar_agg_);
         }
       }
       has_group_ = other.has_group_;
@@ -823,31 +852,39 @@ namespace oceanbase
         }
         else
         {
-          group_->assign(*other.group_);
+          group_->assign(other.group_);
         }
       }
       has_group_columns_sort_ = other.has_group_columns_sort_;
       if (other.has_group_columns_sort_)
       {
-        group_columns_sort_.assign(group_columns_sort_);
+        group_columns_sort_.assign(&group_columns_sort_);
       }
       has_filter_ = other.has_filter_;
       if (other.has_filter_)
       {
-        filter_.assign(other.filter_);
+        filter_.assign(&other.filter_);
       }
       has_limit_ = other.has_limit_;
       if (other.has_limit_)
       {
-        limit_.assign(other.limit_);
+        limit_.assign(&other.limit_);
       }
+      this->set_phy_plan(const_cast<ObSqlReadParam*>(&other)->project_.get_phy_plan());
       return *this;
     }
 
     int64_t ObSqlReadParam::to_string(char *buf, const int64_t buf_len) const
     {
       int64_t pos = 0;
-      databuff_printf(buf, buf_len, pos, "tid=%lu ", table_id_);
+      if (OB_INVALID_ID == table_id_)
+      {
+        databuff_printf(buf, buf_len, pos, "tid=%lu ", table_id_);
+      }
+      else
+      {
+        databuff_printf(buf, buf_len, pos, "tid=NULL ");
+      }
       if (has_limit_)
         databuff_print_obj(buf, buf_len, pos, limit_);
       if (has_scalar_agg_)
@@ -861,6 +898,101 @@ namespace oceanbase
       if (has_project_)
         databuff_print_obj(buf, buf_len, pos, project_);
       return pos;
+    }
+
+    int ObSqlReadParam::assign(const ObSqlReadParam* other)
+    {
+      int ret = OB_SUCCESS;
+      CAST_TO_INHERITANCE(ObSqlReadParam);
+      is_read_master_ = o_ptr->is_read_master_;
+      is_result_cached_ = o_ptr->is_result_cached_;
+      data_version_ = o_ptr->data_version_;
+      table_id_ = o_ptr->table_id_;
+      renamed_table_id_ = o_ptr->renamed_table_id_;
+      only_static_data_ = o_ptr->only_static_data_;
+      if (ret == OB_SUCCESS && o_ptr->has_project_)
+      {
+        has_project_ = o_ptr->has_project_;
+        if ((ret = project_.assign(&o_ptr->project_)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Assign ObProject failed, ret=%d", ret);
+        }
+      }
+      if (ret == OB_SUCCESS && o_ptr->has_scalar_agg_)
+      {
+        has_scalar_agg_ = o_ptr->has_scalar_agg_;
+        if (!scalar_agg_)
+        {
+          scalar_agg_ = OB_NEW(ObScalarAggregate, ObModIds::OB_SQL_MERGE_GROUPBY);
+          if (scalar_agg_)
+          {
+            scalar_agg_->set_phy_plan(project_.get_phy_plan());
+          }
+          else
+          {
+            ret = OB_ALLOCATE_MEMORY_FAILED;
+            TBSYS_LOG(WARN, "failed to alloc memory");
+          }
+        }
+        if (ret == OB_SUCCESS && (ret = scalar_agg_->assign(o_ptr->scalar_agg_)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Assign ObScalarAggregate failed, ret=%d", ret);
+        }
+      }
+      if (ret == OB_SUCCESS && o_ptr->has_group_)
+      {
+        has_group_ = o_ptr->has_group_;
+        if (!group_)
+        {
+          group_ = OB_NEW(ObMergeGroupBy, ObModIds::OB_SQL_MERGE_GROUPBY);
+          if (group_)
+          {
+            group_->set_phy_plan(project_.get_phy_plan());
+          }
+          else
+          {
+            ret = OB_ALLOCATE_MEMORY_FAILED;
+            TBSYS_LOG(WARN, "failed to alloc memory");
+          }
+        }
+        if (ret == OB_SUCCESS && (ret = group_->assign(o_ptr->group_)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Assign ObMergeGroupBy failed, ret=%d", ret);
+        }
+      }
+      if (ret == OB_SUCCESS && o_ptr->has_group_columns_sort_)
+      {
+        has_group_columns_sort_ = o_ptr->has_group_columns_sort_;
+        if ((ret = group_columns_sort_.assign(&o_ptr->group_columns_sort_)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Assign ObSort failed, ret=%d", ret);
+        }
+      }
+      if (ret == OB_SUCCESS && o_ptr->has_group_columns_sort_)
+      {
+        has_group_columns_sort_ = o_ptr->has_group_columns_sort_;
+        if ((ret = group_columns_sort_.assign(&o_ptr->group_columns_sort_)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Assign ObSort failed, ret=%d", ret);
+        }
+      }
+      if (ret == OB_SUCCESS && o_ptr->has_limit_)
+      {
+        has_limit_ = o_ptr->has_limit_;
+        if ((ret = limit_.assign(&o_ptr->limit_)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Assign ObLimit failed, ret=%d", ret);
+        }
+      }
+      if (ret == OB_SUCCESS && o_ptr->has_filter_)
+      {
+        has_filter_ = o_ptr->has_filter_;
+        if ((ret = filter_.assign(&o_ptr->filter_)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Assign filter_ failed, ret=%d", ret);
+        }
+      }
+      return ret;
     }
 
   } /* sql */

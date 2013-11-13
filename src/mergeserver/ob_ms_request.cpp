@@ -35,7 +35,7 @@ void ObMergerRequest::request_used_time(const ObMergerRpcEvent * rpc)
     ObMergerServerCounter * counter = GET_TSI_MULT(ObMergerServerCounter, SERVER_COUNTER_ID);
     if (counter != NULL)
     {
-      counter->inc(rpc->get_server(), rpc->get_time_used() / 1000);
+      counter->inc(rpc->get_server(), rpc->get_time_used() / 100);
     }
   }
 }

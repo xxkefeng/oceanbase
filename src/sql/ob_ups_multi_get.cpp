@@ -26,7 +26,7 @@ ObUpsMultiGet::ObUpsMultiGet()
   rpc_proxy_(NULL),
   got_row_count_(0),
   row_desc_(NULL),
-  network_timeout_(0)
+  ts_timeout_us_(0)
 {
 }
 
@@ -34,14 +34,30 @@ ObUpsMultiGet::~ObUpsMultiGet()
 {
 }
 
+void ObUpsMultiGet::reset()
+{
+  get_param_ = NULL;
+  cur_new_scanner_.clear();
+  got_row_count_ = 0;
+  row_desc_ = NULL;
+}
+
+void ObUpsMultiGet::reuse()
+{
+  get_param_ = NULL;
+  cur_new_scanner_.reuse();
+  got_row_count_ = 0;
+  row_desc_ = NULL;
+}
+
 bool ObUpsMultiGet::check_inner_stat()
 {
   bool ret = false;
-  ret = NULL != get_param_ && NULL != rpc_proxy_ && NULL != row_desc_ && network_timeout_ > 0;
+  ret = NULL != get_param_ && NULL != rpc_proxy_ && NULL != row_desc_ && ts_timeout_us_ > 0;
   if(!ret)
   {
-    TBSYS_LOG(WARN, "get_param_[%p], rpc_proxy_[%p], row_desc_[%p], network_timeout_[%ld]",
-      get_param_, rpc_proxy_, row_desc_, network_timeout_);
+    TBSYS_LOG(WARN, "get_param_[%p], rpc_proxy_[%p], row_desc_[%p], ts_timeout_us_[%ld]",
+      get_param_, rpc_proxy_, row_desc_, ts_timeout_us_);
   }
   return ret;
 }
@@ -53,6 +69,12 @@ int ObUpsMultiGet::set_child(int32_t child_idx, ObPhyOperator &child_operator)
   UNUSED(child_operator);
   TBSYS_LOG(WARN, "not implement");
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObUpsMultiGet, PHY_UPS_MULTI_GET);
+  }
 }
 
 int64_t ObUpsMultiGet::to_string(char* buf, const int64_t buf_len) const
@@ -81,24 +103,34 @@ int ObUpsMultiGet::open()
   {
     TBSYS_LOG(WARN, "construct next get param fail:ret[%d]", ret);
   }
-  else if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_get(cur_get_param_, cur_new_scanner_, network_timeout_)))
+
+  if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(WARN, "ups get rpc fail:ret[%d]", ret);
-  }
-  else if(OB_SUCCESS != (ret = cur_new_scanner_.get_is_req_fullfilled(is_fullfilled, fullfilled_row_num)))
-  {
-    TBSYS_LOG(WARN, "get is req fillfulled fail:ret[%d]", ret);
-  }
-  else
-  {
-    if(fullfilled_row_num > 0)
+    int64_t remain_us = 0;
+    if (is_timeout(&remain_us))
     {
-      got_row_count_ += fullfilled_row_num;
+      TBSYS_LOG(WARN, "process ups scan timeout, remain_us[%ld]", remain_us);
+      ret = OB_PROCESS_TIMEOUT;
     }
-    else if(!is_fullfilled)
+    else if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_get(cur_get_param_, cur_new_scanner_, remain_us)))
     {
-      ret = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(WARN, "get no item:ret[%d]", ret);
+      TBSYS_LOG(WARN, "ups get rpc fail:ret[%d]", ret);
+    }
+    else if(OB_SUCCESS != (ret = cur_new_scanner_.get_is_req_fullfilled(is_fullfilled, fullfilled_row_num)))
+    {
+      TBSYS_LOG(WARN, "get is req fillfulled fail:ret[%d]", ret);
+    }
+    else
+    {
+      if(fullfilled_row_num > 0)
+      {
+        got_row_count_ += fullfilled_row_num;
+      }
+      else if(!is_fullfilled)
+      {
+        ret = OB_ERR_UNEXPECTED;
+        TBSYS_LOG(WARN, "get no item:ret[%d]", ret);
+      }
     }
   }
   return ret;
@@ -141,7 +173,7 @@ int ObUpsMultiGet::get_next_row(const ObRowkey *&rowkey, const ObRow *&row)
         {
           TBSYS_LOG(WARN, "construct next get param fail:ret[%d]", ret);
         }
-        else if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_get(cur_get_param_, cur_new_scanner_, network_timeout_)))
+        else if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_get(cur_get_param_, cur_new_scanner_, ts_timeout_us_)))
         {
           TBSYS_LOG(WARN, "ups get rpc fail:ret[%d]", ret);
         }
@@ -219,15 +251,6 @@ int ObUpsMultiGet::next_get_param()
   return ret;
 }
 
-
-void ObUpsMultiGet::reset()
-{
-  get_param_ = NULL;
-  cur_new_scanner_.reuse();
-  got_row_count_ = 0;
-  row_desc_ = NULL;
-}
-
 void ObUpsMultiGet::set_row_desc(const ObRowDesc &row_desc)
 {
   row_desc_ = &row_desc;
@@ -240,4 +263,3 @@ int ObUpsMultiGet::get_row_desc(const common::ObRowDesc *&row_desc) const
   row_desc = row_desc_;
   return ret;
 }
-

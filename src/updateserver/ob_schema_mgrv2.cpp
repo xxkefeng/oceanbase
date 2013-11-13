@@ -119,6 +119,16 @@ namespace oceanbase
       return ret;
     }
 
+    int64_t CommonSchemaManagerWrapper::get_code_version() const
+    {
+      int64_t ret = 0;
+      if (NULL != schema_mgr_impl_)
+      {
+        ret = schema_mgr_impl_->get_code_version();
+      }
+      return ret;
+    }
+
     bool CommonSchemaManagerWrapper::parse_from_file(const char* file_name, tbsys::CConfig& config)
     {
       bool bret = false;
@@ -168,7 +178,8 @@ namespace oceanbase
       }
       else
       {
-        cur_schema_mgr_imp_->inc_ref_cnt();
+        cur_schema_mgr_imp_->born();
+        //cur_schema_mgr_imp_->inc_ref_cnt();
       }
     }
 
@@ -201,11 +212,13 @@ namespace oceanbase
         tmp_schema_mgr_imp->get_schema_mgr() = *schema_mgr;
         rwlock_.wrlock();
         UpsSchemaMgrImp *prev_schema_mgr_imp = cur_schema_mgr_imp_;
-        tmp_schema_mgr_imp->inc_ref_cnt();
+        tmp_schema_mgr_imp->born();
+        //tmp_schema_mgr_imp->inc_ref_cnt();
         cur_schema_mgr_imp_ = tmp_schema_mgr_imp;
         g_conf.global_schema_version = schema_mgr->get_version();
         if (NULL != prev_schema_mgr_imp
-            && 0 == prev_schema_mgr_imp->dec_ref_cnt())
+            && prev_schema_mgr_imp->end())
+            //&& 0 == prev_schema_mgr_imp->dec_ref_cnt())
         {
           delete prev_schema_mgr_imp;
           prev_schema_mgr_imp = NULL;
@@ -242,7 +255,8 @@ namespace oceanbase
       }
       else
       {
-        cur_schema_mgr_imp_->inc_ref_cnt();
+        cur_schema_mgr_imp_->ref();
+        //cur_schema_mgr_imp_->inc_ref_cnt();
         schema_handle = cur_schema_mgr_imp_;
       }
       rwlock_.unlock();
@@ -253,7 +267,8 @@ namespace oceanbase
     {
       rwlock_.rdlock();
       if (NULL != schema_handle
-          && 0 == schema_handle->dec_ref_cnt())
+          && schema_handle->deref())
+          //&& 0 == schema_handle->dec_ref_cnt())
       {
         delete schema_handle;
         schema_handle = NULL;

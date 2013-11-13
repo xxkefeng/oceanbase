@@ -4,7 +4,7 @@ create user 'u11' identified by '';
 ERROR HY000: password must not be empty
 set password for 'u1' = 'pass11';
 set password for 'u_notexist' = 'pass11';
-ERROR HY000: user not exist
+ERROR 01007: user not exist
 set password = 'pass111';
 set password = '';
 ERROR HY000: password must not be empty

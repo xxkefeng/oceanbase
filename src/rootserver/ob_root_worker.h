@@ -66,7 +66,7 @@ namespace oceanbase
          * @return int     return OB_SUCCESS if packet pushed, else return OB_ERROR
          */
         int handlePacket(common::ObPacket* packet);
-        //tbnet::IPacketHandler::HPRetCode handlePacket(tbnet::Connection *connection, tbnet::Packet *packet);
+        //tbnet::IPacketHandler::HPRetCode handlePacket(easy_request_t *connection, tbnet::Packet *packet);
         int handleBatchPacket(common::ObPacketQueue &packetQueue);
         bool handlePacketQueue(common::ObPacket *packet, void *args);
 
@@ -78,6 +78,8 @@ namespace oceanbase
         int create_eio();
 
         bool start_merge();
+
+        int submit_check_task_process();
         int submit_delete_tablets_task(const common::ObTabletReportInfoList& delete_list);
         int schedule_after_restart_task(const int64_t delay,bool repeate = false);
         int submit_restart_task();
@@ -101,13 +103,13 @@ namespace oceanbase
         int start_as_master();
         int start_as_slave();
         template <class Queue>
-        int submit_async_task_(const common::PacketCode pcode, Queue &qthread, int32_t task_queue_size,
-                               const common::ObDataBuffer *data_buffer = NULL,
-                               const common::ObPacket *packet = NULL);
+          int submit_async_task_(const common::PacketCode pcode, Queue &qthread, int32_t task_queue_size,
+              const common::ObDataBuffer *data_buffer = NULL,
+              const common::ObPacket *packet = NULL);
         template <class Queue>
-        int submit_async_task_(const common::PacketCode pcode, Queue &qthread, int32_t task_queue_size,
-                               const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req,
-                               const uint32_t channel_id, const int64_t timeout);
+          int submit_async_task_(const common::PacketCode pcode, Queue &qthread, int32_t task_queue_size,
+              const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req,
+              const uint32_t channel_id, const int64_t timeout);
 
         // notice that in_buff can not be const.
         int rt_get_update_server_info(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff,
@@ -117,6 +119,8 @@ namespace oceanbase
         int rt_scan(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_sql_scan(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_after_restart(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_write_schema_to_file(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_change_table_id(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_fetch_schema(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_fetch_schema_version(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_report_tablets(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
@@ -142,6 +146,7 @@ namespace oceanbase
         int rt_renew_lease(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_grant_lease(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_get_obi_role(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_get_boot_state(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_set_obi_role_to_slave(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_set_obi_role(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_get_last_frozen_version(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
@@ -165,19 +170,45 @@ namespace oceanbase
         int rt_cs_delete_tablets(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_delete_tablets(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_create_table(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_force_create_table(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_force_drop_table(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_alter_table(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_drop_table(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_execute_sql(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_handle_trigger_event(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_set_config(const int32_t version,
-                          common::ObDataBuffer& in_buff, easy_request_t* req,
-                          const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            common::ObDataBuffer& in_buff, easy_request_t* req,
+            const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int rt_get_config(const int32_t version,
-                          common::ObDataBuffer& in_buff, easy_request_t* req,
-                          const uint32_t channel_id, common::ObDataBuffer& out_buff);
+            common::ObDataBuffer& in_buff, easy_request_t* req,
+            const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        //bypass
+        int rt_check_task_process(const int32_t version, common::ObDataBuffer& in_buff,
+            easy_request_t* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+
+        int rt_prepare_bypass_process(const int32_t version, common::ObDataBuffer& in_buff,
+            easy_request_t* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_start_bypass_process(const int32_t version, common::ObDataBuffer& in_buff,
+            easy_request_t* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_cs_delete_table_done(const int32_t version, common::ObDataBuffer& in_buff,
+            easy_request_t* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rs_cs_load_bypass_sstable_done(const int32_t version, common::ObDataBuffer& in_buff,
+            easy_request_t* conn, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+
+        int rt_get_row_checksum(const int32_t version, common::ObDataBuffer& in_buff,
+            easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+
+        int rt_start_import(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_import(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_start_kill_import(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_kill_import(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_get_import_status(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_set_import_status(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
+        int rt_notify_switch_schema(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
       private:
         int do_stat(int stat_key, char *buf, const int64_t buf_len, int64_t& pos);
         int get_obi_role_from_master();
+        int get_boot_state_from_master();
         int do_admin_with_return(int admin_cmd);
         int do_admin_without_return(int admin_cmd);
         int slave_register_(common::ObFetchParam& fetch_param);

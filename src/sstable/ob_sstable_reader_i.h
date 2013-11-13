@@ -27,6 +27,7 @@ namespace oceanbase
   namespace common
   {
     class ObNewRange;
+    class BloomFilter;
   }
   namespace sstable
   {
@@ -44,6 +45,7 @@ namespace oceanbase
         virtual int64_t get_sstable_size() const = 0;
         virtual int64_t get_sstable_checksum() const = 0;
         virtual ObCompressor* get_decompressor() = 0;
+        virtual const common::BloomFilter* get_bloom_filter() const = 0;
     };
 
   }

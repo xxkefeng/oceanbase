@@ -115,8 +115,8 @@ int ObNewScanner::add_row(const ObRow &row)
   }
   if (cur_size_counter_ > mem_size_limit_)
   {
-    TBSYS_LOG(WARN, "scanner memory exceeds the limit."
-         "cur_size_counter_=%ld, mem_size_limit_=%ld", cur_size_counter_, mem_size_limit_);
+    //TBSYS_LOG(WARN, "scanner memory exceeds the limit."
+    //     "cur_size_counter_=%ld, mem_size_limit_=%ld", cur_size_counter_, mem_size_limit_);
     // rollback last added row
     if (OB_SUCCESS != row_store_.rollback_last_row()) // ret code ignored
     {
@@ -364,11 +364,47 @@ DEFINE_SERIALIZE(ObNewScanner)
   return ret;
 }
 
+
+int64_t ObNewScanner::get_meta_param_serialize_size() const
+{
+  int64_t ret = 0;
+  ObObj obj;
+  obj.set_ext(ObActionFlag::META_PARAM_FIELD);
+  ret += obj.get_serialize_size();
+  obj.set_int(cur_row_num_);
+  ret += obj.get_serialize_size();
+  ret += get_rowkey_obj_array_size(last_row_key_.ptr(), last_row_key_.get_obj_cnt());
+  return ret;
+}
+
 DEFINE_GET_SERIALIZE_SIZE(ObNewScanner)
 //int64_t ObNewScanner::get_serialize_size(void) const
 {
   int64_t ret = 0;
-  TBSYS_LOG(WARN, "SER size false" );
+  ObObj obj;
+  obj.set_ext(ObActionFlag::BASIC_PARAM_FIELD);
+  ret += obj.get_serialize_size();
+  obj.set_int(is_request_fullfilled_ ? 1 : 0);
+  ret += obj.get_serialize_size();
+  obj.set_int(fullfilled_row_num_);
+  ret += obj.get_serialize_size();
+  obj.set_int(data_version_);
+  ret += obj.get_serialize_size();
+  if (has_range_)
+  {
+    obj.set_ext(ObActionFlag::TABLET_RANGE_FIELD);
+    ret += obj.get_serialize_size();
+    obj.set_int(range_.border_flag_.get_data());
+    ret += obj.get_serialize_size();
+    ret += range_.start_key_.get_serialize_size();
+    ret += range_.end_key_.get_serialize_size();
+  }
+  ret += get_meta_param_serialize_size();
+  obj.set_ext(ObActionFlag::TABLE_PARAM_FIELD);
+  ret += obj.get_serialize_size();
+  ret += row_store_.get_serialize_size();
+  obj.set_ext(ObActionFlag::END_PARAM_FIELD);
+  ret += obj.get_serialize_size();
   return ret;
 }
 
@@ -722,8 +758,8 @@ int ObNewScanner::add_row(const ObRowkey &rowkey, const ObRow &row)
   }
   if (cur_size_counter_ > mem_size_limit_)
   {
-    TBSYS_LOG(WARN, "scanner memory exceeds the limit."
-         "cur_size_counter_=%ld, mem_size_limit_=%ld", cur_size_counter_, mem_size_limit_);
+    //TBSYS_LOG(WARN, "scanner memory exceeds the limit."
+    //     "cur_size_counter_=%ld, mem_size_limit_=%ld", cur_size_counter_, mem_size_limit_);
     // rollback last added row
     if (OB_SUCCESS != row_store_.rollback_last_row()) // ret code ignored
     {

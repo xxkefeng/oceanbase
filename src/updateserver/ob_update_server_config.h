@@ -29,15 +29,14 @@ namespace
 {
   static const int64_t GB_UNIT = 1024L * 1024L * 1024L; // GB
   static const int64_t MB_UNIT = 1024L * 1024L; // MB
-  static const int64_t MIN_ACTIVE_MEMTABLE_WITH_HASH = 2L<<30;
+  //static const int64_t MIN_ACTIVE_MEMTABLE_WITH_HASH = 2L<<30;
+  static const int64_t HASH_NODE_SIZE = 32;
 }
 
 namespace oceanbase
 {
   namespace updateserver
   {
-    #include "config_helper.h"
-
     class ObUpdateServerConfig
       : public common::ObServerConfig
     {
@@ -48,6 +47,7 @@ namespace oceanbase
         /* overwrite ObServerConfig functions */
         int read_config();
         int check_all();
+        int init();
 
         int64_t get_total_memory_limit(const int64_t phy_mem_size);
         void auto_config_memory(const int64_t total_memory_limit_gb);
@@ -65,16 +65,19 @@ namespace oceanbase
 
       public:
         DEF_INT(replay_worker_num, "0", "replay worker number"); /* calc later */
+        DEF_INT(commit_end_thread_num, "4", "number of thread to end session and response to client");
         DEF_INT(trans_thread_num, "0", "number of thread to process read/write transaction");  /* calc later */
         DEF_CAP(memtable_hash_buckets_size, "0", "number of hash index buckets"); /* calc later */
 
+        DEF_INT(high_prio_quota_percent, "50", "[0,100]", "percent of CPU time quota for high priorioty task");
+        DEF_INT(low_prio_quota_percent, "10", "[0,100]", "percent of CPU time quota for low priorioty task");
         DEF_INT(root_server_port, "2500", "(1024,65536)");
 
         DEF_STR(commit_log_dir, "data/ups_commitlog", "ups commit log directory");
         DEF_IP(lsync_ip, "0.0.0.0", "lsync ip address");
         DEF_INT(lsync_port, "3000", "(1024,65536)", "lsync listen port");
 
-        DEF_INT(io_thread_count, "3", "io thread number for libeasy");
+        DEF_INT(io_thread_count, "4", "io thread number for libeasy");
         DEF_INT(read_thread_count, "4", "read thread number");
         DEF_INT(store_thread_count, "3", "store thread number");
         DEF_INT(read_queue_size, "1000", "read queue size");
@@ -93,11 +96,12 @@ namespace oceanbase
         DEF_TIME(register_timeout, "3s", "register to root server timeout");
         DEF_TIME(replay_wait_time, "100ms", "replay retry wait time");
         DEF_TIME(fetch_log_wait_time, "500ms", "fetch log retry wait time");
-        DEF_TIME(log_sync_delay_warn_time_threshold, "500ms", "commit log delay beyond this value beyond this valud between master and slave ups will give an alarm");
+        DEF_TIME(log_sync_delay_warn_time_threshold, "500ms", "commit log delay beyond this value between master and slave ups will give an alarm");
+        DEF_TIME(log_sync_delay_tolerable_time_threshold, "5s", "commit log delay beyond this value between master and slave ups will be set to NOT_SYNC");
         DEF_TIME(log_sync_delay_warn_report_interval, "10s", "commit log delay alarm given interval");
         DEF_INT(max_n_lagged_log_allowed, "10000", "commit log laged count beyond this value beyond this valud between master and slave ups will give an alarm");
 
-        DEF_TIME(state_check_period, "500ms", "interval of slave to check sync-stat");
+        DEF_TIME(state_check_period, "50ms", "interval of slave to check sync-stat");
         DEF_INT(log_sync_type, "1", "sync log to disk");
         DEF_INT(log_sync_retry_times, "2", "log sync retry times");
 
@@ -126,15 +130,15 @@ namespace oceanbase
         DEF_INT(minor_num_limit, "0", "using major freeze instead if number minor version greater or equal to this value"); /* calc later */
         DEF_TIME(sstable_time_limit, "7d", "remove from memory and dump to trash directory if sstable stay in memory such time");
         DEF_STR(sstable_compressor_name, "none", "sstable compressor name");
-        DEF_CAP(sstable_block_size, "4K", "sstable block size");
+        DEF_CAP(sstable_block_size, "64K", "sstable block size");
         DEF_MOMENT(major_freeze_duty_time, "Disable", OB_CONFIG_DYNAMIC, "major freeze duty time");
-        DEF_TIME(min_major_freeze_interval, "1s", "minimal time to generate major freeze version");
+        DEF_TIME(min_major_freeze_interval, "3600s", "minimal time to generate major freeze version");
         DEF_BOOL(replay_checksum_flag, "True", "memtable checksum when replay");
         DEF_BOOL(allow_write_without_token, "True", "allow write without token");
 
         DEF_TIME(lsync_fetch_timeout, "5s", "fetch commit log timeout from lsync or master ups");
         DEF_TIME(refresh_lsync_addr_interval, "60s", "interval of slave to refresh lsyncserver-address");
-        DEF_INT(max_row_cell_num, "256", "compact cell when cell of row beyond this valud");
+        DEF_INT(max_row_cell_num, "32", "compact cell when cell of row beyond this value");
         DEF_CAP(table_available_warn_size, "0", "try drop frozen table if available table memory less than this value"); /* calc later */
         DEF_CAP(table_available_error_size, "0", "force drop frozen table and give an alarm if available table memory less than this value"); /* calc later */
 
@@ -142,10 +146,12 @@ namespace oceanbase
         DEF_BOOL(using_memtable_bloomfilter, "False", "using memtable bloomfilter");
         DEF_BOOL(write_sstable_use_dio, "True", "write sstable use dio");
 
+        DEF_TIME(keep_alive_interval, "500ms", "write NOP interval");
+        DEF_TIME(keep_alive_reregister_timeout, "800ms", "keep alive reregister timeout");
         DEF_TIME(keep_alive_timeout, "5s", "keep alive timeout");
         DEF_TIME(lease_timeout_in_advance, "500ms", "lease timeout in advance");
         DEF_BOOL(real_time_slave, "True", "whetch the server is a realtime slave ups");
-        DEF_INT(consistency_type, "2", "[1,3]", "consistency type of log-sync, 1: strong, 2: normal, 3: weak");
+        DEF_INT(consistency_type, "3", "[1,3]", "consistency type of log-sync, 1: strong, 2: normal, 3: weak");
 
         DEF_BOOL(using_static_cm_column_id, "False", "should treat 2 and 3 as create_time and modify_time column id");
         DEF_BOOL(using_hash_index, "True", "using hash index");
@@ -158,6 +164,17 @@ namespace oceanbase
         DEF_INT(wait_slave_sync_type, "0", "[0,2]", "0: response master ups before replay; 1: response master ups after replay before sync to disk; 2: response master ups after sync to disk");
         DEF_TIME(disk_warn_threshold, "5ms", "disk warn threshold");
         DEF_TIME(net_warn_threshold, "5ms", "net worn threshold");
+
+        DEF_STR(disk_delay_warn_param,  "40ms;800us;10;100000", "disk delay warn param");
+        DEF_STR(net_delay_warn_param,   "50ms;5ms;5;10000",     "net delay warn param");
+
+        DEF_INT(trans_thread_start_cpu, "-1", "start number of cpu, set affinity by transaction thread");
+        DEF_INT(trans_thread_end_cpu,   "-1", "end number of cpu, set affinity by transaction thread");
+
+        DEF_INT(io_thread_start_cpu, "-1", "start number of cpu, set affinity by io thread");
+        DEF_INT(io_thread_end_cpu,   "-1", "end number of cpu, set affinity by io thread");
+
+        DEF_INT(commit_bind_core_id, "-1", "commit thread will bind to this core(given configured core_id > 0)");
     };
   }
 }

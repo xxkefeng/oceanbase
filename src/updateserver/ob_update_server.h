@@ -66,6 +66,43 @@ namespace oceanbase
     class ObClientWrapper;
     typedef common::ObPointerArray<common::ObScanner, common::BatchPacketQueueThread::MAX_BATCH_NUM> ScannerArray;
 
+    struct ObSafeOnceGuard
+    {
+      ObSafeOnceGuard(int64_t timeout=-1): count_(0), cocurrent_count_(1), timeout_(timeout), last_launch_time_(0)
+      {}
+      ~ObSafeOnceGuard()
+      {}
+      bool launch_authorize()
+      {
+        bool ret = true;
+        int64_t cocurrent_count = 1;
+        int64_t cur_time = tbsys::CTimeUtil::getTime();
+        if (last_launch_time_ > 0 && timeout_ > 0 && last_launch_time_ + timeout_ < cur_time)
+        {
+          cocurrent_count = ++cocurrent_count_;
+        }
+        if (__sync_fetch_and_add(&count_, 1) >= cocurrent_count)
+        {
+          done();
+          ret = false;
+        }
+        return ret;
+      }
+      void launch_success()
+      {
+        last_launch_time_ = tbsys::CTimeUtil::getTime();
+      }
+      void launch_fail()
+      {}
+      void done()
+      {
+        cocurrent_count_ = __sync_fetch_and_add(&count_, -1);
+      }
+      int64_t count_;
+      int64_t cocurrent_count_;
+      int64_t timeout_;
+      int64_t last_launch_time_;
+    };
     class UpsWarmUpDuty : public common::ObTimerTask
     {
       static const int64_t MAX_DUTY_IDLE_TIME = 2000L * 1000L * 1000L; // 2000s
@@ -124,6 +161,8 @@ namespace oceanbase
     class ObUpdateServer
       : public common::ObBaseServer, public ObPacketQueueHandler, public common::IBatchPacketQueueHandler, public ObUtilInterface
     {
+      public:
+        const static int64_t RESPONSE_RESERVED_US = 60 * 1000 * 1000;
       friend class TransExecutor;
       public:
         ObUpdateServer(common::ObConfigManager &config_mgr,
@@ -149,6 +188,7 @@ namespace oceanbase
         virtual void stop();
         int wait_until_log_sync();
         bool is_master_lease_valid() const;
+        virtual void on_ioth_start();
       public:
         const common::ObClientManager& get_client_manager() const
         {
@@ -289,7 +329,7 @@ namespace oceanbase
 
         int submit_force_drop();
 
-        int submit_delay_drop();
+        int submit_delay_drop(const bool for_immediately = false);
 
         int submit_immediately_drop();
         int submit_replay_commit_log();
@@ -301,8 +341,9 @@ namespace oceanbase
         int submit_fake_write_for_keep_alive();
         int submit_update_schema();
         int submit_kill_zombie();
+        int submit_check_sstable_checksum(const uint64_t sstable_id, const uint64_t checksum);
 
-        void schedule_warm_up_duty();
+        void schedule_warm_up_duty(const bool for_immediately = false);
         int submit_load_bypass(const common::ObPacket *packet);
         int submit_check_cur_version();
 
@@ -355,7 +396,7 @@ namespace oceanbase
         int response_scanner(int32_t ret_code, ObPacket &pkt, common::ObScanner &scanner, ObDataBuffer &out_buffer);
         int response_scanner(int32_t ret_code, ObPacket &pkt, common::ObNewScanner &new_scanner, ObDataBuffer &out_buffer);
         int response_scanner(int32_t ret_code, ObPacket &pkt, common::ObCellNewScanner &new_scanner, ObDataBuffer &out_buffer);
-        int response_buffer(int32_t ret_code, ObPacket &pkt, common::ObDataBuffer &buffer);
+        int response_buffer(int32_t ret_code, ObPacket &pkt, common::ObDataBuffer &buffer, const char *ret_string = NULL);
       private:
         //add:
         int start_timer_schedule();
@@ -480,6 +521,7 @@ namespace oceanbase
         int ups_load_bypass(const int32_t version,
             easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff, const int pcode);
         int ups_check_cur_version();
+        int ups_commit_check_sstable_checksum(ObDataBuffer &buffer);
         int ups_get_bloomfilter(const int32_t version, common::ObDataBuffer& in_buff,
             easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff);
         int ups_store_memtable(const int32_t version, common::ObDataBuffer &in_buf,
@@ -497,6 +539,8 @@ namespace oceanbase
                                  easy_request_t* req, const uint32_t channel_id);
         int ups_stop_server(const int32_t version, common::ObDataBuffer& in_buff,
                                  easy_request_t* req, const uint32_t channel_id);
+        int ob_malloc_stress(const int32_t version, common::ObDataBuffer& in_buff,
+                             easy_request_t* req, const uint32_t channel_id);
         int ups_set_config(const int32_t version, common::ObDataBuffer& in_buff,
                            easy_request_t* req, const uint32_t channel_id);
         int ups_get_config(const int32_t version, easy_request_t* req,
@@ -507,7 +551,7 @@ namespace oceanbase
 
 
         int response_result_(int32_t ret_code, int32_t cmd_type, int32_t func_version,
-            easy_request_t* req, const uint32_t channel_id, const char *ret_string = NULL);
+                             easy_request_t* req, const uint32_t channel_id, int64_t receive_ts = 0, const char *ret_string = NULL);
         int response_scanner_(int32_t ret_code, const common::ObScanner &scanner,
             int32_t cmd_type, int32_t func_version,
             easy_request_t* req, const uint32_t channel_id,
@@ -524,9 +568,11 @@ namespace oceanbase
         int response_data_(int32_t ret_code, const T &data,
                           int32_t cmd_type, int32_t func_version,
                           easy_request_t* req, const uint32_t channel_id,
-                          common::ObDataBuffer& out_buff, const int32_t* priority = NULL);
+                           common::ObDataBuffer& out_buff, const int64_t receive_ts=0, const int32_t* priority = NULL, const char *ret_string = NULL);
         int low_priv_speed_control_(const int64_t scanner_size);
 
+        template <class Queue>
+        int submit_async_task_once_(ObSafeOnceGuard& guard, const PacketCode pcode, Queue& qthread, int32_t task_queue_size);
         template <class Queue>
         int submit_async_task_(const common::PacketCode pcode, Queue &qthread, int32_t &task_queue_size,
                               const common::ObDataBuffer *data_buffer = NULL,
@@ -565,9 +611,9 @@ namespace oceanbase
         static const int64_t LEASE_OFF = 0;
 
         static const int64_t DEFAULT_SLAVE_QUIT_TIMEOUT = 1000 * 1000; // 1s
-        static const int64_t DEFAULT_CHECK_LEASE_INTERVAL = 200 * 1000; //200ms
-        static const int64_t CHECK_KEEP_ALIVE_PERIOD = 200 * 1000;
-        static const int64_t GRANT_KEEP_ALIVE_PERIOD = 500 * 1000;
+        static const int64_t DEFAULT_CHECK_LEASE_INTERVAL = 50 * 1000;
+        static const int64_t CHECK_KEEP_ALIVE_PERIOD = 50 * 1000;
+        static const int64_t GRANT_KEEP_ALIVE_PERIOD = 50 * 1000;
 
         static const int64_t DEFAULT_GET_OBJ_ROLE_INTEGER = 1000 * 1000;
         static const int64_t SEG_STAT_TIMES = 1000;
@@ -576,7 +622,7 @@ namespace oceanbase
         static const int64_t DEFAULT_LEASE_TIMEOUT_IN_ADVANCE = 100 * 1000; //100ms
         static const int64_t DEFAULT_WAIT_FOR_ROLE_TIMEOUT = 180 * 1000 * 1000; //180s
         static const int64_t DEFAULT_BUFFER_LENGTH = 512;
-
+        static const int64_t DEFAULT_RESET_ASYNC_TASK_COUNT_TIMEOUT = 5 * 1000 * 1000;
       private:
         static const int64_t RPC_RETRY_TIMES = 3;             // rpc retry times used by client wrapper
         static const int64_t RPC_TIMEOUT = 2 * 1000L * 1000L; // rpc timeout used by client wrapper
@@ -594,7 +640,6 @@ namespace oceanbase
         common::PriorityPacketQueueThread read_thread_queue_; // for read task
         common::BatchPacketQueueThread write_thread_queue_; // for write task
         common::ObPacketQueueThread lease_thread_queue_; // for lease
-        common::ObPacketQueueThread log_thread_queue_;// useless queue
         common::ObPacketQueueThread store_thread_; // store sstable
         ObUpsFetchRunnable fetch_thread_;
         ObUpsReplayRunnable log_replay_thread_;
@@ -644,9 +689,9 @@ namespace oceanbase
         common::MsList ms_list_task_;
         //ObCommitLogReceiver clog_receiver_;
         //ObUpsFetchLsync fetch_lsync_;
-        volatile uint64_t grant_keep_alive_guard_;
-        volatile uint64_t check_keep_alive_guard_;
-        volatile uint64_t check_lease_guard_;
+        ObSafeOnceGuard grant_keep_alive_guard_;
+        ObSafeOnceGuard check_keep_alive_guard_;
+        ObSafeOnceGuard check_lease_guard_;
 
         int64_t start_trans_timestamp_;
         //bool is_first_log_;

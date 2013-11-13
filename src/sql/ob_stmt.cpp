@@ -9,7 +9,7 @@ using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
 ObStmt::ObStmt(ObStringBuf* name_pool, StmtType type)
-  : ObBasicStmt(type), name_pool_(name_pool)
+  : ObBasicStmt(type), name_pool_(name_pool), when_number_(OB_INVALID_INDEX)
 {
   // means no where conditions
   //where_expr_id_ = OB_INVALID_ID;
@@ -577,5 +577,11 @@ void ObStmt::print(FILE* fp, int32_t level, int32_t index)
     for (i = 0; i < where_expr_ids_.size(); i++)
       fprintf(fp, " <%lu>", where_expr_ids_[i]);
     fprintf(fp, "\n");
+  }
+
+  if (when_number_ != OB_INVALID_INDEX)
+  {
+    print_indentation(fp, level);
+    fprintf(fp, "WHEN NUMBER ::= %ld\n", when_number_);
   }
 }

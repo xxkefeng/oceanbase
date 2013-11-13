@@ -52,7 +52,8 @@ namespace oceanbase
         // function members
       private:
         // data members
-        common::ObObj cells_[MAX_COLUMNS_COUNT];
+        char cells_buffer_[MAX_COLUMNS_COUNT * sizeof(ObObj)];
+        common::ObObj *cells_;
         int16_t cells_count_;
         int16_t reserved1_;
         int32_t reserved2_;

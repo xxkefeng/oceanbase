@@ -20,7 +20,7 @@ namespace oceanbase
     class ObCBtreeTable
     {
     public:
-      ObCBtreeTable()
+      ObCBtreeTable(): cache_lock_(tbsys::WRITE_PRIORITY)
       {
       }
 
@@ -38,13 +38,13 @@ namespace oceanbase
       // get the value through string key
       // the key is constructed with (uint64_t table_id + ObString row_key)
       // at first convert the key to obRange type for btree compare with nodes
-      common::CacheItemHead * get(const common::ObString & key);
+      common::CacheItemHead * get(const common::ObNewRange & key);
 
       // remove a item after it's replaced
       void remove(common::CacheItemHead & item);
 
       // remove the value through string key
-      common::CacheItemHead * remove(const common::ObString & key);
+      common::CacheItemHead * remove(const common::ObNewRange & key);
 
       // get item num
       int64_t get_item_num(void) const;
@@ -181,12 +181,13 @@ namespace oceanbase
 
       private:
         // construct MapKey
-        int construct_mapkey(const common::ObString & key, MapKey & Key, common::CacheItemHead *& local);
+        int construct_mapkey(const common::ObNewRange & key, MapKey & Key, common::CacheItemHead *& local);
 
       private:
         DISALLOW_COPY_AND_ASSIGN(ObCBtreeTable);
         /// lock for cache logic
-        mutable tbsys::CThreadMutex cache_lock_;
+        tbsys::CRWLock cache_lock_;
+        //mutable tbsys::CThreadMutex cache_lock_;
         /// treemap implemention of common::ob_cache search engine
         ObBtreeMap<MapKey, common::CacheItemHead *> tree_map_;
         //ObStlMap<MapKey, common::CacheItemHead *> tree_map_;
@@ -195,7 +196,7 @@ namespace oceanbase
     template <class _key, class _value>
     int ObCBtreeTable<_key, _value>::init(int32_t slot_num)
     {
-      tbsys::CThreadGuard lock(&cache_lock_);
+      tbsys::CWLockGuard lock(cache_lock_);
       return tree_map_.create(slot_num);
     }
 
@@ -206,7 +207,7 @@ namespace oceanbase
       MapKey Key;
       Key.key_ = &item;
       old_item = NULL;
-      tbsys::CThreadGuard lock(&cache_lock_);
+      tbsys::CWLockGuard lock(cache_lock_);
       ret = tree_map_.set(Key, &item, old_item);
       if (ret != common::OB_SUCCESS)
       {
@@ -220,7 +221,7 @@ namespace oceanbase
     }
 
     template <class _key, class _value>
-    common::CacheItemHead * ObCBtreeTable<_key, _value>::get(const common::ObString & key)
+    common::CacheItemHead * ObCBtreeTable<_key, _value>::get(const common::ObNewRange & key)
     {
       common::CacheItemHead * result = NULL;
       MapKey Key;
@@ -233,7 +234,7 @@ namespace oceanbase
       else
       {
         Key.key_ = local;
-        tbsys::CThreadGuard lock(&cache_lock_);
+        tbsys::CRLockGuard lock(cache_lock_);
         ret = tree_map_.get(Key, result);
         if (result != NULL)
         {
@@ -243,7 +244,7 @@ namespace oceanbase
 
       if (local != NULL)
       {
-        ob_free(local);
+        ob_tc_free(local);
         local = NULL;
       }
       return result;
@@ -252,7 +253,7 @@ namespace oceanbase
     template <class _key, class _value>
     int64_t ObCBtreeTable<_key, _value>::get_item_num() const
     {
-      tbsys::CThreadGuard lock(&cache_lock_);
+      tbsys::CRLockGuard lock(cache_lock_);
       return tree_map_.size();
     }
 
@@ -262,45 +263,57 @@ namespace oceanbase
       MapKey Key;
       Key.key_ = &item;
       common::CacheItemHead * result = NULL;
-      tbsys::CThreadGuard lock(&cache_lock_);
+      tbsys::CWLockGuard lock(cache_lock_);
       tree_map_.erase(Key, result);
       // do not dec ref of result because of cache recycle procedure will do
     }
 
     template <class _key, class _value>
-    int ObCBtreeTable<_key, _value>::construct_mapkey(const common::ObString & key, MapKey & Key,
+    int ObCBtreeTable<_key, _value>::construct_mapkey(const common::ObNewRange & key, MapKey & Key,
       common::CacheItemHead *& local)
     {
       int ret = common::OB_SUCCESS;
+      /*
       int64_t size = key.length();
       if ((NULL == key.ptr()) || (0 == size))
       {
         TBSYS_LOG(ERROR, "check key ptr failed:key[%p]", key.ptr());
         ret = common::OB_INPUT_PARAM_ERROR;
       }
-      else
-      {
-        local = (common::CacheItemHead *)common::ob_malloc(sizeof(common::CacheItemHead) + size,
+      */
+      //else
+      //{
+        int64_t size = key.get_serialize_size();
+        local = (common::CacheItemHead *)common::ob_tc_malloc(sizeof(common::CacheItemHead) + size,
             oceanbase::common::ObModIds::OB_MS_LOCATION_CACHE);
         if (NULL == local)
         {
-          TBSYS_LOG(ERROR, "ob_malloc failed:size[%ld]", size);
+          TBSYS_LOG(ERROR, "ob_tc_malloc failed:size[%ld]", size);
           ret = common::OB_ALLOCATE_MEMORY_FAILED;
         }
-      }
+      //}
 
       // serialize range as key
       if (common::OB_SUCCESS == ret)
       {
-        memcpy(local->key_, key.ptr(), size);
-        local->key_size_ = static_cast<int32_t>(size);
-        Key.key_ = local;
+        int64_t pos = 0;
+        ret = key.serialize(local->key_, size, pos);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "serialize the range failed:ret[%d]", ret);
+        }
+        else
+        {
+          //memcpy(local->key_, key.ptr(), size);
+          local->key_size_ = static_cast<int32_t>(size);
+          Key.key_ = local;
+        }
       }
       return ret;
     }
 
     template <class _key, class _value>
-    common::CacheItemHead * ObCBtreeTable<_key, _value>::remove(const common::ObString & key)
+    common::CacheItemHead * ObCBtreeTable<_key, _value>::remove(const common::ObNewRange & key)
     {
       common::CacheItemHead * result = NULL;
       MapKey Key;
@@ -312,7 +325,7 @@ namespace oceanbase
       }
       else
       {
-        tbsys::CThreadGuard lock(&cache_lock_);
+        tbsys::CWLockGuard lock(cache_lock_);
         tree_map_.erase(Key, result);
         if (result != NULL)
         {
@@ -323,7 +336,7 @@ namespace oceanbase
       // free local data buffer
       if (local != NULL)
       {
-        ob_free(local);
+        ob_tc_free(local);
         local = NULL;
       }
       return result;

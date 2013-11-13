@@ -27,7 +27,8 @@ namespace oceanbase
       public:
         ObValues();
         virtual ~ObValues();
-
+        virtual void reset();
+        virtual void reuse();
         int set_row_desc(const common::ObRowDesc &row_desc);
         int add_values(const common::ObRow &value);
         const common::ObRowStore &get_row_store() {return row_store_;};
@@ -38,6 +39,7 @@ namespace oceanbase
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         enum ObPhyOperatorType get_type() const{return PHY_VALUES;}
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // types and constants

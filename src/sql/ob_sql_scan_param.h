@@ -57,6 +57,7 @@ namespace oceanbase
 
       inline void set_scan_flag(const ScanFlag flag) { scan_flag_ = flag; }
       inline ScanFlag get_scan_flag() const { return scan_flag_; }
+      virtual int assign(const ObSqlReadParam* other);
 
       NEED_SERIALIZE_AND_DESERIALIZE;
 

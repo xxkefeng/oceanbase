@@ -24,6 +24,7 @@
 #include "common/ob_tbnet_callback.h"
 #include "common/ob_trigger_msg.h"
 #include "common/ob_general_rpc_stub.h"
+#include "common/ob_data_source_desc.h"
 #include "rootserver/ob_root_callback.h"
 #include "rootserver/ob_root_worker.h"
 #include "rootserver/ob_root_admin_cmd.h"
@@ -38,11 +39,13 @@
 #include "common/ob_profile_type.h"
 #include "common/ob_common_stat.h"
 #include "sql/ob_sql_scan_param.h"
+#include "sql/ob_sql_get_param.h"
 #include <sys/types.h>
 #include <unistd.h>
 //#define PRESS_TEST
 #define __rs_debug__
 #include "common/debug.h"
+#include "common/ob_libeasy_mem_pool.h"
 
 namespace
 {
@@ -58,7 +61,7 @@ namespace oceanbase
 
     ObRootWorker::ObRootWorker(ObConfigManager &config_mgr, ObRootServerConfig &rs_config)
       : config_mgr_(config_mgr), config_(rs_config), is_registered_(false),
-        root_server_(config_), sql_proxy_(root_server_.get_server_manager(), rt_rpc_stub_)
+      root_server_(config_), sql_proxy_(const_cast<ObChunkServerManager&>(root_server_.get_server_manager()), const_cast<ObRootServerConfig&>(rs_config), const_cast<ObRootRpcStub&>(rt_rpc_stub_))
     {
       schema_version_ = 0;
     }
@@ -69,10 +72,12 @@ namespace oceanbase
     int ObRootWorker::create_eio()
     {
       int ret = OB_SUCCESS;
+      easy_pool_set_allocator(ob_easy_realloc);
       eio_ = easy_eio_create(eio_, io_thread_count_);
       eio_->do_signal = 0;
       eio_->force_destroy_second = OB_CONNECTION_FREE_TIME_S;
       eio_->checkdrc = 1;
+      eio_->no_redispatch = 1;
       if (NULL == eio_)
       {
         ret = OB_ERROR;
@@ -233,14 +238,14 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         if (OB_SUCCESS != (ret = ms_list_task_.init(
-                             rt_master_,
-                             &client_manager,
-                             false)))
+                rt_master_,
+                &client_manager,
+                false)))
         {
           TBSYS_LOG(ERROR, "init ms list failt, ret: [%d]", ret);
         }
         else if (OB_SUCCESS !=
-                 (ret = config_mgr_.init(ms_list_task_, client_manager, timer_)))
+                 (ret = config_mgr_.init(root_server_.get_ms_provider(), client_manager, timer_)))
         {
           TBSYS_LOG(ERROR, "init error, ret: [%d]", ret);
         }
@@ -295,7 +300,8 @@ namespace oceanbase
     {
       int ret = OB_ERROR;
       TBSYS_LOG(INFO, "[NOTICE] master start step1");
-      ret = log_manager_.init(&root_server_, &slave_mgr_);
+      root_server_.init_boot_state();
+      ret = log_manager_.init(&root_server_, &slave_mgr_, &get_root_server().get_self());
       if (ret == OB_SUCCESS)
       {
         // try to replay log
@@ -306,7 +312,6 @@ namespace oceanbase
           TBSYS_LOG(ERROR, "[NOTICE] master replay log failed, err=%d", ret);
         }
       }
-
       if (ret == OB_SUCCESS)
       {
         TBSYS_LOG(INFO, "[NOTICE] master start step3");
@@ -363,16 +368,20 @@ namespace oceanbase
       {
         log_thread_queue_.start();
         //read_thread_queue_.start();
-        err = log_manager_.init(&root_server_, &slave_mgr_);
+        err = log_manager_.init(&root_server_, &slave_mgr_, &get_root_server().get_self());
       }
       ObFetchParam fetch_param;
       if (err == OB_SUCCESS)
       {
         err = slave_register_(fetch_param);
       }
-
+      if (OB_SUCCESS == err)
+      {
+        err = get_boot_state_from_master();
+      }
       if (err == OB_SUCCESS)
       {
+        root_server_.init_boot_state();
         err = log_replay_thread_.init(log_manager_.get_log_dir_path(),
             fetch_param.min_log_id_, 0, &role_mgr_, NULL,
             config_.log_replay_wait_time);
@@ -388,6 +397,7 @@ namespace oceanbase
           fetch_thread_.set_limit_rate(config_.log_sync_limit);
           fetch_thread_.add_ckpt_ext(ObRootServer2::ROOT_TABLE_EXT); // add root table file
           fetch_thread_.add_ckpt_ext(ObRootServer2::CHUNKSERVER_LIST_EXT); // add chunkserver list file
+          fetch_thread_.add_ckpt_ext(ObRootServer2::LOAD_DATA_EXT); // add load data check point
           fetch_thread_.set_log_manager(&log_manager_);
           fetch_thread_.start();
           TBSYS_LOG(INFO, "slave fetch_thread started");
@@ -405,7 +415,7 @@ namespace oceanbase
       if (err == OB_SUCCESS)
       {
         role_mgr_.set_state(ObRoleMgr::ACTIVE);
-        root_server_.start_slave_rootserver();
+        //root_server_.init_boot_state();
         // we SHOULD start root_modifier after recover checkpoint
         root_server_.start_threads();
         TBSYS_LOG(INFO, "slave root_table_modifier, balance_worker, heartbeat_checker threads started");
@@ -446,15 +456,15 @@ namespace oceanbase
           TBSYS_LOG(INFO, "wait log_thread");
           log_thread_queue_.stop();
           log_thread_queue_.wait();
-          // log replay thread will stop itself when
-          // role switched to MASTER and nothing
-          // more to replay
           TBSYS_LOG(INFO, "wait fetch_thread");
           fetch_thread_.wait();
           role_mgr_.set_role(ObRoleMgr::MASTER);
 
           ObLogCursor replayed_cursor;
           ObLogCursor flushed_cursor;
+          // log replay thread will stop itself when
+          // role switched to MASTER and nothing
+          // more to replay
           if (OB_SUCCESS != (err = log_manager_.get_flushed_cursor(flushed_cursor)))
           {
             TBSYS_LOG(ERROR, "log_manager.get_flushed_cursor()=>%d", err);
@@ -474,12 +484,12 @@ namespace oceanbase
           else if (OB_SUCCESS != (err = log_manager_.start_log_maybe(replayed_cursor)))
           {
             TBSYS_LOG(ERROR, "log_manager.start_log(replayed[%s], flushed[%s])=>%d",
-                      to_cstring(replayed_cursor), to_cstring(flushed_cursor), err);
+                to_cstring(replayed_cursor), to_cstring(flushed_cursor), err);
           }
           else
           {
             TBSYS_LOG(INFO, "start_log_after_switch_to_master(replayed[%s], flushed[%s])",
-                      to_cstring(replayed_cursor), to_cstring(flushed_cursor));
+                to_cstring(replayed_cursor), to_cstring(flushed_cursor));
           }
           if (OB_SUCCESS != err)
           {
@@ -489,6 +499,11 @@ namespace oceanbase
           }
           read_thread_queue_.start();
           write_thread_queue_.start();
+          if (OB_SUCCESS == err)
+          {
+            err = root_server_.init_boot_state();
+          }
+
           if (OB_SUCCESS == err)
           {
             int64_t count = 0;
@@ -518,8 +533,8 @@ namespace oceanbase
             role_mgr_.set_state(ObRoleMgr::ACTIVE);
             TBSYS_LOG(INFO, "set stat to ACTIVE");
             is_registered_ = false;
-            TBSYS_LOG(WARN, "rootserver slave switched to master");
             root_server_.after_switch_to_master();
+            TBSYS_LOG(WARN, "rootserver slave switched to master");
           }
 
           if (err == OB_SUCCESS)
@@ -599,6 +614,42 @@ namespace oceanbase
       } // end while
       return ret;
     }
+    int ObRootWorker::get_boot_state_from_master()
+    {
+      int ret = OB_SUCCESS;
+      bool boot_ok = false;
+      const static int SLEEP_US_WHEN_INIT = 2000*1000; // 2s
+      while(true)
+      {
+        ret = rt_rpc_stub_.get_boot_state(rt_master_, config_.network_timeout, boot_ok);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "failed to get boot state from the master, err=%d", ret);
+          usleep(SLEEP_US_WHEN_INIT);
+        }
+        else if (boot_ok)
+        {
+          ret = root_server_.init_first_meta();
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(ERROR, "failed to init first meta file, err=%d", ret);
+          }
+          break;
+        }
+        else
+        {
+          break;
+        }
+        if (ObRoleMgr::STOP == role_mgr_.get_state()
+            || ObRoleMgr::ERROR == role_mgr_.get_state())
+        {
+          TBSYS_LOG(INFO, "server stopped, break");
+          ret = OB_ERROR;
+          break;
+        }
+      } // end while
+      return ret;
+    }
 
     void ObRootWorker::destroy()
     {
@@ -668,7 +719,7 @@ namespace oceanbase
       {
         ObDataBuffer buff(my_buffer->current(), my_buffer->remain());
         if (OB_SUCCESS != (ret = submit_async_task_(OB_RS_INNER_MSG_AFTER_RESTART, read_thread_queue_,
-                                                    (int32_t)config_.read_queue_size, &buff)))
+                (int32_t)config_.read_queue_size, &buff)))
         {
           TBSYS_LOG(WARN, "fail to submit async task to delete tablet. ret =%d", ret);
         }
@@ -697,7 +748,7 @@ namespace oceanbase
           TBSYS_LOG(WARN, "fail to serialize delete_list. ret=%d", ret);
         }
         else if (OB_SUCCESS != (ret = submit_async_task_(OB_RS_INNER_MSG_DELETE_TABLET, write_thread_queue_,
-                                                         (int32_t)config_.write_queue_size, &buff)))
+                (int32_t)config_.write_queue_size, &buff)))
         {
           TBSYS_LOG(WARN, "fail to submit async task to delete tablet. ret =%d", ret);
         }
@@ -726,7 +777,7 @@ namespace oceanbase
             {
               TBSYS_LOG(INFO, "receive new log");
             }
-            ps = log_thread_queue_.push(packet, (int32_t)config_.log_queue_size, false);
+            ps = log_thread_queue_.push(packet, (int32_t)config_.log_queue_size, false, false);
           }
           else
           {
@@ -738,6 +789,7 @@ namespace oceanbase
         case OB_GET_CONFIG:
         case OB_GET_MASTER_OBI_RS:
         case OB_GET_OBI_ROLE:
+        case OB_GET_BOOT_STATE:
         case OB_GET_UPS:
         case OB_GET_CS_LIST:
         case OB_GET_MS_LIST:
@@ -750,6 +802,12 @@ namespace oceanbase
         // master or slave can set
         case OB_SET_CONFIG:
         case OB_CHANGE_LOG_LEVEL:
+        case OB_GET_ROW_CHECKSUM:
+        case OB_RS_IMPORT:
+        case OB_RS_KILL_IMPORT:
+        case OB_RS_GET_IMPORT_STATUS:
+        case OB_RS_SET_IMPORT_STATUS:
+        case OB_RS_NOTIFY_SWITCH_SCHEMA:
           ps = read_thread_queue_.push(packet, (int32_t)config_.read_queue_size, false);
           break;
         case OB_REPORT_TABLETS:
@@ -758,16 +816,24 @@ namespace oceanbase
         case OB_MIGRATE_OVER:
         case OB_CREATE_TABLE:
         case OB_ALTER_TABLE:
+        case OB_FORCE_CREATE_TABLE_FOR_EMERGENCY:
+        case OB_FORCE_DROP_TABLE_FOR_EMERGENCY:
         case OB_DROP_TABLE:
         case OB_REPORT_CAPACITY_INFO:
         case OB_SLAVE_REG:
         case OB_WAITING_JOB_DONE:
+        case OB_RS_INNER_MSG_CHECK_TASK_PROCESS:
         case OB_CS_DELETE_TABLETS:
         case OB_UPDATE_SERVER_REPORT_FREEZE:
-          //the packet will cause write to b+ tree
+        case OB_RS_PREPARE_BYPASS_PROCESS:
+        case OB_RS_START_BYPASS_PROCESS:
+        case OB_CS_DELETE_TABLE_DONE:
+        case OB_CS_LOAD_BYPASS_SSTABLE_DONE:
+
+        //the packet will cause write to b+ tree
           if (ObRoleMgr::MASTER == role_mgr_.get_role())
           {
-            ps = write_thread_queue_.push(packet, (int32_t)config_.write_queue_size, false);
+            ps = write_thread_queue_.push(packet, (int32_t)config_.write_queue_size, false, false);
           }
           else
           {
@@ -778,6 +844,7 @@ namespace oceanbase
         case OB_SLAVE_QUIT:
         case OB_SET_OBI_ROLE:
         case OB_FETCH_SCHEMA:
+        case OB_WRITE_SCHEMA_TO_FILE:
         case OB_FETCH_SCHEMA_VERSION:
         case OB_RS_GET_LAST_FROZEN_VERSION:
         case OB_HEARTBEAT:
@@ -794,6 +861,7 @@ namespace oceanbase
         case OB_SET_UPS_CONFIG:
         case OB_SET_MASTER_UPS_CONFIG:
         case OB_CHANGE_UPS_MASTER:
+        case OB_CHANGE_TABLE_ID:
         case OB_CS_IMPORT_TABLETS:
         case OB_RS_SHUTDOWN_SERVERS:
         case OB_RS_RESTART_SERVERS:
@@ -801,9 +869,12 @@ namespace oceanbase
         case OB_RS_FORCE_CS_REPORT:
         case OB_RS_SPLIT_TABLET:
         case OB_HANDLE_TRIGGER_EVENT:
+        case OB_RS_ADMIN_START_IMPORT:
+        case OB_RS_ADMIN_START_KILL_IMPORT:
+
           if (ObRoleMgr::MASTER == role_mgr_.get_role())
           {
-            ps = read_thread_queue_.push(packet, (int32_t)config_.read_queue_size, false);
+            ps = read_thread_queue_.push(packet, (int32_t)config_.read_queue_size, false, false);
           }
           else
           {
@@ -920,70 +991,92 @@ namespace oceanbase
                   TBSYS_LOG(DEBUG, "handle packet, packe code is %d", packet_code);
                   switch(packet_code)
                   {
-                  case OB_REPORT_TABLETS:
-                    return_code = rt_report_tablets(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_SERVER_REGISTER:
-                    return_code = rt_register(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_MERGE_SERVER_REGISTER:
-                    return_code = rt_register_ms(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_MIGRATE_OVER:
-                    return_code = rt_migrate_over(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_CREATE_TABLE:
-                    return_code = rt_create_table(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_ALTER_TABLE:
-                    return_code = rt_alter_table(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_DROP_TABLE:
-                    return_code = rt_drop_table(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_REPORT_CAPACITY_INFO:
-                    return_code = rt_report_capacity_info(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_SLAVE_REG:
-                    return_code = rt_slave_register(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_WAITING_JOB_DONE:
-                    return_code = rt_waiting_job_done(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_CS_DELETE_TABLETS:
-                    return_code = rt_cs_delete_tablets(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_UPDATE_SERVER_REPORT_FREEZE:
-                    return_code = rt_update_server_report_freeze(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_RS_INNER_MSG_DELETE_TABLET:
-                    return_code = rt_delete_tablets(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_SET_OBI_ROLE_TO_SLAVE:
-                    return_code = rt_set_obi_role_to_slave(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  default:
-                    return_code = OB_ERROR;
-                    break;
+                    case OB_REPORT_TABLETS:
+                      return_code = rt_report_tablets(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_SERVER_REGISTER:
+                      return_code = rt_register(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_MERGE_SERVER_REGISTER:
+                      return_code = rt_register_ms(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_MIGRATE_OVER:
+                      return_code = rt_migrate_over(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_CREATE_TABLE:
+                      return_code = rt_create_table(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_FORCE_DROP_TABLE_FOR_EMERGENCY:
+                      return_code = rt_force_drop_table(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_FORCE_CREATE_TABLE_FOR_EMERGENCY:
+                      return_code = rt_force_create_table(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_ALTER_TABLE:
+                      return_code = rt_alter_table(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_DROP_TABLE:
+                      return_code = rt_drop_table(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_REPORT_CAPACITY_INFO:
+                      return_code = rt_report_capacity_info(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_SLAVE_REG:
+                      return_code = rt_slave_register(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_WAITING_JOB_DONE:
+                      return_code = rt_waiting_job_done(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_CS_DELETE_TABLETS:
+                      return_code = rt_cs_delete_tablets(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_UPDATE_SERVER_REPORT_FREEZE:
+                      return_code = rt_update_server_report_freeze(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_INNER_MSG_DELETE_TABLET:
+                      return_code = rt_delete_tablets(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_INNER_MSG_CHECK_TASK_PROCESS:
+                      TBSYS_LOG(INFO, "get inner msg to check bypass task process");
+                      return_code = rt_check_task_process(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_PREPARE_BYPASS_PROCESS:
+                      return_code = rt_prepare_bypass_process(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_START_BYPASS_PROCESS:
+                      return_code = rt_start_bypass_process(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_CS_DELETE_TABLE_DONE:
+                      return_code = rt_cs_delete_table_done(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_CS_LOAD_BYPASS_SSTABLE_DONE:
+                      return_code = rs_cs_load_bypass_sstable_done(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_SET_OBI_ROLE_TO_SLAVE:
+                      return_code = rt_set_obi_role_to_slave(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    default:
+                      return_code = OB_ERROR;
+                      break;
                   }
                 }
                 else if ((void*)LOG_THREAD_FLAG == args)
                 {
                   switch(packet_code)
                   {
-                  case OB_GRANT_LEASE_REQUEST:
-                    return_code = rt_grant_lease(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_SEND_LOG:
-                    in_buf->get_limit() = in_buf->get_position() + ob_packet->get_data_length();
-                    return_code = rt_slave_write_log(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  case OB_SET_OBI_ROLE_TO_SLAVE:
-                    return_code = rt_set_obi_role_to_slave(version, *in_buf, req, channel_id, thread_buff);
-                    break;
-                  default:
-                    return_code = OB_ERROR;
-                    break;
+                    case OB_GRANT_LEASE_REQUEST:
+                      return_code = rt_grant_lease(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_SEND_LOG:
+                      in_buf->get_limit() = in_buf->get_position() + ob_packet->get_data_length();
+                      return_code = rt_slave_write_log(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_SET_OBI_ROLE_TO_SLAVE:
+                      return_code = rt_set_obi_role_to_slave(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    default:
+                      return_code = OB_ERROR;
+                      break;
                   }
                 }
                 // read queue
@@ -994,6 +1087,9 @@ namespace oceanbase
                   {
                     case OB_RS_INNER_MSG_AFTER_RESTART:
                       return_code = rt_after_restart(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_WRITE_SCHEMA_TO_FILE:
+                      return_code = rt_write_schema_to_file(version, *in_buf, req, channel_id, thread_buff);
                       break;
                     case OB_FETCH_SCHEMA:
                       return_code = rt_fetch_schema(version, *in_buf, req, channel_id, thread_buff);
@@ -1026,8 +1122,11 @@ namespace oceanbase
                       return_code = rt_fetch_stats(version, *in_buf, req, channel_id, thread_buff);
                       break;
                     case OB_GET_UPDATE_SERVER_INFO:
-                      return_code = rt_get_update_server_info(version, *in_buf, req, channel_id, thread_buff);
-                      break;
+                      {
+                        TBSYS_LOG(DEBUG, "server addr=%s fetch master update server info.", get_peer_ip(packet->get_request()));
+                        return_code = rt_get_update_server_info(version, *in_buf, req, channel_id, thread_buff);
+                        break;
+                      }
                     case OB_GET_UPDATE_SERVER_INFO_FOR_MERGE:
                       return_code = rt_get_update_server_info(version, *in_buf, req, channel_id, thread_buff,true);
                       break;
@@ -1036,6 +1135,9 @@ namespace oceanbase
                       break;
                     case OB_SLAVE_QUIT:
                       return_code = rt_slave_quit(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_GET_BOOT_STATE:
+                      return_code = rt_get_boot_state(version, *in_buf, req, channel_id, thread_buff);
                       break;
                     case OB_GET_OBI_ROLE:
                       return_code = rt_get_obi_role(version, *in_buf, req, channel_id, thread_buff);
@@ -1085,8 +1187,14 @@ namespace oceanbase
                     case OB_CHANGE_UPS_MASTER:
                       return_code = rt_change_ups_master(version, *in_buf, req, channel_id, thread_buff);
                       break;
+                    case OB_CHANGE_TABLE_ID:
+                      return_code = rt_change_table_id(version, *in_buf, req, channel_id, thread_buff);
+                      break;
                     case OB_GET_CS_LIST:
                       return_code = rt_get_cs_list(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_GET_ROW_CHECKSUM:
+                      return_code = rt_get_row_checksum(version, *in_buf, req, channel_id, thread_buff);
                       break;
                     case OB_GET_MS_LIST:
                       return_code = rt_get_ms_list(version, *in_buf, req, channel_id, thread_buff);
@@ -1118,6 +1226,27 @@ namespace oceanbase
                     case OB_GET_CONFIG:
                       return_code = rt_get_config(version, *in_buf, req, channel_id, thread_buff);
                       break;
+                    case OB_RS_ADMIN_START_IMPORT:
+                      return_code = rt_start_import(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_IMPORT:
+                      return_code = rt_import(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_ADMIN_START_KILL_IMPORT:
+                      return_code = rt_start_kill_import(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_KILL_IMPORT:
+                      return_code = rt_kill_import(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_GET_IMPORT_STATUS:
+                      return_code = rt_get_import_status(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_SET_IMPORT_STATUS:
+                      return_code = rt_set_import_status(version, *in_buf, req, channel_id, thread_buff);
+                      break;
+                    case OB_RS_NOTIFY_SWITCH_SCHEMA:
+                      return_code = rt_notify_switch_schema(version, *in_buf, req, channel_id, thread_buff);
+                      break;
                     default:
                       TBSYS_LOG(ERROR, "unknow packet code %d in read queue", packet_code);
                       return_code = OB_ERROR;
@@ -1141,7 +1270,7 @@ namespace oceanbase
         {
           //TODO get peer id
           TBSYS_LOG(ERROR, "packet deserialize error packet code is %d from server %s, ret=%d",
-                    packet_code, get_peer_ip(ob_packet->get_request()), return_code);
+              packet_code, get_peer_ip(ob_packet->get_request()), return_code);
         }
       }
 
@@ -1206,6 +1335,10 @@ namespace oceanbase
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "found_server.serialize error");
+        }
+        else
+        {
+          TBSYS_LOG(DEBUG, "find master update server:server[%s]", found_server.to_cstring());
         }
       }
       if (OB_SUCCESS == ret)
@@ -1288,18 +1421,17 @@ namespace oceanbase
 
 
     int ObRootWorker::rt_sql_scan(const int32_t version,
-                                  ObDataBuffer& in_buff, easy_request_t* req,
-                                  const uint32_t channel_id, ObDataBuffer& out_buff)
+        ObDataBuffer& in_buff, easy_request_t* req,
+        const uint32_t channel_id, ObDataBuffer& out_buff)
     {
       UNUSED(channel_id);
       UNUSED(req);
       const int32_t RS_SCAN_VERSION = 1;
       common::ObResultCode rc;
       rc.result_code_ = OB_SUCCESS;
-      uint64_t  table_id = OB_INVALID_ID;
       ObNewScanner *new_scanner = GET_TSI_MULT(ObNewScanner, TSI_RS_NEW_SCANNER_1);
       sql::ObSqlScanParam *sql_scan_param_ptr = GET_TSI_MULT(sql::ObSqlScanParam,
-                                                             TSI_RS_SQL_SCAN_PARAM_1);
+          TSI_RS_SQL_SCAN_PARAM_1);
       if (version != RS_SCAN_VERSION)
       {
         rc.result_code_ = OB_ERROR_FUNC_VERSION;
@@ -1307,7 +1439,7 @@ namespace oceanbase
       else if (NULL == new_scanner || NULL == sql_scan_param_ptr)
       {
         TBSYS_LOG(ERROR, "failed to get thread local scan_param or new scanner, "
-                  "new_scanner=%p, sql_scan_param_ptr=%p", new_scanner, sql_scan_param_ptr);
+            "new_scanner=%p, sql_scan_param_ptr=%p", new_scanner, sql_scan_param_ptr);
         rc.result_code_ = OB_ALLOCATE_MEMORY_FAILED;
       }
       else
@@ -1319,8 +1451,8 @@ namespace oceanbase
       if (OB_SUCCESS == rc.result_code_)
       {
         rc.result_code_ = sql_scan_param_ptr->deserialize(
-          in_buff.get_data(), in_buff.get_capacity(),
-          in_buff.get_position());
+            in_buff.get_data(), in_buff.get_capacity(),
+            in_buff.get_position());
         if (OB_SUCCESS != rc.result_code_)
         {
           TBSYS_LOG(ERROR, "parse cs_sql_scan input scan param error.");
@@ -1329,7 +1461,6 @@ namespace oceanbase
 
       if (OB_SUCCESS == rc.result_code_)
       {
-        table_id = sql_scan_param_ptr->get_table_id();
         new_scanner->set_range(*sql_scan_param_ptr->get_range());
         int64_t table_count = root_server_.get_table_count();
         OB_STAT_SET(ROOTSERVER, INDEX_ALL_TABLE_COUNT, table_count);
@@ -1349,8 +1480,8 @@ namespace oceanbase
 
       out_buff.get_position() = 0;
       int serialize_ret = rc.serialize(out_buff.get_data(),
-                                       out_buff.get_capacity(),
-                                       out_buff.get_position());
+          out_buff.get_capacity(),
+          out_buff.get_position());
       if (OB_SUCCESS != serialize_ret)
       {
         TBSYS_LOG(ERROR, "serialize result code object failed.");
@@ -1360,8 +1491,8 @@ namespace oceanbase
       if (OB_SUCCESS == rc.result_code_ && OB_SUCCESS == serialize_ret)
       {
         serialize_ret = new_scanner->serialize(out_buff.get_data(),
-                                               out_buff.get_capacity(),
-                                               out_buff.get_position());
+            out_buff.get_capacity(),
+            out_buff.get_position());
         if (OB_SUCCESS != serialize_ret)
         {
           TBSYS_LOG(ERROR, "serialize ObScanner failed.");
@@ -1417,6 +1548,14 @@ namespace oceanbase
         if ((*get_param)[0]->table_id_ == OB_ALL_SERVER_STAT_TID)
         {
           result_msg.result_code_ = root_server_.find_monitor_table_key(*get_param, *scanner);
+        }
+        else if ((*get_param)[0]->table_id_ == OB_ALL_SERVER_SESSION_TID)
+        {
+          result_msg.result_code_ = root_server_.find_session_table_key(*get_param, *scanner);
+        }
+        else if ((*get_param)[0]->table_id_ == OB_ALL_STATEMENT_TID)
+        {
+          result_msg.result_code_ = root_server_.find_statement_table_key(*get_param, *scanner);
         }
         else
         {
@@ -1519,8 +1658,8 @@ namespace oceanbase
         else
         {
           TBSYS_LOG(INFO, "get schema, only_core_tables=%c version=%ld from=%s",
-                    get_only_core_tables ? 'Y':'N', schema->get_version(),
-                    get_peer_ip(req));
+              get_only_core_tables ? 'Y':'N', schema->get_version(),
+              get_peer_ip(req));
         }
       }
       if (OB_SUCCESS == ret)
@@ -1624,7 +1763,7 @@ namespace oceanbase
     int ObRootWorker::rt_report_tablets(const int32_t version, common::ObDataBuffer& in_buff,
         easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
-      static const int MY_VERSION = 1;
+      static const int MY_VERSION = 2;
       common::ObResultCode result_msg;
       result_msg.result_code_ = OB_SUCCESS;
       int ret = OB_SUCCESS;
@@ -1776,6 +1915,11 @@ namespace oceanbase
           ObRootUtil::delete_tablets(rt_rpc_stub_, *out_server_manager, delete_list, config_.network_timeout);
         }
       }
+      if (out_server_manager != NULL)
+      {
+        delete out_server_manager;
+        out_server_manager = NULL;
+      }
       return ret;
     }
 
@@ -1838,7 +1982,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
       {
-        TBSYS_LOG(ERROR, "version:%d,MY_VERSION:%d",version,MY_VERSION);
+        TBSYS_LOG(WARN, "version:%d,MY_VERSION:%d",version,MY_VERSION);
         result_msg.result_code_ = OB_ERROR_FUNC_VERSION;
       }
       ObServer server;
@@ -1917,7 +2061,7 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (version != MY_VERSION)
       {
-        TBSYS_LOG(ERROR, "version:%d, MY_VERSION:%d",version,MY_VERSION);
+        TBSYS_LOG(WARN, "version:%d, MY_VERSION:%d",version,MY_VERSION);
         result_msg.result_code_ = OB_ERROR_FUNC_VERSION;
       }
       ObServer server;
@@ -1925,24 +2069,26 @@ namespace oceanbase
       int32_t status = 0;
       int64_t server_version_length = 0;
       const char* server_version = NULL;
+      bool lms = false;
+
       if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
       {
-        ret = server.deserialize(in_buff.get_data(),
-                                 in_buff.get_capacity(), in_buff.get_position());
+        ret = server.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "server.deserialize error");
         }
       }
+
       if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
       {
-        ret = serialization::decode_vi32(in_buff.get_data(), in_buff.get_capacity(),
-                                         in_buff.get_position(), &sql_port);
+        ret = serialization::decode_vi32(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), &sql_port);
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "sql_port.deserialize error");
         }
       }
+
       if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
       {
         server_version = serialization::decode_vstr(in_buff.get_data(), in_buff.get_capacity(),
@@ -1953,15 +2099,36 @@ namespace oceanbase
           TBSYS_LOG(ERROR, "server_version.deserialize error");
         }
       }
+
+      if (OB_SUCCESS == ret)
+      {
+        //means new version mergeserver
+        if (in_buff.get_remain() > 0)
+        {
+          ret = serialization::decode_bool(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), &lms);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(ERROR, "lms.deserialize error");
+          }
+        }
+        else  //old version mergeserver
+        {
+          if (sql_port == OB_FAKE_MS_PORT)
+          {
+            lms = true;
+          }
+        }
+      }
+
       if (OB_SUCCESS == ret)
       {
         TBSYS_LOG(DEBUG, "receive merge server register");
-        result_msg.result_code_ = root_server_.regist_merge_server(server, sql_port, server_version);
+        result_msg.result_code_ = root_server_.regist_merge_server(server, sql_port, lms, server_version);
       }
+
       if (OB_SUCCESS == ret)
       {
-        ret = result_msg.serialize(out_buff.get_data(),
-                                   out_buff.get_capacity(), out_buff.get_position());
+        ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
         if (ret != OB_SUCCESS)
         {
           TBSYS_LOG(ERROR, "result_msg.serialize error");
@@ -1987,82 +2154,95 @@ namespace oceanbase
     int ObRootWorker::rt_migrate_over(const int32_t version, common::ObDataBuffer& in_buff,
         easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
-      static const int NEW_VERSION = 2;
-      common::ObResultCode result_msg;
-      result_msg.result_code_ = OB_SUCCESS;
+      static const int CS_MIGRATE_OVER_VERSION = 3;
       int ret = OB_SUCCESS;
-      if (version != NEW_VERSION)
+      common::ObResultCode result_msg;
+      if (version != CS_MIGRATE_OVER_VERSION)
       {
-        result_msg.result_code_ = OB_ERROR_FUNC_VERSION;
+        ret = OB_ERROR_FUNC_VERSION;
       }
 
-      ObObj obj_array[OB_MAX_ROWKEY_COLUMN_NUMBER * 2];
-      ObNewRange range;
-      range.start_key_.assign(obj_array, OB_MAX_ROWKEY_COLUMN_NUMBER);
-      range.end_key_.assign(obj_array + OB_MAX_ROWKEY_COLUMN_NUMBER, OB_MAX_ROWKEY_COLUMN_NUMBER);
+      ObDataSourceDesc desc;
+      int64_t occupy_size = 0;
+      uint64_t crc_sum = 0;
+      int64_t row_count = 0;
+      int64_t row_checksum = 0;
 
-      ObServer src_server;
-      ObServer dest_server;
-      bool keep_src = false;
-      int64_t tablet_version = 0;
-      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      if (OB_SUCCESS == ret)
       {
-        ret = range.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        ret = result_msg.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
         if (ret != OB_SUCCESS)
         {
-          TBSYS_LOG(ERROR, "range.deserialize error, ret=%d", ret);
+          TBSYS_LOG(WARN, "failed to deserialize reuslt msg, ret=%d", ret);
         }
       }
-      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      if (OB_SUCCESS == ret)
       {
-        ret = src_server.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        ret = desc.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
         if (ret != OB_SUCCESS)
         {
-          TBSYS_LOG(ERROR, "src_server.deserialize error");
+          TBSYS_LOG(WARN, "desc.deserialize error, ret=%d", ret);
         }
       }
-      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
-      {
-        ret = dest_server.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
-        if (ret != OB_SUCCESS)
-        {
-          TBSYS_LOG(ERROR, "dest_server.deserialize error");
-        }
-      }
-      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
-      {
-        ret = serialization::decode_bool(in_buff.get_data(), in_buff.get_capacity(),
-            in_buff.get_position(), &keep_src);
-        if (ret != OB_SUCCESS)
-        {
-          TBSYS_LOG(ERROR, "keep_src.deserialize error");
-        }
-      }
-      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      if (OB_SUCCESS == ret)
       {
         ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_capacity(),
-            in_buff.get_position(), &tablet_version);
+            in_buff.get_position(), &occupy_size);
         if (ret != OB_SUCCESS)
         {
-          TBSYS_LOG(ERROR, "keep_src.deserialize error");
-        }
-      }
-      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
-      {
-        result_msg.result_code_ = root_server_.migrate_over(range, src_server, dest_server,
-            keep_src, tablet_version);
-      }
-      if (OB_SUCCESS == ret)
-      {
-        ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
-        if (ret != OB_SUCCESS)
-        {
-          TBSYS_LOG(ERROR, "result_msg.serialize error");
+          TBSYS_LOG(WARN, "failed to decode occupy size, ret=%d", ret);
         }
       }
       if (OB_SUCCESS == ret)
       {
-        send_response(OB_MIGRATE_OVER_RESPONSE, NEW_VERSION, out_buff, req, channel_id);
+        ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_capacity(),
+            in_buff.get_position(), reinterpret_cast<int64_t*>(&crc_sum));
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "failed to decode crc sum, ret=%d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_capacity(),
+            in_buff.get_position(), reinterpret_cast<int64_t*>(&row_checksum));
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "failed to decode crc sum, ret=%d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_capacity(),
+            in_buff.get_position(), &row_count);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "failed to decode row count, ret=%d", ret);
+        }
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        result_msg.result_code_ = root_server_.migrate_over(result_msg.result_code_,
+            desc, occupy_size, crc_sum, row_checksum, row_count);
+      }
+      else
+      {
+        result_msg.result_code_ = ret;
+      }
+
+      int tmp_ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
+      if (OB_SUCCESS != tmp_ret)
+      {
+        TBSYS_LOG(ERROR, "result_msg.serialize error, ret=%d", tmp_ret);
+        if (OB_SUCCESS == ret)
+        {
+          tmp_ret = ret;
+        }
+      }
+      else
+      {
+        send_response(OB_MIGRATE_OVER_RESPONSE, CS_MIGRATE_OVER_VERSION, out_buff, req, channel_id);
       }
       return ret;
     }
@@ -2161,7 +2341,7 @@ namespace oceanbase
       }
       if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
       {
-        result_msg.result_code_ = root_server_.receive_hb(server, server.get_port(), role);
+        result_msg.result_code_ = root_server_.receive_hb(server, server.get_port(), false, role);
       }
       easy_request_wakeup(req);
       return ret;
@@ -2208,9 +2388,29 @@ namespace oceanbase
           TBSYS_LOG(WARN, "decode sql port failed:ret[%d]", ret);
         }
       }
+      bool is_listen_ms = false;
+      if ((OB_SUCCESS == ret) && (MY_VERSION == version))
+      {
+        // means new version mergeserver
+        if (in_buff.get_remain() > 0)
+        {
+          ret = serialization::decode_bool(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), &is_listen_ms);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(ERROR, "is_listen_ms.deserialize error");
+          }
+        }
+        else  //old version mergeserver
+        {
+          if (sql_port == OB_FAKE_MS_PORT)
+          {
+            is_listen_ms = false;
+          }
+        }
+      }
       if ((OB_SUCCESS == ret) && (OB_SUCCESS == result_msg.result_code_))
       {
-        result_msg.result_code_ = root_server_.receive_hb(server, sql_port, role);
+        result_msg.result_code_ = root_server_.receive_hb(server, sql_port, is_listen_ms, role);
       }
       easy_request_wakeup(req);
       return ret;
@@ -2247,10 +2447,10 @@ namespace oceanbase
       int64_t merged_result = 0;
       if (OB_SUCCESS == err && OB_SUCCESS == result_msg.result_code_)
       {
-        result_msg.result_code_ = root_server_.check_tablet_version(tablet_version, is_merged);
+        result_msg.result_code_ = root_server_.check_tablet_version(tablet_version, 0, is_merged);
         if (OB_SUCCESS != result_msg.result_code_)
         {
-          TBSYS_LOG(WARN, "fail to check tablet version[%ld] whether merged!", tablet_version);
+          TBSYS_LOG(WARN, "fail to check tablet version[%ld] whether safe merged!", tablet_version);
         }
         else if (true == is_merged)
         {
@@ -2691,7 +2891,7 @@ namespace oceanbase
 
       return ret;
     }
-int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObDataBuffer& in_buff, easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       int ret = OB_SUCCESS;
       static const int MY_VERSION = 1;
@@ -2783,7 +2983,6 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
 
       uint64_t log_id;
       static bool is_first_log = true;
-
       // send response to master ASAP
       ret = result_msg.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position());
       if (ret == OB_SUCCESS)
@@ -2845,7 +3044,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       if (OB_SUCCESS == ret && in_buffer.get_limit() - in_buffer.get_position() > 0)
       {
         ret = log_manager_.store_log(in_buffer.get_data() + in_buffer.get_position(),
-                                     in_buffer.get_limit() - in_buffer.get_position());
+            in_buffer.get_limit() - in_buffer.get_position());
         if (OB_SUCCESS != ret)
         {
           TBSYS_LOG(ERROR, "ObUpsLogMgr store_log error, err=%d", ret);
@@ -2855,6 +3054,33 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       return ret;
     }
 
+int ObRootWorker::rt_get_boot_state(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      UNUSED(version);
+      UNUSED(in_buff);
+      static const int MY_VERSION = 1;
+      common::ObResultCode result_msg;
+      result_msg.result_code_ = OB_SUCCESS;
+      int ret = OB_SUCCESS;
+      bool boot_ok = (root_server_.get_boot()->is_boot_ok());
+
+      if (OB_SUCCESS != (ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(),
+              out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_bool(out_buff.get_data(), out_buff.get_capacity(),
+              out_buff.get_position(), boot_ok)))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else
+      {
+        ret = send_response(OB_GET_BOOT_STATE_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+      return ret;
+    }
 
     int ObRootWorker::rt_get_obi_role(const int32_t version, common::ObDataBuffer& in_buff,
         easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
@@ -2939,6 +3165,8 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       else
       {
         ret = root_server_.set_obi_role(role);
+        root_server_.commit_task(OBI_ROLE_CHANGE, OB_ROOTSERVER, rt_master_, rt_master_.get_port(), "rootserver",
+                                 ObiRole::MASTER == role.get_role()? 1 : 2);
       }
       result_msg.result_code_ = ret;
       // send response
@@ -3099,7 +3327,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       result.result_code_ = OB_SUCCESS;
       int32_t admin_cmd = -1;
       if (OB_SUCCESS != (ret = serialization::decode_vi32(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position(), &admin_cmd)))
+              in_buff.get_capacity(), in_buff.get_position(), &admin_cmd)))
       {
         TBSYS_LOG(WARN, "deserialize error, err=%d", ret);
       }
@@ -3108,7 +3336,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         result.result_code_ = do_admin_with_return(admin_cmd);
         TBSYS_LOG(INFO, "admin cmd=%d, err=%d", admin_cmd, result.result_code_);
         if (OB_SUCCESS != (ret = result.serialize(out_buff.get_data(),
-              out_buff.get_capacity(), out_buff.get_position())))
+                out_buff.get_capacity(), out_buff.get_position())))
         {
           TBSYS_LOG(WARN, "serialize error, err=%d", ret);
         }
@@ -3156,8 +3384,9 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
             break;
           }
         case OB_RS_ADMIN_BOOT_STRAP:
-          TBSYS_LOG(INFO, "start to boot strap");
+          TBSYS_LOG(INFO, "start to bootstrap");
           ret = root_server_.boot_strap();
+          TBSYS_LOG(INFO, "bootstrap over");
           break;
         case OB_RS_ADMIN_CHECKPOINT:
           if (root_server_.is_master())
@@ -3170,6 +3399,12 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
           {
             TBSYS_LOG(WARN, "I'm not the master");
           }
+          break;
+        case OB_RS_ADMIN_CHECK_SCHEMA:
+          ret = root_server_.check_schema();
+          break;
+        case OB_RS_ADMIN_CLEAN_ROOT_TABLE:
+          ret = root_server_.clean_root_table();
           break;
         case OB_RS_ADMIN_CLEAN_ERROR_MSG:
           root_server_.clean_daily_merge_tablet_error();
@@ -3223,10 +3458,10 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
           root_server_.dump_migrate_info();
           break;
         case OB_RS_ADMIN_REFRESH_SCHEMA:
-          root_server_.refresh_new_schema(count);
+          root_server_.renew_user_schema(count);
           break;
         default:
-          TBSYS_LOG(WARN, "not supported admin cmd:cmd[%d]", admin_cmd);
+          TBSYS_LOG(DEBUG, "not supported admin cmd:cmd[%d]", admin_cmd);
           break;
       }
       return ret;
@@ -3242,7 +3477,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       result.result_code_ = OB_SUCCESS;
       int32_t log_level = -1;
       if (OB_SUCCESS != (ret = serialization::decode_vi32(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position(), &log_level)))
+              in_buff.get_capacity(), in_buff.get_position(), &log_level)))
       {
         TBSYS_LOG(WARN, "deserialize error, err=%d", ret);
       }
@@ -3260,7 +3495,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
           result.result_code_ = OB_INVALID_ARGUMENT;
         }
         if (OB_SUCCESS != (ret = result.serialize(out_buff.get_data(),
-              out_buff.get_capacity(), out_buff.get_position())))
+                out_buff.get_capacity(), out_buff.get_position())))
         {
           TBSYS_LOG(WARN, "serialize error, err=%d", ret);
         }
@@ -3381,7 +3616,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         ret = OB_ERROR_FUNC_VERSION;
       }
       else if (OB_SUCCESS != (ret = msg.deserialize(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position())))
+              in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(WARN, "deserialize register msg error, err=%d", ret);
       }
@@ -3426,13 +3661,13 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       common::ObResultCode res;
       res.result_code_ = ret;
       if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-            out_buff.get_capacity(), out_buff.get_position())))
+              out_buff.get_capacity(), out_buff.get_position())))
       {
         TBSYS_LOG(WARN, "serialize error, err=%d", ret);
       }
       else if (OB_SUCCESS == res.result_code_
           && OB_SUCCESS != (ret = ups_list.serialize(out_buff.get_data(),
-          out_buff.get_capacity(), out_buff.get_position())))
+              out_buff.get_capacity(), out_buff.get_position())))
       {
         TBSYS_LOG(WARN, "serialize error, err=%d", ret);
       }
@@ -3454,7 +3689,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         ret = OB_ERROR_FUNC_VERSION;
       }
       else if (OB_SUCCESS != (ret = msg.deserialize(in_buff.get_data(),
-        in_buff.get_capacity(), in_buff.get_position())))
+              in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(WARN, "deserialize register msg error, err=%d", ret);
       }
@@ -3466,7 +3701,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       ObResultCode res;
       res.result_code_ = ret;
       if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-            out_buff.get_capacity(), out_buff.get_position())))
+              out_buff.get_capacity(), out_buff.get_position())))
       {
         TBSYS_LOG(WARN, "serialize error, err=%d", ret);
       }
@@ -3475,7 +3710,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         if (OB_SUCCESS == res.result_code_)
         {
           if (OB_SUCCESS != (ret = serialization::encode_vi64(out_buff.get_data(),
-                out_buff.get_capacity(), out_buff.get_position(), config_.ups_renew_reserved_time)))
+                  out_buff.get_capacity(), out_buff.get_position(), config_.ups_renew_reserved_time)))
           {
             TBSYS_LOG(WARN, "failed to serialize");
           }
@@ -3501,12 +3736,12 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         ret = OB_ERROR_FUNC_VERSION;
       }
       else if (OB_SUCCESS != (ret = serialization::decode_vi32(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position(), &read_master_master_ups_percentage)))
+              in_buff.get_capacity(), in_buff.get_position(), &read_master_master_ups_percentage)))
       {
         TBSYS_LOG(ERROR, "failed to serialize read_percentage, err=%d", ret);
       }
       else if (OB_SUCCESS != (ret = serialization::decode_vi32(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position(), &read_slave_master_ups_percentage)))
+              in_buff.get_capacity(), in_buff.get_position(), &read_slave_master_ups_percentage)))
       {
         TBSYS_LOG(ERROR, "failed to serialize read_percentage, err=%d", ret);
       }
@@ -3516,7 +3751,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         res.result_code_ = root_server_.set_ups_config(read_master_master_ups_percentage,
             read_slave_master_ups_percentage);
         if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-              out_buff.get_capacity(), out_buff.get_position())))
+                out_buff.get_capacity(), out_buff.get_position())))
         {
           TBSYS_LOG(WARN, "serialize error, err=%d", ret);
         }
@@ -3542,17 +3777,17 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         ret = OB_ERROR_FUNC_VERSION;
       }
       else if (OB_SUCCESS != (ret = ups_addr.deserialize(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position())))
+              in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(ERROR, "failed to serialize ups_addr, err=%d", ret);
       }
       else if (OB_SUCCESS != (ret = serialization::decode_vi32(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position(), &ms_read_percentage)))
+              in_buff.get_capacity(), in_buff.get_position(), &ms_read_percentage)))
       {
         TBSYS_LOG(ERROR, "failed to serialize read_percentage, err=%d", ret);
       }
       else if (OB_SUCCESS != (ret = serialization::decode_vi32(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position(), &cs_read_percentage)))
+              in_buff.get_capacity(), in_buff.get_position(), &cs_read_percentage)))
       {
         TBSYS_LOG(ERROR, "failed to serialize read_percentage, err=%d", ret);
       }
@@ -3561,7 +3796,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         common::ObResultCode res;
         res.result_code_ = root_server_.set_ups_config(ups_addr, ms_read_percentage, cs_read_percentage);
         if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-              out_buff.get_capacity(), out_buff.get_position())))
+                out_buff.get_capacity(), out_buff.get_position())))
         {
           TBSYS_LOG(WARN, "serialize error, err=%d", ret);
         }
@@ -3583,7 +3818,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         ret = OB_ERROR_FUNC_VERSION;
       }
       else if (OB_SUCCESS != (ret = msg.deserialize(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position())))
+              in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(WARN, "deserialize register msg error, err=%d", ret);
       }
@@ -3596,7 +3831,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       common::ObResultCode res;
       res.result_code_ = ret;
       if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-            out_buff.get_capacity(), out_buff.get_position())))
+              out_buff.get_capacity(), out_buff.get_position())))
       {
         TBSYS_LOG(WARN, "serialize error, err=%d", ret);
       }
@@ -3621,12 +3856,12 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         ret = OB_ERROR_FUNC_VERSION;
       }
       else if (OB_SUCCESS != (ret = ups_addr.deserialize(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position())))
+              in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(WARN, "deserialize register msg error, err=%d", ret);
       }
       else if (OB_SUCCESS != (ret = serialization::decode_vi32(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position(), &force)))
+              in_buff.get_capacity(), in_buff.get_position(), &force)))
       {
         TBSYS_LOG(WARN, "deserialize register msg error, err=%d", ret);
       }
@@ -3639,7 +3874,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       common::ObResultCode res;
       res.result_code_ = ret;
       if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-            out_buff.get_capacity(), out_buff.get_position())))
+              out_buff.get_capacity(), out_buff.get_position())))
       {
         TBSYS_LOG(WARN, "serialize error, err=%d", ret);
       }
@@ -3664,7 +3899,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       common::ObResultCode res;
       res.result_code_ = ret;
       if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-            out_buff.get_capacity(), out_buff.get_position())))
+              out_buff.get_capacity(), out_buff.get_position())))
       {
         TBSYS_LOG(WARN, "serialize error, err=%d", ret);
       }
@@ -3677,6 +3912,52 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       {
         ret = send_response(OB_GET_CS_LIST_RESPONSE, MY_VERSION, out_buff, req, channel_id);
       }
+      return ret;
+    }
+
+    int ObRootWorker::rt_get_row_checksum(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int MY_VERSION = 1;
+      int64_t tablet_version = 0;
+      uint64_t table_id = 0;
+      ObRowChecksum row_checksum;
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "invalid reqeust version, version=%d", version);
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), &tablet_version)))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize");
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), reinterpret_cast<int64_t*>(&table_id))))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize");
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (OB_SUCCESS != (ret = root_server_.get_row_checksum(tablet_version, table_id, row_checksum)) && OB_ENTRY_NOT_EXIST != ret)
+      {
+        TBSYS_LOG(WARN, "failed to get rowchecksum, tablet_version:%ld table_id:%lu ret:%d", tablet_version, table_id, ret);
+      }
+
+      common::ObResultCode res;
+      res.result_code_ = ret;
+      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = row_checksum.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else
+      {
+        ret = send_response(OB_GET_ROW_CHECKSUM, MY_VERSION, out_buff, req, channel_id);
+      }
+
       return ret;
     }
 
@@ -3694,7 +3975,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       common::ObResultCode res;
       res.result_code_ = ret;
       if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(), out_buff.get_capacity(),
-            out_buff.get_position())))
+              out_buff.get_position())))
       {
         TBSYS_LOG(WARN, "serialize error, err=%d", ret);
       }
@@ -3814,7 +4095,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
           for (int i = 0; i < count; ++i)
           {
             if (OB_SUCCESS != (ret = server.deserialize(in_buff.get_data(),
-                  in_buff.get_capacity(), in_buff.get_position())))
+                    in_buff.get_capacity(), in_buff.get_position())))
             {
               TBSYS_LOG(WARN, "deserialize error, i=%d", i);
               break;
@@ -4050,7 +4331,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
           }
           else
           {
-            //TBSYS_LOG(INFO, "submit async task succ pcode=%d", pcode);
+            TBSYS_LOG(INFO, "submit async task succ pcode=%d", pcode);
           }
           if (OB_SUCCESS != ret)
           {
@@ -4220,7 +4501,7 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       {
         // send response message
         if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(), out_buff.get_capacity(),
-              out_buff.get_position())))
+                out_buff.get_position())))
         {
           TBSYS_LOG(WARN, "failed to serialize, err=%d", ret);
         }
@@ -4258,12 +4539,12 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
         bool if_exists = false;
         ObStrings tables;
         if (OB_SUCCESS != (ret = serialization::decode_bool(in_buff.get_data(),
-              in_buff.get_capacity(), in_buff.get_position(), &if_exists)))
+                in_buff.get_capacity(), in_buff.get_position(), &if_exists)))
         {
           TBSYS_LOG(WARN, "failed to deserialize, err=%d", ret);
         }
         else if (OB_SUCCESS != (ret = tables.deserialize(in_buff.get_data(),
-              in_buff.get_capacity(), in_buff.get_position())))
+                in_buff.get_capacity(), in_buff.get_position())))
         {
           TBSYS_LOG(WARN, "failed to deserialize, err=%d", ret);
         }
@@ -4305,17 +4586,17 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       const ObChunkServerManager *server_mgr = NULL;
       int ret = OB_SUCCESS;
       if (OB_SUCCESS != (ret = sqlstr.deserialize(in_buff.get_data(),
-          in_buff.get_capacity(), in_buff.get_position())))
+              in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(WARN, "deserialize sql string fail, ret: [%d]", ret);
       }
       else if (OB_SUCCESS != (ret = serialization::decode_vi64(in_buff.get_data(),
-          in_buff.get_capacity(), in_buff.get_position(), &try_times)))
+              in_buff.get_capacity(), in_buff.get_position(), &try_times)))
       {
         TBSYS_LOG(WARN, "deserializ try times error, ret: [%d]", ret);
       }
       else if (OB_SUCCESS != (ret = table_name.deserialize(in_buff.get_data(),
-          in_buff.get_capacity(), in_buff.get_position())))
+              in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(ERROR, "deserialize table name fail, ret: [%d]", ret);
       }
@@ -4371,28 +4652,17 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       int ret = OB_SUCCESS;
       static const int MY_VERSION = 1;
       common::ObResultCode res;
-      common::ObTriggerMsg msg;
-
       res.result_code_ = ret;
-      // send response message, always success
-      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-            out_buff.get_capacity(), out_buff.get_position())))
-      {
-        TBSYS_LOG(WARN, "failed to serialize, err=%d", ret);
-      }
-      else if (OB_SUCCESS != (ret = send_response(OB_HANDLE_TRIGGER_EVENT_RESPONSE,
-            MY_VERSION, out_buff, req, channel_id)))
-      {
-        TBSYS_LOG(WARN, "failed to send response, err=%d", ret);
-      }
-      // process event
+      common::ObTriggerMsg msg;
       if (OB_SUCCESS != (ret = msg.deserialize(in_buff.get_data(),
-            in_buff.get_capacity(), in_buff.get_position())))
+              in_buff.get_capacity(), in_buff.get_position())))
       {
         TBSYS_LOG(WARN, "fail to deserialize msg");
       }
       common::ObiRole::Role role = root_server_.get_obi_role().get_role();
-      //
+      TBSYS_LOG(INFO, "I got a trigger message. value=%.*s,%ld,%ld. my role=%d",
+          msg.src.length(), msg.src.ptr(), msg.type, msg.param,
+          static_cast<int>(root_server_.get_obi_role().get_role()));
       switch(msg.type)
       {
         case REFRESH_NEW_SCHEMA_TRIGGER:
@@ -4432,14 +4702,47 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
             TBSYS_LOG(INFO, "[TRIGGER][slave_boot_strap] done. ret=%d", ret);
             break;
           }
+        case CREATE_TABLE_TRIGGER:
+          {
+            if (role != common::ObiRole::MASTER)
+            {
+              if (OB_SUCCESS != (ret = root_server_.trigger_create_table(msg.param)))
+              {
+                TBSYS_LOG(WARN, "fail to create table for slave obi master, ret=%d", ret);
+              }
+            }
+            TBSYS_LOG(INFO, "[TRIGGER][slave_create_table] done. ret=%d", ret);
+            break;
+          }
+        case DROP_TABLE_TRIGGER:
+          {
+            if (role != common::ObiRole::MASTER)
+            {
+              if (OB_SUCCESS != (ret = root_server_.trigger_drop_table(msg.param)))
+              {
+                TBSYS_LOG(WARN, "fail to drop table for slave obi master, ret=%d", ret);
+              }
+            }
+            TBSYS_LOG(INFO, "[TRIGGER][slave_drop_table] done. ret=%d", ret);
+            break;
+          }
         default:
           {
             TBSYS_LOG(WARN, "get unknown trigger event msg:type[%ld]", msg.type);
           }
       }
-      TBSYS_LOG(INFO, "I got a trigger message. value=%.*s,%ld,%ld. my role=%d",
-          msg.src.length(), msg.src.ptr(), msg.type, msg.param,
-          static_cast<int>(root_server_.get_obi_role().get_role()));
+      int err = OB_SUCCESS;
+      // send response message, always success
+      if (OB_SUCCESS != (err = res.serialize(out_buff.get_data(),
+              out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "failed to serialize, err=%d", err);
+      }
+      else if (OB_SUCCESS != (err = send_response(OB_HANDLE_TRIGGER_EVENT_RESPONSE,
+              MY_VERSION, out_buff, req, channel_id)))
+      {
+        TBSYS_LOG(WARN, "failed to send response, err=%d", err);
+      }
       return ret;
     }
 
@@ -4477,8 +4780,8 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
             TBSYS_LOG(ERROR, "Get master root server error, ret: [%d]", ret);
           }
           else if (OB_SUCCESS != (ret = master_rs.serialize(out_buff.get_data(),
-                                                            out_buff.get_capacity(),
-                                                            out_buff.get_position())))
+                  out_buff.get_capacity(),
+                  out_buff.get_position())))
           {
             TBSYS_LOG(ERROR, "seriliaze master obi rs fail, ret: [%d]", ret);
           }
@@ -4496,8 +4799,8 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
     }
 
     int ObRootWorker::rt_set_config(const int32_t version,
-                                    common::ObDataBuffer& in_buff, easy_request_t* req,
-                                    const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        common::ObDataBuffer& in_buff, easy_request_t* req,
+        const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       UNUSED(version);
       int ret = OB_SUCCESS;
@@ -4512,20 +4815,25 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
       {
         TBSYS_LOG(ERROR, "Set config failed! ret: [%d]", ret);
       }
+      else if (OB_SUCCESS != (ret = config_mgr_.reload_config()))
+      {
+        TBSYS_LOG(ERROR, "Reload config failed! ret: [%d]", ret);
+      }
       else
       {
         TBSYS_LOG(INFO, "Set config successfully! str: [%s]", config_str.ptr());
+        config_.print();
       }
 
       res.result_code_ = ret;
       if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-                                             out_buff.get_capacity(),
-                                             out_buff.get_position())))
+              out_buff.get_capacity(),
+              out_buff.get_position())))
       {
         TBSYS_LOG(ERROR, "serialize result code fail, ret: [%d]", ret);
       }
       else if (OB_SUCCESS != (ret = send_response(OB_SET_CONFIG_RESPONSE,
-                                                  MY_VERSION, out_buff, req, channel_id)))
+              MY_VERSION, out_buff, req, channel_id)))
       {
         TBSYS_LOG(ERROR, "send response fail, ret: [%d]", ret);
       }
@@ -4533,8 +4841,8 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
     }
 
     int ObRootWorker::rt_get_config(const int32_t version,
-                                    common::ObDataBuffer& in_buff, easy_request_t* req,
-                                    const uint32_t channel_id, common::ObDataBuffer& out_buff)
+        common::ObDataBuffer& in_buff, easy_request_t* req,
+        const uint32_t channel_id, common::ObDataBuffer& out_buff)
     {
       UNUSED(version);
       UNUSED(in_buff);
@@ -4544,25 +4852,882 @@ int ObRootWorker::rt_set_obi_role_to_slave(const int32_t version, common::ObData
 
       res.result_code_ = ret;
       if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
-                                             out_buff.get_capacity(),
-                                             out_buff.get_position())))
+              out_buff.get_capacity(),
+              out_buff.get_position())))
       {
         TBSYS_LOG(ERROR, "serialize result code fail, ret: [%d]", ret);
       }
       else if (OB_SUCCESS !=
-               (ret = config_.serialize(out_buff.get_data(),
-                                                 out_buff.get_capacity(),
-                                                 out_buff.get_position())))
+          (ret = config_.serialize(out_buff.get_data(),
+                                   out_buff.get_capacity(),
+                                   out_buff.get_position())))
       {
         TBSYS_LOG(ERROR, "serialize configuration fail, ret: [%d]", ret);
       }
       else if (OB_SUCCESS != (ret = send_response(OB_GET_CONFIG_RESPONSE,
-                                                  MY_VERSION, out_buff, req, channel_id)))
+              MY_VERSION, out_buff, req, channel_id)))
       {
         TBSYS_LOG(ERROR, "send response fail, ret: [%d]", ret);
       }
       return ret;
     }
+    //for bypass
+    int ObRootWorker::rt_check_task_process(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id,
+        common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      UNUSED(version);
+      UNUSED(req);
+      UNUSED(channel_id);
+      UNUSED(in_buff);
+      UNUSED(out_buff);
+      root_server_.check_bypass_process();
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(DEBUG, "bypas process is already processing, wait.., ret=%d", ret);
+      }
+      easy_request_wakeup(req);
+      return ret;
+    }
+
+    int ObRootWorker::rt_prepare_bypass_process(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      static const int MY_VERSION = 1;
+      common::ObResultCode result_msg;
+      result_msg.result_code_ = OB_SUCCESS;
+      int ret = OB_SUCCESS;
+      if (version != MY_VERSION)
+      {
+        result_msg.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      ObBypassTaskInfo table_name_id;
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        ret = table_name_id.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to deserialize table_name_id. err=%d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        TBSYS_LOG(INFO, "start to prepare bypass process. update max table id");
+        result_msg.result_code_ = root_server_.prepare_bypass_process(table_name_id);
+        if (OB_SUCCESS != result_msg.result_code_)
+        {
+          TBSYS_LOG(WARN, "fail to do bypass proces. ret=%d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to serialize result_msg. ret=%d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = table_name_id.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to serialize table_name_id. ret=%d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        send_response(OB_RS_PREPARE_BYPASS_PROCESS_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+      return ret;
+    }
+    int ObRootWorker::rs_cs_load_bypass_sstable_done(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      static const int MY_VERSION = 1;
+      common::ObResultCode result_msg;
+      result_msg.result_code_ = OB_SUCCESS;
+      int ret = OB_SUCCESS;
+      if (version != MY_VERSION)
+      {
+        result_msg.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      common::ObTableImportInfoList table_list;
+      bool is_load_succ = false;
+      ObServer cs;
+      easy_addr_t addr = get_easy_addr(req);
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        ret = cs.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to deserialize cs_addr. cs_addr=%s, err=%d", inet_ntoa_r(addr), ret);
+        }
+      }
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        ret = table_list.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to deserialize table_list. cs_addr=%s, err=%d", inet_ntoa_r(addr), ret);
+        }
+      }
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        ret = serialization::decode_bool(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), &is_load_succ);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to deserialize bool flag. cs_addr=%s, err=%d", inet_ntoa_r(addr), ret);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "cs = %s have finished load sstable. result=%s",
+              inet_ntoa_r(addr), is_load_succ ? "successed" : "failed");
+        }
+      }
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        result_msg.result_code_ = root_server_.cs_load_sstable_done(cs, table_list, is_load_succ);
+        if (OB_SUCCESS != result_msg.result_code_)
+        {
+          TBSYS_LOG(WARN, "fail to do bypass proces. cs_addr=%s, ret=%d", inet_ntoa_r(addr), ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to serialize result_msg. cs_addr=%s, ret=%d", inet_ntoa_r(addr), ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        send_response(OB_CS_DELETE_TABLE_DONE_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+      return ret;
+    }
+    int ObRootWorker::rt_cs_delete_table_done(const int32_t version, common::ObDataBuffer& in_buff,
+         easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      static const int MY_VERSION = 1;
+      common::ObResultCode result_msg;
+      result_msg.result_code_ = OB_SUCCESS;
+      int ret = OB_SUCCESS;
+      if (version != MY_VERSION)
+      {
+        result_msg.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      uint64_t table_id =  UINT64_MAX;
+      bool is_delete_succ = false;
+      ObServer cs;
+      easy_addr_t addr = get_easy_addr(req);
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        ret = cs.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to deserialize cs_addr. cs_addr=%s, err=%d", inet_ntoa_r(addr), ret);
+        }
+      }
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        ret = serialization::decode_vi64(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), (int64_t*)&table_id);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to deserialize table_id.cs_addr=%s, err=%d",
+              inet_ntoa_r(addr), ret);
+        }
+      }
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        ret = serialization::decode_bool(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position(), &is_delete_succ);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to deserialize bool flag.cs_addr=%s, err=%d",
+              inet_ntoa_r(addr), ret);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "cs = %s have finished delete table, table_id = %lu. result=%s",
+              inet_ntoa_r(addr), table_id, is_delete_succ ? "successed" : "failed");
+        }
+      }
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        result_msg.result_code_ = root_server_.cs_delete_table_done(cs, table_id, is_delete_succ);
+        if (OB_SUCCESS != result_msg.result_code_)
+        {
+          TBSYS_LOG(WARN, "fail to do bypass proces. cs_addr=%s, ret=%d", inet_ntoa_r(addr), ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to serialize result_msg. cs_addr=%s, ret=%d", inet_ntoa_r(addr), ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        send_response(OB_CS_DELETE_TABLE_DONE_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+      return ret;
+    }
+    int ObRootWorker::rt_start_bypass_process(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      static const int MY_VERSION = 1;
+      common::ObResultCode result_msg;
+      result_msg.result_code_ = OB_SUCCESS;
+      int ret = OB_SUCCESS;
+      if (version != MY_VERSION)
+      {
+        result_msg.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      ObBypassTaskInfo table_name_id;
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        ret = table_name_id.deserialize(in_buff.get_data(), in_buff.get_capacity(), in_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to deserialize table_name_id. err=%d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+      {
+        result_msg.result_code_ = root_server_.start_bypass_process(table_name_id);
+        if (OB_SUCCESS != result_msg.result_code_)
+        {
+          TBSYS_LOG(WARN, "fail to do bypass proces. ret=%d", result_msg.result_code_);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to serialize result_msg. ret=%d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        send_response(OB_RS_START_BYPASS_PROCESS_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+      return ret;
+    }
+    int ObRootWorker::submit_check_task_process()
+    {
+      int ret = OB_SUCCESS;
+      ThreadSpecificBuffer::Buffer *my_buffer = my_thread_buffer.get_buffer();
+      if (NULL == my_buffer)
+      {
+        TBSYS_LOG(ERROR, "alloc thread buffer fail");
+        ret = OB_MEM_OVERFLOW;
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ObDataBuffer buff(my_buffer->current(), my_buffer->remain());
+        if (OB_SUCCESS != (ret = submit_async_task_(OB_RS_INNER_MSG_CHECK_TASK_PROCESS, write_thread_queue_, (int32_t)config_.write_queue_size, &buff)))
+        {
+          TBSYS_LOG(WARN, "fail to submit async task to check bypass done. ret =%d", ret);
+        }
+        else
+        {
+          TBSYS_LOG(DEBUG, "submit async task to check bypass process");
+        }
+      }
+      return ret;
+    }
+int ObRootWorker::rt_write_schema_to_file(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+{
+  UNUSED(in_buff);
+  static const int MY_VERSION = 1;
+  common::ObResultCode result_msg;
+  result_msg.result_code_ = OB_SUCCESS;
+  int ret = OB_SUCCESS;
+  if (MY_VERSION != version)
+  {
+    TBSYS_LOG(WARN, "invalid request version, version=%d", version);
+    result_msg.result_code_ = OB_ERROR_FUNC_VERSION;
+  }
+
+
+  if (OB_SUCCESS == ret && OB_SUCCESS == result_msg.result_code_)
+  {
+    if (OB_SUCCESS != (ret = root_server_.write_schema_to_file()))
+    {
+      TBSYS_LOG(WARN, "write schema to file faile, err=%d", ret);
+      result_msg.result_code_ = ret;
+      ret = OB_SUCCESS;
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    ret = result_msg.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position());
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(ERROR, "result_msg.serialize error");
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    send_response(OB_WRITE_SCHEMA_TO_FILE_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+  }
+  OB_STAT_INC(ROOTSERVER, INDEX_GET_SCHMEA_COUNT);
+  return ret;
+}
+int ObRootWorker::rt_change_table_id(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      int64_t table_id = 0;
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "invalid version=%d", version);
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position(), &table_id)))
+      {
+        TBSYS_LOG(WARN, "deserialize register msg error, err=%d", ret);
+      }
+      else
+      {
+        ret = root_server_.change_table_id(table_id);
+      }
+      // send response
+      common::ObResultCode res;
+      res.result_code_ = ret;
+      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
+              out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else
+      {
+        ret = send_response(OB_CHANGE_TABLE_ID_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+      return ret;
+    }
+
+    int ObRootWorker::rt_start_import(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      ObString table_name;
+      uint64_t table_id = 0;
+      ObString uri;
+
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "invalid version=%d", version);
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+      else if (OB_SUCCESS != (ret = table_name.deserialize(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "deserialize table name error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_i64(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position(), reinterpret_cast<int64_t*>(&table_id))))
+      {
+        TBSYS_LOG(WARN, "deserialize table id error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = uri.deserialize(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "deserialize uri error, err=%d", ret);
+      }
+      else if (config_.enable_load_data == false)
+      {
+        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "load_data is not enabled, cant load table %.*s %lu",
+            table_name.length(), table_name.ptr(), table_id);
+      }
+      else if (OB_SUCCESS != (ret = root_server_.start_import(table_name, table_id, uri)))
+      {
+        TBSYS_LOG(WARN, "failed to import table_name=%.*s table_id=%lu, uri=%.*s, ret=%d",
+            table_name.length(), table_name.ptr(), table_id, uri.length(), uri.ptr(), ret);
+      }
+
+      // send response
+      common::ObResultCode res;
+      res.result_code_ = ret;
+      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
+              out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = send_response(OB_RS_ADMIN_START_IMPORT_RESPONSE, MY_VERSION, out_buff, req, channel_id)))
+      {
+        TBSYS_LOG(WARN, "failed to send repsone, ret=%d", ret);
+      }
+
+      if (OB_SUCCESS != res.result_code_)
+      {
+        ret = res.result_code_;
+      }
+
+      return ret;
+    }
+
+    int ObRootWorker::rt_import(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      ObString table_name;
+      uint64_t table_id = 0;
+      ObString uri;
+      int64_t start_time = 0;
+
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "invalid version=%d", version);
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+      else if (OB_SUCCESS != (ret = table_name.deserialize(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "deserialize table name error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_i64(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position(), reinterpret_cast<int64_t*>(&table_id))))
+      {
+        TBSYS_LOG(WARN, "deserialize table id error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = uri.deserialize(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "deserialize uri error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_i64(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position(), &start_time)))
+      {
+        TBSYS_LOG(WARN, "deserialize start_time error, err=%d", ret);
+      }
+      else if (config_.enable_load_data == false)
+      {
+        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "load_data is not enabled, cant load table %.*s %lu",
+            table_name.length(), table_name.ptr(), table_id);
+      }
+      else if (OB_SUCCESS != (ret = root_server_.import(table_name, table_id, uri, start_time)))
+      {
+        TBSYS_LOG(WARN, "failed to import table_name=%.*s table_id=%lu, uri=%.*s, ret=%d",
+            table_name.length(), table_name.ptr(), table_id, uri.length(), uri.ptr(), ret);
+      }
+
+      // send response
+      common::ObResultCode res;
+      res.result_code_ = ret;
+      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
+              out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = send_response(OB_RS_IMPORT_RESPONSE, MY_VERSION, out_buff, req, channel_id)))
+      {
+        TBSYS_LOG(WARN, "failed to send repsone, ret=%d", ret);
+      }
+
+      if (OB_SUCCESS != res.result_code_)
+      {
+        ret = res.result_code_;
+      }
+
+      return ret;
+    }
+
+    int ObRootWorker::rt_start_kill_import(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      ObString table_name;
+      uint64_t table_id;
+
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "invalid version=%d", version);
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+      else if (OB_SUCCESS != (ret = table_name.deserialize(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "deserialize table name error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_i64(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position(), reinterpret_cast<int64_t*>(&table_id))))
+      {
+        TBSYS_LOG(WARN, "deserialize table id error, err=%d", ret);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = root_server_.start_kill_import(table_name, table_id);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "failed to kill import table_name=%.*s table_id=%lu", table_name.length(),
+              table_name.ptr(), table_id);
+        }
+      }
+      // send response
+      common::ObResultCode res;
+      res.result_code_ = ret;
+      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
+              out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else
+      {
+        ret = send_response(OB_RS_ADMIN_START_KILL_IMPORT_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+
+      if (OB_SUCCESS != res.result_code_)
+      {
+        ret = res.result_code_;
+      }
+
+      return ret;
+    }
+
+    int ObRootWorker::rt_kill_import(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      ObString table_name;
+      uint64_t table_id;
+
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "invalid version=%d", version);
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+      else if (OB_SUCCESS != (ret = table_name.deserialize(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "deserialize table name error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_i64(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position(), reinterpret_cast<int64_t*>(&table_id))))
+      {
+        TBSYS_LOG(WARN, "deserialize table id error, err=%d", ret);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = root_server_.kill_import(table_name, table_id);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "failed to kill import table_name=%.*s table_id=%lu", table_name.length(),
+              table_name.ptr(), table_id);
+        }
+      }
+      // send response
+      common::ObResultCode res;
+      res.result_code_ = ret;
+      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
+              out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else
+      {
+        ret = send_response(OB_RS_KILL_IMPORT_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+
+      if (OB_SUCCESS != res.result_code_)
+      {
+        ret = res.result_code_;
+      }
+
+      return ret;
+    }
+
+    int ObRootWorker::rt_get_import_status(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      ObString table_name;
+      uint64_t table_id;
+      ObLoadDataInfo::ObLoadDataStatus status;
+
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "invalid version=%d", version);
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+      else if (OB_SUCCESS != (ret = table_name.deserialize(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "deserialize table name error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_i64(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position(), reinterpret_cast<int64_t*>(&table_id))))
+      {
+        TBSYS_LOG(WARN, "deserialize table id error, err=%d", ret);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        ret = root_server_.get_import_status(table_name, table_id, status);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "failed to check import status table_name=%.*s table_id=%lu, ret=%d", table_name.length(),
+              table_name.ptr(), table_id, ret);
+        }
+      }
+      // send response
+      common::ObResultCode res;
+      res.result_code_ = ret;
+      int32_t status_i32 = static_cast<int32_t>(status);
+      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_i32(out_buff.get_data(),
+              out_buff.get_capacity(), out_buff.get_position(), status_i32)))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else
+      {
+        ret = send_response(OB_RS_GET_IMPORT_STATUS_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+
+      if (OB_SUCCESS != res.result_code_)
+      {
+        ret = res.result_code_;
+      }
+
+      return ret;
+    }
+
+    int ObRootWorker::rt_set_import_status(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      ObString table_name;
+      uint64_t table_id;
+      int32_t status_i32;
+      ObLoadDataInfo::ObLoadDataStatus status;
+
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "invalid version=%d", version);
+        ret = OB_ERROR_FUNC_VERSION;
+      }
+      else if (OB_SUCCESS != (ret = table_name.deserialize(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "deserialize table name error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_i64(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position(), reinterpret_cast<int64_t*>(&table_id))))
+      {
+        TBSYS_LOG(WARN, "deserialize table id error, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_i32(in_buff.get_data(),
+              in_buff.get_capacity(), in_buff.get_position(), &status_i32)))
+      {
+        TBSYS_LOG(WARN, "deserialize status error, err=%d", ret);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        status = static_cast<ObLoadDataInfo::ObLoadDataStatus>(status_i32);
+        ret = root_server_.set_import_status(table_name, table_id, status);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(ERROR, "failed to check import status table_name=%.*s table_id=%lu, ret=%d", table_name.length(),
+              table_name.ptr(), table_id, ret);
+        }
+      }
+      // send response
+      common::ObResultCode res;
+      res.result_code_ = ret;
+      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(), out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "serialize error, err=%d", ret);
+      }
+      else
+      {
+        ret = send_response(OB_RS_SET_IMPORT_STATUS_RESPONSE, MY_VERSION, out_buff, req, channel_id);
+      }
+
+      if (OB_SUCCESS != res.result_code_)
+      {
+        ret = res.result_code_;
+      }
+
+      return ret;
+    }
+
+    int ObRootWorker::rt_force_create_table(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int MY_VERSION = 1;
+      common::ObResultCode res;
+      uint64_t table_id = 0;
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "un-supported rpc version=%d", version);
+        res.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else if (root_server_.get_obi_role().get_role() == common::ObiRole::MASTER)
+      {
+        res.result_code_ = OB_OP_NOT_ALLOW;
+        TBSYS_LOG(WARN, "master instance can't force to create table. role=%s", root_server_.get_obi_role().get_role_str());
+      }
+      else
+      {
+        if (OB_SUCCESS != (ret = serialization::decode_vi64(in_buff.get_data(),
+                in_buff.get_capacity(), in_buff.get_position(), (int64_t*)&table_id)))
+        {
+          TBSYS_LOG(WARN, "failed to deserialize table_id, err=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = root_server_.force_create_table(table_id)))
+        {
+          TBSYS_LOG(WARN, "failed to create table, table_id=%ld, err=%d", table_id, ret);
+        }
+        if (OB_SUCCESS != ret)
+        {
+          res.message_ = ob_get_err_msg();
+          TBSYS_LOG(WARN, "create table err=%.*s", res.message_.length(), res.message_.ptr());
+        }
+        res.result_code_ = ret;
+        ret = OB_SUCCESS;
+      }
+      if (OB_SUCCESS == ret)
+      {
+        // send response message
+        if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
+                out_buff.get_capacity(), out_buff.get_position())))
+        {
+          TBSYS_LOG(WARN, "failed to serialize, err=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = send_response(OB_FORCE_CREATE_TABLE_FOR_EMERGENCY_RESPONSE, MY_VERSION, out_buff, req, channel_id)))
+        {
+          TBSYS_LOG(WARN, "failed to send response, table_id=%ld, err=%d", table_id, ret);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "send response for creating table, table_id=%ld, ret=%d",
+              table_id, res.result_code_);
+        }
+      }
+      return ret;
+    }
+
+    int ObRootWorker::rt_force_drop_table(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      int ret = OB_SUCCESS;
+      static const int MY_VERSION = 1;
+      common::ObResultCode res;
+      uint64_t table_id = 0;
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "un-supported rpc version=%d", version);
+        res.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else if (root_server_.get_obi_role().get_role() == common::ObiRole::MASTER)
+      {
+        res.result_code_ = OB_OP_NOT_ALLOW;
+        TBSYS_LOG(WARN, "master instance can't force to drop table. role=%s", root_server_.get_obi_role().get_role_str());
+      }
+      else
+      {
+        if (OB_SUCCESS != (ret = serialization::decode_vi64(in_buff.get_data(),
+                in_buff.get_capacity(), in_buff.get_position(), (int64_t*)&table_id)))
+        {
+          TBSYS_LOG(WARN, "failed to deserialize table_id, err=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = root_server_.force_drop_table(table_id)))
+        {
+          TBSYS_LOG(WARN, "failed to drop table, table_id=%ld, err=%d", table_id, ret);
+        }
+        if (OB_SUCCESS != ret)
+        {
+          res.message_ = ob_get_err_msg();
+          TBSYS_LOG(WARN, "drop table err=%.*s", res.message_.length(), res.message_.ptr());
+        }
+        res.result_code_ = ret;
+        ret = OB_SUCCESS;
+      }
+      if (OB_SUCCESS == ret)
+      {
+        // send response message
+        if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
+                out_buff.get_capacity(), out_buff.get_position())))
+        {
+          TBSYS_LOG(WARN, "failed to serialize, err=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = send_response(OB_FORCE_DROP_TABLE_FOR_EMERGENCY_RESPONSE, MY_VERSION, out_buff, req, channel_id)))
+        {
+          TBSYS_LOG(WARN, "failed to send response, table_id=%ld, err=%d", table_id, ret);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "send response for drop table, table_id=%ld, ret=%d",
+              table_id, res.result_code_);
+        }
+      }
+      return ret;
+    }
+
+    int ObRootWorker::rt_notify_switch_schema(const int32_t version, common::ObDataBuffer& in_buff,
+        easy_request_t* req, const uint32_t channel_id, common::ObDataBuffer& out_buff)
+    {
+      UNUSED(in_buff);
+      int ret = OB_SUCCESS;
+      static const int MY_VERSION = 1;
+      common::ObResultCode res;
+      uint64_t table_id = 0;
+      bool only_core_tables = false;
+      bool force_update = true;
+      if (MY_VERSION != version)
+      {
+        TBSYS_LOG(WARN, "un-supported rpc version=%d", version);
+        res.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else if(OB_SUCCESS != (ret = root_server_.notify_switch_schema(only_core_tables, force_update)))
+      {
+        TBSYS_LOG(WARN, "failed to notify_switch_schema");
+      }
+
+      res.result_code_ = ret;
+
+      // send response message
+      if (OB_SUCCESS != (ret = res.serialize(out_buff.get_data(),
+              out_buff.get_capacity(), out_buff.get_position())))
+      {
+        TBSYS_LOG(WARN, "failed to serialize, err=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = send_response(OB_RS_NOTIFY_SWITCH_SCHEMA_RESPONSE, MY_VERSION, out_buff, req, channel_id)))
+      {
+        TBSYS_LOG(WARN, "failed to send response, table_id=%ld, err=%d", table_id, ret);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "send response for notify_switch_schema, ret=%d", res.result_code_);
+      }
+
+      if (OB_SUCCESS != res.result_code_)
+      {
+        ret = res.result_code_;
+      }
+      return ret;
+    }
+
   }; // end namespace
 }
-

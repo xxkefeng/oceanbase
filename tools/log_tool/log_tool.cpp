@@ -16,6 +16,7 @@
 #include "common/ob_malloc.h"
 #include "updateserver/ob_ups_mutator.h"
 #include "updateserver/ob_on_disk_log_locator.h"
+#include "updateserver/ob_ups_table_mgr.h"
 #include "common/ob_direct_log_reader.h"
 #include "common/ob_repeated_log_reader.h"
 #include "common/ob_log_writer.h"
@@ -35,7 +36,10 @@ const char* _usages = "Usages:\n"
   "\t%1$s gen_nop log_file n_logs\n"
   "\t%1$s reset_id src_log_file dest_log_file start_id\n"
   "\t%1$s locate log_dir log_id\n"
-  "\t%1$s dump log_file # env: dump_header_only=false dump_all_data=true verbose=true\n"
+  "\t%1$s dump log_file type=all # env: dump_header_only=false dump_all_data=true verbose=true\n"
+  "\t%1$s find dir type=freeze\n"
+  "\t%1$s cat log_file end_log_id # end_log_id = -n to drop last n log\n"
+  "\t%1$s cat log_file 2>/dev/null |md5sum"
   "\t%1$s expand file size\n"
   "\t%1$s precreate log_dir du_percent\n"
   "\t%1$s merge src_log_file dest_log_file\n"
@@ -43,6 +47,7 @@ const char* _usages = "Usages:\n"
   "\t%1$s a2i src_file dest_file\n"
   "\t%1$s dumpi file_of_binary_int\n"
   "\t%1$s read_file_test file_name offset\n"
+  "\t%1$s sst2str sst_id\n"
   "\t%1$s select src_log_file dest_log_file id_seq_file\n";
 
 #define getcfg(key) getenv(key)
@@ -239,6 +244,143 @@ static int expand(const char* path, const int64_t size)
     close(fd);
   }
   return err;
+}
+
+int get_end_log_id(const char* log_data, int64_t data_len, int64_t& end_log_id, const bool skip_broken=true)
+{
+  int err = OB_SUCCESS;
+  int64_t pos = 0;
+  ObLogEntry log_entry;
+  const bool check_data_integrity = false;
+  end_log_id = 0;
+  if (NULL == log_data || data_len <= 0)
+  {
+    err = OB_INVALID_ARGUMENT;
+  }
+  while(OB_SUCCESS == err && pos < data_len)
+  {
+    if (ObLogGenerator::is_eof(log_data + pos, data_len - pos))
+    {
+      err = OB_READ_NOTHING;
+      TBSYS_LOG(WARN, "read eof(buf=%p, pos=%ld, len=%ld)", log_data, pos, data_len);
+    }
+    else if (OB_SUCCESS != (err = log_entry.deserialize(log_data, data_len, pos)))
+    {
+      TBSYS_LOG(ERROR, "log_entry.deserialize(log_data=%p, data_len=%ld, pos=%ld)=>%d", log_data, data_len, pos, err);
+    }
+    else if (pos + log_entry.get_log_data_len() > data_len)
+    {
+      err = OB_LAST_LOG_RUINNED;
+      TBSYS_LOG(ERROR, "last log broken, last_log_id=%ld, offset=%ld", end_log_id, pos - log_entry.get_serialize_size());
+    }
+    else if (check_data_integrity && OB_SUCCESS != (err = log_entry.check_data_integrity(log_data + pos)))
+    {
+      TBSYS_LOG(ERROR, "log_entry.check_data_integrity()=>%d", err);
+    }
+    else
+    {
+      pos += log_entry.get_log_data_len();
+      end_log_id = (int64_t)log_entry.seq_;
+    }
+  }
+  if (end_log_id > 0)
+  {
+    end_log_id++;
+  }
+  if (skip_broken && end_log_id > 0)
+  {
+    err = OB_SUCCESS;
+  }
+  return err;
+}
+
+int locate_in_buf(const char* log_data, int64_t data_len, int64_t end_log_id, int64_t& offset)
+{
+  int err = OB_SUCCESS;
+  int64_t pos = 0;
+  ObLogEntry log_entry;
+  const bool check_data_integrity = false;
+  offset = 0;
+  if (NULL == log_data || data_len <= 0)
+  {
+    err = OB_INVALID_ARGUMENT;
+  }
+  while(OB_SUCCESS == err && pos < data_len)
+  {
+    int64_t cur_start = pos;
+    if (OB_SUCCESS != (err = log_entry.deserialize(log_data, data_len, pos)))
+    {
+      TBSYS_LOG(ERROR, "log_entry.deserialize(log_data=%p, data_len=%ld, pos=%ld)=>%d", log_data, data_len, pos, err);
+    }
+    else if (pos + log_entry.get_log_data_len() > data_len)
+    {
+      err = OB_LAST_LOG_RUINNED;
+      TBSYS_LOG(ERROR, "last log broken, log_id=%ld, offset=%ld", log_entry.seq_, cur_start);
+    }
+    else if (check_data_integrity && OB_SUCCESS != (err = log_entry.check_data_integrity(log_data + pos)))
+    {
+      TBSYS_LOG(ERROR, "log_entry.check_data_integrity()=>%d", err);
+    }
+    else if ((int64_t)log_entry.seq_ == end_log_id)
+    {
+      offset = cur_start;
+      break;
+    }
+    else if ((int64_t)log_entry.seq_ == end_log_id - 1)
+    {
+      offset = pos + log_entry.get_log_data_len();
+      break;
+    }
+    else
+    {
+      pos += log_entry.get_log_data_len();
+    }
+  }
+  return err;
+}
+
+static int cat(const char* log_file, const int64_t end_log_id)
+{
+  int err = OB_SUCCESS;
+  const char* src_buf = NULL;
+  int64_t len = 0;
+  int64_t offset = 0;
+  int64_t last_log_id = 0;
+  fprintf(stderr, "cat(src=%s, end_log_id=%ld)\n", log_file, end_log_id);
+  if (NULL == log_file)
+  {
+    err = OB_INVALID_ARGUMENT;
+  }
+  else if (OB_SUCCESS != (err = get_file_len(log_file, len)))
+  {
+    TBSYS_LOG(ERROR, "get_file_len(%s)=>%d", log_file, err);
+  }
+  else if (OB_SUCCESS != (err = file_map_read(log_file, len, src_buf)))
+  {
+    TBSYS_LOG(ERROR, "file_map_read(%s)=>%d", log_file, err);
+  }
+  else if (end_log_id <= 0 && OB_SUCCESS != (err = get_end_log_id(src_buf, len, last_log_id)))
+  {
+    TBSYS_LOG(ERROR, "get_last_end_log_id()=>%d", err);
+  }
+  else if (OB_SUCCESS != (err = locate_in_buf(src_buf, len, end_log_id > 0? end_log_id: last_log_id + end_log_id, offset)))
+  {
+    TBSYS_LOG(ERROR, "dump_log(buf=%p[%ld])=>%d", src_buf, len, err);
+  }
+  else if (offset != write(fileno(stdout), src_buf, offset))
+  {
+    TBSYS_LOG(ERROR, "write(stdout, count=%ld)=>%s", offset, strerror(errno));
+  }
+  else if (end_log_id <= 0)
+  {
+    fprintf(stderr, "dump: real_end_log_id=%ld\n", last_log_id + end_log_id);
+  }
+  return err;
+}
+
+static int is_clog_file(const struct dirent* a)
+{
+  return atoll(a->d_name) > 0;
 }
 
 int64_t calc_new_file_num_to_add(const char* dir, int64_t du_percent, int64_t file_size)
@@ -526,7 +668,10 @@ int cell_info_resolve_column_name(ObSchemaManagerV2& sch_mgr, ObCellInfo& cell)
   return err;
 }
 
-static int dump_ob_mutator_cell(ObMutatorCellInfo& cell)
+static int dump_ob_mutator_cell(ObMutatorCellInfo& cell,
+                                const bool irc,
+                                const bool irf,
+                                const ObDmlType dml_type)
 {
   int err = OB_SUCCESS;
   uint64_t op = cell.op_type.get_ext();
@@ -534,7 +679,7 @@ static int dump_ob_mutator_cell(ObMutatorCellInfo& cell)
   uint64_t column_id = cell.cell_info.column_id_;
   ObString table_name = cell.cell_info.table_name_;
   ObString column_name = cell.cell_info.column_name_;
-  char value_str[1024];
+  char value_str[1<<20];
   int64_t pos = 0;
   if (OB_SUCCESS != (err = repr(value_str, sizeof(value_str), pos, cell.cell_info.value_)))
   {
@@ -542,8 +687,11 @@ static int dump_ob_mutator_cell(ObMutatorCellInfo& cell)
   }
   else
   {
-    printf("cell: op=%lu[%s], table=%lu[%*s], rowkey=%s, column=%lu[%*s], value=%s\n", op, get_action_flag_str(static_cast<int>(op)),
-           table_id, table_name.length(), table_name.ptr(), to_cstring(cell.cell_info.row_key_), column_id, column_name.length(), column_name.ptr(), value_str);
+    printf("cell: op=%lu[%s], table=%lu[%*s], rowkey=%s, irc=%s, irf=%s, dml_type=%s, column=%lu[%*s], value=%s\n",
+           op, get_action_flag_str(static_cast<int>(op)),
+           table_id, table_name.length(), table_name.ptr(), to_cstring(cell.cell_info.row_key_),
+           STR_BOOL(irc), STR_BOOL(irf), str_dml_type(dml_type),
+           column_id, column_name.length(), column_name.ptr(), value_str);
   }
   return err;
 }
@@ -556,13 +704,16 @@ int dump_ob_mutator(ObMutator& mut)
   while (OB_SUCCESS == err && OB_SUCCESS == (err = mut.next_cell()))
   {
     ObMutatorCellInfo* cell = NULL;
-    if (OB_SUCCESS != (err = mut.get_cell(&cell)))
+    bool irc = false;
+    bool irf = false;
+    ObDmlType dml_type = OB_DML_UNKNOW;
+    if (OB_SUCCESS != (err = mut.get_cell(&cell, &irc, &irf, &dml_type)))
     {
       TBSYS_LOG(ERROR, "mut.get_cell()=>%d", err);
     }
     else
     {
-      dump_ob_mutator_cell(*cell);
+      dump_ob_mutator_cell(*cell, irc, irf, dml_type);
     }
   }
   if (OB_ITER_END == err)
@@ -620,7 +771,103 @@ const char* get_ups_mutator_type(ObUpsMutator& mutator)
     return "CHECK_VERSION";
   return "UNKNOWN";
 }
-int dump_mutator_header(ObUpsMutator& mutator, int64_t& n_cell, int64_t& n_row)
+
+int dump_freeze_log(ObUpsMutator &ups_mutator)
+{
+  int err = OB_SUCCESS;
+  ObMutatorCellInfo *mutator_ci = NULL;
+  ObCellInfo *ci = NULL;
+  ObString str_freeze_param;
+  ObUpsTableMgr::FreezeParamHeader *header = NULL;
+
+  ups_mutator.get_mutator().reset_iter();
+  if (OB_SUCCESS != (err = ups_mutator.get_mutator().next_cell()))
+  {
+    TBSYS_LOG(ERROR, "next cell for freeze ups_mutator fail ret=%d", err);
+  }
+  else if (OB_SUCCESS != (err = ups_mutator.get_mutator().get_cell(&mutator_ci)))
+  {
+    TBSYS_LOG(ERROR, "get mutator cell fail, err=%d", err);
+  }
+  else if (NULL == mutator_ci)
+  {
+    TBSYS_LOG(WARN, "get NULL mutator cell");
+    err = OB_ERR_UNEXPECTED;
+  }
+  else
+  {
+    ci = &(mutator_ci->cell_info);
+    err = ci->value_.get_varchar(str_freeze_param);
+    header = (ObUpsTableMgr::FreezeParamHeader*)str_freeze_param.ptr();
+  }
+
+  if (OB_SUCCESS != err || NULL == header || (int64_t)sizeof(ObUpsTableMgr::FreezeParamHeader) >= str_freeze_param.length())
+  {
+    TBSYS_LOG(ERROR, "get freeze_param from freeze ups_mutator fail ret=%d header=%p length=%d",
+              err, header, str_freeze_param.length());
+    err = (OB_SUCCESS == err) ? OB_ERR_UNEXPECTED : err;
+  }
+  else
+  {
+    switch (header->version)
+    {
+      case 1:
+      {
+        ObUpsTableMgr::FreezeParamV1 *freeze_param_v1 = (ObUpsTableMgr::FreezeParamV1*)(header->buf);
+        fprintf(stdout, "freeze_param_v1 active_version=%ld new_log_file_id=%ld op_flag=%lx\n",
+                  freeze_param_v1->active_version, freeze_param_v1->new_log_file_id, freeze_param_v1->op_flag);
+        break;
+      }
+      case 2:
+      {
+        ObUpsTableMgr::FreezeParamV2 *param = (ObUpsTableMgr::FreezeParamV2*)(header->buf);
+        fprintf(stdout, "param frozen=%s active=%s new_log_file_id=%ld op_flag=%lx\n",
+                SSTableID::log_str(SSTableID::trans_format_v1(param->frozen_version)), SSTableID::log_str(SSTableID::trans_format_v1(param->active_version)),
+                param->new_log_file_id, param->op_flag);
+        break;
+      }
+      case 3:
+      {
+        ObUpsTableMgr::FreezeParamV3 *param = (ObUpsTableMgr::FreezeParamV3*)(header->buf);
+        fprintf(stdout, "param frozen=%s active=%s new_log_file_id=%ld op_flag=%lx timestamp=%s[%lu]\n",
+                SSTableID::log_str(SSTableID::trans_format_v1(param->frozen_version)), SSTableID::log_str(SSTableID::trans_format_v1(param->active_version)),
+                param->new_log_file_id, param->op_flag,
+                format_time(param->time_stamp), param->time_stamp);
+        break;
+      }
+      case 4:
+      {
+        int tmp_ret = OB_SUCCESS;
+        ObUpsTableMgr::FreezeParamV4 *param = (ObUpsTableMgr::FreezeParamV4*)(header->buf);
+        CommonSchemaManagerWrapper schema_manager;
+        char *data = str_freeze_param.ptr();
+        int64_t length = str_freeze_param.length();
+        int64_t pos = sizeof(ObUpsTableMgr::FreezeParamHeader) + sizeof(ObUpsTableMgr::FreezeParamV4);
+        fprintf(stdout, "param frozen=%s active=%s new_log_file_id=%ld op_flag=%lx timestamp=%s[%lu]\n",
+                SSTableID::log_str(param->frozen_version), SSTableID::log_str(param->active_version),
+                param->new_log_file_id, param->op_flag,
+                format_time(param->time_stamp), param->time_stamp);
+        if (OB_SUCCESS != (tmp_ret = schema_manager.deserialize(data, length, pos)))
+        {
+          TBSYS_LOG(ERROR, "schema_manager.deserialize()=>%d", tmp_ret);
+        }
+        else
+        {
+          schema_manager.get_impl()->print(stdout);
+        }
+        break;
+      }
+      default:
+        err = OB_ERR_UNEXPECTED;
+        TBSYS_LOG(ERROR, "freeze_param version error %d", header->version);
+        break;
+    }
+  }
+  ups_mutator.get_mutator().reset_iter();
+  return err;
+}
+
+int dump_mutator_header(uint64_t seq, ObUpsMutator& mutator, int64_t& n_cell, int64_t& n_row)
 {
   int err = OB_SUCCESS;
   if (OB_SUCCESS != (err = mutator_size(mutator.get_mutator(), n_cell, n_row)))
@@ -629,7 +876,8 @@ int dump_mutator_header(ObUpsMutator& mutator, int64_t& n_cell, int64_t& n_row)
   }
   else
   {
-    printf("%s, size %ld:%ld, MutationTime[%lu]: %s, checksum %lu:%lu\n",
+    printf("#LogHeader# %lu Mutator %s, size %ld:%ld, MutationTime[%lu]: %s, CheckSum %lu:%lu\n",
+           seq,
            get_ups_mutator_type(mutator),
            n_cell, n_row,
            mutator.get_mutate_timestamp(),
@@ -638,16 +886,23 @@ int dump_mutator_header(ObUpsMutator& mutator, int64_t& n_cell, int64_t& n_row)
            mutator.get_memtable_checksum_after_mutate());
     if (mutator.is_check_cur_version())
     {
-      printf("cur_version=%lu:%lu\n", mutator.get_cur_major_version(), mutator.get_cur_minor_version());
+      printf("cur_version=%lu:%lu load_bypass_checksum=%lu\n", mutator.get_cur_major_version(), mutator.get_cur_minor_version(), mutator.get_last_bypass_checksum());
+    }
+    if (mutator.is_freeze_memtable())
+    {
+      if (OB_SUCCESS != (err = dump_freeze_log(mutator)))
+      {
+        printf("dump_freeze_log() fail, err=%d\n", err);
+      }
     }
   }
   return err;
 }
 
-int dump_mutator(ObUpsMutator& mutator, int64_t& n_cell, int64_t& n_row, bool verbose=true)
+int dump_mutator(uint64_t seq, ObUpsMutator& mutator, int64_t& n_cell, int64_t& n_row, bool verbose=true)
 {
   int err = OB_SUCCESS;
-  if (OB_SUCCESS != (err = dump_mutator_header(mutator, n_cell, n_row)))
+  if (OB_SUCCESS != (err = dump_mutator_header(seq, mutator, n_cell, n_row)))
   {}
   else if (!verbose)
   {}
@@ -698,16 +953,91 @@ int64_t next_header(const char* buf, int64_t len, int64_t pos)
   return idx >= 0? pos + idx: len;
 }
 
-int dump_log(const char* buf, const int64_t len)
+int dump_first_log_if_freeze(const char* log_file, const char* buf, const int64_t len)
+{
+  int err = OB_SUCCESS;
+  int64_t pos = 0;
+  ObLogEntry entry;
+  ObUpsMutator mutator;
+  if (NULL == buf || 0 > len)
+  {
+    err = OB_INVALID_ARGUMENT;
+  }
+  else if (ObLogGenerator::is_eof(buf + pos, len - pos))
+  {
+    err = OB_READ_NOTHING;
+    TBSYS_LOG(WARN, "read eof(buf=%p, pos=%ld, len=%ld)", buf, pos, len);
+  }
+  else if (OB_SUCCESS != (err = entry.deserialize(buf, len, pos)))
+  {
+    TBSYS_LOG(ERROR, "log_entry.deserialize()=>%d", err);
+  }
+  else if (OB_SUCCESS != (err = entry.check_header_integrity(false)))
+  {
+    TBSYS_LOG(ERROR, "check_header_integrity()=>%d", err);
+  }
+  else if (pos + entry.get_log_data_len() > len || OB_SUCCESS != (err = entry.check_data_integrity(buf + pos, false)))
+  {
+    TBSYS_LOG(ERROR, "check_data_integrity()=>%d", err);
+  }
+  else if (OB_LOG_UPS_MUTATOR != entry.cmd_)
+  {
+    err = OB_READ_NOTHING;
+  }
+  else if (OB_SUCCESS != (err = mutator.deserialize(buf, pos + entry.get_log_data_len(), pos)))
+  {
+    TBSYS_LOG(ERROR, "deserialize()=>%d", err);
+  }
+  else if (!mutator.is_freeze_memtable())
+  {
+    err = OB_READ_NOTHING;
+  }
+  else
+  {
+    printf("find freeze: %s\n", log_file);
+    if (OB_SUCCESS != (err = dump_freeze_log(mutator)))
+    {
+      TBSYS_LOG(ERROR, "dump_freeze_log()=>%d", err);
+    }
+  }
+  return err;
+}
+
+int dump_tablets_list(const char* buf, int64_t len)
+{
+  int err = OB_SUCCESS;
+  int64_t pos = 0;
+  ObServer server;
+  ObTabletReportInfoList tablets;
+  int64_t timestamp = 0;
+
+  if (OB_SUCCESS != (err = serialization::decode_vi64(buf, len, pos, &timestamp)))
+  {
+    TBSYS_LOG(ERROR, "decode_vi64()=>%d", err);
+  }
+  else if (OB_SUCCESS != (err = server.deserialize(buf, len, pos)))
+  {
+    TBSYS_LOG(ERROR, "server.deserialize()=>%d", err);
+  }
+  else if (OB_SUCCESS != (err = tablets.deserialize(buf, len, pos)))
+  {
+    TBSYS_LOG(ERROR, "tablets.deserialize()=>%d", err);
+  }
+  printf("report_tablets: ts=%ld, server=%s, tablet_cnt=%ld\n", timestamp, to_cstring(server), tablets.get_tablet_size());
+  return err;
+}
+
+int dump_log(const char* log_file, const char* buf, const int64_t len, const char* type)
 {
   int err = OB_SUCCESS;
   int64_t pos = 0;
   ObLogEntry entry;
   ObUpsMutator mutator;
   ObSchemaManagerV2 schema_mgr;
-  bool dump_header_only = is_env_set("dump_header_only", "true");
+  bool dump_header_only = is_env_set("dump_header_only", "false");
   bool dump_all_data = is_env_set("dump_all_data", "true");
   bool verbose = is_env_set("verbose", "true");
+  bool read_eof = false;
   int64_t n_header_broken = 0;
   int64_t n_body_broken = 0;
   int64_t n_deserialize_broken = 0;
@@ -717,6 +1047,19 @@ int dump_log(const char* buf, const int64_t len)
   int64_t total_row = 0;
   int64_t n_mutator = 0;
 
+  if (strcmp(type, "freeze") == 0)
+  {
+    if (OB_SUCCESS != (err = dump_first_log_if_freeze(log_file, buf, len))
+      && OB_READ_NOTHING != err)
+    {
+      TBSYS_LOG(ERROR, "dump_first_log_if_freeze()=>%d", err);
+    }
+    else if (OB_READ_NOTHING == err)
+    {
+      err = OB_SUCCESS;
+    }
+    return err;
+  }
   set_compatible_schema(mutator);
   if (NULL == buf || 0 > len)
   {
@@ -724,7 +1067,13 @@ int dump_log(const char* buf, const int64_t len)
   }
   while((dump_all_data || OB_SUCCESS == err) && pos < len)
   {
-    if (OB_SUCCESS != (err = entry.deserialize(buf, len, pos)))
+    if (ObLogGenerator::is_eof(buf + pos, len - pos))
+    {
+      TBSYS_LOG(INFO, "read eof(buf=%p, pos=%ld, len=%ld)", buf, pos, len);
+      read_eof = true;
+      break;
+    }
+    else if (OB_SUCCESS != (err = entry.deserialize(buf, len, pos)))
     {
       pos ++;
       TBSYS_LOG(ERROR, "log_entry.deserialize()=>%d", err);
@@ -769,9 +1118,29 @@ int dump_log(const char* buf, const int64_t len)
           fprintf(stdout, "Corrupt.\n");
           //TBSYS_LOG(ERROR, "mutator.deserialize(seq=%ld)=>%d", (int64_t)entry.seq_, err);
         }
-        else if (OB_SUCCESS != (err = dump_mutator(mutator, n_cell, n_row, verbose)))
+        else if (OB_SUCCESS != (err = dump_mutator(entry.seq_, mutator, n_cell, n_row, verbose)))
         {
           TBSYS_LOG(ERROR, "dump_mutator()=>%d", err);
+        }
+      }
+      else if (OB_RT_REPORT_TABLETS == entry.cmd_)
+      {
+        if (OB_SUCCESS != (err = dump_tablets_list(buf + pos, entry.get_log_data_len())))
+        {
+          TBSYS_LOG(ERROR, "dump_tablets_list()=>%d", err);
+        }
+      }
+      else if (OB_LOG_NOP == entry.cmd_)
+      {
+        DebugLog debug_log;
+        if (OB_SUCCESS != debug_log.deserialize(buf + pos, entry.get_log_data_len(), tmp_pos))
+        {
+          TBSYS_LOG(DEBUG, "deserialize nop log fail: log_id=%ld, pos=%ld", entry.seq_, pos);
+          fprintf(stdout, "#LogHeader# %lu NOP %d\n", entry.seq_, entry.get_log_data_len());
+        }
+        else
+        {
+          fprintf(stdout, "#LogHeader# %lu NOP %d %s\n", entry.seq_, entry.get_log_data_len(), to_cstring(debug_log));
         }
       }
       else if (OB_LOG_SWITCH_LOG == entry.cmd_)
@@ -800,10 +1169,10 @@ int dump_log(const char* buf, const int64_t len)
       pos += entry.get_log_data_len();
     }
   }
-  if (OB_SUCCESS == err && pos != len)
+  if (OB_SUCCESS == err && !read_eof && pos != len)
   {
     err = OB_ERR_UNEXPECTED;
-    TBSYS_LOG(ERROR, "pos[%ld] != len[%ld]", pos, len);
+    TBSYS_LOG(WARN, "pos[%ld] != len[%ld]", pos, len);
   }
   printf("broken[header:body:deserialize]=[%ld:%ld:%ld], cell=%ld/%ld=%.2f, row=%ld/%ld=%.2f\n",
          n_header_broken, n_body_broken, n_deserialize_broken,
@@ -812,7 +1181,7 @@ int dump_log(const char* buf, const int64_t len)
   return err;
 }
 
-int dump(const char* log_file)
+int dump(const char* log_file, const char* type="all")
 {
   int err = OB_SUCCESS;
   const char* src_buf = NULL;
@@ -830,9 +1199,58 @@ int dump(const char* log_file)
   {
     TBSYS_LOG(ERROR, "file_map_read(%s)=>%d", log_file, err);
   }
-  else if (OB_SUCCESS != (err = dump_log(src_buf, len)))
+  else if (OB_SUCCESS != (err = dump_log(log_file, src_buf, len, type)))
   {
     TBSYS_LOG(ERROR, "dump_log(buf=%p[%ld])=>%d", src_buf, len, err);
+  }
+  return err;
+}
+
+
+int find(const char* dir, const char* type="freeze")
+{
+  int err = OB_SUCCESS;
+  char buf[256];
+  struct dirent **list = NULL;
+  int n = 0;
+  int64_t len = 0;
+  if (NULL == dir)
+  {
+    err = OB_INVALID_ARGUMENT;
+  }
+  else if ((n = scandir(dir, &list, is_clog_file, versionsort)) < 0)
+  {
+    TBSYS_LOG(ERROR, "scandir(%s)=>%s", dir, strerror(errno));
+  }
+  else if (0 == n)
+  {
+    TBSYS_LOG(WARN, "%s is empty, can not select a file", dir);
+  }
+  for(int64_t i = 0; OB_SUCCESS == err && i < n; i++)
+  {
+    if ((len = snprintf(buf, sizeof(buf), "%s/%s", dir, list[i]->d_name)) <= 0
+        || len >= (int64_t)sizeof(buf))
+    {
+      TBSYS_LOG(ERROR, "generate file_name error, buf=%p[%ld], dir=%s, fname=%s",
+                buf, sizeof(buf), dir, list[i]->d_name);
+    }
+    else if (OB_SUCCESS != (err = dump(buf, type))
+             && OB_READ_NOTHING != err)
+    {
+      TBSYS_LOG(ERROR, "dump_freeze_log_in_file(%s)=>%d", buf, err);
+    }
+    else if (OB_READ_NOTHING == err)
+    {
+      err = OB_SUCCESS;
+    }
+  }
+  if (NULL == list && n > 0)
+  {
+    while(n--)
+    {
+      free(list[n]);
+    }
+    free(list);
   }
   return err;
 }
@@ -1319,6 +1737,12 @@ int dumpi(const char* src_file)
   return err;
 }
 
+int sst2str(int64_t sstid)
+{
+  printf("%s\n", SSTableID::log_str(sstid));
+  return 0;
+}
+
 int a2i(const char* src_file, const char* dest_file)
 {
   int err = OB_SUCCESS;
@@ -1514,13 +1938,21 @@ int main(int argc, char *argv[])
   {
     report_error(err, "reset()=>%d", err);
   }
-  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, dump, StrArg(log_file)):OB_NEED_RETRY))
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, dump, StrArg(log_file), StrArg(type, "all")):OB_NEED_RETRY))
   {
     report_error(err, "dump()=>%d", err);
+  }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, find, StrArg(dir), StrArg(type, "freeze")):OB_NEED_RETRY))
+  {
+    report_error(err, "find()=>%d", err);
   }
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, merge, StrArg(src_log_file), StrArg(dest_log_file)):OB_NEED_RETRY))
   {
     report_error(err, "merge()=>%d", err);
+  }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, cat, StrArg(log_file), IntArg(end_log_id, "0")):OB_NEED_RETRY))
+  {
+    report_error(err, "cat()=>%d", err);
   }
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, locate, StrArg(log_dir), IntArg(log_id)):OB_NEED_RETRY))
   {
@@ -1543,6 +1975,10 @@ int main(int argc, char *argv[])
     report_error(err, "a2i()=>%d", err);
   }
   else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, dumpi, StrArg(src_file)):OB_NEED_RETRY))
+  {
+    report_error(err, "dumpi()=>%d", err);
+  }
+  else if (OB_NEED_RETRY != (err = CmdCall(argc, argv, sst2str, IntArg(sst_id)):OB_NEED_RETRY))
   {
     report_error(err, "dumpi()=>%d", err);
   }

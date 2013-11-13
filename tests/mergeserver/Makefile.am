@@ -22,7 +22,7 @@ LDADD = $(top_builddir)/src/mergeserver/libmergeserver.a \
 				${TBLIB_ROOT}/lib/libtbsys.a
 
 CXXFLAGS += -D_MS_MOCK_WHOLE_  -D_BTREE_ENGINE_ -D__UNIT_TEST__
-AM_LDFLAGS = -lpthread -lc -lm  -lgtest -lrt ${GCOV_LIB} -ldl -lssl
+AM_LDFLAGS = -laio -lpthread -lc -lm  -lgtest -lrt ${GCOV_LIB} -ldl -lssl
 if COVERAGE
 CXXFLAGS+=-fprofile-arcs -ftest-coverage
 AM_LDFLAGS+=-lgcov
@@ -37,10 +37,12 @@ new_source = ob_scan_param_loader.cpp \
        ob_location_list_cache_loader.cpp
 
 bin_PROGRAMS = \
-			   test_merger_cache_table
+			   test_merger_cache_table            \
+			   test_ob_frozen_data_cache
 
 #test_session_manager_SOURCES = test_session_manager.cpp
 test_merger_cache_table_SOURCES = test_merger_cache_table.cpp
+test_ob_frozen_data_cache_SOURCES = test_ob_frozen_data_cache.cpp
 #monitor_tool_SOURCES = monitor_tool.cpp
 #test_ups_client_SOURCES = test_ups_client.cpp
 #test_mutate_client_SOURCES = test_mutate_client.cpp

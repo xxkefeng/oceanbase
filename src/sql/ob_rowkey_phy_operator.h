@@ -28,7 +28,8 @@ namespace oceanbase
     {
       public:
         virtual ~ObRowkeyPhyOperator() {};
-
+        virtual void reset() = 0;
+        virtual void reuse() = 0;
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const = 0;
         virtual int get_next_row(const common::ObRowkey *&rowkey, const common::ObRow *&row) = 0;

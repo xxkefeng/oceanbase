@@ -30,9 +30,9 @@ deploy ob1.major_freeze;
 
 # slave cluster rs restart
 deploy ob2.restart;
-sleep 60;
+sleep 30;
 deploy ob2.rs0.set_obi_role OBI_SLAVE;
-sleep 10;
+sleep 60;
 
 #sql
 insert into t1 values(5,1),(6,2),(7,3),(8,4);

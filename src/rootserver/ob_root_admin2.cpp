@@ -31,9 +31,12 @@
 #include "common/ob_get_param.h"
 #include "common/ob_schema.h"
 #include "common/ob_scanner.h"
+#include "common/file_directory_utils.h"
 #include "rootserver/ob_root_admin_cmd.h"
 #include "rootserver/ob_root_stat_key.h"
-
+#include "ob_daily_merge_checker.h"
+#include "ob_root_table2.h"
+#include "ob_tablet_info_manager.h"
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
 
@@ -62,35 +65,44 @@ namespace oceanbase
       printf("\tlog_move_to_debug\n");
       printf("\tlog_move_to_error\n");
       printf("\tdump_root_table\n");
+      printf("\tclean_root_table\n");
+      printf("\tcheck_root_table -o cs_ip=<cs_ip>,cs_port=<cs_port>\n");
+      printf("\tget_row_checksum -o tablet_version=<tablet_version>,table_id=<table_id>\n");
+      printf("\tcheck_tablet_version -o tablet_version=<tablet_version>\n");
       printf("\tdump_unusual_tablets\n");
       printf("\tdump_server_info\n");
       printf("\tdump_migrate_info\n");
-      printf("\tswitch_schema\n");
+      printf("\tdump_cs_tablet_info -o cs_ip=<cs_ip>,cs_port=<cs_port>\n");
       printf("\tchange_log_level -o ERROR|WARN|INFO|DEBUG\n");
+      printf("\tclean_error_msg\n");
+      printf("\tcs_create_table -o table_id=<table_id> -o table_version=<frozen_verson>\n");
       printf("\tget_obi_role\n");
-      printf("\tclean_error_msg\n");
       printf("\tset_obi_role -o OBI_SLAVE|OBI_MASTER\n");
-      printf("\tget_obi_config\n");
-      printf("\tclean_error_msg\n");
-      printf("\tset_config -o config_name=config_value[,config_name2=config_value2[,...]]\n");
       printf("\tget_config\n");
+      printf("\tset_config -o config_name=config_value[,config_name2=config_value2[,...]]\n");
+      printf("\tget_obi_config\n");
       printf("\tset_obi_config -o read_percentage=<read_percentage>\n");
       printf("\tset_obi_config -o rs_ip=<rs_ip>,rs_port=<rs_port>,read_percentage=<read_percentage>\n");
       printf("\tset_ups_config -o ups_ip=<ups_ip>,ups_port=<ups_port>,ms_read_percentage=<percentage>,cs_read_percentage=<percentage>\n");
       printf("\tset_master_ups_config -o master_master_ups_read_percentage=<percentage>,slave_master_ups_read_percentage=<percentage>\n");
       printf("\tchange_ups_master -o ups_ip=<ups_ip>,ups_port=<ups_port>[,force]\n");
       printf("\timport_tablets -o table_id=<table_id>\n");
-      printf("\trefresh_schema\n");
-      printf("\tprint_schema\n");
       printf("\tprint_root_table -o table_id=<table_id>\n");
+      printf("\tprint_schema -o location=<location>\n");
+      printf("\tread_root_table_point -o location=<location>\n");
+      printf("\trefresh_schema\n");
+      printf("\tcheck_schema\n");
+      printf("\tswitch_schema\n");
+      printf("\tchange_table_id -o table_id=<table_id>\n");
+      printf("\tforce_create_table -o table_id=<table_id>\n");
+      printf("\tforce_drop_table -o table_id=<table_id>\n");
       printf("\tenable_balance|disable_balance\n");
       printf("\tenable_rereplication|disable_rereplication\n");
       printf("\tshutdown -o server_list=<ip1+ip2+...+ipn>[,cancel]\n");
       printf("\trestart_cs -o server_list=<ip1+ip2+...+ipn>[,cancel]\n");
-      printf("\tdump_cs_tablet_info -o cs_ip=<cs_ip>,cs_port=<cs_port>\n");
-      printf("\tcheck_tablet_version -o tablet_version=<tablet_version>\n");
       printf("\tsplit_tablet -o table_id=<table_id> -o table_version=<table_version>\n");
-      printf("\tcheck_root_table -o cs_ip=<cs_ip>,cs_port=<cs_port>\n");
+      printf("\timport table_name table_id uri\n");
+      printf("\tkill_import table_name table_id\n");
       printf("\n\t-h\tprint this help message\n");
       printf("\t-V\tprint the version\n");
       printf("\nSee `rs_admin.log' for the detailed execution log.\n");
@@ -117,6 +129,14 @@ namespace oceanbase
         }
       ,
         {
+          "force_create_table", OB_FORCE_CREATE_TABLE_FOR_EMERGENCY, do_create_table_for_emergency
+        }
+      ,
+        {
+          "force_drop_table", OB_FORCE_DROP_TABLE_FOR_EMERGENCY, do_drop_table_for_emergency
+        }
+      ,
+        {
           "do_check_point", OB_RS_ADMIN_CHECKPOINT, do_rs_admin
         }
       ,
@@ -134,6 +154,9 @@ namespace oceanbase
       ,
         {
           "dump_root_table", OB_RS_ADMIN_DUMP_ROOT_TABLE, do_rs_admin
+        },
+        {
+          "clean_root_table", OB_RS_ADMIN_CLEAN_ROOT_TABLE, do_rs_admin
         }
       ,
         {
@@ -147,6 +170,11 @@ namespace oceanbase
         {
           "dump_unusual_tablets", OB_RS_ADMIN_DUMP_UNUSUAL_TABLETS, do_rs_admin
         }
+      ,
+        {
+          "check_schema", OB_RS_ADMIN_CHECK_SCHEMA, do_rs_admin
+        }
+
       ,
         {
           "refresh_schema", OB_RS_ADMIN_REFRESH_SCHEMA, do_rs_admin
@@ -173,6 +201,10 @@ namespace oceanbase
         }
       ,
         {
+          "cs_create_table", OB_CS_CREATE_TABLE, do_cs_create_table
+        }
+      ,
+        {
           "set_master_ups_config", OB_SET_MASTER_UPS_CONFIG, do_set_master_ups_config
         }
       ,
@@ -181,7 +213,16 @@ namespace oceanbase
         }
       ,
         {
+          "change_table_id", OB_CHANGE_TABLE_ID, do_change_table_id
+        }
+      ,
+
+        {
           "import_tablets", OB_CS_IMPORT_TABLETS, do_import_tablets
+        }
+      ,
+        {
+          "get_row_checksum", OB_GET_ROW_CHECKSUM, do_get_row_checksum
         }
       ,
         {
@@ -251,6 +292,18 @@ namespace oceanbase
         {
           "get_config", OB_GET_CONFIG, do_get_config
         }
+      ,
+        {
+          "import", OB_RS_ADMIN_START_IMPORT, do_import
+        }
+      ,
+        {
+          "kill_import", OB_RS_ADMIN_START_KILL_IMPORT, do_kill_import
+        }
+      ,
+        {
+          "read_root_table_point", OB_RS_ADMIN_READ_ROOT_TABLE, read_root_table_point
+        }
     };
 
     enum
@@ -278,6 +331,7 @@ namespace oceanbase
       OPT_TABLE_VERSION = 20,
       OPT_READ_MASTER_MASTER_UPS_PERCENTAGE = 21,
       OPT_READ_SLAVE_MASTER_UPS_PERCENTAGE = 22,
+      OPT_SCHEMA_LOCATION = 23,
       THE_END
     };
 
@@ -307,6 +361,7 @@ namespace oceanbase
       "table_version",
       "master_master_ups_read_percentage", //21
       "slave_master_ups_read_percentage", //22
+      "location",
       NULL
     };
 
@@ -416,6 +471,18 @@ namespace oceanbase
                     else
                     {
                       args.ups_ip = value;
+                    }
+                    break;
+                  case OPT_SCHEMA_LOCATION:
+                    if (NULL == value)
+                    {
+                      printf("option location needs an argument value\n");
+                      ret = OB_INVALID_ARGUMENT;
+                    }
+                    else
+                    {
+                      args.location = value;
+                      TBSYS_LOG(INFO, "location name is %s", args.location);
                     }
                     break;
                   case OPT_UPS_PORT:
@@ -609,6 +676,8 @@ namespace oceanbase
         }
         else
         {
+          args.argc = argc - optind;
+          args.argv = &argv[optind];
           char* cmd = argv[optind];
           for (uint32_t i = 0; i < ARRAYSIZEOF(COMMANDS); ++i)
           {
@@ -922,7 +991,7 @@ namespace oceanbase
             args.master_master_ups_read_percentage, args.slave_master_ups_read_percentage);
 
         static const int32_t MY_VERSION = 1;
-        const int buff_size = sizeof(ObPacket) + 128;
+        const int buff_size = OB_MAX_PACKET_LENGTH;
         char buff[buff_size];
         ObDataBuffer msgbuf(buff, buff_size);
         if (OB_SUCCESS != (ret = serialization::encode_vi32(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), args.master_master_ups_read_percentage)))
@@ -954,6 +1023,69 @@ namespace oceanbase
             printf("Okay\n");
           }
         }
+      }
+      return ret;
+    }
+
+    int do_cs_create_table(ObBaseClient &client, Arguments &args)
+    {
+      int ret = OB_SUCCESS;
+      common::ObServer cs_addr;
+      if ((1 > args.table_id) || (OB_INVALID_ID == args.table_id))
+      {
+        printf("invalid param, table_id=%lu\n", args.table_id);
+        usage();
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (!cs_addr.set_ipv4_addr(args.rs_host, args.rs_port))
+      {
+        printf("invalid param, cs_host=%s cs_port=%d\n", args.rs_host, args.rs_port);
+        usage();
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        printf("force cs create empty table cs_ip=%s cs_port=%d version=%ld table_id=%lu...\n",
+            args.rs_host, args.rs_port, args.table_version, args.table_id);
+        static const int32_t MY_VERSION = 1;
+        const int buff_size = sizeof(ObPacket) + 128;
+        char buff[buff_size];
+        ObDataBuffer msgbuf(buff, buff_size);
+        ObNewRange range;
+        range.table_id_ = args.table_id;
+        range.border_flag_.unset_inclusive_start();
+        range.border_flag_.set_inclusive_end();
+        range.set_whole_range();
+        int64_t timeout_us = args.request_timeout_us;
+        if (OB_SUCCESS != (ret = range.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+        {
+          TBSYS_LOG(ERROR, "failed to serialize range, err=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(),
+                msgbuf.get_position(), args.table_version)))
+        {
+          TBSYS_LOG(ERROR, "failed to serialize key_src, err=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = client.send_recv(OB_CS_CREATE_TABLE, MY_VERSION, timeout_us, msgbuf)))
+        {
+          TBSYS_LOG(WARN, "failed to send request, err=%d", ret);
+        }
+        else
+        {
+          ObResultCode result;
+          int64_t pos = 0;
+          if (OB_SUCCESS != (ret = result.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+          {
+            TBSYS_LOG(ERROR, "failed to deserialize response, err=%d", ret);
+          }
+          else if (OB_SUCCESS != result.result_code_)
+          {
+            ret = result.result_code_;
+            TBSYS_LOG(ERROR, "failed to create tablet:rang[%s], ret[%d]", to_cstring(range), ret);
+          }
+        }
+        printf("[%s] create empty table:cs[%s], table[%lu], version[%ld], ret[%d]\n", (OB_SUCCESS == ret) ? "SUCC" : "FAIL",
+            cs_addr.to_cstring(), range.table_id_, args.table_version, ret);
       }
       return ret;
     }
@@ -998,7 +1130,7 @@ namespace oceanbase
             args.ups_ip, args.ups_port, args.ms_read_percentage, args.cs_read_percentage);
 
         static const int32_t MY_VERSION = 1;
-        const int buff_size = sizeof(ObPacket) + 128;
+        const int buff_size = OB_MAX_PACKET_LENGTH;
         char buff[buff_size];
         ObDataBuffer msgbuf(buff, buff_size);
 
@@ -1043,7 +1175,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       static const int32_t MY_VERSION = 1;
-      const int buff_size = sizeof(ObPacket) + 128;
+      const int buff_size = OB_MAX_PACKET_LENGTH;
       char buff[buff_size];
       ObDataBuffer msgbuf(buff, buff_size);
 
@@ -1113,7 +1245,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       static const int32_t MY_VERSION = 1;
-      const int buff_size = sizeof(ObPacket) + 128;
+      const int buff_size = OB_MAX_PACKET_LENGTH;
       char buff[buff_size];
       ObDataBuffer msgbuf(buff, buff_size);
 
@@ -1182,7 +1314,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       static const int32_t MY_VERSION = 1;
-      const int buff_size = sizeof(ObPacket) + 128;
+      const int buff_size = OB_MAX_PACKET_LENGTH;
       char buff[buff_size];
       ObDataBuffer msgbuf(buff, buff_size);
 
@@ -1242,6 +1374,56 @@ namespace oceanbase
           {
             printf("Okay\n");
           }
+        }
+      }
+      return ret;
+    }
+
+    int do_get_row_checksum(ObBaseClient &client, Arguments &args)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      const int buff_size = sizeof(ObPacket) + 32;
+      char buff[buff_size];
+      ObDataBuffer msgbuf(buff, buff_size);
+      ObRowChecksum row_checksum;
+      if (args.tablet_version <= 0)
+      {
+        printf("invalid tablet_version\n");
+        usage();
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), args.tablet_version)))
+      {
+        printf("failed to serialize, err=%d\n", ret);
+      }
+      else if (OB_SUCCESS != (ret = common::serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), args.table_id)))
+      {
+        printf("failed to serialize, err=%d\n", ret);
+      }
+      else if (OB_SUCCESS != (ret = client.send_recv(OB_GET_ROW_CHECKSUM, MY_VERSION, args.request_timeout_us*20, msgbuf)))
+      {
+        printf("failed to send request, err=%d\n", ret);
+      }
+      else
+      {
+        ObResultCode result_code;
+        int64_t pos = 0;
+        if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+        {
+          printf("failed to deserialize response, err=%d\n", ret);
+        }
+        else if (OB_SUCCESS != (ret = result_code.result_code_))
+        {
+          printf("failed to get table row_checksum, err=%d\n", result_code.result_code_);
+        }
+        else if (OB_SUCCESS != (ret = row_checksum.deserialize(msgbuf.get_data(), msgbuf.get_position(), pos)))
+        {
+          printf("failed to deserialize response, err=%d\n", ret);
+        }
+        else
+        {
+          printf("Okay\n%s\n", to_cstring(row_checksum));
         }
       }
       return ret;
@@ -1333,7 +1515,20 @@ namespace oceanbase
         }
         else
         {
-          schema_manager.print(stdout);
+          //schema_manager.print(stdout);
+          if (common::FileDirectoryUtils::exists(args.location))
+          {
+            printf("file already exist. fail to write. file_name=%s\n", args.location);
+          }
+          else
+          {
+            printf("write schema to file. file_name=%s\n", args.location);
+            ret = schema_manager.write_to_file(args.location);
+            if (OB_SUCCESS != ret)
+            {
+              TBSYS_LOG(WARN, "fail to write schema to file. file_name=%s\n", args.location);
+            }
+          }
         }
       }
       if (NULL != buff)
@@ -1627,7 +1822,7 @@ namespace oceanbase
     {
       int err = OB_SUCCESS;
       static const int32_t MY_VERSION = 1;
-      const int buff_size = sizeof(ObPacket) + 128;
+      const int buff_size = OB_MAX_PACKET_LENGTH;
       char buff[buff_size];
       ObDataBuffer msgbuf(buff, buff_size);
 
@@ -1685,119 +1880,397 @@ namespace oceanbase
       return err;
     }
 
- int do_split_tablet(ObBaseClient &client, Arguments &args)
- {
-   int err = OB_SUCCESS;
-   printf("for split tablet...\n");
-   static const int32_t MY_VERSION = 1;
-   const int buff_size = sizeof(ObPacket) + 128;
-   char buff[buff_size];
-   ObDataBuffer msgbuf(buff, buff_size);
+    int do_split_tablet(ObBaseClient &client, Arguments &args)
+    {
+      int err = OB_SUCCESS;
+      printf("for split tablet...\n");
+      static const int32_t MY_VERSION = 1;
+      const int buff_size = OB_MAX_PACKET_LENGTH;
+      char buff[buff_size];
+      ObDataBuffer msgbuf(buff, buff_size);
 
-   if (OB_SUCCESS != (err = client.send_recv(OB_RS_SPLIT_TABLET, MY_VERSION, args.request_timeout_us, msgbuf)))
-   {
-     printf("failed to send request. err=%d", err);
-   }
-   else
-   {
-     ObResultCode result_code;
-     msgbuf.get_position() = 0;
-     if (OB_SUCCESS != (err = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
-     {
-       printf("failed to deserialize response code, err=%d", err);
-     }
-     else if (OB_SUCCESS != (err = result_code.result_code_))
-     {
-       printf("failed to split tablet. err=%d", err);
-     }
-     else
-     {
-       printf("OKay");
-     }
-   }
-   return err;
- }
+      if (OB_SUCCESS != (err = client.send_recv(OB_RS_SPLIT_TABLET, MY_VERSION, args.request_timeout_us, msgbuf)))
+      {
+        printf("failed to send request. err=%d", err);
+      }
+      else
+      {
+        ObResultCode result_code;
+        msgbuf.get_position() = 0;
+        if (OB_SUCCESS != (err = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+        {
+          printf("failed to deserialize response code, err=%d", err);
+        }
+        else if (OB_SUCCESS != (err = result_code.result_code_))
+        {
+          printf("failed to split tablet. err=%d", err);
+        }
+        else
+        {
+          printf("OKay");
+        }
+      }
+      return err;
+    }
 
- int do_set_config(ObBaseClient &client, Arguments &args)
- {
-   int err = OB_SUCCESS;
-   static const int32_t MY_VERSION = 1;
-   char buf[OB_MAX_PACKET_LENGTH];
-   ObString str = ObString::make_string(args.config_str);
-   int64_t pos = 0;
-   if (strlen(args.config_str) <= 0)
-   {
-     printf("ERROR: config string not specified.\n");
-     printf("\tset_config -o config_name=config_value[,config_name2=config_value2[,...]]\n");
-     err = OB_ERROR;
-   }
-   else if (OB_SUCCESS != (err = str.serialize(buf, sizeof (buf), pos)))
-   {
-     printf("Serialize config string failed! ret: [%d]", err);
-   }
-   else
-   {
-     printf("config_str: %s\n", args.config_str);
+    int do_set_config(ObBaseClient &client, Arguments &args)
+    {
+      int err = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      char buf[OB_MAX_PACKET_LENGTH];
+      ObString str = ObString::make_string(args.config_str);
+      int64_t pos = 0;
+      if (strlen(args.config_str) <= 0)
+      {
+        printf("ERROR: config string not specified.\n");
+        printf("\tset_config -o config_name=config_value[,config_name2=config_value2[,...]]\n");
+        err = OB_ERROR;
+      }
+      else if (OB_SUCCESS != (err = str.serialize(buf, sizeof (buf), pos)))
+      {
+        printf("Serialize config string failed! ret: [%d]", err);
+      }
+      else
+      {
+        printf("config_str: %s\n", args.config_str);
 
-     ObDataBuffer msgbuf(buf, sizeof (buf));
-     msgbuf.get_position() = pos;
-     if (OB_SUCCESS != (err = client.send_recv(OB_SET_CONFIG, MY_VERSION, args.request_timeout_us, msgbuf)))
-     {
-       printf("failed to send request. err=%d\n", err);
-     }
-     else
-     {
-       ObResultCode result_code;
-       msgbuf.get_position() = 0;
-       if (OB_SUCCESS != (err = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
-       {
-         printf("failed to deserialize response code, err=%d\n", err);
-       }
-       else if (OB_SUCCESS != (err = result_code.result_code_))
-       {
-         printf("failed to set config. err=%d\n", err);
-       }
-       else
-       {
-         printf("OKay\n");
-       }
-     }
-   }
-   return err;
- }
+        ObDataBuffer msgbuf(buf, sizeof (buf));
+        msgbuf.get_position() = pos;
+        if (OB_SUCCESS != (err = client.send_recv(OB_SET_CONFIG, MY_VERSION, args.request_timeout_us, msgbuf)))
+        {
+          printf("failed to send request. err=%d\n", err);
+        }
+        else
+        {
+          ObResultCode result_code;
+          msgbuf.get_position() = 0;
+          if (OB_SUCCESS != (err = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+          {
+            printf("failed to deserialize response code, err=%d\n", err);
+          }
+          else if (OB_SUCCESS != (err = result_code.result_code_))
+          {
+            printf("failed to set config. err=%d\n", err);
+          }
+          else
+          {
+            printf("OKay\n");
+          }
+        }
+      }
+      return err;
+    }
 
- int do_get_config(ObBaseClient &client, Arguments &args)
- {
-   int err = OB_SUCCESS;
-   static const int32_t MY_VERSION = 1;
-   char buf[OB_MAX_PACKET_LENGTH];
-   ObDataBuffer msgbuf(buf, sizeof (buf));
-   msgbuf.get_position() = 0;
-   if (OB_SUCCESS != (err = client.send_recv(OB_GET_CONFIG, MY_VERSION, args.request_timeout_us, msgbuf)))
-   {
-     printf("failed to send request. err=%d\n", err);
-   }
-   else
-   {
-     ObResultCode result_code;
-     msgbuf.get_position() = 0;
-     if (OB_SUCCESS != (err = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
-     {
-       printf("failed to deserialize response code, err=%d\n", err);
-     }
-     else if (OB_SUCCESS != (err = result_code.result_code_))
-     {
-       printf("failed to set config. err=%d\n", err);
-     }
-     else
-     {
-       static const int HEADER_LENGTH = sizeof (uint32_t) + sizeof (uint64_t);
-       uint64_t length = *reinterpret_cast<uint64_t *>(msgbuf.get_data() + msgbuf.get_position() + sizeof (uint32_t));
-       msgbuf.get_position() += HEADER_LENGTH;
-       printf("%.*s", static_cast<int>(length), msgbuf.get_data() + msgbuf.get_position());
-     }
-   }
-   return err;
- }
+    int do_get_config(ObBaseClient &client, Arguments &args)
+    {
+      int err = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      char buf[OB_MAX_PACKET_LENGTH];
+      ObDataBuffer msgbuf(buf, sizeof (buf));
+      msgbuf.get_position() = 0;
+      if (OB_SUCCESS != (err = client.send_recv(OB_GET_CONFIG, MY_VERSION, args.request_timeout_us, msgbuf)))
+      {
+        printf("failed to send request. err=%d\n", err);
+      }
+      else
+      {
+        ObResultCode result_code;
+        msgbuf.get_position() = 0;
+        if (OB_SUCCESS != (err = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+        {
+          printf("failed to deserialize response code, err=%d\n", err);
+        }
+        else if (OB_SUCCESS != (err = result_code.result_code_))
+        {
+          printf("failed to set config. err=%d\n", err);
+        }
+        else
+        {
+          static const int HEADER_LENGTH = sizeof (uint32_t) + sizeof (uint64_t);
+          uint64_t length = *reinterpret_cast<uint64_t *>(msgbuf.get_data() + msgbuf.get_position() + sizeof (uint32_t));
+          msgbuf.get_position() += HEADER_LENGTH;
+          printf("%.*s", static_cast<int>(length), msgbuf.get_data() + msgbuf.get_position());
+        }
+      }
+      return err;
+    }
+    int do_change_table_id(ObBaseClient &client, Arguments &args)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      const int buff_size = OB_MAX_PACKET_LENGTH;
+      char buff[buff_size];
+      ObDataBuffer msgbuf(buff, buff_size);
+
+      if (0 >= args.table_id)
+      {
+        printf("invalid param, table_id=%ld\n", args.table_id);
+        usage();
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        printf("change_table_id, table_id=%ld...\n", args.table_id);
+        if (OB_SUCCESS != (ret = serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), args.table_id)))
+        {
+          printf("failed to serialize table id, err=%d\n", ret);
+        }
+        else if (OB_SUCCESS != (ret = client.send_recv(OB_CHANGE_TABLE_ID, MY_VERSION, args.request_timeout_us, msgbuf)))
+        {
+          printf("failed to send request, err=%d\n", ret);
+        }
+        else
+        {
+          ObResultCode result_code;
+          msgbuf.get_position() = 0;
+          if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+          {
+            printf("failed to deserialize response, err=%d\n", ret);
+          }
+          else if (OB_SUCCESS != (ret = result_code.result_code_))
+          {
+            printf("failed to change table id, err=%d\n", result_code.result_code_);
+          }
+          else
+          {
+            printf("Okay\n");
+          }
+        }
+      }
+      return ret;
+    }
+
+    int do_import(ObBaseClient &client, Arguments &args)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      const int buff_size = OB_MAX_PACKET_LENGTH;
+      char buff[buff_size];
+      ObDataBuffer msgbuf(buff, buff_size);
+      ObString table_name;
+      uint64_t table_id;
+      ObString uri;
+      int64_t timeout = 120*1000L*1000L;//120s
+
+      if (args.request_timeout_us > timeout)
+      {
+        timeout = args.request_timeout_us;
+      }
+
+      if (args.argc != 4)
+      {
+        printf("wrong cmd format, please use import <tablename> <table_id> <uri>\n");
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (0 == (table_id = strtoull(args.argv[2], 0, 10)))
+      {
+        printf("table id must not 0");
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        table_name.assign_ptr(args.argv[1], static_cast<ObString::obstr_size_t>(strlen(args.argv[1])));
+        uri.assign_ptr(args.argv[3], static_cast<ObString::obstr_size_t>(strlen(args.argv[3])));
+        printf("import table_name=%.*s table_id=%lu uri=%.*s\n", table_name.length(), table_name.ptr(), table_id, uri.length(), uri.ptr());
+        if (OB_SUCCESS != (ret = table_name.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+        {
+          printf("failed to serialize table name, err=%d\n", ret);
+        }
+        else if (OB_SUCCESS != (ret = serialization::encode_i64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), table_id)))
+        {
+          printf("failed to serialize table id, err=%d\n", ret);
+        }
+        else if (OB_SUCCESS != (ret = uri.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+        {
+          printf("failed to serialize table name, err=%d\n", ret);
+        }
+        else if (OB_SUCCESS != (ret = client.send_recv(OB_RS_ADMIN_START_IMPORT, MY_VERSION, timeout, msgbuf)))
+        {
+          printf("failed to send request, err=%d\n", ret);
+        }
+        else
+        {
+          ObResultCode result_code;
+          msgbuf.get_position() = 0;
+          if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+          {
+            printf("failed to deserialize response, err=%d\n", ret);
+          }
+          else if (OB_SUCCESS != (ret = result_code.result_code_))
+          {
+            printf("failed to import table, err=%d\n", result_code.result_code_);
+          }
+          else
+          {
+            printf("Okay\n");
+          }
+        }
+      }
+      return ret;
+    }
+
+    int do_kill_import(ObBaseClient &client, Arguments &args)
+    {
+      int ret = OB_SUCCESS;
+      static const int32_t MY_VERSION = 1;
+      const int buff_size = OB_MAX_PACKET_LENGTH;
+      char buff[buff_size];
+      ObDataBuffer msgbuf(buff, buff_size);
+      ObString table_name;
+      uint64_t table_id;
+      int64_t timeout = 120*1000L*1000L;//120s
+
+      if (args.request_timeout_us > timeout)
+      {
+        timeout = args.request_timeout_us;
+      }
+
+
+      if (args.argc != 3)
+      {
+        printf("wrong cmd format, please use import <tablename> <table_id>\n");
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (0 == (table_id = strtoull(args.argv[2], 0, 10)))
+      {
+        printf("table id must not 0");
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else
+      {
+        table_name.assign_ptr(args.argv[1], static_cast<ObString::obstr_size_t>(strlen(args.argv[1])));
+        printf("kill import table_name=%.*s table_id=%lu\n", table_name.length(), table_name.ptr(), table_id);
+        if (OB_SUCCESS != (ret = table_name.serialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+        {
+          printf("failed to serialize table name, err=%d\n", ret);
+        }
+        else if (OB_SUCCESS != (ret = serialization::encode_i64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), table_id)))
+        {
+          printf("failed to serialize table id, err=%d\n", ret);
+        }
+        else if (OB_SUCCESS != (ret = client.send_recv(OB_RS_ADMIN_START_KILL_IMPORT, MY_VERSION, timeout, msgbuf)))
+        {
+          printf("failed to send request, err=%d\n", ret);
+        }
+        else
+        {
+          ObResultCode result_code;
+          msgbuf.get_position() = 0;
+          if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+          {
+            printf("failed to deserialize response, err=%d\n", ret);
+          }
+          else if (OB_SUCCESS != (ret = result_code.result_code_))
+          {
+            printf("failed to kill import table, err=%d\n", result_code.result_code_);
+          }
+          else
+          {
+            printf("Okay\n");
+          }
+        }
+      }
+      return ret;
+    }
+    int do_create_table_for_emergency(ObBaseClient &client, Arguments &args)
+    {
+      int ret = OB_SUCCESS;
+      printf("force to create table for emergency, table_id=%ld\n", args.table_id);
+      static const int32_t MY_VERSION = 1;
+      const int buff_size = sizeof(ObPacket) + 32;
+      char buff[buff_size];
+      ObDataBuffer msgbuf(buff, buff_size);
+      if (OB_SUCCESS != (ret = serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), args.table_id)))
+      {
+        printf("failed to serialize role, err=%d\n", ret);
+      }
+      else if (OB_SUCCESS != (ret = client.send_recv(OB_FORCE_CREATE_TABLE_FOR_EMERGENCY, MY_VERSION, args.request_timeout_us, msgbuf)))
+      {
+        printf("failed to send request, err=%d\n", ret);
+      }
+      else
+      {
+        ObResultCode result_code;
+        msgbuf.get_position() = 0;
+        if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+        {
+          printf("failed to deserialize response, err=%d\n", ret);
+        }
+        else if (OB_SUCCESS != (ret = result_code.result_code_))
+        {
+          printf("failed to create table for emergency, err=%d\n", result_code.result_code_);
+        }
+        else
+        {
+          printf("Okay\n");
+        }
+      }
+      return ret;
+    }
+int do_drop_table_for_emergency(ObBaseClient &client, Arguments &args)
+    {
+      int ret = OB_SUCCESS;
+      printf("force to drop table for emergency, table_id=%ld\n", args.table_id);
+      static const int32_t MY_VERSION = 1;
+      const int buff_size = sizeof(ObPacket) + 32;
+      char buff[buff_size];
+      ObDataBuffer msgbuf(buff, buff_size);
+      if (OB_SUCCESS != (ret = serialization::encode_vi64(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position(), args.table_id)))
+      {
+        printf("failed to serialize role, err=%d\n", ret);
+      }
+      else if (OB_SUCCESS != (ret = client.send_recv(OB_FORCE_DROP_TABLE_FOR_EMERGENCY, MY_VERSION, args.request_timeout_us, msgbuf)))
+      {
+        printf("failed to send request, err=%d\n", ret);
+      }
+      else
+      {
+        ObResultCode result_code;
+        msgbuf.get_position() = 0;
+        if (OB_SUCCESS != (ret = result_code.deserialize(msgbuf.get_data(), msgbuf.get_capacity(), msgbuf.get_position())))
+        {
+          printf("failed to deserialize response, err=%d\n", ret);
+        }
+        else if (OB_SUCCESS != (ret = result_code.result_code_))
+        {
+          printf("failed to drop table for emergency, err=%d\n", result_code.result_code_);
+        }
+        else
+        {
+          printf("Okay\n");
+        }
+      }
+      return ret;
+    }
+
+    int read_root_table_point(ObBaseClient &client, Arguments &args)
+    {
+      UNUSED(client);
+      int ret = OB_SUCCESS;
+      ObTabletInfoManager *tablet_manager = OB_NEW(ObTabletInfoManager, ObModIds::OB_RS_TABLET_MANAGER);
+      ObRootTable2 *root_table  = OB_NEW(ObRootTable2, ObModIds::OB_RS_ROOT_TABLE, tablet_manager);
+      if (tablet_manager != NULL && root_table != NULL)
+      {
+        printf("read_from_file.");
+        if (OB_SUCCESS == root_table->read_from_file(args.location))
+        {
+          root_table->dump();
+        }
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "obmalloc root table or tablet manager failed");
+      }
+      if (root_table != NULL)
+      {
+        OB_DELETE(ObRootTable2, ObModIds::OB_RS_ROOT_TABLE, root_table);
+      }
+      if (tablet_manager != NULL)
+      {
+        OB_DELETE(ObTabletInfoManager, ObModIds::OB_RS_TABLET_MANAGER, tablet_manager);
+      }
+      return ret;
+    }
+
   } // end namespace rootserver
-}   // end namespace oceanbase
+}

@@ -22,6 +22,8 @@ namespace oceanbase
   namespace rootserver
   {
     class ObRootServer2;
+    class ObRootBalancer;
+
     class ObRootTable2
     {
       public:
@@ -74,7 +76,7 @@ namespace oceanbase
             const_iterator& ptr) const;
 
         bool table_is_exist(const uint64_t table_id) const;
-        int get_deleted_table(const common::ObSchemaManagerV2 & schema, uint64_t & table_id) const;
+        int get_deleted_table(const common::ObSchemaManagerV2 & schema, const ObRootBalancer& balancer, common::ObArray<uint64_t>& deleted_tables) const;
         void server_off_line(const int32_t server_index, const int64_t time_stamp);
 
         void dump() const;
@@ -84,6 +86,7 @@ namespace oceanbase
         int check_tablet_version_merged(const int64_t tablet_version, const int64_t safe_count, bool &is_merged) const;
         const common::ObTabletInfo* get_tablet_info(const const_iterator& it) const;
         common::ObTabletInfo* get_tablet_info(const const_iterator& it);
+        int get_table_row_checksum(const int64_t tablet_version, const uint64_t table_id, uint64_t &row_checksum);
 
         static int64_t get_max_tablet_version(const const_iterator& it);
         int64_t get_max_tablet_version();
@@ -99,7 +102,8 @@ namespace oceanbase
         int split_range(const common::ObTabletInfo& tablet_info, const const_iterator& pos, const int64_t tablet_version, const int32_t server_index);
         int add_range(const common::ObTabletInfo& tablet_info, const const_iterator& pos, const int64_t tablet_version, const int32_t server_index);
 
-        int add(const common::ObTabletInfo& tablet, const int32_t server_index, const int64_t tablet_version);
+        int add(const common::ObTabletInfo& tablet, const int32_t server_index,
+            const int64_t tablet_version, const int64_t tablet_seq = 0);
         int create_table(const common::ObTabletInfo& tablet, const common::ObArray<int32_t> &chunkservers, const int64_t tablet_version);
         bool add_lost_range();
         bool check_lost_data(const int64_t server_index)const;
@@ -118,6 +122,7 @@ namespace oceanbase
         //void remove_old_tablet();
         ObTabletCrcHistoryHelper* get_crc_helper(const const_iterator& it);
         int delete_tables(const common::ObArray<uint64_t> &deleted_tables);
+      void clear();
       public:
         int write_to_file(const char* filename);
         int read_from_file(const char* filename);

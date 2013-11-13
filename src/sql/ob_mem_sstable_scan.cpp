@@ -15,19 +15,36 @@
  */
 
 #include "ob_mem_sstable_scan.h"
-#include "common/ob_row_store.h"
+#include "ob_table_rpc_scan.h"
 
 using namespace oceanbase;
 using namespace common;
 using namespace sql;
 
 ObMemSSTableScan::ObMemSSTableScan()
-  :from_deserialize_(false), tmp_table_(NULL)
+  :from_deserialize_(false), tmp_table_subquery_(common::OB_INVALID_ID)
 {
 }
 
 ObMemSSTableScan::~ObMemSSTableScan()
 {
+}
+
+void ObMemSSTableScan::reset()
+{
+  //cur_row_.reset(false, ObRow::DEFAULT_NULL);
+  cur_row_desc_.reset();
+  row_store_.clear();
+  from_deserialize_ = false;
+  tmp_table_subquery_ = common::OB_INVALID_ID;
+}
+
+void ObMemSSTableScan::reuse()
+{
+  cur_row_desc_.reset();
+  row_store_.clear();
+  from_deserialize_ = false;
+  tmp_table_subquery_ = common::OB_INVALID_ID;
 }
 
 int ObMemSSTableScan::open()
@@ -77,14 +94,16 @@ int ObMemSSTableScan::set_child(int32_t child_idx, ObPhyOperator &child_operator
   return OB_NOT_IMPLEMENT;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObMemSSTableScan, PHY_MEM_SSTABLE_SCAN);
+  }
+}
+
 int64_t ObMemSSTableScan::to_string(char *buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
-  databuff_printf(buf, buf_len, pos, "MemSSTableScan(static_data=");
-  if (NULL != tmp_table_)
-  {
-    pos += tmp_table_->to_string(buf+pos, buf_len-pos);
-  }
+  databuff_printf(buf, buf_len, pos, "MemSSTableScan(static_data_subquery=%lu", tmp_table_subquery_);
   databuff_printf(buf, buf_len, pos, ", row_desc=");
   pos += cur_row_desc_.to_string(buf+pos, buf_len-pos);
   databuff_printf(buf, buf_len, pos, ", row_store=");
@@ -114,16 +133,30 @@ ObPhyOperatorType ObMemSSTableScan::get_type() const
   return PHY_MEM_SSTABLE_SCAN;
 }
 
+PHY_OPERATOR_ASSIGN(ObMemSSTableScan)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObMemSSTableScan);
+  reset();
+  tmp_table_subquery_ = o_ptr->tmp_table_subquery_;
+  return ret;
+}
+
 DEFINE_SERIALIZE(ObMemSSTableScan)
 {
   int ret = OB_SUCCESS;
   const common::ObRowDesc *row_desc = NULL;
-  if (NULL == tmp_table_)
+  ObValues *tmp_table = NULL;
+  if (common::OB_INVALID_ID == tmp_table_subquery_)
   {
     TBSYS_LOG(WARN, "tmp_table_ is NULL");
     ret = OB_NOT_INIT;
   }
-  else if (OB_SUCCESS != (ret = tmp_table_->get_row_desc(row_desc)))
+  else if (NULL == (tmp_table = dynamic_cast<ObValues*>(my_phy_plan_->get_phy_query_by_id(tmp_table_subquery_))))
+  {
+    TBSYS_LOG(ERROR, "invalid subqeury id=%lu", tmp_table_subquery_);
+  }
+  else if (OB_SUCCESS != (ret = tmp_table->get_row_desc(row_desc)))
   {
     TBSYS_LOG(WARN, "failed to get row desc, err=%d", ret);
   }
@@ -131,7 +164,7 @@ DEFINE_SERIALIZE(ObMemSSTableScan)
   {
     TBSYS_LOG(WARN, "fail to serialize row desc:ret[%d]", ret);
   }
-  else if (OB_SUCCESS != (ret = tmp_table_->get_row_store().serialize(buf, buf_len, pos)))
+  else if (OB_SUCCESS != (ret = tmp_table->get_row_store().serialize(buf, buf_len, pos)))
   {
     TBSYS_LOG(WARN, "fail to serialize row store:ret[%d]", ret);
   }

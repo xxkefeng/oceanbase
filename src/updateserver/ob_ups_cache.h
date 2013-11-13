@@ -168,7 +168,10 @@ namespace oceanbase
         static const int64_t MIN_KVCACHE_SIZE = 1024L*1024L*100L; //100M
         static const int64_t KVCACHE_ITEM_SIZE = 128;
         static const int64_t KVCACHE_BLOCK_SIZE = 1024L*1024L; //1M
-        typedef common::KeyValueCache<ObUpsCacheKey,ObUpsCacheValue,KVCACHE_ITEM_SIZE,KVCACHE_BLOCK_SIZE> KVCache;
+        typedef common::KeyValueCache<ObUpsCacheKey,ObUpsCacheValue,
+                KVCACHE_ITEM_SIZE,KVCACHE_BLOCK_SIZE, 
+                common::KVStoreCacheComponent::SingleObjFreeList,
+                common::hash::SpinReadWriteDefendMode> KVCache;
         typedef common::CacheHandle Handle;
       public:
         ObUpsCache();

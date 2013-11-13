@@ -26,20 +26,28 @@ namespace oceanbase
       public:
         struct Block
         {
-          Block(int64_t size): next_(NULL), size_(size), checksum_(-size) {}
+          Block(int64_t size): next_(NULL), mod_(0), ref_(0), size_(size), real_size_(0), checksum_(-size), alloc_bt_count_(0), free_bt_count_(0){}
           ~Block() {}
+          bool check_checksum() {return 0 == checksum_ + size_; }
+          void print_bt();
           Block* next_;
+          int mod_;
+          volatile int ref_;
           const int64_t size_;
+          int64_t real_size_;
           const int64_t checksum_;
+          int alloc_bt_count_;
+          int free_bt_count_;
+          void* alloc_backtraces_[32];
+          void* free_backtraces_[32];
           char buf_[0];
         };
         struct BlockList
         {
-          BlockList(): host_(NULL), seq_lock_(0), n_block_(0), next_(NULL), head_(NULL) {}
+          BlockList(): host_(NULL), n_block_(0), next_(NULL), head_(NULL) {}
           ~BlockList(){}
           int push(Block* block, const int64_t limit) {
             int err = OB_SUCCESS;
-            SeqLockGuard lock_guard(seq_lock_);
             if (NULL == block)
             {
               err = OB_INVALID_ARGUMENT;
@@ -59,7 +67,6 @@ namespace oceanbase
 
           Block* pop() {
             Block* block = NULL;
-            SeqLockGuard lock_guard(seq_lock_);
             if (NULL != head_)
             {
               block = head_;
@@ -69,15 +76,15 @@ namespace oceanbase
             return block;
           }
           TSIBlockCache* host_;
-          volatile uint64_t seq_lock_;
           int64_t n_block_;
           BlockList* next_;
           Block* head_;
         };
       public:
         const static int64_t MAX_THREAD_NUM = OB_MAX_THREAD_NUM;
+        const static int64_t MAX_BLOCK_NUM = 1<<22;
       public:
-        TSIBlockCache(): inited_(false)
+        TSIBlockCache(): inited_(false), allocator_(NULL)
         {
           int err = OB_SUCCESS;
           int syserr = 0;
@@ -89,6 +96,10 @@ namespace oceanbase
           else if (OB_SUCCESS != (err = block_list_pool_.init(MAX_THREAD_NUM)))
           {
             TBSYS_LOG(ERROR, "block_list_pool.init(%ld)=>%d", MAX_THREAD_NUM, err);
+          }
+          else if (OB_SUCCESS != (err = global_block_list_.init(MAX_BLOCK_NUM)))
+          {
+            TBSYS_LOG(ERROR, "global_block_list.init(%ld)=>%d", MAX_BLOCK_NUM, err);
           }
           for(int64_t i = 0; OB_SUCCESS == err && i < MAX_THREAD_NUM; i++)
           {
@@ -114,8 +125,10 @@ namespace oceanbase
       public:
         Block* get();
         int put(Block* block, const int64_t limit, const int64_t global_limit);
-        void clear(ObIAllocator* allocator);
+        void clear();
+        void set_allocator(ObIAllocator* allocator){ allocator_ = allocator; }
       protected:
+        void free_block(Block* block);
         static void call_clear_block_list(BlockList* block_list);
         void clear_block_list(BlockList* block_list);
       private:
@@ -123,40 +136,52 @@ namespace oceanbase
       private:
         bool inited_;
         pthread_key_t key_;
+        ObIAllocator* allocator_;
         ObFixedQueue<BlockList> block_list_pool_;
         BlockList block_list_[MAX_THREAD_NUM];
-        BlockList global_block_list_;
+        ObFixedQueue<Block> global_block_list_;
     };
 
     class ObTSIBlockAllocator: public ObIAllocator
     {
       public:
         typedef TSIBlockCache::Block Block;
-        const static int64_t BLOCK_RESERVED_SIZE = 1<<10;
-        const static int64_t NORMAL_BLOCK_SIZE = (1<<16) - BLOCK_RESERVED_SIZE;
-        const static int64_t BIG_BLOCK_SIZE = (1<<21) - BLOCK_RESERVED_SIZE;
-        const static int64_t DEFAULT_NORMAL_BLOCK_TCLIMIT = 64;
+        const static int64_t BLOCK_RESERVED_SIZE = sizeof(Block);
+        const static int64_t NORMAL_BLOCK_SIZE = OB_TC_MALLOC_BLOCK_SIZE;
+        const static int64_t MEDIUM_BLOCK_SIZE = 129 * (1 << 10) - BLOCK_RESERVED_SIZE;
+        const static int64_t BIG_BLOCK_SIZE = (1<<21) + (1<<10) - BLOCK_RESERVED_SIZE;
+        const static int64_t DEFAULT_NORMAL_BLOCK_TCLIMIT = 128;
+        const static int64_t DEFAULT_MEDIUM_BLOCK_TCLIMIT = 64;
         const static int64_t DEFAULT_BIG_BLOCK_TCLIMIT = 8;
         const static int64_t DEFAULT_NORMAL_BLOCK_GLIMIT = 1024;
-        const static int64_t DEFAULT_BIG_BLOCK_GLIMIT = 256;
+        const static int64_t DEFAULT_MEDIUM_BLOCK_GLIMIT = 512;
+        const static int64_t DEFAULT_BIG_BLOCK_GLIMIT = 64;
       public:
         ObTSIBlockAllocator(): inited_(false), mod_id_(ObModIds::TSI_BLOCK_ALLOC), allocator_(NULL),
                                normal_block_size_(NORMAL_BLOCK_SIZE),
+                               medium_block_size_(MEDIUM_BLOCK_SIZE),
                                big_block_size_(BIG_BLOCK_SIZE),
+                               normal_block_cache_(),
+                               medium_block_cache_(),
+                               big_block_cache_(),
                                normal_block_tclimit_(DEFAULT_NORMAL_BLOCK_TCLIMIT),
+                               medium_block_tclimit_(DEFAULT_MEDIUM_BLOCK_TCLIMIT),
                                big_block_tclimit_(DEFAULT_BIG_BLOCK_TCLIMIT),
                                normal_block_glimit_(DEFAULT_NORMAL_BLOCK_GLIMIT),
+                               medium_block_glimit_(DEFAULT_MEDIUM_BLOCK_GLIMIT),
                                big_block_glimit_(DEFAULT_BIG_BLOCK_GLIMIT)
         {}
         ~ObTSIBlockAllocator()
         {
           if (inited_)
           {
-            normal_block_cache_.clear(allocator_);
-            big_block_cache_.clear(allocator_);
+            normal_block_cache_.clear();
+            medium_block_cache_.clear();
+            big_block_cache_.clear();
           }
           inited_ = false;
         }
+        friend class TSIBlockCache;
       public:
         int init(ObIAllocator* allocator);
         void set_mod_id(int32_t mod_id) {mod_id_ = mod_id;};
@@ -166,8 +191,15 @@ namespace oceanbase
         void set_big_block_glimit(const int64_t limit);
         void* alloc(const int64_t size);
         void free(void* p);
-        void* mod_alloc(const int64_t size, const int32_t mod_id = 0);
+        void* mod_alloc(int64_t size, const int32_t mod_id = 0);
         void mod_free(void* p, const int32_t mod_id = 0);
+        void* mod_realloc(void* p, int64_t size, const int32_t mod_id = 0);
+      protected:
+        void after_alloc(Block* block);
+        void before_free(Block* block);
+        Block* mod_alloc_block(int64_t size, const int32_t mod_id);
+        Block* mod_realloc_block(Block* old_block, int64_t size, const int32_t mod_id);
+        void mod_free_block(Block* block, const int32_t mod_id);
       private:
         Block* alloc_block(const int64_t size);
         void free_block(Block* block);
@@ -176,12 +208,16 @@ namespace oceanbase
         int32_t mod_id_;
         ObIAllocator* allocator_;
         int64_t normal_block_size_;
+        int64_t medium_block_size_;
         int64_t big_block_size_;
         TSIBlockCache normal_block_cache_;
+        TSIBlockCache medium_block_cache_;
         TSIBlockCache big_block_cache_;
         int64_t normal_block_tclimit_;
+        int64_t medium_block_tclimit_;
         int64_t big_block_tclimit_;
         int64_t normal_block_glimit_;
+        int64_t medium_block_glimit_;
         int64_t big_block_glimit_;
     };
   }; // end namespace common

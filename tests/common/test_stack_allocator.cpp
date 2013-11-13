@@ -25,12 +25,15 @@ namespace oceanbase
 {
   namespace test
   {
+#define cfg(k, v) getenv(k)?:v
+#define cfgi(k, v) atoll(cfg(k ,v))
     struct Config
     {
       static int64_t MAX_N_DATA_ITEMS;
       int64_t mem_limit;
       int64_t max_num_items;
       int64_t block_size;
+      int64_t alloc_total_limit_mb;
       int64_t max_alloc_size;
       int64_t rollback_percent;
       int64_t alloc_big_percent;
@@ -39,15 +42,16 @@ namespace oceanbase
       int64_t n_thread;
       Config()
       {
-        mem_limit = 1<<29;
+        mem_limit = (cfgi("alloc_total_limit_mb", "1024")+1)<<20;
         max_num_items = MAX_N_DATA_ITEMS;
-        block_size = 1<<10;
+        block_size = 1<<21;
+        alloc_total_limit_mb = cfgi("alloc_total_limit_mb", "1024");
         max_alloc_size = 1<<7;
         rollback_percent = 5;
         alloc_big_percent = 5;
         reserve_percent = 5;
         reserve_big_percent = 5;
-        n_thread = 2;
+        n_thread = cfgi("n_thread", "2");
       }
     };
     int64_t Config::MAX_N_DATA_ITEMS = 1<<18;
@@ -129,10 +133,14 @@ namespace oceanbase
           int err = OB_SUCCESS;
           int64_t idx = (long)(arg);
           UNUSED(thread);
-          for(int i = 0; OB_SUCCESS == err && i < max_num_items; i++) {
+          for(int i = 0; OB_SUCCESS == err; i++) {
             if (OB_SUCCESS != (err = alloc_once(idx)))
             {
               TBSYS_LOG(ERROR, "alloc_once(idx=%ld)=>%d", idx, err);
+            }
+            if (block_allocator.get_allocated() > alloc_total_limit_mb<<20)
+            {
+              break;
             }
           }
           if (OB_SUCCESS != err)
@@ -147,7 +155,8 @@ namespace oceanbase
       setThreadCount((int32_t)n_thread);
       start();
       wait();
-      ASSERT_EQ(OB_SUCCESS, allocator.clear());
+      TBSYS_LOG(INFO, "total alloc: %ld", block_allocator.get_allocated());
+      ASSERT_EQ(OB_SUCCESS, allocator.clear(false));
       ASSERT_EQ(0, block_allocator.get_allocated());
     }
   } // end namespace updateserver

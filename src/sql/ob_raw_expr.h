@@ -76,6 +76,19 @@ namespace oceanbase
       oceanbase::common::ObObj value_;
     };
 
+    class ObCurTimeExpr : public ObRawExpr
+    {
+      public:
+        explicit ObCurTimeExpr():ObRawExpr(T_CUR_TIME) {}
+        virtual ~ObCurTimeExpr() {}
+        virtual int fill_sql_expression(
+            ObSqlExpression& inter_expr,
+            ObTransformer *transformer = NULL,
+            ObLogicalPlan *logical_plan = NULL,
+            ObPhysicalPlan *physical_plan = NULL) const;
+        void print(FILE* fp, int32_t level) const;
+    };
+
     class ObUnaryRefRawExpr : public ObRawExpr
     {
     public:

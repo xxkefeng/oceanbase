@@ -34,29 +34,31 @@ int ObInnerTableOperator::update_all_cluster(ObString & sql, const int64_t clust
   }
   else
   {
-    char ip_buf[OB_MAX_SERVER_ADDR_SIZE] = "";
-    if (false == server.ip_to_string(ip_buf, sizeof(ip_buf)))
+    char buf[OB_MAX_SERVER_ADDR_SIZE];
+    memset(buf, 0 , sizeof(buf));
+    if (server.ip_to_string(buf, sizeof(buf)) != true)
     {
-      ret = OB_INVALID_ARGUMENT;
-      TBSYS_LOG(WARN, "convert server ip to string failed:ret[%d]", ret);
+      ret = OB_CONVERT_ERROR;
+      TBSYS_LOG(ERROR, "server ip is invalid, ret=%d", ret);
     }
     else
     {
       const char * format = "REPLACE INTO %s"
-        "(cluster_id, cluster_vip, cluster_port, cluster_role, cluster_flow_percent, read_strategy) "
-        "VALUES(%d,\'%s\',%u,%d,%d,%d);";
+        "(cluster_id, cluster_role, cluster_vip, cluster_flow_percent, read_strategy, rootserver_port) "
+        "VALUES(%d,%d,'%s',%d,%d,%d);";
       // random read read_strategy
-      int size = snprintf(sql.ptr(), sql.size(), format, OB_ALL_CLUSTER, cluster_id, ip_buf,
-          OB_FAKE_MS_PORT, role.get_role() == ObiRole::MASTER ? 1 : 2, flow_percent, 0);
+      int size = snprintf(sql.ptr(), sql.size(), format, OB_ALL_CLUSTER, cluster_id,
+                          role.get_role() == ObiRole::MASTER ? 1 : 2, buf, flow_percent, 0, server.get_port());
       if (size >= sql.size())
       {
         TBSYS_LOG(ERROR, "SQL buffer size not enough! size: [%d], need: [%d], sql: [%.*s]",
-            sql.size(), size, sql.length(), sql.ptr());
+                  sql.size(), size, sql.length(), sql.ptr());
         ret = OB_SIZE_OVERFLOW;
       }
       else
       {
         sql.assign_ptr(sql.ptr(), size);
+        TBSYS_LOG(INFO, "XXX=%.*s", sql.length(), sql.ptr());
       }
     }
   }
@@ -86,7 +88,7 @@ int ObInnerTableOperator::update_all_trigger_event(ObString & sql, const int64_t
         "(event_ts, src_ip, event_type, event_param) "
         "values (%ld, '%s', %ld, %ld);";
       int size = snprintf(sql.ptr(), sql.size(), format,
-          OB_ALL_TRIGGER_EVENT_TABLE_NAME, timestamp, buf, type, 0L);
+          OB_ALL_TRIGGER_EVENT_TABLE_NAME, timestamp, buf, type, param);
       if (size >= sql.size())
       {
         TBSYS_LOG(ERROR, "SQL buffer size not enough! size: [%d], need: [%d], sql: [%.*s]",

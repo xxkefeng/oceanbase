@@ -343,6 +343,13 @@ namespace oceanbase
       {
         err = OB_DISCONTINUOUS_LOG;
       }
+      else if (OB_LOG_NOT_PERSISTENT == log_sync_type_)
+      {
+        for(int64_t i = 0; i < 4000; i++)
+        {
+          PAUSE();
+        }
+      }
       else if (OB_SUCCESS != (err = prepare_fd(start_cursor.file_id_)))
       {
         TBSYS_LOG(ERROR, "prepare_fd(%ld)=>%d", start_cursor.file_id_, err);
@@ -359,6 +366,10 @@ namespace oceanbase
         else if (OB_SUCCESS != (err = write_buffer_.flush(fd_)))
         {
           TBSYS_LOG(ERROR, "write_buffer_.flush(fd_=%d)=>%d", fd_, err);
+        }
+        else if (OB_SUCCESS != (err = write_buffer_.write(data, len, start_cursor.offset_)))
+        {
+          TBSYS_LOG(ERROR, "send write fail: start_cursor=%s, data=%p[%ld]", to_cstring(start_cursor), data, len);
         }
       }
       else
@@ -540,6 +551,59 @@ namespace oceanbase
       return result;
     }
 
+    int ObLogDataWriter::check_eof_after_log_cursor(const ObLogCursor& cursor)
+    {
+      int err = OB_SUCCESS;
+      int sys_err = 0;
+      char fname[OB_MAX_FILE_NAME_LENGTH];
+      int64_t fname_len = 0;
+      int fd = -1;
+      char* buf = NULL;
+      int64_t len = ObLogGenerator::LOG_FILE_ALIGN_SIZE;
+      int64_t read_count = 0;
+      if (0 != (sys_err = posix_memalign((void**)&buf, ObLogGenerator::LOG_FILE_ALIGN_SIZE, len)))
+      {
+        err = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(ERROR, "posix_memalign(align=%ld, size=%ld): %s",
+                  ObLogGenerator::LOG_FILE_ALIGN_SIZE, len, strerror(sys_err));
+      }
+      else if ((fname_len = snprintf(fname, sizeof(fname), "%s/%ld", log_dir_, cursor.file_id_)) < 0
+               || fname_len >= (int64_t)sizeof(fname))
+      {
+        err = OB_BUF_NOT_ENOUGH;
+        TBSYS_LOG(ERROR, "gen fname fail: buf_len=%ld, fname=%s/%ld", sizeof(fname), log_dir_, cursor.file_id_);
+      }
+      else if ((fd = open(fname, O_RDONLY | O_DIRECT | O_CREAT, OPEN_MODE)) < 0)
+      {
+        err = OB_IO_ERROR;
+        TBSYS_LOG(ERROR, "open %s fail: %s", fname, strerror(errno));
+      }
+      else if (::get_file_size(fd) == cursor.offset_)
+      {
+        TBSYS_LOG(WARN, "no eof mark after log_cursor[%s], but this is the end of file, maybe replay old version log_file", to_cstring(cursor));
+      }
+      else if (0 > (read_count = unintr_pread(fd, buf, len, cursor.offset_)))
+      {
+        err = OB_IO_ERROR;
+        TBSYS_LOG(ERROR, "pread(file=%s, fd=%d, buf=%p[%ld], cursor.offset=%ld)=>%s", fname, fd, buf, len, cursor.offset_, strerror(errno));
+      }
+      else if (!ObLogGenerator::is_eof(buf, read_count))
+      {
+        err = OB_LAST_LOG_RUINNED;
+        TBSYS_LOG(ERROR, "%s not follow by eof, read_count=%ld", to_cstring(cursor), read_count);
+      }
+
+      if (fd >= 0)
+      {
+        close(fd);
+      }
+      if (NULL != buf)
+      {
+        free(buf);
+      }
+      return err;
+    }
+
     int ObLogDataWriter::start_log(const ObLogCursor& cursor)
     {
       int err = OB_SUCCESS;
@@ -557,6 +621,11 @@ namespace oceanbase
       {
         err = OB_LOG_NOT_ALIGN;
         TBSYS_LOG(WARN, "start_log(%s): LOG_NOT_ALIGNED", to_cstring(cursor));
+      }
+      else if (OB_SUCCESS != (err = check_eof_after_log_cursor(cursor)))
+      {
+        TBSYS_LOG(ERROR, "no eof after %s, maybe commitlog corrupt, err=%d", to_cstring(cursor), err);
+        err = OB_START_LOG_CURSOR_INVALID;
       }
       else
       {

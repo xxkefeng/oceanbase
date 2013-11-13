@@ -45,6 +45,11 @@ namespace oceanbase
         return command_;
       }
 
+      const common::ObString& get_command() const
+      {
+        return command_;
+      }
+
       const ObMySQLPacketHeader& get_packet_header() const
       {
         return header_;
@@ -76,7 +81,7 @@ namespace oceanbase
       }
 
       int32_t get_command_length() const;
-      
+
       void set_receive_ts(const int64_t &now);
       int64_t get_receive_ts() const;
 
@@ -87,6 +92,42 @@ namespace oceanbase
       easy_request_t* req_;                 //request pointer for send response
       ObMySQLCommandPacket* next_;
       int64_t receive_ts_;
+    };
+
+    enum ObMySQLCommandType
+    {
+      OBMYSQL_LOGIN,
+      OBMYSQL_LOGOUT,
+      OBMYSQL_PREPARE,
+      OBMYSQL_EXECUTE,
+      OBMYSQL_OTHER
+    };
+
+    // used by packet recorder only
+    struct ObMySQLCommandPacketRecord
+    {
+      uint32_t version_;        // version of this struct
+      int socket_fd_;
+      int cseq_;
+      easy_addr_t addr_;
+      uint32_t pkt_length_;         /* MySQL packet length not include packet header */
+      uint8_t  pkt_seq_;            /* MySQL packet sequence */
+      uint8_t cmd_type_;
+      uint8_t obmysql_type_;    /* command type defined by ourself */
+      int8_t reserved1_;
+      int32_t reserved2_;
+      int32_t reserved3_;
+      uint64_t stmt_id_;//recode stmt_id when do_com_prepare
+      ObMySQLCommandPacketRecord()
+      :version_(1),socket_fd_(0),
+         cseq_(0), pkt_length_(0),
+         pkt_seq_(0), cmd_type_(30), //30 equals COM_END
+         obmysql_type_(OBMYSQL_OTHER),
+         reserved1_(0),
+         reserved2_(0),reserved3_(0),
+         stmt_id_(0)
+      {
+      }
     };
   }
 }

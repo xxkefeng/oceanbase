@@ -34,7 +34,8 @@ namespace oceanbase
       public:
         ObDelete();
         virtual ~ObDelete();
-
+        virtual void reset();
+        virtual void reuse();
         void set_rpc_stub(mergeserver::ObMergerRpcProxy* rpc);
         void set_rowkey_info(const common::ObRowkeyInfo &rowkey_info);
 
@@ -45,6 +46,7 @@ namespace oceanbase
         /// execute the delete statement
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_DELETE; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         /// @note always return OB_ITER_END
         virtual int get_next_row(const common::ObRow *&row);

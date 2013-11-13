@@ -63,7 +63,7 @@ static int get_config(const char *filename, ObSQLConfig *config)
   char value[1024];
   if (NULL == (fp = fopen(filename, "r")))
   {
-    fprintf(stderr, "can not open file %s\n", filename);
+    //fprintf(stderr, "can not open file %s\n", filename);
     ret = OB_SQL_ERROR;
   }
   else
@@ -141,7 +141,7 @@ static int load_config()
   ret = get_config(config_file, &g_sqlconfig);
   if (OB_SQL_SUCCESS != ret)
   {
-    TBSYS_LOG(WARN, "failed to get config %s", config_file);
+    //TBSYS_LOG(WARN, "failed to get config %s", config_file);
   }
   return ret;
 }
@@ -159,7 +159,7 @@ int __attribute__((constructor))ob_sql_init()
     TBSYS_LOGGER.setFileName(g_sqlconfig.logfile_, true);
     //TBSYS_LOGGER.setFileName(g_sqlconfig.logfile_);
     TBSYS_LOGGER.setLogLevel(g_sqlconfig.loglevel_);
-
+    TBSYS_LOG(INFO, "logger=%p", &(TBSYS_LOGGER));
     //set min max conn
     g_config_using->min_conn_size_ = static_cast<int16_t>(g_sqlconfig.min_conn_);
     g_config_using->max_conn_size_ = static_cast<int16_t>(g_sqlconfig.max_conn_);
@@ -171,21 +171,19 @@ int __attribute__((constructor))ob_sql_init()
     if (OB_SQL_SUCCESS != ret)
     {
       TBSYS_LOG(ERROR, "load real mysql function symbol from libmysqlclient failed");
-      exit(-1);
     }
     else
     {
       TBSYS_LOG(INFO, "new ob_sql_init libmysqlclient native functions loaded");
+      g_inited = 1;
       //从配置服务器获取配置 初始化连接池 集群选择表
       if (OB_SQL_SUCCESS != start_update_worker(g_sqlconfig.url_))
       {
         TBSYS_LOG(ERROR, "get config from url failed url is %s", g_sqlconfig.url_);
         ret = OB_SQL_ERROR;
-        exit(-1);
       }
       else
       {
-        g_inited = 1;
         //初始化连接回收链表启动回收线程
         ob_sql_list_init(&g_delete_ms_list, OBSQLCONNLIST);                     // recycle connection list
         ret = start_recycle_worker();
@@ -198,8 +196,8 @@ int __attribute__((constructor))ob_sql_init()
   }
   else
   {
-    TBSYS_LOG(WARN, "load config failed");
-    exit(-1);
+    //不打log
+    //TBSYS_LOG(ERROR, "load config failed");
   }
   return ret;
 }

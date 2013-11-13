@@ -27,6 +27,24 @@ ObInMemorySort::~ObInMemorySort()
 {
 }
 
+void ObInMemorySort::reset()
+{
+  row_store_.clear();
+  sort_array_.clear();
+  sort_array_get_pos_ = 0;
+  row_desc_ = NULL;
+}
+
+void ObInMemorySort::reuse()
+{
+  row_store_.clear();
+  sort_array_.clear();
+  sort_array_get_pos_ = 0;
+  row_desc_ = NULL;
+}
+
+
+
 int ObInMemorySort::set_sort_columns(const common::ObArray<ObSortColumn> &sort_columns)
 {
   int ret = OB_SUCCESS;
@@ -41,14 +59,6 @@ int ObInMemorySort::set_sort_columns(const common::ObArray<ObSortColumn> &sort_c
     }
   }
   return ret;
-}
-
-void ObInMemorySort::reset()
-{
-  row_store_.clear();
-  sort_array_.clear();
-  sort_array_get_pos_ = 0;
-  row_desc_ = NULL;
 }
 
 int ObInMemorySort::add_row(const common::ObRow &row)

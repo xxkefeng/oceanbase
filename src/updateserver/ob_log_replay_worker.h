@@ -15,8 +15,8 @@
 #define __OB_UPDATESERVER_OB_LOG_REPLAY_WORKER_H__
 #include "common/ob_log_entry.h"
 #include "common/ob_seq_queue.h"
-#include "ob_queue_thread.h"
-#include "ob_fifo_allocator.h"
+#include "common/ob_queue_thread.h"
+#include "common/ob_fifo_allocator.h"
 #include "ob_ups_table_mgr.h"
 #include "ob_async_log_applier.h"
 
@@ -28,7 +28,7 @@ namespace oceanbase
     {
       public:
         friend class ApplyWorker;
-        class ApplyWorker: public S2MQueueThread
+        class ApplyWorker: public common::S2MQueueThread
         {
           public:
             ApplyWorker(ObLogReplayWorker& replay_worker): replay_worker_(replay_worker)
@@ -90,13 +90,14 @@ namespace oceanbase
         int do_commit(int64_t thread_id);
         int do_replay(int64_t thread_id);
         int replay(ObLogTask& task);
+        void on_error(ObLogTask* task, int err);
       private:
         DISALLOW_COPY_AND_ASSIGN(ObLogReplayWorker);
       private:
         int32_t n_worker_;
         int64_t queue_len_;
         int64_t flying_trans_no_limit_;
-        FIFOAllocator allocator_;
+        common::FIFOAllocator allocator_;
         common::ObResourcePool<ObLogTask, 0, 1<<16> task_pool_;
         IAsyncLogApplier* log_applier_;
         ApplyWorker apply_worker_;

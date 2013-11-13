@@ -33,7 +33,6 @@ bool ObTableIdNameIterator::check_inner_stat()
       range.border_flag_.unset_inclusive_start();
       range.border_flag_.set_inclusive_end();
       range.set_whole_range();
-
       int err = OB_SUCCESS;
       if(OB_SUCCESS != (err = nb_accessor_.scan(res_, FIRST_TABLET_TABLE_NAME, range, SC("table_name")("table_id"))))
       {
@@ -42,7 +41,7 @@ bool ObTableIdNameIterator::check_inner_stat()
       }
       else
       {
-        TBSYS_LOG(INFO, "scan first_tablet_table success. scanner size=%ld", res_->get_scanner()->get_row_num());
+        TBSYS_LOG(DEBUG, "scan first_tablet_table success. scanner row count =%ld", res_->get_scanner()->get_row_num());
         need_scan_ = false;
       }
     }
@@ -157,7 +156,7 @@ int ObTableIdNameIterator::get(ObTableIdName** table_info)
   }
   if (OB_SUCCESS == ret)
   {
-    TBSYS_LOG(INFO, "table_name: [%.*s], table_id: [%ld]",
+    TBSYS_LOG(DEBUG, "table_name: [%.*s], table_id: [%ld]",
         (*table_info)->table_name_.length(),
         (*table_info)->table_name_.ptr(), (*table_info)->table_id_);
   }

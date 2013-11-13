@@ -7,28 +7,21 @@ deploy ob2.reboot;
 sleep 60;
 
 # speed up merge
-deploy ob1.mysql alter system set merge_delay_interval='1s' server_type=chunkserver;
-deploy ob1.mysql alter system set merge_delay_for_lsync='1s' server_type=chunkserver;
-deploy ob1.mysql alter system set min_drop_cache_wait_time='1s' server_type=chunkserver;
+deploy ob1.source include/merge.inc;
 sleep 10;
 
 deploy ob1.prepare s;
+deploy ob1.start_check;
 deploy ob1.major_freeze;
-deploy ob1.mget 1 200002 400004 500005;
+sleep 10;
 deploy ob1.check_cs_version 2;
 
-deploy ob1.prepare s 100000;
 deploy ob1.major_freeze;
-deploy ob1.mget 1 200002 400004 500005;
+sleep 10;
 deploy ob1.check_cs_version 3;
 
 deploy ob1.switch_cluster ob2;
-deploy ob2.prepare s 200000;
-deploy ob1.mget 1 200002 400004 500005 600006;
 
 deploy ob2.switch_cluster ob1;
-deploy ob1.prepare s 300000;
-deploy ob1.mget 1 200002 400004 500005 600006 700007;
 
-
-
+deploy ob1.stop_check;

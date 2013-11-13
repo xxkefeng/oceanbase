@@ -46,6 +46,7 @@ namespace oceanbase
       virtual int add_aggr_column(const ObSqlExpression& expr);
       virtual int set_limit(const ObLimit &limit);
       virtual int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset);
+      virtual void set_phy_plan(ObPhysicalPlan *the_plan);
       virtual const ObProject &get_project() const;
       virtual const ObScalarAggregate &get_scalar_agg() const;
       virtual const ObMergeGroupBy &get_group() const;
@@ -62,6 +63,8 @@ namespace oceanbase
       // caution: NOT deep copy
       virtual ObSqlReadParam& operator=(const ObSqlReadParam &other);
       virtual int64_t to_string(char *buf, const int64_t buf_len) const;
+
+      virtual int assign(const ObSqlReadParam* other);
       VIRTUAL_NEED_SERIALIZE_AND_DESERIALIZE;
 
     protected:

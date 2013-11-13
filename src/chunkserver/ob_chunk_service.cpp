@@ -41,6 +41,8 @@
 #include "ob_tablet_service.h"
 #include "ob_sql_rpc_stub.h"
 #include "common/ob_common_stat.h"
+#include "ob_tablet_writer.h"
+#include "ob_tablet_reader.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::sstable;
@@ -55,7 +57,7 @@ namespace oceanbase
       service_started_(false), in_register_process_(false),
       service_expired_time_(0),
       migrate_task_count_(0), lease_checker_(this), merge_task_(this),
-      fetch_ups_task_(this)
+      fetch_ups_task_(this), report_tablet_task_(this)
 
     {
     }
@@ -500,6 +502,12 @@ namespace oceanbase
           case OB_SQL_GET_REQUEST:
             rc = cs_sql_get(version, channel_id, req, in_buffer, out_buffer, timeout_time);
             break;
+          case OB_CS_MIGRATE:
+            rc = cs_fetch_data(version, channel_id, req, in_buffer, out_buffer);
+            break;
+          case OB_CS_FETCH_DATA:
+            rc = cs_tablet_read(version, channel_id, req, in_buffer, out_buffer, timeout_time);
+            break;
           case OB_SQL_SCAN_REQUEST:
             rc = cs_sql_scan(version, channel_id, req, in_buffer, out_buffer, timeout_time);
             break;
@@ -514,9 +522,6 @@ namespace oceanbase
             break;
           case OB_REQUIRE_HEARTBEAT:
             rc = cs_heart_beat(version, channel_id, req, in_buffer, out_buffer);
-            break;
-          case OB_CS_MIGRATE:
-            rc = cs_migrate_tablet(version, channel_id, req, in_buffer, out_buffer);
             break;
           case OB_MIGRATE_OVER:
             rc = cs_load_tablet(version, channel_id, req, in_buffer, out_buffer);
@@ -583,6 +588,15 @@ namespace oceanbase
             break;
           case OB_GET_CONFIG:
             rc = cs_get_config(version, channel_id, req, in_buffer, out_buffer);
+            break;
+          case OB_CS_FETCH_BLOOM_FILTER:
+            rc = cs_get_bloom_filter(version, channel_id, req, in_buffer, out_buffer, timeout_time);
+            break;
+          case OB_CS_DISK_MAINTAIN:
+            rc = cs_disk_maintain(version, channel_id, req, in_buffer, out_buffer);
+            break;
+          case OB_CS_SHOW_DISK:
+            rc = cs_show_disk(version, channel_id, req, in_buffer, out_buffer);
             break;
           default:
             rc = OB_ERROR;
@@ -880,6 +894,152 @@ namespace oceanbase
       return ret;
     }
 
+    int ObChunkService::cs_show_disk(
+        const int32_t version,
+        const int32_t channel_id,
+        easy_request_t* req,
+        common::ObDataBuffer& in_buffer,
+        common::ObDataBuffer& out_buffer)
+    {
+      UNUSED(in_buffer);
+      common::ObResultCode rc;
+      const int32_t CS_SHOW_DISK_VERSION = 1;
+      rc.result_code_ = OB_SUCCESS;
+
+      if (version != CS_SHOW_DISK_VERSION)
+      {
+        rc.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else
+      {
+        ObTabletManager & tablet_manager = chunk_server_->get_tablet_manager();
+        ObDiskManager & disk_manager = tablet_manager.get_disk_manager();
+
+        int32_t disk_num = 0;
+        int32_t serialize_ret = 0;
+        const int32_t* disk_no_array = disk_manager.get_disk_no_array(disk_num);
+
+        if(OB_SUCCESS != (serialize_ret = rc.serialize(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position())))
+        {
+          TBSYS_LOG(WARN, "serialize the rc failed, ret:%d", serialize_ret);
+        }
+
+        if (OB_SUCCESS == serialize_ret)
+        {
+          serialize_ret = serialization::encode_i32(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position(), disk_num);
+        }
+
+        if (OB_SUCCESS == serialize_ret && NULL != disk_no_array)
+        {
+          for (int32_t i = 0; i < disk_num; i++)
+          {
+            if (OB_SUCCESS == serialize_ret)
+            {
+              serialize_ret = serialization::encode_i32(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position(), disk_no_array[i]);
+            }
+
+            if (OB_SUCCESS == serialize_ret)
+            {
+              serialize_ret = serialization::encode_bool(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position(),
+                  disk_manager.is_disk_avail(disk_no_array[i]));
+            }
+          }
+        }
+
+        if (OB_SUCCESS == serialize_ret)
+        {
+          chunk_server_->send_response(
+              OB_CS_SHOW_DISK_RESPONSE,
+              CS_SHOW_DISK_VERSION,
+              out_buffer, req, channel_id);
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "serialize failed, ret:%d", serialize_ret);
+        }
+      }
+
+      return rc.result_code_;
+    }
+
+    int ObChunkService::cs_disk_maintain(
+        const int32_t version,
+        const int32_t channel_id,
+        easy_request_t* req,
+        common::ObDataBuffer& in_buffer,
+        common::ObDataBuffer& out_buffer)
+    {
+      common::ObResultCode rc;
+      const int32_t CS_DISK_MAINTAIN_VERSION = 1;
+      rc.result_code_ = OB_SUCCESS;
+
+      if(version != CS_DISK_MAINTAIN_VERSION)
+      {
+        rc.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else if(chunk_server_->get_tablet_manager().is_disk_maintain())
+      {
+        TBSYS_LOG(WARN, "disk is maintaining");
+        rc.result_code_ = OB_CS_EAGAIN;
+      }
+      else if (!chunk_server_->get_tablet_manager().get_bypass_sstable_loader().is_loader_stoped())
+      {
+        TBSYS_LOG(WARN, "load bypass sstable is running, cannot do disk maintain");
+        rc.result_code_ = OB_CS_EAGAIN;
+      }
+
+      int8_t is_install = -1;
+      int32_t disk_no = -1;
+
+      if(OB_SUCCESS != rc.result_code_)
+      {
+      }
+      else if (OB_SUCCESS != ( rc.result_code_ =
+            serialization::decode_i8(in_buffer.get_data(),
+              in_buffer.get_capacity(), in_buffer.get_position(), &is_install)))
+      {
+        TBSYS_LOG(WARN, "parse disk maintain param error.");
+      }
+      else if (OB_SUCCESS != ( rc.result_code_ =
+            serialization::decode_vi32(in_buffer.get_data(),
+              in_buffer.get_capacity(), in_buffer.get_position(), &disk_no)))
+      {
+        TBSYS_LOG(WARN, "parse disk maintain param error.");
+      }
+      else
+      {
+        if(1 == is_install)
+        {
+          rc.result_code_ = chunk_server_->get_tablet_manager().install_disk(disk_no);
+        }
+        else if(0 == is_install)
+        {
+          rc.result_code_ = chunk_server_->get_tablet_manager().uninstall_disk(disk_no);
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "is install flag invalid is_install: %d", is_install);
+        }
+      }
+
+      int serialize_ret = rc.serialize(out_buffer.get_data(),
+          out_buffer.get_capacity(), out_buffer.get_position());
+      if (serialize_ret != OB_SUCCESS)
+      {
+        TBSYS_LOG(ERROR, "cs_create_tablet rc.serialize error");
+      }
+
+      if (OB_SUCCESS == serialize_ret)
+      {
+        chunk_server_->send_response(
+            OB_CS_DISK_MAINTAIN_RESPONSE,
+            CS_DISK_MAINTAIN_VERSION,
+            out_buffer, req, channel_id);
+      }
+
+      return rc.result_code_;
+    }
+
     int ObChunkService::cs_sql_scan(
         const int32_t version,
         const int32_t channel_id,
@@ -1033,7 +1193,7 @@ namespace oceanbase
             }
             if (OB_SUCCESS != rc.result_code_)
             {
-              TBSYS_LOG(WARN, "failed to fill_scan_date:err[%d]", rc.result_code_);
+              TBSYS_LOG(WARN, "failed to fill_scan_data:err[%d]", rc.result_code_);
             }
             FILL_TRACE_LOG("first fill_data_done, is_last_packet=%d, rc=%d", is_last_packet, rc.result_code_);
           }
@@ -1177,6 +1337,9 @@ namespace oceanbase
           TBSYS_LOG(WARN,"check update data failed"); //just warn
         }
       }
+
+      FILL_TRACE_LOG("send response, packet_cnt=%ld, session_id=%ld, ret=%d",
+        packet_cnt, session_id, rc.result_code_);
 
       //reset initernal status for next scan operator
       if (session_id > 0)
@@ -1549,11 +1712,13 @@ namespace oceanbase
           }
         }
 
-        if (OB_SUCCESS == rc.result_code_ && service_started_)
+        if (OB_SUCCESS == rc.result_code_ && service_started_
+            && chunk_server_->get_config_mgr().get_current_version() > 1)
         {
           int64_t wait_time = 0;
           ObTabletManager &tablet_manager = chunk_server_->get_tablet_manager();
-          if ( frozen_version > chunk_server_->get_tablet_manager().get_serving_data_version() )
+          if ( frozen_version > tablet_manager.get_serving_data_version()
+              && tablet_manager.get_serving_data_version() > 0)
           {
             if (frozen_version > merge_task_.get_last_frozen_version())
             {
@@ -2119,12 +2284,10 @@ namespace oceanbase
               ObMultiVersionTabletImage::SCAN_FORWARD, version, src_tablet);
 
           if (OB_SUCCESS == rc.result_code_ && NULL != src_tablet
-              && src_tablet->get_data_version() == version)
+              && src_tablet->get_data_version() == version
+              && tablet_info_array[i].tablet_info_.range_.compare_with_startkey2(src_tablet->get_range()) == 0
+              && tablet_info_array[i].tablet_info_.range_.compare_with_endkey2(src_tablet->get_range()) == 0)
           {
-            TBSYS_LOG(INFO, "delete tablet, version=%ld, disk=%d, range=<%s>",
-                src_tablet->get_data_version(), src_tablet->get_disk_no(), range_buf);
-            src_tablet->set_merged();
-            src_tablet->set_removed();
             rc.result_code_ = tablet_image.remove_tablet(
               tablet_info_array[i].tablet_info_.range_, version, disk_no);
             if (OB_SUCCESS != rc.result_code_)
@@ -2133,11 +2296,18 @@ namespace oceanbase
                               "version=%ld, disk=%d, range=%s",
                 src_tablet->get_data_version(), src_tablet->get_disk_no(), range_buf);
             }
+            else
+            {
+              TBSYS_LOG(INFO, "delete tablet, version=%ld, disk=%d, range=<%s>",
+                  src_tablet->get_data_version(), src_tablet->get_disk_no(), range_buf);
+              src_tablet->set_merged();
+              src_tablet->set_removed();
+            }
           }
           else
           {
-            TBSYS_LOG(INFO, "cannot find tablet, version=%ld, range=<%s>",
-                version, range_buf);
+            TBSYS_LOG(INFO, "cannot find tablet, version=%ld, range=<%s>, local range=<%s>",
+                version, range_buf, NULL != src_tablet ? to_cstring(src_tablet->get_range()) : "nil");
           }
 
           if (NULL != src_tablet)
@@ -2251,258 +2421,6 @@ namespace oceanbase
       return rc.result_code_;
     }
 
-
-    int ObChunkService::cs_migrate_tablet(
-        const int32_t version,
-        const int32_t channel_id,
-        easy_request_t* req,
-        common::ObDataBuffer& in_buffer,
-        common::ObDataBuffer& out_buffer)
-    {
-      const int32_t CS_MIGRATE_TABLET_VERSION = 1;
-      common::ObResultCode rc;
-      rc.result_code_ = OB_SUCCESS;
-      int32_t is_inc_migrate_task_count = 0;
-
-      if (version != CS_MIGRATE_TABLET_VERSION)
-      {
-        rc.result_code_ = OB_ERROR_FUNC_VERSION;
-      }
-
-
-      ObObj obj_array[OB_MAX_ROWKEY_COLUMN_NUMBER * 2];
-      ObNewRange range;
-      range.start_key_.assign(obj_array, OB_MAX_ROWKEY_COLUMN_NUMBER);
-      range.end_key_.assign(obj_array + OB_MAX_ROWKEY_COLUMN_NUMBER, OB_MAX_ROWKEY_COLUMN_NUMBER);
-      ObServer dest_server;
-      bool keep_src = false;
-
-      //deserialize ObRange
-      if (OB_SUCCESS == rc.result_code_)
-      {
-        rc.result_code_ = range.deserialize(in_buffer.get_data(), in_buffer.get_capacity(),
-            in_buffer.get_position());
-        if (OB_SUCCESS != rc.result_code_)
-        {
-          TBSYS_LOG(ERROR, "parse cs_migrate_tablet range param error.");
-        }
-      }
-
-      //deserialize destination chunkserver
-      if (OB_SUCCESS == rc.result_code_)
-      {
-        rc.result_code_ = dest_server.deserialize(in_buffer.get_data(), in_buffer.get_capacity(),
-            in_buffer.get_position());
-        if (OB_SUCCESS != rc.result_code_)
-        {
-          TBSYS_LOG(ERROR, "parse cs_migrate_tablet dest_server param error.");
-        }
-      }
-
-      //deserialize migrate type(copy or move)
-      if (OB_SUCCESS == rc.result_code_)
-      {
-        rc.result_code_ = common::serialization::decode_bool(in_buffer.get_data(), in_buffer.get_capacity(),
-            in_buffer.get_position(),&keep_src);
-        if (OB_SUCCESS != rc.result_code_)
-        {
-          TBSYS_LOG(ERROR, "parse cs_migrate_tablet keep_src param error.");
-        }
-      }
-
-      if (OB_SUCCESS == rc.result_code_)
-      {
-        TBSYS_LOG(INFO, "begin migrate_tablet %s, dest_server=%s, keep_src=%d",
-            to_cstring(range), to_cstring(dest_server), keep_src);
-      }
-
-      if (!chunk_server_->get_config().merge_migrate_concurrency
-          && (!chunk_server_->get_tablet_manager().get_chunk_merge().is_merge_stoped()))
-      {
-        TBSYS_LOG(WARN, "merge running, cannot migrate.");
-        rc.result_code_ = OB_CS_EAGAIN;
-      }
-      else if (!chunk_server_->get_tablet_manager().get_bypass_sstable_loader().is_loader_stoped())
-      {
-        TBSYS_LOG(WARN, "load bypass sstable is running, cannot migrate");
-        rc.result_code_ = OB_CS_EAGAIN;
-      }
-
-      int64_t max_migrate_task_count = chunk_server_->get_config().max_migrate_task_count;
-      if (OB_SUCCESS == rc.result_code_ )
-      {
-        uint32_t old_migrate_task_count = migrate_task_count_;
-        while(old_migrate_task_count < max_migrate_task_count)
-        {
-          uint32_t tmp = atomic_compare_exchange(&migrate_task_count_, old_migrate_task_count+1, old_migrate_task_count);
-          if (tmp == old_migrate_task_count)
-          {
-            is_inc_migrate_task_count = 1;
-            break;
-          }
-          old_migrate_task_count = migrate_task_count_;
-        }
-
-        if (0 == is_inc_migrate_task_count)
-        {
-          TBSYS_LOG(WARN, "current migrate task count = %u, exceeded max = %ld",
-              old_migrate_task_count, max_migrate_task_count);
-          rc.result_code_ = OB_CS_EAGAIN;
-        }
-      }
-
-
-      //response to root server first
-      int serialize_ret = rc.serialize(out_buffer.get_data(),
-          out_buffer.get_capacity(), out_buffer.get_position());
-      if (serialize_ret != OB_SUCCESS)
-      {
-        TBSYS_LOG(ERROR, "migrate_tablet rc.serialize error");
-      }
-
-      if (OB_SUCCESS == serialize_ret)
-      {
-        chunk_server_->send_response(
-            OB_MIGRATE_OVER_RESPONSE,
-            CS_MIGRATE_TABLET_VERSION,
-            out_buffer, req, channel_id);
-      }
-
-      ObTabletManager & tablet_manager = chunk_server_->get_tablet_manager();
-      char (*dest_path)[OB_MAX_FILE_NAME_LENGTH] = NULL;
-      char (*src_path)[OB_MAX_FILE_NAME_LENGTH] = NULL;
-      char *dest_path_buf = static_cast<char*>(ob_malloc(ObTablet::MAX_SSTABLE_PER_TABLET*OB_MAX_FILE_NAME_LENGTH, ObModIds::OB_CS_COMMON));
-      char *src_path_buf  = static_cast<char*>(ob_malloc(ObTablet::MAX_SSTABLE_PER_TABLET*OB_MAX_FILE_NAME_LENGTH, ObModIds::OB_CS_COMMON));
-      if ( NULL == src_path_buf || NULL == dest_path_buf)
-      {
-        TBSYS_LOG(ERROR, "migrate_tablet failed to allocate memory for path array.");
-        rc.result_code_ = OB_ALLOCATE_MEMORY_FAILED;
-      }
-      else
-      {
-        src_path = new(src_path_buf)char[ObTablet::MAX_SSTABLE_PER_TABLET][OB_MAX_FILE_NAME_LENGTH];
-        dest_path = new(dest_path_buf)char[ObTablet::MAX_SSTABLE_PER_TABLET][OB_MAX_FILE_NAME_LENGTH];
-      }
-
-      int64_t num_file = 0;
-      int64_t tablet_version = 0;
-      int32_t dest_disk_no = 0;
-      uint64_t crc_sum = 0;
-      int64_t tablet_seq_num = 0;
-
-      ObMultiVersionTabletImage & tablet_image = tablet_manager.get_serving_tablet_image();
-      if (OB_SUCCESS == rc.result_code_)
-      {
-        rc.result_code_ = tablet_manager.migrate_tablet(range,
-            dest_server, src_path, dest_path, num_file, tablet_version,
-            tablet_seq_num, dest_disk_no, crc_sum);
-        if (OB_SUCCESS != rc.result_code_)
-        {
-          TBSYS_LOG(WARN, "ObTabletManager::migrate_tablet <%s> error, rc.result_code_=%d",
-              to_cstring(range), rc.result_code_);
-        }
-      }
-
-
-      //send request to load sstable
-      if (OB_SUCCESS == rc.result_code_)
-      {
-        rc.result_code_ = CS_RPC_CALL(dest_load_tablet, dest_server,
-            range, dest_disk_no, tablet_version, tablet_seq_num, crc_sum, num_file, dest_path);
-        if (OB_CS_MIGRATE_IN_EXIST == rc.result_code_)
-        {
-          TBSYS_LOG(INFO, "dest server already hold this tablet, consider it done.");
-          rc.result_code_ = OB_SUCCESS;
-        }
-        if (OB_SUCCESS != rc.result_code_)
-        {
-          TBSYS_LOG(WARN, "dest server load tablet <%s> error ,rc.code=%d",
-              to_cstring(range), rc.result_code_);
-        }
-      }
-
-      /**
-       * it's better to decrease the migrate task counter before
-       * calling migrate_over(), because rootserver keeps the same
-       * migrate task counter of each chunkserver, if migrate_over()
-       * returned, rootserver has decreased the migrate task counter
-       * and send a new migrate task to this chunkserver immediately,
-       * if this chunkserver hasn't decreased the migrate task counter
-       * at this time, the chunkserver will return -1010 error. if
-       * rootserver doesn't send migrate message successfully, it
-       * doesn't increase the migrate task counter, so it sends
-       * migrate message continiously and it receives a lot of error
-       * -1010.
-       */
-      if (0 != is_inc_migrate_task_count)
-      {
-        atomic_dec(&migrate_task_count_);
-      }
-
-      //report migrate info to root server
-      if (OB_SUCCESS == rc.result_code_)
-      {
-        rc.result_code_= CS_RPC_CALL_RS(migrate_over, range,
-            chunk_server_->get_self(), dest_server, keep_src, tablet_version, tablet_seq_num);
-        if (OB_SUCCESS != rc.result_code_)
-        {
-          TBSYS_LOG(WARN, "report migrate tablet <%s> over error, rc.code=%d",
-              to_cstring(range), rc.result_code_);
-        }
-        else
-        {
-          TBSYS_LOG(INFO,"report migrate tablet <%s> over to rootserver success.",
-              to_cstring(range));
-        }
-      }
-
-      if( OB_SUCCESS == rc.result_code_ && false == keep_src)
-      {
-        // migrate/move , set local tablet merged,
-        // will be discarded in next time merge process .
-        ObTablet *src_tablet = NULL;
-        int32_t disk_no = 0;
-        rc.result_code_ = tablet_image.acquire_tablet(range,
-            ObMultiVersionTabletImage::SCAN_FORWARD, 0, src_tablet);
-        if (OB_SUCCESS == rc.result_code_ && NULL != src_tablet)
-        {
-          TBSYS_LOG(INFO, "src tablet set merged, version=%ld, seq_num=%ld, disk=%d, range:%s",
-              src_tablet->get_data_version(), src_tablet->get_sequence_num(),
-              src_tablet->get_disk_no(), to_cstring(src_tablet->get_range()));
-          src_tablet->set_merged();
-          src_tablet->set_removed();
-
-          //remove tablet from tablet image immediately
-          rc.result_code_ = tablet_image.remove_tablet(
-            src_tablet->get_range(), src_tablet->get_data_version(), disk_no);
-          if (OB_SUCCESS != rc.result_code_)
-          {
-            TBSYS_LOG(WARN, "failed to remove tablet from tablet image, "
-                            "version=%ld, disk=%d, range=%s",
-              src_tablet->get_data_version(), src_tablet->get_disk_no(),
-              to_cstring(src_tablet->get_range()));
-          }
-        }
-
-        if (NULL != src_tablet)
-        {
-          tablet_image.release_tablet(src_tablet);
-        }
-
-      }
-
-      if ( NULL != src_path_buf )
-      {
-        ob_free(src_path_buf);
-      }
-      if ( NULL != dest_path_buf )
-      {
-        ob_free(dest_path_buf);
-      }
-      TBSYS_LOG(INFO, "migrate_tablet finish rc.code=%d",rc.result_code_);
-
-      return rc.result_code_;
-    }
 
     int ObChunkService::cs_get_migrate_dest_loc(
         const int32_t version,
@@ -3123,6 +3041,524 @@ namespace oceanbase
       return ret;
     }
 
+    int ObChunkService::cs_tablet_read(
+        const int32_t version,
+        const int32_t channel_id,
+        easy_request_t* req,
+        common::ObDataBuffer& in_buffer,
+        common::ObDataBuffer& out_buffer,
+        const int64_t timeout_time)
+    {
+      const int32_t CS_FETCH_DATA_VERSION = 1;
+      UNUSED(timeout_time);
+      common::ObResultCode rc;
+      rc.result_code_ = OB_SUCCESS;
+      ObTabletFileReader* tablet_reader = GET_TSI_MULT(ObTabletFileReader, TSI_CS_FETCH_DATA_2);
+      int64_t session_id = 0;
+      int32_t response_cid = channel_id;
+      int64_t packet_cnt = 0;
+      bool is_last_packet = false;
+      int serialize_ret = OB_SUCCESS;
+      ObPacket* next_request = NULL;
+      ObPacketQueueThread& queue_thread =
+        chunk_server_->get_default_task_queue_thread();
+      reset_query_thread_local_buffer();
+
+      if (version != CS_FETCH_DATA_VERSION)
+      {
+        rc.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+      else if (NULL == tablet_reader)
+      {
+        TBSYS_LOG(ERROR, "failed to get thread local migrate_reader, "
+            "tablet_reader=%p", tablet_reader);
+        rc.result_code_ = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else
+      {
+        tablet_reader->reset();
+        tablet_reader->set_tablet_manager(&chunk_server_->get_tablet_manager());
+      }
+
+      int16_t local_sstable_version = 0;
+      int64_t sequence_num = 0;
+      int64_t row_checksum = 0;
+      int64_t sstable_type = 0;
+
+      ObDataSourceDesc desc;
+      if (OB_SUCCESS == rc.result_code_)
+      {
+        rc.result_code_ = desc.deserialize(in_buffer.get_data(), in_buffer.get_capacity(),
+            in_buffer.get_position());
+        if (OB_SUCCESS != rc.result_code_)
+        {
+          TBSYS_LOG(ERROR, "parse data source param error.");
+        }
+      }
+
+      if (OB_SUCCESS == rc.result_code_)
+      {
+        TBSYS_LOG(INFO, "begin fetch_reader, %s", to_cstring(desc));
+        //open sstable scanner
+        if(OB_SUCCESS != (rc.result_code_ = tablet_reader->prepare(desc.range_, desc.tablet_version_, static_cast<int16_t>(desc.sstable_version_))))
+        {
+          TBSYS_LOG(WARN, "prepare tablet reader failed, ret:%d", rc.result_code_);
+        }
+        else if(OB_SUCCESS != (rc.result_code_ = tablet_reader->open()))
+        {
+          TBSYS_LOG(WARN, "open tablet reader failed, ret:%d", rc.result_code_);
+        }
+        else if(OB_SUCCESS != (rc.result_code_ = tablet_reader->get_sstable_version(local_sstable_version)))
+        {
+          TBSYS_LOG(WARN, "get sstable version, ret:%d", rc.result_code_);
+        }
+        else if(OB_SUCCESS != (rc.result_code_ = tablet_reader->get_sequence_num(sequence_num)))
+        {
+          TBSYS_LOG(WARN, "get sequence_num failed, ret:%d", rc.result_code_);
+        }
+        else if(OB_SUCCESS != (rc.result_code_ = tablet_reader->get_row_checksum(row_checksum)))
+        {
+          TBSYS_LOG(WARN, "get row_checksum failed, ret:%d", rc.result_code_);
+        }
+        else if(OB_SUCCESS != (rc.result_code_ = tablet_reader->get_sstable_type(sstable_type)))
+        {
+          TBSYS_LOG(WARN, "get sstable type failed, ret:%d", rc.result_code_);
+        }
+      }
+
+      out_buffer.get_position() = rc.get_serialize_size();
+      if(OB_SUCCESS != (serialize_ret = serialization::encode_i16(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position(), local_sstable_version)))
+      {
+        TBSYS_LOG(ERROR, "serialize sstable version object failed, ret:%d", serialize_ret);
+      }
+      else if(OB_SUCCESS != (serialize_ret = serialization::encode_vi64(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position(), sequence_num)))
+      {
+        TBSYS_LOG(ERROR, "serialize sequence_num failed, ret:%d", serialize_ret);
+      }
+      else if(OB_SUCCESS != (serialize_ret = serialization::encode_vi64(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position(), row_checksum)))
+      {
+        TBSYS_LOG(ERROR, "serialize row_checksum failed, ret:%d", serialize_ret);
+      }
+      else if(OB_SUCCESS != (serialize_ret = serialization::encode_vi64(out_buffer.get_data(), out_buffer.get_capacity(), out_buffer.get_position(), sstable_type)))
+      {
+        TBSYS_LOG(ERROR, "serialize sstable_type failed, ret:%d", serialize_ret);
+      }
+
+      if (OB_SUCCESS == rc.result_code_)
+      {
+        rc.result_code_ = tablet_reader->read_next(out_buffer);
+      }
+
+      int64_t tmp_pos = 0;
+      if(OB_SUCCESS != (serialize_ret = rc.serialize(out_buffer.get_data(), out_buffer.get_capacity(), tmp_pos)))
+      {
+        TBSYS_LOG(ERROR, "serialize rc code failed, ret:%d", serialize_ret);
+      }
+
+      if (OB_SUCCESS == rc.result_code_)
+      {
+        if (tablet_reader->has_new_data())
+        {
+          session_id = queue_thread.generate_session_id();
+        }
+      }
+
+      do
+      {
+        if (OB_SUCCESS == rc.result_code_ &&
+            tablet_reader->has_new_data() &&
+            !is_last_packet)
+        {
+          rc.result_code_ = queue_thread.prepare_for_next_request(session_id);
+          if (OB_SUCCESS != rc.result_code_)
+          {
+            TBSYS_LOG(WARN, "failed to prepare_for_next_request:err[%d]", rc.result_code_);
+          }
+        }
+
+
+        if(OB_SUCCESS == serialize_ret)
+        {
+          // send response.
+          chunk_server_->send_response(
+              is_last_packet ? OB_SESSION_END : OB_CS_FETCH_DATA_RESPONSE, OB_CS_FETCH_DATA,
+              out_buffer, req, response_cid, session_id);
+          FILL_TRACE_LOG("send response, #packet=%ld, is_last_packet=%d, session_id=%ld",
+              packet_cnt, is_last_packet, session_id);
+          packet_cnt++;
+        }
+
+        if (OB_SUCCESS == rc.result_code_ && tablet_reader->has_new_data())
+        {
+          rc.result_code_ = queue_thread.wait_for_next_request(
+              session_id, next_request, THE_CHUNK_SERVER.get_config().datasource_timeout);
+          if (OB_NET_SESSION_END == rc.result_code_)
+          {
+            //end this session
+            rc.result_code_ = OB_SUCCESS;
+            if (NULL != next_request)
+            {
+              req = next_request->get_request();
+              easy_request_wakeup(req);
+            }
+            break;
+          }
+          else if (OB_SUCCESS != rc.result_code_)
+          {
+            TBSYS_LOG(WARN, "failed to wait for next reques timeout, ret=%d",
+                rc.result_code_);
+            break;
+          }
+          else
+          {
+            response_cid = next_request->get_channel_id();
+            req = next_request->get_request();
+            out_buffer.get_position() = rc.get_serialize_size();
+            rc.result_code_ = tablet_reader->read_next(out_buffer);
+            if(!tablet_reader->has_new_data())
+            {
+              is_last_packet = true;
+            }
+
+            int64_t pos = 0;
+            if(OB_SUCCESS != (serialize_ret = rc.serialize(out_buffer.get_data(), out_buffer.get_capacity(), pos)))
+            {
+              TBSYS_LOG(ERROR, "serialize rc code failed, ret:%d", serialize_ret);
+              break;
+            }
+          }
+        }
+        else
+        {
+          //error happen or fullfilled or sent last packet
+          break;
+        }
+      } while (true);
+
+      int ret = 0;
+      if(NULL != tablet_reader && OB_SUCCESS != (ret = tablet_reader->close()))
+      {
+        TBSYS_LOG(WARN, "tablet reader close fail, ret:%d", ret);
+      }
+
+      FILL_TRACE_LOG("send response, packet_cnt=%ld, session_id=%ld, io stat: %s, ret=%d",
+          packet_cnt, session_id, get_io_stat_str(), rc.result_code_);
+
+      if(OB_SUCCESS != rc.result_code_)
+      {
+        TBSYS_LOG(WARN, "cs_tablet_read finish, rc:%d", rc.result_code_);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "cs_tablet_read finish, rc:%d", rc.result_code_);
+      }
+
+
+      //reset initernal status for next scan operator
+      if (session_id > 0)
+      {
+        queue_thread.destroy_session(session_id);
+      }
+
+      reset_internal_status();
+
+      FILL_TRACE_LOG("end");
+      PRINT_TRACE_LOG();
+      CLEAR_TRACE_LOG();
+
+      return rc.result_code_;
+    }
+
+    int ObChunkService::cs_fetch_data(
+        const int32_t version,
+        const int32_t channel_id,
+        easy_request_t* req,
+        common::ObDataBuffer& in_buffer,
+        common::ObDataBuffer& out_buffer)
+    {
+      const int32_t CS_FETCH_DATA_VERSION = 3;
+      common::ObResultCode rc;
+      rc.result_code_ = OB_SUCCESS;
+      int32_t is_inc_migrate_task_count = 0;
+
+      if (version != CS_FETCH_DATA_VERSION)
+      {
+        rc.result_code_ = OB_ERROR_FUNC_VERSION;
+      }
+
+      ObDataSourceDesc desc;
+      CharArena allocator;
+      ObTabletFileWriter* tablet_writer = GET_TSI_MULT(ObTabletFileWriter, TSI_CS_FETCH_DATA_1);
+
+      if (NULL == tablet_writer)
+      {
+        TBSYS_LOG(ERROR, "failed to get thread local tablet_writer, "
+            "tablet_writer=%p", tablet_writer);
+        rc.result_code_ = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else
+      {
+        tablet_writer->reset();
+      }
+
+
+      if (OB_SUCCESS == rc.result_code_)
+      {
+        rc.result_code_ = desc.deserialize(allocator, in_buffer.get_data(), in_buffer.get_capacity(),
+            in_buffer.get_position());
+        if (OB_SUCCESS != rc.result_code_)
+        {
+          TBSYS_LOG(ERROR, "parse data source param error.");
+        }
+      }
+
+      //response to root server first
+      int serialize_ret = rc.serialize(out_buffer.get_data(),
+          out_buffer.get_capacity(), out_buffer.get_position());
+      if (serialize_ret != OB_SUCCESS)
+      {
+        TBSYS_LOG(ERROR, "fetch_data rc.serialize error");
+      }
+
+      if (OB_SUCCESS == serialize_ret)
+      {
+        chunk_server_->send_response(
+            OB_MIGRATE_OVER_RESPONSE,
+            CS_FETCH_DATA_VERSION,
+            out_buffer, req, channel_id);
+      }
+
+      if (OB_SUCCESS == rc.result_code_)
+      {
+        TBSYS_LOG(INFO, "begin migrate data %s", to_cstring(desc));
+      }
+
+      if (!chunk_server_->get_config().merge_migrate_concurrency
+          && (!chunk_server_->get_tablet_manager().get_chunk_merge().is_merge_stoped()))
+      {
+        TBSYS_LOG(WARN, "merge running, cannot migrate.");
+        rc.result_code_ = OB_CS_EAGAIN;
+      }
+      else if (!chunk_server_->get_tablet_manager().get_bypass_sstable_loader().is_loader_stoped())
+      {
+        TBSYS_LOG(WARN, "load bypass sstable is running, cannot migrate");
+        rc.result_code_ = OB_CS_EAGAIN;
+      }
+
+      int64_t max_migrate_task_count = chunk_server_->get_config().max_migrate_task_count;
+      if (OB_SUCCESS == rc.result_code_ )
+      {
+        uint32_t old_migrate_task_count = migrate_task_count_;
+        while(old_migrate_task_count < max_migrate_task_count)
+        {
+          uint32_t tmp = atomic_compare_exchange(&migrate_task_count_, old_migrate_task_count+1, old_migrate_task_count);
+          if (tmp == old_migrate_task_count)
+          {
+            is_inc_migrate_task_count = 1;
+            break;
+          }
+          old_migrate_task_count = migrate_task_count_;
+        }
+
+        if (0 == is_inc_migrate_task_count)
+        {
+          TBSYS_LOG(WARN, "current migrate task count = %u, exceeded max = %ld",
+              old_migrate_task_count, max_migrate_task_count);
+          rc.result_code_ = OB_CS_EAGAIN;
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "current migrate task count = %u", migrate_task_count_);
+        }
+      }
+
+      ObTabletManager & tablet_manager = chunk_server_->get_tablet_manager();
+      ObMultiVersionTabletImage & tablet_image = tablet_manager.get_serving_tablet_image();
+      int64_t tablet_version = 0;
+
+      if (OB_SUCCESS == rc.result_code_ )
+      {
+        int16_t remote_sstable_version = 0;
+        int16_t local_sstable_version = 0;
+        int64_t old_tablet_version = 0;
+
+        out_buffer.get_position() = 0;
+        ObTabletRemoteReader remote_reader(out_buffer, tablet_manager);
+        local_sstable_version = static_cast<int16_t>(THE_CHUNK_SERVER.get_config().merge_write_sstable_version);
+        int64_t sequence_num = 0;
+        int64_t row_checksum = 0;
+        int64_t sstable_type = 0;
+        desc.sstable_version_ = local_sstable_version;
+        tablet_version = desc.tablet_version_;
+
+        //remote reader prepare, send first request, and get the remote_sstable_version of the src server
+        if(OB_SUCCESS != (rc.result_code_ = tablet_manager.check_fetch_tablet_version(desc.range_, tablet_version, old_tablet_version)))
+        {
+          TBSYS_LOG(WARN, "tablet range:%s data_versin:%ld check failed, ret:%d", to_cstring(desc.range_), tablet_version, rc.result_code_);
+        }
+        else if(OB_SUCCESS != (rc.result_code_ = remote_reader.prepare(desc,
+                remote_sstable_version, sequence_num, row_checksum, sstable_type)))
+        {
+          TBSYS_LOG(ERROR, "prepare remote reader failed ret:%d", rc.result_code_);
+        }
+        else if(local_sstable_version != remote_sstable_version)
+        {
+          rc.result_code_ = OB_SSTABLE_VERSION_UNEQUAL;
+          TBSYS_LOG(ERROR, "sstable version not equal local_sstable_version:%d remote_sstable_version:%d", local_sstable_version, remote_sstable_version);
+        }
+        else if(OB_SUCCESS != (rc.result_code_ = remote_reader.open()))
+        {
+          TBSYS_LOG(ERROR, "remote reader open failed, ret:%d", rc.result_code_);
+        }
+        else if(OB_SUCCESS != (rc.result_code_ = tablet_writer->prepare(desc.range_, tablet_version, sequence_num, row_checksum, &tablet_manager)))
+        {
+          TBSYS_LOG(ERROR, "remote writer prepare failed, ret:%d", rc.result_code_);
+        }
+        else if(OB_SUCCESS != (rc.result_code_ = tablet_writer->open()))
+        {
+          TBSYS_LOG(ERROR, "remote writer open failed, ret:%d", rc.result_code_);
+        }
+        else
+        {
+          rc.result_code_ = pipe_buffer(tablet_manager, remote_reader, *tablet_writer);
+
+          int ret = OB_SUCCESS;
+          if(OB_SUCCESS != (ret = remote_reader.close()))
+          {
+            TBSYS_LOG(ERROR, "remote reader close failed, ret:%d", ret);
+          }
+
+          if(OB_SUCCESS == rc.result_code_)
+          {
+            if(OB_SUCCESS != (rc.result_code_ = tablet_writer->close()))
+            {
+              TBSYS_LOG(ERROR, "tablet writer close failed, ret:%d", rc.result_code_);
+            }
+          }
+        }
+
+        if(OB_SUCCESS == rc.result_code_ && old_tablet_version > 0)
+        {
+          //set old tablet merged, not need to merge
+          ObTablet* old_tablet = NULL;
+          if(OB_SUCCESS == tablet_image.acquire_tablet(desc.range_, ObMultiVersionTabletImage::SCAN_FORWARD, old_tablet_version, old_tablet) &&
+              old_tablet != NULL &&
+              old_tablet->get_data_version() == old_tablet_version)
+          {
+            old_tablet->set_merged();
+            tablet_image.write(old_tablet->get_data_version(), old_tablet->get_disk_no());
+            tablet_image.release_tablet(old_tablet);
+          } 
+        }
+
+        int ret = OB_SUCCESS;
+        if(OB_SUCCESS != (ret = tablet_writer->cleanup()))
+        {
+          TBSYS_LOG(WARN, "tablet writer cleanup failed, ret:%d", ret);
+        }
+      }
+
+      /**
+       * it's better to decrease the migrate task counter before
+       * calling migrate_over(), because rootserver keeps the same
+       * migrate task counter of each chunkserver, if migrate_over()
+       * returned, rootserver has decreased the migrate task counter
+       * and send a new migrate task to this chunkserver immediately,
+       * if this chunkserver hasn't decreased the migrate task counter
+       * at this time, the chunkserver will return -1010 error. if
+       * rootserver doesn't send migrate message successfully, it
+       * doesn't increase the migrate task counter, so it sends
+       * migrate message continiously and it receives a lot of error
+       * -1010.
+       */
+      if (0 != is_inc_migrate_task_count)
+      {
+        atomic_dec(&migrate_task_count_);
+      }
+
+
+      //report migrate info to root server
+      desc.tablet_version_ = tablet_version;
+      if(OB_CS_MIGRATE_IN_EXIST == rc.result_code_)
+      {
+        rc.result_code_ = OB_SUCCESS;
+      }
+      int64_t occupy_size = 0;
+      int64_t check_sum = 0;
+      uint64_t row_checksum = 0;
+      int64_t row_count = 0;
+      ObTablet* tablet = NULL;
+      if(OB_SUCCESS == rc.result_code_)
+      {
+        if(OB_SUCCESS == tablet_image.acquire_tablet_all_version(desc.range_, ObMultiVersionTabletImage::SCAN_FORWARD, ObMultiVersionTabletImage::FROM_NEWEST_INDEX, 0, tablet) &&
+            NULL != tablet &&
+            tablet->get_data_version() == desc.tablet_version_)
+        {
+          occupy_size = tablet->get_occupy_size();
+          check_sum = tablet->get_checksum();
+          row_checksum = tablet->get_row_checksum();
+          row_count = tablet->get_row_count();
+          tablet_image.release_tablet(tablet);
+          tablet = NULL;
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "bug, add tablet not succ, but rc is succ, range:%s tablet_version:%ld", to_cstring(desc.range_), desc.tablet_version_);
+          rc.result_code_ = OB_ERROR;
+        }
+      }
+
+      int ret = OB_SUCCESS;
+      ret = CS_RPC_CALL_RS(migrate_over, rc, desc, occupy_size, check_sum, row_checksum, row_count);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "report migrate over error, rc.code=%d", ret);
+        if(OB_SUCCESS == rc.result_code_)
+        {
+          rc.result_code_ = ret;
+        }
+      }
+      else
+      {
+        TBSYS_LOG(INFO,"report migrate tablet <%s> over to rootserver success, ret=%d",
+            to_cstring(desc.range_), rc.result_code_);
+      }
+
+      if(OB_SUCCESS == rc.result_code_ && false == desc.keep_source_ && ObDataSourceDesc::OCEANBASE_INTERNAL == desc.type_)
+      {
+        ObTabletReportInfoList del_tablets_list;
+        ObTabletReportInfo del_tablets_info;
+        del_tablets_info.tablet_info_.range_ = desc.range_;
+        del_tablets_info.tablet_location_.chunkserver_ = desc.src_server_;
+        del_tablets_info.tablet_location_.tablet_version_ = desc.tablet_version_;
+        del_tablets_list.add_tablet(del_tablets_info);
+
+        rc.result_code_= CS_RPC_CALL(delete_tablets, desc.src_server_, del_tablets_list, false);
+        if (OB_SUCCESS != rc.result_code_)
+        {
+          TBSYS_LOG(WARN, "send delete tablet <%s> to cs:%s error, rc.code=%d",
+              to_cstring(desc.range_), to_cstring(desc.src_server_), rc.result_code_);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "send delete tablet <%s> to cs:%s succ, rc.code=%d",
+              to_cstring(desc.range_), to_cstring(desc.src_server_), rc.result_code_);
+        }
+      }
+
+      if(OB_SUCCESS != rc.result_code_)
+      {
+        TBSYS_LOG(WARN, "fetch_data failed rc.code=%d",rc.result_code_);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "fetch_data finish rc.code=%d",rc.result_code_);
+      }
+
+
+      return rc.result_code_;
+    }
+
     int ObChunkService::cs_load_bypass_sstables(
         const int32_t version,
         const int32_t channel_id,
@@ -3340,49 +3776,49 @@ namespace oceanbase
           || 0 != atomic_compare_exchange(&scan_tablet_image_count_, 1, 0))
       {
         TBSYS_LOG(WARN, "someone else is scanning tablets. give up this process");
+        ret = OB_EAGAIN;
       }
       else
       {
         is_increased_scan_tablet_image_count = true;
-      }
-
-      if (version != CS_FETCH_SSTABLE_DIST_VERSION)
-      {
-        ret = OB_ERROR_FUNC_VERSION;
-        TBSYS_LOG(WARN, "server version of cs_fetch_sstable_dist is %d, "
-            "request version is %d", CS_FETCH_SSTABLE_DIST_VERSION, version);
-      }
-      else if (OB_SUCCESS != (ret =
-            serialization::decode_vi64(in_buffer.get_data(),
-              in_buffer.get_capacity(), in_buffer.get_position(), &table_version)))
-      {
-        TBSYS_LOG(WARN, "failed to decode table_version, cap=%ld pos=%ld ret=%d",
-            in_buffer.get_capacity(), in_buffer.get_position(), ret);
-      }
-
-      if (OB_SUCCESS == ret)
-      {
-        if (OB_SUCCESS != (ret = mem_buf.ensure_space(BUF_SIZE)))
+        if (version != CS_FETCH_SSTABLE_DIST_VERSION)
         {
-          TBSYS_LOG(WARN, "failed to ensure space, buf size=%ld ret=%d", BUF_SIZE, ret);
+          ret = OB_ERROR_FUNC_VERSION;
+          TBSYS_LOG(WARN, "server version of cs_fetch_sstable_dist is %d, "
+              "request version is %d", CS_FETCH_SSTABLE_DIST_VERSION, version);
         }
-        else
+        else if (OB_SUCCESS != (ret =
+              serialization::decode_vi64(in_buffer.get_data(),
+                in_buffer.get_capacity(), in_buffer.get_position(), &table_version)))
         {
-          buf = mem_buf.get_buffer();
+          TBSYS_LOG(WARN, "failed to decode table_version, cap=%ld pos=%ld ret=%d",
+              in_buffer.get_capacity(), in_buffer.get_position(), ret);
         }
-      }
 
-      if (OB_SUCCESS == ret)
-      {
-        if (tablet_image.get_serving_version() != table_version)
+        if (OB_SUCCESS == ret)
         {
-          TBSYS_LOG(WARN, "serving version[%ld] of this cs is not same as request[%ld]",
-              tablet_image.get_serving_version(), table_version);
-          ret = OB_INVALID_DATA;
+          if (OB_SUCCESS != (ret = mem_buf.ensure_space(BUF_SIZE)))
+          {
+            TBSYS_LOG(WARN, "failed to ensure space, buf size=%ld ret=%d", BUF_SIZE, ret);
+          }
+          else
+          {
+            buf = mem_buf.get_buffer();
+          }
         }
-        else if (OB_SUCCESS != (ret = tablet_image.begin_scan_tablets()))
+
+        if (OB_SUCCESS == ret)
         {
-          TBSYS_LOG(WARN, "failed to begin scan tablets, ret=%d", ret);
+          if (tablet_image.get_serving_version() != table_version)
+          {
+            TBSYS_LOG(WARN, "serving version[%ld] of this cs is not same as request[%ld]",
+                tablet_image.get_serving_version(), table_version);
+            ret = OB_INVALID_DATA;
+          }
+          else if (OB_SUCCESS != (ret = tablet_image.begin_scan_tablets()))
+          {
+            TBSYS_LOG(WARN, "failed to begin scan tablets, ret=%d", ret);
+          }
         }
       }
 
@@ -3412,9 +3848,7 @@ namespace oceanbase
             }
             else
             {
-              const common::ObArray<sstable::ObSSTableId>& sstable_id_list =
-                tablet->get_sstable_id_list();
-              int64_t sstable_num = sstable_id_list.count();
+              int64_t sstable_num = tablet->get_sstable_id_list().count();
               if (1 != sstable_num)
               {
                 ret = OB_INVALID_DATA;
@@ -3423,7 +3857,7 @@ namespace oceanbase
               }
               else
               {
-                const sstable::ObSSTableId& sstable_id = sstable_id_list.at(0);
+                const sstable::ObSSTableId& sstable_id = tablet->get_sstable_id_list().at(0);
                 ret = get_sstable_path(sstable_id, path_buf, sizeof(path_buf));
                 if (OB_SUCCESS != ret)
                 {
@@ -3435,6 +3869,11 @@ namespace oceanbase
                   sstable_path.assign_ptr(path_buf, static_cast<ObString::obstr_size_t>(strlen(path_buf)));
                 }
               }
+            }
+
+            if (OB_SUCCESS != (ret = tablet_image.release_tablet(tablet)))
+            {
+              TBSYS_LOG(WARN, "failed to release tablet, tablet=%p, ret=%d", tablet, ret);
             }
           }
           else
@@ -3542,25 +3981,24 @@ namespace oceanbase
         ret = rpc_ret;
       }
 
-      int tmp_ret = tablet_image.end_scan_tablets();
-      if (OB_SUCCESS != tmp_ret)
+      if (is_increased_scan_tablet_image_count)
       {
-        TBSYS_LOG(WARN, "failed to end scan tablets, ret=%d", tmp_ret);
-        if (OB_SUCCESS == ret)
+        int tmp_ret = tablet_image.end_scan_tablets();
+        if (OB_SUCCESS != tmp_ret)
         {
-          ret = tmp_ret;
+          TBSYS_LOG(WARN, "failed to end scan tablets, ret=%d", tmp_ret);
+          if (OB_SUCCESS == ret)
+          {
+            ret = tmp_ret;
+          }
         }
+        atomic_exchange(&scan_tablet_image_count_, 0);
       }
       TBSYS_LOG(INFO, "complete to handle fetch_sstable_dist, ret=%d", ret);
 
       if (session_id > 0)
       {
         queue_thread.destroy_session(session_id);
-      }
-
-      if (is_increased_scan_tablet_image_count)
-      {
-        atomic_exchange(&scan_tablet_image_count_, 0);
       }
 
       return ret;
@@ -3588,9 +4026,14 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "Set config failed! ret: [%d]", ret);
       }
+      else if (OB_SUCCESS != (ret = chunk_server_->get_config_mgr().reload_config()))
+      {
+        TBSYS_LOG(ERROR, "Reload config failed! ret: [%d]", ret);
+      }
       else
       {
         TBSYS_LOG(INFO, "Set config successfully! str: [%s]", config_str.ptr());
+        chunk_server_->get_config().print();
       }
 
       res.result_code_ = ret;
@@ -3646,6 +4089,260 @@ namespace oceanbase
                                                                  MY_VERSION, out_buffer, req, channel_id)))
       {
         TBSYS_LOG(ERROR, "send response fail, ret: [%d]", ret);
+      }
+
+      return ret;
+    }
+
+    int ObChunkService::cs_get_bloom_filter(
+      const int32_t version,
+      const int32_t channel_id,
+      easy_request_t* req,
+      common::ObDataBuffer& in_buffer,
+      common::ObDataBuffer& out_buffer,
+      const int64_t timeout_time)
+    {
+      UNUSED(version);
+      int ret = OB_SUCCESS;
+      common::ObResultCode rc;
+
+      const int64_t MAX_BUFSIZ_PER_REQUEST = OB_MAX_PACKET_LENGTH - 65535;
+      const int64_t MY_VERSION = 1;
+
+      CharArena allocator;
+      ObNewRange range;
+      int64_t tablet_version = 0;
+      int64_t bf_version = 0;
+      ObTablet* tablet = NULL;
+      SSTableReader* reader = NULL;
+      const BloomFilter* filter = NULL;
+      int32_t reader_size = 1;
+
+
+      int64_t session_id = 0;
+      int32_t response_cid = channel_id;
+      bool    is_fullfilled = true;
+      int64_t current_response_pos = 0;
+      int64_t current_response_length = 0;
+      int64_t bf_serialize_size = 0;
+      char*   bf_buffer = NULL;
+      int64_t pos = 0;
+      ObPacket* next_request = NULL;
+      ObPacketQueueThread& queue_thread = chunk_server_->get_default_task_queue_thread();
+      ObString response_buffer;
+
+      if (OB_SUCCESS != (ret = range.deserialize(allocator, 
+              in_buffer.get_data(), in_buffer.get_capacity(),
+              in_buffer.get_position())))
+      {
+        TBSYS_LOG(WARN, "deserialize range error, cap:%ld, pos:%ld", 
+            in_buffer.get_capacity(), in_buffer.get_position());
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64(
+              in_buffer.get_data(), in_buffer.get_capacity(),
+              in_buffer.get_position(), &tablet_version)))
+      {
+        TBSYS_LOG(WARN, "deserialize tablet_version error, cap:%ld, pos:%ld", 
+            in_buffer.get_capacity(), in_buffer.get_position());
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64( 
+              in_buffer.get_data(), in_buffer.get_capacity(),
+              in_buffer.get_position(), &bf_version)))
+      {
+        TBSYS_LOG(WARN, "deserialize tablet_version error, cap:%ld, pos:%ld", 
+            in_buffer.get_capacity(), in_buffer.get_position());
+      }
+      else if ( OB_SUCCESS != (ret = chunk_server_->get_tablet_manager().
+            get_serving_tablet_image().acquire_tablet(
+              range, ObMultiVersionTabletImage::SCAN_FORWARD, tablet_version, tablet)) 
+          || NULL == tablet || tablet->get_data_version() != tablet_version)
+      {
+        TBSYS_LOG(WARN, "acquire_tablet ret=%d, range:%s, version:%ld, tablet=%p, tv=%ld", 
+            ret, to_cstring(range), tablet_version, tablet, 
+            (NULL != tablet) ? tablet->get_data_version() : 0);
+        ret = OB_CS_TABLET_NOT_EXIST;
+      }
+      else if ( range.compare_with_startkey2(tablet->get_range()) != 0
+          || range.compare_with_endkey2(tablet->get_range()) != 0)
+      {
+        TBSYS_LOG(WARN, "input tablet range:<%s> not equal to local range:<%s>", 
+            to_cstring(range), to_cstring(tablet->get_range()));
+        ret = OB_CS_TABLET_NOT_EXIST;
+      }
+      else if ( OB_SUCCESS != (ret = tablet->find_sstable(range, &reader, reader_size)) )
+      {
+        TBSYS_LOG(WARN, "get reader ret=%d, range:%s, version:%ld, reader=%p", 
+            ret, to_cstring(range), tablet_version, reader);
+      }
+      else if ( NULL == reader || reader_size <= 0 || reader->get_row_count() == 0)
+      {
+        TBSYS_LOG(INFO, "tablet:%s version:%ld has no sstable.", to_cstring(range), tablet_version);
+        ret = OB_CS_EMPTY_TABLET;
+      }
+      else if ( NULL == (filter = reader->get_bloom_filter()))
+      {
+        TBSYS_LOG(WARN, "get NULL bloom_filter range:%s, version:%ld, reader=%p", 
+            to_cstring(range), tablet_version, reader);
+        ret = OB_CS_TABLET_NOT_EXIST;
+      }
+      else if ( bf_version != (filter->get_version()))
+      {
+        TBSYS_LOG(WARN, "need bf version=%ld <> filter's version=%ld, range:%s,"
+            "data version:%ld, reader=%p", bf_version, filter->get_version(), 
+            to_cstring(range), tablet_version, reader);
+        ret = OB_NOT_SUPPORTED;
+      }
+
+      if (OB_SUCCESS == ret && NULL != filter)
+      {
+        bf_serialize_size = filter->get_serialize_size();
+        if ( NULL == (bf_buffer = reinterpret_cast<char*>(ob_tc_malloc(bf_serialize_size, ObModIds::OB_CS_BLOOM_FILTER))))
+        {
+          TBSYS_LOG(WARN, "allocator memory failed. size=%ld", bf_serialize_size);
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+        }
+        else if (OB_SUCCESS != (ret = filter->serialize(bf_buffer, bf_serialize_size, pos)))
+        {
+          TBSYS_LOG(WARN, "serialize filter ret=%d, size=%ld, pos=%ld", ret, bf_serialize_size, pos);
+        }
+        else 
+        {
+          if (bf_serialize_size > MAX_BUFSIZ_PER_REQUEST)
+          {
+            session_id = queue_thread.generate_session_id();
+            current_response_length = MAX_BUFSIZ_PER_REQUEST;
+            is_fullfilled = false;
+          }
+          else
+          {
+            is_fullfilled = true;
+            current_response_length = bf_serialize_size;
+          }
+        }
+      }
+
+      // release tablet when bloom filter serialize done;
+      if (NULL != tablet)
+      {
+        if (OB_SUCCESS != (chunk_server_->get_tablet_manager().
+              get_serving_tablet_image().release_tablet(tablet)))
+        {
+          TBSYS_LOG(WARN, "release tablet %p error.", tablet);
+        }
+      }
+
+      do
+      {
+        if (OB_SUCCESS == ret && !is_fullfilled)
+        {
+          ret = queue_thread.prepare_for_next_request(session_id);
+        }
+
+        out_buffer.get_position() = 0;
+        rc.result_code_ = ret;
+        int serialize_ret = rc.serialize(out_buffer.get_data(),
+            out_buffer.get_capacity(), out_buffer.get_position());
+
+        if (OB_SUCCESS == serialize_ret && OB_SUCCESS == ret)
+        {
+          response_buffer.assign_ptr(bf_buffer + current_response_pos, 
+              static_cast<int32_t>(current_response_length));
+          // serialize reponse buffer and fullfilled flag.
+          if (OB_SUCCESS != (serialize_ret = response_buffer.serialize(
+                  out_buffer.get_data(), out_buffer.get_capacity(), 
+                  out_buffer.get_position())))
+          {
+            TBSYS_LOG(WARN, "serialize response buffer error ret=%d,"
+                "buffer size=%d, out buffer cap=%ld, pos=%ld", 
+                serialize_ret, response_buffer.length(),
+                out_buffer.get_capacity(), out_buffer.get_position());
+          }
+          if (OB_SUCCESS != (serialize_ret = serialization::encode_bool(
+                  out_buffer.get_data(), out_buffer.get_capacity(), 
+                  out_buffer.get_position(), is_fullfilled)))
+          {
+            TBSYS_LOG(WARN, "serialize fullfilled error ret=%d,"
+                "is_fullfilled=%d, out buffer cap=%ld, pos=%ld", 
+                serialize_ret, is_fullfilled,
+                out_buffer.get_capacity(), out_buffer.get_position());
+          }
+          if (OB_SUCCESS != (serialize_ret = serialization::encode_vi64(
+                  out_buffer.get_data(), out_buffer.get_capacity(), 
+                  out_buffer.get_position(), bf_serialize_size)))
+          {
+            TBSYS_LOG(WARN, "serialize total size error ret=%d,"
+                "bf_serialize_size=%ld, out buffer cap=%ld, pos=%ld", 
+                serialize_ret, bf_serialize_size,
+                out_buffer.get_capacity(), out_buffer.get_position());
+          }
+        }
+
+        if (OB_SUCCESS != serialize_ret)
+        {
+          TBSYS_LOG(WARN, "serialize response failed. ret=%d", serialize_ret);
+          break ;
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "SEND response::input range=%s, data=%ld, bf=%ld, "
+              "session_id=%ld, is_fullfilled=%d, cur_pos=%ld, cur_len=%ld, total_size=%ld",
+              to_cstring(range), tablet_version, bf_version, session_id, 
+              is_fullfilled, current_response_pos, current_response_length, bf_serialize_size);
+          chunk_server_->send_response(
+              is_fullfilled ? OB_SESSION_END : OB_CS_FETCH_BLOOM_FILTER_RESPONSE, 
+              MY_VERSION, out_buffer, req, response_cid, session_id);
+
+        }
+
+        if (OB_SUCCESS == ret)
+        {
+
+          // send all reponse buffer done.
+          if (is_fullfilled) break;
+
+          ret = queue_thread.wait_for_next_request(
+              session_id, next_request, timeout_time - tbsys::CTimeUtil::getTime());
+          if (OB_NET_SESSION_END == ret)
+          {
+            ret = OB_SUCCESS;
+            easy_request_wakeup(req);
+            break;
+          }
+          else if (OB_SUCCESS == ret)
+          {
+            response_cid = next_request->get_channel_id();
+            req = next_request->get_request();
+
+            current_response_pos += current_response_length;
+            current_response_length = bf_serialize_size - current_response_pos;
+
+            if (current_response_length > MAX_BUFSIZ_PER_REQUEST)
+            {
+              current_response_length = MAX_BUFSIZ_PER_REQUEST;
+              is_fullfilled = false;
+            } 
+            else if (current_response_length <= 0)
+            {
+              // assume cannot be here! should break earlier cause is_fullfilled == true.
+              break;
+            }
+            else
+            {
+              is_fullfilled = true;
+            }
+          }
+        }
+
+      } while (OB_SUCCESS == ret);
+
+
+      if (session_id > 0)
+      {
+        queue_thread.destroy_session(session_id);
+      }
+      if (NULL != bf_buffer)
+      {
+        ob_tc_free(bf_buffer, ObModIds::OB_CS_BLOOM_FILTER);
       }
 
       return ret;
@@ -3840,6 +4537,12 @@ namespace oceanbase
       }
     }
 
+    int ObChunkService::get_master_master_update_server()
+    {
+      ObServer tmp_ups;
+      return chunk_server_->get_rpc_proxy()->get_master_master_update_server(true, tmp_ups);
+      
+    }
     int ObChunkService::fetch_update_server_list()
     {
       int err = OB_SUCCESS;
@@ -3867,12 +4570,72 @@ namespace oceanbase
 
     void ObChunkService::FetchUpsTask::runTimerTask()
     {
+      service_->get_master_master_update_server();
       service_->fetch_update_server_list();
       // reschedule fetch updateserver list task with new interval.
       service_->timer_.schedule(*this,
         service_->chunk_server_->get_config().fetch_ups_interval, false);
     }
 
+    int64_t ObChunkService::ReportTabletTask::get_next_wait_useconds()
+    {
+      if (wait_seconds_ < 1) wait_seconds_ = 1;
+      wait_seconds_ <<= 1;
+      return wait_seconds_ * 1000000LL;
+    }
+    void ObChunkService::ReportTabletTask::runTimerTask()
+    {
+      int ret = OB_SUCCESS;
+      ObTabletManager & tablet_manager = service_->chunk_server_->get_tablet_manager();
+      if (service_->in_register_process_ 
+          || tablet_manager.get_chunk_merge().is_pending_in_upgrade()
+          || tablet_manager.get_bypass_sstable_loader().is_pending_upgrade()
+          || 0 != atomic_compare_exchange(&service_->scan_tablet_image_count_, 1, 0))
+      {
+        TBSYS_LOG(WARN, "someone else is reporting. give up this process");
+      }
+      else if (tablet_manager.get_serving_data_version() > report_version_)
+      {
+        // got new data version, current retry round abort.
+        TBSYS_LOG(INFO, "service_version(%ld) upgrade, no need report current (%ld)",
+            tablet_manager.get_serving_data_version(), report_version_);
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "schedule retry report tablets, report version:%ld, wait_seconds_=%ld", 
+            report_version_, wait_seconds_);
+        ret = tablet_manager.report_tablets();
+        if (OB_SUCCESS != ret)
+        {
+          if (OB_RESPONSE_TIME_OUT == ret)
+          {
+            // reschedule report task;
+            service_->timer_.schedule(*this, get_next_wait_useconds(), false);
+            TBSYS_LOG(WARN, "report tablets timeout, wait %ld seconds and rereport.", wait_seconds_);
+          }
+        }
+        else
+        {
+          tablet_manager.report_capacity_info();
+        }
+        atomic_exchange(&service_->scan_tablet_image_count_, 0);
+      }
+    }
+
+    void ObChunkService::ReportTabletTask::start_retry_round()
+    {
+      ObTabletManager & tablet_manager = service_->chunk_server_->get_tablet_manager();
+      report_version_ = tablet_manager.get_serving_data_version();
+      wait_seconds_ = 1;
+    }
+
+    int ObChunkService::schedule_report_tablet()
+    {
+      // reset retry time interval;
+      report_tablet_task_.start_retry_round();
+      return timer_.schedule(report_tablet_task_,
+          report_tablet_task_.get_next_wait_useconds(), false);
+    }
 
   } // end namespace chunkserver
 } // end namespace oceanbase

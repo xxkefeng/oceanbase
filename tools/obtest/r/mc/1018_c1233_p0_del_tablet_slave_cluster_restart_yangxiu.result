@@ -7,11 +7,11 @@ ob1.reboot
 ob2.reboot
 ob1.prepare
 ob1.start_check
-ob1.check_cs_sstable 600
-ob2.check_cs_sstable 600
+ob1.check_cs_sstable 606
+ob2.check_cs_sstable 606
 alter system set tablet_replicas_num=2 server_type=rootserver;
 ob2.force_stop
 ob2.start
-ob1.check_cs_sstable 400
-ob2.check_cs_sstable 400
+ob1.check_cs_sstable 404
+ob2.check_cs_sstable 404
 ob1.stop_check

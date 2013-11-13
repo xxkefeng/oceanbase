@@ -13,7 +13,6 @@ deploy ob1.start_check;
 
 #stop two cs
 deploy ob1.cs0.stop;
-deploy ob1.cs1.stop;
 
 #merge
 deploy ob1.major_freeze;
@@ -23,7 +22,6 @@ sleep 10;
 
 #start two cs
 deploy ob1.cs0.start;
-deploy ob1.cs1.start;
 
 #wait for merge done
 sleep 150;

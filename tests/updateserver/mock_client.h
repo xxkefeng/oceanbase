@@ -30,6 +30,7 @@
 #include "common/ob_mutator.h"
 #include "common/thread_buffer.h"
 #include "common/ob_bloomfilter.h"
+#include "common/bloom_filter.h"
 #include "common/ob_login_mgr.h"
 #include "common/ob_token.h"
 #include "common/ob_log_cursor.h"

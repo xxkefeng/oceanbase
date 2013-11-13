@@ -9,7 +9,9 @@ __all_join_info
 __all_client
 __all_cluster
 __all_server
+__all_server_session
 __all_server_stat
+__all_statement
 __all_sys_config
 __all_sys_config_stat
 __all_sys_param
@@ -17,4 +19,6 @@ __all_sys_stat
 __all_table_privilege
 __all_trigger_event
 __all_user
+count(*)
+0
 ob1.stop

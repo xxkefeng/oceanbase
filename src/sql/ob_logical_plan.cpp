@@ -20,11 +20,13 @@ namespace oceanbase
       : name_pool_(name_pool)
     {
       question_marks_count_ = 0;
+      cur_time_fun_type_ = NO_CUR_TIME;
       // from valid max id desc
       new_gen_tid_ = UINT16_MAX - 2;
       new_gen_cid_ = OB_MAX_TMP_COLUMN_ID;
       new_gen_qid_ = 1;
       new_gen_eid_ = 1;
+      new_gen_wid_ = 1;
     }
 
     ObLogicalPlan::~ObLogicalPlan()
@@ -104,7 +106,7 @@ namespace oceanbase
       return expr;
     }
 
-    int ObLogicalPlan::fill_result_set(ObResultSet& result_set, ObSQLSessionInfo* session_info, common::StackAllocator &alloc)
+    int ObLogicalPlan::fill_result_set(ObResultSet& result_set, ObSQLSessionInfo* session_info, common::ObIAllocator &alloc)
     {
       int ret = OB_SUCCESS;
       result_set.set_affected_rows(0);
@@ -375,6 +377,52 @@ namespace oceanbase
           }
           break;
         }
+        case ObStmt::T_SHOW_PROCESSLIST:
+        {
+          ObString tname = ObString::make_string("show processlist");
+          ObShowStmt *show_stmt = static_cast<ObShowStmt*>(stmts_[0]);
+          if (show_stmt == NULL)
+          {
+            TBSYS_LOG(WARN, "fail to get Show statement");
+            ret = OB_ERR_PARSE_SQL;
+            break;
+          }
+          else
+          {
+            field.tname_ = tname;
+            field.org_tname_ = tname;
+          }
+          ObString cname[10]; //  | Id  | User | Host      | db   | Command | Time | State | Info|
+          cname[0] = ObString::make_string("Id");
+          cname[1] = ObString::make_string("User");
+          cname[2] = ObString::make_string("Host");
+          cname[3] = ObString::make_string("db");
+          cname[4] = ObString::make_string("Command");
+          cname[5] = ObString::make_string("Time");
+          cname[6] = ObString::make_string("State");
+          cname[7] = ObString::make_string("Info");
+          cname[8] = ObString::make_string("MergeServer");
+          cname[9] = ObString::make_string("Index");
+          for (int32_t i = 0; ret == OB_SUCCESS && i < 10; i++)
+          {
+            field.cname_ = cname[i];
+            field.org_cname_ = cname[i];
+            if (i == 0 || i == 5 || i == 9)
+            {
+              field.type_.set_type(ObIntType);
+            }
+            else
+            {
+              field.type_.set_type(ObVarcharType);
+            }
+            if (OB_SUCCESS != (ret = result_set.add_field_column(field)))
+            {
+              TBSYS_LOG(WARN, "fail to add field column to result_set. ret=%d", ret);
+              break;
+            }
+          }
+          break;
+        }
         case ObStmt::T_EXECUTE:
         {
           ObExecuteStmt *execute_stmt = static_cast<ObExecuteStmt*>(stmts_[0]);
@@ -397,7 +445,7 @@ namespace oceanbase
           }
           else if ((ret = result_set.from_prepared(*stored_plan)) != OB_SUCCESS)
           {
-            TBSYS_LOG(WARN, "fail to fill result set");
+            TBSYS_LOG(WARN, "fail to fill result set, ret=%d", ret);
           }
           else
           {
@@ -412,6 +460,15 @@ namespace oceanbase
       if (ret == OB_SUCCESS && question_marks_count_ > 0)
       {
         ret = result_set.pre_assign_params_room(question_marks_count_, alloc);
+      }
+
+      if (ret == OB_SUCCESS && NO_CUR_TIME != cur_time_fun_type_)
+      {
+        ret = result_set.pre_assign_cur_time_room(alloc);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "failed to assign cur_time room, ret=%d", ret);
+        }
       }
 
       return ret;
@@ -435,6 +492,14 @@ namespace oceanbase
         sql_expr->print(fp, level + 2, i);
       }
       fprintf(fp, "    </ExprList>\n");
+      if (CUR_TIME == cur_time_fun_type_)
+      {
+        fprintf(fp, "    <CurrentTimeFun>MS</CurrentTimeFun>\n");
+      }
+      else if (CUR_TIME_UPS == cur_time_fun_type_)
+      {
+        fprintf(fp, "    <CurrentTimeFun>UPS</CurrentTimeFun>\n");
+      }
       fprintf(fp, "</LogicalPlan>\n");
     }
   }

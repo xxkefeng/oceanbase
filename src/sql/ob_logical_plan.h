@@ -13,6 +13,11 @@ namespace oceanbase
 {
   namespace sql
   {
+    enum ObCurTimeType {
+      CUR_TIME,
+      CUR_TIME_UPS,
+      NO_CUR_TIME
+    };
     class ObSQLSessionInfo;
     class ObLogicalPlan
     {
@@ -73,7 +78,7 @@ namespace oceanbase
         return ret;
       }
 
-        int fill_result_set(ObResultSet& result_set, ObSQLSessionInfo *session_info, common::StackAllocator &alloc);
+      int fill_result_set(ObResultSet& result_set, ObSQLSessionInfo *session_info, common::ObIAllocator &alloc);
 
       uint64_t generate_table_id()
       {
@@ -86,7 +91,7 @@ namespace oceanbase
       }
 
       // It will reserve 10 id for the caller
-      // In fact is for aggregate functions only, 
+      // In fact is for aggregate functions only,
       // because we need to push part aggregate to tablet and keep top aggregate on all
       uint64_t generate_range_column_id()
       {
@@ -105,6 +110,11 @@ namespace oceanbase
         return new_gen_qid_++;
       }
 
+      int64_t generate_when_number()
+      {
+        return new_gen_wid_++;
+      }
+
       int64_t inc_question_mark()
       {
         return question_marks_count_++;
@@ -114,10 +124,30 @@ namespace oceanbase
       {
         return question_marks_count_;
       }
+
+      void set_cur_time_fun()
+      {
+        if (NO_CUR_TIME == cur_time_fun_type_)
+        {
+          cur_time_fun_type_ = CUR_TIME ;
+        }
+      }
+
+      void set_cur_time_fun_ups()
+      {
+        cur_time_fun_type_ = CUR_TIME_UPS;
+      }
+
+      const ObCurTimeType get_cur_time_fun_type()
+      {
+        return cur_time_fun_type_;
+      }
+
       int32_t get_stmts_count() const
       {
         return stmts_.size();
       }
+
       ObBasicStmt* get_stmt(int32_t index) const
       {
         OB_ASSERT(index >= 0 && index < get_stmts_count());
@@ -133,10 +163,12 @@ namespace oceanbase
       oceanbase::common::ObVector<ObSqlRawExpr*> exprs_;
       oceanbase::common::ObVector<ObRawExpr*> raw_exprs_store_;
       int64_t   question_marks_count_;
+      ObCurTimeType cur_time_fun_type_;
       uint64_t  new_gen_tid_;
       uint64_t  new_gen_cid_;
       uint64_t  new_gen_qid_;
       uint64_t  new_gen_eid_;
+      int64_t   new_gen_wid_;   // when number
     };
   }
 }

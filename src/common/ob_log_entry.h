@@ -62,6 +62,12 @@ namespace oceanbase
       OB_RT_BATCH_ADD_NEW_TABLET = 428,
       OB_RT_GOT_CONFIG_VERSION = 429,
       OB_RT_CS_DELETE_REPLICAS = 430,
+      OB_RT_SET_BYPASS_VERSION = 431, /*NOTE: not compatible with 0.3.1*/
+      OB_RT_LMS_REGIST = 432,
+      OB_RT_ADD_RANGE_FOR_LOAD_DATA = 433,
+      OB_RT_ADD_LOAD_TABLE = 434,
+      OB_RT_DELETE_LOAD_TABLE = 435,
+      OB_RT_CLEAN_ROOT_TABLE = 436,
       //// ChunkServer ... 600 - 799 ////
 
       //// Base command ... ////

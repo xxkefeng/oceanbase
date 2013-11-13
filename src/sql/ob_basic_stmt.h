@@ -50,6 +50,7 @@ namespace oceanbase
         T_SHOW_SERVER_STATUS,
         T_SHOW_WARNINGS,
         T_SHOW_GRANTS,
+        T_SHOW_PROCESSLIST,
 
         // privileges related
         T_CREATE_USER,
@@ -68,7 +69,9 @@ namespace oceanbase
         T_START_TRANS,
         T_END_TRANS,
 
+        T_KILL,
         T_ALTER_SYSTEM,
+        T_CHANGE_OBI,
       };
 
       ObBasicStmt()

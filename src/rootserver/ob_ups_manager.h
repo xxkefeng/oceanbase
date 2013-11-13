@@ -19,6 +19,7 @@
 #include "common/ob_ups_info.h"
 #include "common/ob_ups_info.h"
 #include "rootserver/ob_root_rpc_stub.h"
+#include "rootserver/ob_root_async_task_queue.h"
 #include <tbsys.h>
 
 // forward declarations for unit test classes
@@ -109,8 +110,8 @@ namespace oceanbase
         const char* ups_stat_to_cstr(ObUpsStatus stat) const;
         void check_all_ups_offline();
         bool is_idx_valid(int ups_idx) const;
-        // push task to queue
-        int server_online(const bool online, const common::ObServer & server, const int32_t inner_port, const char *server_version);
+        // push update inner table task into queue
+        int refresh_inner_table(const ObTaskType type, const ObUps & ups, const char *server_version);
         // disallow copy
         ObUpsManager(const ObUpsManager &other);
         ObUpsManager& operator=(const ObUpsManager &other);

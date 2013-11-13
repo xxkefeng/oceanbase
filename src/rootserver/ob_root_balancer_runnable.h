@@ -22,6 +22,7 @@ namespace oceanbase
 {
   namespace rootserver
   {
+    class ObRootBalancer;
     class ObRootBalancerRunnable : public tbsys::CDefaultRunnable
     {
       public:
@@ -37,7 +38,6 @@ namespace oceanbase
         ObRootBalancerRunnable(const ObRootBalancerRunnable &other);
         ObRootBalancerRunnable& operator=(const ObRootBalancerRunnable &other);
       private:
-        static const int64_t MIN_BALANCE_WORKER_SLEEP_US = 1000LL*1000; // 1s
         // data members
         ObRootServerConfig &config_;
         ObRootBalancer &balancer_;

@@ -8,6 +8,6 @@ ob1.start_check
 ob1.cs2.set status=enable
 ob1.cs2.start
 ob1.cs0.stop
-ob1.check_cs_sstable 400,2
+ob1.check_cs_sstable 404,2
 ob1.check_cs_balance 2
 ob1.stop_check

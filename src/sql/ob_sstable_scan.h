@@ -69,9 +69,11 @@ namespace oceanbase
       public:
         ObSSTableScan();
         virtual ~ObSSTableScan();
-
+        virtual void reset();
+        virtual void reuse();
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_SSTABLE_SCAN; }
         virtual int get_next_row(const common::ObRowkey* &row_key, const common::ObRow *&row_value);
         virtual int open_scan_context(const sstable::ObSSTableScanParam& param, const ScanContext& context);
 

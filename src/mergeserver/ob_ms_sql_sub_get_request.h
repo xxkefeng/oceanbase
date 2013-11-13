@@ -11,8 +11,8 @@
  *   wushi <wushi.ly@taobao.com>
  *   xiaochu <xiaochu.yh@alipay.com>
  */
-#ifndef MERGESERVER_OB_MS_SUB_GET_REQUEST_H_
-#define MERGESERVER_OB_MS_SUB_GET_REQUEST_H_
+#ifndef MERGESERVER_OB_MS_SQL_SUB_GET_REQUEST_H_
+#define MERGESERVER_OB_MS_SQL_SUB_GET_REQUEST_H_
 #include "sql/ob_sql_get_param.h"
 #include "common/ob_new_scanner.h"
 #include "common/ob_row_iterator.h"
@@ -45,6 +45,16 @@ namespace oceanbase
 
       int get_next_row(oceanbase::common::ObRow &row, int64_t & org_row_idx);
       int get_next_row(oceanbase::common::ObRow *&row, int64_t & org_row_idx);
+
+      inline void set_first_cs_addr(const ObServer & server)
+      {
+        first_cs_addr_ = server;
+      }
+
+      inline ObServer & get_first_cs_addr()
+      {
+        return first_cs_addr_;
+      }
 
       inline void set_last_svr_ipv4(const int32_t svr_ip)
       {
@@ -141,6 +151,7 @@ namespace oceanbase
       int64_t retry_times_;
       common::ObRow cur_row_;
       common::ObStringBuf rowkey_buf_;
+      ObServer first_cs_addr_;
     };
 
     class ObSqlGetMerger : public common::ObRowIterator
@@ -186,4 +197,4 @@ namespace oceanbase
   }
 }
 
-#endif /* MERGESERVER_OB_MS_SUB_GET_REQUEST_H_ */
+#endif /* MERGESERVER_OB_MS_SQL_SUB_GET_REQUEST_H_ */

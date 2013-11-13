@@ -41,16 +41,19 @@ namespace oceanbase
       public:
         ObMergeDistinct();
         virtual ~ObMergeDistinct();
-
+        virtual void reset();
+        virtual void reuse();
         // not always whole row is compared
         // example: SELECT distinct c1 FROM t order by c2;
         int add_distinct_column(const uint64_t tid, const uint64_t cid);
-
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_MERGE_DISTINCT; }
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         // disallow copy
         ObMergeDistinct(const ObMergeDistinct &other);

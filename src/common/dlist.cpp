@@ -1,6 +1,7 @@
-#include "assert.h"
-#include "stdlib.h"
+#include <assert.h>
+#include <stdlib.h>
 #include "dlist.h"
+#include "tbsys.h"
 namespace oceanbase
 {
   namespace common
@@ -12,32 +13,61 @@ namespace oceanbase
     }
 
     // insert one node before this node
-    void DLink::add_before(DLink *e)
+    bool DLink::add_before(DLink *e)
     {
-      add(prev_, e, this);
+      return add(prev_, e, this);
     }
 
     // insert one node after this node
-    void DLink::add_after(DLink *e)
+    bool DLink::add_after(DLink *e)
     {
-      add(this, e, next_);
+      return add(this, e, next_);
     }
 
     // remove node from list
-    void DLink::unlink()
+    bool DLink::unlink()
     {
-      prev_->next_ = next_;
-      next_->prev_ = prev_;
-      prev_ = NULL;
-      next_ = NULL;
+      bool ret = true;
+      if (NULL == prev_ || NULL == next_)
+      {
+        ret = false;
+        TBSYS_LOG(ERROR, "prev_=%p and next_=%p must not null", prev_, next_);
+      }
+      else
+      {
+        prev_->next_ = next_;
+        next_->prev_ = prev_;
+        prev_ = NULL;
+        next_ = NULL;
+      }
+      return ret;
     }
 
-    void DLink::add(DLink *prev, DLink *e, DLink *next)
+    bool DLink::add(DLink *prev, DLink *e, DLink *next)
     {
-      prev->next_ = e;
-      e->prev_ = prev;
-      next->prev_ = e;
-      e->next_ = next;
+      bool ret = true;
+      if (NULL == prev || NULL == e || NULL == next)
+      {
+        ret = false;
+        TBSYS_LOG(ERROR, "prev=%p, e=%p and next=%p must not null", prev, e, next);
+      }
+      else
+      {
+        prev->next_ = e;
+        e->prev_ = prev;
+        next->prev_ = e;
+        e->next_ = next;
+      }
+      return ret;
+    }
+
+    void DLink::add_range_after(DLink *first, DLink *last)
+    {
+      DLink* next = this->next_;
+      this->next_ = first;
+      first->prev_ = this;
+      next->prev_ = last;
+      last->next_ = next;
     }
 
   //------------dlist define--------------
@@ -56,9 +86,13 @@ namespace oceanbase
       {
         ret = false;
       }
+      else if (!header_.add_before(e))
+      {
+        ret = false;
+        TBSYS_LOG(ERROR, "failed to add e before head, e=%p", e);
+      }
       else
       {
-        header_.add_before(e);
         size_++;
       }
       return ret;
@@ -72,9 +106,13 @@ namespace oceanbase
       {
         ret = false;
       }
+      else if (!header_.add_after(e))
+      {
+        ret = false;
+        TBSYS_LOG(ERROR, "failed to add e after head, e=%p", e);
+      }
       else
       {
-        header_.add_after(e);
         size_++;
       }
       return ret;
@@ -88,8 +126,13 @@ namespace oceanbase
       {
         ret = false;
       }
-      else {
-        e->unlink();
+      else if (!e->unlink())
+      {
+        ret = false;
+        TBSYS_LOG(ERROR, "failed to move to first, e=%p", e);
+      }
+      else
+      {
         size_--;
         ret = add_first(e);
       }
@@ -104,9 +147,13 @@ namespace oceanbase
       {
         ret = false;
       }
+      else if (!e->unlink())
+      {
+        ret = false;
+        TBSYS_LOG(ERROR, "failed to move to last, e=%p", e);
+      }
       else
       {
-        e->unlink();
         size_--;
         ret = add_last(e);
       }
@@ -132,9 +179,13 @@ namespace oceanbase
       {
         ret = NULL;
       }
+      else if (!e->unlink())
+      {
+        ret = false;
+        TBSYS_LOG(ERROR, "failed to remove e=%p", e);
+      }
       else
       {
-        e->unlink();
         size_--;
       }
       return ret;
@@ -148,6 +199,59 @@ namespace oceanbase
         first = NULL;
       }
       return first;
+    }
+
+    void DList::push_range(DList &range)
+    {
+      if (!range.is_empty())
+      {
+        DLink* first = range.header_.next_;
+        DLink* last = range.header_.prev_;
+        first->prev_ = NULL;
+        last->next_ = NULL;
+        this->header_.add_range_after(first, last);
+        size_ += range.get_size();
+        range.clear();
+      }
+    }
+
+    void DList::pop_range(int32_t num, DList &range)
+    {
+      DLink *first = this->header_.next_;
+      DLink *last = first;
+      int count = 0;
+      if (count < num && last != &this->header_)
+      {
+        ++count;
+      }
+      while (count < num
+             && last->next_ != &this->header_)
+      {
+        ++count;
+        last = last->next_;
+      }
+      if (0 < count)
+      {
+        if (last->next_ == &this->header_)
+        {
+          clear();
+        }
+        else
+        {
+          header_.next_ = last->next_;
+          last->next_->prev_ = &header_;
+          size_ -= count;
+        }
+        first->prev_ = NULL;
+        last->next_ = NULL;
+        range.header_.add_range_after(first, last);
+        range.size_ += count;
+      }
+    }
+
+    DLink* DList::get_last()
+    {
+      return header_.prev_;
     }
   }
 

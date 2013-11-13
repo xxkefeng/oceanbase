@@ -28,8 +28,8 @@ namespace oceanbase
       public:
         ObRename();
         virtual ~ObRename();
-
-        void clear();
+        virtual void reset();
+        virtual void reuse();
         int set_table(const uint64_t table_id, const uint64_t base_table_id);
         int add_column_id(const uint64_t& column_id);
         virtual int open();
@@ -38,7 +38,8 @@ namespace oceanbase
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         virtual ObPhyOperatorType get_type() const;
-        
+
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
       protected:
         virtual int cons_row_desc();

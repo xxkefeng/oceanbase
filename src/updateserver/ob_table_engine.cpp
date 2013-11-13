@@ -313,56 +313,87 @@ namespace oceanbase
       {
         ret = OB_INVALID_ARGUMENT;
       }
-      else if (!rollback)
+      else
       {
-        ObCellInfoNode *iter = uci->uc_list_head;
-        while (NULL != iter)
+        bool need_unlock = false;
+        if (!uci->value->row_lock.is_exclusive_locked_by(session.get_session_descriptor()))
         {
-          iter->modify_time = session.get_trans_id();
-          TBSYS_LOG(DEBUG, "set value=%p node=%p modify_time=%ld", uci->value, iter, iter->modify_time);
-          if (uci->uc_list_tail == iter)
+          uci->value->row_lock.exclusive_lock(session.get_session_descriptor());
+          need_unlock = true;
+        }
+        if (!rollback)
+        {
+          ObCellInfoNode *iter = uci->uc_list_head;
+          while (NULL != iter)
           {
-            break;
+            if (INT64_MAX == iter->modify_time)
+            {
+              iter->modify_time = session.get_trans_id();
+            }
+            else
+            {
+              //TBSYS_LOG(INFO, "user supply ctime %ld", iter->modify_time);
+            }
+            TBSYS_LOG(DEBUG, "set value=%p node=%p modify_time=%ld", uci->value, iter, iter->modify_time);
+            if (uci->uc_list_tail == iter)
+            {
+              break;
+            }
+            else
+            {
+              iter = iter->next;
+            }
+          }
+
+          if (NULL == uci->value->list_tail)
+          {
+            uci->value->list_head = uci->uc_list_head;
           }
           else
           {
-            iter = iter->next;
+            uci->value->list_tail->next = uci->uc_list_head;
           }
-        }
-
-        if (NULL == uci->value->list_tail)
-        {
-          uci->value->list_head = uci->uc_list_head;
+          if (NULL != uci->uc_list_tail)
+          {
+            uci->value->list_tail = uci->uc_list_tail;
+          }
+          TBSYS_LOG(DEBUG, "commit value=%p %s "
+                    "cur_uc_info=%p uc_list_head=%p uc_list_tail=%p "
+                    "trans_id=%ld session=%p sd=%u",
+                    uci->value, uci->value->log_list(),
+                    uci->value->cur_uc_info, uci->uc_list_head, uci->uc_list_tail,
+                    session.get_trans_id(), &session, session.get_session_descriptor());
+          uci->value->cell_info_cnt = (int16_t)(uci->value->cell_info_cnt + uci->uc_cell_info_cnt);
+          uci->value->cell_info_size = (int16_t)(uci->value->cell_info_size + uci->uc_cell_info_size);
+          if (ATOMIC_CAS(&(uci->value->cur_uc_info), uci, NULL) != uci)
+          {
+            // only exist on replaying
+            TBSYS_TRACE_LOG("reset cur_uc_info to NULL, te_value=%p uci=%p", uci->value, uci);
+          }
         }
         else
         {
-          uci->value->list_tail->next = uci->uc_list_head;
+          TBSYS_LOG(DEBUG, "rollback value=%p %s "
+                    "cur_uc_info=%p uc_list_head=%p uc_list_tail=%p "
+                    "session=%p sd=%u",
+                    uci->value, uci->value->log_list(),
+                    uci->value->cur_uc_info, uci->uc_list_head, uci->uc_list_tail,
+                    &session, session.get_session_descriptor());
+          if (NULL != uci->value->list_tail)
+          {
+            uci->value->list_tail->next = NULL;
+          }
+          if (ATOMIC_CAS(&(uci->value->cur_uc_info), uci, NULL) != uci)
+          {
+            // only exist on replaying
+            TBSYS_TRACE_LOG("reset cur_uc_info to NULL, te_value=%p uci=%p", uci->value, uci);
+          }
+          // maybe free uncommited memory
         }
-        uci->value->list_tail = uci->uc_list_tail;
-        TBSYS_LOG(DEBUG, "commit value=%p %s "
-                  "cur_uc_info=%p uc_list_head=%p uc_list_tail=%p "
-                  "trans_id=%ld session=%p sd=%u",
-                  uci->value, uci->value->log_list(),
-                  uci->value->cur_uc_info, uci->uc_list_head, uci->uc_list_tail,
-                  session.get_trans_id(), &session, session.get_session_descriptor());
-        uci->value->cell_info_cnt = (int16_t)(uci->value->cell_info_cnt + uci->uc_cell_info_cnt);
-        uci->value->cell_info_size = (int16_t)(uci->value->cell_info_size + uci->uc_cell_info_size);
-        uci->value->cur_uc_info = NULL;
-      }
-      else
-      {
-        TBSYS_LOG(DEBUG, "rollback value=%p %s "
-                  "cur_uc_info=%p uc_list_head=%p uc_list_tail=%p "
-                  "session=%p sd=%u",
-                  uci->value, uci->value->log_list(),
-                  uci->value->cur_uc_info, uci->uc_list_head, uci->uc_list_tail,
-                  &session, session.get_session_descriptor());
-        if (NULL != uci->value->list_tail)
+        if (need_unlock)
         {
-          uci->value->list_tail->next = NULL;
+          uci->value->row_lock.exclusive_unlock(session.get_session_descriptor());
         }
-        uci->value->cur_uc_info = NULL;
-        // maybe free uncommited memory
       }
       return ret;
     }

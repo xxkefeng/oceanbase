@@ -34,6 +34,7 @@ namespace oceanbase
       static const int SIG_RESET_MEMORY_LIMIT = 34;
       static const int SIG_INC_WORK_THREAD = 35;
       static const int SIG_DEC_WORK_THREAD = 36;
+      static const int SIG_START_STRESS = 37;
       protected:
         ObUpdateServerMain();
 

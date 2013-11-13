@@ -34,7 +34,8 @@ namespace oceanbase
       public:
         ObUpdate();
         virtual ~ObUpdate();
-
+        virtual void reset();
+        virtual void reuse();
         void set_rpc_stub(mergeserver::ObMergerRpcProxy* rpc);
         void set_rowkey_info(const common::ObRowkeyInfo &rowkey_info);
 
@@ -46,6 +47,7 @@ namespace oceanbase
         /// execute the update statement
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_UPDATE; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         /// @note always return OB_ITER_END
         virtual int get_next_row(const common::ObRow *&row);
@@ -82,7 +84,7 @@ namespace oceanbase
         common::ObRowDescExt cols_desc_; // set desc of rowkey columns, used for type cast
         common::ObMutator mutator_;
         common::ObArray<uint64_t> update_column_ids_;
-        common::ObArray<ObSqlExpression> update_column_exprs_;
+        ObExpressionArray update_column_exprs_;
     };
 
     inline void ObUpdate::set_table_id(const uint64_t tid)

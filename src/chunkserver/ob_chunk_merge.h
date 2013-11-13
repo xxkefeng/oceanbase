@@ -79,7 +79,6 @@ namespace oceanbase
         int get_tablets(ObTablet* &tablet);
 
         bool have_new_version_in_othercs(const ObTablet* tablet);
-        int delete_tablet_on_rootserver(const ObTablet* tablet);
 
         int start_round(const int64_t frozen_version);
         int finish_round(const int64_t frozen_version);

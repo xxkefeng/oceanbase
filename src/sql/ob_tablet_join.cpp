@@ -47,6 +47,20 @@ void ObTabletJoin::reset()
   valid_fused_row_count_ = 0;
 }
 
+
+void ObTabletJoin::reuse()
+{
+  ups_row_desc_.reset();
+  ups_row_desc_for_join_.reset();
+
+  fused_row_store_.clear();
+  fused_row_iter_end_ = false;
+  fused_row_ = NULL;
+  fused_row_array_.clear();
+  fused_row_idx_ = 0;
+  valid_fused_row_count_ = 0;
+}
+
 ObTabletJoin::ObTabletJoin()
   :batch_count_(0),
   fused_row_iter_end_(false),
@@ -119,6 +133,11 @@ int ObTabletJoin::open()
     fused_row_array_.clear();
     fused_row_idx_ = 0;
     valid_fused_row_count_ = 0;
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    TBSYS_LOG(DEBUG, "table_join_info_[%s]", to_cstring(table_join_info_));
   }
 
   return ret;
@@ -391,7 +410,7 @@ int ObTabletJoin::get_next_row(const ObRow *&row)
   const ObRowDesc *row_desc = NULL;
 
   tmp_ups_row.set_row_desc(ups_row_desc_);
-      
+
   if(NULL == fused_scan_)
   {
     ret = OB_ERROR;
@@ -405,7 +424,7 @@ int ObTabletJoin::get_next_row(const ObRow *&row)
   {
     tmp_row.set_row_desc(*row_desc);
   }
-  
+
   if(OB_SUCCESS == ret)
   {
     if (fused_row_idx_ >= valid_fused_row_count_)
@@ -475,7 +494,7 @@ int ObTabletJoin::get_next_row(const ObRow *&row)
   {
     fused_row_idx_ ++;
     tmp_ups_row.set_row_desc(ups_row_desc_for_join_);
-    TBSYS_LOG(DEBUG, "fuse_row: incrow:%s, sstable row:%s", 
+    TBSYS_LOG(DEBUG, "fuse_row: incrow:%s, sstable row:%s",
         to_cstring(tmp_ups_row), to_cstring(tmp_row));
     if(OB_SUCCESS != (ret = ObRowFuse::join_row(&tmp_ups_row, &tmp_row, &curr_row_)))
     {
@@ -517,9 +536,7 @@ int ObTabletJoin::get_row_desc(const common::ObRowDesc *&row_desc) const
   return ret;
 }
 
-void ObTabletJoin::set_network_timeout(int64_t network_timeout)
+void ObTabletJoin::set_ts_timeout_us(int64_t ts_timeout_us)
 {
-  ups_multi_get_.set_network_timeout(network_timeout);
+  ups_multi_get_.set_ts_timeout_us(ts_timeout_us);
 }
-
-

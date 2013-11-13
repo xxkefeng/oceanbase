@@ -53,6 +53,18 @@ namespace oceanbase {
       op_ = ObActionFlag::OP_UPDATE;
     }
 
+    int RowMutator::delete_row()
+    {
+      ObMutatorCellInfo mutation;
+      mutation.cell_info.table_name_.assign_ptr(const_cast<char *>(table_name_.c_str()), 
+          static_cast<int32_t>(table_name_.length()));
+      mutation.cell_info.row_key_ = rowkey_;
+      mutation.op_type.set_ext(ObActionFlag::OP_UPDATE);
+      mutation.cell_info.value_.set_ext(ObActionFlag::OP_DEL_ROW);
+      int ret = tnx_->mutator_.add_cell(mutation);
+      return ret;
+    }
+
     int RowMutator::add(const char *column_name, const ObObj &val)
     {
       ObMutatorCellInfo mutation;
@@ -171,20 +183,27 @@ namespace oceanbase {
 
           while (true) 
           {
-            retries++;
+            if (retries > 2) //retry 2 times
+            {
+              TBSYS_LOG(WARN, "fail to write to ups[%d]", ret);
+              break;
+            }
             int64_t pos = 0;
             ret = db_->do_server_cmd(db_->update_server_, OB_WRITE, buffer, pos);
             if (ret != OB_SUCCESS)
             {
+              retries++;
               TBSYS_LOG(ERROR, "Write to OB error, ret=%d retry_time=%ld",
                   ret, retries);
-              sleep(30);
+              sleep(5);
 
               buffer = tmp_buffer;
-              ret = mutator_.serialize(buffer.get_data(), buffer.get_capacity(), buffer.get_position());
-              if (ret != OB_SUCCESS)
+              int err = mutator_.serialize(buffer.get_data(), buffer.get_capacity(), buffer.get_position());
+              if (err != OB_SUCCESS)
               {
-                TBSYS_LOG(ERROR, "can't serialize mutator, due to %d", ret);
+                TBSYS_LOG(ERROR, "can't serialize mutator, due to %d", err);
+                ret = err;
+                break;
               }
             }
             else

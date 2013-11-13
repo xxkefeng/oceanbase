@@ -16,6 +16,12 @@
 #include "ob_table_mem_scan.h"
 #include "common/utility.h"
 
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObTableMemScan, PHY_TABLE_MEM_SCAN);
+  }
+}
 namespace oceanbase
 {
   namespace sql
@@ -29,6 +35,34 @@ namespace oceanbase
 
     ObTableMemScan::~ObTableMemScan()
     {
+    }
+
+    void ObTableMemScan::reset()
+    {
+      rename_.reset();
+      project_.reset();
+      filter_.reset();
+      limit_.reset();
+      has_rename_ = false;
+      has_project_ = false;
+      has_filter_ = false;
+      has_limit_ = false;
+      plan_generated_ = false;
+      ObTableScan::reset();
+    }
+
+    void ObTableMemScan::reuse()
+    {
+      rename_.reuse();
+      project_.reuse();
+      filter_.reuse();
+      limit_.reuse();
+      has_rename_ = false;
+      has_project_ = false;
+      has_filter_ = false;
+      has_limit_ = false;
+      plan_generated_ = false;
+      ObTableScan::reuse();
     }
 
     int ObTableMemScan::open()
@@ -243,6 +277,38 @@ namespace oceanbase
       return pos;
     }
 
+    PHY_OPERATOR_ASSIGN(ObTableMemScan)
+    {
+      int ret = OB_SUCCESS;
+      CAST_TO_INHERITANCE(ObTableMemScan);
+      reset();
+      if ((ret = rename_.assign(&o_ptr->rename_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign rename_ failed, ret=%d", ret);
+      }
+      else if ((ret = project_.assign(&o_ptr->project_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign project_ failed, ret=%d", ret);
+      }
+      else if ((ret = filter_.assign(&o_ptr->filter_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign filter_ failed, ret=%d", ret);
+      }
+      else if ((ret = limit_.assign(&o_ptr->limit_)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign limit_ failed, ret=%d", ret);
+      }
+      else
+      {
+        has_rename_ = o_ptr->has_rename_;
+        has_project_ = o_ptr->has_project_;
+        has_filter_ = o_ptr->has_filter_;
+        has_limit_ = o_ptr->has_limit_;
+        plan_generated_ = o_ptr->plan_generated_;
+      }
+      return ret;
+    }
+
     DEFINE_SERIALIZE(ObTableMemScan)
     {
       int ret = OB_SUCCESS;
@@ -290,7 +356,7 @@ namespace oceanbase
           } \
         } \
       }
-      rename_.clear();
+      rename_.reset();
       DECODE_OP(has_rename_, rename_);
       project_.reset();
       DECODE_OP(has_project_, project_);

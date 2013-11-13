@@ -35,8 +35,8 @@ class ObSqlGenerator
     static int64_t hash(int64_t);
     static int64_t make_rowkey(int64_t index);
   private:
-    static char *index_table_name_;
-    static char *get_table_name_;
+    static const char *index_table_name_;
+    static const char *get_table_name_;
     static int fail_counter_;
 };
 

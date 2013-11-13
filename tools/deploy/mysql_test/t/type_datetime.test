@@ -38,6 +38,29 @@ select * from t1 where pk > 600 and pk < 700;
 insert into t1 values(720,'2003-0303 12:13:14');
 select * from t1;
 drop table t1;
+
+#
+## Test current time op on ups
+# insert
+create table t1 (c1 datetime primary key, c2 datetime, c3 datetime, c4 datetime, c5 datetime, c6 datetime, c7 datetime, c8 datetime, c9 datetime, c10 datetime, c11 datetime, c12 datetime, c13 datetime, c14 datetime, c15 datetime, c16 datetime, c17 datetime, c18 datetime, c19 datetime, c20 datetime);
+insert into t1 values(current_timestamp(), current_time(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now());
+select c1-c20 from t1;
+
+# get
+select c1-c0 from (select now() c0, now(),now(),now(),now(),now(),now(),now(),now(),now(),now(), now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(), now() c1) t3;
+select c1-c0 from (select now() c0, strict_current_timestamp(),now(),now(),now(),now(),now(),now(),now(),now(),now(), now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(), now() c1) t3;
+
+# ps
+prepare stmt1 from insert into t1 values(?, now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),?,now(),now(),now(),now(),now());
+prepare stmt2 from select c2-c20, c1, c15 from t1 where c1=?;
+
+set @a = timestamp'2003-01-01 24:00:00';
+set @b = timestamp'2013-02-07 23:00:01';
+execute stmt1 using @a, @b;
+execute stmt2 using @a;
+# drop table
+drop table t1;
+
 #
 ##
 ## Test insert of now() and curtime()
@@ -548,6 +571,7 @@ drop table t1;
 #DEALLOCATE PREPARE stmt1;
 #DROP TABLE t1,t2;
 #
+
 #--echo #
 #--echo # End of 5.5 tests
 #--echo #

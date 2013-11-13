@@ -1,5 +1,5 @@
 case 1: int + 1 row
-alter system set merge_delay_interval='1s' server_type=chunkserver;
+alter system set merge_delay_interval='1s' server_type=chunkserver,min_major_freeze_interval='1s' server_type=updateserver;
 alter system set merge_delay_for_lsync='1s' server_type=chunkserver;
 alter system set min_drop_cache_wait_time='10s' server_type=chunkserver;
 alter system set safe_copy_count_in_init = 1 server_type=chunkserver;
@@ -188,4 +188,6 @@ c0	c1
 select c0,c1 from t15;
 c0	c1
 1	time
-drop table t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11,t12,t13,t14,t15;
+drop table t1,t2,t3,t4,t5;
+drop table t6,t7,t8,t9,t10;
+drop table t11,t12,t13,t14,t15;

@@ -9,14 +9,19 @@
 #include "ob_mysql_util.h"
 #include "common/ob_privilege_manager.h"
 #include "common/hash/ob_hashutils.h"
+#include "common/ob_errno.h"
 #include "sql/ob_sql_session_info.h"
 #include "ob_mysql_server.h"
 using namespace oceanbase::common;
 using namespace oceanbase::obmysql;
 using namespace oceanbase::common::hash;
 
+ObMySQLClientCapability::ObMySQLClientCapability(uint32_t ca): capability_(ca)
+{
+
+}
 ObMySQLLoginer::LoginInfo::LoginInfo()
-  :capability_flags_(0),max_packet_size_(0),character_set_(0)
+  :capability_(0), max_packet_size_(0),character_set_(0)
    , user_name_(),db_name_(),auth_response_()
 {
 }
@@ -113,7 +118,7 @@ int ObMySQLLoginer::handshake(easy_connection_t* c)
     else
     {
       ObDataBuffer out_buffer(thread_buffer->current(), thread_buffer->remain());
-      //TODO serialize header && packet into buffer
+      packet.set_thread_id(c->seq);
       out_buffer.get_position() = 0;
       ret = packet.serialize(out_buffer.get_data(),
                              out_buffer.get_capacity(), out_buffer.get_position());
@@ -127,9 +132,9 @@ int ObMySQLLoginer::handshake(easy_connection_t* c)
         ret = write_data(c->fd, out_buffer.get_data(), out_buffer.get_position());
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(ERROR, "write packet data to client failed fd is %d, buffer is %p, length is %ld",
+          TBSYS_LOG(WARN, "write packet data to client failed fd is %d, buffer is %p, length is %ld",
                     c->fd, out_buffer.get_data(), out_buffer.get_position());
-          ret = OB_ERROR;
+          ret = OB_ERR_WRITE_AUTH_ERROR;
         }
         else
         {
@@ -169,27 +174,28 @@ int ObMySQLLoginer::parse_packet(easy_connection_t* c)
       ret = read_data(c->fd, in_buffer.get_data(), read_size);
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(ERROR, "read packet header failed");
+        TBSYS_LOG(WARN, "read packet header failed");
+        ret = OB_ERR_PROTOCOL_NOT_RECOGNIZE;
       }
       else
       {
-        //TODO read packet len from buffer
         uint32_t packet_len = 0;
         len_pos = in_buffer.get_data();
         ObMySQLUtil::get_uint3(len_pos, packet_len);
         TBSYS_LOG(DEBUG, "start read from %s %u bytes", inet_ntoa_r(c->addr),
-                packet_len);
+                  packet_len);
         in_buffer.get_position() = OB_MYSQL_PACKET_HEADER_SIZE;
         ret = read_data(c->fd, in_buffer.get_data() + in_buffer.get_position(),
                         packet_len);
         if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(ERROR, "read packet data failed, ret=%d", ret);
+          TBSYS_LOG(WARN, "read packet data failed, ret=%d", ret);
+          ret = OB_ERR_PROTOCOL_NOT_RECOGNIZE;
         }
         else
         {
           TBSYS_LOG(DEBUG, "readed from %s %u bytes", inet_ntoa_r(c->addr),
-                packet_len);
+                    packet_len);
           len_pos = in_buffer.get_data() + in_buffer.get_position();
           uint32_t capability_flags = 0;
           uint32_t max_packet_size = 0;
@@ -198,7 +204,7 @@ int ObMySQLLoginer::parse_packet(easy_connection_t* c)
           int32_t username_len = -1;
           int32_t db_len = -1;
           ObMySQLUtil::get_uint4(len_pos, capability_flags);
-          login_info_.capability_flags_ = capability_flags;
+          login_info_.capability_.capability_ = capability_flags;
           ObMySQLUtil::get_uint4(len_pos, max_packet_size);//16MB
           login_info_.max_packet_size_ = max_packet_size;
           ObMySQLUtil::get_uint1(len_pos, character_set);
@@ -224,29 +230,27 @@ int ObMySQLLoginer::parse_packet(easy_connection_t* c)
 int ObMySQLLoginer::insert_new_session(easy_connection_t* c, sql::ObSQLSessionInfo *&session)
 {
   int ret = OB_SUCCESS;
-  ObSQLSessionInfo* expired_session = NULL;
-  ret = server_->get_session_mgr()->get(c->seq, expired_session);
-  if (HASH_EXIST == ret)
+  session->set_session_id(c->seq);
+  session->set_conn(c);
+  ret = session->set_peer_addr(get_peer_ip(c));
+  if (OB_SUCCESS != ret)
   {
-    TBSYS_LOG(ERROR, "session with key %d already exist", c->seq);
-    ret = OB_ERROR;
+    TBSYS_LOG(WARN, "set session peer addr failed");
   }
   else
   {
-    session->set_session_id(c->seq);
-    //over write
-    ret = server_->get_session_mgr()->set(c->seq, session, 1);
-    int64_t session_num = server_->get_session_mgr()->size();
-    if (HASH_INSERT_SUCC != ret)
+    //not over write
+    ret = server_->get_session_mgr()->set((sql::ObSQLSessionKey&)c->seq, session, 0);
+    if (OB_SUCCESS != ret)
     {
-      TBSYS_LOG(WARN, "insert new session failed, err=%d key=%d sessions_num=%ld",
-                ret, c->seq, session_num);
-      ret = OB_ERROR;
+      TBSYS_LOG(WARN, "insert new session failed ret is %d, key is %d", ret, c->seq);
     }
     else
     {
-      TBSYS_LOG(INFO, "new session insert, session_key=%d session=%s sessions_num=%ld",
-                c->seq, to_cstring(*session), session_num);
+      int64_t session_num = server_->get_session_mgr()->get_session_count();
+      TBSYS_LOG(INFO, "[LOGIN] new session, session_key=%d session=%s username=%.*s total_sessions_num=%ld",
+                c->seq, to_cstring(*session),
+                login_info_.user_name_.length(), login_info_.user_name_.ptr(), session_num);
       ret = OB_SUCCESS;
     }
   }
@@ -268,6 +272,8 @@ int ObMySQLLoginer::check_privilege(easy_connection_t* c, sql::ObSQLSessionInfo 
   }
   else
   {
+    //TBSYS_LOG(WARN, "before login");
+    //ob_print_mod_memory_usage();
     if (server_->has_too_many_sessions())
     {
       TBSYS_LOG(WARN, "there are too many sessions, refuse this client");
@@ -283,11 +289,10 @@ int ObMySQLLoginer::check_privilege(easy_connection_t* c, sql::ObSQLSessionInfo 
     }
     else if (NULL == privilege_mgr_)
     {
-      ret = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(ERROR, "privilege manager not set, equals null, ret=%d", ret);
+      ret = OB_ERR_SERVER_IN_INIT;
+      TBSYS_LOG(WARN, "privilege manager not set, equals null");
       err_packet.set_oberrcode(ret);
-      ObString message = ObString::make_string("internal server error, no privilege information");
-      int err = err_packet.set_message(message);
+      int err = err_packet.set_message(ObString::make_string(ob_strerror(ret)));
       if (OB_SUCCESS != err)
       {
         TBSYS_LOG(WARN, "set message failed, ret=%d", err);
@@ -299,10 +304,10 @@ int ObMySQLLoginer::check_privilege(easy_connection_t* c, sql::ObSQLSessionInfo 
       // step 1 : check privilege
       if (OB_SUCCESS != (ret = privilege_mgr_->get_newest_privilege(pp_privilege)))
       {
-        TBSYS_LOG(ERROR, "get privilege failed, ret=%d", ret);
-        err_packet.set_oberrcode(ret);
-        ObString message = ObString::make_string("internal server error, no privilege information");
-        int err = err_packet.set_message(message);
+        TBSYS_LOG(WARN, "get privilege failed, ret=%d", ret);
+
+        err_packet.set_oberrcode(OB_ERR_SERVER_IN_INIT);
+        int err = err_packet.set_message(ObString::make_string(ob_strerror(OB_ERR_SERVER_IN_INIT)));
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "set message failed, ret=%d", err);
@@ -311,7 +316,7 @@ int ObMySQLLoginer::check_privilege(easy_connection_t* c, sql::ObSQLSessionInfo 
       }
       else if (OB_SUCCESS != (ret = (*pp_privilege)->user_is_valid(login_info_.user_name_, login_info_.auth_response_)))
       {
-        TBSYS_LOG(WARN, "invalid username %.*s logins,ret=%d", login_info_.user_name_.length(), login_info_.user_name_.ptr(), ret);
+        TBSYS_LOG(WARN, "user '%.*s' login failed,ret=%d", login_info_.user_name_.length(), login_info_.user_name_.ptr(), ret);
         err_packet.set_oberrcode(ret);
         ObString message;
         if (OB_ERR_USER_EMPTY == ret)
@@ -343,57 +348,75 @@ int ObMySQLLoginer::check_privilege(easy_connection_t* c, sql::ObSQLSessionInfo 
         TBSYS_LOG(ERROR, "ob malloc failed, ret=%d", OB_ALLOCATE_MEMORY_FAILED);
         packet = &err_packet;
       }
-      else if (OB_SUCCESS != (ret = session->init(*(server_->get_block_allocator()))))
-      {
-        packet = &err_packet;
-        TBSYS_LOG(WARN, "init session info failed, ret=%d", ret);
-      }
-      else if (OB_SUCCESS != (ret = session->set_username(login_info_.user_name_)))
-      {
-        TBSYS_LOG(WARN, "add username %.*s to session failed, ret=%d", login_info_.user_name_.length(), login_info_.user_name_.ptr(), ret);
-        err_packet.set_oberrcode(ret);
-        ObString message = ObString::make_string("internal server error");
-        int err = err_packet.set_message(message);
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "set message failed, ret=%d", err);
-        }
-        packet = &err_packet;
-      }
-      // step 2: load system params
-      else if (OB_SUCCESS != (ret = server_->load_system_params(*session)))
-      {
-        TBSYS_LOG(WARN, "failed to load system params, ret=%d", ret);
-        err_packet.set_oberrcode(ret);
-        ObString message = ObString::make_string("login error, internal server error");
-        int err = err_packet.set_message(message);
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "set message failed, ret=%d", err);
-        }
-        packet = &err_packet;
-      }
-      else if (OB_SUCCESS != (ret = insert_new_session(c, session)))
-      {
-        if (NULL != session)
-        {
-          server_->get_session_pool().free(session);
-          session = NULL;
-        }
-        TBSYS_LOG(ERROR, "failed to insert new session, ret=%d, key is %d", ret, c->seq);
-        err_packet.set_oberrcode(ret);
-        ObString message = ObString::make_string("login error, internal server error");
-        int err = err_packet.set_message(message);
-        if (OB_SUCCESS != err)
-        {
-          TBSYS_LOG(WARN, "set message failed, ret=%d", err);
-        }
-        packet = &err_packet;
-      }
       else
       {
-        TBSYS_LOG(INFO, "add username %.*s to session success", login_info_.user_name_.length(), login_info_.user_name_.ptr());
-        packet = &ok_packet;
+        if (OB_SUCCESS != (ret = session->init(*(server_->get_block_allocator()))))
+        {
+          packet = &err_packet;
+          TBSYS_LOG(WARN, "init session info failed, ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret =session->set_ps_store(server_->get_ps_store())))
+        {
+          TBSYS_LOG(WARN, "set ps store to session failed, ret=%d", ret);
+        }
+        else if (OB_SUCCESS != (ret = session->set_username(login_info_.user_name_)))
+        {
+          TBSYS_LOG(WARN, "add username %.*s to session failed, ret=%d", login_info_.user_name_.length(), login_info_.user_name_.ptr(), ret);
+          err_packet.set_oberrcode(ret);
+          ObString message = ObString::make_string("internal server error");
+          int err = err_packet.set_message(message);
+          if (OB_SUCCESS != err)
+          {
+            TBSYS_LOG(WARN, "set message failed, ret=%d", err);
+          }
+          packet = &err_packet;
+        }
+        else
+        {
+          session->set_interactive(login_info_.capability_.CapabilityFlags.CLIENT_INTERACTIVE);
+          session->set_version_provider(server_->get_env().merge_service_);
+          session->set_config_provider(server_->get_config());
+        }
+        // step 2: load system params
+        if (OB_SUCCESS == ret)
+        {
+          if (OB_SUCCESS != (ret = server_->load_system_params(*session)))
+          {
+            TBSYS_LOG(WARN, "failed to load system params, ret=%d", ret);
+            err_packet.set_oberrcode(ret);
+            ObString message = ObString::make_string("login error, internal server error");
+            int err = err_packet.set_message(message);
+            if (OB_SUCCESS != err)
+            {
+              TBSYS_LOG(WARN, "set message failed, ret=%d", err);
+            }
+            packet = &err_packet;
+          }
+          else if (OB_SUCCESS != (ret = insert_new_session(c, session)))
+          {
+            TBSYS_LOG(ERROR, "failed to insert new session, ret=%d, key is %d", ret, c->seq);
+            err_packet.set_oberrcode(ret);
+            ObString message = ObString::make_string("login error, internal server error");
+            int err = err_packet.set_message(message);
+            if (OB_SUCCESS != err)
+            {
+              TBSYS_LOG(WARN, "set message failed, ret=%d", err);
+            }
+            packet = &err_packet;
+          }
+        }
+        if (OB_SUCCESS != ret)
+        {
+          if (NULL != session)
+          {
+            server_->get_session_pool().free(session);
+            session = NULL;
+          }
+        }
+        else
+        {
+          packet = &ok_packet;
+        }
       }
     }
     common::ThreadSpecificBuffer::Buffer* thread_buffer = get_buffer();
@@ -414,12 +437,12 @@ int ObMySQLLoginer::check_privilege(easy_connection_t* c, sql::ObSQLSessionInfo 
         send_err = write_data(c->fd, out_buffer.get_data(), out_buffer.get_position());
         if (OB_SUCCESS != send_err)
         {
-          TBSYS_LOG(ERROR, "write packet to mysql client failed, fd=%d, buffer=%p,"
+          TBSYS_LOG(WARN, "write packet to mysql client failed, fd=%d, buffer=%p,"
                     "length=%ld, err=%d", c->fd, out_buffer.get_data(), out_buffer.get_position(), send_err);
         }
         else
         {
-          TBSYS_LOG(INFO, "send packet to %s bytes", inet_ntoa_r(c->addr));
+          TBSYS_LOG(DEBUG, "send packet to %s bytes", inet_ntoa_r(c->addr));
         }
       }
     }
@@ -428,6 +451,8 @@ int ObMySQLLoginer::check_privilege(easy_connection_t* c, sql::ObSQLSessionInfo 
       TBSYS_LOG(ERROR, "get thread buffer failed");
       send_err = OB_ERROR;
     }
+    //TBSYS_LOG(WARN, "after login");
+    //ob_print_mod_memory_usage();
   }
   if (pp_privilege != NULL)
   {
@@ -463,7 +488,7 @@ int ObMySQLLoginer::write_data(int fd, char* buffer, size_t length)
         else
         {
           ret = OB_ERROR;
-          TBSYS_LOG(ERROR, "write data faild, errno is %d, errstr is %s", errno, strerror(errno));
+          TBSYS_LOG(WARN, "write data faild, errno is %d, errstr is %s", errno, strerror(errno));
         }
 
       }
@@ -510,7 +535,7 @@ int ObMySQLLoginer::read_data(int fd, char* buffer, size_t length)
           else
           {
             ret = OB_ERROR;
-            TBSYS_LOG(ERROR, "read data faild, errno is %d, errstr is %s", errno, strerror(errno));
+            TBSYS_LOG(WARN, "read data faild, errno is %d, errstr is %s", errno, strerror(errno));
           }
         }
         buff += count;

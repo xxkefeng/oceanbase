@@ -29,7 +29,6 @@ namespace oceanbase
     public:
       // reset stat for reuse
       void reset(void);
-      void invalidate(void);
 
       /// client for request event check
       uint64_t get_client_id(void) const;
@@ -70,9 +69,17 @@ namespace oceanbase
       {
         return timestamp_;
       }
-      void lock() // be carefull!!
+      //void lock() // be carefull!!
+      //{
+      //  lock_.lock();
+      //}
+      inline void set_channel_id(uint32_t channel_id)
       {
-        lock_.lock();
+        channel_id_ = channel_id;
+      }
+      inline uint32_t get_channel_id()
+      {
+        return channel_id_;
       }
     private:
       // check inner stat
@@ -83,6 +90,7 @@ namespace oceanbase
 
       // parse the packet
       int parse_packet(common::ObPacket * packet, void * args);
+      uint32_t channel_id_;
 
     protected:
       int32_t magic_;
@@ -91,7 +99,7 @@ namespace oceanbase
       uint64_t client_request_id_;
       ObMsSqlRequest * client_request_;
       // wait delayed return packet
-      tbsys::CThreadMutex lock_;
+      //tbsys::CThreadMutex lock_;
       int64_t timeout_us_;
       int64_t timestamp_;
     };

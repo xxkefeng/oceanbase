@@ -14,6 +14,7 @@
  */
 
 #include "ob_schema_helper.h"
+#include "ob_hint.h"
 
 namespace oceanbase
 {
@@ -161,13 +162,16 @@ namespace oceanbase
               table->get_compress_func_name(), strlen(table->get_compress_func_name()) + 1);
           memcpy(table_schema.expire_condition_,
               table->get_expire_condition(), strlen(table->get_expire_condition()) + 1);
+          memcpy(table_schema.comment_str_,
+              table->get_comment_str(), strlen(table->get_comment_str()) + 1);
           table_schema.rowkey_split_ = table->get_split_pos();
           table_schema.create_time_column_id_ = table->get_create_time_column_id();
           table_schema.modify_time_column_id_ = table->get_modify_time_column_id();
           table_schema.is_use_bloomfilter_ = table->is_use_bloomfilter();
           table_schema.is_pure_update_table_ = table->is_pure_update_table();
           table_schema.merge_write_sstable_version_ = table->get_merge_write_sstable_version();
-          table_schema.is_read_static_ = !table->is_merge_dynamic_data();
+          table_schema.consistency_level_ = table->get_consistency_level();
+          table_schema.schema_version_ = table->get_schema_version();
           int32_t columns_size = 0;
           ObColumnSchemaV2* column = (ObColumnSchemaV2*)schema_manager.get_table_schema(table->get_table_id(), columns_size);
           ObRowkeyInfo rowkey_info = table->get_rowkey_info();
@@ -227,7 +231,7 @@ namespace oceanbase
           {
             ObArray<JoinInfo> join_info;
             ret = get_join_info_by_offset_array(*join, rowkey_info, table_schema.table_name_, strlen(table_schema.table_name_),
-                  table_schema.columns_, table_schema.table_id_, &schema_manager, join_info);
+                table_schema.columns_, table_schema.table_id_, &schema_manager, join_info);
             for(int64_t i = 0; i < join_info.count(); i++)
             {
               table_schema.add_join_info(join_info.at(i));
@@ -283,11 +287,10 @@ namespace oceanbase
         ObColumnSchemaV2 *column_schema = (ObColumnSchemaV2*)schema_manager->get_column_schema(join_info.right_table_id_,
             join_info.right_column_id_);
         memcpy(join_info.right_column_name_, column_schema->get_name(), strlen(column_schema->get_name()) + 1);
-       join_array.push_back(join_info);
+        join_array.push_back(join_info);
       }
 
       return ret;
     }
-
   }  //end_updateserver
 }//end_oceanbase

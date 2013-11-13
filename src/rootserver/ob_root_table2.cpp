@@ -17,6 +17,7 @@
 #include "common/file_utils.h"
 #include "common/ob_atomic.h"
 #include "common/utility.h"
+#include "ob_root_balancer.h"
 using namespace oceanbase::common;
 using namespace oceanbase::rootserver;
 
@@ -38,6 +39,12 @@ ObRootTable2::~ObRootTable2()
   tablet_info_manager_ = NULL;
   sorted_count_ = 0;
 }
+ void ObRootTable2::clear()
+    {
+      meta_table_.clear();
+      sorted_count_ = 0;
+      tablet_info_manager_->clear();
+    }
 
 bool ObRootTable2::has_been_sorted() const
 {
@@ -254,6 +261,64 @@ int ObRootTable2::find_key(const uint64_t table_id,
   return ret;
 }
 
+
+int ObRootTable2::get_table_row_checksum(const int64_t tablet_version, const uint64_t table_id, uint64_t &row_checksum)
+{
+  int ret = OB_SUCCESS;
+  common::ObNewRange range;
+  range.table_id_ = table_id;
+  const common::ObTabletInfo *tablet_info = NULL;
+  const common::ObTabletInfo *last_tablet_info = NULL;
+  // if table is exist, we should find at lest one range with this table id
+  ObRootMeta2TableIdLessThan meta_table_id_comp(tablet_info_manager_); // compare with table id
+  const_iterator start_pos = std::lower_bound(begin(), end(), range, meta_table_id_comp);
+
+  if (start_pos != end())
+  {
+    const ObTabletCrcHistoryHelper* crc_helper = NULL;
+    uint64_t tmp_row_checksum = 0;
+    for(const_iterator it = start_pos; it != end() && OB_SUCCESS == ret; ++it)
+    {
+      tmp_row_checksum = 0;
+      tablet_info = get_tablet_info(it);
+      if(NULL != tablet_info)
+      {
+        if(table_id != tablet_info->range_.table_id_)
+        {
+          break;
+        }
+        else if(NULL != last_tablet_info && tablet_info->range_.start_key_ != last_tablet_info->range_.end_key_)
+        {
+          TBSYS_LOG(WARN, "bug, table_id:%lu miss some range, last_range:%s now_range:%s", table_id, to_cstring(last_tablet_info->range_), to_cstring(tablet_info->range_));
+        }
+        else
+        {
+          crc_helper = get_crc_helper(it);
+          if(NULL != crc_helper)
+          {
+            if(OB_SUCCESS != (ret = crc_helper->get_row_checksum(tablet_version, tmp_row_checksum)))
+            {
+              TBSYS_LOG(WARN, "range:%s tablet_version:%ld get row_checksum fail ret:%d", to_cstring(tablet_info->range_), tablet_version, ret);
+              break;
+            }
+            else
+            {
+              row_checksum += tmp_row_checksum;
+            }
+          }
+          last_tablet_info = tablet_info;
+        }
+      }
+    }
+  }
+  else
+  {
+    TBSYS_LOG(WARN, "not found tablet_version:%ld table_id:%lu", tablet_version, table_id);
+  }
+
+  return ret;
+}
+
 bool ObRootTable2::table_is_exist(const uint64_t table_id) const
 {
   common::ObNewRange range;
@@ -387,6 +452,7 @@ int ObRootTable2::check_tablet_version_merged(const int64_t tablet_version, cons
   is_merged = true;
   int32_t fail_count = 0;
   int32_t merging_count = 0;
+  int32_t succ_count = 0;
   if (NULL == tablet_info_manager_)
   {
     TBSYS_LOG(WARN, "tablet_info_manager is null");
@@ -397,7 +463,7 @@ int ObRootTable2::check_tablet_version_merged(const int64_t tablet_version, cons
   {
     for (int32_t i = 0; i < meta_table_.get_array_index(); i++)
     {
-      int32_t succ_count = 0;
+      succ_count = 0;
       for (int32_t j = 0; j < OB_SAFE_COPY_COUNT; j++)
       {
         //all online cs should be merged
@@ -473,6 +539,11 @@ const ObTabletInfo* ObRootTable2::get_tablet_info(const const_iterator& it) cons
     {
       TBSYS_LOG(ERROR, "no tablet info found in tablet_info_manager_ with tablet_index=%d", tablet_index);
     }
+  }
+  else
+  {
+    TBSYS_LOG(WARN, "no tablet info found it=%p end()=%p begin()=%p tablet_info_manager_=%p",
+        it, end(), begin(), tablet_info_manager_);
   }
   return tablet_info;
 }
@@ -620,9 +691,11 @@ int ObRootTable2::replace(const const_iterator& it,
 }
 
 //only used in root server's init process
-int ObRootTable2::add(const common::ObTabletInfo& tablet, const int32_t server_index, const int64_t tablet_version)
+int ObRootTable2::add(const common::ObTabletInfo& tablet, const int32_t server_index,
+    const int64_t tablet_version, const int64_t seq)
 {
   int ret = OB_ERROR;
+  UNUSED(seq);
   if (tablet_info_manager_ != NULL)
   {
     ret = OB_SUCCESS;
@@ -635,7 +708,7 @@ int ObRootTable2::add(const common::ObTabletInfo& tablet, const int32_t server_i
       if (crc_helper != NULL)
       {
         crc_helper->reset();
-        crc_helper->check_and_update(tablet_version, tablet.crc_sum_);
+        crc_helper->check_and_update(tablet_version, tablet.crc_sum_, tablet.row_checksum_);
       }
       ObRootMeta2 meta;
       meta.tablet_info_index_ = tablet_index;
@@ -695,7 +768,7 @@ int ObRootTable2::create_table(const ObTabletInfo &tablet, const ObArray<int32_t
         if (crc_helper != NULL)
         {
           crc_helper->reset();
-          crc_helper->check_and_update(tablet_version, tablet.crc_sum_);
+          crc_helper->check_and_update(tablet_version, tablet.crc_sum_, tablet.row_checksum_);
         }
       }
     }
@@ -982,7 +1055,7 @@ int ObRootTable2::shrink_to(ObRootTable2* shrunk_table, ObTabletReportInfoList &
         if (last_tablet_crc_helper != NULL)
         {
           last_tablet_crc_helper->reset();
-          last_tablet_crc_helper->check_and_update(it->tablet_version_[0], tablet_info->crc_sum_);
+          last_tablet_crc_helper->check_and_update(it->tablet_version_[0], tablet_info->crc_sum_, tablet_info->row_checksum_);
         }
       }
       if (OB_SUCCESS == ret)
@@ -1002,7 +1075,7 @@ int ObRootTable2::shrink_to(ObRootTable2* shrunk_table, ObTabletReportInfoList &
       {
         TBSYS_LOG(DEBUG, "shrink idx=%ld range=%s", it-begin(), to_cstring(tablet_info->range_));
 
-        if (OB_SUCCESS != last_tablet_crc_helper->check_and_update(it->tablet_version_[0], tablet_info->crc_sum_))
+        if (OB_SUCCESS != last_tablet_crc_helper->check_and_update(it->tablet_version_[0], tablet_info->crc_sum_, tablet_info->row_checksum_))
         {
           TBSYS_LOG(ERROR, "crc check error,  crc=%lu last_crc=%lu last_cs=%d",
               tablet_info->crc_sum_, it->tablet_version_[0], it->server_info_indexes_[0]);
@@ -1487,7 +1560,7 @@ int ObRootTable2::split_range(const common::ObTabletInfo& reported_tablet_info, 
             crc_helper->reset();
             if (split_type == SPLIT_TYPE_TOP_HALF)
             {
-              crc_helper->check_and_update(tablet_version, reported_tablet_info.crc_sum_);
+              crc_helper->check_and_update(tablet_version, reported_tablet_info.crc_sum_, reported_tablet_info.row_checksum_);
             }
           }
 
@@ -1507,7 +1580,7 @@ int ObRootTable2::split_range(const common::ObTabletInfo& reported_tablet_info, 
               crc_helper->reset();
               if (split_type != SPLIT_TYPE_TOP_HALF)
               {
-                crc_helper->check_and_update(tablet_version, reported_tablet_info.crc_sum_);
+                crc_helper->check_and_update(tablet_version, reported_tablet_info.crc_sum_, reported_tablet_info.row_checksum_);
               }
             }
           }
@@ -1581,7 +1654,7 @@ int ObRootTable2::split_range(const common::ObTabletInfo& reported_tablet_info, 
             if (crc_helper != NULL)
             {
               crc_helper->reset();
-              crc_helper->check_and_update(tablet_version, reported_tablet_info.crc_sum_);
+              crc_helper->check_and_update(tablet_version, reported_tablet_info.crc_sum_, reported_tablet_info.row_checksum_);
             }
           }
           if (OB_SUCCESS == ret)
@@ -1664,7 +1737,7 @@ int ObRootTable2::add_range(const common::ObTabletInfo& reported_tablet_info, co
         if (crc_helper != NULL)
         {
           crc_helper->reset();
-          crc_helper->check_and_update(tablet_version, will_add_table.crc_sum_);
+          crc_helper->check_and_update(tablet_version, will_add_table.crc_sum_, will_add_table.row_checksum_);
         }
       }
       if (OB_SUCCESS == ret)
@@ -1991,20 +2064,46 @@ int ObRootTable2::shrink()
   return ret;
 }
 
-int ObRootTable2::get_deleted_table(const common::ObSchemaManagerV2 & schema, uint64_t & table_id) const
+int ObRootTable2::get_deleted_table(const common::ObSchemaManagerV2 & schema, const ObRootBalancer& balancer, common::ObArray<uint64_t>& deleted_tables) const
 {
   int ret = OB_SUCCESS;
   ObRootTable2::const_iterator it;
   const ObTabletInfo* tablet = NULL;
+  uint64_t last_deleted_table_id = OB_INVALID_ID;
+  uint64_t cur_table_id = OB_INVALID_ID;
   for (it = this->begin(); it != this->end(); ++it)
   {
     tablet = this->get_tablet_info(it);
     OB_ASSERT(NULL != tablet);
-    if (NULL == schema.get_table_schema(tablet->range_.table_id_))
+    cur_table_id = tablet->range_.table_id_;
+    if (cur_table_id != last_deleted_table_id &&
+        NULL == schema.get_table_schema(cur_table_id) &&
+        !balancer.is_table_loading(cur_table_id))
     {
-      table_id = tablet->range_.table_id_;
-      TBSYS_LOG(WARN, "find a table not exist in schema:table_id[%lu]", table_id);
-      break;
+      if (cur_table_id <= OB_APP_MIN_TABLE_ID)
+      {
+        TBSYS_LOG(ERROR, "delete table id is less than OB_APP_MIN_TABLE_ID:table_id[%lu]", cur_table_id);
+        break;
+      }
+      else if (cur_table_id == OB_INVALID_ID)
+      {
+        TBSYS_LOG(ERROR, "table_id must not be OB_INVALID_ID=%lu", OB_INVALID_ID);
+        break;
+      }
+      else
+      {
+        ret = deleted_tables.push_back(cur_table_id);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "push deleted table failed:table_id[%lu], ret[%d]", cur_table_id, ret);
+          break;
+        }
+        else
+        {
+          last_deleted_table_id = cur_table_id;
+          TBSYS_LOG(INFO, "find a table not in schema and not a loading table:table_id[%lu]", cur_table_id);
+        }
+      }
     }
   }
   return ret;

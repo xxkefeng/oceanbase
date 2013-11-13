@@ -44,12 +44,13 @@ namespace oceanbase
       int drop_table(const common::ObString & table_name);
       // alter table schema
       int alter_table(common::AlterTableSchema & table_schema);
+      int modify_table_id(common::TableSchema &table_schema, const int64_t new_table_id);
+      // update max used table id
+      int update_max_table_id(const uint64_t table_id);
     private:
       bool check_inner_stat(void) const;
       // read max table id and modify table schema
       int allocate_table_id(common::TableSchema & talbe_schema);
-      // update max used table id
-      int update_max_table_id(const uint64_t table_id);
       // allocate table id and column ids
       int modify_table_schema(const uint64_t table_id, common::TableSchema & table_schema);
       // update schema table insert new table schema content

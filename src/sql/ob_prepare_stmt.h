@@ -42,6 +42,7 @@ namespace oceanbase
 
     private:
       common::ObString  stmt_name_;
+      common::ObString  prepare_sql_;
       uint64_t  prepare_query_id_;
     };
     inline void ObPrepareStmt::set_stmt_name(const common::ObString& name)

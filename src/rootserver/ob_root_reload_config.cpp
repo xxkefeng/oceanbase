@@ -44,7 +44,7 @@ int ObRootReloadConfig::operator ()()
   else
   {
     const ObRootServerConfig& config = root_server_->get_config();
-    config.print();
+    //config.print();
 
     if (OB_SUCCESS == ret && NULL != root_server_->ups_manager_)
     {

@@ -315,7 +315,21 @@ void BalanceTestRpc::run(tbsys::CThread *thread, void *arg)
       }
       else
       {
-        server_->migrate_over(msg->range_, msg->src_cs_, msg->dest_cs_, msg->keep_src_, 2);
+        ObServer dest_server = msg->dest_cs_;
+        ObDataSourceDesc desc1;
+        desc1.type_ = ObDataSourceDesc::OCEANBASE_INTERNAL;
+        desc1.range_ = msg->range_;
+        desc1.src_server_ = msg->src_cs_;
+        desc1.sstable_version_ = 2;
+        desc1.tablet_version_ = 1;
+        desc1.keep_source_ = true;
+        const int64_t occupy_size = 1024;
+        const uint64_t crc_sum = 12345678;
+        const uint64_t row_checksum = 12345678;
+        const int64_t row_count =23456789;
+        const int32_t migrate_result = 0;
+
+        ASSERT_EQ(0, server_->migrate_over(migrate_result, desc1, occupy_size, crc_sum, row_checksum, row_count));
       }
       delete_migrate_msg(msg);
     }
@@ -432,7 +446,7 @@ void ObBalanceTest::heartbeat_cs(int32_t cs_num)
 {
   for (int i = 0; i < cs_num; ++i)
   {
-    ASSERT_EQ(OB_SUCCESS, server_->receive_hb(get_addr(i), get_addr(i).get_port(), OB_CHUNKSERVER));
+    ASSERT_EQ(OB_SUCCESS, server_->receive_hb(get_addr(i), get_addr(i).get_port(), false, OB_CHUNKSERVER));
   }
 }
 
@@ -775,7 +789,7 @@ TEST_F(ObBalanceTest, test_n_to_2)
   int64_t avg_size = 0;
   int64_t avg_count = 0;
   int32_t cs_num = 0;
-  int32_t out_per_cs = 0;
+  int64_t out_per_cs = 0;
   int32_t shutdown_num = 0;
   for (int i = 0; i < 2; ++i)
   {
@@ -929,6 +943,11 @@ TEST_F(ObBalanceTest, test_shutdown_servers)
   }
   ASSERT_TRUE(server_->balancer_->nb_did_cs_have_no_tablets(get_addr(0)));
   ASSERT_TRUE(server_->balancer_->nb_did_cs_have_no_tablets(get_addr(9)));
+}
+
+TEST_F(ObBalanceTest, checkpoint)
+{
+  server_->get_boot()->set_boot_ok();
 }
 
 int main(int argc, char **argv)

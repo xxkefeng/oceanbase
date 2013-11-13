@@ -33,6 +33,7 @@
 #include "common/ob_spin_rwlock.h"
 #include "sstable/ob_sstable_schema.h"
 #include "ob_ups_utils.h"
+#include "ob_inc_seq.h"
 
 #define DEFAULT_COLUMN_GROUP_ID 0 
 
@@ -51,6 +52,7 @@ namespace oceanbase
         DISALLOW_COPY_AND_ASSIGN(CommonSchemaManagerWrapper);
       public:
         int64_t get_version() const;
+        int64_t get_code_version() const;
         bool parse_from_file(const char* file_name, tbsys::CConfig& config);
         const CommonSchemaManager *get_impl() const;
         int set_impl(const CommonSchemaManager &schema_impl) const;
@@ -61,24 +63,16 @@ namespace oceanbase
         CommonSchemaManager *schema_mgr_impl_;
     };
 
-    class UpsSchemaMgrImp
+    class UpsSchemaMgrImp : public RefCnt
     {
       public:
-        UpsSchemaMgrImp() : ref_cnt_(0), schema_mgr_()
+        UpsSchemaMgrImp() : schema_mgr_()
         {
         };
         ~UpsSchemaMgrImp()
         {
         };
       public:
-        inline int64_t inc_ref_cnt()
-        {
-          return common::atomic_inc((uint64_t*)&ref_cnt_);
-        };
-        inline int64_t dec_ref_cnt()
-        {
-          return common::atomic_dec((uint64_t*)&ref_cnt_);
-        };
         inline const CommonSchemaManager &get_schema_mgr() const
         {
           return schema_mgr_;
@@ -88,7 +82,6 @@ namespace oceanbase
           return schema_mgr_;
         };
       private:
-        int64_t ref_cnt_;
         CommonSchemaManager schema_mgr_;
     };
 
@@ -126,7 +119,8 @@ namespace oceanbase
         bool has_schema() const {return has_schema_;}
       private:
         mutable UpsSchemaMgrImp *cur_schema_mgr_imp_;
-        mutable common::SpinRWLock rwlock_;
+        //mutable common::SpinRWLock rwlock_;
+        mutable RWLock rwlock_;
         bool has_schema_;
     };
     

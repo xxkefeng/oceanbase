@@ -37,7 +37,14 @@ namespace oceanbase
         {
           // empty;
         }
-
+        virtual void reset()
+        {
+          ObSingleChildPhyOperator::reset();
+        }
+        virtual void reuse()
+        {
+          ObSingleChildPhyOperator::reuse();
+        }
         virtual int open() = 0;
         virtual int close() = 0;
         virtual int get_next_row(const common::ObRow *&row) = 0;
@@ -81,6 +88,7 @@ namespace oceanbase
          */
         virtual int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset) = 0;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const = 0;
+
       private:
         // disallow copy
         ObTableScan(const ObTableScan &other);

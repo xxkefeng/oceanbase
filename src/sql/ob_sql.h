@@ -59,8 +59,8 @@ namespace oceanbase
          * @return oceanbase error code defined in ob_define.h
          */
         static int stmt_execute(const uint64_t stmt_id,
-                                const common::ObArray<obmysql::EMySQLFieldType> &params_type,
-                                const common::ObArray<common::ObObj> &params,
+                                const common::ObIArray<obmysql::EMySQLFieldType> &params_type,
+                                const common::ObIArray<common::ObObj> &params,
                                 ObResultSet &result, ObSqlContext &context);
         /**
          * close the prepared statement
@@ -83,6 +83,19 @@ namespace oceanbase
         static int generate_physical_plan(ObSqlContext & context, ResultPlan &result_plan, ObMultiPhyPlan & multi_phy_plan, ObResultSet & result);
         static int do_grant_privilege(const ObBasicStmt *stmt, ObSqlContext & context, ObResultSet &result);
         static void clean_result_plan(ResultPlan &result_plan);
+
+        static int do_real_prepare(const common::ObString &stmt, ObResultSet &result, ObSqlContext &context, ObPsStoreItem *item, bool &do_prepare);
+        static int copy_plan_from_store(ObResultSet *result, ObPsStoreItem *item, ObSqlContext *context, uint64_t sql_id);
+        /**
+         * copy fields/params && physical paln to ObPsStoreItem
+         */
+        static int copy_plan_to_store(ObResultSet *result, ObPsStoreItem *item);
+        static int copy_params_to_plan(ObResultSet *result, const common::ObArray<obmysql::EMySQLFieldType> &params_type,
+                                       const common::ObArray<common::ObObj> &params);
+        static int try_rebuild_plan(const common::ObString &stmt, ObResultSet &result, ObSqlContext &context, ObPsStoreItem *item, bool &flag, bool substitute);
+        static int copy_physical_plan(ObPhysicalPlan& new_plan, ObPhysicalPlan& old_plan, ObSqlContext *context = NULL);
+        static int set_execute_context(ObPhysicalPlan& plan, ObSqlContext& context);
+        static bool need_rebuild_plan(const common::ObSchemaManagerV2 *schema_manager, ObPsStoreItem *item);
         // function members
 
         // for temp use to deal with special statment

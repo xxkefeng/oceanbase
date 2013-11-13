@@ -126,7 +126,7 @@ namespace oceanbase
       RPSessionCtx *session_ctx = NULL;
       SessionGuard session_guard(*session_mgr_, *lock_mgr_, err);
       ObTransReq req;
-      req.type_ = READ_WRITE_TRANS;
+      req.type_ = REPLAY_TRANS;
       req.isolation_ = NO_LOCK;
       req.start_time_ = tbsys::CTimeUtil::getTime(); 
       req.timeout_ = INT64_MAX;
@@ -156,8 +156,8 @@ namespace oceanbase
         task.mutation_ts_ = mutator.get_mutate_timestamp();
         task.checksum_before_mutate_ = mutator.get_memtable_checksum_before_mutate();
         task.checksum_after_mutate_ = mutator.get_memtable_checksum_after_mutate();
-        session_ctx->set_is_replaying(true);
         session_ctx->set_trans_id(mutator.get_mutate_timestamp());
+        tc_is_replaying_log() = true;
         if (OB_SUCCESS != (err = table_mgr_->apply(using_id, *session_ctx,
                                                    *session_ctx->get_lock_info(),
                                                    mutator.get_mutator())))
@@ -171,6 +171,7 @@ namespace oceanbase
           session_ctx->get_uc_info().uc_checksum = ob_crc64(session_ctx->get_uc_info().uc_checksum,
                                                             &mutate_ts, sizeof(mutate_ts));
         }
+        tc_is_replaying_log() = false;
       }
       return err;
     }
@@ -180,11 +181,11 @@ namespace oceanbase
       bool bret = false;
       TableMemInfo mi;
       table_mgr_->get_memtable_memory_info(mi);
-      int64_t memory_available = mi.memtable_limit - mi.memtable_total;
+      int64_t memory_available = mi.memtable_limit - mi.memtable_total + (MemTank::REPLAY_MEMTABLE_RESERVE_SIZE_GB << 30);
       if (get_table_available_warn_size() > memory_available)
       {
         ups_available_memory_warn_callback(memory_available);
-        if (MEMORY_RESERVE_BEFORE_REPLAY > memory_available)
+        if (memory_available <= 0)
         {
           bret = true;
         }
@@ -214,13 +215,12 @@ namespace oceanbase
       }
       else if (is_memory_warning())
       {
-        static __thread int64_t counter = 0;
-        if (0 == (counter++ % 60))
+        if (TC_REACH_TIME_INTERVAL(MEM_OVERFLOW_REPORT_INTERVAL))
         {
-          TBSYS_LOG(INFO, "memory not enough reserve=%ld, will sleep 1s to wait for dumping sstable", MEMORY_RESERVE_BEFORE_REPLAY);
+          TBSYS_LOG(WARN, "no memory, sleep %ldus wait for dumping sstable", retry_wait_time_us_);
         }
         err = OB_EAGAIN;
-        usleep(1000000);
+        usleep(static_cast<useconds_t>(retry_wait_time_us_));
       }
       else
       {
@@ -325,6 +325,7 @@ namespace oceanbase
           if (NULL != ret_checksum)
           {
             *ret_checksum = session->get_uc_info().uc_checksum;
+            (*ret_checksum) ^= session->get_checksum();
           }
         }
         session_mgr_->revert_ctx(session_descriptor);

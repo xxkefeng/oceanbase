@@ -21,7 +21,7 @@
 #include "sql/ob_sql_get_param.h"
 #include "common/ob_string_buf.h"
 #include "common/page_arena.h"
-#include "common/hash/ob_hashmap.h"
+#include "common/hash/ob_placement_hashmap.h"
 
 namespace oceanbase
 {
@@ -82,7 +82,7 @@ namespace oceanbase
       int alloc_sub_request(ObMsSqlSubGetRequest *&sub_req);
     private:
       static const int32_t MAX_RETRY_TIMES = 3;
-      static const int64_t HASH_BUCKET_NUM = 4096;
+      static const int64_t HASH_BUCKET_NUM = 4099;
       static const int64_t MAX_ROW_COLUMN_COUNT = common::OB_MAX_COLUMN_NUMBER * 4;
       bool sealed_;
       ObSqlGetMerger merger_operator_;
@@ -94,10 +94,9 @@ namespace oceanbase
       int64_t max_get_rows_per_subreq_;
       int64_t reserve_get_param_count_;
       int64_t timeout_us_;
-      bool req_dist_map_inited_;
-      common::hash::ObHashMap<int64_t,int64_t,common::hash::NoPthreadDefendMode> req_dist_map_;
-      common::hash::ObHashMap<int64_t,ObMsSqlSubGetRequest *,common::hash::NoPthreadDefendMode> sub_req_map_;
+      common::hash::ObPlacementHashMap<int64_t, int64_t, HASH_BUCKET_NUM> req_dist_map_;
       sql::ObSqlGetParam  *get_param_;
+      sql::ObSqlGetParam cur_sub_get_param_;
       common::PageArena<int64_t,common::ModulePageAllocator> page_arena_;
       const common::ObRowDesc *row_desc_;
       SubRequestVector sub_requests_;

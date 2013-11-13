@@ -32,8 +32,8 @@ deploy ob1.ms0.stop;
 
 #wait for copy
 sleep 150;
-deploy ob1.check_cs_sstable 600;
-deploy ob2.check_cs_sstable 600;
+deploy ob1.check_cs_sstable 603;
+deploy ob2.check_cs_sstable 603;
 
 select * from t1;
 

@@ -31,10 +31,18 @@ ObMergeGroupBy::~ObMergeGroupBy()
 
 void ObMergeGroupBy::reset()
 {
-  ObGroupBy::reset();
-  aggr_func_.reset();
   last_input_row_ = NULL;
+  aggr_func_.reset();
+  ObGroupBy::reset();
 }
+
+void ObMergeGroupBy::reuse()
+{
+  last_input_row_ = NULL;
+  aggr_func_.reuse();
+  ObGroupBy::reuse();
+}
+
 
 int ObMergeGroupBy::open()
 {
@@ -186,11 +194,22 @@ int ObMergeGroupBy::get_next_row(const ObRow *&row)
   return ret;
 }
 
-void ObMergeGroupBy::assign(const ObMergeGroupBy& other)
+PHY_OPERATOR_ASSIGN(ObMergeGroupBy)
 {
-  group_columns_ = other.group_columns_;
-  aggr_columns_ = other.aggr_columns_;
-  set_int_div_as_double(other.get_int_div_as_double());
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObMergeGroupBy);
+  reset();
+  if ((ret == ObGroupBy::assign(other)) == OB_SUCCESS)
+  {
+    set_int_div_as_double(o_ptr->get_int_div_as_double());
+  }
+  return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObMergeGroupBy, PHY_MERGE_GROUP_BY);
+  }
 }
 
 DEFINE_SERIALIZE(ObMergeGroupBy)
@@ -233,5 +252,3 @@ DEFINE_GET_SERIALIZE_SIZE(ObMergeGroupBy)
   size += encoded_length_vi64(get_int_div_as_double());
   return size;
 }
-
-

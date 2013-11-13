@@ -86,9 +86,7 @@ int ObRestartServer::restart_servers()
 void ObRestartServer::shutdown_cs(ObServerStatus* it)
 {
   int64_t now = tbsys::CTimeUtil::getTime();
-  int64_t monotonic_now = tbsys::CTimeUtil::getMonotonicTime();
-  TBSYS_LOG(INFO,"shutdown cs, monotonic_now:%ld, lease_duration:%s",
-            monotonic_now, config_->cs_lease_duration_time.str());
+  TBSYS_LOG(INFO,"shutdown cs, now:%ld, lease_duration:%s", now, config_->cs_lease_duration_time.str());
   server_manager_->set_server_down(it);
   log_worker_->server_is_down(it->server_, now);
 

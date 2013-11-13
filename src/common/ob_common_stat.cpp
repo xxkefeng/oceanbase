@@ -37,12 +37,23 @@ const char *ObStatSingleton::rs_map[] = {
 const char *ObStatSingleton::ups_map[] = {
   "get_count",
   "scan_count",
+  "trans_count",
   "apply_count",
   "batch_count",
   "merge_count",
 
+  "get_qtime",
+  "scan_qtime",
+  "apply_qtime",
+
   "get_time",
   "scan_time",
+  "trans_time",
+  "trans_wtime",
+  "trans_htime",
+  "trans_ctime",
+  "trans_ftime",
+  "trans_rtime",
   "apply_time",
   "batch_time",
   "merge_time",
@@ -69,8 +80,55 @@ const char *ObStatSingleton::ups_map[] = {
 
   "commit_log_size",
   "commit_log_id",
+  "clog_sync_count",
+  "clog_sync_delay",
+  "slow_clog_sync_count",
+  "slow_clog_sync_delay",
+  "last_replay_clog_time",
   "frozen_version",
 
+  "apply_row_count",
+  "apply_row_unmerged_cell_count",
+
+  "ll_get_count",
+  "ll_scan_count",
+  "ll_apply_count",
+  "ll_trans_count",
+  "ll_apply_qtime",
+
+  "nl_get_count",
+  "nl_scan_count",
+  "nl_apply_count",
+  "nl_trans_count",
+  "nl_apply_qtime",
+
+  "hl_get_count",
+  "hl_scan_count",
+  "hl_apply_count",
+  "hl_trans_count",
+  "hl_apply_qtime",
+
+  "ll_get_time",
+  "ll_scan_time",
+  "ll_apply_time",
+  "ll_trans_time",
+
+  "nl_get_time",
+  "nl_scan_time",
+  "nl_apply_time",
+  "nl_trans_time",
+
+  "hl_get_time",
+  "hl_scan_time",
+  "hl_apply_time",
+  "hl_trans_time",
+
+  "lock_wait_time",
+
+  "dml_replace_count",
+  "dml_insert_count",
+  "dml_update_count",
+  "dml_delete_count",
 };
 
 const char *ObStatSingleton::cs_map[] = {
@@ -112,6 +170,8 @@ const char *ObStatSingleton::sstable_map[] = {
   "block_cache_miss",
   "sstable_disk_io_num",
   "sstable_disk_io_bytes",
+  "sstable_disk_io_write_num",
+  "sstable_disk_io_write_bytes",
   "sstable_row_cache_hit",
   "sstable_row_cache_miss",
   "sstable_get_rows",
@@ -160,6 +220,15 @@ const char *ObStatSingleton::sql_map[] = {
   "sql_drop_table_count",
 
   "sql_ps_allocator_count",
+  "sql_insert_cache_hit",
+  "sql_insert_cache_miss",
+  "sql_update_cache_hit",
+  "sql_update_cache_miss",
+  "sql_query_cache_hit",
+  "sql_query_cache_miss",
+
+  "distinct_stmt_count",
+  "ps_count",
 };
 
 const char *ObStatSingleton::common_map[] = {
@@ -184,6 +253,8 @@ const char *ObStatSingleton::obmysql_map[] = {
   "sql_fail_login_count",
   "sql_logout_count",
 
+  "sql_compound_count",
+  "sql_compound_time",
   "sql_select_count",
   "sql_select_time",
   "sql_insert_count",
@@ -196,6 +267,11 @@ const char *ObStatSingleton::obmysql_map[] = {
   "sql_delete_time",
 
   "sql_query_bytes",
+
+  "sql_commit_count",
+  "sql_rollback_count",
+  "sql_autocommit_on_count",
+  "sql_autocommit_off_count",
 };
 
 

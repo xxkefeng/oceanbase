@@ -24,6 +24,7 @@ import org.apache.hadoop.mapred.SequenceFileAsTextInputFormat;
 import org.apache.hadoop.mapred.TextInputFormat;
 import org.apache.hadoop.mapred.lib.InputSampler;
 
+import com.taobao.mrsstable.MRGenSstable.RowKeyDesc;
 import com.taobao.mrsstable.MRGenSstable.TotalOrderPartitioner;
 
 public class TextInputSampler extends InputSampler<Writable, Text> {
@@ -47,65 +48,56 @@ public class TextInputSampler extends InputSampler<Writable, Text> {
    * numSamples / maxSplitsSampled inputs from each split.
    */
   public static class RandomSampler implements Sampler {
-    private double freq;
     private final int numSamples;
     private final int maxSplitsSampled;
-    private final int[] sortColumns;
+    private final RowKeyDesc rowKeyDesc;
     private final String delimiter;
-    private final int maxColumnId;
+    private final boolean isSkipInvalidRow;
+
 
     /**
      * Create a new RandomSampler sampling <em>all</em> splits. This will read
      * every split at the client, which is very expensive.
-     * 
+     *
      * @param freq
      *          Probability with which a key will be chosen.
      * @param numSamples
      *          Total number of samples to obtain from all selected splits.
      */
-    public RandomSampler(double freq, int numSamples, int[] sortColumns, String delimiter) {
-      this(freq, numSamples, Integer.MAX_VALUE, sortColumns, delimiter);
+    public RandomSampler(double freq, int numSamples, RowKeyDesc rowKeyDesc, String delimiter, boolean isSkipInvalidRow) {
+      this(freq, numSamples, Integer.MAX_VALUE, rowKeyDesc, delimiter, isSkipInvalidRow);
     }
 
     /**
      * Create a new RandomSampler.
-     * 
-     * @param freq
-     *          Probability with which a key will be chosen.
+     *
      * @param numSamples
      *          Total number of samples to obtain from all selected splits.
      * @param maxSplitsSampled
      *          The maximum number of splits to examine.
      */
-    public RandomSampler(double freq, int numSamples, int maxSplitsSampled, int[] sortColumns, String delimiter) {
-      this.freq = freq;
+    public RandomSampler(double freq, int numSamples, int maxSplitsSampled, RowKeyDesc rowKeyDesc, String delimiter, boolean isSkipInvalidRow) {
       this.numSamples = numSamples;
       this.maxSplitsSampled = maxSplitsSampled;
-      this.sortColumns = sortColumns;
+      this.rowKeyDesc = rowKeyDesc;
+      this.isSkipInvalidRow = isSkipInvalidRow;
       this.delimiter = delimiter;
-
-      int tmp = 0;
-      for (int column : sortColumns) {
-        if (tmp < column) {
-          tmp = column;
-        }
-      }
-      this.maxColumnId = tmp;
     }
 
     /**
      * Randomize the split order, then take the specified number of keys from
-     * each split sampled, where each key is selected with the specified
-     * probability and possibly replaced by a subsequently selected key when the
-     * quota of keys from that split is satisfied.
+     * each split sampled, where each key is selected with the equal probability.
      */
     public Text[] getSample(InputFormat<Writable, Text> inf, JobConf job) throws IOException {
       InputSplit[] splits = inf.getSplits(job, job.getNumMapTasks());
+      int numPartitions = job.getNumReduceTasks();
       ArrayList<Text> samples = new ArrayList<Text>(numSamples);
       if (splits.length == 0) {
         throw new IOException("no input files, split length:" + splits.length);
       }
       int splitsToSample = Math.min(maxSplitsSampled, splits.length);
+      System.err.println("splitsToSample="+splitsToSample+" splits.length="+splits.length);
+      long total_line = 0;
 
       Random r = new Random();
       long seed = r.nextLong();
@@ -117,30 +109,40 @@ public class TextInputSampler extends InputSampler<Writable, Text> {
         splits[i] = splits[j];
         splits[j] = tmp;
       }
-      // our target rate is in terms of the maximum number of sample splits,
-      // but we accept the possibility of sampling additional splits to hit
-      // the target sample keyset
-      for (int i = 0; i < splitsToSample || (i < splits.length && samples.size() < numSamples); ++i) {
+      // select key from splits with the equal probability
+      for (int i = 0; i < splitsToSample || (samples.size() < numPartitions && i < splits.length); ++i) {
         RecordReader<Writable, Text> reader = inf.getRecordReader(splits[i], job, Reporter.NULL);
         Writable key = reader.createKey();
         Text value = reader.createValue();
         while (reader.next(key, value)) {
-          if (samples.size() < numSamples || r.nextDouble() <= freq) {
-            Text t = getDispatchKey(value, delimiter, sortColumns, maxColumnId);
-            // System.out.println("Added key:"
-            // + t.toString().replace(delimiter, " "));
+          ++total_line;
+          if (samples.size() < numSamples || r.nextDouble() <= 1.0 * numSamples / total_line) {
+            Text t = null;
+            try {
+              t = getDispatchKey(value, delimiter, rowKeyDesc);
+            } catch (IllegalArgumentException e) {
+              if (this.isSkipInvalidRow)
+              {
+                System.out.println("skip invalid rowkey: " + e.getMessage());
+                continue;
+              }
+              else
+              {
+                throw e;
+              }
+            }
+
             if (samples.size() < numSamples) {
+              //System.out.println("Added key:" + t.toString().replace(delimiter, " "));
               samples.add(t);
             } else {
               // When exceeding the maximum number of samples, replace a
-              // random element with this one, then adjust the frequency
-              // to reflect the possibility of existing elements being
-              // pushed out
+              // random element with this one
               int ind = r.nextInt(numSamples);
               if (ind != numSamples) {
+                //System.out.println("Replace key:" + t.toString().replace(delimiter, " "));
                 samples.set(ind, t);
               }
-              freq *= (numSamples - 1) / (double) numSamples;
             }
             key = reader.createKey();
           }
@@ -157,42 +159,35 @@ public class TextInputSampler extends InputSampler<Writable, Text> {
   public static class IntervalSampler implements Sampler {
     private final double freq;
     private final int maxSplitsSampled;
-    private final int[] sortColumns;
+    private final RowKeyDesc rowKeyDesc;
     private final String delimiter;
-    private final int maxColumnId;
+    private final boolean isSkipInvalidRow;
 
     /**
      * Create a new IntervalSampler sampling <em>all</em> splits.
-     * 
+     *
      * @param freq
      *          The frequency with which records will be emitted.
      */
-    public IntervalSampler(double freq, int[] sortColumns, String delimiter) {
-      this(freq, Integer.MAX_VALUE, sortColumns, delimiter);
+    public IntervalSampler(double freq, RowKeyDesc rowKeyDesc, String delimiter, boolean isSkipInvalidRow) {
+      this(freq, Integer.MAX_VALUE, rowKeyDesc, delimiter, isSkipInvalidRow);
     }
 
     /**
      * Create a new IntervalSampler.
-     * 
+     *
      * @param freq
      *          The frequency with which records will be emitted.
      * @param maxSplitsSampled
      *          The maximum number of splits to examine.
      * @see #getSample
      */
-    public IntervalSampler(double freq, int maxSplitsSampled, int[] sortColumns, String delimiter) {
+    public IntervalSampler(double freq, int maxSplitsSampled, RowKeyDesc rowKeyDesc, String delimiter, boolean isSkipInvalidRow) {
       this.freq = freq;
       this.maxSplitsSampled = maxSplitsSampled;
-      this.sortColumns = sortColumns;
+      this.rowKeyDesc = rowKeyDesc;
       this.delimiter = delimiter;
-
-      int tmp = 0;
-      for (int column : sortColumns) {
-        if (tmp < column) {
-          tmp = column;
-        }
-      }
-      this.maxColumnId = tmp;
+      this.isSkipInvalidRow = isSkipInvalidRow;
     }
 
     /**
@@ -217,8 +212,22 @@ public class TextInputSampler extends InputSampler<Writable, Text> {
         while (reader.next(key, value)) {
           ++records;
           if ((double) kept / records < freq) {
+            Text t = null;
+            try {
+              t = getDispatchKey(value, delimiter, rowKeyDesc);
+            } catch (IllegalArgumentException e) {
+              if (isSkipInvalidRow)
+              {
+                System.out.println("skip invalid rowkey: " + e.getMessage());
+                continue;
+              }
+              else
+              {
+                throw e;
+              }
+            }
+
             ++kept;
-            Text t = getDispatchKey(value, delimiter, sortColumns, maxColumnId);
             // System.out.println("Added key:"
             // + t.toString().replace(delimiter, " "));
             samples.add(t);
@@ -239,42 +248,35 @@ public class TextInputSampler extends InputSampler<Writable, Text> {
 
     private final int numSamples;
     private final int maxSplitsSampled;
-    private final int[] sortColumns;
+    private final RowKeyDesc rowKeyDesc;
     private final String delimiter;
-    private final int maxColumnId;
+    private final boolean isSkipInvalidRow;
 
     /**
      * Create a SplitSampler sampling <em>all</em> splits. Takes the first
      * numSamples / numSplits records from each split.
-     * 
+     *
      * @param numSamples
      *          Total number of samples to obtain from all selected splits.
      */
-    public SplitSampler(int numSamples, int[] sortColumns, String delimiter) {
-      this(numSamples, Integer.MAX_VALUE, sortColumns, delimiter);
+    public SplitSampler(int numSamples, RowKeyDesc rowKeyDesc, String delimiter, boolean isSkipInvalidRow) {
+      this(numSamples, Integer.MAX_VALUE, rowKeyDesc, delimiter, isSkipInvalidRow);
     }
 
     /**
      * Create a new SplitSampler.
-     * 
+     *
      * @param numSamples
      *          Total number of samples to obtain from all selected splits.
      * @param maxSplitsSampled
      *          The maximum number of splits to examine.
      */
-    public SplitSampler(int numSamples, int maxSplitsSampled, int[] sortColumns, String delimiter) {
+    public SplitSampler(int numSamples, int maxSplitsSampled, RowKeyDesc rowKeyDesc, String delimiter, boolean isSkipInvalidRow) {
       this.numSamples = numSamples;
       this.maxSplitsSampled = maxSplitsSampled;
-      this.sortColumns = sortColumns;
+      this.rowKeyDesc = rowKeyDesc;
       this.delimiter = delimiter;
-
-      int tmp = 0;
-      for (int column : sortColumns) {
-        if (tmp < column) {
-          tmp = column;
-        }
-      }
-      this.maxColumnId = tmp;
+      this.isSkipInvalidRow = isSkipInvalidRow;
     }
 
     /**
@@ -297,7 +299,20 @@ public class TextInputSampler extends InputSampler<Writable, Text> {
         Writable key = reader.createKey();
         Text value = reader.createValue();
         while (reader.next(key, value)) {
-          Text t = getDispatchKey(value, delimiter, sortColumns, maxColumnId);
+          Text t = null;
+          try {
+            t = getDispatchKey(value, delimiter, rowKeyDesc);
+          } catch (IllegalArgumentException e) {
+            if (isSkipInvalidRow)
+            {
+              System.out.println("skip invalid rowkey: " + e.getMessage());
+              continue;
+            }
+            else
+            {
+              throw e;
+            }
+          }
           // System.out.println("Added key:"
           // + t.toString().replace(delimiter, " "));
           samples.add(t);
@@ -313,10 +328,16 @@ public class TextInputSampler extends InputSampler<Writable, Text> {
     }
   }
 
-  public static Text getDispatchKey(Text value, String delimiter, int[] sortColumns, int maxColumnId) {
+  public static Text getDispatchKey(Text value, String delimiter, RowKeyDesc rowKeyDesc) {
     String[] vec = value.toString().split(delimiter, -1);
-    if (vec.length <= maxColumnId) {
-      throw new IllegalArgumentException("the split count of value[" + value + "] is less than " + (maxColumnId + 1));
+    int[] sortColumns = rowKeyDesc.getOrgColumnIndex();
+    if (!rowKeyDesc.isRowkeyValid(vec)) {
+      StringBuilder err_sb = new StringBuilder("invalid rowkey, skip this line, ");
+      for (int i = 0; i < sortColumns.length; i++) {
+        err_sb.append("[index:" + i + ", type:" + rowKeyDesc.getColumnType()[i] + ", val:" + vec[sortColumns[i]]
+            + "], ");
+      }
+      throw new IllegalArgumentException(err_sb.toString());
     }
     StringBuilder sb = new StringBuilder(vec[sortColumns[0]]);
     for (int i = 1; i < sortColumns.length; i++) {
@@ -355,7 +376,7 @@ public class TextInputSampler extends InputSampler<Writable, Text> {
 
     /**
      * Write the object to the byte stream, handling Text as a special case.
-     * 
+     *
      * @param o
      *          the object to print
      * @throws IOException

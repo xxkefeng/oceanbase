@@ -18,8 +18,6 @@ skip_trx='on'
 max_time=60
 max_trx=100000000
 
-commit_num=10
-
 check_local_file = 'sh: ls obdatasource/{obmonster.jar,obmonster,ups_admin} # ExceptionOnFail'
 client_start_args = 'obdatasource.conf.$ip post_schema.xml.$ip prev_schema.xml.$ip obmonster.properties.$ip '
 client_env_vars = 'LD_LIBRARY_PATH=/usr/lib64/mysql'

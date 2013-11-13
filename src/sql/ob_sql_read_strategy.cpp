@@ -34,12 +34,21 @@ ObSqlReadStrategy::~ObSqlReadStrategy()
   this->destroy();
 }
 
-int ObSqlReadStrategy::find_single_column_range(int64_t idx, uint64_t column_id, bool &found)
+void ObSqlReadStrategy::reset()
+{
+  simple_in_filter_list_.clear();
+  simple_cond_filter_list_.clear();
+  rowkey_info_ = NULL;
+  memset(start_key_mem_hold_, 0, sizeof(start_key_mem_hold_));
+  memset(end_key_mem_hold_, 0, sizeof(end_key_mem_hold_));
+}
+
+int ObSqlReadStrategy::find_single_column_range(bool real_val, int64_t idx, uint64_t column_id, bool &found)
 {
   static const bool single_row_only = true;
   bool found_start = false;
   bool found_end = false;
-  int ret = find_closed_column_range(idx, column_id, found_start, found_end, single_row_only);
+  int ret = find_closed_column_range(real_val, idx, column_id, found_start, found_end, single_row_only);
   found = (found_start && found_end);
   return ret;
 }
@@ -67,7 +76,7 @@ int ObSqlReadStrategy::find_scan_range(ObNewRange &range, bool &found, bool sing
     }
     else
     {
-      if (OB_SUCCESS != (ret = find_closed_column_range(idx, column_id, found_start, found_end, single_row_only)))
+      if (OB_SUCCESS != (ret = find_closed_column_range(true, idx, column_id, found_start, found_end, single_row_only)))
       {
         TBSYS_LOG(WARN, "fail to find closed column range for column %lu", column_id);
         break;
@@ -88,7 +97,7 @@ int ObSqlReadStrategy::find_scan_range(ObNewRange &range, bool &found, bool sing
   return ret;
 }
 
-int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id, bool &found_start, bool &found_end, bool single_row_only)
+int ObSqlReadStrategy::find_closed_column_range(bool real_val, int64_t idx, uint64_t column_id, bool &found_start, bool &found_end, bool single_row_only)
 {
   int ret = OB_SUCCESS;
   int i = 0;
@@ -102,14 +111,7 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
   found_start = false;
   for (i = 0; i < simple_cond_filter_list_.count(); i++)
   {
-    /**********debug only *****************/
-#if 0
-    if (i == 0) cond_cid = column_id, cond_op = T_OP_LT, cond_val.set_int(200);
-    else if (i == 1) cond_cid = column_id, cond_op = T_OP_GT, cond_val.set_int(100);
-    else  cond_cid = column_id + 1;
-#endif
-    /**********end debug only *****************/
-    if (simple_cond_filter_list_.at(i).is_simple_condition(true, cond_cid, cond_op, cond_val))
+    if (simple_cond_filter_list_.at(i).is_simple_condition(real_val, cond_cid, cond_op, cond_val))
     {
       if ((cond_cid == column_id) &&
           (NULL != (column = rowkey_info_->get_column(idx))))
@@ -137,6 +139,7 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
             {
                 TBSYS_LOG(WARN, "failed to cast object, ret=%d, from_type=%d to_type=%d", ret, source_type, target_type);
                 ob_free(varchar_buff);
+                varchar_buff = NULL;
                 break;
             }
             else
@@ -151,21 +154,23 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
                     end_key_mem_hold_[idx] = varchar_buff;
                     found_end = true;
                   }
+                  else if (*p_promoted_obj < end_key_objs_[idx])
+                  {
+                    end_key_objs_[idx] = *p_promoted_obj;
+                    if (end_key_mem_hold_[idx] != NULL)
+                    {
+                      ob_free(end_key_mem_hold_[idx]);
+                      end_key_mem_hold_[idx] = varchar_buff;
+                    }
+                    else
+                    {
+                      end_key_mem_hold_[idx] = varchar_buff;
+                    }
+                  }
                   else
                   {
-                    if (*p_promoted_obj < end_key_objs_[idx])
-                    {
-                      end_key_objs_[idx] = *p_promoted_obj;
-                      if (end_key_mem_hold_[idx] != NULL)
-                      {
-                        ob_free(end_key_mem_hold_[idx]);
-                        end_key_mem_hold_[idx] = varchar_buff;
-                      }
-                      else
-                      {
-                        end_key_mem_hold_[idx] = varchar_buff;
-                      }
-                    }
+                    ob_free(varchar_buff);
+                    varchar_buff = NULL;
                   }
                   break;
                 case T_OP_GT:
@@ -176,17 +181,23 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
                     found_start = true;
                     start_key_mem_hold_[idx] = varchar_buff;
                   }
+                  else if (*p_promoted_obj > start_key_objs_[idx])
+                  {
+                    start_key_objs_[idx] = *p_promoted_obj;
+                    if (start_key_mem_hold_[idx] != NULL)
+                    {
+                      ob_free(start_key_mem_hold_[idx]);
+                      start_key_mem_hold_[idx] = varchar_buff;
+                    }
+                    else
+                    {
+                      start_key_mem_hold_[idx] = varchar_buff;
+                    }
+                  }
                   else
                   {
-                    if (*p_promoted_obj > start_key_objs_[idx])
-                    {
-                      start_key_objs_[idx] = *p_promoted_obj;
-                      if (start_key_mem_hold_[idx] != NULL)
-                      {
-                        ob_free(start_key_mem_hold_[idx]);
-                        start_key_mem_hold_[idx] = varchar_buff;
-                      }
-                    }
+                    ob_free(varchar_buff);
+                    varchar_buff = NULL;
                   }
                   break;
                 case T_OP_EQ:
@@ -207,11 +218,8 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
                     {
                       TBSYS_LOG(WARN, "two different equal condition on the sanme column, column_id=%lu", column_id);
                     }
-                    else
-                    {
-                      ob_free(varchar_buff);
-                      varchar_buff = NULL;
-                    }
+                    ob_free(varchar_buff);
+                    varchar_buff = NULL;
                   }
                   else
                   {
@@ -236,6 +244,8 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
                   }
                   break;
                 default:
+                  ob_free(varchar_buff);
+                  varchar_buff = NULL;
                   TBSYS_LOG(WARN, "unexpected cond op: %ld", cond_op);
                   ret = OB_ERR_UNEXPECTED;
                   break;
@@ -309,11 +319,6 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
                         " start_key_objs_[idx]=%s, *p_promoted_obj=%s",
                         column_id, to_cstring(start_key_objs_[idx]), to_cstring(*p_promoted_obj));
                   }
-                  else
-                  {
-                    ob_free(varchar_buff);
-                    varchar_buff = NULL;
-                  }
                 }
                 else
                 {
@@ -348,7 +353,7 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
         }
       }
     }
-    else if ((!single_row_only) && simple_cond_filter_list_.at(i).is_simple_between(true, cond_cid, cond_op, cond_start, cond_end))
+    else if ((!single_row_only) && simple_cond_filter_list_.at(i).is_simple_between(real_val, cond_cid, cond_op, cond_start, cond_end))
     {
       if (cond_cid == column_id)
       {
@@ -399,22 +404,23 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
                   found_start = true;
                   start_key_mem_hold_[idx] = varchar_buff;
                 }
-                else
+                else if (*p_start_promoted_obj > start_key_objs_[idx])
                 {
-                  if (*p_start_promoted_obj > start_key_objs_[idx])
+                  start_key_objs_[idx] = *p_start_promoted_obj;
+                  if (start_key_mem_hold_[idx] != NULL)
                   {
-                    start_key_objs_[idx] = *p_start_promoted_obj;
-                    if (start_key_mem_hold_[idx] != NULL)
-                    {
-                      ob_free(start_key_mem_hold_[idx]);
-                      start_key_mem_hold_[idx] = varchar_buff;
-                    }
+                    ob_free(start_key_mem_hold_[idx]);
+                    start_key_mem_hold_[idx] = varchar_buff;
                   }
                   else
                   {
-                    ob_free(varchar_buff);
-                    varchar_buff = NULL;
+                    start_key_mem_hold_[idx] = varchar_buff;
                   }
+                }
+                else
+                {
+                  ob_free(varchar_buff);
+                  varchar_buff = NULL;
                 }
               }
             }
@@ -476,22 +482,23 @@ int ObSqlReadStrategy::find_closed_column_range(int64_t idx, uint64_t column_id,
                     found_end = true;
                     end_key_mem_hold_[idx] = varchar_buff;
                   }
-                  else
+                  else if (*p_end_promoted_obj < end_key_objs_[idx])
                   {
-                    if (*p_end_promoted_obj < end_key_objs_[idx])
+                    end_key_objs_[idx] = *p_end_promoted_obj;
+                    if (end_key_mem_hold_[idx] != NULL)
                     {
-                      end_key_objs_[idx] = *p_end_promoted_obj;
-                      if (end_key_mem_hold_[idx] != NULL)
-                      {
-                        ob_free(end_key_mem_hold_[idx]);
-                        end_key_mem_hold_[idx] = varchar_buff;
-                      }
+                      ob_free(end_key_mem_hold_[idx]);
+                      end_key_mem_hold_[idx] = varchar_buff;
                     }
                     else
                     {
-                      ob_free(varchar_buff);
-                      varchar_buff = NULL;
+                      end_key_mem_hold_[idx] = varchar_buff;
                     }
+                  }
+                  else
+                  {
+                    ob_free(varchar_buff);
+                    varchar_buff = NULL;
                   }
                 }
               }
@@ -549,7 +556,7 @@ int ObSqlReadStrategy::add_filter(const ObSqlExpression &expr)
   ObObj val1;
   ObObj val2;
 
-  if (expr.is_simple_condition(true, cid, op, val1))
+  if (expr.is_simple_condition(false, cid, op, val1))
   {
     // TBSYS_LOG(DEBUG, "simple condition [%s]", to_cstring(expr));
     if (OB_SUCCESS != (ret = simple_cond_filter_list_.push_back(expr)))
@@ -557,7 +564,7 @@ int ObSqlReadStrategy::add_filter(const ObSqlExpression &expr)
       TBSYS_LOG(WARN, "fail to add simple filter. ret=%d", ret);
     }
   }
-  else if (expr.is_simple_between(true, cid, op, val1, val2))
+  else if (expr.is_simple_between(false, cid, op, val1, val2))
   {
     // TBSYS_LOG(DEBUG, "simple between condition [%s]", to_cstring(expr));
     if (OB_SUCCESS != (ret = simple_cond_filter_list_.push_back(expr)))
@@ -569,8 +576,8 @@ int ObSqlReadStrategy::add_filter(const ObSqlExpression &expr)
   {
     ObArray<ObRowkey> rowkey_array;
     common::PageArena<ObObj,common::ModulePageAllocator> rowkey_objs_allocator(
-        PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_SQL_COMMON));
-    if (true == expr.is_simple_in_expr(*rowkey_info_, rowkey_array, rowkey_objs_allocator))
+        PageArena<ObObj, ModulePageAllocator>::DEFAULT_PAGE_SIZE,ModulePageAllocator(ObModIds::OB_SQL_READ_STATEGY));
+    if (true == expr.is_simple_in_expr(false, *rowkey_info_, rowkey_array, rowkey_objs_allocator))
     {
       // TBSYS_LOG(DEBUG, "simple in expr [%s]", to_cstring(expr));
       if (OB_SUCCESS != (ret = simple_in_filter_list_.push_back(expr)))
@@ -583,7 +590,7 @@ int ObSqlReadStrategy::add_filter(const ObSqlExpression &expr)
   return ret;
 }
 
-int ObSqlReadStrategy::find_rowkeys_from_equal_expr(ObArray<ObRowkey> &rowkey_array, PageArena<ObObj,common::ModulePageAllocator> &objs_allocator)
+int ObSqlReadStrategy::find_rowkeys_from_equal_expr(bool real_val, ObIArray<ObRowkey> &rowkey_array, PageArena<ObObj,common::ModulePageAllocator> &objs_allocator)
 {
   int ret = OB_SUCCESS;
   int64_t idx = 0;
@@ -603,7 +610,7 @@ int ObSqlReadStrategy::find_rowkeys_from_equal_expr(ObArray<ObRowkey> &rowkey_ar
       TBSYS_LOG(WARN, "fail to get column id. idx=%ld, ret=%d", idx, ret);
       break;
     }
-    else if (OB_SUCCESS != (ret = find_single_column_range(idx, column_id, found)))
+    else if (OB_SUCCESS != (ret = find_single_column_range(real_val, idx, column_id, found)))
     {
       TBSYS_LOG(WARN, "fail to find closed range for column %lu", column_id);
       break;
@@ -625,7 +632,7 @@ int ObSqlReadStrategy::find_rowkeys_from_equal_expr(ObArray<ObRowkey> &rowkey_ar
   return ret;
 }
 
-int ObSqlReadStrategy::find_rowkeys_from_in_expr(ObArray<ObRowkey> &rowkey_array, common::PageArena<ObObj,common::ModulePageAllocator> &objs_allocator)
+int ObSqlReadStrategy::find_rowkeys_from_in_expr(bool real_val, ObIArray<ObRowkey> &rowkey_array, common::PageArena<ObObj,common::ModulePageAllocator> &objs_allocator)
 {
   int ret = OB_SUCCESS;
   bool is_in_expr_with_rowkey = false;
@@ -640,13 +647,13 @@ int ObSqlReadStrategy::find_rowkeys_from_in_expr(ObArray<ObRowkey> &rowkey_array
     for (i = 0; i < simple_in_filter_list_.count(); i++)
     {
       // assume rowkey in sequence and all rowkey columns present
-      if (false == (is_in_expr_with_rowkey = simple_in_filter_list_.at(i).is_simple_in_expr(*rowkey_info_, rowkey_array, objs_allocator)))
+      if (false == (is_in_expr_with_rowkey = simple_in_filter_list_.at(i).is_simple_in_expr(real_val, *rowkey_info_, rowkey_array, objs_allocator)))
       {
         TBSYS_LOG(WARN, "fail to get rowkey(s) from in expression. ret=%d", ret);
       }
       else
       {
-        TBSYS_LOG(DEBUG, "simple in expr rowkey_array[%s]", to_cstring(rowkey_array));
+        TBSYS_LOG(DEBUG, "simple in expr rowkey_array count = %ld", rowkey_array.count());
       }
     }
   }
@@ -699,12 +706,12 @@ int ObSqlReadStrategy::find_rowkeys_from_in_expr(ObArray<ObRowkey> &rowkey_array
   return ret;
 }
 
-int ObSqlReadStrategy::get_read_method(ObArray<ObRowkey> &rowkey_array, PageArena<ObObj,common::ModulePageAllocator> &rowkey_objs_allocator, int32_t &read_method)
+int ObSqlReadStrategy::get_read_method(ObIArray<ObRowkey> &rowkey_array, PageArena<ObObj,common::ModulePageAllocator> &rowkey_objs_allocator, int32_t &read_method)
 {
   int ret = OB_SUCCESS;
   if (OB_SUCCESS == ret)
   {
-    if (OB_SUCCESS != (ret = find_rowkeys_from_in_expr(rowkey_array, rowkey_objs_allocator)))
+    if (OB_SUCCESS != (ret = find_rowkeys_from_in_expr(false, rowkey_array, rowkey_objs_allocator)))
     {
       TBSYS_LOG(WARN, "fail to find rowkeys in IN operator. ret=%d", ret);
     }
@@ -712,7 +719,7 @@ int ObSqlReadStrategy::get_read_method(ObArray<ObRowkey> &rowkey_array, PageAren
     {
       read_method = USE_GET;
     }
-    else if (OB_SUCCESS != (ret = find_rowkeys_from_equal_expr(rowkey_array, rowkey_objs_allocator)))
+    else if (OB_SUCCESS != (ret = find_rowkeys_from_equal_expr(false, rowkey_array, rowkey_objs_allocator)))
     {
       TBSYS_LOG(WARN, "fail to find rowkeys in equal where operator. ret=%d", ret);
     }
@@ -753,4 +760,51 @@ void ObSqlReadStrategy::destroy()
       }
     }
   }
+}
+
+int ObSqlReadStrategy::assign(const ObSqlReadStrategy *other, ObPhyOperator *owner_op)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObSqlReadStrategy);
+  reset();
+  for (int64_t i = 0; ret == OB_SUCCESS && i < o_ptr->simple_in_filter_list_.count(); i++)
+  {
+    if ((ret = simple_in_filter_list_.push_back(o_ptr->simple_in_filter_list_.at(i))) == OB_SUCCESS)
+    {
+      if (owner_op)
+      {
+        simple_in_filter_list_.at(i).set_owner_op(owner_op);
+      }
+    }
+    else
+    {
+      break;
+    }
+  }
+  for (int64_t i = 0; ret == OB_SUCCESS && i < o_ptr->simple_cond_filter_list_.count(); i++)
+  {
+    if ((ret = simple_cond_filter_list_.push_back(o_ptr->simple_cond_filter_list_.at(i))) == OB_SUCCESS)
+    {
+      if (owner_op)
+      {
+        simple_cond_filter_list_.at(i).set_owner_op(owner_op);
+      }
+    }
+    else
+    {
+      break;
+    }
+  }
+  return ret;
+}
+
+int64_t ObSqlReadStrategy::to_string(char* buf, const int64_t buf_len) const
+{
+  int64_t pos = 0;
+  databuff_printf(buf, buf_len, pos, "ReadStrategy(in_filter=");
+  pos += simple_in_filter_list_.to_string(buf+pos, buf_len-pos);
+  databuff_printf(buf, buf_len, pos, ", cond_filter=");
+  pos += simple_cond_filter_list_.to_string(buf+pos, buf_len-pos);
+  databuff_printf(buf, buf_len, pos, ")\n");
+  return pos;
 }

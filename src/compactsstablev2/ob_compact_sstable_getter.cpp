@@ -62,10 +62,10 @@ namespace oceanbase
 
         const ObGetParam::ObRowIndex* row_index = NULL;
         row_index = get_param_->get_row_index();
-        const TableBloomFilter* bloom_filter 
+        const ObBloomFilterV1* bloom_filter 
           = sstable_reader_->get_table_bloomfilter(table_id_);
         cell = (*get_param_)[row_index[cur_row_index_].offset_];
-        if (!bloom_filter->contain(table_id_, cell->row_key_))
+        if (!bloom_filter->may_contain(cell->row_key_))
         {
           bloomfilter_hit_ = false;
         }
@@ -496,10 +496,10 @@ namespace oceanbase
           ObCellInfo* cell = NULL;
           const ObGetParam::ObRowIndex* row_index = NULL;
           row_index = get_param_->get_row_index();
-          const TableBloomFilter* bloom_filter 
+          const ObBloomFilterV1* bloom_filter 
             = sstable_reader_->get_table_bloomfilter(table_id_);
           cell = (*get_param_)[row_index[cur_row_index_].offset_];
-          if (!bloom_filter->contain(table_id_, cell->row_key_))
+          if (!bloom_filter->may_contain(cell->row_key_))
           {
             bloomfilter_hit_ = false;
             if (OB_SUCCESS != (ret = init_column_mask()))

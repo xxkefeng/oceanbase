@@ -43,11 +43,11 @@ deploy ob2.stop;
 sleep 20;
 
 #start ob1,ob2
-deploy ob1.start;
+deploy ob1.nstart;
 deploy ob1.rs0.set_obi_role OBI_MASTER;
 sleep 10;
 
-deploy ob2.start;
+deploy ob2.nstart;
 
 sleep 60;
 

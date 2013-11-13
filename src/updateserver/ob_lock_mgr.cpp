@@ -17,6 +17,7 @@
  //
 ////====================================================================
 
+#include "common/ob_common_stat.h"
 #include "ob_lock_mgr.h"
 #include "ob_sessionctx_factory.h"
 
@@ -27,7 +28,15 @@ namespace oceanbase
     int IRowUnlocker::cb_func(const bool rollback, void *data, BaseSessionCtx &session)
     {
       UNUSED(rollback);
-      return unlock((TEValue*)data, session);
+      // 重要 要在解锁的时候将te_value的cur_uc_info清空，避免被后一个session重复使用这个事务内私有的cur_uc_info
+      // 主机：多线程提交后，解锁，由提交线程发布
+      // 备机：多线程解锁，由提交线程提交和发布
+      TEValue *te_value = (TEValue*)data;
+      if (NULL != te_value)
+      {
+        te_value->cur_uc_info = NULL;
+      }
+      return unlock(te_value, session);
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -114,6 +123,8 @@ namespace oceanbase
       if (OB_SUCCESS != ret)
       {
         TBSYS_LOG(USER_ERROR, "Exclusive lock conflict \'%s\' for key \'PRIMARY\'", to_cstring(key.row_key));
+        TBSYS_LOG(INFO, "Exclusive lock conflict \'%s\' for key \'PRIMARY\' table_id=%lu request=%u owner=%u",
+                  to_cstring(key.row_key), key.table_id, sd, (uint32_t)(value.row_lock.uid_ & QLock::UID_MASK));
       }
       return ret;
     }
@@ -171,8 +182,11 @@ namespace oceanbase
         int64_t stmt_end_time = session_ctx_.get_stmt_start_time() + session_ctx_.get_stmt_timeout();
         stmt_end_time = (0 <= stmt_end_time) ? stmt_end_time : INT64_MAX;
         int64_t end_time = std::min(session_end_time, stmt_end_time);
+        int64_t cur_time = tbsys::CTimeUtil::getTime();
+        end_time = std::min(end_time, cur_time + LOCK_WAIT_TIME);
         if (OB_SUCCESS == (ret = value.row_lock.exclusive_lock(sd, end_time, session_ctx_.is_alive())))
         {
+          cur_time = tbsys::CTimeUtil::getTime() - cur_time;
           if (OB_SUCCESS != (ret = callback_mgr_.add_callback_info(session_ctx_, &row_exclusive_unlocker_, &value)))
           {
             row_exclusive_unlocker_.unlock(&value, session_ctx_);
@@ -185,12 +199,18 @@ namespace oceanbase
         }
         else
         {
+          cur_time = tbsys::CTimeUtil::getTime() - cur_time;
+          session_ctx_.set_conflict_processor_index(session_ctx_.get_host().get_processor_index(value.row_lock.get_uid()));
           ret = OB_ERR_EXCLUSIVE_LOCK_CONFLICT;
         }
+        OB_STAT_INC(UPDATESERVER, UPS_STAT_LOCK_WAIT_TIME, cur_time);
       }
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(USER_ERROR, "Exclusive lock conflict \'%s\' for key \'PRIMARY\'", to_cstring(key.row_key));
+        TBSYS_LOG(USER_ERROR, "Exclusive lock conflict \'%s\' for key \'PRIMARY\'",
+                  to_cstring(key.row_key));
+        TBSYS_LOG(INFO, "Exclusive lock conflict \'%s\' for key \'PRIMARY\' table_id=%lu request=%u owner=%u",
+                  to_cstring(key.row_key), key.table_id, sd, (uint32_t)(value.row_lock.uid_ & QLock::UID_MASK));
       }
       return ret;
     }
@@ -221,38 +241,48 @@ namespace oceanbase
     {
     }
 
-    ILockInfo *LockMgr::assign(const IsolationLevel level, RWSessionCtx &session_ctx)
+    ILockInfo *LockMgr::assign(const IsolationLevel level, BaseSessionCtx &session_ctx)
     {
+      int tmp_ret = OB_SUCCESS;
       void *buffer = NULL;
       ILockInfo *ret = NULL;
+      RPSessionCtx* rpsession_ctx = NULL;
+      RWSessionCtx* rwsession_ctx = NULL;
       switch (level)
       {
       case NO_LOCK:
-        buffer = session_ctx.alloc(sizeof(RPLockInfo));
-        if (NULL != buffer)
+        if (NULL == (rpsession_ctx = dynamic_cast<RPSessionCtx*>(&session_ctx)))
         {
-          ret = new(buffer) RPLockInfo(session_ctx);
+          TBSYS_LOG(ERROR, "can not cast session_ctx to RPSessionCtx, ctx=%s", to_cstring(*rpsession_ctx));
+        }
+        else if (NULL == (buffer = rpsession_ctx->alloc(sizeof(RPLockInfo))))
+        {
+          TBSYS_LOG(ERROR, "alloc rplock info fail, ctx=%s", to_cstring(*rpsession_ctx));
+        }
+        else if (OB_SUCCESS != (tmp_ret = rpsession_ctx->add_callback_info(*rpsession_ctx, ret = new(buffer) RPLockInfo(*rpsession_ctx), NULL)))
+        {
+          TBSYS_LOG(ERROR, "add_callback_info()=>%d, ctx=%s", tmp_ret, to_cstring(*rpsession_ctx));
+          ret = NULL;
         }
         break;
       case READ_COMMITED:
-        buffer = session_ctx.alloc(sizeof(RCLockInfo));
-        if (NULL != buffer)
+        if (NULL == (rwsession_ctx = dynamic_cast<RWSessionCtx*>(&session_ctx)))
         {
-          ret = new(buffer) RCLockInfo(session_ctx);
+          TBSYS_LOG(ERROR, "can not cast session_ctx to RWSessionCtx, ctx=%s", to_cstring(*rwsession_ctx));
+        }
+        else if (NULL == (buffer = rwsession_ctx->alloc(sizeof(RCLockInfo))))
+        {
+          TBSYS_LOG(ERROR, "alloc rclock info fail, ctx=%s", to_cstring(*rwsession_ctx));
+        }
+        else if (OB_SUCCESS != (tmp_ret = rwsession_ctx->add_callback_info(*rwsession_ctx, ret = new(buffer) RCLockInfo(*rwsession_ctx), NULL)))
+        {
+          TBSYS_LOG(ERROR, "add_callback_info()=>%d, ctx=%s", tmp_ret, to_cstring(*rwsession_ctx));
+          ret = NULL;
         }
         break;
       default:
         TBSYS_LOG(WARN, "isolation level=%d not support", level);
         break;
-      }
-      if (NULL != ret)
-      {
-        int tmp_ret = session_ctx.add_callback_info(session_ctx, ret, NULL);
-        if (OB_SUCCESS != tmp_ret)
-        {
-          TBSYS_LOG(WARN, "add lock callback info to session ctx fail ret=%d", tmp_ret);
-          ret = NULL;
-        }
       }
       return ret;
     }

@@ -20,6 +20,20 @@ using namespace oceanbase;
 using namespace common;
 using namespace sql;
 
+void ObEmptyRowFilter::reset()
+{
+  cur_row_desc_.reset();
+  //cur_row_.reset(false, ObRow::DEFAULT_NULL);
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObEmptyRowFilter::reuse()
+{
+  cur_row_desc_.reset();
+  //cur_row_.reset(false, ObRow::DEFAULT_NULL);
+  ObSingleChildPhyOperator::reuse();
+}
+
 int ObEmptyRowFilter::open()
 {
   int ret = OB_SUCCESS;
@@ -103,7 +117,10 @@ int ObEmptyRowFilter::get_next_row(const common::ObRow *&row)
     }
     else if (OB_UNLIKELY(OB_ITER_END != ret))
     {
-      TBSYS_LOG(WARN, "fail to get next row [%d]", ret);
+      if (!IS_SQL_ERR(ret))
+      {
+        TBSYS_LOG(WARN, "fail to get next row [%d]", ret);
+      }
     }
   }
   while (common::OB_SUCCESS == ret);
@@ -115,6 +132,12 @@ int ObEmptyRowFilter::get_row_desc(const common::ObRowDesc *&row_desc) const
   int ret = OB_SUCCESS;
   row_desc = &cur_row_desc_;
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObEmptyRowFilter, PHY_EMPTY_ROW_FILTER);
+  }
 }
 
 int64_t ObEmptyRowFilter::to_string(char* buf, const int64_t buf_len) const
@@ -131,6 +154,12 @@ int64_t ObEmptyRowFilter::to_string(char* buf, const int64_t buf_len) const
 enum ObPhyOperatorType ObEmptyRowFilter::get_type() const
 {
   return PHY_EMPTY_ROW_FILTER;
+}
+
+PHY_OPERATOR_ASSIGN(ObEmptyRowFilter)
+{
+  UNUSED(other);
+  return common::OB_SUCCESS;
 }
 
 DEFINE_SERIALIZE(ObEmptyRowFilter)

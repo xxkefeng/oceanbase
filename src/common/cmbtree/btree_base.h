@@ -875,14 +875,20 @@ namespace oceanbase
         else if (ERROR_CODE_OK != (ret = recycle_alloc_.init()))
         {
           CMBTREE_LOG(ERROR, "recycle_alloc_ init error, ret = %d", ret);
+          node_alloc_.destroy();
         }
         else if (ERROR_CODE_OK != (ret = object_counter_.init()))
         {
           CMBTREE_LOG(ERROR, "object_counter_ init error, ret = %d", ret);
+          recycle_alloc_.destroy();
+          node_alloc_.destroy();
         }
         else if (ERROR_CODE_OK != (ret = recycle_pool_.init()))
         {
           CMBTREE_LOG(ERROR, "recycle_pool_ init error, ret = %d", ret);
+          object_counter_.destroy();
+          recycle_alloc_.destroy();
+          node_alloc_.destroy();
         }
         else
         {

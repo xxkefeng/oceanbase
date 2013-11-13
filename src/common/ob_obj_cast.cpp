@@ -544,6 +544,7 @@ namespace oceanbase
         gtm.tm_hour = hour;
         gtm.tm_min = minute;
         gtm.tm_sec = second;
+        gtm.tm_isdst = -1;
         time_t t = mktime(&gtm);
         out.set_datetime(static_cast<ObDateTime>(t));
       }
@@ -599,6 +600,7 @@ namespace oceanbase
         gtm.tm_hour = hour;
         gtm.tm_min = minute;
         gtm.tm_sec = second;
+        gtm.tm_isdst = -1;
         time_t t = mktime(&gtm);
         timestamp = static_cast<int64_t>(t) * 1000000L + usec;
       }

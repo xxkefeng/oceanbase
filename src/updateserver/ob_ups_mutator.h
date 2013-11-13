@@ -43,11 +43,13 @@ namespace oceanbase
         int set_drop_memtable();
         int set_first_start();
         int set_check_cur_version();
+        int set_check_sstable_checksum();
         bool is_normal_mutator() const;
         bool is_freeze_memtable() const;
         bool is_drop_memtable() const;
         bool is_first_start() const;
         bool is_check_cur_version() const;
+        bool is_check_sstable_checksum() const;
         void set_mutate_timestamp(const int64_t timestamp);
         int64_t get_mutate_timestamp() const;
         void set_memtable_checksum_before_mutate(const int64_t checksum);
@@ -61,6 +63,9 @@ namespace oceanbase
         uint64_t get_cur_minor_version() const;
         void set_last_bypass_checksum(const uint64_t last_bypass_checksum);
         uint64_t get_last_bypass_checksum() const;
+        void set_sstable_checksum(const uint64_t sstable_checksum);
+        uint64_t get_sstable_checksum() const;
+        int32_t get_flag() const;
 
       public:
         virtual void reset_iter();
@@ -83,6 +88,7 @@ namespace oceanbase
         static const int32_t DROP_FLAG = 2;
         static const int32_t START_FLAG = 3;
         static const int32_t CHECK_CUR_VERSION_FLAG = 4;
+        static const int32_t CHECK_SSTABLE_CHECKSUM_FLAG = 5;
 
       private:
         int32_t version_;
@@ -91,6 +97,7 @@ namespace oceanbase
         {
           int64_t mutate_timestamp_;
           uint64_t last_bypass_checksum_;
+          uint64_t sstable_checksum_;
         };
         union
         {

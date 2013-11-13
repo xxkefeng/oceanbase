@@ -24,7 +24,7 @@ sleep 10;
 deploy ob1.cs0.stop;
 
 sleep 100;
-deploy ob1.check_cs_sstable 400,2;
+deploy ob1.check_cs_sstable 402,2;
 deploy ob1.check_cs_balance 2;
 
 deploy ob1.stop_check;

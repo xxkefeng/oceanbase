@@ -7,15 +7,15 @@ ObTabletLocationCache::ObTabletLocationCache()
 {
   init_ = false;
   cache_timeout_ = DEFAULT_ALIVE_TIMEOUT;
+  special_cache_timeout_ = DEFAULT_ALIVE_TIMEOUT;
 }
-
 
 ObTabletLocationCache::~ObTabletLocationCache()
 {
 }
 
 int ObTabletLocationCache::init(const uint64_t mem_size, const uint64_t count,
-    const int64_t timeout)
+    const int64_t timeout, const int64_t special_timeout)
 {
   int ret = OB_SUCCESS;
   if (init_)
@@ -23,14 +23,16 @@ int ObTabletLocationCache::init(const uint64_t mem_size, const uint64_t count,
     TBSYS_LOG(ERROR, "%s", "check cache already inited");
     ret = OB_INNER_STAT_ERROR;
   }
-  else if (timeout <= 0)
+  else if ((timeout <= 0) || (special_timeout <= 0))
   {
-    TBSYS_LOG(ERROR, "check cache timeout failed:timeout[%ld]", timeout);
+    TBSYS_LOG(ERROR, "check cache timeout failed:timeout[%ld], vtimeout[%ld]",
+        timeout, special_timeout);
     ret = OB_INPUT_PARAM_ERROR;
   }
   else
   {
     cache_timeout_ = timeout;
+    special_cache_timeout_ = special_timeout;
     // cache init cache max mem size and init item count
     ret = tablet_cache_.init(mem_size, timeout, static_cast<int32_t>(count));
     if (OB_SUCCESS != ret)
@@ -67,8 +69,9 @@ int ObTabletLocationCache::get(const uint64_t table_id, const ObRowkey & rowkey,
     range.table_id_ = table_id;
     range.start_key_ = rowkey;
     range.end_key_ = rowkey;
+    /*
     int64_t size = range.get_serialize_size();
-    char * temp = (char *)ob_malloc(size, ObModIds::OB_MS_LOCATION_CACHE);
+    char * temp = (char *)ob_tc_malloc(size, ObModIds::OB_MS_LOCATION_CACHE);
     if (NULL == temp)
     {
       TBSYS_LOG(ERROR, "check ob malloc failed:size[%lu], pointer[%p]", size, temp);
@@ -83,17 +86,19 @@ int ObTabletLocationCache::get(const uint64_t table_id, const ObRowkey & rowkey,
         TBSYS_LOG(WARN, "serialize the search range failed:ret[%d]", ret);
       }
     }
+    */
 
-    if (OB_SUCCESS == ret)
-    {
-      ObString CacheKey;
-      CacheKey.assign(temp, static_cast<int32_t>(size));
+    //if (OB_SUCCESS == ret)
+    //{
+      //ObString CacheKey;
+      //CacheKey.assign(temp, static_cast<int32_t>(size));
       ObCachePair pair;
-      ret = tablet_cache_.get(CacheKey, pair);
+      //ret = tablet_cache_.get(CacheKey, pair);
+      ret = tablet_cache_.get(range, pair);
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(DEBUG, "find tablet from cache failed:table_id[%lu], length[%ld]",
-            table_id, size);
+        TBSYS_LOG(DEBUG, "find tablet from cache failed:table_id[%lu]",
+            table_id);
       }
       else
       {
@@ -106,9 +111,9 @@ int ObTabletLocationCache::get(const uint64_t table_id, const ObRowkey & rowkey,
               "ret[%d]", table_id, rowkey.length(), ret);
         }
       }
-    }
+    //}
     // destory the temp buffer
-    ob_free(temp);
+   // ob_tc_free(temp);
   }
   return ret;
 }
@@ -208,8 +213,9 @@ int ObTabletLocationCache::update(const uint64_t table_id, const ObRowkey & rowk
     range.table_id_ = table_id;
     range.start_key_ = rowkey;
     range.end_key_ = rowkey;
+    /*
     int64_t size = range.get_serialize_size();
-    char * temp = (char *)ob_malloc(size, ObModIds::OB_MS_LOCATION_CACHE);
+    char * temp = (char *)ob_tc_malloc(size, ObModIds::OB_MS_LOCATION_CACHE);
     if (NULL == temp)
     {
       TBSYS_LOG(ERROR, "check ob malloc failed:size[%lu], pointer[%p]", size, temp);
@@ -224,17 +230,19 @@ int ObTabletLocationCache::update(const uint64_t table_id, const ObRowkey & rowk
         TBSYS_LOG(WARN, "serialize the search range failed:ret[%d]", ret);
       }
     }
+    */
 
-    if (OB_SUCCESS == ret)
-    {
-      ObString CacheKey;
-      CacheKey.assign(temp, static_cast<int32_t>(size));
+    //if (OB_SUCCESS == ret)
+    //{
+      //ObString CacheKey;
+      //CacheKey.assign(temp, static_cast<int32_t>(size));
       ObCachePair pair;
-      ret = tablet_cache_.get(CacheKey, pair);
+      //ret = tablet_cache_.get(CacheKey, pair);
+      ret = tablet_cache_.get(range, pair);
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(DEBUG, "find tablet from cache failed:table_id[%lu], length[%ld]",
-            table_id, size);
+        TBSYS_LOG(DEBUG, "find tablet from cache failed:table_id[%lu]",
+            table_id);
       }
       else
       {
@@ -255,8 +263,8 @@ int ObTabletLocationCache::update(const uint64_t table_id, const ObRowkey & rowk
           ret = set(range, location);
         }
       }
-    }
-    ob_free(temp);
+    //}
+    //ob_tc_free(temp);
   }
   return ret;
 }
@@ -276,8 +284,9 @@ int ObTabletLocationCache::del(const uint64_t table_id, const ObRowkey & rowkey)
     range.table_id_ = table_id;
     range.start_key_ = rowkey;
     range.end_key_ = rowkey;
+    /*
     int64_t size = range.get_serialize_size();
-    char * temp = (char *)ob_malloc(size, ObModIds::OB_MS_LOCATION_CACHE);
+    char * temp = (char *)ob_tc_malloc(size, ObModIds::OB_MS_LOCATION_CACHE);
     if (NULL == temp)
     {
       TBSYS_LOG(ERROR, "check ob malloc failed:size[%lu], pointer[%p]", size, temp);
@@ -292,24 +301,26 @@ int ObTabletLocationCache::del(const uint64_t table_id, const ObRowkey & rowkey)
         TBSYS_LOG(WARN, "serialize the search range failed:ret[%d]", ret);
       }
     }
-    if (OB_SUCCESS == ret)
-    {
-      ObString CacheKey;
-      CacheKey.assign(temp, static_cast<int32_t>(size));
+    */
+    //if (OB_SUCCESS == ret)
+    //{
+      //ObString CacheKey;
+      //CacheKey.assign(temp, static_cast<int32_t>(size));
       ObCachePair pair;
-      ret = tablet_cache_.remove(CacheKey);
+      //ret = tablet_cache_.remove(CacheKey);
+      ret = tablet_cache_.remove(range);
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(DEBUG, "find this row tablet failed:table_id[%lu], length[%ld]",
-            table_id, size);
+        TBSYS_LOG(DEBUG, "find this row tablet failed:table_id[%lu]",
+            table_id);
       }
       else
       {
         TBSYS_LOG(DEBUG, "%s", "del this location from cache succ");
       }
-    }
+    //}
     // destory the temp buffer
-    ob_free(temp);
+    //ob_tc_free(temp);
   }
   return ret;
 }

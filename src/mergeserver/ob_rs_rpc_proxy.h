@@ -8,6 +8,7 @@
 #include "common/location/ob_tablet_location_list.h"
 #include "common/ob_strings.h"
 #include "common/ob_general_rpc_proxy.h"
+#include "common/ob_obi_role.h"
 
 namespace oceanbase
 {
@@ -43,7 +44,8 @@ namespace oceanbase
 
       // merge server heartbeat with root server
       // param  @merge_server localhost merge server addr
-      int async_heartbeat(const common::ObServer & merge_server, const int32_t sql_port);
+      int async_heartbeat(const common::ObServer & merge_server, const int32_t sql_port,
+          const bool is_listen_ms = false);
 
       // fetch newest schema
       int fetch_newest_schema(common::ObMergerSchemaManager * schema_manager,
@@ -58,6 +60,7 @@ namespace oceanbase
       int drop_table(bool if_exists, const common::ObStrings & tables);
       // alter table
       int alter_table(const common::AlterTableSchema & alter_schema);
+      int fetch_master_ups(const ObServer &rootserver, ObServer & master_ups);
     public:
       // scan tablet location through root_server rpc call
       // param  @table_id table id of root table
@@ -66,6 +69,9 @@ namespace oceanbase
       virtual int scan_root_table(ObTabletLocationCache * cache,
           const uint64_t table_id, const common::ObRowkey & row_key,
           const common::ObServer & server, ObTabletLocationList & location);
+      int set_obi_role(const ObServer &rs, const int64_t timeout, const ObiRole &obi_role);
+      int get_obi_role(const int64_t timeout_us, const common::ObServer& root_server, common::ObiRole &obi_role) const;
+      int set_master_rs_vip_port_to_cluster(const ObServer &rs, const int64_t timeout, const char *new_master_ip, const int32_t new_master_port);
     private:
       // check inner stat
       bool check_inner_stat(void) const;

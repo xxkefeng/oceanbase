@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_tablet_get_fuse.cpp 
+ * ob_tablet_get_fuse.cpp
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -27,6 +27,22 @@ ObTabletGetFuse::ObTabletGetFuse()
   data_version_(0),
   last_rowkey_(NULL)
 {
+}
+
+void ObTabletGetFuse::reset()
+{
+  sstable_get_ = NULL;
+  incremental_get_ = NULL;
+  data_version_ = 0;
+  last_rowkey_ = NULL;
+}
+
+void ObTabletGetFuse::reuse()
+{
+  sstable_get_ = NULL;
+  incremental_get_ = NULL;
+  data_version_ = 0;
+  last_rowkey_ = NULL;
 }
 
 int ObTabletGetFuse::set_sstable_get(ObRowkeyPhyOperator *sstable_get)
@@ -87,7 +103,7 @@ int ObTabletGetFuse::get_next_row(const common::ObRow *&row)
   {
     TBSYS_LOG(WARN, "fail to get sstable next row:ret[%d]", ret);
   }
-  
+
   if (OB_SUCCESS == ret)
   {
     if (OB_SUCCESS != (ret = incremental_get_->get_next_row(incremental_rowkey, tmp_row)))
@@ -143,6 +159,12 @@ int ObTabletGetFuse::close()
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObTabletGetFuse, PHY_TABLET_GET_FUSE);
+  }
+}
+
 int64_t ObTabletGetFuse::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -168,5 +190,3 @@ int ObTabletGetFuse::get_last_rowkey(const common::ObRowkey *&rowkey)
   rowkey = last_rowkey_;
   return OB_SUCCESS;
 }
-
-

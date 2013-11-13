@@ -51,3 +51,7 @@ range_distinct_join_query=${range_distinct_join_query}
 range_size=${range_size}
 
 ps_mode=${ps_mode}
+
+update_query=${update_query}
+replace_query=${replace_query}
+delete_query=${deletes}

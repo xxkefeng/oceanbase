@@ -16,8 +16,9 @@
 #ifndef _OB_DUAL_TABLE_SCAN_H
 #define _OB_DUAL_TABLE_SCAN_H
 #include "sql/ob_no_children_phy_operator.h"
-#include "common/utility.h"
+#include "common/ob_row.h"
 
+using namespace oceanbase::common;
 namespace oceanbase
 {
   namespace sql
@@ -33,31 +34,54 @@ namespace oceanbase
         /// execute the insert statement
         virtual int open();
         virtual int close();
+        virtual void reset();
+        virtual void reuse();
+
+        virtual ObPhyOperatorType get_type() const { return PHY_DUAL_TABLE_SCAN; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
 
         /// @note first time return NULL value, second return OB_ITER_END
         virtual int get_next_row(const common::ObRow *&row);
         /// @note always return one cell (common::OB_INVALID_ID, common::OB_INVALID_ID)
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
+
+        NEED_SERIALIZE_AND_DESERIALIZE;
+        DECLARE_PHY_OPERATOR_ASSIGN;
+
       private:
         // disallow copy
-        ObDualTableScan(const ObDropTable &other);
+        ObDualTableScan(const ObDualTableScan &other);
         ObDualTableScan& operator=(const ObDualTableScan &other);
         // function members
       private:
         // data members
         bool is_opend_;
         bool has_data_;
-        ObRow row_;
-        ObRowDesc row_desc_;
+        common::ObRow row_;
+        common::ObRowDesc row_desc_;
     };
 
-    inline int ObDualTableScan::open() 
+
+    inline void ObDualTableScan::reset()
+    {
+      is_opend_ = false;
+      has_data_ = false;
+      row_desc_.reset();
+    }
+
+    inline void ObDualTableScan::reuse()
+    {
+      is_opend_ = false;
+      has_data_ = false;
+      row_desc_.reset();
+    }
+
+    inline int ObDualTableScan::open()
     {
       int ret = common::OB_SUCCESS;
       is_opend_ = true;
       has_data_ = true;
-      if ((ret = row_desc_.add_column_desc(common::OB_INVALID_ID, common::OB_INVALID_ID)) 
+      if ((ret = row_desc_.add_column_desc(common::OB_INVALID_ID, common::OB_INVALID_ID))
         != common::OB_SUCCESS)
       {
         TBSYS_LOG(ERROR, "Construct row descriptor failed, ret=%d", ret);
@@ -77,7 +101,7 @@ namespace oceanbase
       row_desc_.reset();
       return common::OB_SUCCESS;
     }
-    
+
     inline int ObDualTableScan::get_next_row(const common::ObRow *&row)
     {
       int ret = common::OB_SUCCESS;
@@ -114,14 +138,31 @@ namespace oceanbase
       return common::OB_NOT_SUPPORTED;
     }
 
-    inline int64_t ObDualTableScan::to_string(char* buf, const int64_t buf_len) const
+    inline DEFINE_SERIALIZE(ObDualTableScan)
     {
-      int64_t pos = 0;
-      databuff_printf(buf, buf_len, pos, "DualTableScan()\n");
-      return pos;
+      /* nothing to do */
+      UNUSED(buf);
+      UNUSED(buf_len);
+      UNUSED(pos);
+      return OB_SUCCESS;
     }
+
+    inline DEFINE_DESERIALIZE(ObDualTableScan)
+    {
+      /* nothing to do */
+      UNUSED(buf);
+      UNUSED(data_len);
+      UNUSED(pos);
+      return OB_SUCCESS;
+    }
+
+    inline DEFINE_GET_SERIALIZE_SIZE(ObDualTableScan)
+    {
+      int64_t size = 0;
+      return size;
+    }
+
   } // end namespace sql
 } // end namespace oceanbase
 
 #endif /* _OB_DUAL_TABLE_SCAN_H */
-

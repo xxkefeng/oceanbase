@@ -218,7 +218,6 @@ namespace oceanbase
           buf, buf_len, pos);
         ret = OB_INVALID_ARGUMENT;
       }
-
       //serialize basic field flag
       if (OB_SUCCESS == ret)
       {
@@ -258,7 +257,7 @@ namespace oceanbase
     }
 
     int ObSqlGetParam::serialize_rowkeys(char* buf, const int64_t buf_len,
-      int64_t& pos, const ObArray<ObRowkey>& rowkey_list) const
+      int64_t& pos, const RowkeyListType & rowkey_list) const
     {
       int ret = OB_SUCCESS;
       int64_t i = 0;
@@ -344,7 +343,7 @@ namespace oceanbase
       return ret;
     }
 
-    int64_t ObSqlGetParam::get_serialize_rowkeys_size(const ObArray<ObRowkey> &rowkey_list) const
+    int64_t ObSqlGetParam::get_serialize_rowkeys_size(const RowkeyListType & rowkey_list) const
     {
       int64_t total_size = 0;
       int64_t i = 0;
@@ -361,7 +360,6 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       ObObj obj;
-
       if (NULL == buf || buf_len <= 0 || pos > buf_len)
       {
         TBSYS_LOG(WARN, "invalid param, buf=%p, buf_len=%ld, pos=%ld",
@@ -450,6 +448,30 @@ namespace oceanbase
       total_size += get_obj_serialize_size(ObActionFlag::END_PARAM_FIELD, true);
 
       return total_size;
+    }
+
+    int ObSqlGetParam::assign(const ObSqlReadParam* other)
+    {
+      int ret = OB_SUCCESS;
+      CAST_TO_INHERITANCE(ObSqlGetParam);
+      reset();
+      if ((ret = ObSqlReadParam::assign(other)) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign ObSqlReadParam failed, ret=%d", ret);
+      }
+      else
+      {
+        max_row_capacity_ = o_ptr->max_row_capacity_;
+        for (int64_t i = 0; ret == OB_SUCCESS && i < o_ptr->rowkey_list_.count(); i++)
+        {
+          if ((ret = add_rowkey(o_ptr->rowkey_list_.at(i), true)) != OB_SUCCESS)
+          {
+            TBSYS_LOG(WARN, "Add ObRowkey failed, ret=%d", ret);
+            break;
+          }
+        }
+      }
+      return ret;
     }
   } /* common */
 } /* oceanbase */

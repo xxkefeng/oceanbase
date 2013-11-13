@@ -34,6 +34,23 @@ ObMergeDistinct::~ObMergeDistinct()
 {
 }
 
+void ObMergeDistinct::reset()
+{
+  distinct_columns_.clear();
+  got_first_row_ = false;
+  //last_row_.reset(false, ObRow::DEFAULT_NULL);
+  //curr_row_.reset(false, ObRow::DEFAULT_NULL);
+  last_row_buf_ = NULL;
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObMergeDistinct::reuse()
+{
+  distinct_columns_.clear();
+  got_first_row_ = false;
+  last_row_buf_ = NULL;
+  ObSingleChildPhyOperator::reuse();
+}
 
 int ObMergeDistinct::open()
 {
@@ -246,6 +263,11 @@ int ObMergeDistinct::add_distinct_column(const uint64_t tid, const uint64_t cid)
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObMergeDistinct, PHY_MERGE_DISTINCT);
+  }
+}
 
 int64_t ObMergeDistinct::to_string(char* buf, const int64_t buf_len) const
 {
@@ -274,3 +296,13 @@ int64_t ObMergeDistinct::to_string(char* buf, const int64_t buf_len) const
   }
   return pos;
 }
+
+PHY_OPERATOR_ASSIGN(ObMergeDistinct)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObMergeDistinct);
+  reset();
+  distinct_columns_ = o_ptr->distinct_columns_;
+  return ret;
+}
+

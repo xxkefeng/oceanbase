@@ -31,17 +31,22 @@ ObLimit::~ObLimit()
 void ObLimit::reset()
 {
   is_instantiated_ = false;
-  org_limit_.reset();
-  org_offset_.reset();
   limit_ = -1;
   offset_ = input_count_ = output_count_ = 0;
+  org_limit_.reset();
+  org_offset_.reset();
+  ObSingleChildPhyOperator::reset();
   return;
 }
 
-void ObLimit::clear()
+void ObLimit::reuse()
 {
-  ObSingleChildPhyOperator::clear();
-  reset();
+  is_instantiated_ = false;
+  limit_ = -1;
+  offset_ = input_count_ = output_count_ = 0;
+  org_limit_.reset();
+  org_offset_.reset();
+  ObSingleChildPhyOperator::reuse();
 }
 
 int ObLimit::set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset)
@@ -49,6 +54,8 @@ int ObLimit::set_limit(const ObSqlExpression& limit, const ObSqlExpression& offs
   int ret = OB_SUCCESS;
   org_limit_ = limit;
   org_offset_ = offset;
+  org_limit_.set_owner_op(this);
+  org_offset_.set_owner_op(this);
   return ret;
 }
 
@@ -196,6 +203,12 @@ int ObLimit::get_next_row(const common::ObRow *&row)
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObLimit, PHY_LIMIT);
+  }
+}
+
 int64_t ObLimit::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -218,7 +231,7 @@ DEFINE_SERIALIZE(ObLimit)
   int ret = OB_SUCCESS;
   bool has_limit_count = !org_limit_.is_empty();
   bool has_limit_offset = !org_offset_.is_empty();
-  
+
 #define ENCODE_EXPRESSION(has_part, expr) \
   if (OB_SUCCESS == ret) \
   { \
@@ -272,19 +285,26 @@ DEFINE_DESERIALIZE(ObLimit)
   DECODE_EXPRESSION(org_limit_);
   org_offset_.reset();
   DECODE_EXPRESSION(org_offset_);
+  org_limit_.set_owner_op(this);
+  org_offset_.set_owner_op(this);
 #undef DECODE_EXPRESSION
 
   return ret;
 }
 
-void ObLimit::assign(const ObLimit &other)
+PHY_OPERATOR_ASSIGN(ObLimit)
 {
-  org_limit_ = other.org_limit_;
-  org_offset_ = other.org_offset_;
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObLimit);
+  reset();
+  org_limit_ = o_ptr->org_limit_;
+  org_offset_ = o_ptr->org_offset_;
+  org_limit_.set_owner_op(this);
+  org_offset_.set_owner_op(this);
+  return ret;
 }
 
 ObPhyOperatorType ObLimit::get_type() const
 {
   return PHY_LIMIT;
 }
-

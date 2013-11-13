@@ -17,6 +17,7 @@
 
 #include "common/ob_define.h"
 #include "common/ob_malloc.h"
+#include "common/ob_row.h"
 #include "ob_sstable_row.h"
 
 namespace oceanbase 
@@ -178,7 +179,9 @@ namespace oceanbase
        * @return int if success,return OB_SUCCESS, else return 
        *         OB_ERROR
        */
-      int add_row(const ObSSTableRow &row, const int64_t row_serialize_size = 0);
+      int add_row(const ObSSTableRow &row, uint64_t &row_checksum, const int64_t row_serialize_size = 0);
+      int add_row(const uint64_t table_id, const uint64_t column_group_id, 
+          const common::ObRow &row, const int64_t row_serialize_size = 0);
 
       /**
        * merge block header, block data and row index into one block 

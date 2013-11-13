@@ -131,7 +131,7 @@ namespace oceanbase
       return err;
     }
 
-    ObLogSyncDelayStat::ObLogSyncDelayStat(): delay_accumulator_(), delay_warn_time_us_(-1),
+    ObLogSyncDelayStat::ObLogSyncDelayStat(): delay_accumulator_(), delay_warn_time_us_(-1), delay_tolerable_time_us_(-1),
                                               last_mutation_time_us_(-1), last_replay_time_us_(-1),
                                               catchup_seq_(1), max_n_lagged_log_allowed_(0),
                                               n_lagged_mutator_(0), n_lagged_mutator_since_last_report_(0),
@@ -166,6 +166,13 @@ namespace oceanbase
       return err;
     }
     
+    int ObLogSyncDelayStat::set_delay_tolerable_time_us(const int64_t delay_tolerable_time_us)
+    {
+      int err = OB_SUCCESS;
+      delay_tolerable_time_us_ = delay_tolerable_time_us;
+      return err;
+    }
+
     int ObLogSyncDelayStat::set_report_interval_us(const int64_t report_interval_us)
     {
       int err = OB_SUCCESS;
@@ -187,8 +194,11 @@ namespace oceanbase
       if ((delay_warn_time_us_ > 0 && mutation_time + delay_warn_time_us_ < now_us)
           || (master_log_id > 0 && log_id + max_n_lagged_log_allowed_ < master_log_id))
       {
+        OB_STAT_INC(UPDATESERVER, UPS_STAT_SLOW_CLOG_SYNC_COUNT, 1);
+        OB_STAT_INC(UPDATESERVER, UPS_STAT_SLOW_CLOG_SYNC_DELAY, now_us - mutation_time);
         n_lagged_mutator_ ++;
-        if (0 == (catchup_seq_ & 1))
+        if ((delay_tolerable_time_us_ < 0 || mutation_time + delay_tolerable_time_us_ < now_us)
+            && 0 == (catchup_seq_ & 1))
         {
           catchup_seq_++;
           set_state_as_replaying_log();
@@ -215,12 +225,24 @@ namespace oceanbase
                   delay_warn_time_us_, n_lagged_mutator_,
                   n_lagged_mutator_since_last_report_, n_lagged_mutator_-n_lagged_mutator_since_last_report_,
                   log_id, master_log_id);
+        if (REACH_TIME_INTERVAL_RANGE(5L * 60L * 1000000L, 60L * 60L * 1000000L))
+        {
+          TBSYS_LOG(ERROR, "[PER_5_MIN] mutator sync delay warn:"
+                    "delay_warn_time=%ld us, n_lagged_mutator[%ld] - n_lagged_mutator_since_last_report[%ld] = %ld "
+                    "log_id=%ld, master_log_id=%ld",
+                    delay_warn_time_us_, n_lagged_mutator_,
+                    n_lagged_mutator_since_last_report_, n_lagged_mutator_-n_lagged_mutator_since_last_report_,
+                    log_id, master_log_id);
+        }
         last_report_time_us_ = now_us;
         n_lagged_mutator_since_last_report_ = n_lagged_mutator_;
       }
       last_mutation_time_us_ = mutation_time;
       last_replay_time_us_ = now_us;
       delay_accumulator_.add_event(log_id, last_replay_time_us_ - last_mutation_time_us_);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_CLOG_SYNC_COUNT, 1);
+      OB_STAT_INC(UPDATESERVER, UPS_STAT_CLOG_SYNC_DELAY, now_us - mutation_time);
+      OB_STAT_SET(UPDATESERVER, UPS_STAT_LAST_REPLAY_CLOG_TIME, last_replay_time_us_);
       return err;
     }
     

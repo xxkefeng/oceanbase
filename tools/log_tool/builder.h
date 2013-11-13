@@ -2,13 +2,19 @@
 #include "common/ob_scan_param.h"
 #include "common/ob_mutator.h"
 #include "common/ob_row.h"
+#include "common/ob_simple_tpl.h"
 #include "updateserver/ob_sstable_mgr.h"
 #if ROWKEY_IS_OBJ
 #include "sql/ob_values.h"
 #include "sql/ob_physical_plan.h"
 #include "sql/ob_expr_values.h"
 #include "sql/ob_ups_modify.h"
+#include "sql/ob_multiple_get_merge.h"
 #include "sql/ob_multiple_scan_merge.h"
+#include "sql/ob_empty_row_filter.h"
+#include "sql/ob_when_filter.h"
+#include "sql/ob_project.h"
+#include "sql/ob_row_count.h"
 #include "sql/ob_mem_sstable_scan.h"
 #include "sql/ob_sql_session_info.h"
 #include "sql/ob_inc_scan.h"
@@ -531,7 +537,8 @@ int build_rand_mutator(ObDataBuffer& buf, ObMutator& mutator, int64_t seed, ObSc
   ObObj cell_value;
   const ObTableSchema* table_schema = NULL;
   const ObColumnSchemaV2* column_schema = NULL;
-
+  static bool is_delete = (0 == strcmp(_cfg("write_type", "mutator"), "delete"));
+  static bool is_using_id = (0 == strcmp(_cfg("write_type", "mutator"), "msmutate"));
   if (OB_SUCCESS != (err = choose_table(buf, schema_mgr, table_name, _table_name, seed)))
   {
     TBSYS_LOG(ERROR, "choose_table(table=%s)=>%d", _table_name, err);
@@ -550,7 +557,7 @@ int build_rand_mutator(ObDataBuffer& buf, ObMutator& mutator, int64_t seed, ObSc
     err = OB_SCHEMA_ERROR;
     TBSYS_LOG(ERROR, "sch_mgr.get_column_schema(table_id=%ld)", table_schema->get_table_id());
   }
-  else if (0 == strcmp(_cfg("write_type", "mutator"), "delete"))
+  else if (is_delete)
   {
     if (OB_SUCCESS != (err = mutator.del_row(table_name, rowkey)))
     {
@@ -578,9 +585,21 @@ int build_rand_mutator(ObDataBuffer& buf, ObMutator& mutator, int64_t seed, ObSc
         TBSYS_LOG(ERROR, "choose_value(table=%*s, column=%*s)=>%d", table_name.length(), table_name.ptr(),
                   column_name.length(), column_name.ptr(), err);
       }
-      else if (OB_SUCCESS != (err = mutator.update(table_name, rowkey, column_name, cell_value)))
+      else if (!is_using_id)
       {
-        TBSYS_LOG(ERROR, "mutator.update()=>%d", err);
+        if (OB_SUCCESS != (err = mutator.update(table_name, rowkey, column_name, cell_value)))
+        {
+          TBSYS_LOG(ERROR, "mutator.update()=>%d", err);
+        }
+      }
+      else
+      {
+        uint64_t table_id = table_schema->get_table_id();
+        uint64_t column_id = column_schema[i].get_id();
+        if (OB_SUCCESS != (err = mutator.update(table_id, rowkey, column_id, cell_value)))
+        {
+          TBSYS_LOG(ERROR, "mutator.update()=>%d", err);
+        }
       }
     }
   }
@@ -832,7 +851,6 @@ int set_row_desc(const char* _table_name, ObDataBuffer& buf, ObSchemaManagerV2& 
   int err = OB_SUCCESS;
   ObString table_name;
   uint64_t table_id = 0;
-  uint64_t column_id = 0;
   int64_t n_column = 0;
   const ObTableSchema* table_schema = NULL;
   const ObColumnSchemaV2* column_schema = NULL;
@@ -845,6 +863,7 @@ int set_row_desc(const char* _table_name, ObDataBuffer& buf, ObSchemaManagerV2& 
   else if (NULL == (table_schema = schema_mgr.get_table_schema(table_name)))
   {
     err = OB_SCHEMA_ERROR;
+    TBSYS_LOG(ERROR, "get_table_schema()=>%d", err);
   }
   else if (NULL == (column_schema = schema_mgr.get_table_schema(table_schema->get_table_id(), (int32_t&)n_column)))
   {
@@ -857,32 +876,10 @@ int set_row_desc(const char* _table_name, ObDataBuffer& buf, ObSchemaManagerV2& 
     rowkey_info = &table_schema->get_rowkey_info();
     row_desc2.set_rowkey_cell_count(rowkey_info->get_size());
   }
-  for(int64_t i = 0; OB_SUCCESS == err && i < rowkey_info->get_size(); i++) {
+  for(int64_t i = 0; OB_SUCCESS == err && i < min(max_column_num + rowkey_info->get_size(), n_column); i++) {
     ObObj value;
-    const ObRowkeyColumn* rk_column = NULL;
-    if (OB_SUCCESS != (err = rowkey_info->get_column_id(i, column_id)))
-    {
-      TBSYS_LOG(ERROR, "get_column_id(%ld)=>%d", i, err);
-    }
-    else if (NULL == (rk_column = rowkey_info->get_column(i)))
-    {
-      err = OB_ERR_UNEXPECTED;
-      TBSYS_LOG(ERROR, "rowkey_info->get_column(%ld)=>NULL", i);
-    }
-    else
-    {
-      value.set_type(rk_column->type_);
-      if (OB_SUCCESS != (err = row_desc.add_column_desc(table_id, column_id, value)))
-      {
-        TBSYS_LOG(ERROR, "add_column_desc()=>%d", err);
-      }
-    }
-  }
-  for(int64_t i = 0; OB_SUCCESS == err && i < min(max_column_num, n_column-rowkey_info->get_size()); i++) {
-    int64_t idx = rand_choose_column(*rowkey_info, column_schema, n_column, seed + i, true);
-    ObObj value;
-    value.set_type(column_schema[idx].get_type());
-    if (OB_SUCCESS != (err = row_desc.add_column_desc(table_id, column_schema[idx].get_id(), value)))
+    value.set_type(column_schema[i].get_type());
+    if (OB_SUCCESS != (err = row_desc.add_column_desc(table_id, column_schema[i].get_id(), value)))
     {
       TBSYS_LOG(ERROR, "add_column_desc()=>%d", err);
     }
@@ -896,14 +893,83 @@ int set_row_desc(const char* _table_name, ObDataBuffer& buf, ObSchemaManagerV2& 
   return err;
 }
 
-ObRow& build_row(ObDataBuffer& buf, ObSchemaManagerV2& schema_mgr, ObRowDesc& row_desc, ObRow& row, int64_t seed) {
+// int set_row_desc(const char* _table_name, ObDataBuffer& buf, ObSchemaManagerV2& schema_mgr, ObRowDescExt& row_desc, ObRowDesc& row_desc2, int64_t seed, int64_t max_column_num = 1)
+// {
+//   int err = OB_SUCCESS;
+//   ObString table_name;
+//   uint64_t table_id = 0;
+//   uint64_t column_id = 0;
+//   int64_t n_column = 0;
+//   const ObTableSchema* table_schema = NULL;
+//   const ObColumnSchemaV2* column_schema = NULL;
+//   const ObRowkeyInfo* rowkey_info = NULL;
+
+//   if (OB_SUCCESS != (err = choose_table(buf, schema_mgr, table_name, _table_name, seed)))
+//   {
+//     TBSYS_LOG(ERROR, "choose_table(table=%s)=>%d", _table_name, err);
+//   }
+//   else if (NULL == (table_schema = schema_mgr.get_table_schema(table_name)))
+//   {
+//     err = OB_SCHEMA_ERROR;
+//   }
+//   else if (NULL == (column_schema = schema_mgr.get_table_schema(table_schema->get_table_id(), (int32_t&)n_column)))
+//   {
+//     err = OB_SCHEMA_ERROR;
+//     TBSYS_LOG(ERROR, "schema_mgr.get_table_schema(table_id=%ld)=>%d", table_schema->get_table_id(), err);
+//   }
+//   else
+//   {
+//     table_id = table_schema->get_table_id();
+//     rowkey_info = &table_schema->get_rowkey_info();
+//     row_desc2.set_rowkey_cell_count(rowkey_info->get_size());
+//   }
+//   for(int64_t i = 0; OB_SUCCESS == err && i < rowkey_info->get_size(); i++) {
+//     ObObj value;
+//     const ObRowkeyColumn* rk_column = NULL;
+//     if (OB_SUCCESS != (err = rowkey_info->get_column_id(i, column_id)))
+//     {
+//       TBSYS_LOG(ERROR, "get_column_id(%ld)=>%d", i, err);
+//     }
+//     else if (NULL == (rk_column = rowkey_info->get_column(i)))
+//     {
+//       err = OB_ERR_UNEXPECTED;
+//       TBSYS_LOG(ERROR, "rowkey_info->get_column(%ld)=>NULL", i);
+//     }
+//     else
+//     {
+//       value.set_type(rk_column->type_);
+//       if (OB_SUCCESS != (err = row_desc.add_column_desc(table_id, column_id, value)))
+//       {
+//         TBSYS_LOG(ERROR, "add_column_desc()=>%d", err);
+//       }
+//     }
+//   }
+//   for(int64_t i = 0; OB_SUCCESS == err && i < min(max_column_num, n_column-rowkey_info->get_size()); i++) {
+//     int64_t idx = rand_choose_column(*rowkey_info, column_schema, n_column, seed + i, true);
+//     ObObj value;
+//     value.set_type(column_schema[idx].get_type());
+//     if (OB_SUCCESS != (err = row_desc.add_column_desc(table_id, column_schema[idx].get_id(), value)))
+//     {
+//       TBSYS_LOG(ERROR, "add_column_desc()=>%d", err);
+//     }
+//   }
+//   if (OB_SUCCESS != err)
+//   {}
+//   else if (OB_SUCCESS != (err = build_row_desc(row_desc2, row_desc)))
+//   {
+//     TBSYS_LOG(ERROR, "build_row_desc()=>%d", err);
+//   }
+//   return err;
+// }
+
+ObRow& build_row(ObDataBuffer& buf, ObSchemaManagerV2& schema_mgr, ObRowDesc& row_desc, ObRow& row, int64_t seed, bool has_data=true) {
   int err = OB_SUCCESS;
   uint64_t table_id = OB_INVALID_ID;
   uint64_t column_id = OB_INVALID_ID;
   ObObj value;
   const ObColumnSchemaV2* column_schema = NULL;
   row.set_row_desc(row_desc);
-  for (int64_t j = 0; OB_SUCCESS == err && j < row_desc.get_column_num(); j++)
+  for (int64_t j = 0; OB_SUCCESS == err && j < (has_data?row_desc.get_column_num():row_desc.get_rowkey_cell_count()); j++)
   {
     if (OB_SUCCESS != (err = row_desc.get_tid_cid(j, table_id, column_id)))
     {}
@@ -919,6 +985,14 @@ ObRow& build_row(ObDataBuffer& buf, ObSchemaManagerV2& schema_mgr, ObRowDesc& ro
     {
       TBSYS_LOG(ERROR, "set_cell()=>%d", err);
     }
+  }
+  if (OB_SUCCESS != err || has_data)
+  {}
+  else
+  {
+    ObObj rne_obj;
+    rne_obj.set_ext(ObActionFlag::OP_ROW_DOES_NOT_EXIST);
+    row.set_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, rne_obj);
   }
   if (OB_SUCCESS != err)
   {
@@ -946,11 +1020,12 @@ int test_values(ObValues& values)
 }
 
 int build_values(ObDataBuffer& buf, ObSchemaManagerV2& schema_mgr,
-                 ObRowDesc& row_desc, ObValues& values, int64_t row_count, int64_t seed) {
+                 ObRowDesc& row_desc, ObValues& values, int64_t row_count, int64_t seed, bool has_value) {
   int err = OB_SUCCESS;
+  values.set_row_desc(row_desc);
   for(int64_t i = 0; OB_SUCCESS == err && i < row_count; i++){
     ObRow row;
-    if (OB_SUCCESS != (err = values.add_values(build_row(buf, schema_mgr, row_desc, row, seed + i))))
+    if (OB_SUCCESS != (err = values.add_values(build_row(buf, schema_mgr, row_desc, row, seed + i, has_value))))
     {
       TBSYS_LOG(ERROR, "values.add_values()=>%d", err);
     }
@@ -1174,60 +1249,109 @@ class SimpleAllocator: public SimpleBufAllocator
     const static int64_t buf_limit = 1<<21;
   public:
     SimpleAllocator() {
-      void* cbuf = ob_malloc(buf_limit, ObModIds::OB_RS_LOG_WORKER);
+      void* cbuf = ob_tc_malloc(buf_limit, ObModIds::OB_RS_LOG_WORKER);
       buf_.set_data((char*)cbuf, buf_limit);
       SimpleBufAllocator::set_buf(&buf_);
     }
-    ~SimpleAllocator(){ ob_free(buf_.get_data()); }
+    ~SimpleAllocator(){ ob_tc_free(buf_.get_data()); }
   protected:
     ObDataBuffer buf_;
+};
+
+struct RowSpec
+{
+  RowSpec(): table_name_(NULL), seed_(0), count_(0), row_desc_(), row_desc_ext_(), values_(),
+             tmp_table_id_(10489), tmp_column_id_(OB_MAX_TMP_COLUMN_ID) {}
+  ~RowSpec() {}
+  const char* table_name_;
+  int64_t seed_;
+  int64_t count_;
+  ObRowDesc row_desc_;
+  ObRowDesc row_desc_af_; // action_flag
+  ObRowDescExt row_desc_ext_;
+  ObValues values_;
+  int64_t tmp_table_id_;
+  int64_t tmp_column_id_;
 };
 
 class RowBuilder: public SimpleAllocator
 {
   public:
-    RowBuilder(const char* table_name, int64_t seed, ObSchemaManagerV2& schema_mgr): seed_(seed), schema_mgr_(schema_mgr){
-      int err = OB_SUCCESS;
-      if (OB_SUCCESS != (err = set_row_desc(table_name, buf_, schema_mgr_, rowkey_desc_ext_, rowkey_desc_, seed_, 0)))
-      {
-        TBSYS_LOG(ERROR, "set_row_desc()=>%d", err);
-      }
-      if (OB_SUCCESS != (err = set_row_desc(table_name, buf_, schema_mgr_, row_desc_ext_, row_desc_, seed_)))
-      {
-        TBSYS_LOG(ERROR, "set_row_desc()=>%d", err);
-      }
+    RowBuilder(ObSchemaManagerV2& schema_mgr): schema_mgr_(schema_mgr), spec_count_(0) {
     }
     ~RowBuilder(){}
-    ObRowDesc& get_row_desc() { return row_desc_;}
-    ObRow& build_row(ObRow& row, int64_t seed) {
-      return ::build_row(buf_, schema_mgr_, row_desc_, row, seed);
+
+    RowSpec* new_row_spec(const char* table_name, int64_t seed, int64_t row_count, int64_t max_column=128) {
+      int err = OB_SUCCESS;
+      int64_t idx = 0;
+      RowSpec* spec = NULL;
+      const char* real_table_name = NULL;
+      ObString _table_name;
+      if ((idx = __sync_fetch_and_add(&spec_count_, 1)) > (int64_t)array_len(spec_pool_))
+      {
+        __sync_fetch_and_add(&spec_count_, -1);
+        err = OB_MEM_OVERFLOW;
+      }
+      else
+      {
+        spec = spec_pool_ + idx;
+      }
+      if (OB_SUCCESS != err)
+      {}
+      else if (OB_SUCCESS != (err = choose_table(buf_, schema_mgr_, _table_name, table_name, seed)))
+      {
+        TBSYS_LOG(ERROR, "choose_table(table=%s)=>%d", table_name, err);
+      }
+      else if (OB_SUCCESS != (err = obstring2cstr(buf_.get_data(), buf_.get_capacity(), buf_.get_position(), real_table_name, _table_name)))
+      {
+        TBSYS_LOG(ERROR, "obstring2cstr(%.*s)=>%d", _table_name.length(), _table_name.ptr(), err);
+      }
+      else if (OB_SUCCESS != (err = set_row_desc(real_table_name, buf_, schema_mgr_, spec->row_desc_ext_, spec->row_desc_, seed, max_column)))
+      {
+        TBSYS_LOG(ERROR, "set_row_desc()=>%d", err);
+      }
+      else
+      {
+        spec->row_desc_af_ = spec->row_desc_;
+        spec->row_desc_af_.add_column_desc(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
+        spec->table_name_ = real_table_name;
+        spec->seed_ = seed;
+        spec->count_ = row_count;
+      }
+      return OB_SUCCESS == err? spec: NULL;
     }
-    int build_values(ObValues& values, int64_t row_count) {
-      values.set_row_desc(row_desc_);
-      return ::build_values(buf_, schema_mgr_, row_desc_, values, row_count, seed_);
+
+    ObRow& build_row(RowSpec& spec, ObRow& row) {
+      return ::build_row(buf_, schema_mgr_, spec.row_desc_, row, spec.seed_);
     }
-    int build_rowkey_values(ObValues& values, int64_t row_count) {
-      values.set_row_desc(rowkey_desc_);
-      return ::build_values(buf_, schema_mgr_, rowkey_desc_, values, row_count, seed_);
+
+    ObValues* build_values(RowSpec* spec, ObValues* values, bool has_data=true) {
+      if (NULL != values && NULL != spec)
+      {
+        ::build_values(buf_, schema_mgr_, has_data? spec->row_desc_: spec->row_desc_af_, *values, spec->count_, spec->seed_, has_data);
+      }
+      return values;
     }
-    int build_get_param(ObValues& values, ObGetParam& get_param){
-      return ::build_get_param(this, values, get_param, get_rowkey_size());
+    ObExprValues* build_expr_values(RowSpec* spec, ObExprValues* expr_values, ObValues* values = NULL){
+      if (NULL != expr_values && NULL != spec)
+      {
+        expr_values->set_row_desc(spec->row_desc_, spec->row_desc_ext_);
+        ::build_expr_values(this, *(values?:&spec->values_), *expr_values);
+      }
+      return expr_values;
     }
-    int build_expr_values(ObValues& values, ObExprValues& expr_values){
-      expr_values.set_row_desc(row_desc_, row_desc_ext_);
-      return ::build_expr_values(this, values, expr_values);
+
+    int build_get_param(RowSpec& spec, ObValues& values, ObGetParam& get_param){
+      return ::build_get_param(this, values, get_param, get_rowkey_size(spec));
     }
-    int build_rowkey_expr_values(ObValues& values, ObExprValues& expr_values){
-      expr_values.set_row_desc(rowkey_desc_, rowkey_desc_ext_);
-      return ::build_expr_values(this, values, expr_values);
-    }
-    int64_t get_rowkey_size() {
+
+    int64_t get_rowkey_size(RowSpec& spec) {
       int err = OB_SUCCESS;
       int64_t rk_size = 0;
       uint64_t table_id = 0;
       uint64_t column_id = 0;
       ObTableSchema* table_schema = NULL;
-      if (OB_SUCCESS != (err = row_desc_.get_tid_cid(0, table_id, column_id)))
+      if (OB_SUCCESS != (err = spec.row_desc_.get_tid_cid(0, table_id, column_id)))
       {
         TBSYS_LOG(ERROR, "get_tid_cid(0)=>%d", err);
       }
@@ -1242,12 +1366,9 @@ class RowBuilder: public SimpleAllocator
       return rk_size;
     }
   protected:
-    int64_t seed_;
     ObSchemaManagerV2& schema_mgr_;
-    ObRowDesc rowkey_desc_;
-    ObRowDescExt rowkey_desc_ext_;
-    ObRowDesc row_desc_;
-    ObRowDescExt row_desc_ext_;
+    RowSpec spec_pool_[2];
+    int64_t spec_count_;
 };
 
 int get_first_int_col(ObRowDescExt& row_desc, int64_t start_idx, uint64_t& table_id, uint64_t& column_id)
@@ -1266,6 +1387,25 @@ int get_first_int_col(ObRowDescExt& row_desc, int64_t start_idx, uint64_t& table
     {
       break;
     }
+  }
+  return err;
+}
+
+int build_ref_expr(ObSqlExpression& expr, uint64_t table_id, uint64_t column_id)
+{
+  int err = OB_SUCCESS;
+  ExprItem cref;
+  cref.type_ = T_REF_COLUMN;
+  cref.value_.cell_.tid = table_id;
+  cref.value_.cell_.cid = column_id;
+
+  if (OB_SUCCESS != (err = expr.add_expr_item(cref)))
+  {
+    TBSYS_LOG(ERROR, "v.add_expr_item()=>%d", err);
+  }
+  else if (OB_SUCCESS != (err = expr.add_expr_item_end()))
+  {
+    TBSYS_LOG(ERROR, "v.add_expr_item_end()=>%d", err);
   }
   return err;
 }
@@ -1300,137 +1440,181 @@ int build_gt0_expr(ObSqlExpression& expr, uint64_t table_id, uint64_t column_id)
   }
   return err;
 }
+/*
+int build_add_expr(ObSqlExpression& expr, uint64_t table_id, uint64_t column_id)
+{
+  int err = OB_SUCCESS;
+  ExprItem op, cref, zero;
+  op.type_ = T_OP_ADD;
+  op.value_.int_ = 2;
+  cref.type_ = T_REF_COLUMN;
+  cref.value_.cell_.tid = table_id;
+  cref.value_.cell_.cid = column_id;
+
+  zero.type_ = T_INT;
+  zero.value_.int_ = 0;
+  if (OB_SUCCESS != (err = expr.add_expr_item(cref)))
+  {
+    TBSYS_LOG(ERROR, "v.add_expr_item()=>%d", err);
+  }
+  else if (OB_SUCCESS != (err = expr.add_expr_item(zero)))
+  {
+    TBSYS_LOG(ERROR, "expr.add_expr_item(cref)=>%d", err);
+  }
+  else if (OB_SUCCESS != (err = expr.add_expr_item(op)))
+  {
+    TBSYS_LOG(ERROR, "expr.add_expr_item(cref)=>%d", err);
+  }
+  else if (OB_SUCCESS != (err = expr.add_expr_item_end()))
+  {
+    TBSYS_LOG(ERROR, "v.add_expr_item_end()=>%d", err);
+  }
+  return err;
+}
+
+ObPhyOperator* add_child(ObPhyOperator* parent, ObPhyOperator* child, ...)
+{
+  int err = OB_SUCCESS;
+  va_list ap;
+  va_start(ap, child);
+  for(int32_t i = 0; NULL != parent && NULL != child; i++, child = va_arg(ap, ObPhyOperator*))
+  {
+    if (OB_SUCCESS != (err = parent->set_child(i, *child)))
+    {
+      TBSYS_LOG(ERROR, "set_child(%d)=>%d, parent=%s", i, err, to_cstring(*parent));
+      parent = NULL;
+    }
+  }
+  va_end(ap);
+  return parent;
+}
+#define ADDC(parent, ...) add_child(parent, __VA_ARGS__, NULL)
+#define NEW_OP(type) new_op<type>()
+#define DEF_NEW_OP(type, value) type* value = NEW_OP(type)
+
+struct SqlSessionCtx
+{
+  SqlSessionCtx() {
+    session_info_.init(block_allocator_);
+    result_set_.set_session(&session_info_);
+  }
+  ~SqlSessionCtx() {}
+  DefaultBlockAllocator block_allocator_;
+  ObSQLSessionInfo session_info_;
+  ObResultSet result_set_; // The result set who owns this physical plan
+};
+
+struct SqlSessionCtxFactory
+{
+  typedef SqlSessionCtx InstanceType;
+  int init_instance(InstanceType* inst){
+    int err = OB_SUCCESS;
+    UNUSED(inst);
+    return err;
+  }
+};
 
 class PhyPlanBuilder: public RowBuilder, public ObVersionProvider
 {
   public:
-    PhyPlanBuilder(const char* table_name, int64_t seed, ObSchemaManagerV2& schema_mgr): RowBuilder(table_name, seed, schema_mgr) {}
+    PhyPlanBuilder(ObSchemaManagerV2& schema_mgr):
+      RowBuilder(schema_mgr), err_(OB_SUCCESS) {}
     ~PhyPlanBuilder(){}
   public:
-    int build_insert(ObPhysicalPlan& plan, int64_t row_count) {
-      int err = OB_SUCCESS;
-      ObPhyOperator* op = NULL;
-      session_info_.init(block_allocator_);
-      result_set_.set_session(&session_info_);
-      plan.set_result_set(&result_set_);
-      if (OB_SUCCESS != (err = insert(&plan, op, row_count)))
+    const ObVersion get_frozen_version() const {return 1;};
+
+    template<typename op_type>
+    op_type* alloc_op() {
+      op_type* ret = (op_type*)alloc(sizeof(op_type));
+      if (NULL == ret)
       {
-        TBSYS_LOG(ERROR, "insert()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = plan.store_phy_operator(op)))
-      {
-        TBSYS_LOG(ERROR, "plan.store_phy_operator()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = plan.add_phy_query(op, NULL, true)))
-      {
-        TBSYS_LOG(ERROR, "plan.add_phy_operator()=>%d", err);
-      }
-      return err;
-    }
-    int build_upcond(ObPhysicalPlan& plan, int64_t row_count) {
-      int err = OB_SUCCESS;
-      ObPhyOperator* op = NULL;
-      session_info_.init(block_allocator_);
-      result_set_.set_session(&session_info_);
-      plan.set_result_set(&result_set_);
-      if (OB_SUCCESS != (err = update_ifgt0(&plan, op, row_count)))
-      {
-        TBSYS_LOG(ERROR, "insert()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = plan.store_phy_operator(op)))
-      {
-        TBSYS_LOG(ERROR, "plan.store_phy_operator()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = plan.add_phy_query(op, NULL, true)))
-      {
-        TBSYS_LOG(ERROR, "plan.add_phy_operator()=>%d", err);
-      }
-      return err;
-    }
-    const common::ObVersion get_frozen_version() const {return 1;};
-    int insert(ObPhysicalPlan* plan, ObPhyOperator*& op, int64_t row_count) {
-      int err = OB_SUCCESS;
-      empty_values_.set_row_desc(rowkey_desc_);
-      merger_.set_is_ups_row(false);
-      ups_modify_.set_phy_plan(plan);
-      insert_sem_filter_.set_phy_plan(plan);
-      merger_.set_phy_plan(plan);
-      mem_sstable_scan_.set_phy_plan(plan);
-      inc_scan_.set_phy_plan(plan);
-      get_param_values_.set_phy_plan(plan);
-      if (OB_SUCCESS != (err = build_values(values_, row_count)))
-      {
-        TBSYS_LOG(ERROR, "build_values()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = build_expr_values(values_, insert_sem_filter_.get_values())))
-      {
-        TBSYS_LOG(ERROR, "build_expr_values()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = build_rowkey_values(rowkey_values_, row_count)))
-      {
-        TBSYS_LOG(ERROR, "build_values()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = build_rowkey_expr_values(rowkey_values_, get_param_values_)))
-      {
-        TBSYS_LOG(ERROR, "build_expr_values()=>%d", err);
-      }
-      // else if (OB_SUCCESS != (err = build_values(values_, row_count)))
-      // {
-      //   TBSYS_LOG(ERROR, "build_values()=>%d", err);
-      // }
-      // else if (OB_SUCCESS != (err = build_rne_values(empty_values_, values_)))
-      // {
-      //   TBSYS_LOG(ERROR, "build_rne_values()=>%d", err);
-      // }
-      else
-      {
-        inc_scan_.set_scan_type(ObIncScan::ST_MGET);
-        inc_scan_.set_values(&get_param_values_, false);
-        //inc_scan_.set_values(&insert_sem_filter_.get_values(), false);
-        inc_scan_.set_write_lock_flag();
-        mem_sstable_scan_.set_tmp_table(&empty_values_);
-      }
-      if (OB_SUCCESS != err)
-      {}
-      else if (OB_SUCCESS != (err = ups_modify_.set_child(0, insert_sem_filter_)))
-      {
-        TBSYS_LOG(ERROR, "ups_modify.add_child()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = insert_sem_filter_.set_child(0, merger_)))
-      {
-        TBSYS_LOG(ERROR, "insert_sem_filter.add_child()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = merger_.set_child(0, mem_sstable_scan_)))
-      {
-        TBSYS_LOG(ERROR, "merger.add_child()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = merger_.set_child(1, inc_scan_)))
-      {
-        TBSYS_LOG(ERROR, "merger.add_child()=>%d", err);
+        err_ = OB_MEM_OVERFLOW;
+        TBSYS_LOG(ERROR, "alloc(%ld) fail", sizeof(op_type));
       }
       else
       {
-        op = &ups_modify_;
+        new(ret)op_type();
+        ret->set_phy_plan(&plan_);
+        if (OB_SUCCESS != plan_.store_phy_operator(ret))
+        {
+          TBSYS_LOG(ERROR, "too many operator");
+          ret = NULL;
+        }
+      }
+      return ret;
+    }
+
+    template<typename op_type>
+    op_type* new_op() {
+      return alloc_op<op_type>();
+    }
+
+    ObPhysicalPlan* build_phy_plan(ObPhyOperator* op) {
+      int err = OB_SUCCESS;
+      static SqlSessionCtxFactory factory;
+      static TSI<SqlSessionCtxFactory> tsi_sql_session(factory);
+      SqlSessionCtx* session = tsi_sql_session.get();
+      plan_.set_result_set(&session->result_set_);
+      if (NULL == op)
+      {
+        err = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(ERROR, "op = NULL");
+      }
+      else if (OB_SUCCESS != (err = plan_.add_phy_query(op, NULL, true)))
+      {
+        TBSYS_LOG(ERROR, "plan.add_phy_operator()=>%d", err);
+      }
+      return OB_SUCCESS == err? &plan_: NULL;
+    }
+
+    int build_insert_plan(ObPhysicalPlan*& plan, const char* table_name, int64_t seed, int64_t row_count) {
+      int err = OB_SUCCESS;
+      RowSpec* row_spec = NULL;
+      if (NULL == (row_spec = new_row_spec(table_name, seed, row_count)))
+      {
+        err = OB_MEM_OVERFLOW;
+        TBSYS_LOG(ERROR, "new_row_spec(%s,%ld)=>%d", table_name, seed, err);
+      }
+      else if (NULL == (plan = build_phy_plan(insert(row_spec))))
+      {
+        err = OB_MEM_OVERFLOW;
+        TBSYS_LOG(ERROR, "build_phy_plan(op)=>%d", err);
       }
       return err;
     }
-    int update_ifgt0(ObPhysicalPlan* plan, ObPhyOperator*& op, int64_t row_count) {
+
+    int build_upcond_plan(ObPhysicalPlan*& plan, const char* table_name, const char* table_name2, int64_t seed, int64_t row_count) {
       int err = OB_SUCCESS;
+      RowSpec* spec1 = NULL;
+      RowSpec* spec2 = NULL;
+      if (NULL == (spec1 = new_row_spec(table_name, seed, row_count)))
+      {
+        err = OB_MEM_OVERFLOW;
+        TBSYS_LOG(ERROR, "new_row_spec(%s,%ld)=>%d", table_name, seed, err);
+      }
+      else if (NULL == (spec2 = new_row_spec(table_name2, seed, row_count)))
+      {
+        err = OB_MEM_OVERFLOW;
+        TBSYS_LOG(ERROR, "new_row_spec(%s,%ld)=>%d", table_name, seed, err);
+      }
+      else if (NULL == (plan = build_phy_plan(compound_cond_insert(spec1, spec2))))
+      {
+        err = OB_MEM_OVERFLOW;
+        TBSYS_LOG(ERROR, "build_phy_plan(op)=>%d", err);
+      }
+      return err;
+    }
+
+    ObFilter* build_gt0_filter(RowSpec* spec) {
+      int err = OB_SUCCESS;
+      DEF_NEW_OP(ObFilter, gt0_filter);
       uint64_t table_id = 0, column_id = 0;
       ObSqlExpression *gt0_expr = ObSqlExpression::alloc();
-      empty_values_.set_row_desc(rowkey_desc_);
-      merger_.set_is_ups_row(false);
-      ups_modify_.set_phy_plan(plan);
-      gt0_filter_.set_phy_plan(plan);
-      merger_.set_phy_plan(plan);
-      mem_sstable_scan_.set_phy_plan(plan);
-      inc_scan_.set_phy_plan(plan);
-      get_param_values_.set_phy_plan(plan);
-      if (OB_SUCCESS != (err = build_values(values_, row_count)))
+      if (OB_SUCCESS != err_)
       {
-        TBSYS_LOG(ERROR, "build_values()=>%d", err);
+        err = err_;
       }
-      else if (OB_SUCCESS != (err = get_first_int_col(row_desc_ext_, rowkey_desc_.get_column_num(), table_id, column_id)))
+      else if (OB_SUCCESS != (err = get_first_int_col(spec->row_desc_ext_, get_rowkey_size(*spec), table_id, column_id)))
       {
         TBSYS_LOG(ERROR, "get_first_int_col()=>%d", err);
       }
@@ -1438,74 +1622,173 @@ class PhyPlanBuilder: public RowBuilder, public ObVersionProvider
       {
         TBSYS_LOG(ERROR, "build_gt0_expr()=>%d", err);
       }
-      else if (OB_SUCCESS != (err = gt0_filter_.add_filter(gt0_expr)))
+      else if (OB_SUCCESS != (err = gt0_filter->add_filter(gt0_expr)))
       {
         TBSYS_LOG(ERROR, "gt0_filter.add_filetr()=>%d", err);
       }
-      else if (OB_SUCCESS != (err = build_rowkey_values(rowkey_values_, row_count)))
+      return OB_SUCCESS == err? gt0_filter:NULL;
+    }
+
+    ObWhenFilter* build_when_filter(RowSpec* spec) {
+      int err = OB_SUCCESS;
+      DEF_NEW_OP(ObWhenFilter, gt0_filter);
+      ObSqlExpression gt0_expr;
+      if (OB_SUCCESS != err_)
       {
-        TBSYS_LOG(ERROR, "build_values()=>%d", err);
+        err = err_;
       }
-      else if (OB_SUCCESS != (err = build_rowkey_expr_values(rowkey_values_, get_param_values_)))
+      else if (OB_SUCCESS != (err = build_gt0_expr(gt0_expr, spec->tmp_table_id_, spec->tmp_column_id_)))
       {
-        TBSYS_LOG(ERROR, "build_expr_values()=>%d", err);
+        TBSYS_LOG(ERROR, "build_gt0_expr()=>%d", err);
       }
-      else if (OB_SUCCESS != (err = build_values(values_, row_count)))
+      else if (OB_SUCCESS != (err = gt0_filter->add_filter(gt0_expr)))
       {
-        TBSYS_LOG(ERROR, "build_values()=>%d", err);
+        TBSYS_LOG(ERROR, "gt0_filter.add_filetr()=>%d", err);
       }
-      // else if (OB_SUCCESS != (err = build_rne_values(empty_values_, values_)))
-      // {
-      //   TBSYS_LOG(ERROR, "build_rne_values()=>%d", err);
-      // }
-      else
+      return OB_SUCCESS == err? gt0_filter:NULL;
+    }
+
+    ObProject* build_project(RowSpec* spec) {
+      int err = OB_SUCCESS;
+      DEF_NEW_OP(ObProject, project);
+      uint64_t table_id = 0, column_id = 0;
+      ObSqlExpression add_expr;
+      if (OB_SUCCESS != err_)
       {
-        inc_scan_.set_scan_type(ObIncScan::ST_MGET);
-        inc_scan_.set_values(&get_param_values_, false);
-        //inc_scan_.set_values(&insert_sem_filter_.get_values(), false);
-        inc_scan_.set_write_lock_flag();
-        mem_sstable_scan_.set_tmp_table(&values_);
+        err = err_;
+      }
+      for(int64_t i = 0; OB_SUCCESS == err && i < get_rowkey_size(*spec); i++)
+      {
+        uint64_t rk_table_id = 0, rk_column_id = 0;
+        ObSqlExpression rk_expr;
+        if (OB_SUCCESS != (err = spec->row_desc_.get_tid_cid(i, rk_table_id, rk_column_id)))
+        {}
+        else if (OB_SUCCESS != (err = build_ref_expr(rk_expr, rk_table_id, rk_column_id)))
+        {
+          TBSYS_LOG(ERROR, "build_ref_expr()=>%d", err);
+        }
+        else
+        {
+          rk_expr.set_tid_cid(rk_table_id, rk_column_id);
+          err = project->add_output_column(rk_expr);
+        }
       }
       if (OB_SUCCESS != err)
       {}
-      else if (OB_SUCCESS != (err = ups_modify_.set_child(0, gt0_filter_)))
+      else if (OB_SUCCESS != (err = get_first_int_col(spec->row_desc_ext_, get_rowkey_size(*spec), table_id, column_id)))
       {
-        TBSYS_LOG(ERROR, "ups_modify.add_child()=>%d", err);
+        TBSYS_LOG(ERROR, "get_first_int_col()=>%d", err);
       }
-      else if (OB_SUCCESS != (err = gt0_filter_.set_child(0, merger_)))
+      else if (OB_SUCCESS != (err = build_add_expr(add_expr, table_id, column_id)))
       {
-        TBSYS_LOG(ERROR, "gt0_filter.add_child()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = merger_.set_child(0, mem_sstable_scan_)))
-      {
-        TBSYS_LOG(ERROR, "merger.add_child()=>%d", err);
-      }
-      else if (OB_SUCCESS != (err = merger_.set_child(1, inc_scan_)))
-      {
-        TBSYS_LOG(ERROR, "merger.add_child()=>%d", err);
+        TBSYS_LOG(ERROR, "build_gt0_expr()=>%d", err);
       }
       else
       {
-        op = &ups_modify_;
+        add_expr.set_tid_cid(table_id, column_id);
       }
-      return err;
+      if (OB_SUCCESS != err)
+      {}
+      else if (OB_SUCCESS != (err = project->add_output_column(add_expr)))
+      {
+        TBSYS_LOG(ERROR, "project.add_filetr()=>%d", err);
+      }
+      return OB_SUCCESS == err? project:NULL;
+    }
+
+    ObPhyOperator* build_merger(RowSpec* spec, bool has_data=false) {
+      int err = OB_SUCCESS;
+      DEF_NEW_OP(ObValues, static_values);
+      DEF_NEW_OP(ObMemSSTableScan, mem_sstable_scan);
+      DEF_NEW_OP(ObIncScan, inc_scan);
+      DEF_NEW_OP(ObMultipleGetMerge, merger);
+      ObExprValues* get_param_values = NULL;
+      if (OB_SUCCESS != err_)
+      {
+        err = err_;
+      }
+      else if (NULL == build_values(spec, &spec->values_))
+      {
+        err = OB_MEM_OVERFLOW;
+      }
+      else if (NULL == build_values(spec, static_values, has_data))
+      {
+        err = OB_MEM_OVERFLOW;
+      }
+      else if (NULL == (get_param_values = build_expr_values(spec, NEW_OP(ObExprValues))))
+      {
+        err = OB_MEM_OVERFLOW;
+      }
+      else
+      {
+        inc_scan->set_scan_type(ObIncScan::ST_MGET);
+        inc_scan->set_values(get_param_values, false);
+        inc_scan->set_write_lock_flag();
+        mem_sstable_scan->set_tmp_table(static_values);
+        merger->set_is_ups_row(false);
+      }
+      return OB_SUCCESS == err? ADDC(merger, mem_sstable_scan, inc_scan): NULL;
+    }
+
+    ObInsertDBSemFilter* build_insert_sem_filter(RowSpec* spec) {
+      int err = OB_SUCCESS;
+      DEF_NEW_OP(ObInsertDBSemFilter, insert_sem_filter);
+      if (OB_SUCCESS != err_)
+      {
+        err = err_;
+      }
+      else if (NULL == build_values(spec, &spec->values_))
+      {
+        err = OB_MEM_OVERFLOW;
+      }
+      else if (NULL == build_expr_values(spec, &insert_sem_filter->get_insert_values()))
+      {
+        err = OB_MEM_OVERFLOW;
+      }
+      return OB_SUCCESS == err? insert_sem_filter: NULL;
+    }
+
+    ObRowCount* build_row_count(RowSpec* spec) {
+      int err = OB_SUCCESS;
+      DEF_NEW_OP(ObRowCount, row_count);
+      if (OB_SUCCESS != err_)
+      {
+        err = err_;
+      }
+      else
+      {
+        row_count->set_tid_cid(spec->tmp_table_id_, spec->tmp_column_id_);
+      }
+      return OB_SUCCESS == err? row_count:NULL;
+    }
+
+    ObPhyOperator* insert_(RowSpec* spec) {
+      return ADDC(build_insert_sem_filter(spec), ADDC(NEW_OP(ObEmptyRowFilter), build_merger(spec, false)));
+    }
+
+    ObPhyOperator* insert(RowSpec* spec) {
+      return ADDC(NEW_OP(ObUpsModify), insert_(spec));
+    }
+
+    ObPhyOperator* cond_update_(RowSpec* spec) {
+      return ADDC(build_project(spec), ADDC(build_gt0_filter(spec), build_merger(spec, true)));
+    }
+
+    ObPhyOperator* cond_update(RowSpec* spec) {
+      return ADDC(NEW_OP(ObUpsModify), cond_update_(spec));
+    }
+
+    ObPhyOperator* compound_cond_insert(RowSpec* spec1, RowSpec* spec2) {
+      // insert into spec1 when row_count(update spec2 where c>0)
+      return ADDC(NEW_OP(ObUpsModify), ADDC(build_when_filter(spec2),
+                                            insert_(spec1),
+                                            ADDC(build_row_count(spec2), cond_update(spec2))));
     }
   private:
-    DefaultBlockAllocator block_allocator_;
-    SimpleBufAllocator allocator_;
-    ObValues values_;
-    ObValues rowkey_values_;
-    ObValues empty_values_;
-    ObSQLSessionInfo session_info_;
-    ObResultSet result_set_; // The result set who owns this physical plan
-    ObUpsModify ups_modify_;
-    ObInsertDBSemFilter insert_sem_filter_;
-    ObFilter gt0_filter_;
-    ObMultipleScanMerge merger_;
-    ObMemSSTableScan mem_sstable_scan_;
-    ObIncScan inc_scan_;
-    ObExprValues get_param_values_;
+    int err_;
+    ObPhysicalPlan plan_;
 };
+*/
 #else
 const int OB_ERR_PRIMARY_KEY_DUPLICATE = -5024;
 #endif

@@ -1,14 +1,14 @@
 
 /*
  *   (C) 2007-2010 Taobao Inc.
- *   
- *         
+ *
+ *
  *   Version: 0.1
- *           
+ *
  *   Authors:
  *      qushan <qushan@taobao.com>
  *        - base data structure, maybe modify in future
- *               
+ *
  */
 #ifndef OCEANBASE_COMMON_OB_TABLET_INFO_H_
 #define OCEANBASE_COMMON_OB_TABLET_INFO_H_
@@ -20,22 +20,22 @@
 #include "page_arena.h"
 #include "ob_range2.h"
 
-namespace oceanbase 
-{ 
+namespace oceanbase
+{
   namespace common
   {
-    struct ObTabletLocation 
+    struct ObTabletLocation
     {
       int64_t tablet_version_;
       int64_t tablet_seq_;
       ObServer chunkserver_;
 
-      ObTabletLocation() :tablet_version_(0), tablet_seq_(0) { } 
+      ObTabletLocation() :tablet_version_(0), tablet_seq_(0) { }
       ObTabletLocation(int64_t tablet_version, const ObServer & server)
         :tablet_version_(tablet_version), tablet_seq_(0),
          chunkserver_(server) { }
 
-      ObTabletLocation(int64_t tablet_version, int64_t tablet_seq, 
+      ObTabletLocation(int64_t tablet_version, int64_t tablet_seq,
         const ObServer & server)
         :tablet_version_(tablet_version), tablet_seq_(tablet_seq),
          chunkserver_(server) { }
@@ -44,20 +44,27 @@ namespace oceanbase
 
       NEED_SERIALIZE_AND_DESERIALIZE;
     };
-    
-    struct ObTabletInfo 
+
+    struct ObTabletInfo
     {
+      static const int64_t DEFAULT_VERSION = 1;
+      static const int64_t RESERVED_LEN = 1;
       ObNewRange range_;
       int64_t row_count_;
       int64_t occupy_size_;
       uint64_t crc_sum_;
+      uint64_t row_checksum_;
+      int16_t version_;
+      int16_t reserved16_;
+      int32_t reserved32_;
+      int64_t reserved64_;
 
-      ObTabletInfo() 
-        : range_(), row_count_(0), occupy_size_(0), crc_sum_(0) {}
-      ObTabletInfo(const ObNewRange& r, const int32_t rc, const int32_t sz, const uint64_t crc_sum = 0)
-        : range_(r), row_count_(rc), occupy_size_(sz), crc_sum_(crc_sum) {}
+      ObTabletInfo()
+        : range_(), row_count_(0), occupy_size_(0), crc_sum_(0) , row_checksum_(0), version_(DEFAULT_VERSION){}
+      ObTabletInfo(const ObNewRange& r, const int32_t rc, const int32_t sz, const uint64_t crc_sum = 0, const uint64_t row_checksum = 0)
+        : range_(r), row_count_(rc), occupy_size_(sz), crc_sum_(crc_sum), row_checksum_(row_checksum), version_(DEFAULT_VERSION){}
 
-      inline bool equal(const ObTabletInfo& tablet) const 
+      inline bool equal(const ObTabletInfo& tablet) const
       {
         return range_.equal(tablet.range_);
       }
@@ -73,7 +80,8 @@ namespace oceanbase
       this->row_count_ = other.row_count_;
       this->occupy_size_ = other.occupy_size_;
       this->crc_sum_ = other.crc_sum_;
-      
+      this->row_checksum_ = other.row_checksum_;
+
       ret = deep_copy_range(allocator, other.range_, this->range_);
       return ret;
     }
@@ -134,7 +142,7 @@ namespace oceanbase
         }
         else
         {
-          TBSYS_LOG(WARN, "invalid rollback count, rollback_count=%ld, tablet_size=%ld", 
+          TBSYS_LOG(WARN, "invalid rollback count, rollback_count=%ld, tablet_size=%ld",
               rollback_count, tablet_size);
           ret = OB_ERROR;
         }

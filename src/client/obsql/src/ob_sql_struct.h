@@ -35,6 +35,7 @@ typedef enum enum_sql_type
   OB_SQL_CONSISTENCE_REQUEST,
   OB_SQL_DDL,
   OB_SQL_WRITE,
+  OB_SQL_READ,
 } ObSQLType;
 
 typedef struct ob_sql_rs_list
@@ -121,13 +122,26 @@ typedef struct ob_sql_mysql
   my_bool alloc_;               /* mem alloc by obsql */
   my_bool in_transaction_;
   my_bool has_stmt_;
+  my_bool retry_;
+  ObServerInfo last_ds_;
   struct charset_info_st *charset; /* compatible with mysql mysql_init会设置这个值*/
-  char buffer[sizeof(MYSQL) - 3*sizeof(ObSQLConn*) - sizeof(my_bool) - sizeof(int64_t) - sizeof(my_bool) - sizeof(my_bool) - sizeof(my_bool) - sizeof(char*)];
+  char buffer[sizeof(MYSQL) - 3*sizeof(ObSQLConn*) - sizeof(my_bool) - sizeof(int64_t) - sizeof(my_bool) - sizeof(my_bool) - sizeof(my_bool) - sizeof(my_bool) -sizeof(ObServerInfo) - sizeof(char*)];
 } ObSQLMySQL;
 
 #define CALLREAL(mysql, func, ...)   MYSQL *real_mysql = ((ObSQLMySQL*)mysql)->conn_->mysql_; \
   return (*(g_func_set.real_##func))(real_mysql, ##__VA_ARGS__)
 
+#define CALLREALWITHJUDGE(mysql, func, ...)  do {                     \
+    if (OB_SQL_MAGIC == ((ObSQLMySQL*)mysql)->magic_)                 \
+    {                                                                 \
+      MYSQL *real_mysql = ((ObSQLMySQL*)mysql)->conn_->mysql_;        \
+      return (*(g_func_set.real_##func))(real_mysql, ##__VA_ARGS__);  \
+    }                                                                 \
+    else                                                              \
+    {                                                                 \
+      return (*(g_func_set.real_##func))(mysql, ##__VA_ARGS__);       \
+    }                                                                 \
+  }while(0)
 #define CALLSTMTREAL(stmt, func, ...) return (*(g_func_set.real_##func))(stmt, ##__VA_ARGS__)
 
 OB_SQL_CPP_END

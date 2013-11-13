@@ -134,120 +134,80 @@ bool ObRootDDLOperator::insert_schema_table(const TableSchema & table_schema)
 
 int ObRootDDLOperator::allocate_table_id(TableSchema & table_schema)
 {
+  int ret = OB_SUCCESS;
   uint64_t table_id = 0;
   // get max table id from inner table
-  int ret = schema_client_->get_max_used_table_id(table_id);
-  if (ret != OB_SUCCESS)
+  if ((ret = schema_client_->get_max_used_table_id(table_id)) != OB_SUCCESS)
   {
     TBSYS_LOG(WARN, "get max table id failed:ret[%d]", ret);
   }
-  else if (table_id >= OB_APP_MIN_TABLE_ID)
+  else if (table_schema.table_id_ == OB_INVALID_ID)
   {
-    ret = modify_table_schema(table_id + 1, table_schema);
-    if (ret != OB_SUCCESS)
+    if (table_id + 1 > OB_APP_MIN_TABLE_ID)
     {
-      TBSYS_LOG(WARN, "modify table schema failed:max_id[%lu], ret[%d]", table_id, ret);
+      table_schema.table_id_ = table_id + 1;
+      TBSYS_LOG(DEBUG, "modify new table schema succ:table_id[%lu]", table_schema.table_id_);
     }
     else
     {
-      TBSYS_LOG(DEBUG, "modify new table schema succ:table_id[%lu]", table_id + 1);
+      ret = OB_ERROR;
+      TBSYS_LOG(USER_ERROR, "User table id should in (%lu, MAX), ret[%d]", OB_APP_MIN_TABLE_ID, ret);
     }
   }
   else
   {
-    ret = OB_ERROR;
-    TBSYS_LOG(ERROR, "check max user table id failed:max_id[%lu], ret[%d]", table_id, ret);
+    if (table_schema.table_id_ > table_id)
+    {
+      ret = OB_ERROR;
+      TBSYS_LOG(USER_ERROR, "User table id must not bigger than ob_max_used_table_id[%lu], ret[%d]", table_id, ret);
+    }
+  }
+  if (ret == OB_SUCCESS)
+  {
+    for (int64_t i = 0; i < table_schema.join_info_.count(); i ++)
+    {
+      table_schema.join_info_.at(i).left_table_id_ = table_schema.table_id_;
+      TBSYS_LOG(DEBUG, "table schema join info[%s]", to_cstring(table_schema.join_info_.at(i)));
+    }
   }
   return ret;
 }
 
 int ObRootDDLOperator::update_max_table_id(const uint64_t table_id)
 {
-  // update the max table id
-  int ret = schema_client_->set_max_used_table_id(table_id);
-  if (ret != OB_SUCCESS)
+  int ret = OB_SUCCESS;
+  uint64_t max_id = 0;
+  if ((ret = schema_client_->get_max_used_table_id(max_id)) != OB_SUCCESS)
   {
-    TBSYS_LOG(WARN, "update table max table id failed:max_id[%lu], ret[%d]",
-        table_id + 1, ret);
+    TBSYS_LOG(WARN, "get max table id failed:ret[%d]", ret);
   }
-  else
+  else if (table_id > max_id)
   {
-    uint64_t new_max_id = 0;
-    ret = schema_client_->get_max_used_table_id(new_max_id);
+    // update the max table id
+    int ret = schema_client_->set_max_used_table_id(table_id);
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(WARN, "double check new max table id failed:max_id[%lu], ret[%d]", table_id, ret);
-    }
-    else if (new_max_id != table_id)
-    {
-      ret = OB_INNER_STAT_ERROR;
-      TBSYS_LOG(ERROR, "check update max table id check failed:max_id[%lu], read[%lu]",
-          table_id, new_max_id);
+      TBSYS_LOG(WARN, "update table max table id failed:max_id[%lu], ret[%d]",
+          table_id + 1, ret);
     }
     else
     {
-      TBSYS_LOG(INFO, "check updated max table table id succ:max_id[%lu]", new_max_id);
-    }
-  }
-  return ret;
-}
-
-/// TODO: not allocate column group id
-int ObRootDDLOperator::modify_table_schema(const uint64_t table_id, TableSchema & table_schema)
-{
-  int ret = OB_SUCCESS;
-  bool has_got_create_time_type = false;
-  bool has_got_modify_time_type = false;
-  table_schema.table_id_ = table_id;
-  ColumnSchema * column = NULL;
-  uint64_t column_id = OB_APP_MIN_COLUMN_ID;
-  table_schema.max_used_column_id_ = column_id;
-  for (int64_t i = 0; i < table_schema.get_column_count(); ++i)
-  {
-    column = table_schema.get_column_schema(i);
-    if (NULL == column)
-    {
-      ret = OB_INPUT_PARAM_ERROR;
-      TBSYS_LOG(WARN, "check column schema failed:table_name[%s], index[%ld]",
-          table_schema.table_name_, i);
-      break;
-    }
-    else if (ObCreateTimeType == column->data_type_) // create time
-    {
-      column->column_id_ = OB_CREATE_TIME_COLUMN_ID;
-      if (has_got_create_time_type)
+      uint64_t new_max_id = 0;
+      ret = schema_client_->get_max_used_table_id(new_max_id);
+      if (ret != OB_SUCCESS)
       {
-        // duplication case checked by parser, double check
-        ret = OB_INPUT_PARAM_ERROR;
-        TBSYS_LOG(WARN, "find duplicated create time column:table_name[%s], index[%ld]",
-            table_schema.table_name_, i);
-        break;
+        TBSYS_LOG(WARN, "double check new max table id failed:max_id[%lu], ret[%d]", table_id, ret);
+      }
+      else if (new_max_id != table_id)
+      {
+        ret = OB_INNER_STAT_ERROR;
+        TBSYS_LOG(ERROR, "check update max table id check failed:max_id[%lu], read[%lu]",
+            table_id, new_max_id);
       }
       else
       {
-        has_got_create_time_type = true;
+        TBSYS_LOG(INFO, "check updated max table table id succ:max_id[%lu]", new_max_id);
       }
-    }
-    else if (ObModifyTimeType == column->data_type_) // last_modify time
-    {
-      column->column_id_ = OB_MODIFY_TIME_COLUMN_ID;
-      if (has_got_modify_time_type)
-      {
-        // duplication case checked by parser, double check
-        ret = OB_INPUT_PARAM_ERROR;
-        TBSYS_LOG(WARN, "find duplicated modify time column:table_name[%s], index[%ld]",
-            table_schema.table_name_, i);
-        break;
-      }
-      else
-      {
-        has_got_modify_time_type = true;
-      }
-    }
-    else
-    {
-      table_schema.max_used_column_id_ = column_id;
-      column->column_id_ = column_id++;
     }
   }
   return ret;
@@ -325,7 +285,7 @@ bool ObRootDDLOperator::delete_schema_table(const common::ObString & table_name,
     TBSYS_LOG(WARN, "get table id failed stop drop:table_name[%.*s], ret[%d]",
         table_name.length(), table_name.ptr(), ret);
   }
-  else if (table_id >= OB_APP_MIN_TABLE_ID)
+  else
   {
     ret = schema_client_->drop_table(table_name);
     if (ret != OB_SUCCESS)
@@ -353,12 +313,6 @@ bool ObRootDDLOperator::delete_schema_table(const common::ObString & table_name,
           table_name.length(), table_name.ptr(), temp_table_id);
       succ = false;
     }
-  }
-  else
-  {
-    ret = OB_INPUT_PARAM_ERROR;
-    TBSYS_LOG(WARN, "check table id is not in user space:table_name[%.*s], table_id[%lu]",
-        table_name.length(), table_name.ptr(), table_id);
   }
   return succ;
 }
@@ -403,7 +357,7 @@ int ObRootDDLOperator::alter_table(AlterTableSchema & table_schema)
     // alter inner table
     if (OB_SUCCESS == ret)
     {
-      ret = schema_client_->alter_table(table_schema);
+      ret = schema_client_->alter_table(table_schema, old_schema.schema_version_);
       if (ret != OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "alter table failed:table_name[%s], table_id[%lu], ret[%d]",
@@ -532,3 +486,34 @@ int ObRootDDLOperator::set_column_info(const TableSchema & old_schema, const cha
   }
   return ret;
 }
+int ObRootDDLOperator::modify_table_id(common::TableSchema &table_schema, const int64_t new_table_id)
+{
+  int ret = OB_SUCCESS;
+  if (!check_inner_stat())
+  {
+    ret = OB_ERROR;
+    TBSYS_LOG(WARN, "check inner stat failed");
+  }
+  if (OB_SUCCESS == ret)
+  {
+    tbsys::CThreadGuard lock(&mutex_lock_);
+    ObString table_name;
+    int ret = schema_client_->get_table_name(new_table_id, table_name);
+    if (ret != OB_ENTRY_NOT_EXIST)
+    {
+      TBSYS_LOG(WARN, "table id is already been used. table_id=%ld, table_name=%s",
+          new_table_id, to_cstring(table_name));
+      ret = OB_ERROR;
+    }
+    else
+    {
+      ret = schema_client_->modify_table_id(table_schema, new_table_id);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "fail to modify table id. new_table_id=%ld", new_table_id);
+      }
+    }
+  }
+  return ret;
+}
+

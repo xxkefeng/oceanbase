@@ -16,7 +16,7 @@ using namespace oceanbase::common;
 
 namespace oceanbase
 {
-  namespace sql 
+  namespace sql
   {
     class ObSqlScanParam;
   }
@@ -101,7 +101,7 @@ namespace oceanbase
         {
           ObRowkey search_key;
           ObRowKeyContainer objs;
-          ret = get_search_key(scan_param, objs, search_key); 
+          ret = get_search_key(scan_param, objs, search_key);
           if (ret != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR, "get search key failed:ret[%d], range[%s]", ret, to_cstring(*range));
@@ -111,7 +111,7 @@ namespace oceanbase
             ret = del_cache_item(range->table_id_, search_key);
             if (ret != OB_SUCCESS)
             {
-              TBSYS_LOG(DEBUG, "del cache item failed:table_id[%lu], ret[%d], search key[%s]", 
+              TBSYS_LOG(DEBUG, "del cache item failed:table_id[%lu], ret[%d], search key[%s]",
                   range->table_id_, ret, to_cstring(search_key));
             }
           }
@@ -139,7 +139,7 @@ namespace oceanbase
         {
           ObRowkey search_key;
           ObRowKeyContainer objs;
-          ret = get_search_key(scan_param, objs, search_key); 
+          ret = get_search_key(scan_param, objs, search_key);
           if (ret != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR, "get search key failed:ret[%d], range[%s]", ret, to_cstring(*range));
@@ -158,7 +158,7 @@ namespace oceanbase
       }
 
       // update cache item according to table id + search rowkey
-      int update_cache_item(const uint64_t table_id, const common::ObRowkey& search_key, 
+      int update_cache_item(const uint64_t table_id, const common::ObRowkey& search_key,
         const ObTabletLocationList & list);
 
       // set item addr invalid according to tablet range
@@ -177,7 +177,7 @@ namespace oceanbase
         {
           ObRowkey search_key;
           ObRowKeyContainer objs;
-          int ret = get_search_key(scan_param, objs, search_key); 
+          int ret = get_search_key(scan_param, objs, search_key);
           if (ret != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR, "get search key failed:ret[%d]", ret);
@@ -196,9 +196,9 @@ namespace oceanbase
         }
         return ret;
       }
-      
+
       // set item addr invalid according to table id + search rowkey
-      int set_item_invalid(const uint64_t table_id, const common::ObRowkey& search_key, 
+      int set_item_invalid(const uint64_t table_id, const common::ObRowkey& search_key,
         const ObTabletLocationItem & addr, ObTabletLocationList & list);
 
       template <typename T>
@@ -228,7 +228,7 @@ namespace oceanbase
         return ret;
       }
 
-      int server_fail(const uint64_t table_id, const common::ObRowkey & search_key, 
+      int server_fail(const uint64_t table_id, const common::ObRowkey & search_key,
         ObTabletLocationList & list, const oceanbase::common::ObServer & server);
 
       template <typename T>
@@ -245,7 +245,7 @@ namespace oceanbase
         {
           ObRowkey search_key;
           ObRowKeyContainer objs;
-          int ret = get_search_key(scan_param, objs, search_key); 
+          int ret = get_search_key(scan_param, objs, search_key);
           if (ret != OB_SUCCESS)
           {
             TBSYS_LOG(ERROR, "get search key failed:ret[%d]", ret);
@@ -265,7 +265,7 @@ namespace oceanbase
         return ret;
       }
       // get and fetch new item if root server is ok and insert the items
-      int renew_location_item(const uint64_t table_id, const common::ObRowkey & row_key, 
+      int renew_location_item(const uint64_t table_id, const common::ObRowkey & row_key,
         ObTabletLocationList & location, bool force_renew=false);
 
     private:
@@ -290,14 +290,14 @@ namespace oceanbase
         return get_search_key(scan_param.get_scan_direction(), scan_param.get_range(), objs, search_key);
       }
 
-      int get_search_key(const common::ScanFlag::Direction scan_direction, 
+      int get_search_key(const common::ScanFlag::Direction scan_direction,
           const common::ObNewRange * range, ObRowKeyContainer& temp_objs, common::ObRowkey& search_key);
 
       // resest the search key's buffer to null after using it
       void reset_search_key(common::ObRowkey& search_key);
 
       // update timetout cache item if root server is ok and can refresh the items
-      int update_timeout_item(const uint64_t table_id, const common::ObRowkey & row_key, 
+      int update_timeout_item(const uint64_t table_id, const common::ObRowkey & row_key,
         ObTabletLocationList & location);
 
       /// acquire lock for access root table from root server
@@ -311,7 +311,7 @@ namespace oceanbase
       ObTabletLocationCache * tablet_cache_;  // merge server tablet location cache
       // the lock for root server access
       ObArrayLock inner_cache_lock_;                // inner id cache lock for access inner table
-      ObSequenceLock user_cache_lock_;                 // sequence lock for access root server 
+      ObSequenceLock user_cache_lock_;                 // sequence lock for access root server
     };
 
     inline bool ObTabletLocationCacheProxy::check_inner_stat(void) const

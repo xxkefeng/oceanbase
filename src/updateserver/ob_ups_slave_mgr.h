@@ -16,7 +16,7 @@
 #define OCEANBASE_UPDATESERVER_OB_SLAVE_MGR_H_
 
 #include "common/ob_slave_mgr.h"
-#include "common/ob_client_wait_obj.h"
+#include "common/ob_ack_queue.h"
 #include "ob_ups_role_mgr.h"
 
 using namespace oceanbase::common;
@@ -26,19 +26,15 @@ namespace oceanbase
   {
     class ObUpsSlaveMgr : private common::ObSlaveMgr
     {
-      struct SendLogReq
-      {
-        ObDLink* p_slave_node_;
-        common::ObClientWaitObj wait_obj_;
-      };
       public:
         static const int32_t RPC_VERSION = 1;
         static const int64_t MAX_SLAVE_NUM = 8;
+        static const int64_t DEFAULT_ACK_QUEUE_LEN = 1024;
         ObUpsSlaveMgr();
         virtual ~ObUpsSlaveMgr();
 
         /// @brief 初始化
-        int init(ObUpsRoleMgr *role_mgr, ObCommonRpcStub *rpc_stub,
+        int init(IObAsyncClientCallback* callback, ObUpsRoleMgr *role_mgr, ObCommonRpcStub *rpc_stub,
             int64_t log_sync_timeout);
 
         /// @brief 向各台Slave发送数据
@@ -51,8 +47,10 @@ namespace oceanbase
         /// @retval otherwise 其他错误
         int send_data(const char* data, const int64_t length);
         int set_log_sync_timeout_us(const int64_t timeout);
-        int post_log_to_slave(const char* data, const int64_t length);
-        int wait_post_log_to_slave(const char* data, const int64_t length);
+        int post_log_to_slave(const common::ObLogCursor& start_cursor, const common::ObLogCursor& end_cursor, const char* data, const int64_t length);
+        int wait_post_log_to_slave(const char* data, const int64_t length, int64_t& delay);
+        int64_t get_acked_clog_id() const;
+        int get_slaves(ObServer* slaves, int64_t limit, int64_t& slave_count);
 
         int grant_keep_alive();
         int add_server(const ObServer &server);
@@ -64,7 +62,7 @@ namespace oceanbase
       private:
         int64_t n_slave_last_post_;
         ObUpsRoleMgr *role_mgr_;
-        SendLogReq reqs_[MAX_SLAVE_NUM];
+        ObAckQueue ack_queue_;
     };
   } // end namespace common
 } // end namespace oceanbase

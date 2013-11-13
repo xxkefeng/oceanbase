@@ -30,10 +30,32 @@ ObRename::~ObRename()
 {
 }
 
-void ObRename::clear()
+void ObRename::reset()
 {
-  ObSingleChildPhyOperator::clear();
+  table_id_ = 0;
+  base_table_id_ = 0;
+  column_ids_.clear();
+  org_row_ = NULL;
+  org_row_desc_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  base_table_id_ = OB_INVALID_ID;
+  column_ids_.clear();
+  org_row_ = NULL;
+  org_row_desc_ = NULL;
+  child_op_ = NULL;
   row_desc_.reset();
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObRename::reuse()
+{
+  table_id_ = 0;
+  base_table_id_ = 0;
+  column_ids_.clear();
+  org_row_ = NULL;
+  org_row_desc_ = NULL;
+  row_desc_.reset();
+  ObSingleChildPhyOperator::reuse();
 }
 
 int ObRename::set_table(const uint64_t table_id, const uint64_t base_table_id)
@@ -167,6 +189,12 @@ int ObRename::get_next_row(const common::ObRow *&row)
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObRename, PHY_RENAME);
+  }
+}
+
 int64_t ObRename::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -194,7 +222,7 @@ DEFINE_SERIALIZE(ObRename)
   {
     TBSYS_LOG(WARN, "fail to encode renamed columns count:ret[%d]", ret);
   }
-  else 
+  else
   {
     for (int64_t i  =0; OB_SUCCESS == ret && i < column_ids_.count(); i++)
     {
@@ -204,7 +232,7 @@ DEFINE_SERIALIZE(ObRename)
       }
     }
   }
-  return ret; 
+  return ret;
 }
 
 DEFINE_DESERIALIZE(ObRename)
@@ -214,7 +242,7 @@ DEFINE_DESERIALIZE(ObRename)
   int64_t base_table_id = 0;
   int64_t columns_count = 0;
   int64_t column_id = 0;
-  clear();
+  reset();
   if (OB_SUCCESS != (ret = decode_vi64(buf, data_len, pos, &table_id)))
   {
     TBSYS_LOG(WARN, "fail to decode table_id:ret[%d]", ret);
@@ -262,8 +290,18 @@ DEFINE_GET_SERIALIZE_SIZE(ObRename)
   return size;
 }
 
+PHY_OPERATOR_ASSIGN(ObRename)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObRename);
+  reset();
+  table_id_ = o_ptr->table_id_;
+  base_table_id_ = o_ptr->base_table_id_;
+  column_ids_ = o_ptr->column_ids_;
+  return ret;
+}
+
 ObPhyOperatorType ObRename::get_type() const
 {
   return PHY_RENAME;
 }
-

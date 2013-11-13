@@ -56,11 +56,30 @@ namespace oceanbase
       return ret;
     }
 
+    ObMsType ObMergeServerMain::get_ms_type(const char* ms_type)
+    {
+      ObMsType type = INVALID;
+      if (strlen(ms_type) == strlen("lms")
+          && 0 == strcasecmp(ms_type, "lms"))
+      {
+        type = LMS;
+      }
+      else if (strlen(ms_type) == strlen("normal")
+               && 0 == strcasecmp(ms_type, "normal"))
+      {
+        type = NORMAL;
+      }
+      return type;
+    }
+
     int ObMergeServerMain::do_work()
     {
       int ret = OB_SUCCESS;
       char dump_config_path[OB_MAX_FILE_NAME_LENGTH];
-      print_version();
+
+      TBSYS_LOG(INFO, "oceanbase-mergeserver start svn_version=[%s] "
+                "build_data=[%s] build_time=[%s]", svn_version(), build_date(),
+                build_time());
 
       ms_reload_config_.set_merge_server(server_);
 
@@ -91,27 +110,47 @@ namespace oceanbase
       {
         ms_config_.obmysql_port = cmd_obmysql_port_;
       }
-      if (strlen(cmd_devname_) > 0)
-      {
-        ms_config_.devname.set_value(cmd_devname_);
-      }
-      if (strlen(config_) > 0)
-      {
-        TBSYS_LOG(INFO, "config file path: [%s]", config_);
-      }
-      if (strlen(cmd_extra_config_) > 0
-          && OB_SUCCESS != (ret = ms_config_.add_extra_config(cmd_extra_config_)))
-      {
-        TBSYS_LOG(ERROR, "Parse extra config error! string: [%s], ret: [%d]",
-                  cmd_extra_config_, ret);
-      }
-      ms_config_.print();
 
-      if (OB_SUCCESS == OB_SUCCESS && OB_SUCCESS != (ret = ms_config_.check_all()))
+      if (strlen(cmd_ms_type_) > 0)
       {
-        TBSYS_LOG(ERROR, "check config failed, ret: [%d]", ret);
+        ObMsType type = get_ms_type(cmd_ms_type_);
+        if (LMS == type)
+        {
+          ms_config_.lms = true;
+        }
+        else if (NORMAL == type)
+        {
+          ms_config_.lms = false;
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "cmd_ms_type is %s invalid", cmd_ms_type_);
+          ret = OB_ERROR;
+        }
       }
+      if (OB_SUCCESS == ret)
+      {
+        if (strlen(cmd_devname_) > 0)
+        {
+          ms_config_.devname.set_value(cmd_devname_);
+        }
+        if (strlen(config_) > 0)
+        {
+          TBSYS_LOG(INFO, "config file path: [%s]", config_);
+        }
+        if (strlen(cmd_extra_config_) > 0
+            && OB_SUCCESS != (ret = ms_config_.add_extra_config(cmd_extra_config_)))
+        {
+          TBSYS_LOG(ERROR, "Parse extra config error! string: [%s], ret: [%d]",
+                    cmd_extra_config_, ret);
+        }
+        ms_config_.print();
 
+        if (OB_SUCCESS == OB_SUCCESS && OB_SUCCESS != (ret = ms_config_.check_all()))
+        {
+          TBSYS_LOG(ERROR, "check config failed, ret: [%d]", ret);
+        }
+      }
       if (OB_SUCCESS != ret)
       {
         TBSYS_LOG(ERROR, "Start merge server failed, ret: [%d]", ret);
@@ -119,6 +158,7 @@ namespace oceanbase
       else
       {
         server_.set_io_thread_count((int32_t)ms_config_.io_thread_count);
+        server_.set_sql_id_mgr(sql_server_.get_ps_store()->get_id_mgr());
         if (OB_SUCCESS != (ret = server_.start(false)))
         {
           TBSYS_LOG(ERROR, "start mergeserver failed.");
@@ -126,6 +166,10 @@ namespace oceanbase
         else if (OB_SUCCESS != (ret = init_sql_server()))
         {
           TBSYS_LOG(ERROR, "init sql server error.");
+        }
+        else if (OB_SUCCESS != (ret = server_.set_sql_session_mgr(sql_server_.get_session_mgr())))
+        {
+          TBSYS_LOG(ERROR, "set sql session to mergeserver failed");
         }
         else if (OB_SUCCESS != (ret = sql_server_.start(false)))
         {
@@ -135,10 +179,12 @@ namespace oceanbase
         {
           server_.wait();
         }
+        TBSYS_LOG(WARN, "stop mysql server");
         sql_server_.stop();
+        TBSYS_LOG(WARN, "stop mergeserver");
         server_.stop();
       }
-
+      TBSYS_LOG(INFO, "exit do_work");
       return ret;
     }
 
@@ -149,10 +195,6 @@ namespace oceanbase
       fprintf(stderr, "BUILD_TIME: %s %s\n", build_date(), build_time());
       fprintf(stderr, "BUILD_FLAGS: %s\n\n", build_flags());
       fprintf(stderr, "Copyright (c) 2007-2012 Taobao Inc.\n");
-
-      TBSYS_LOG(INFO, "oceanbase-mergeserver start svn_version=[%s] "
-                "build_data=[%s] build_time=[%s]", svn_version(), build_date(),
-                build_time());
     }
 
     void ObMergeServerMain::do_signal(const int sig)
@@ -161,7 +203,9 @@ namespace oceanbase
       {
         case SIGTERM:
         case SIGINT:
-          TBSYS_LOG(INFO, "KILLED by signal, sig=%d", sig);
+          signal(SIGINT, SIG_IGN);
+          signal(SIGTERM, SIG_IGN);
+          TBSYS_LOG(WARN, "KILLED by signal, sig=%d", sig);
           sql_server_.stop();
           server_.stop_eio();
           break;

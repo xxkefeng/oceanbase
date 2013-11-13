@@ -42,7 +42,7 @@ public class SSTableOutputformat extends FileOutputFormat<Text, Text> implements
     private TotalOrderPartitioner partitioner;
     private SSTableBuilder sstableBuilder;
     private ByteBuffer byteBuffer;
-    private String fileNameSeq = null;
+    private String fileNameSeq = "0000000000"; // 10 * '0'
     private int prev_range_no = -1;
     private boolean is_first = false;
     private boolean is_include_min = false;
@@ -73,13 +73,13 @@ public class SSTableOutputformat extends FileOutputFormat<Text, Text> implements
         throw new IllegalArgumentException("not specify rowkey desc");
       }
 
-      String isSkipInvalidRowStr = jobConf.get("mrsstable.skip.invalid.row", "");
+      String isSkipInvalidRowStr = jobConf.get("mrsstable.skip.invalid.row", "0");
       if (isSkipInvalidRowStr.equals("0")) {
         this.isSkipInvalidRow = false;
       } else if (isSkipInvalidRowStr.equals("1")) {
         this.isSkipInvalidRow = true;
       } else {
-        throw new IllegalArgumentException("not specify rowkey desc");
+        throw new IllegalArgumentException("not specify mrsstable.skip.invalid.row");
       }
 
       partitioner = new TotalOrderPartitioner();
@@ -91,13 +91,6 @@ public class SSTableOutputformat extends FileOutputFormat<Text, Text> implements
         msg.append(" ");
       }
       LOG.info("ranges: " + msg.toString());
-
-      long rangeNum = partitioner.getRangeNum();
-      fileNameSeq = "";
-      do{
-        rangeNum = rangeNum / 10;
-        fileNameSeq += "0";
-      }while (rangeNum > 0);
     }
 
     private void init() throws IOException {
@@ -120,8 +113,7 @@ public class SSTableOutputformat extends FileOutputFormat<Text, Text> implements
         }
 
         sstableBuilder = new SSTableBuilder();
-        int err = sstableBuilder.init(SCHEMA_FILE_NAME, DATA_SYNTAX_FILE_NAME, this.tableId, this.rowkeyDesc,
-            this.isSkipInvalidRow);
+        int err = sstableBuilder.init(SCHEMA_FILE_NAME, DATA_SYNTAX_FILE_NAME, this.tableId, this.isSkipInvalidRow);
         if (err != 0) {
           LOG.error("init sstable builder failed");
           throw new IllegalArgumentException("can't init sstable builder");
@@ -140,8 +132,7 @@ public class SSTableOutputformat extends FileOutputFormat<Text, Text> implements
 
     private String generateFileName(String name, int range_no) {
       StringBuilder strBuilder = new StringBuilder(256);
-      strBuilder.append(name).append("-").append(tableId).append("-")
-          .append(new DecimalFormat(fileNameSeq).format(range_no));
+      strBuilder.append(tableId).append("-").append(new DecimalFormat(fileNameSeq).format(range_no));
       return strBuilder.toString();
     }
 

@@ -82,10 +82,10 @@ namespace oceanbase
       type_ = NORMAL_UPDATE;
       has_begin_ = false;
       mutator_buf_ = NULL;
-      err = str_buf_.clear();
+      err = str_buf_.reset();
       if (OB_SUCCESS == err)
       {
-        local_page_arena_.free();
+        local_page_arena_.reuse();
       }
       if (OB_SUCCESS != err)
       {
@@ -113,7 +113,7 @@ namespace oceanbase
       err = str_buf_.reset();
       if (OB_SUCCESS == err)
       {
-        local_page_arena_.reuse();
+        local_page_arena_.free();
       }
       if (OB_SUCCESS != err)
       {
@@ -461,15 +461,24 @@ namespace oceanbase
     int ObMutator :: add_row_barrier()
     {
       ObMutatorCellInfo cell;
-      return add_cell(cell, CHANGED_UNKNOW, ROWKEY_BARRIER);
+      return add_cell(cell, CHANGED_UNKNOW, ROWKEY_BARRIER, OB_DML_UNKNOW);
+    }
+
+    int ObMutator :: set_dml_type(const ObDmlType dml_type)
+    {
+      ObMutatorCellInfo cell;
+      return add_cell(cell, CHANGED_UNKNOW, ROW_DML_TYPE, dml_type);
     }
 
     int ObMutator :: add_cell(const ObMutatorCellInfo& cell)
     {
-      return add_cell(cell, CHANGED_UNKNOW);
+      return add_cell(cell, CHANGED_UNKNOW, NO_BARRIER, OB_DML_UNKNOW);
     }
 
-    int ObMutator :: add_cell(const ObMutatorCellInfo& cell, const RowChangedStat row_changed_stat, const BarrierFlag barrier_flag)
+    int ObMutator :: add_cell(const ObMutatorCellInfo& cell,
+                              const RowChangedStat row_changed_stat,
+                              const BarrierFlag barrier_flag,
+                              const ObDmlType dml_type)
     {
       int err = OB_SUCCESS;
       int64_t store_size = 0;
@@ -494,6 +503,7 @@ namespace oceanbase
           cur_node->row_changed_stat = row_changed_stat;
           cur_node->row_finished_stat = FINISHED_UNKNOW;
           cur_node->barrier_flag = barrier_flag;
+          cur_node->dml_type = dml_type;
 
           err = add_node_(cur_node);
           if (OB_SUCCESS == err)
@@ -520,6 +530,31 @@ namespace oceanbase
     }
 
     int ObMutator :: next_cell()
+    {
+      int err = OB_SUCCESS;
+      if (OB_SUCCESS != (err = next_cell_())
+          && OB_ITER_END != err)
+      {
+        TBSYS_LOG(ERROR, "next_cell_()=>%d", err);
+      }
+      else if (OB_ITER_END == err)
+      {}
+      else if (NULL == cur_iter_node_)
+      {
+        err = OB_ERR_UNEXPECTED;
+        TBSYS_LOG(ERROR, "cur_iter_node = NULL");
+      }
+      else if (NO_BARRIER == cur_iter_node_->barrier_flag)
+      {} // do nothing
+      else
+      {
+        //TBSYS_LOG(INFO, "skip dml_type_cell: type=%d", cur_iter_node_->dml_type);
+        err = next_cell_();
+      }
+      return err;
+    }
+
+    int ObMutator :: next_cell_()
     {
       int err = OB_SUCCESS;
 
@@ -553,7 +588,7 @@ namespace oceanbase
       return get_cell(cell, NULL, NULL);
     }
 
-    int ObMutator :: get_cell(ObMutatorCellInfo** cell, bool* is_row_changed, bool* is_row_finished)
+    int ObMutator :: get_cell(ObMutatorCellInfo** cell, bool* is_row_changed, bool* is_row_finished, ObDmlType *dml_type)
     {
       int err = OB_SUCCESS;
 
@@ -590,6 +625,17 @@ namespace oceanbase
           else
           {
             *is_row_finished = (NOFINISHED != cur_iter_node_->row_finished_stat);
+          }
+        }
+        if (NULL != dml_type)
+        {
+          if (OB_DML_UNKNOW == cur_iter_node_->dml_type)
+          {
+            err = OB_NOT_SUPPORTED;
+          }
+          else
+          {
+            *dml_type = cur_iter_node_->dml_type;
           }
         }
       }
@@ -680,6 +726,14 @@ namespace oceanbase
             if (ROWKEY_BARRIER & node->barrier_flag)
             {
               last_row_key.assign(NULL, 0);
+            }
+            if (ROW_DML_TYPE & node->barrier_flag)
+            {
+              err = serialize_flag_(buf, buf_len, pos, ObActionFlag::DML_TYPE_FIELD);
+              {
+                tmp_obj.set_int(node->dml_type);
+                err = tmp_obj.serialize(buf, buf_len, pos);
+              }
             }
             node = node->next;
             continue;
@@ -838,7 +892,7 @@ namespace oceanbase
       else
       {
         // reset ob_mutator
-        err = reset();
+        err = reuse();
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "failed to reset, err=%d", err);
@@ -849,6 +903,7 @@ namespace oceanbase
       {
         ObObj op;
         ObObj tmp_obj;
+        ObDmlType dml_type = OB_DML_REPLACE;
         ObString tmp_str;
         ObMutatorCellInfo cur_cell;
         bool end_flag = false;
@@ -913,7 +968,7 @@ namespace oceanbase
                 }
                 else
                 {
-                  err = add_cell(cur_cell, is_row_changed ? CHANGED : NOCHANGED);
+                  err = add_cell(cur_cell, is_row_changed ? CHANGED : NOCHANGED, NO_BARRIER, dml_type);
                   is_row_changed = false;
                   if (OB_SUCCESS != err)
                   {
@@ -954,7 +1009,7 @@ namespace oceanbase
                     tmp_obj.get_ext(sem_op);
                     ObMutatorCellInfo sem_cell;
                     sem_cell.cell_info.value_.set_ext(sem_op);
-                    err = add_cell(sem_cell, NOCHANGED);
+                    err = add_cell(sem_cell, NOCHANGED, NO_BARRIER, dml_type);
                     if (OB_SUCCESS != err)
                     {
                       TBSYS_LOG(WARN, "failed to add_cell, err=%d", err);
@@ -1040,7 +1095,7 @@ namespace oceanbase
                   cur_cell.cell_info.column_id_ = common::OB_INVALID_ID;
                   cur_cell.cell_info.value_.reset();
                   cur_cell.cell_info.value_.set_ext(ObActionFlag::OP_DEL_ROW);
-                  err = add_cell(cur_cell, is_row_changed ? CHANGED : NOCHANGED);
+                  err = add_cell(cur_cell, is_row_changed ? CHANGED : NOCHANGED, NO_BARRIER, dml_type);
                   is_row_changed = false;
                   if (OB_SUCCESS != err)
                   {
@@ -1058,6 +1113,17 @@ namespace oceanbase
                   break;
                 case ObActionFlag::END_PARAM_FIELD:
                   end_flag = true;
+                  break;
+                case ObActionFlag::DML_TYPE_FIELD:
+                  err = tmp_obj.deserialize(buf, buf_len, pos);
+                  if (OB_SUCCESS == err)
+                  {
+                    err = tmp_obj.get_int((int64_t&)dml_type);
+                    if (OB_SUCCESS != err)
+                    {
+                      TBSYS_LOG(WARN, "failed to get int for mutator type, err=%d", err);
+                    }
+                  }
                   break;
                 default:
                   TBSYS_LOG(WARN, "unknown format, omit it:type[%ld]", ext_val);

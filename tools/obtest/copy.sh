@@ -36,6 +36,9 @@ echo cp $OCEANBASE_DIR/tools/sqltest/lib/libpq* $LIB_DIR/:$?
 cp $OCEANBASE_DIR/tools/sqltest/lib/libmysqlclient* $LIB_DIR/
 echo cp $OCEANBASE_DIR/tools/sqltest/lib/libmysqlclient* $LIB_DIR/:$?
 
+cp $OCEANBASE_DIR/src/client/obsql/src/.libs/* $LIB_DIR/
+echo 'cp '$OCEANBASE_DIR'/src/client/obsql/src/.libs/*' $LIB_DIR'/: '$?
+
 #copy libobapi.so
 #cp $OCEANBASE_DIR/src/client/cpp/.libs/libobapi.so* $LIB_DIR/
 #echo cp $OCEANBASE_DIR/src/client/cpp/.libs/libobapi.so* $LIB_DIR/: $?
@@ -52,3 +55,7 @@ cp $OCEANBASE_DIR/tools/dumpsst $TOOLS_DIR/
 echo 'cp '$OCEANBASE_DIR'/tools/dumpsst' $TOOLS_DIR'/: '$?
 cp $OCEANBASE_DIR/tools/io_fault/iof $TOOLS_DIR/
 echo 'cp '$OCEANBASE_DIR/tools/io_fault/iof $TOOLS_DIR'/: '$?
+
+
+wget "http://10.232.4.35:8877/mytest-1.2-SNAPSHOT-jar-with-dependencies.jar" -O jar/mytest-1.2-SNAPSHOT-jar-with-dependencies.jar
+wget "http://10.232.4.35:8877/mytest-1.2-SNAPSHOT-jar-with-dependencies.jar" -O client/mytest-1.2-SNAPSHOT-jar-with-dependencies.jar

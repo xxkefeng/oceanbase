@@ -47,7 +47,9 @@ namespace oceanbase
         default_task_queue_thread_.stop();
         wait_for_queue();
       }
+      TBSYS_LOG(WARN, "task threads stoped.");
       ObBaseServer::destroy();
+      TBSYS_LOG(WARN, "libeasy timer thread stoped.");
     }
 
     int ObSingleServer::set_min_left_time(const int64_t left_time)
@@ -141,7 +143,7 @@ namespace oceanbase
       }
       else
       {
-        bool ps = default_task_queue_thread_.push(req, task_queue_size_, false);
+        bool ps = default_task_queue_thread_.push(req, task_queue_size_, false, false);
         if (!ps)
         {
           if (!handle_overflow_packet(req))
@@ -153,9 +155,11 @@ namespace oceanbase
       }
       return rc;
     }
-
     int ObSingleServer::handleBatchPacket(ObPacketQueue& packetQueue)
     {
+      UNUSED(packetQueue);
+      return OB_SUCCESS;
+    /*
       int ret = OB_SUCCESS;
       ObPacketQueue temp_queue;
 
@@ -181,6 +185,7 @@ namespace oceanbase
       }
 
       return ret;
+    */
     }
 
     bool ObSingleServer::handlePacketQueue(ObPacket *packet, void *args)
@@ -243,7 +248,7 @@ namespace oceanbase
       common::ObResultCode result_msg;
       ThreadSpecificBuffer::Buffer* my_buffer = my_thread_buffer.get_buffer();
       ObDataBuffer out_buff(my_buffer->current(), my_buffer->remain());
-      result_msg.result_code_ = OB_ERROR;
+      result_msg.result_code_ = OB_DISCARD_PACKET;
       easy_addr_t addr = get_easy_addr(base_packet->get_request());
       if (MY_VERSION != base_packet->get_api_version())
       {
@@ -276,7 +281,10 @@ namespace oceanbase
 
     void ObSingleServer::handle_timeout_packet(ObPacket* base_packet)
     {
-      UNUSED(base_packet);
+      if (NULL != base_packet)
+      {
+        easy_request_wakeup(base_packet->get_request());
+      }
     }
 
   } /* common */

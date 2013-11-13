@@ -137,27 +137,162 @@ namespace oceanbase
       }
       else if (frozen_version >= table_schema->get_expire_frequency() + last_do_expire_version)
       {
-        if (NULL != (expire_condition = table_schema->get_expire_condition())
-                 && expire_condition[0] != '\0')
-        {
-          ret = true;
-        }
+        expire_condition = table_schema->get_expire_condition();
+        ret = check_expire_condition_need_filter(*table_schema);
         TBSYS_LOG(INFO, "expire info, frozen_version=%ld, expire_frequency=%ld, "
                         "last_do_expire_version=%ld, table_id=%lu, "
                         "expire column id=%ld, expire_duration=%ld, "
-                        "expire_condition=%s, need_filter=%d",
+                        "expire_condition=%s, need_filter=%d, ignore_filter=%d",
           frozen_version, table_schema->get_expire_frequency(),
           last_do_expire_version, table_id_, column_id, duration,
-          (NULL == expire_condition) ? "" : expire_condition, ret);
+          (NULL == expire_condition) ? "" : expire_condition, ret,
+          (NULL != expire_condition && expire_condition[0] != '\0' && !ret));
+      }
+
+      return ret;
+    }
+
+    bool ObTabletMergerFilter::check_expire_condition_need_filter(
+       const ObTableSchema& table_schema) const
+    {
+      int ret   = OB_SUCCESS;
+      bool bret = true;
+      const char* expire_condition = NULL;
+      char infix_condition_expr[OB_MAX_EXPIRE_CONDITION_LENGTH];
+      ObString cond_expr;
+      ObExpressionParser* parser = new (std::nothrow) ObExpressionParser();
+
+      if (NULL == parser)
+      {
+        TBSYS_LOG(WARN, "failed to new expression parser");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else if (NULL != (expire_condition = table_schema.get_expire_condition()) 
+               && expire_condition[0] != '\0')
+      {
+        if (static_cast<int64_t>(strlen(expire_condition)) >= OB_MAX_EXPIRE_CONDITION_LENGTH)
+        {
+          TBSYS_LOG(WARN, "expire condition too large, expire_condition_len=%zu, "
+              "max_condition_len=%ld, table_name=%s",
+              strlen(expire_condition), OB_MAX_EXPIRE_CONDITION_LENGTH,
+              table_schema.get_table_name());
+          ret = OB_ERROR;
+        }
+        else
+        {
+          strncpy(infix_condition_expr, expire_condition, OB_MAX_EXPIRE_CONDITION_LENGTH);
+          ret = replace_system_variable(infix_condition_expr,
+              OB_MAX_EXPIRE_CONDITION_LENGTH);
+          if (OB_SUCCESS == ret)
+          {
+            cond_expr.assign_ptr(infix_condition_expr,
+                static_cast<int32_t>(strlen(infix_condition_expr)));
+            ret = check_expire_dependent_columns(cond_expr, table_schema, *parser);
+            if (OB_SUCCESS != ret)
+            {
+              TBSYS_LOG(WARN, "failed to check expire dependent columns, infix_expr=%s",
+                  infix_condition_expr);
+            }
+          }
+        }
+      }
+      else 
+      {
+        bret = false;
+      }
+
+      if (OB_SUCCESS != ret)
+      {
+        bret = false;
+      }
+
+      if (NULL != parser)
+      {
+        delete parser;
+        parser = NULL;
+      }
+
+      return bret;
+    }
+
+    int ObTabletMergerFilter::check_expire_dependent_columns(const ObString& expr,
+      const ObTableSchema& table_schema, ObExpressionParser& parser) const
+    {
+      int ret               = OB_SUCCESS;
+      int i                 = 0;
+      int64_t type          = 0;
+      int64_t postfix_size  = 0;
+      ObString key_col_name;
+      ObArrayHelper<ObObj> expr_array;
+      ObObj post_expr[OB_MAX_COMPOSITE_SYMBOL_COUNT];
+      const ObColumnSchemaV2* column_schema = NULL;
+      ObString table_name;
+
+      expr_array.init(OB_MAX_COMPOSITE_SYMBOL_COUNT, post_expr);
+      ret = parser.parse(expr, expr_array);
+      if (OB_SUCCESS == ret)
+      {
+        postfix_size = expr_array.get_array_index();
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "parse infix expression to postfix expression "
+            "error, ret=%d", ret);
+      }
+
+      if (OB_SUCCESS == ret)
+      {
+        i = 0;
+        while(i < postfix_size - 1)
+        {
+          if (OB_SUCCESS != expr_array.at(i)->get_int(type))
+          {
+            TBSYS_LOG(WARN, "unexpected data type. int expected, but actual type is %d",
+                expr_array.at(i)->get_type());
+            ret = OB_ERR_UNEXPECTED;
+            break;
+          }
+          else
+          {
+            if (ObExpression::COLUMN_IDX == type)
+            {
+              if (OB_SUCCESS != expr_array.at(i+1)->get_varchar(key_col_name))
+              {
+                TBSYS_LOG(WARN, "unexpected data type. varchar expected, "
+                    "but actual type is %d",
+                    expr_array.at(i+1)->get_type());
+                ret = OB_ERR_UNEXPECTED;
+                break;
+              }
+              else
+              {
+                table_name.assign_ptr(const_cast<char*>(table_schema.get_table_name()),
+                    static_cast<int32_t>(strlen(table_schema.get_table_name())));
+                column_schema = schema_->get_column_schema(table_name, key_col_name);
+                if (NULL == column_schema)
+                {
+                  TBSYS_LOG(ERROR, "expire condition includes invalid column name, "
+                      "table_name=%s, column_name=%.*s, expire_condition=%.*s",
+                      table_schema.get_table_name(), key_col_name.length(), key_col_name.ptr(),
+                      expr.length(), expr.ptr());
+                  ret = OB_ERROR;
+                  break;
+                }
+              }
+            }/* only column name needs to decode. other type is ignored */
+            i += 2; // skip <type, data> (2 objects as an element)
+          }
+        }
       }
 
       return ret;
     }
 
     int ObTabletMergerFilter::replace_system_variable(char* expire_condition,
-      const int64_t buf_size)
+      const int64_t buf_size) const
     {
       int ret = OB_SUCCESS;
+      struct tm frozen_tm;
       struct tm* tm = NULL;
       time_t frozen_second = 0;
       char replace_str_buf[32];
@@ -171,7 +306,7 @@ namespace oceanbase
       else
       {
         frozen_second = static_cast<time_t>(frozen_time_ / 1000 / 1000);
-        tm = localtime(&frozen_second);
+        tm = localtime_r(&frozen_second, &frozen_tm);
         if (NULL == tm)
         {
           TBSYS_LOG(WARN, "failed to transfer frozen time to tm, "

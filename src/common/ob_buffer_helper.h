@@ -206,7 +206,6 @@ namespace oceanbase
         else if((buf_size_ != INVALID_BUF_SIZE) && ((pos_ + (int64_t)sizeof(T)) > buf_size_))
         {
           ret = common::OB_BUF_NOT_ENOUGH;
-          TBSYS_LOG(WARN, "buf is not enough");
         }
         else
         {

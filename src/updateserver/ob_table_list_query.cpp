@@ -86,19 +86,22 @@ namespace oceanbase
         }
         if (OB_SUCCESS != (err = table_entity->get(*session_ctx, table_id, row_key, column_filter, lock_flag_, iter)))
         {
-          TBSYS_LOG(WARN, "table entity get fail ret=%d table_id=%lu row_key=[%s] columns=[%s]",
-                    err, table_id, to_cstring(row_key), column_filter->log_str());
+          if (!IS_SQL_ERR(err))
+          {
+            TBSYS_LOG(WARN, "table entity get fail ret=%d table_id=%lu row_key=[%s] columns=[%s]",
+                      err, table_id, to_cstring(row_key), column_filter->log_str());
+          }
         }
       }
       return err;
     }
 
     int acquire_table_func(TableMgr& table_mgr, TableList& table_list, const ObVersionRange& version_range,
-                           uint64_t& max_valid_version, bool& is_final_minor)
+                           uint64_t& max_valid_version, bool& is_final_minor, uint64_t table_id)
     {
       int err = OB_SUCCESS;
 
-      if (OB_SUCCESS != (err = table_mgr.acquire_table(version_range, max_valid_version, table_list, is_final_minor))
+      if (OB_SUCCESS != (err = table_mgr.acquire_table(version_range, max_valid_version, table_list, is_final_minor, table_id))
           || 0 == table_list.size())
       {
         TBSYS_LOG(WARN, "acquire table fail version_range=%s, err=%d", range2str(version_range), err);
@@ -130,7 +133,7 @@ namespace oceanbase
       return err;
     }
 
-    int ObTableListQuery::open(BaseSessionCtx* session_ctx, ObUpsTableMgr* table_mgr, const ObVersionRange& version_range)
+    int ObTableListQuery::open(BaseSessionCtx* session_ctx, ObUpsTableMgr* table_mgr, const ObVersionRange& version_range, uint64_t table_id)
     {
       int err = OB_SUCCESS;
       if (NULL != session_ctx_ || NULL != table_mgr_)
@@ -148,7 +151,7 @@ namespace oceanbase
         table_mgr_ = table_mgr;
         guard_ = new(guard_buf_)ITableEntity::Guard(table_mgr_->get_table_mgr()->get_resource_pool());
         if (OB_SUCCESS != (err = acquire_table_func(*table_mgr_->get_table_mgr(), table_list_, version_range,
-                                                         max_valid_version_, is_final_minor_)))
+                                                    max_valid_version_, is_final_minor_, table_id)))
         {
           TBSYS_LOG(ERROR, "acquire table fail, err=%d", err);
         }
@@ -192,7 +195,7 @@ namespace oceanbase
     int ObTableListQuery::query(IObSingleTableQuery* table_query, ObRowDesc* row_desc, ObPhyOperator*& result)
     {
       int ret = OB_SUCCESS;
-      ObPhyOperator *ret_iter = &merger_;
+      ObPhyOperator *ret_iter = merger_;
 
       TableList::iterator iter;
       int32_t merge_child_idx = 0;
@@ -205,6 +208,11 @@ namespace oceanbase
       {
         ret = OB_INVALID_ARGUMENT;
         TBSYS_LOG(ERROR, "table_query == %p || NULL == %p", table_query, row_desc);
+      }
+      else if (NULL == ret_iter)
+      {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(WARN, "merger null point, maybe allocate from resource_pool fail");
       }
       guard_->reset();
       merge_child_idx = 0;
@@ -245,7 +253,10 @@ namespace oceanbase
         prev_table_row_iter = NULL;
         if (OB_SUCCESS != (ret = table_query->query(session_ctx_, table_entity, table_iter)))
         {
-          TBSYS_LOG(WARN, "table entity query fail ret=%d", ret);
+          if (!IS_SQL_ERR(ret))
+          {
+            TBSYS_LOG(WARN, "table entity query fail ret=%d", ret);
+          }
           break;
         }
         sst_id = (NULL == table_entity) ? 0 : table_entity->get_table_item().get_sstable_id();
@@ -266,7 +277,7 @@ namespace oceanbase
           ret_iter = table_row_iter;
           break;
         }
-        if (OB_SUCCESS != (ret = merger_.set_child(merge_child_idx++, *table_row_iter)))
+        if (OB_SUCCESS != (ret = merger_->set_child(merge_child_idx++, *table_row_iter)))
         {
           TBSYS_LOG(WARN, "add iterator to merger fail ret=%d", ret);
           break;

@@ -239,6 +239,36 @@ bool ObConfigBoolItem::get(const char* str, bool &valid) const
     valid = true;
     value = true;
   }
+  else if (0 == strcasecmp(str, "off"))
+  {
+    valid = true;
+    value = false;
+  }
+  else if (0 == strcasecmp(str, "on"))
+  {
+    valid = true;
+    value = true;
+  }
+  else if (0 == strcasecmp(str, "no"))
+  {
+    valid = true;
+    value = false;
+  }
+  else if (0 == strcasecmp(str, "yes"))
+  {
+    valid = true;
+    value = true;
+  }
+  else if (0 == strcasecmp(str, "f"))
+  {
+    valid = true;
+    value = false;
+  }
+  else if (0 == strcasecmp(str, "t"))
+  {
+    valid = true;
+    value = true;
+  }
   else
   {
     TBSYS_LOG(ERROR, "Get bool config item fail, str: [%s]", str);

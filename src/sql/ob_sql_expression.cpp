@@ -19,11 +19,13 @@
 #include "common/utility.h"
 #include "sql/ob_item_type_str.h"
 #include "common/ob_cached_allocator.h"
+#include "sql/ob_phy_operator_type.h"
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 
 ObSqlExpression::ObSqlExpression()
-  : column_id_(0), table_id_(0), is_aggr_func_(false), is_distinct_(false), aggr_func_(T_INVALID)
+  : column_id_(0), table_id_(0), is_aggr_func_(false), is_distinct_(false)
+  , aggr_func_(T_INVALID)
 {
 }
 
@@ -328,6 +330,8 @@ int ObSqlExpressionUtil::make_column_expr(const uint64_t tid, const uint64_t cid
 }
 
 static ObCachedAllocator<ObSqlExpression> SQL_EXPR_ALLOC;
+static volatile uint64_t ALLOC_TIMES = 0;
+static volatile uint64_t FREE_TIMES = 0;
 
 ObSqlExpression* ObSqlExpression::alloc()
 {
@@ -336,12 +340,26 @@ ObSqlExpression* ObSqlExpression::alloc()
   {
     TBSYS_LOG(ERROR, "failed to allocate expression object");
   }
-  //TBSYS_LOG(INFO, "[EXPR] alloc %p", ret);
+  else
+  {
+    atomic_inc(&ALLOC_TIMES);
+  }
+  if (ALLOC_TIMES % 1000000 == 0)
+  {
+    TBSYS_LOG(INFO, "[EXPR] alloc %p, times=%ld cached=%d alloc_num=%d",
+              ret, ALLOC_TIMES, SQL_EXPR_ALLOC.get_cached_count(), SQL_EXPR_ALLOC.get_allocated_count());
+    ob_print_phy_operator_stat();
+  }
   return ret;
 }
 
 void ObSqlExpression::free(ObSqlExpression* ptr)
 {
   SQL_EXPR_ALLOC.free(ptr);
-  //TBSYS_LOG(INFO, "[EXPR] freed %p", ptr);
+  atomic_inc(&FREE_TIMES);
+  if (FREE_TIMES % 1000000 == 0)
+  {
+    TBSYS_LOG(INFO, "[EXPR] free %p, times=%ld cached=%d alloc_num=%d",
+              ptr, FREE_TIMES, SQL_EXPR_ALLOC.get_cached_count(), SQL_EXPR_ALLOC.get_allocated_count());
+  }
 }

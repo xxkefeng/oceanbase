@@ -623,7 +623,7 @@ namespace oceanbase
         writer_.set_dio(true);
 
         if ((ret = writer_.create_sstable(schema_,dest_file_string_,gen_sstable_.get_compressor(),
-                0, OB_SSTABLE_STORE_DENSE, gen_sstable_.block_size_)) != OB_SUCCESS)
+                0, OB_SSTABLE_STORE_DENSE, gen_sstable_.block_size_, max_rows_)) != OB_SUCCESS)
         {
           fprintf(stderr,"create sstable failed\n");
         }

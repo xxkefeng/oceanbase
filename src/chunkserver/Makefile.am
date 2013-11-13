@@ -14,6 +14,7 @@ LDADD = $(top_builddir)/src/sstable/libsstable.a                \
         $(top_builddir)/src/common/btree/libbtree.a             \
         $(top_builddir)/src/common/libcommon.a                  \
         $(top_builddir)/src/sql/libsql.a                        \
+				$(top_builddir)/src/common/timezone/libtimezone.a       \
         ${EASY_LIB_PATH}/libeasy.a                              \
         ${TBLIB_ROOT}/lib/libtbsys.a
 
@@ -77,6 +78,8 @@ libchunkserver_a_SOURCES =                                               \
  ob_chunk_server_config.h         ob_chunk_server_config.cpp             \
  ob_bypass_sstable_loader.h       ob_bypass_sstable_loader.cpp           \
  ob_tablet_service.h              ob_tablet_service.cpp                  \
+ ob_tablet_writer.h               ob_tablet_writer.cpp                   \
+ ob_tablet_reader.h               ob_tablet_reader.cpp                   \
  ob_chunk_reload_config.h         ob_chunk_reload_config.cpp
 
 bin_PROGRAMS = chunkserver

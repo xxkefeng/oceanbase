@@ -35,20 +35,29 @@ namespace oceanbase
       public:
         ObInsertDBSemFilter();
         ~ObInsertDBSemFilter();
+        virtual void reset();
+        virtual void reuse();
       public:
         int open();
         int close();
         int get_next_row(const common::ObRow *&row);
         int get_row_desc(const common::ObRowDesc *&row_desc) const;
         int64_t to_string(char* buf, const int64_t buf_len) const;
+        void set_phy_plan(ObPhysicalPlan *the_plan);
+        void set_input_values(uint64_t subquery) {input_values_subquery_ = subquery;};
         enum ObPhyOperatorType get_type() const{return PHY_INSERT_DB_SEM_FILTER;}
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
-      public:
-        inline ObExprValues &get_values() {return insert_values_;};
       private:
         bool could_insert_;
-        ObExprValues insert_values_;
+        uint64_t input_values_subquery_; // for MergeServer side
+        ObExprValues insert_values_; // for UpdateServer side
     };
+    inline void ObInsertDBSemFilter::set_phy_plan(ObPhysicalPlan *the_plan)
+    {
+      ObPhyOperator::set_phy_plan(the_plan);
+      insert_values_.set_phy_plan(the_plan);
+    }
   } // end namespace sql
 } // end namespace oceanbase
 

@@ -109,9 +109,13 @@ namespace oceanbase
         break;
       case INDEX_BLOCK_CACHE_MISS:
         break;
-      case INDEX_DISK_IO_NUM:
+      case INDEX_DISK_IO_READ_NUM:
         break;
-      case INDEX_DISK_IO_BYTES:
+      case INDEX_DISK_IO_WRITE_NUM:
+        break;
+      case INDEX_DISK_IO_READ_BYTES:
+        break;
+      case INDEX_DISK_IO_WRITE_BYTES:
         break;
       default:
         break;
@@ -135,9 +139,13 @@ namespace oceanbase
         break;
       case INDEX_BLOCK_CACHE_MISS:
         break;
-      case INDEX_DISK_IO_NUM:
+      case INDEX_DISK_IO_READ_NUM:
         break;
-      case INDEX_DISK_IO_BYTES:
+      case INDEX_DISK_IO_WRITE_NUM:
+        break;
+      case INDEX_DISK_IO_READ_BYTES:
+        break;
+      case INDEX_DISK_IO_WRITE_BYTES:
         break;
       default:
         break;

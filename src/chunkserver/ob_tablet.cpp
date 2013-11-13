@@ -125,12 +125,10 @@ namespace oceanbase
           && OB_SUCCESS == serialization::encode_i64(buf, buf_len, pos, sequence_num_) 
           && OB_SUCCESS == serialization::encode_i16(buf, buf_len, pos, sstable_version_) 
           && OB_SUCCESS == serialization::encode_i16(buf, buf_len, pos, reserved16_) 
-          && OB_SUCCESS == serialization::encode_i32(buf, buf_len, pos, reserved32_) )
+          && OB_SUCCESS == serialization::encode_i32(buf, buf_len, pos, reserved32_) 
+          && OB_SUCCESS == serialization::encode_i64(buf, buf_len, pos, row_checksum_)
+          && OB_SUCCESS == serialization::encode_i64(buf, buf_len, pos, reserved64_) )
       {
-        for (int64_t i = 0; i < RESERVED_LEN && OB_SUCCESS == ret; ++i)
-        {
-          ret = serialization::encode_i64(buf, buf_len, pos, reserved_[i]);
-        }
       }
       else
       {
@@ -159,12 +157,10 @@ namespace oceanbase
           && OB_SUCCESS == serialization::decode_i16(buf, data_len, pos, &sstable_version_)
           && OB_SUCCESS == serialization::decode_i16(buf, data_len, pos, &reserved16_)
           && OB_SUCCESS == serialization::decode_i32(buf, data_len, pos, &reserved32_)
+          && OB_SUCCESS == serialization::decode_i64(buf, data_len, pos, reinterpret_cast<int64_t*>(&row_checksum_))
+          && OB_SUCCESS == serialization::decode_i64(buf, data_len, pos, &reserved64_)
           )
       {
-        for (int64_t i = 0; i < RESERVED_LEN && OB_SUCCESS == ret; ++i)
-        {
-          ret = serialization::decode_i64(buf, data_len, pos, &reserved_[i]);
-        }
       }
       else
       {
@@ -186,10 +182,8 @@ namespace oceanbase
       total_size += serialization::encoded_length_i16(sstable_version_);
       total_size += serialization::encoded_length_i16(reserved16_);
       total_size += serialization::encoded_length_i32(reserved32_);
-      for (int64_t i = 0; i < RESERVED_LEN; ++i)
-      {
-        total_size += serialization::encoded_length_i64(reserved_[i]);
-      }
+      total_size += serialization::encoded_length_i64(row_checksum_);
+      total_size += serialization::encoded_length_i64(reserved64_);
 
       return total_size;
     }
@@ -218,7 +212,7 @@ namespace oceanbase
       if (0 != ref_count_)
       {
         TBSYS_LOG(ERROR, "try to destroy tablet, but ref count is not 0, "
-                         "ref_count_=%u",
+                         "ref_count_=%ld",
           ref_count_);
       }
       int64_t reader_count = sstable_reader_list_.count();
@@ -760,17 +754,6 @@ namespace oceanbase
     void ObTablet::set_merged(int status) 
     { 
       merged_ = status; 
-      if (NULL != image_)
-      {
-        if (status > 0)
-        {
-          image_->incr_merged_tablet_count();
-        }
-        else 
-        {
-          image_->decr_merged_tablet_count();
-        }
-      }
     }
 
   } // end namespace chunkserver

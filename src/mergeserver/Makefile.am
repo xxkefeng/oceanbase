@@ -5,12 +5,14 @@ AM_CPPFLAGS := $(AM_CPPFLAGS) -I${EASY_ROOT}/include/easy   \
 
 LIBTOOLFLAGS=--preserve-dup-deps
 
-LDADD = $(top_builddir)/src/obmysql/libobmysql.a    \
+LDADD = $(top_builddir)/src/sql/libsql.a            \
+        $(top_builddir)/src/obmysql/libobmysql.a    \
         $(top_builddir)/src/common/libcommon.a      \
         $(top_builddir)/src/sql/libsql.a            \
         $(top_builddir)/src/common/libcommon.a      \
         $(top_builddir)/src/sql/libsql.a            \
         $(top_builddir)/src/common/btree/libbtree.a \
+				$(top_builddir)/src/common/timezone/libtimezone.a \
         ${EASY_LIB_PATH}/libeasy.a                  \
         ${TBLIB_ROOT}/lib/libtbsys.a
 
@@ -71,8 +73,11 @@ pub_source =                                                            \
   ob_rs_rpc_proxy.h                 ob_rs_rpc_proxy.cpp                 \
   ob_merge_server_config.h          ob_merge_server_config.cpp          \
   ob_ms_sql_proxy.h                 ob_ms_sql_proxy.cpp                 \
+  ob_get_privilege_task.h           ob_get_privilege_task.cpp           \
+	ob_bloom_filter_task_queue_thread.h ob_bloom_filter_task_queue_thread.cpp\
+	ob_insert_cache.h                 ob_insert_cache.cpp\
   ob_merge_reload_config.h          ob_merge_reload_config.cpp          \
-  ob_get_privilege_task.h           ob_get_privilege_task.cpp
+  ob_frozen_data_cache.h            ob_frozen_data_cache.cpp
 
 
 # rules to auto generate svn_version.cpp

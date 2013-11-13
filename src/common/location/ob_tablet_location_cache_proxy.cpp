@@ -67,7 +67,7 @@ int ObTabletLocationCacheProxy::del_cache_item(const uint64_t table_id, const Ob
   int ret = OB_SUCCESS;
   if ((NULL == search_key.ptr()) || (0 == search_key.length()))
   {
-    TBSYS_LOG(ERROR, "check search key failed:table[%lu], ptr[%p]", table_id, search_key.ptr());
+    TBSYS_LOG(WARN, "check search key failed:table[%lu], ptr[%p]", table_id, search_key.ptr());
     ret = OB_INPUT_PARAM_ERROR;
   }
   else
@@ -75,7 +75,7 @@ int ObTabletLocationCacheProxy::del_cache_item(const uint64_t table_id, const Ob
     ret = tablet_cache_->del(table_id, search_key);
     if (OB_SUCCESS != ret)
     {
-      TBSYS_LOG(DEBUG, "del cache item failed:table_id[%lu], ret[%d], search key[%s]", 
+      TBSYS_LOG(DEBUG, "del cache item failed:table_id[%lu], ret[%d], search key[%s]",
           table_id, ret, to_cstring(search_key));
     }
     else
@@ -88,13 +88,13 @@ int ObTabletLocationCacheProxy::del_cache_item(const uint64_t table_id, const Ob
 
 
 
-int ObTabletLocationCacheProxy::update_cache_item(const uint64_t table_id, const ObRowkey & rowkey, 
+int ObTabletLocationCacheProxy::update_cache_item(const uint64_t table_id, const ObRowkey & rowkey,
   const ObTabletLocationList & list)
 {
   int ret = OB_SUCCESS;
   if ((NULL == rowkey.ptr()) || (0 == rowkey.length()))
   {
-    TBSYS_LOG(ERROR, "check rowkey failed:table_id[%lu], rowkey[%p]", table_id, rowkey.ptr());
+    TBSYS_LOG(WARN, "check rowkey failed:table_id[%lu], rowkey[%p]", table_id, rowkey.ptr());
   }
   else
   {
@@ -113,7 +113,7 @@ int ObTabletLocationCacheProxy::update_cache_item(const uint64_t table_id, const
 
 
 
-int ObTabletLocationCacheProxy::server_fail(const uint64_t table_id, const common::ObRowkey & search_key, 
+int ObTabletLocationCacheProxy::server_fail(const uint64_t table_id, const common::ObRowkey & search_key,
   ObTabletLocationList & list, const ObServer & server)
 {
   int ret = get_tablet_location(table_id, search_key, list);
@@ -147,7 +147,7 @@ int ObTabletLocationCacheProxy::set_item_invalid(const uint64_t table_id, const 
   int ret = tablet_cache_->get(table_id, rowkey, list);
   if (OB_SUCCESS != ret)
   {
-    TBSYS_LOG(ERROR, "get cache item failed:table_id[%lu], ret[%d]",
+    TBSYS_LOG(WARN, "get cache item failed:table_id[%lu], ret[%d]",
       table_id, ret);
   }
   else
@@ -155,7 +155,7 @@ int ObTabletLocationCacheProxy::set_item_invalid(const uint64_t table_id, const 
     ret = list.set_item_invalid(addr);
     if (OB_SUCCESS != ret)
     {
-      TBSYS_LOG(ERROR, "set item invalid failed:table_id[%lu], ret[%d]",
+      TBSYS_LOG(WARN, "set item invalid failed:table_id[%lu], ret[%d]",
         table_id, ret);
     }
     else
@@ -176,13 +176,13 @@ int ObTabletLocationCacheProxy::set_item_invalid(const uint64_t table_id, const 
 
 // set item server invalid
 
-int ObTabletLocationCacheProxy::get_search_key(const common::ScanFlag::Direction scan_direction, 
+int ObTabletLocationCacheProxy::get_search_key(const common::ScanFlag::Direction scan_direction,
     const common::ObNewRange * range, ObRowKeyContainer & objs, common::ObRowkey& search_key)
 {
   int ret = OB_SUCCESS;
   if (NULL == range)
   {
-    TBSYS_LOG(ERROR, "check scan param range failed:range[%p]", range);
+    TBSYS_LOG(WARN, "check scan param range failed:range[%p]", range);
     ret = OB_INPUT_PARAM_ERROR;
   }
   else
@@ -190,7 +190,7 @@ int ObTabletLocationCacheProxy::get_search_key(const common::ScanFlag::Direction
     if (ScanFlag::FORWARD == scan_direction)
     {
       int64_t length = range->start_key_.length();
-      if (range->start_key_.is_min_row()) 
+      if (range->start_key_.is_min_row())
       {
         // range start key mean nothing when is_min_value
         length = 0;
@@ -240,7 +240,7 @@ int ObTabletLocationCacheProxy::get_tablet_location(const ScanFlag::Direction sc
   ObRowKeyContainer temp_objs;
   if (NULL == range)
   {
-    TBSYS_LOG(ERROR, "check scan param range failed:range[%p]", range);
+    TBSYS_LOG(WARN, "check scan param range failed:range[%p]", range);
     ret = OB_INPUT_PARAM_ERROR;
   }
   else
@@ -248,17 +248,17 @@ int ObTabletLocationCacheProxy::get_tablet_location(const ScanFlag::Direction sc
     ret = get_search_key(scan_direction, range, temp_objs, search_key);
     if (OB_SUCCESS != ret)
     {
-      TBSYS_LOG(ERROR, "get search key failed:range[%s], ret[%d]", to_cstring(*range), ret);
+      TBSYS_LOG(WARN, "get search key failed:range[%s], ret[%d]", to_cstring(*range), ret);
     }
     else
     {
-      TBSYS_LOG(DEBUG, "get_search_key sd:%d, range:%s, sk:%s,ek:%s, search_key[%s]", 
-          scan_direction, to_cstring(*range), to_cstring(range->start_key_), 
+      TBSYS_LOG(DEBUG, "get_search_key sd:%d, range:%s, sk:%s,ek:%s, search_key[%s]",
+          scan_direction, to_cstring(*range), to_cstring(range->start_key_),
           to_cstring(range->end_key_), to_cstring(search_key));
       ret = get_tablet_location(range->table_id_, search_key, list);
       if (OB_SUCCESS != ret)
       {
-        TBSYS_LOG(WARN, "get tablet location failed:range[%s],  search_key[%s], ret[%d]", 
+        TBSYS_LOG(WARN, "get tablet location failed:range[%s],  search_key[%s], ret[%d]",
           to_cstring(*range), to_cstring(search_key), ret);
       }
       else
@@ -294,7 +294,7 @@ int ObTabletLocationCacheProxy::renew_location_item(const uint64_t table_id,
     PROFILE_LOG(DEBUG, SCAN_ROOT_TABLE_END_TIME, end_time);
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(ERROR, "get tablet location failed:table_id[%lu], ret[%d], rowkey[%s]", 
+      TBSYS_LOG(WARN, "get tablet location failed:table_id[%lu], ret[%d], rowkey[%s]",
           table_id, ret, to_cstring(row_key));
     }
     else if (0 == location.size())
@@ -311,20 +311,20 @@ int ObTabletLocationCacheProxy::renew_location_item(const uint64_t table_id,
   return ret;
 }
 
-int ObTabletLocationCacheProxy::update_timeout_item(const uint64_t table_id, 
+int ObTabletLocationCacheProxy::update_timeout_item(const uint64_t table_id,
   const ObRowkey & row_key, ObTabletLocationList & location)
 {
   int ret = OB_SUCCESS;
   int64_t timestamp = tbsys::CTimeUtil::getTime();
   // check location cache item timeout
-  if (timestamp - location.get_timestamp() > tablet_cache_->get_timeout())
+  if (timestamp - location.get_timestamp() > tablet_cache_->get_timeout(table_id))
   {
     // lock and check again
     TBSYS_LOG(DEBUG, "cache timeout get local cache with lock:table_id[%lu]", table_id);
     tbsys::CThreadGuard lock(acquire_lock(table_id));
     ret = tablet_cache_->get(table_id, row_key, location);
     if ((ret != OB_SUCCESS) || (timestamp - location.get_timestamp()
-      > tablet_cache_->get_timeout()))
+      > tablet_cache_->get_timeout(table_id)))
     {
       int64_t start_time = tbsys::CTimeUtil::getTime();
       PROFILE_LOG(DEBUG, SCAN_ROOT_TABLE_START_TIME, start_time);
@@ -341,7 +341,7 @@ int ObTabletLocationCacheProxy::update_timeout_item(const uint64_t table_id,
         ret = tablet_cache_->update(table_id, row_key, location);
         if (ret != OB_SUCCESS)
         {
-          TBSYS_LOG(WARN, "update cache item failed:table_id[%lu], rowkey[%s], ret[%d]", 
+          TBSYS_LOG(WARN, "update cache item failed:table_id[%lu], rowkey[%s], ret[%d]",
               table_id, to_cstring(row_key), ret);
         }
       }
@@ -355,13 +355,13 @@ int ObTabletLocationCacheProxy::update_timeout_item(const uint64_t table_id,
 }
 
 // get tablet location through rowkey, return the cs includeing this row_key data
-int ObTabletLocationCacheProxy::get_tablet_location(const uint64_t table_id, 
+int ObTabletLocationCacheProxy::get_tablet_location(const uint64_t table_id,
   const ObRowkey & row_key, ObTabletLocationList & location)
 {
   int ret = OB_SUCCESS;
   if (!check_inner_stat())
   {
-    TBSYS_LOG(ERROR, "%s", "check inner stat failed");
+    TBSYS_LOG(WARN, "%s", "check inner stat failed");
     ret = OB_INNER_STAT_ERROR;
   }
   else
@@ -426,5 +426,3 @@ void ObTabletLocationCacheProxy::inc_cache_monitor(const uint64_t table_id, cons
     OB_STAT_TABLE_INC(COMMON, table_id, HIT_CS_CACHE_COUNT);
   }
 }
-
-

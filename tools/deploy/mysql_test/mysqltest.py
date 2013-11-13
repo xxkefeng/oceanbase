@@ -319,7 +319,7 @@ class Manager:
         else:
             self.log_fp.write('%s INFO: [ %s ] case failed!\n' % (strftime("%Y-%m-%d %X"), result["name"]))
             self.log_fp.write("%s\n" % str(result["errput"]).strip())
-            pfail(self.shrink_errmsg(result["errput"]))
+            pfail("%s ( %f s )\n%s" % (test, during, self.shrink_errmsg(result["errput"])))
 
         if self.after_one:
             self.after_one(self)
@@ -365,6 +365,7 @@ class Manager:
                     faillst=t["name"] if faillst == '' else (faillst+','+t["name"])
             ppasslst(passlst)
             pfaillst(faillst)
+            exit(1)
         return self.result
 
 if __name__ == '__main__':

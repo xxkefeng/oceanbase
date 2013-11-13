@@ -28,6 +28,20 @@ ObExecute::~ObExecute()
 {
 }
 
+void ObExecute::reset()
+{
+  stmt_id_ = OB_INVALID_ID;
+  param_names_.clear();
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObExecute::reuse()
+{
+  stmt_id_ = OB_INVALID_ID;
+  param_names_.clear();
+  ObSingleChildPhyOperator::reuse();
+}
+
 int ObExecute::get_row_desc(const common::ObRowDesc *&row_desc) const
 {
   int ret = OB_SUCCESS;
@@ -101,7 +115,7 @@ int ObExecute::fill_execute_items()
   // fill running params
   if (ret == OB_SUCCESS)
   {
-    ObArray<ObObj*>& param_values = result_set->get_params();
+    ObIArray<ObObj*>& param_values = result_set->get_params();
     if (param_values.count() != param_names_.count())
     {
       ret = OB_ERR_WRONG_DYNAMIC_PARAM;
@@ -125,16 +139,33 @@ int ObExecute::fill_execute_items()
     }
   }
 
-  if (ret == OB_SUCCESS && (ret = ObSingleChildPhyOperator::open()) != OB_SUCCESS)
+  if (ret == OB_SUCCESS && (ret = result_set->open()) != OB_SUCCESS)
   {
-    TBSYS_LOG(WARN, "failed to open child_op, err=%d", ret);
+    TBSYS_LOG(WARN, "failed to open result set, err=%d", ret);
   }
   return ret;
 }
 
 int ObExecute::get_next_row(const common::ObRow *&row)
 {
-  return child_op_->get_next_row(row);
+  int ret = OB_SUCCESS;
+
+  if (NULL == child_op_)
+  {
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(ERROR, "child_op_ must not NULL");
+  }
+  else
+  {
+    ret = child_op_->get_next_row(row);
+  }
+   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObExecute, PHY_EXECUTE);
+  }
 }
 
 int64_t ObExecute::to_string(char* buf, const int64_t buf_len) const

@@ -25,6 +25,8 @@ namespace oceanbase
       public:
         ObNoChildrenPhyOperator() {}
         virtual ~ObNoChildrenPhyOperator() {}
+        virtual void reset() = 0;
+        virtual void reuse() = 0;
         /// @note always return OB_NOT_SUPPORTED
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
       private:

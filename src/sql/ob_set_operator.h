@@ -29,6 +29,8 @@ namespace oceanbase
       public:
         ObSetOperator();
         ~ObSetOperator();
+        virtual void reset();
+        virtual void reuse();
         /**
          * 设置集合操作是否为DISTINCT
          *
@@ -47,6 +49,8 @@ namespace oceanbase
          * @return OB_SUCCESS或OB_ITER_END或错误码
          */
         virtual int get_next_row(const common::ObRow *&row);
+
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         DISALLOW_COPY_AND_ASSIGN(ObSetOperator);
     

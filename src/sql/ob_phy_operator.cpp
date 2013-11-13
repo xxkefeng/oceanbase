@@ -39,3 +39,10 @@ DEFINE_GET_SERIALIZE_SIZE(ObPhyOperator)
 {
   return common::OB_NOT_IMPLEMENT;
 }
+
+PHY_OPERATOR_ASSIGN(ObPhyOperator)
+{
+  UNUSED(other);
+  return common::OB_NOT_IMPLEMENT;
+}
+

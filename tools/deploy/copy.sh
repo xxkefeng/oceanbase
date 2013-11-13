@@ -5,13 +5,16 @@ then
 else
   OCEANBASE_DIR=$1
 fi
+
 if [ $# -gt 1 ]
 then
   OBCONNECTOR_DIR=$2
 fi
+
 BIN_DIR=bin
 LIB_DIR=lib
 TOOLS_DIR=tools
+
 #copy xxxserver
 mkdir -p $BIN_DIR
 cp $OCEANBASE_DIR/src/chunkserver/chunkserver $BIN_DIR/
@@ -36,6 +39,12 @@ cp $OCEANBASE_DIR/tools/sqltest/lib/libpq* $LIB_DIR/
 echo cp $OCEANBASE_DIR/tools/sqltest/lib/libpq* $LIB_DIR/:$?
 cp $OCEANBASE_DIR/tools/sqltest/lib/libmysqlclient* $LIB_DIR/
 echo cp $OCEANBASE_DIR/tools/sqltest/lib/libmysqlclient* $LIB_DIR/:$?
+
+#copy obsql lib
+cp $OCEANBASE_DIR/src/client/obsql/src/.libs/libobsql* $LIB_DIR/
+#cp /home/admin/yiming.czw/lib/libobsql.so.0.0.0 $LIB_DIR/
+echo cp $OCEANBASE_DIR/src/client/obsql/src/.libs/libobsql* $LIB_DIR/:$?
+
 
 #copy libobapi.so
 #cp $OCEANBASE_DIR/src/client/cpp/.libs/libobapi.so* $LIB_DIR/

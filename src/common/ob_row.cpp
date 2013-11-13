@@ -51,37 +51,41 @@ int ObRow::reset(bool skip_rowkey, enum ObRow::DefaultValue default_value)
   {
     ret = OB_INVALID_ARGUMENT;
   }
-
-  if (OB_SUCCESS == ret)
+  
+  if (OB_SUCCESS == ret && NULL != row_desc_)
   {
-    if(NULL == row_desc_)
+    if (OB_SUCCESS == ret)
     {
-      ret = OB_ERROR;
-    }
-    else
-    {
-      flag_column_idx = row_desc_->get_idx(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
-    }
-  }
-
-  if (OB_SUCCESS == ret)
-  {
-    raw_row_.clear();
-    start = skip_rowkey ? row_desc_->get_rowkey_cell_count() : 0;
-    for (int64_t i=start;OB_SUCCESS == ret && i<row_desc_->get_column_num();i++)
-    {
-      if (i != flag_column_idx)
+      if(NULL == row_desc_)
       {
-        if (OB_SUCCESS != (ret = this->raw_set_cell(i, *default_obj)))
-        {
-          TBSYS_LOG(WARN, "fail to set cell null:ret[%d], i[%ld]", ret, i);
-        }
+        TBSYS_LOG(ERROR, "row_desc_ must not be null");
+        ret = OB_ERR_UNEXPECTED;
       }
       else
       {
-        if (OB_SUCCESS != (ret = this->raw_set_cell(i, row_not_exist_cell) ))
+        flag_column_idx = row_desc_->get_idx(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID);
+      }
+    }
+
+    if (OB_SUCCESS == ret)
+    {
+      raw_row_.clear();
+      start = skip_rowkey ? row_desc_->get_rowkey_cell_count() : 0;
+      for (int64_t i=start;OB_SUCCESS == ret && i<row_desc_->get_column_num();i++)
+      {
+        if (i != flag_column_idx)
         {
-          TBSYS_LOG(WARN, "set action flag cell fail:ret[%d]", ret);
+          if (OB_SUCCESS != (ret = this->raw_set_cell(i, *default_obj)))
+          {
+            TBSYS_LOG(WARN, "fail to set cell null:ret[%d], i[%ld]", ret, i);
+          }
+        }
+        else
+        {
+          if (OB_SUCCESS != (ret = this->raw_set_cell(i, row_not_exist_cell) ))
+          {
+            TBSYS_LOG(WARN, "set action flag cell fail:ret[%d]", ret);
+          }
         }
       }
     }

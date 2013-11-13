@@ -5,7 +5,7 @@
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
  *
- * Time-stamp: <2013-04-23 16:33:12 fufeng.syd>
+ * Time-stamp: <2013-11-04 13:55:50 fufeng.syd>
  * Version: $Id$
  * Filename: ob_config_manager.cpp
  *
@@ -14,7 +14,8 @@
  *
  */
 
-#include <sql/ob_sql_result_set.h>
+#include "common/roottable/ob_ms_provider.h"
+#include "sql/ob_sql_result_set.h"
 #include "file_utils.h"
 #include "ob_config_manager.h"
 
@@ -48,6 +49,14 @@ int ObConfigManager::init(const ObServer &server,
 int ObConfigManager::init(MsList &mslist, const ObClientManager &client_mgr, ObTimer &timer)
 {
   mslist_ = &mslist;
+  client_mgr_ = &client_mgr;
+  timer_ = &timer;
+  return OB_SUCCESS;
+}
+
+int ObConfigManager::init(ObMsProvider &ms_provider, const ObClientManager &client_mgr, ObTimer &timer)
+{
+  ms_provider_ = &ms_provider;
   client_mgr_ = &client_mgr;
   timer_ = &timer;
   return OB_SUCCESS;
@@ -184,6 +193,21 @@ int ObConfigManager::dump2file(const char* path) const
   return ret;
 }
 
+void ObConfigManager::get_ms(ObServer &ms_server)
+{
+  if (0 != ms_self_.get_port())
+  {
+    ms_server = ms_self_;
+  }
+  else if (NULL != ms_provider_)
+  {
+    ms_provider_->get_ms(ms_server);
+  }
+  else if (NULL != mslist_)
+  {
+    ms_server = mslist_->get_one();
+  }
+}
 
 int ObConfigManager::update_local()
 {
@@ -191,14 +215,7 @@ int ObConfigManager::update_local()
   static const int64_t TIMEOUT = 1000000;
   ObServer ms_server;
 
-  if (0 != ms_self_.get_port())
-  {
-    ms_server = ms_self_;
-  }
-  else
-  {
-    ms_server = mslist_->get_one();
-  }
+  get_ms(ms_server);
 
   if (0 == ms_server.get_port())
   {
@@ -211,7 +228,7 @@ int ObConfigManager::update_local()
     ObDataBuffer msgbuf(buff, OB_MAX_PACKET_LENGTH);
     sql::ObSQLResultSet rs;
     int64_t session_id = 0;
-    ObString sqlstr = ObString::make_string("select * from __all_sys_config");
+    ObString sqlstr = ObString::make_string("select /*+read_consistency(STRONG) */ * from __all_sys_config");
 
     if (OB_SUCCESS != (ret = sqlstr.serialize(msgbuf.get_data(),
                                               msgbuf.get_capacity(),
@@ -271,7 +288,7 @@ int ObConfigManager::update_local()
             }
           }
         }
-      } while (true);
+      } while (OB_SUCCESS == ret);
     }
 
     if (OB_SUCCESS == ret)
@@ -298,6 +315,7 @@ int ObConfigManager::update_local()
       {
         TBSYS_LOG(INFO, "Reload server config successfully!");
       }
+      server_config_.print();
     }
     else
     {
@@ -311,7 +329,6 @@ int ObConfigManager::got_version(int64_t version)
 {
   int ret = OB_SUCCESS;
   bool schedule_task = false;
-  static const int64_t SCHEDULE_TIMEOUT = 3000000;
   if (version < 0)
   {
     /* from rs_admin, do whatever */
@@ -340,28 +357,15 @@ int ObConfigManager::got_version(int64_t version)
     }
     else
     {
-      update_task_.update_local_ = true;
       if (version > newest_version_)
       {
         TBSYS_LOG(INFO, "Got new config version! local: [%ld], newest: [%ld], got: [%ld]",
                   current_version_, newest_version_, version);
         newest_version_ = version;  /* for rootserver hb to others */
+        update_task_.update_local_ = true;
         schedule_task = true;
       }
-      else if (version == newest_version_)
-      {
-        /* received this version before but havn't done right now */
-        int64_t now = tbsys::CTimeUtil::getMonotonicTime();
-        if (update_task_.version_ > 0
-            && update_task_.scheduled_time_ + SCHEDULE_TIMEOUT < now)
-        {
-          /* update task is scheduled, but timeout detected */
-          TBSYS_LOG(INFO, "Reschedule update task! local: [%ld], newest: [%ld], got: [%ld]",
-                    current_version_, newest_version_, version);
-          schedule_task = true;
-        }
-      }
-      else/* version < newest_version_ */
+      else if (version < newest_version_) /* version < newest_version_ */
       {
         TBSYS_LOG(WARN, "Receive weird config version! local: [%ld], newest: [%ld], got: [%ld]",
                   current_version_, newest_version_, version);
@@ -378,11 +382,11 @@ int ObConfigManager::got_version(int64_t version)
     if (NULL == timer_)
     {
       TBSYS_LOG(ERROR, "Couldn't update config because timer is NULL!");
+      ret = OB_NOT_INIT;
     }
     else if (OB_SUCCESS != (ret = timer_->schedule(update_task_, 0, false)))
     {
-      update_task_.version_ = 0;
-      TBSYS_LOG(WARN, "Update local config failed! ret: [%d]", ret);
+      TBSYS_LOG(ERROR, "Update local config failed! ret: [%d]", ret);
     }
     else
     {
@@ -398,13 +402,14 @@ int ObConfigManager::UpdateTask::write2stat()
   static const int64_t TIMEOUT = 1000000;
   ObServer ms_server;
 
-  if (0 != config_mgr_->ms_self_.get_port())
+  if (NULL != config_mgr_)
   {
-    ms_server = config_mgr_->ms_self_;
+    config_mgr_->get_ms(ms_server);
   }
   else
   {
-    ms_server = config_mgr_->mslist_->get_one();
+    ret = OB_NOT_INIT;
+    TBSYS_LOG(ERROR, "config mgr is NULL, ret: [%d]", ret);
   }
 
   if (0 == ms_server.get_port())
@@ -472,50 +477,40 @@ int ObConfigManager::UpdateTask::write2stat()
 void ObConfigManager::UpdateTask::runTimerTask()
 {
   int ret = OB_SUCCESS;
-  static const int retry_times = 3;
 
-  if (update_local_)
+  if (config_mgr_->current_version_ == version_)
+  {
+    ret = OB_ALREADY_DONE;
+  }
+  else if (update_local_)
   {
     config_mgr_->system_config_.clear();
-    for (int i = 0; i < retry_times; i++)
+    if (OB_SUCCESS != (ret = config_mgr_->update_local()))
     {
-      if (OB_SUCCESS != (ret = config_mgr_->update_local()))
-      {
-        TBSYS_LOG(WARN, "Update local config failed! ret: [%d]", ret);
-        usleep(3000 * 1000L);
-      }
-      else
-      {
-        break;
-      }
+      TBSYS_LOG(WARN, "Update local config failed! ret: [%d]", ret);
     }
-    if (OB_SUCCESS != ret)
+    else if (OB_SUCCESS != (ret = write2stat()))
     {
-      TBSYS_LOG(ERROR, "update local config failed:ret[%d]", ret);
+      TBSYS_LOG(WARN, "update __all_sys_config_stat failed, ret: [%d]", ret);
+    }
+    else
+    {
+      TBSYS_LOG(INFO, "update __all_sys_config_stat successfully");
+      config_mgr_->current_version_ = version_;
+    }
+
+    if (OB_SUCCESS != ret
+        && OB_SUCCESS != (ret = config_mgr_->timer_->schedule(*this, 1000 * 1000L, false)))
+    {
+      TBSYS_LOG(ERROR, "Reschedule update local config failed! ret: [%d]", ret);
     }
   }
-
-  if (OB_SUCCESS == ret)
+  else if (OB_SUCCESS != (ret = config_mgr_->reload_config()))
   {
-    for (int i = 0; i < retry_times; i++)
-    {
-      if (OB_SUCCESS != (ret = write2stat()))
-      {
-        TBSYS_LOG(WARN, "update __all_sys_config_stat failed, ret: [%d]", ret);
-        usleep(3000 * 1000L);
-      }
-      else
-      {
-        TBSYS_LOG(INFO, "update __all_sys_config_stat successfully");
-        break;
-      }
-    }
+    TBSYS_LOG(WARN, "Reload configuration failed. ret: [%d]", ret);
   }
-
-  if (OB_SUCCESS == ret)
+  else
   {
-    config_mgr_->current_version_ = version_;
+    config_mgr_->server_config_.print();
   }
-
-  version_ = 0;
 }

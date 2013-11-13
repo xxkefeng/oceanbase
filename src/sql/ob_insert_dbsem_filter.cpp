@@ -15,18 +15,40 @@
  */
 #include "ob_insert_dbsem_filter.h"
 #include "common/utility.h"
+#include "sql/ob_physical_plan.h"
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObInsertDBSemFilter, PHY_INSERT_DB_SEM_FILTER);
+  }
+}
 namespace oceanbase
 {
   using namespace common;
   namespace sql
   {
     ObInsertDBSemFilter::ObInsertDBSemFilter() : could_insert_(false),
-                                                 insert_values_()
+                                                 input_values_subquery_(common::OB_INVALID_ID)
     {
     }
 
     ObInsertDBSemFilter::~ObInsertDBSemFilter()
     {
+    }
+
+    void ObInsertDBSemFilter::reset()
+    {
+      could_insert_ = false;
+      insert_values_.reset();
+      input_values_subquery_ = common::OB_INVALID_ID;
+      ObSingleChildPhyOperator::reset();
+    }
+
+    void ObInsertDBSemFilter::reuse()
+    {
+      could_insert_ = false;
+      insert_values_.reuse();
+      input_values_subquery_ = common::OB_INVALID_ID;
+      ObSingleChildPhyOperator::reuse();
     }
 
     int ObInsertDBSemFilter::open()
@@ -52,7 +74,10 @@ namespace oceanbase
         {
           if (OB_ITER_END != ret)
           {
-            TBSYS_LOG(ERROR, "child_op get_next_row fail but not OB_ITER_END, ret=%d", ret);
+            if (!IS_SQL_ERR(ret))
+            {
+              TBSYS_LOG(ERROR, "child_op get_next_row fail but not OB_ITER_END, ret=%d", ret);
+            }
           }
           else
           {
@@ -134,7 +159,7 @@ namespace oceanbase
     int64_t ObInsertDBSemFilter::to_string(char* buf, const int64_t buf_len) const
     {
       int64_t pos = 0;
-      databuff_printf(buf, buf_len, pos, "InsertDBSemFilter(values=");
+      databuff_printf(buf, buf_len, pos, "InsertDBSemFilter(input_values_subquery=%lu values=", input_values_subquery_);
       pos += insert_values_.to_string(buf+pos, buf_len-pos);
       databuff_printf(buf, buf_len, pos, ")\n");
       if (NULL != child_op_)
@@ -144,9 +169,28 @@ namespace oceanbase
       return pos;
     }
 
+    PHY_OPERATOR_ASSIGN(ObInsertDBSemFilter)
+    {
+      int ret = OB_SUCCESS;
+      CAST_TO_INHERITANCE(ObInsertDBSemFilter);
+      reset();
+      input_values_subquery_ = o_ptr->input_values_subquery_;
+      return ret;
+    }
+
     DEFINE_SERIALIZE(ObInsertDBSemFilter)
     {
-      return insert_values_.serialize(buf, buf_len, pos);
+      int ret = OB_SUCCESS;
+      ObExprValues *input_values = NULL;
+      if (NULL == (input_values = dynamic_cast<ObExprValues*>(my_phy_plan_->get_phy_query_by_id(input_values_subquery_))))
+      {
+        TBSYS_LOG(ERROR, "invalid expr_values, subquery_id=%lu", input_values_subquery_);
+      }
+      else
+      {
+        ret = input_values->serialize(buf, buf_len, pos);
+      }
+      return ret;
     }
 
     DEFINE_DESERIALIZE(ObInsertDBSemFilter)

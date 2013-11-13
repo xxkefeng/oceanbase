@@ -37,7 +37,7 @@ namespace oceanbase
       ObTabletLocationCache();
       /// deconstruction
       virtual ~ObTabletLocationCache();
-    
+
     public:
       /// cache item timeout when error occured
       static const int64_t CACHE_ERROR_TIMEOUT = 1000 * 1000 * 2L; // 2s
@@ -45,17 +45,17 @@ namespace oceanbase
       // cache item alive timeout interval
       static const int64_t DEFAULT_ALIVE_TIMEOUT = 1000 * 1000 * 60 * 10L; // 10minutes
 
-      /// init the cache item count
-      int init(const uint64_t mem_size, const uint64_t count, const int64_t timeout);
+      /// init the virtual or user table tablet location cache item timeout
+      int init(const uint64_t mem_size, const uint64_t count, const int64_t timeout, const int64_t special_timeout);
 
       /// set cache max memory size
       int set_mem_size(const int64_t mem_size);
 
       /// get cache item timeout for washout
-      int64_t get_timeout(void) const;
+      int64_t get_timeout(const uint64_t table_id) const;
 
-      /// set cache item timeout for washout
-      void set_timeout(const int64_t timeout);
+      /// set user table location cache item timeout for washout
+      void set_timeout(const int64_t timeout, const bool special_table = false);
 
       /// get table_id.rowkey location server list
       int get(const uint64_t table_id, const common::ObRowkey & rowkey,
@@ -63,14 +63,14 @@ namespace oceanbase
 
       /// set the new range location, if range not valid, then del the old info
       int set(const common::ObNewRange & range, const ObTabletLocationList & location);
-      
+
       /// update the exist range location, if not exist return error
       int update(const uint64_t table_id, const common::ObRowkey & rowkey,
           const ObTabletLocationList & location);
 
       /// delete the cache item according to table_id.rowkey
       int del(const uint64_t table_id, const common::ObRowkey & rowkey);
-      
+
       /// cache item count
       uint64_t size(void);
 
@@ -83,8 +83,10 @@ namespace oceanbase
     private:
       // init cache
       bool init_;
-      // cache alive timeout
+      // no special table cache alive timeout
       int64_t cache_timeout_;
+      // special table cache timeout
+      int64_t special_cache_timeout_;
       // tablet location cache
       common::ObVarCache<int, int, ObCBtreeTable> tablet_cache_;
     };
@@ -94,20 +96,24 @@ namespace oceanbase
       return tablet_cache_.set_max_mem_size(mem_size);
     }
 
-    inline int64_t ObTabletLocationCache::get_timeout(void) const
+    inline int64_t ObTabletLocationCache::get_timeout(const uint64_t table_id) const
     {
-      return cache_timeout_;
+      return IS_VIRTUAL_TABLE(table_id) ? special_cache_timeout_ : cache_timeout_;
     }
 
-    inline void ObTabletLocationCache::set_timeout(const int64_t timeout)
+    inline void ObTabletLocationCache::set_timeout(const int64_t timeout, const bool special_table)
     {
       if (timeout <= 0)
       {
-        TBSYS_LOG(WARN, "set location cache timeout failed:timeout[%ld]", timeout);
+        TBSYS_LOG(ERROR, "set location cache timeout failed:timeout[%ld]", timeout);
+      }
+      else if (false == special_table)
+      {
+        cache_timeout_ = timeout;
       }
       else
       {
-        cache_timeout_ = timeout;
+        special_cache_timeout_ = timeout;
       }
     }
   }

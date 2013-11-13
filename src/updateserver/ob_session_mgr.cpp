@@ -26,7 +26,8 @@ namespace oceanbase
   using namespace common;
   namespace updateserver
   {
-    CallbackMgr::CallbackMgr() : callback_list_(NULL)
+    CallbackMgr::CallbackMgr() : callback_list_(NULL),
+                                 prepare_list_(NULL)
     {
     }
 
@@ -37,6 +38,7 @@ namespace oceanbase
     void CallbackMgr::reset()
     {
       callback_list_ = NULL;
+      prepare_list_ = NULL;
     }
 
     int CallbackMgr::callback(const bool rollback, BaseSessionCtx &session)
@@ -50,7 +52,7 @@ namespace oceanbase
           int tmp_ret = iter->callback->cb_func(rollback, iter->data, session);
           if (OB_SUCCESS != tmp_ret)
           {
-            TBSYS_LOG(WARN, "invode callback fail ret=%d cb=%p data=%p", tmp_ret, iter->callback, iter->data);
+            TBSYS_LOG(WARN, "invoke callback fail ret=%d cb=%p data=%p", tmp_ret, iter->callback, iter->data);
             ret = (OB_SUCCESS == ret) ? tmp_ret : ret;
           }
         }
@@ -58,6 +60,39 @@ namespace oceanbase
       }
       callback_list_ = NULL;
       return ret;
+    }
+
+    void CallbackMgr::commit_prepare_list()
+    {
+      CallbackInfo *iter = prepare_list_;
+      while (NULL != iter)
+      {
+        CallbackInfo *next = iter->next;
+        iter->next = callback_list_;
+        callback_list_ = iter;
+        iter = next;
+      }
+      prepare_list_ = NULL;
+    }
+
+    void CallbackMgr::rollback_prepare_list(BaseSessionCtx &session)
+    {
+      TBSYS_TRACE_LOG("rollback head=%p", prepare_list_);
+      CallbackInfo *iter = prepare_list_;
+      while (NULL != iter)
+      {
+        if (NULL != iter->callback)
+        {
+          bool rollback = true;
+          int tmp_ret = iter->callback->cb_func(rollback, iter->data, session);
+          if (OB_SUCCESS != tmp_ret)
+          {
+            TBSYS_LOG(WARN, "invoke callback fail ret=%d cb=%p data=%p", tmp_ret, iter->callback, iter->data);
+          }
+        }
+        iter = iter->next;
+      }
+      prepare_list_ = NULL;
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -76,7 +111,9 @@ namespace oceanbase
       BaseSessionCtx *ctx = sm_.fetch_ctx(sd);
       if (NULL != ctx)
       {
-        if (min_trans_id_ > ctx->get_trans_id())
+        if (ctx->get_type() == ST_READ_ONLY
+            && !ctx->is_frozen()
+            && min_trans_id_ > ctx->get_trans_id())
         {
           min_trans_id_ = ctx->get_trans_id();
         }
@@ -201,12 +238,16 @@ namespace oceanbase
 
     SessionMgr::SessionMgr() : inited_(false),
                                trans_seq_(),
-                               commited_trans_id_(-1),
-                               min_flying_trans_id_(-1),
+                               published_trans_id_(0),
+                               commited_trans_id_(0),
+                               min_flying_trans_id_(0),
                                calc_timestamp_(0),
                                ctx_map_(),
-                               session_lock_()
+                               session_lock_(),
+                               allow_start_write_session_(false)
     {
+      published_trans_id_ = tbsys::CTimeUtil::getTime();
+      commited_trans_id_ = published_trans_id_;
     }
 
     SessionMgr::~SessionMgr()
@@ -236,6 +277,11 @@ namespace oceanbase
                   max_ro_num, max_rp_num, max_rw_num, factory);
         ret = OB_INVALID_ARGUMENT;
       }
+      //else if (1 != start())
+      //{
+      //  TBSYS_LOG(WARN, "start thread to flush_min_flying_trans_id fail");
+      //  ret = OB_ERR_UNEXPECTED;
+      //}
       else if (OB_SUCCESS != (ret = ctx_map_.init(max_ro_num + max_rp_num + max_rw_num)))
       {
         TBSYS_LOG(WARN, "init ctx_map fail, ret=%d num=%u", ret, max_ro_num + max_rp_num + max_rw_num);
@@ -280,6 +326,8 @@ namespace oceanbase
 
     void SessionMgr::destroy()
     {
+      stop();
+      wait();
       if (0 != ctx_map_.size())
       {
         TBSYS_LOG(ERROR, "some transaction have not end, counter=%d", ctx_map_.size());
@@ -303,9 +351,47 @@ namespace oceanbase
 
       calc_timestamp_ = 0;
       min_flying_trans_id_ = -1;
+      published_trans_id_ = -1;
       commited_trans_id_ = -1;
       factory_ = NULL;
       inited_ = false;
+    }
+
+    void SessionMgr::run(tbsys::CThread* thread, void* arg)
+    {
+      UNUSED(thread);
+      UNUSED(arg);
+      static const int32_t MAX_SLEEP_TIME = 16L * 1024L;
+      static const int32_t MIN_SLEEP_TIME = 1L;
+      int32_t next_sleep_time = MAX_SLEEP_TIME; 
+      int64_t last_min_flying_trans_id = 0;
+      while (!_stop)
+      {
+        flush_min_flying_trans_id();
+        const int64_t cur_min_flying_trans_id = get_min_flying_trans_id();
+        const int32_t prev_sleep_time = next_sleep_time;
+        if (last_min_flying_trans_id != cur_min_flying_trans_id)
+        {
+          next_sleep_time = next_sleep_time / 2;
+          next_sleep_time = (MIN_SLEEP_TIME > next_sleep_time) ? MIN_SLEEP_TIME : next_sleep_time;
+        }
+        else
+        {
+          next_sleep_time = next_sleep_time * 2;
+          next_sleep_time = (MAX_SLEEP_TIME < next_sleep_time) ? MAX_SLEEP_TIME : next_sleep_time;
+        }
+        if (prev_sleep_time != next_sleep_time
+            && REACH_TIME_INTERVAL(1000000))
+        {
+          TBSYS_LOG(INFO, "flush_min_flying_trans_id interval switch from %d to %d",
+                    prev_sleep_time, next_sleep_time);
+        }
+        last_min_flying_trans_id = cur_min_flying_trans_id;
+        if (0 < next_sleep_time)
+        {
+          usleep(next_sleep_time);
+        }
+      }
     }
 
     int SessionMgr::begin_session(const SessionType type, const int64_t start_time, const int64_t timeout, const int64_t idle_time,  uint32_t &session_descriptor)
@@ -316,6 +402,11 @@ namespace oceanbase
       if (!inited_)
       {
         ret = OB_NOT_INIT;
+      }
+      else if (ST_READ_WRITE == type && !allow_start_write_session_)
+      {
+        ret = OB_EAGAIN;
+        TBSYS_LOG(ERROR, "not allowed to start write_session");
       }
       else if (!guard.is_lock_succ())
       {
@@ -331,7 +422,7 @@ namespace oceanbase
         while (true)
         {
           uint32_t sd = 0;
-          const int64_t begin_trans_id = commited_trans_id_;
+          const int64_t begin_trans_id = published_trans_id_;
           ctx->set_trans_id(begin_trans_id);
           ctx->set_session_start_time(start_time);
           ctx->set_session_timeout(timeout);
@@ -342,7 +433,7 @@ namespace oceanbase
             free_ctx_(ctx);
             break;
           }
-          if (begin_trans_id != commited_trans_id_)
+          if (begin_trans_id != published_trans_id_)
           {
             ctx_map_.erase(sd);
           }
@@ -360,15 +451,28 @@ namespace oceanbase
 
     int SessionMgr::precommit(const uint32_t session_descriptor)
     {
-      return do_end_session(session_descriptor, false, true, false);
+      return end_session(session_descriptor, false, true, BaseSessionCtx::ES_CALLBACK);
     }
 
-    int SessionMgr::end_session(const uint32_t session_descriptor, const bool rollback, const bool force)
+    int SessionMgr::update_commited_trans_id(BaseSessionCtx* ctx)
     {
-      return do_end_session(session_descriptor, rollback, force, true);
+      int ret = OB_SUCCESS;
+      if (NULL == ctx)
+      {
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (ctx->need_to_do(BaseSessionCtx::ES_UPDATE_COMMITED_TRANS_ID))
+      {
+        if (ctx->get_trans_id() > 0)
+        {
+          commited_trans_id_ = ctx->get_trans_id();
+        }
+        ctx->mark_done(BaseSessionCtx::ES_UPDATE_COMMITED_TRANS_ID);
+      }
+      return ret;
     }
 
-    int SessionMgr::do_end_session(const uint32_t session_descriptor, const bool rollback, const bool force, const bool publish)
+    int SessionMgr::end_session(const uint32_t session_descriptor, const bool rollback, const bool force, const uint64_t es_flag)
     {
       int ret = OB_SUCCESS;
       BaseSessionCtx *ctx = NULL;
@@ -392,19 +496,61 @@ namespace oceanbase
       }
       else
       {
-        ctx->end(rollback);
-        FILL_TRACE_BUF(ctx->get_tlog_buffer(), "rollback=%s type=%d sd=%u ctx=%p trans_id=%ld trans_timeu=%ld",
-                      STR_BOOL(rollback), ctx->get_type(), session_descriptor, ctx, ctx->get_trans_id(),
-                      tbsys::CTimeUtil::getTime() - ctx->get_session_start_time());
-        if (publish)
+        if (ctx->need_to_do((BaseSessionCtx::ES_STAT)(es_flag & BaseSessionCtx::ES_CALLBACK)))
         {
-          if (ST_READ_WRITE == ctx->get_type() && !rollback)
+          ctx->end(rollback);
+          ctx->mark_done(BaseSessionCtx::ES_CALLBACK);
+        }
+        FILL_TRACE_BUF(ctx->get_tlog_buffer(), "rollback=%s force=%s es_flag=%lx",
+                       STR_BOOL(rollback), STR_BOOL(force), es_flag);
+        if ((ST_READ_WRITE == ctx->get_type() || ST_REPLAY == ctx->get_type()) && !rollback)
+        {
+          if (ctx->need_to_do((BaseSessionCtx::ES_STAT)(es_flag & BaseSessionCtx::ES_UPDATE_COMMITED_TRANS_ID)))
           {
-            commited_trans_id_ = ctx->get_trans_id();
-            ctx->publish();
-            OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_COUNT, 1);
-            OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_TIMEU, ctx->get_session_timeu());
+            if (ctx->get_trans_id() > 0) // ctx->get_trans_id() == 0 说明是INTERNAL_WRITE, 在把sstable load到inmemtable时用到
+            {
+              commited_trans_id_ = ctx->get_trans_id();
+            }
+            ctx->mark_done(BaseSessionCtx::ES_UPDATE_COMMITED_TRANS_ID);
           }
+          if (ctx->need_to_do((BaseSessionCtx::ES_STAT)(es_flag & BaseSessionCtx::ES_PUBLISH)))
+          {
+            if (ctx->get_trans_id() > 0) // ctx->get_trans_id() == 0 说明是INTERNAL_WRITE, 在把sstable load到inmemtable时用到
+            {
+              published_trans_id_ = ctx->get_trans_id();
+            }
+            ctx->publish();
+            ctx->mark_done(BaseSessionCtx::ES_PUBLISH);
+            if (0 != ctx->get_last_proc_time())
+            {
+              int64_t cur_time = tbsys::CTimeUtil::getTime();
+              OB_STAT_INC(UPDATESERVER, UPS_STAT_TRANS_FTIME, cur_time - ctx->get_last_proc_time());
+              ctx->set_last_proc_time(cur_time);
+            }
+          }
+        }
+        if (es_flag & BaseSessionCtx::ES_FREE)
+        {
+          if ((ST_READ_WRITE == ctx->get_type()
+                || ST_REPLAY == ctx->get_type())
+              && 0 != ctx->get_session_start_time())
+          {
+            //OB_STAT_INC(UPDATESERVER, UPS_STAT_NL_APPLY_COUNT, 1);
+            OB_STAT_INC(UPDATESERVER, get_stat_num(ctx->get_priority(), TRANS, COUNT), 1);
+            //OB_STAT_INC(UPDATESERVER, UPS_STAT_NL_APPLY_TIMEU, ctx->get_session_timeu());
+            OB_STAT_INC(UPDATESERVER, get_stat_num(ctx->get_priority(), TRANS, TIMEU), ctx->get_session_timeu());
+          }
+          if (0 != ctx->get_last_proc_time())
+          {
+            int64_t cur_time = tbsys::CTimeUtil::getTime();
+            OB_STAT_INC(UPDATESERVER, UPS_STAT_TRANS_RTIME, cur_time - ctx->get_last_proc_time());
+            ctx->set_last_proc_time(cur_time);
+          }
+
+          ctx->on_free();
+          FILL_TRACE_BUF(ctx->get_tlog_buffer(), "type=%d sd=%u ctx=%p trans_id=%ld trans_timeu=%ld",
+                        ctx->get_type(), session_descriptor, ctx, ctx->get_trans_id(),
+                        tbsys::CTimeUtil::getTime() - ctx->get_session_start_time());
           PRINT_TRACE_BUF(ctx->get_tlog_buffer());
           bool erase = true;
           ctx_map_.revert(session_descriptor, erase);
@@ -430,15 +576,31 @@ namespace oceanbase
       ctx_map_.revert(session_descriptor);
     }
 
+    int64_t SessionMgr::get_processor_index(const uint32_t session_descriptor)
+    {
+      int64_t ret = OB_SUCCESS;
+      BaseSessionCtx *ctx = fetch_ctx(session_descriptor);
+      if (NULL != ctx)
+      {
+        ret = ctx->get_self_processor_index();
+        revert_ctx(session_descriptor);
+      }
+      return ret;
+    }
+
     int64_t SessionMgr::get_min_flying_trans_id()
     {
-      if (calc_timestamp_ + CALC_INTERVAL < tbsys::CTimeUtil::getTime())
-      {
-        MinTransIDGetter cb(*this);
-        ctx_map_.traverse(cb);
-        min_flying_trans_id_ = std::min(cb.get_min_trans_id(), (int64_t)commited_trans_id_);
-        calc_timestamp_ = tbsys::CTimeUtil::getTime();
-      }
+      //int64_t old_timestamp = calc_timestamp_;
+      //if (old_timestamp + CALC_INTERVAL < tbsys::CTimeUtil::getTime())
+      //{
+      //  int64_t cur_timestamp = tbsys::CTimeUtil::getTime();
+      //  if (old_timestamp == ATOMIC_CAS(&calc_timestamp_, old_timestamp, cur_timestamp))
+      //  {
+      //    MinTransIDGetter cb(*this);
+      //    ctx_map_.traverse(cb);
+      //    min_flying_trans_id_ = std::min(cb.get_min_trans_id(), (int64_t)published_trans_id_);
+      //  }
+      //}
       return min_flying_trans_id_;
     }
 
@@ -459,8 +621,7 @@ namespace oceanbase
       session_lock_.wrlock();
       while (true)
       {
-        if (0 == ctx_list_[ST_REPLAY].get_free()
-            && 0 == ctx_list_[ST_READ_WRITE].get_free())
+        if (0 == ctx_list_[ST_READ_WRITE].get_free())
         {
           break;
         }
@@ -493,7 +654,7 @@ namespace oceanbase
 
     void SessionMgr::kill_zombie_session(const bool force)
     {
-      TBSYS_LOG(INFO, "start kill_zombie_session force=%s", STR_BOOL(force));
+      //TBSYS_LOG(INFO, "start kill_zombie_session force=%s", STR_BOOL(force));
       ZombieKiller cb(*this, force);
       ctx_map_.traverse(cb);
     }
@@ -523,6 +684,11 @@ namespace oceanbase
     int64_t SessionMgr::get_commited_trans_id() const
     {
       return commited_trans_id_;
+    }
+
+    int64_t SessionMgr::get_published_trans_id() const
+    {
+      return published_trans_id_;
     }
 
     BaseSessionCtx *SessionMgr::alloc_ctx_(const SessionType type)

@@ -229,7 +229,7 @@ namespace oceanbase
           char *schema_data = NULL;
           int64_t schema_len = 0;
           int64_t block_count = 0;
-          BloomFilter bloom_filter;
+          ObBloomFilterV1 bloom_filter;
           int64_t filter_offset = 0;
           int64_t filter_len = 0;
           ObSSTableBlockIndexHeader index_header;

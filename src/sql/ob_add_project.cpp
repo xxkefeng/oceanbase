@@ -138,3 +138,37 @@ int ObAddProject::get_next_row(const common::ObRow *&row)
   }
   return ret;
 }
+
+PHY_OPERATOR_ASSIGN(ObAddProject)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObAddProject);
+  reset();
+  for (int64_t i = 0; i < o_ptr->columns_.count(); i++)
+  {
+    if ((ret = columns_.push_back(o_ptr->columns_.at(i))) == OB_SUCCESS)
+    {
+      columns_.at(i).set_owner_op(this);
+    }
+    else
+    {
+      break;
+    }
+  }
+  rowkey_cell_count_ = o_ptr->rowkey_cell_count_;
+  return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObAddProject, PHY_ADD_PROJECT);
+  }
+}
+
+int64_t ObAddProject::to_string(char* buf, const int64_t buf_len) const
+{
+  int64_t pos = 0;
+  databuff_printf(buf, buf_len, pos, "Add");
+  pos += ObProject::to_string(buf+pos, buf_len-pos);
+  return pos;
+}

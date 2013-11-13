@@ -31,7 +31,8 @@ namespace oceanbase
       public:
         ObTableMemScan();
         virtual ~ObTableMemScan();
-
+        virtual void reset();
+        virtual void reuse();
         virtual int open();
         virtual int close();
         virtual int get_next_row(const common::ObRow *&row);
@@ -77,7 +78,9 @@ namespace oceanbase
          * @return OB_SUCCESS或错误码
          */
         int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset);
+        void set_phy_plan(ObPhysicalPlan *the_plan);
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy
@@ -95,6 +98,14 @@ namespace oceanbase
         bool has_limit_;
         bool plan_generated_;
     };
+    inline void ObTableMemScan::set_phy_plan(ObPhysicalPlan *the_plan)
+    {
+      ObPhyOperator::set_phy_plan(the_plan);
+      rename_.set_phy_plan(the_plan);
+      project_.set_phy_plan(the_plan);
+      filter_.set_phy_plan(the_plan);
+      limit_.set_phy_plan(the_plan);
+    }
   } // end namespace sql
 } // end namespace oceanbase
 

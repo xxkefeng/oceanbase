@@ -37,6 +37,8 @@ namespace oceanbase
       public:
         ObTabletRead();
         virtual ~ObTabletRead() {}
+        virtual void reset();
+        virtual void reuse();
 
         int open();
         int close();
@@ -49,9 +51,9 @@ namespace oceanbase
         {
           join_batch_count_ = join_batch_count;
         }
-        void set_network_timeout(int64_t network_timeout)
+        inline void set_ts_timeout_us(int64_t ts_timeout_us)
         {
-          network_timeout_ = network_timeout;
+          ts_timeout_us_ = ts_timeout_us;
         }
         int set_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy);
         inline void set_is_read_consistency(bool is_read_consistency);
@@ -61,7 +63,7 @@ namespace oceanbase
         ObPhyOperator *op_root_;
         bool is_read_consistency_;
         ObSqlUpsRpcProxy *rpc_proxy_;
-        int64_t network_timeout_;
+        int64_t ts_timeout_us_;
         int64_t join_batch_count_;
         ObLastRowkeyInterface *last_rowkey_op_;
         enum PlanLevel plan_level_;

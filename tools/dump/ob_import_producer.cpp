@@ -20,7 +20,11 @@ int ImportProducer::produce(RecordBlock &obj)
       TBSYS_LOG(ERROR, "can't get record");
       ret = ComsumerQueue<RecordBlock>::QUEUE_ERROR;
     }
-  } else {
+  } else if ( reader_.get_buffer_size() > 0 ) {
+    TBSYS_LOG(ERROR, "buffer is not empty, maybe last line has no rec_delima, please check");
+    ret = ComsumerQueue<RecordBlock>::QUEUE_QUITING;
+  }
+  else {
     ret = ComsumerQueue<RecordBlock>::QUEUE_QUITING;
   }
 

@@ -1031,11 +1031,11 @@ int oceanbase::chunkserver::ObSCSSTableChecker::check(const char *sstable_fname)
         err = bloom_filter_readed_.init(BLOOM_FILTER_ITEMS_ESTIMATE);
         if (OB_SUCCESS == err)
         {
-          err = bloom_filter_readed_.set_num_hash_functions(trailer_->bloom_filter_hash_count_);
+          err = bloom_filter_readed_.init(trailer_->bloom_filter_hash_count_, (int64_t)bloom_filter_record_->data_zlength_);
         }
         if (OB_SUCCESS == err)
         {
-          err = bloom_filter_readed_.set_bitmap(bloom_filter_record_->payload_,
+          err = bloom_filter_readed_.set_buffer((uint8_t*)bloom_filter_record_->payload_,
                                                 bloom_filter_record_->data_zlength_);
         }
       }
@@ -1043,10 +1043,6 @@ int oceanbase::chunkserver::ObSCSSTableChecker::check(const char *sstable_fname)
       if (OB_SUCCESS == err)
       {
         err = bloom_filter_generated_.init(BLOOM_FILTER_ITEMS_ESTIMATE);
-        if (OB_SUCCESS == err)
-        {
-          err = bloom_filter_generated_.set_num_hash_functions(trailer_->bloom_filter_hash_count_);
-        }
       }
     }
   }
@@ -1370,11 +1366,13 @@ int oceanbase::chunkserver::ObSCSSTableChecker::check_rowkey_order(const int sst
             (err = row_key.serialize(bf_key_buf, bf_key_size, pos)))
         {
         }
+        /*
         else if (!bloom_filter_readed_.may_contain(bf_key_buf, bf_key_size))
         {
           TBSYS_LOG(WARN, "bloom filter check fail [rowid:%ld], %s",row_id, to_cstring(row_key));
           err = OB_ERROR;
         }
+        */
 
         /// check key order
         if (OB_SUCCESS == err && blockid >0 && (cur_table_id < prev_table_id

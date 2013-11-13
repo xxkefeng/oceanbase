@@ -22,6 +22,7 @@ class  ImportComsumer : public QueueComsumer<RecordBlock> {
     ObRowBuilder *builder_;
     const TableParam &param_;
     AppendableFile *bad_file_;
+    char *line_buffer_;
 };
 
 #endif

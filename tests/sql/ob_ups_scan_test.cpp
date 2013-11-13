@@ -82,7 +82,8 @@ TEST_F(ObUpsScanTest, basic_test)
   range.border_flag_.unset_inclusive_start();
   range.border_flag_.unset_inclusive_end();
 
-  ups_scan.set_network_timeout(1000 * 1000);
+  int64_t now = tbsys::CTimeUtil::getTime();
+  ups_scan.set_ts_timeout_us(1000 * 1000 + now);
   ups_scan.set_range(range);
   for(uint64_t i = 0;i<COLUMN_NUMS;i++)
   {

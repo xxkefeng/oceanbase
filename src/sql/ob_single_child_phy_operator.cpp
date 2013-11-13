@@ -26,7 +26,12 @@ ObSingleChildPhyOperator::~ObSingleChildPhyOperator()
 {
 }
 
-void ObSingleChildPhyOperator::clear()
+void ObSingleChildPhyOperator::reset()
+{
+  child_op_ = NULL;
+}
+
+void ObSingleChildPhyOperator::reuse()
 {
   child_op_ = NULL;
 }
@@ -73,7 +78,10 @@ int ObSingleChildPhyOperator::open()
   {
     if (OB_SUCCESS != (ret = child_op_->open()))
     {
-      TBSYS_LOG(WARN, "failed to open child_op, err=%d", ret);
+      if (!IS_SQL_ERR(ret))
+      {
+        TBSYS_LOG(WARN, "failed to open child_op, err=%d", ret);
+      }
     }
   }
   return ret;

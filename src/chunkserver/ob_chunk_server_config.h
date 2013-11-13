@@ -55,10 +55,10 @@ namespace oceanbase
 
         DEF_BOOL(merge_migrate_concurrency, "False", "allow doing merge and migrate concurrently");
         DEF_INT(task_queue_size, "10000", "[1000,]", "task queue size");
-        DEF_INT(task_thread_count, "20", "[1,]", "task thread number");
+        DEF_INT(task_thread_count, "32", "[1,]", "task thread number");
         DEF_INT(max_migrate_task_count, "2", "[1,]", "max migrate task number");
 
-        DEF_INT(io_thread_count, "4", "[1,]", "io thread number for libeasy");
+        DEF_INT(io_thread_count, "8", "[1,]", "io thread number for libeasy");
         DEF_TIME(network_timeout, "3s", "timeout when communication with other server");
         DEF_TIME(lease_check_interval, "5s", "[5s,5s]", "lease check interval, shouldn\\'t change");
 
@@ -78,6 +78,7 @@ namespace oceanbase
         DEF_TIME(merge_delay_interval, "600s", "(0,]", "sleep time before start merge");
         DEF_TIME(merge_delay_for_lsync, "5s", "(0,)", "sleep time wait for ups synchronise frozen version if merge should read slave ups");
         DEF_BOOL(merge_scan_use_preread, "True", "prepread sstable when doing daily merge");
+        DEF_TIME(datasource_timeout, "30s", "(0,)", "timeout which fetch data from datasource");
         DEF_TIME(merge_timeout, "10s", "(0,)", "fetch ups data timeout in merge");
 
         DEF_INT(merge_pause_row_count, "2000", "merge check after how many rows");
@@ -90,7 +91,8 @@ namespace oceanbase
         DEF_BOOL(switch_cache_after_merge, "False", "switch cache after merge");
 
         DEF_BOOL(each_tablet_sync_meta, "True", "sync tablet image to index file after merge each tablet");
-        DEF_INT(over_size_percent_to_split, "50", "[0,]", "over size percent to split sstable");
+        DEF_INT(over_size_percent_to_split, "50", "[0,100]", "over size percent to split sstable");
+        DEF_INT(choose_disk_by_space_threshold, "60", "[0,100]", "choose disk by space threshold, percent of disk utilization");
         DEF_INT(merge_write_sstable_version, "2", "[1,]", "sstable version, 2 means old sstable format, 3 means new compact sstable");
 
         DEF_CAP(merge_mem_size, "8MB", "memory for each sub merge round, finish that round if cell array oversize");
@@ -102,7 +104,7 @@ namespace oceanbase
         DEF_INT(ups_fail_count, "100", "[1,]", "put ups to blacklist if fail count beyond this value");
         DEF_TIME(ups_blacklist_timeout, "5s", "remove ups if it stay in blacklist over this time");
 
-        DEF_TIME(task_left_time, "300ms", "time left to ms, drop ahead if left time less than this value");
+        DEF_TIME(task_left_time, "10ms", "time left to ms, drop ahead if left time less than this value");
         DEF_BOOL(write_sstable_use_dio, "True", "write sstable use dio");
 
         DEF_TIME(slow_query_warn_time, "500ms", "beyond this value will treated as slow query");

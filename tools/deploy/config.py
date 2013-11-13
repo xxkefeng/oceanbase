@@ -4,7 +4,7 @@
 ##       unless your explict configure them. (that means Don't change 'OBI's definition order if not necessary)
 
 ## comment line below if you need to run './deploy.py ob1.random_test ...'
-load_file('monitor.py', 'fault_test.py')
+#load_file('monitor.py', 'fault_test.py')
 data_dir = '/home/xiaojun.chengxj/ob1/data/'         # $data_dir/{1..10} should exist
 ## comment line below if you want to provide custom schema and server conf template(see ob5's definition for another way)
 ## run: './deploy.py tpl.gensvrcfg' to generate a 'tpl' dir, edit tpl/rootserver.template... as you wish

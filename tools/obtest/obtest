@@ -21,6 +21,7 @@ import glob
 import errno
 import pprint
 import os
+from optparse import OptionParser
 
 def pheader(msg):
     print '\033[32m[==========]\033[0m %s' % msg
@@ -90,7 +91,7 @@ class Tester:
         pass
 
     def run(self, test, opt):
-        opt["test-file"] = join(opt["test-dir"], test + ".test")
+        #opt["test-file"] = join(opt["test-dir"], test + ".test")
         opt["result-file"] = join(opt["result-dir"], test + ".result")
         opt["record-file"] = join(opt["record-dir"], test + ".record")
 
@@ -101,7 +102,11 @@ class Tester:
         #print ("./mytest " + cmd )
         try:
             #a=shlex.split( "./mytest" + cmd)
-            a=shlex.split( "./mytest " + test)
+            #print opt["record"]
+            #print opt["local"]
+            #print "./mytest " + test + opt["record"] + opt["local"] 
+            a=shlex.split( "./mytest " + test + opt["record"] + opt["local"])
+        
             p = Popen(a, stdout = PIPE, stderr = PIPE)
             output, errput = p.communicate()
             
@@ -143,10 +148,13 @@ class Manager:
         '''
         cwd = getcwd()
         chdir(dirname(realpath(__file__)))
-        if "test-dir" in opt:
-            opt["test-dir"] = realpath(opt["test-dir"])
+        if ("test-dir" in opt and opt["test-dir"] != None):
+            opt["test-dir"] = [realpath(item) for item in opt["test-dir"] ]
         else:
-            opt["test-dir"] = realpath("t")
+            if opt["test-dir"] != None:
+                opt["test-dir"] = realpath("t")
+            else:
+                opt["test-dir"] = []
         if "result-dir" in opt:
             opt["result-dir"] = realpath(opt["result-dir"])
         else:
@@ -155,33 +163,46 @@ class Manager:
             opt["record-dir"] = realpath(opt["record-dir"])
         else:
             opt["record-dir"] = realpath("r")
+        
         chdir(cwd)
 
 
         self.opt = opt
 
     def check_tests(self):
+        self.opt["test-pattern"] = "*.test"
         if "test-set" in self.opt:
             self.test_set = self.opt["test-set"]
         else:
             if not "test-pattern" in self.opt:
                 self.opt["test-pattern"] = "*.test"
-	
-	pat = join(self.opt["test-dir"], self.opt["test-pattern"])
-	self.test_set = [basename(test).rsplit('.', 1)[0] for test in glob.glob(pat)]
-	#add by fff.fanff
-	sub_items = os.listdir(self.opt["test-dir"])
-	for item in sub_items:
-	    test_dir = join(self.opt["test-dir"],item)
-	    pat = join(test_dir, self.opt["test-pattern"])
-            self.test_set += [item + "."+basename(test).rsplit('.', 1)[0] for test in glob.glob(pat)]
+        
+        self.test_set = []
+        for testdir in self.opt["test-dir"]:
+            pat = join(testdir, self.opt["test-pattern"])
+            casedir = basename(testdir);
+            if casedir.strip() != '':
+                casedir = casedir + "."
+                self.test_set += [casedir + basename(test).rsplit('.', 1)[0] for test in glob.glob(pat)]
+            
+            sub_items = os.listdir(testdir)
+            for item in sub_items:
+                test_dir = join(testdir,item)
+                pat = join(test_dir, self.opt["test-pattern"])
+                self.test_set += [item + "."+basename(test).rsplit('.', 1)[0] for test in glob.glob(pat)]
 
-        # exclude somt tests.
-        if "exclude" not in self.opt:
-            self.opt["exclude"] = None
-        self.test_set = filter(lambda k: k not in self.opt["exclude"], self.test_set)
-        self.test_set = sorted(self.test_set)
-
+            # exclude somt tests.
+            if "exclude" not in self.opt:
+                self.opt["exclude"] = None
+              
+            self.test_set = filter(lambda k: k not in self.opt["exclude"], self.test_set)
+            #self.test_set = sorted(self.test_set)
+        if self.opt["test-file"] != None:
+            self.test_set += self.opt["test-file"]
+        
+        #self.test_set=set(self.test_set)
+        #self.test_set = sorted(self.test_set)
+    
     def shrink_errmsg(self, errmsg):
         if type(errmsg) == str:
             return re.split("\nThe result from queries just before the failure was:", errmsg, 1)[0]
@@ -271,20 +292,71 @@ class Manager:
 
 if __name__ == '__main__':
     exclude_set = [ ]
-    #test_set=["migrate"]
-
+#   test_set=["ct.1025_c1244_p0_master_cluster_ms_down_yangxiu"]
+    
+    	
     opt = dict(
     {
         "test-dir":"t",
+        "test-file":None,
         "result-dir":"r",
         "recored-dir":"record",
-        "record":False,
+        "record":"",
+        "local":"",
         "log-dir":"log",
         "var-dir":"var",
         "exclude" : exclude_set,
         "log-temp" : "obtest-%s.log",
-    #    "test-set" : test_set,
+#       "test-set" : test_set,
     })
+
+    parser = OptionParser(usage = "%prog -d [dir1,dir2,...] -f [file1,file2,...] record\n       %prog [quicktest|primetest]")
+    parser.add_option("-d","--dir",
+                      action = "store",
+                      type = "string",
+                      dest = "test_dirs",
+                      default = None,
+                      help="Enter the test dirs name"
+                     ) 
+    parser.add_option("-f","--file",
+                      action = "store",
+                      type = "string",
+                      dest = "test_files",
+                      default = None,
+                      help="Enter the test files name"
+                     )
+    (options, args) = parser.parse_args()
+     
+    if options.test_dirs != None:
+        opt["test-dir"] = ["t/"+dir for dir in options.test_dirs.split(",")]
+    else:
+        if options.test_files != None:
+            opt["test-dir"] = None
+    
+    if options.test_files != None:
+        opt["test-file"] = options.test_files.split(",")
+ 
+    for arg in args:
+        if arg == "record":
+            opt["record"] = " -record"
+        if arg == "quick":
+            opt["local"] = " -local"
+            opt["test-dir"] = None
+            opt["test-file"] = [
+                                "quick.c1111_p0_one_cluster_yangxiu",
+                                "quick.c1111_p0_two_cluster_yangxiu"
+                               ]
+        if arg == "quicktest":
+            opt["test-dir"] = None
+            opt["test-file"] = [
+                                "quick.c1111_p0_one_cluster_yangxiu",
+                                "quick.c1111_p0_two_cluster_yangxiu"
+                               ]
+        if arg == "primetest":
+            opt["test-dir"] = None
+            opt["test-file"] = ["quick.c1233_p0_two_cluster_yangxiu"] 
+
+
     mgr = Manager(opt)
     mgr.start()
 

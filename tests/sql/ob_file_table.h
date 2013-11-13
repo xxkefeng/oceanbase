@@ -23,10 +23,13 @@ namespace oceanbase
           virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
           virtual int open();
           virtual int close();
+          virtual ObPhyOperatorType get_type() const { return PHY_INVALID; }
           virtual int get_next_row(const common::ObRow *&row);
           virtual int get_next_row(const common::ObRowkey *&rowkey, const common::ObRow *&row);
           virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
           virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+          void reset() {}
+          void reuse() {}
 
         public:
           uint64_t table_id_;

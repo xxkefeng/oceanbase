@@ -20,7 +20,10 @@ using namespace oceanbase::chunkserver;
 
 namespace
 {
-  static const int DEFAULT_MMAP_THRESHOLD = 64 * 1024 + 128;
+  // tc malloc allocate memory with 65K and 2M+1K, and the kernel allocate memory
+  // with 4K aligned, so we must ensure the 65K memory is allocated from heap, 
+  // and memory which is bigger than 68K is allocted from mmap arena. 
+  static const int DEFAULT_MMAP_THRESHOLD = 68 * 1024; //68K
 }
 
 

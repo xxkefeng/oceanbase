@@ -90,7 +90,7 @@ int TableSchema::to_string(char* buf, const int64_t buf_len) const
                   "tablet_block_size=%ld "
                   "tablet_max_size=%ld "
                   "max_rowkey_length=%ld "
-                  "is_read_static=%s",
+                  "consistency_level=%s",
                   table_name_,
                   table_id_,
                   table_type_,
@@ -103,7 +103,7 @@ int TableSchema::to_string(char* buf, const int64_t buf_len) const
                   tablet_block_size_,
                   tablet_max_size_,
                   max_rowkey_length_,
-                  is_read_static_ ? "TRUE" : "FALSE");
+                  (consistency_level_ == common::STATIC) ? "STATIC" : (consistency_level_ == common::STRONG ? "STRONG" : (consistency_level_ == common::WEAK ? "WEAK" : "FROZEN")));
   for (int64_t i = 0; i < columns_.count(); ++i)
   {
     const ColumnSchema &tcolumn = columns_.at(i);
@@ -236,6 +236,10 @@ DEFINE_SERIALIZE(TableSchema)
   else if (OB_SUCCESS != (ret = serialization::encode_vstr(buf, buf_len, pos, expire_condition_)))
   {
   }
+  else if (OB_SUCCESS != (ret = serialization::encode_vstr(buf, buf_len, pos, comment_str_)))
+  {
+
+  }
   else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, table_id_)))
   {
   }
@@ -254,7 +258,7 @@ DEFINE_SERIALIZE(TableSchema)
   else if (OB_SUCCESS != (ret = serialization::encode_bool(buf, buf_len, pos, is_pure_update_table_)))
   {
   }
-  else if (OB_SUCCESS != (ret = serialization::encode_bool(buf, buf_len, pos, is_read_static_)))
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, consistency_level_)))
   {
   }
   else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, rowkey_split_)))
@@ -284,6 +288,10 @@ DEFINE_SERIALIZE(TableSchema)
   else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, merge_write_sstable_version_)))
   {
   }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, schema_version_)))
+  {
+
+  }
   else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, create_time_column_id_)))
   {
   }
@@ -295,7 +303,7 @@ DEFINE_SERIALIZE(TableSchema)
   }
   else
   {
-    for (int64_t i = 0; i < columns_.count(); ++i)
+    for (int64_t i = 0; OB_SUCCESS == ret && i < columns_.count(); ++i)
     {
       if (OB_SUCCESS != (ret = columns_.at(i).serialize(buf, buf_len, pos)))
       {
@@ -303,7 +311,24 @@ DEFINE_SERIALIZE(TableSchema)
         break;
       }
     }
-    // @todo join_info
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, join_info_.count())))
+    {
+      TBSYS_LOG(WARN, "fail to serialize join info count:ret[%d]", ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    for (int64_t i = 0; OB_SUCCESS == ret && i < join_info_.count(); i ++)
+    {
+      if (OB_SUCCESS != (ret = join_info_.at(i).serialize(buf, buf_len, pos)))
+      {
+        TBSYS_LOG(WARN, "fail to serialization join info:ret[%d], i[%ld]", ret, i);
+      }
+    }
   }
   return ret;
 }
@@ -314,13 +339,15 @@ DEFINE_DESERIALIZE(TableSchema)
   int64_t len1 = 0;
   int64_t len2 = 0;
   int64_t len3 = 0;
+  int64_t len4 = 0;
   int64_t column_count = 0;
   serialization::decode_vstr(buf, data_len, pos, table_name_, OB_MAX_TABLE_NAME_LENGTH, &len1);
   serialization::decode_vstr(buf, data_len, pos, compress_func_name_, OB_MAX_TABLE_NAME_LENGTH, &len2);
   serialization::decode_vstr(buf, data_len, pos, expire_condition_, OB_MAX_EXPIRE_CONDITION_LENGTH, &len3);
-  if (len1 < 0 || len2 < 0 || len3 < 0)
+  serialization::decode_vstr(buf, data_len, pos, comment_str_, OB_MAX_TABLE_COMMENT_LENGTH, &len4);
+  if (len1 < 0 || len2 < 0 || len3 < 0 || len4 < 0)
   {
-    TBSYS_LOG(WARN, "deserialize error, len1=%ld len2=%ld len3=%ld", len1, len2, len3);
+    TBSYS_LOG(WARN, "deserialize error, len1=%ld len2=%ld len3=%ld len4=%ld", len1, len2, len3, len4);
     ret = OB_DESERIALIZE_ERROR;
   }
   else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, reinterpret_cast<int64_t*>(&table_id_))))
@@ -347,7 +374,7 @@ DEFINE_DESERIALIZE(TableSchema)
   {
     TBSYS_LOG(WARN, "deserialize error here");
   }
-  else if (OB_SUCCESS != (ret = serialization::decode_bool(buf, data_len, pos, &is_read_static_)))
+  else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &consistency_level_)))
   {
     TBSYS_LOG(WARN, "deserialize error here");
   }
@@ -387,6 +414,10 @@ DEFINE_DESERIALIZE(TableSchema)
   {
     TBSYS_LOG(WARN, "deserialize error here");
   }
+  else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &schema_version_)))
+  {
+    TBSYS_LOG(WARN, "deserialize error here");
+  }
   else if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, reinterpret_cast<int64_t*>(&create_time_column_id_))))
   {
     TBSYS_LOG(WARN, "deserialize error here");
@@ -415,7 +446,31 @@ DEFINE_DESERIALIZE(TableSchema)
         break;
       }
     }
-    // @todo join_info
+  }
+
+  int64_t join_info_count = 0;
+  if (OB_SUCCESS == ret)
+  {
+    if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &join_info_count)))
+    {
+      TBSYS_LOG(WARN, "fail to deserialize join info count:ret[%d]", ret);
+    }
+  }
+  if (OB_SUCCESS == ret)
+  {
+    join_info_.clear();
+    JoinInfo join_info;
+    for (int64_t i = 0; OB_SUCCESS == ret && i < join_info_count; i ++)
+    {
+      if (OB_SUCCESS != (ret = join_info.deserialize(buf, data_len, pos)))
+      {
+        TBSYS_LOG(WARN, "fail to deserialize join info:ret[%d]", ret);
+      }
+      else if (OB_SUCCESS != (ret = join_info_.push_back(join_info)))
+      {
+        TBSYS_LOG(WARN, "fail to push join info to array;ret[%d]", ret);
+      }
+    }
   }
   return ret;
 }
@@ -455,6 +510,102 @@ DEFINE_SERIALIZE(AlterTableSchema)
   return ret;
 }
 
+DEFINE_SERIALIZE(JoinInfo)
+{
+  int ret = OB_SUCCESS;
+  if (OB_SUCCESS != (ret = serialization::encode_vstr(buf, buf_len, pos, left_table_name_)))
+  {
+    TBSYS_LOG(WARN, "fail to serialize:ret[%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, left_table_id_)))
+  {
+    TBSYS_LOG(WARN, "fail to serialize:ret[%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vstr(buf, buf_len, pos, left_column_name_)))
+  {
+    TBSYS_LOG(WARN, "fail to serialize:ret[%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, left_column_id_)))
+  {
+    TBSYS_LOG(WARN, "fail to serialize:ret[%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vstr(buf, buf_len, pos, right_table_name_)))
+  {
+    TBSYS_LOG(WARN, "fail to serialize:ret[%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, right_table_id_)))
+  {
+    TBSYS_LOG(WARN, "fail to serialize:ret[%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vstr(buf, buf_len, pos, right_column_name_)))
+  {
+    TBSYS_LOG(WARN, "fail to serialize:ret[%d]", ret);
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(buf, buf_len, pos, right_column_id_)))
+  {
+    TBSYS_LOG(WARN, "fail to serialize:ret[%d]", ret);
+  }
+  return ret;
+}
+
+DEFINE_DESERIALIZE(JoinInfo)
+{
+  int ret = OB_SUCCESS;
+  int64_t len = 0;
+  int64_t id = 0;
+  if (OB_SUCCESS == ret)
+  {
+    serialization::decode_vstr(buf, data_len, pos, left_table_name_, OB_MAX_TABLE_NAME_LENGTH, &len);
+    if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &id)))
+    {
+      TBSYS_LOG(WARN, "fail to deserialize:ret[%d]", ret);
+    }
+    else
+    {
+      left_table_id_ = id;
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    serialization::decode_vstr(buf, data_len, pos, left_column_name_, OB_MAX_COLUMN_NAME_LENGTH, &len);
+    if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &id)))
+    {
+      TBSYS_LOG(WARN, "fail to deserialize:ret[%d]", ret);
+    }
+    else
+    {
+      left_column_id_ = id;
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    serialization::decode_vstr(buf, data_len, pos, right_table_name_, OB_MAX_TABLE_NAME_LENGTH, &len);
+    if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &id)))
+    {
+      TBSYS_LOG(WARN, "fail to deserialize:ret[%d]", ret);
+    }
+    else
+    {
+      right_table_id_ = id;
+    }
+  }
+
+  if (OB_SUCCESS == ret)
+  {
+    serialization::decode_vstr(buf, data_len, pos, right_column_name_, OB_MAX_COLUMN_NAME_LENGTH, &len);
+    if (OB_SUCCESS != (ret = serialization::decode_vi64(buf, data_len, pos, &id)))
+    {
+      TBSYS_LOG(WARN, "fail to deserialize:ret[%d]", ret);
+    }
+    else
+    {
+      right_column_id_ = id;
+    }
+  }
+  return ret;
+}
 
 DEFINE_DESERIALIZE(AlterTableSchema)
 {
@@ -496,5 +647,3 @@ DEFINE_DESERIALIZE(AlterTableSchema)
   }
   return ret;
 }
-
-

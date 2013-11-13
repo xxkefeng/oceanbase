@@ -28,6 +28,18 @@ ObDoubleChildrenPhyOperator::~ObDoubleChildrenPhyOperator()
 {
 }
 
+void ObDoubleChildrenPhyOperator::reset()
+{
+  left_op_ = NULL;
+  right_op_ = NULL;
+}
+
+void ObDoubleChildrenPhyOperator::reuse()
+{
+  left_op_ = NULL;
+  right_op_ = NULL;
+}
+
 int ObDoubleChildrenPhyOperator::set_child(int32_t child_idx, ObPhyOperator &child_operator)
 {
   int ret = OB_SUCCESS;

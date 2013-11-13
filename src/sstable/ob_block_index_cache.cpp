@@ -175,8 +175,8 @@ namespace oceanbase
         else
         {
 #ifndef _SSTABLE_NO_STAT_
-          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_NUM, 1);
-          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_BYTES, read_size);
+          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_NUM, 1);
+          OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_BYTES, read_size);
 #endif
         }
       }
@@ -240,6 +240,20 @@ namespace oceanbase
         {
           //read data from disk
           ret = read_sstable_block_index(block_index_info, block_index, table_id, handle);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "failed to read sstable block index, table_id=%lu, "
+                "sstable_id=%lu, offset=%ld, size=%ld",
+                table_id, block_index_info.sstable_file_id_, block_index_info.offset_,
+                block_index_info.size_);
+            if (OB_SUCCESS != kv_cache_.erase(block_index_info))
+            {
+              TBSYS_LOG(WARN, "failed to delete fake node from kvcache, table_id=%lu, "
+                  "sstable_id=%lu, offset=%ld, size=%ld",
+                  table_id, block_index_info.sstable_file_id_, block_index_info.offset_,
+                  block_index_info.size_);
+            }
+          }
 #ifndef _SSTABLE_NO_STAT_
           OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_INDEX_CACHE_MISS, 1);
 #endif

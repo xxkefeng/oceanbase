@@ -27,13 +27,14 @@
 #include "ob_tsi_factory.h"
 #include "ob_trace_id.h"
 #include "ob_profile_type.h"
+#include "ob_profile_fill_log.h"
 namespace oceanbase
 {
   namespace common
   {
 
     ObClientManager::ObClientManager()
-      : error_(OB_SUCCESS), inited_(false), max_request_timeout_(5000000), eio_(NULL), handler_(NULL)
+      : error_(OB_SUCCESS), inited_(false), dedicate_thread_num_(0), max_request_timeout_(5000000), eio_(NULL), handler_(NULL)
     {
     }
 
@@ -85,6 +86,31 @@ namespace oceanbase
       TBSYS_LOG(WARN, "set_err(err=%d)", err);
     }
 
+    int ObClientManager::set_dedicate_thread_num(const int num)
+    {
+      int err = OB_SUCCESS;
+      if (dedicate_thread_num_ > 0)
+      {
+        err = OB_INIT_TWICE;
+        TBSYS_LOG(ERROR, "already set dedicate_thread_num, old_value=%d", dedicate_thread_num_);
+      }
+      else if (NULL == eio_)
+      {
+        err = OB_NOT_INIT;
+        TBSYS_LOG(ERROR, "eio == NULL");
+      }
+      else if (eio_->io_thread_pool->thread_count <= num)
+      {
+        err = OB_SIZE_OVERFLOW;
+        TBSYS_LOG(ERROR, "request dedicate_thread_num[%d] >= max_avail_thread_num[%d]", num, eio_->io_thread_pool->thread_count);
+      }
+      else
+      {
+        dedicate_thread_num_ = num;
+      }
+      return err;
+    }
+
     int ObClientManager::post_request(const ObServer& server,
         const int32_t pcode, const int32_t version, const ObDataBuffer& in_buffer) const
     {
@@ -100,13 +126,7 @@ namespace oceanbase
         handler = ObTbnetCallback::default_callback;
       }
       int ret = OB_SUCCESS;
-      int64_t st = tbsys::CTimeUtil::getTime();
       ret = do_post_request(server, pcode, version, 0, timeout, in_buffer, handler, args);
-      if (pcode == OB_SQL_SCAN_REQUEST || pcode == OB_SQL_GET_REQUEST)
-      {
-        //异步发包，打出发包时间，本机IP，对端IP地址，包的pcode
-        PROFILE_LOG(DEBUG, ASYNC_RPC_START_TIME SELF PEER PCODE RET, st, to_cstring(*(GET_TSI_MULT(ObServer, TSI_COMMON_OBSERVER_1))), to_cstring(server), pcode, ret);
-      }
       return ret;
     }
 
@@ -129,7 +149,14 @@ namespace oceanbase
         if (pcode != OB_HEARTBEAT)
         {
           uint32_t *chid = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_CHID_1);
-          *chid = packet->get_channel_id();
+          if (OB_LIKELY(NULL != chid))
+          {
+            *chid = packet->get_channel_id();
+            if (pcode == OB_SQL_SCAN_REQUEST || pcode == OB_SQL_GET_REQUEST)
+            {
+              PFILL_RPC_START(pcode,(*chid));
+            }
+          }
         }
         packet->set_session_id(session_id);
         if (NULL != args)
@@ -139,6 +166,53 @@ namespace oceanbase
         TBSYS_LOG(DEBUG, "post packet, pcode=%d channel=%u session=%p session_id=%ld",
                   packet->get_packet_code(), packet->get_channel_id(), s, session_id);
         rc = post_session(s);
+        if (OB_SUCCESS != rc)
+        {
+          //session post faild destroy it
+          TBSYS_LOG(WARN, "post session faild destroy session s = %p", s);
+          easy_session_destroy(s);
+          rc = OB_PACKET_NOT_SENT;
+        }
+      }
+
+      return rc;
+    }
+
+    int ObClientManager::post_request_using_dedicate_thread(const ObServer& server, const int32_t pcode, const int32_t version,
+                                                            const int64_t timeout, const ObDataBuffer& in_buffer,
+                                                            easy_io_process_pt handler, void* args, int thread_idx) const
+    {
+      int rc = OB_SUCCESS;
+      int64_t session_id = 0;
+      easy_session_t* s = NULL;
+      //session will be destroyed on session call back
+      //(data buffe size) + (record header size) + (packet size)
+      int64_t size = in_buffer.get_position() + OB_RECORD_HEADER_LENGTH + sizeof(ObPacket);
+      rc = create_session(server, pcode, version, timeout, in_buffer, size, s);
+      if (OB_SUCCESS == rc)
+      {
+        s->process = handler;
+        ObPacket *packet = reinterpret_cast<ObPacket*>(s->r.opacket);
+        if (pcode != OB_HEARTBEAT)
+        {
+          uint32_t *chid = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_CHID_1);
+          if (OB_LIKELY(NULL != chid))
+          {
+            *chid = packet->get_channel_id();
+            if (pcode == OB_SQL_SCAN_REQUEST || pcode == OB_SQL_GET_REQUEST)
+            {
+              PFILL_RPC_START(pcode,(*chid));
+            }
+          }
+        }
+        packet->set_session_id(session_id);
+        if (NULL != args)
+        {
+          s->r.user_data = args;
+        }
+        TBSYS_LOG(DEBUG, "post packet, pcode=%d channel=%u session=%p session_id=%ld",
+                  packet->get_packet_code(), packet->get_channel_id(), s, session_id);
+        rc = post_session_using_dedicate_thread(s, thread_idx);
         if (OB_SUCCESS != rc)
         {
           //session post faild destroy it
@@ -298,7 +372,7 @@ namespace oceanbase
       int rc = OB_SUCCESS;
       ObPacket *response = NULL;
       easy_session_t* s = NULL;
-
+      uint32_t *chid = NULL;
       if (OB_SUCCESS == rc)
       {
         //copy packet into session, session will be destroy when request done or anyother libeasy error
@@ -307,18 +381,17 @@ namespace oceanbase
         if (OB_SUCCESS == rc)
         {
           ObPacket* packet = reinterpret_cast<ObPacket*>(s->r.opacket);
-          int64_t st = tbsys::CTimeUtil::getTime();
-          uint32_t *chid = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_CHID_1);
+          chid = GET_TSI_MULT(uint32_t, TSI_COMMON_PACKET_CHID_1);
           //将chid设置到线程局部中
           *chid = packet->get_channel_id();
           // OB_MS_MUTATE: REPLACE
           // OB_PHY_PLAN_EXECUTE: UPDATE, INSERT
           if (pcode == OB_SQL_SCAN_REQUEST || pcode == OB_SQL_GET_REQUEST
               || pcode == OB_MS_MUTATE || pcode == OB_PHY_PLAN_EXECUTE
-              || pcode == OB_START_TRANSACTION || pcode == OB_END_TRANSACTION)
+              || pcode == OB_START_TRANSACTION || pcode == OB_END_TRANSACTION
+              || pcode == OB_NEW_GET_REQUEST || pcode == OB_NEW_SCAN_REQUEST)
           {
-            // 打出同步rpc发送时间，本机IP，对端IP，包的pcode,PROFILE_LOG默认会打出trace_id, source chid id和目标chid
-            PROFILE_LOG(DEBUG, SYNC_RPC_START_TIME SELF PEER PCODE, st, to_cstring(*(GET_TSI_MULT(ObServer, TSI_COMMON_OBSERVER_1))), to_cstring(server), pcode);
+            PFILL_RPC_START(pcode,*chid);
           }
           TBSYS_LOG(DEBUG, "send packet, pcode=%d, channel=%u session=%p timeout=%f",
                     packet->get_packet_code(), packet->get_channel_id(), s,
@@ -341,15 +414,17 @@ namespace oceanbase
       //easy_session_destroy will free input packet buffer
       if (OB_SUCCESS == rc && NULL != response)
       {
-        int64_t ed = tbsys::CTimeUtil::getTime();
         int32_t pcode = response->get_packet_code();
         session_id = response->get_session_id();
-        //打出同步RPC收到回复包的时间
         if (pcode == OB_SQL_SCAN_RESPONSE || pcode == OB_SQL_GET_RESPONSE 
-            || pcode == OB_MS_MUTATE || pcode == OB_PHY_PLAN_EXECUTE
-            || pcode == OB_START_TRANSACTION || pcode == OB_END_TRANSACTION)
+            || pcode == OB_MS_MUTATE || pcode == OB_COMMIT_END
+            || pcode == OB_START_TRANSACTION || pcode == OB_END_TRANSACTION
+            || pcode == OB_NEW_GET_REQUEST || pcode == OB_NEW_SCAN_REQUEST)
         {
-          PROFILE_LOG(DEBUG, SYNC_RPC_END_TIME RET PCODE, ed, rc, pcode);
+          if (chid != NULL)
+          {
+            PFILL_RPC_END(*chid);
+          }
         }
         int64_t data_length = response->get_data_length();
         out_buffer.get_position() = 0;
@@ -436,15 +511,25 @@ namespace oceanbase
       return ret;
     }
 
-    int ObClientManager::post_session(easy_session_t* s) const
+    int ObClientManager::post_session_using_dedicate_thread(easy_session_t* s, int thread_idx /* =0 */) const
     {
       int rc = OB_SUCCESS;
       //skip timeout_mesg log
       s->error = 2;
-
-      if (OB_SUCCESS == rc)
+      char buff[OB_SERVER_ADDR_STR_LEN];
+      if (dedicate_thread_num_ <= 0)
       {
-        char buff[OB_SERVER_ADDR_STR_LEN];
+        rc = OB_NOT_INIT;
+        TBSYS_LOG(ERROR, "not set dedicate io thread");
+      }
+      else if (thread_idx >= dedicate_thread_num_)
+      {
+        rc = OB_SIZE_OVERFLOW;
+        TBSYS_LOG(ERROR, "thread_idx[%d] > dedicate_thread_count[%d]", thread_idx, dedicate_thread_num_);
+      }
+      else
+      {
+        (s->addr).cidx = eio_->io_thread_pool->thread_count - dedicate_thread_num_ + thread_idx;
         if (EASY_OK != easy_client_dispatch(eio_, s->addr, s))
         {
           TBSYS_LOG(WARN, "post packet to server:%s faild", easy_inet_addr_to_str(&s->addr, buff, OB_SERVER_ADDR_STR_LEN));
@@ -458,6 +543,27 @@ namespace oceanbase
       return rc;
     }
 
+    int ObClientManager::post_session(easy_session_t* s) const
+    {
+      int rc = OB_SUCCESS;
+      //skip timeout_mesg log
+      s->error = 2;
+      char buff[OB_SERVER_ADDR_STR_LEN];
+      //使用round robin的方式从IO线程池中选择IO线程
+      static uint8_t io_index = 0;
+      (s->addr).cidx = (__sync_fetch_and_add(&io_index, 1)) % (eio_->io_thread_pool->thread_count - dedicate_thread_num_);
+      if (EASY_OK != easy_client_dispatch(eio_, s->addr, s))
+      {
+        TBSYS_LOG(WARN, "post packet to server:%s faild", easy_inet_addr_to_str(&s->addr, buff, OB_SERVER_ADDR_STR_LEN));
+        rc = OB_RPC_POST_ERROR;
+      }
+      else
+      {
+        TBSYS_LOG(DEBUG, "post packet to server:%s", easy_inet_addr_to_str(&s->addr, buff, OB_SERVER_ADDR_STR_LEN));
+      }
+      return rc;
+    }
+
     void* ObClientManager::send_session(easy_session_t* s) const
     {
       int rc = OB_SUCCESS;
@@ -466,6 +572,10 @@ namespace oceanbase
 
       if (OB_SUCCESS == rc)
       {
+        //和post_session使用一样的代码是为了区分chunkserver和mergeserver
+        //使用round robin的方式从IO线程池中选择IO线程
+        static uint8_t io_index = 0;
+        (s->addr).cidx = __sync_fetch_and_add(&io_index, 1) % (eio_->io_thread_pool->thread_count - dedicate_thread_num_);
         packet = reinterpret_cast<ObPacket*>(easy_client_send(eio_, s->addr, s));
         char buff[OB_SERVER_ADDR_STR_LEN];
         if (NULL == packet)

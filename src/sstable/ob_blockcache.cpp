@@ -153,6 +153,47 @@ namespace oceanbase
       return ret;
     }
 
+    int32_t ObBlockCache::get_block_sync_io(
+        const uint64_t sstable_id,
+        const int64_t offset,
+        const int64_t nbyte,
+        ObBufferHandle& buffer_handle,
+        const uint64_t table_id,
+        const bool check_crc /*= true*/)
+    {
+      int status = OB_SUCCESS;
+      int32_t nsize = -1;
+      const char* buffer = NULL;
+
+      status = read_record(*fileinfo_cache_, sstable_id, offset, nbyte, buffer);
+      if (OB_SUCCESS != status || NULL == buffer)
+      {
+        TBSYS_LOG(WARN, "read sstable[%ld] block[%ld,%ld] from disk error=%d",
+            sstable_id, offset, nbyte, status);
+      }
+      else if (check_crc)
+      {
+        status = ObRecordHeader::check_record(buffer, nbyte, ObSSTableWriter::DATA_BLOCK_MAGIC);
+        if (OB_SUCCESS != status)
+        {
+          TBSYS_LOG(WARN, "failed to check block record, sstable_id=%lu "
+              "offset=%ld nbyte=%ld", sstable_id, offset, nbyte);              
+        }
+      }
+
+      if (OB_SUCCESS == status)
+      {
+        UNUSED(table_id);
+#ifndef _SSTABLE_NO_STAT_
+        OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_NUM, 1); 
+        OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_BYTES, nbyte); 
+#endif
+        buffer_handle.buffer_ = buffer;
+        nsize = static_cast<int32_t>(nbyte);
+      }
+      return nsize;
+    }
+
     int32_t ObBlockCache::get_block(const uint64_t sstable_id,
                                     const int64_t offset,
                                     const int64_t nbyte,
@@ -202,8 +243,8 @@ namespace oceanbase
           if (OB_SUCCESS == status && NULL != buffer)
           {
 #ifndef _SSTABLE_NO_STAT_
-            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_NUM, 1); 
-            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_BYTES, nbyte); 
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_NUM, 1); 
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_BYTES, nbyte); 
 #endif
             input_value.nbyte = nbyte;
             input_value.buffer = const_cast<char*>(buffer);
@@ -244,6 +285,12 @@ namespace oceanbase
             TBSYS_LOG(WARN, "read block fail sstable_id=%lu offset=%ld nbyte=%ld",
                       sstable_id, offset, nbyte);
           }
+          if (OB_SUCCESS != status && OB_SUCCESS != kv_cache_.erase(data_index))
+          {
+            TBSYS_LOG(WARN, "failed to erase fake node from kvcache, sstable_id=%lu, "
+                            "offset=%ld nbyte=%ld",
+                      sstable_id, offset, nbyte);
+          }
         }
       }
 
@@ -280,7 +327,7 @@ namespace oceanbase
         data_index.offset = current_block.offset_;
         data_index.size = current_block.size_;
 
-        if (OB_SUCCESS == kv_cache_.get(data_index, output_value, buffer_handle.handle_, true))
+        if (OB_SUCCESS == kv_cache_.get(data_index, output_value, buffer_handle.handle_, false))
         {
           // found in cache, continue search next block;
           buffer_handle.block_cache_ = this;
@@ -350,8 +397,8 @@ namespace oceanbase
 
 #ifndef _SSTABLE_NO_STAT_
             OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_CACHE_MISS, 1);
-            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_NUM, 1); 
-            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_BYTES, readahead_size);
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_NUM, 1); 
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_BYTES, readahead_size);
 #endif            
             ObIOStat stat;
             stat.total_read_size_ = readahead_size;
@@ -388,7 +435,7 @@ namespace oceanbase
               if (cursor == i)
               {
                 status = kv_cache_.put_and_fetch(data_index, input_value, 
-                    output_value, buffer_handle.handle_, false, false);
+                    output_value, buffer_handle.handle_, true, false);
                 if (OB_SUCCESS == status)
                 {
                   buffer_handle.block_cache_ = this;
@@ -398,8 +445,8 @@ namespace oceanbase
                 else
                 {
                   TBSYS_LOG(WARN, "failed to get block from block cached after put "
-                      "block into block cache, sstable_id=%lu offset=%ld nbyte=%ld",
-                      sstable_id, data_index.offset, data_index.size);
+                      "block into block cache, sstable_id=%lu offset=%ld nbyte=%ld, status=%d",
+                      sstable_id, data_index.offset, data_index.size, status);
                   break;
                 }
               }
@@ -565,8 +612,8 @@ namespace oceanbase
             {
               OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_BLOCK_CACHE_MISS, 1);
             }
-            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_NUM, 1); 
-            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_BYTES, nbyte); 
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_NUM, 1); 
+            OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_DISK_IO_READ_BYTES, nbyte); 
 #endif
           }
         }

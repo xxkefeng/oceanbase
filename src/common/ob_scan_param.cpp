@@ -109,6 +109,15 @@ namespace oceanbase
       return counter;
     }
 
+    int64_t ObScanParam::to_string(char *buf, int64_t buf_size) const
+    {
+      int64_t pos = 0;
+      if (OB_SUCCESS != to_str(buf, buf_size, pos))
+      {
+        pos = 0;
+      }
+      return pos;
+    }
 
     int ObScanParam::to_str(char *buf, int64_t buf_size, int64_t &pos)const
     {

@@ -4,7 +4,7 @@
 #include <tbsys.h>
 #include "common/ob_define.h"
 #include "common/ob_malloc.h"
-#include "common/ob_bloomfilter.h"
+#include "common/bloom_filter.h"
 #include "common/ob_list.h"
 #include "common/ob_record_header_v2.h"
 #include "common/compress/ob_compressor.h"
@@ -256,7 +256,7 @@ namespace oceanbase
         list_row_count_ ++;
       }
 
-      inline const common::TableBloomFilter& get_list_bloomfilter() const
+      inline const common::ObBloomFilterV1& get_list_bloomfilter() const
       {
         return list_bloomfilter_;
       }
@@ -329,7 +329,7 @@ namespace oceanbase
       common::ObList<BlockListNode*> mem_block_list_;
       int64_t mem_block_list_total_len_;
       int64_t list_row_count_;
-      common::TableBloomFilter list_bloomfilter_;
+      common::ObBloomFilterV1 list_bloomfilter_;
     };
 
     inline int ObCompactSSTableWriterBuffer::check_rowkey(

@@ -58,7 +58,7 @@ update t1 set a=2 where pk=1;
 --echo conn3 set a to 3, have to rollback
 connection conn3;
 select * from t1;
---error 23
+--error 5049
 update t1 set a=3 where pk=1;
 ROLLBACK;
 

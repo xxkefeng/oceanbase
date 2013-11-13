@@ -13,6 +13,13 @@
  */
 #include "ob_lock_filter.h"
 
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObLockFilter, PHY_LOCK_FILTER);
+  }
+}
+
 namespace oceanbase
 {
   namespace sql
@@ -64,4 +71,3 @@ namespace oceanbase
     }
   }; // end namespace sql
 }; // end namespace oceanbase
-

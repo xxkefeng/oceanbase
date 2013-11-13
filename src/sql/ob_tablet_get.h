@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_tablet_get.h 
+ * ob_tablet_get.h
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -37,15 +37,17 @@ namespace oceanbase
       public:
         int create_plan(const ObSchemaManagerV2 &schema_mgr);
         int set_tablet_manager(chunkserver::ObTabletManager *tablet_manager);
-    
+
         inline void set_sql_get_param(const ObSqlGetParam &sql_get_param);
         void reset();
+        void reuse();
         int64_t to_string(char* buf, const int64_t buf_len) const;
+        virtual ObPhyOperatorType get_type() const { return PHY_TABLET_GET; }
 
       private:
-        int need_incremental_data(ObArray<uint64_t> &basic_columns, 
-                                  ObTabletJoin::TableJoinInfo &table_join_info, 
-                                  int64_t start_data_version, 
+        int need_incremental_data(ObArray<uint64_t> &basic_columns,
+                                  ObTabletJoin::TableJoinInfo &table_join_info,
+                                  int64_t start_data_version,
                                   int64_t end_data_version);
         bool check_inner_stat() const;
         int add_action_flag_column(ObProject &project);
@@ -72,5 +74,3 @@ namespace oceanbase
 }
 
 #endif /* _OB_TABLET_GET_H */
-  
-

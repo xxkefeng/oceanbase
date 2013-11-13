@@ -39,9 +39,23 @@ namespace oceanbase
       bool can_be_migrated_now(int64_t disabling_period_us) const;
       void has_been_migrated();
       int64_t get_max_tablet_version() const;
+      int32_t get_copy_count() const;
       NEED_SERIALIZE_AND_DESERIALIZE;
     };
-    
+
+    inline int32_t ObRootMeta2::get_copy_count() const
+    {
+      int32_t count = 0;
+      for (int32_t i = 0 ; i < common::OB_SAFE_COPY_COUNT; ++i)
+      {
+        if (common::OB_INVALID_INDEX != server_info_indexes_[i])
+        {
+          ++count;
+        }
+      }
+      return count;
+    }
+
     inline bool ObRootMeta2::did_cs_have(const int32_t cs_idx) const
     {
       bool ret = false;

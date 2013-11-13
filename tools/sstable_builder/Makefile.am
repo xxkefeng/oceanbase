@@ -7,8 +7,7 @@ endif
 
 lib_LTLIBRARIES = libmrsstable.la
 libmrsstable_la_SOURCES = sstable_builder.cpp \
-						  sstable_writer.cpp \
-							row_key_desc.cpp
+						  sstable_writer.cpp 
 
 libmrsstable_la_CPPFLAGS = -I${TBLIB_ROOT}/include/tbsys \
 						   -I${EASY_ROOT}/include/easy \
@@ -21,8 +20,8 @@ libmrsstable_la_LDFLAGS = -L${top_builddir}/src/sstable/ \
 						  -L${top_builddir}/src/common/ \
 						  -L${top_builddir}/src/common/compress/ \
 						  -L${TBLIB_ROOT}/lib/ \
-                                                  -L${EASY_ROOT}/lib \
-						  -lsstable -lcommon -lcomp \
+              -L${EASY_ROOT}/lib \
+              -lsstable -lcommon -lcomp \
 						  -Wl,-static,-leasy \
 						  -Wl,-static,-ltbsys \
 						  -lpthread -lc -lm -lrt -ldl
@@ -44,5 +43,4 @@ test_sstable_builder_CPPFLAGS = -I${TBLIB_ROOT}/include/tbsys \
 
 EXTRA_DIST = sstable_builder.h \
 			 sstable_writer.h \
-			 com_taobao_mrsstable_SSTableBuilder.h \
-			 row_key_desc.h
+			 com_taobao_mrsstable_SSTableBuilder.h

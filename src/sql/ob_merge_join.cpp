@@ -38,6 +38,60 @@ ObMergeJoin::~ObMergeJoin()
   }
 }
 
+void ObMergeJoin::reset()
+{
+  /*get_next_row_func_ = NULL;
+  last_right_row_ = NULL;
+  last_left_row_ = NULL;
+  right_cache_is_valid_ = false;
+  is_right_iter_end_ = false;*/
+
+  get_next_row_func_ = NULL;
+  last_left_row_ = NULL;
+  last_right_row_ = NULL;
+  //last_join_left_row_.reset(false, ObRow::DEFAULT_NULL);
+  char *store_buf = last_join_left_row_store_.ptr();
+  if (NULL != store_buf)
+  {
+    ob_free(store_buf);
+    last_join_left_row_store_.assign_ptr(NULL, 0);
+  }
+  right_cache_.clear();
+  //curr_cached_right_row_.reset(false, ObRow::DEFAULT_NULL);
+  //curr_row_.reset(false, ObRow::DEFAULT_NULL);
+  row_desc_.reset();
+  right_cache_is_valid_ = false;
+  is_right_iter_end_ = false;
+  equal_join_conds_.clear();
+  other_join_conds_.clear();
+  left_op_ = NULL;
+  right_op_ = NULL;
+}
+
+void ObMergeJoin::reuse()
+{
+  get_next_row_func_ = NULL;
+  last_left_row_ = NULL;
+  last_right_row_ = NULL;
+  //last_join_left_row_.reset(false, ObRow::DEFAULT_NULL);
+  char *store_buf = last_join_left_row_store_.ptr();
+  if (NULL != store_buf)
+  {
+    ob_free(store_buf);
+    last_join_left_row_store_.assign_ptr(NULL, 0);
+  }
+  right_cache_.reuse();
+  //curr_cached_right_row_.reset(false, ObRow::DEFAULT_NULL);
+  //curr_row_.reset(false, ObRow::DEFAULT_NULL);
+  row_desc_.reset();
+  right_cache_is_valid_ = false;
+  is_right_iter_end_ = false;
+  equal_join_conds_.clear();
+  other_join_conds_.clear();
+  left_op_ = NULL;
+  right_op_ = NULL;
+}
+
 int ObMergeJoin::set_join_type(const ObJoin::JoinType join_type)
 {
   int ret = OB_SUCCESS;
@@ -243,7 +297,7 @@ int ObMergeJoin::left_row_compare_equijoin_cond(const ObRow& r1, const ObRow& r2
       }
       else if (OB_SUCCESS != (ret = r2.get_cell(c1.tid, c1.cid, res2)))
       {
-        TBSYS_LOG(ERROR, "failed to get cell, err=%d tid=%lu cid=%lu", ret, c2.tid, c2.cid);
+        TBSYS_LOG(ERROR, "failed to get cell, err=%d tid=%lu cid=%lu", ret, c1.tid, c1.cid);
         break;
       }
       else
@@ -1728,10 +1782,32 @@ int ObMergeJoin::right_anti_semi_get_next_row(const ObRow *&row)
 
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObMergeJoin, PHY_MERGE_JOIN);
+  }
+}
+
 int64_t ObMergeJoin::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
   databuff_printf(buf, buf_len, pos, "Merge ");
   pos += ObJoin::to_string(buf + pos, buf_len - pos);
   return pos;
+}
+
+PHY_OPERATOR_ASSIGN(ObMergeJoin)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObMergeJoin);
+  reset();
+  if ((ret = set_join_type(o_ptr->join_type_)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "Fail to set join type, ret=%d", ret);
+  }
+  else
+  {
+    ret = ObJoin::assign(other);
+  }
+  return ret;
 }

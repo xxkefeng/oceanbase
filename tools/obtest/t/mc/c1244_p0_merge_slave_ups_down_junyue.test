@@ -34,7 +34,7 @@ replace into t1 values(1,1),(2,2),(3,3),(4,4);
 # slave master ups crash
 let $old_slave_master=deploy_get_value(ob2.get_master_ups);
 deploy ob2.$old_slave_master.force_stop;
-
+sleep 20;
 
 insert into t1 values(5,1),(6,2),(7,3),(8,4);
 select * from t1;

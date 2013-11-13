@@ -34,6 +34,6 @@ ObDataSource* consishash_mergeserver_select(ObClusterInfo *pool, const char* sql
 
 /* random */
 ObSQLConn* random_conn_select(ObDataSource *pool);
-ObDataSource* random_mergeserver_select(ObClusterInfo *pool);
+ObDataSource* random_mergeserver_select(ObClusterInfo *pool, ObSQLMySQL *mysql);
 OB_SQL_CPP_END
 #endif

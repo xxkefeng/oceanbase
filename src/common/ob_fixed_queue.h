@@ -46,6 +46,7 @@ namespace oceanbase
         int pop(T *&ptr);
         inline int64_t get_total() const;
         inline int64_t get_free() const;
+        bool inited() const {return inited_;};
       private:
         inline int64_t get_total_(const uint64_t consumer, const uint64_t producer) const;
         inline int64_t get_free_(const uint64_t consumer, const uint64_t producer) const;

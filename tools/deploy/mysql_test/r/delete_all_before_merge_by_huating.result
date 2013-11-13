@@ -1,5 +1,5 @@
 case 1: int + 1 row
-alter system set merge_delay_interval='1s' server_type=chunkserver;
+alter system set merge_delay_interval='1s' server_type=chunkserver,min_major_freeze_interval='1s' server_type=updateserver;
 alter system set merge_delay_for_lsync='1s' server_type=chunkserver;
 alter system set min_drop_cache_wait_time='10s' server_type=chunkserver;
 case 3: varchar 

@@ -79,6 +79,7 @@ namespace oceanbase
         int64_t checksum(const int64_t current) const;
         void checksum(ObBatchChecksum& bc) const;
         uint32_t murmurhash2(const uint32_t hash) const;
+        uint64_t murmurhash64A(const uint64_t hash) const;
         inline int64_t hash() const
         {
           return murmurhash2(0);

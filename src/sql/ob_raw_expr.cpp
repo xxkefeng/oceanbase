@@ -27,7 +27,7 @@ bool ObRawExpr::is_equal_filter() const
       || binary_expr->get_second_op_expr()->is_const())
       ret = true;
   }
-  return false;
+  return ret;
 }
 
 bool ObRawExpr::is_range_filter() const
@@ -102,15 +102,6 @@ int ObConstRawExpr::set_value_and_type(const common::ObObj& val)
       this->set_expr_type(T_STRING);
       this->set_result_type(ObVarcharType);
       break;
-    case ObExtendType:
-    {
-      this->set_expr_type(T_QUESTIONMARK);
-      this->set_result_type(ObIntType);
-      int64_t v = 0;
-      val.get_ext(v);
-      value_.set_int(v);
-      break;
-    }
     case ObBoolType:
       this->set_expr_type(T_BOOL);
       this->set_result_type(ObBoolType);
@@ -211,6 +202,7 @@ int ObConstRawExpr::fill_sql_expression(
   int ret = OB_SUCCESS;
   UNUSED(logical_plan);
   UNUSED(physical_plan);
+  UNUSED(transformer);
   float f = 0.0f;
   double d = 0.0;
   ExprItem item;
@@ -243,72 +235,12 @@ int ObConstRawExpr::fill_sql_expression(
       ret = value_.get_precise_datetime(item.value_.datetime_);
       break;
     case T_QUESTIONMARK:
-    {
-      ObSqlContext *sql_context = NULL;
-      ObResultSet *result_set = NULL;
-      if (transformer == NULL
-        || (sql_context = transformer->get_sql_context()) == NULL
-        || sql_context->session_info_ == NULL
-        || (result_set = sql_context->session_info_->get_current_result_set()) == NULL)
-      {
-        ret = OB_NOT_INIT;
-        TBSYS_LOG(ERROR, "Session stored param placeholder is needed\n");
-        break;
-      }
-      else if ((ret = value_.get_int(item.value_.int_)) != OB_SUCCESS)
-      {
-        TBSYS_LOG(ERROR, "invalid question mark value, type=%d", value_.get_type());
-        break;
-      }
-      else if (item.value_.int_ < 0 || item.value_.int_ >= result_set->get_params().count())
-      {
-        TBSYS_LOG(ERROR, "Wrong index of question mark position, pos = %ld\n", item.value_.int_);
-        break;
-      }
-      else
-      {
-        ObObj *place_holder = result_set->get_params().at(item.value_.int_);
-        item.value_.int_ = reinterpret_cast<int64_t>(place_holder);
-      }
+      ret = value_.get_int(item.value_.int_);
       break;
-    }
     case T_SYSTEM_VARIABLE:
     case T_TEMP_VARIABLE:
-    {
-      ObSqlContext *sql_context = NULL;
-      ObString var_name;
-      const ObObj *var_ptr = NULL;
-      if (transformer == NULL
-        || (sql_context = transformer->get_sql_context()) == NULL
-        || sql_context->session_info_ == NULL)
-      {
-        ret = OB_NOT_INIT;
-        TBSYS_LOG(ERROR, "Session information is needed\n");
-      }
-      else if ((ret = value_.get_varchar(var_name)) != OB_SUCCESS)
-      {
-        TBSYS_LOG(ERROR, "invalid question mark value, type=%d", value_.get_type());
-      }
-      else if (item.type_ == T_SYSTEM_VARIABLE
-        && (var_ptr = sql_context->session_info_->get_sys_variable_value(var_name)) == NULL)
-      {
-        ret = OB_ERR_VARIABLE_UNKNOWN;
-        TBSYS_LOG(ERROR, "System variable %.*s does not exists", var_name.length(), var_name.ptr());
-      }
-      else if (item.type_ == T_TEMP_VARIABLE
-        && (var_ptr = sql_context->session_info_->get_variable_value(var_name)) == NULL)
-      {
-        ret = OB_ERR_VARIABLE_UNKNOWN;
-        TBSYS_LOG(USER_ERROR, "Variable %.*s does not exists", var_name.length(), var_name.ptr());
-      }
-      else
-      {
-        item.value_.int_ = reinterpret_cast<int64_t>(var_ptr);
-        TBSYS_LOG(DEBUG, "get system variable type=%d name=%.*s ptr=%p val=%s",
-                  item.type_, var_name.length(), var_name.ptr(), var_ptr, to_cstring(*var_ptr));
-      }
+      ret = value_.get_varchar(item.string_);
       break;
-    }
     case T_NULL:
       break;
     default:
@@ -320,6 +252,31 @@ int ObConstRawExpr::fill_sql_expression(
   {
     ret = inter_expr.add_expr_item(item);
   }
+  return ret;
+}
+
+void ObCurTimeExpr::print(FILE* fp, int32_t level) const
+{
+  for(int i = 0; i < level; ++i) fprintf(fp, "    ");
+  fprintf(fp, "%s\n", get_type_name(get_expr_type()));
+}
+
+int ObCurTimeExpr::fill_sql_expression(
+    ObSqlExpression& inter_expr,
+    ObTransformer *transformer,
+    ObLogicalPlan *logical_plan,
+    ObPhysicalPlan *physical_plan) const
+{
+  UNUSED(physical_plan);
+  UNUSED(transformer);
+
+  int ret = OB_SUCCESS;
+  ExprItem item;
+  item.type_ = get_expr_type(); //T_CUR_TIME
+  item.data_type_ = ObPreciseDateTimeType;
+  item.value_.int_ = logical_plan->get_cur_time_fun_type(); //just place holder
+  ret = inter_expr.add_expr_item(item);
+
   return ret;
 }
 

@@ -147,10 +147,10 @@ namespace oceanbase
 
       if (NULL != bloom_filter_)
       {
-        TableBloomFilter* ptr = bloom_filter_;
+        ObBloomFilterV1* ptr = bloom_filter_;
         for (int64_t i = 0; i < sstable_header_.table_count_; i ++)
         {
-          ptr->~TableBloomFilter();
+          ptr->~ObBloomFilterV1();
           ptr ++;
         }
         bloom_filter_ = NULL;
@@ -492,7 +492,7 @@ namespace oceanbase
         const IFileInfo& file_info,
         const ObSSTableHeader& sstable_header,
         const ObSSTableTableIndex* table_index,
-        TableBloomFilter*& bloom_filter)
+        ObBloomFilterV1*& bloom_filter)
     {
       int ret = OB_SUCCESS;
       int64_t record_offset = 0;
@@ -502,7 +502,7 @@ namespace oceanbase
       const char* record_buf = NULL;
       ObRecordHeaderV2 record_header;
       int64_t table_count = sstable_header.table_count_;
-      TableBloomFilter* result_bloomfilter = NULL;
+      ObBloomFilterV1* result_bloomfilter = NULL;
 
       if (NULL == table_index)
       {
@@ -511,8 +511,8 @@ namespace oceanbase
       }
       else
       {
-        int64_t tmp_size = table_count * sizeof(TableBloomFilter);
-        TableBloomFilter* bloomfilter_ptr = NULL;
+        int64_t tmp_size = table_count * sizeof(ObBloomFilterV1);
+        ObBloomFilterV1* bloomfilter_ptr = NULL;
         char* tmp_buf = arena_.alloc(tmp_size);
         char* tmp_ptr = tmp_buf;
         if (NULL == tmp_buf)
@@ -523,22 +523,22 @@ namespace oceanbase
         {
           for (int64_t i = 0; i < table_count; i ++)
           {
-            bloomfilter_ptr = new(tmp_ptr)TableBloomFilter();
+            bloomfilter_ptr = new(tmp_ptr)ObBloomFilterV1();
             if (NULL == bloomfilter_ptr)
             {
-              TBSYS_LOG(WARN, "failed to new TableBloomFilter");
+              TBSYS_LOG(WARN, "failed to new ObBloomFilterV1");
               ret = OB_ERROR;
               break;
             }
             else
             {
-              tmp_ptr += sizeof(TableBloomFilter);
+              tmp_ptr += sizeof(ObBloomFilterV1);
             }
           }
 
           if (OB_SUCCESS == ret)
           {
-            result_bloomfilter = reinterpret_cast<TableBloomFilter*>(tmp_buf);
+            result_bloomfilter = reinterpret_cast<ObBloomFilterV1*>(tmp_buf);
           }
         }
       }
@@ -547,7 +547,7 @@ namespace oceanbase
       {
         ObSSTableTableIndex* table_index_ptr
           = const_cast<ObSSTableTableIndex*>(table_index);
-        TableBloomFilter* bloom_filter_ptr = result_bloomfilter;
+        ObBloomFilterV1* bloom_filter_ptr = result_bloomfilter;
         for (int64_t i = 0; i < table_count; i ++)
         {
           record_offset = table_index_ptr->bloom_filter_offset_;
@@ -579,7 +579,7 @@ namespace oceanbase
                 {
                   const uint8_t* tmp_ptr
                     = reinterpret_cast<const uint8_t*>(payload_ptr);
-                  if (OB_SUCCESS != (ret = bloom_filter_ptr->reinit(tmp_ptr,
+                  if (OB_SUCCESS != (ret = bloom_filter_ptr->set_buffer(tmp_ptr,
                           payload_size)))
                   {
                     TBSYS_LOG(WARN, "bloomfilter reinit error:ret=%d", ret);

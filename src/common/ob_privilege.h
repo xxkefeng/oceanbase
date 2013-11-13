@@ -58,6 +58,14 @@ namespace oceanbase
           int64_t hash() const;
           bool operator==(const UserIdTableId & other) const;
         };
+        // typedef hash::ObHashMap<ObString, User, hash::NoPthreadDefendMode,
+        //                         hash::hash_func<ObString>, hash::equal_to<ObString>,
+        //                         hash::SimpleAllocer<hash::HashMapTypes<ObString, User>::AllocType, 384> > NameUserMap;
+        // typedef hash::ObHashMap<UserIdTableId, UserPrivilege, hash::NoPthreadDefendMode,
+        //                         hash::hash_func<UserIdTableId>, hash::equal_to<UserIdTableId>,
+        //                         hash::SimpleAllocer<hash::HashMapTypes<UserIdTableId, UserPrivilege>::AllocType, 384> > UserPrivMap;
+        typedef hash::ObHashMap<ObString, User, hash::NoPthreadDefendMode> NameUserMap;
+        typedef hash::ObHashMap<UserIdTableId, UserPrivilege, hash::NoPthreadDefendMode> UserPrivMap;
       public:
         static void privilege_to_string(const ObBitSet<> &privileges, char *buf, const int64_t buf_len, int64_t &pos);
         ObPrivilege();
@@ -102,12 +110,12 @@ namespace oceanbase
         void set_version(const int64_t version);
         int64_t get_version() const;
         void print_info(void) const;
-        hash::ObHashMap<ObString, User, hash::NoPthreadDefendMode>* get_username_map() { return &username_map_;}
-        hash::ObHashMap<UserIdTableId, UserPrivilege, hash::NoPthreadDefendMode>* get_user_table_map()  {return &user_table_map_;}
+        NameUserMap* get_username_map() { return &username_map_;}
+        UserPrivMap* get_user_table_map()  {return &user_table_map_;}
       private:
         // key:username
-        hash::ObHashMap<ObString, User, hash::NoPthreadDefendMode> username_map_;
-        hash::ObHashMap<UserIdTableId, UserPrivilege, hash::NoPthreadDefendMode> user_table_map_;
+        NameUserMap username_map_;
+        UserPrivMap user_table_map_;
         ObStringBuf string_buf_;
         int64_t version_;
     };

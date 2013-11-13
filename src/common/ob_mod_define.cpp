@@ -2,6 +2,14 @@
 using namespace oceanbase;
 using namespace oceanbase::common;
 
+namespace oceanbase
+{
+  namespace common
+  {
+    ExpStat g_malloc_size_stat("size");
+  }; // end namespace common
+}; // end namespace oceanbase
+
 ObModInfo oceanbase::common::OB_MOD_SET[G_MAX_MOD_NUM]; 
 
 oceanbase::common::ObModSet::ObModSet()

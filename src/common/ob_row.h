@@ -38,6 +38,12 @@ namespace oceanbase
         ObRow();
         virtual ~ObRow();
 
+        void clear()
+        {
+          raw_row_.clear();
+          row_desc_ = NULL;
+        }
+
         /// 赋值。浅拷贝，特别的，对于varchar类型不拷贝串内容
         void assign(const ObRow &other);
         ObRow(const ObRow &other);
@@ -79,6 +85,7 @@ namespace oceanbase
          */
         int raw_get_cell(const int64_t cell_idx, const common::ObObj *&cell,
             uint64_t &table_id, uint64_t &column_id) const;
+        inline int raw_get_cell(const int64_t cell_idx, const common::ObObj* &cell) const;
         inline int raw_get_cell_for_update(const int64_t cell_idx, common::ObObj *&cell);
 
         /// 设置第cell_idx个cell
@@ -149,6 +156,21 @@ namespace oceanbase
     }
 
     inline int ObRow::raw_get_cell_for_update(const int64_t cell_idx, common::ObObj *&cell)
+    {
+      int ret = OB_SUCCESS;
+      if (OB_UNLIKELY(cell_idx >= get_column_num()))
+      {
+        ret = OB_INVALID_ARGUMENT;
+        TBSYS_LOG(WARN, "invalid cell_idx=%ld cells_count=%ld", cell_idx, get_column_num());
+      }
+      else
+      {
+        ret = raw_row_.get_cell(cell_idx, cell);
+      }
+      return ret;
+    }
+
+    inline int ObRow::raw_get_cell(const int64_t cell_idx, const common::ObObj *&cell) const
     {
       int ret = OB_SUCCESS;
       if (OB_UNLIKELY(cell_idx >= get_column_num()))

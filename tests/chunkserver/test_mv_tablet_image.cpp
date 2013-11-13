@@ -583,6 +583,99 @@ TEST(ObMultiVersionTabletImage, test_service)
   fic.destroy();
 }
 
+
+TEST(ObMultiVersionTabletImage, test_query_complex2)
+{
+  FileInfoCache fic;
+  ObMultiVersionTabletImage image(fic);
+
+  fic.init(100);
+  CharArena allocator;
+  ObNewRange r1,r2,r3,r4,g1,g2,g3;
+  create_range(allocator, r1, 1001, ObBorderFlag::INCLUSIVE_END, "111", "222");
+  create_range(allocator, r2, 1001, ObBorderFlag::INCLUSIVE_END, "444", "666");
+  create_range(allocator, r3, 1003, ObBorderFlag::INCLUSIVE_END, "777", "999");
+  create_range(allocator, r4, 1003, ObBorderFlag::INCLUSIVE_END|ObBorderFlag::MAX_VALUE, "9999", "");
+
+  create_range(allocator, g1, 1001, ObBorderFlag::MAX_VALUE, "666", "");
+  create_range(allocator, g2, 1001, ObBorderFlag::INCLUSIVE_END|ObBorderFlag::MAX_VALUE, "555", "");
+  create_range(allocator, g3, 1002, ObBorderFlag::INCLUSIVE_END|ObBorderFlag::MAX_VALUE, "222", "");
+
+  int ret = 0;
+  ObTablet* tablet = NULL;
+  ObSSTableId id;
+  id.sstable_file_id_ = 1;
+  id.sstable_file_offset_ = 0;
+
+  ret = image.alloc_tablet_object(r1, VERSION_1, tablet);
+  ASSERT_EQ(0, ret);
+  tablet->set_disk_no(1);
+  //tablet->set_merged(1);
+  ret = tablet->add_sstable_by_id(id);
+  ASSERT_EQ(0, ret);
+  ret = image.add_tablet(tablet, false);
+  ASSERT_EQ(0, ret);
+
+
+  ret = image.alloc_tablet_object(r2, VERSION_1, tablet);
+  ASSERT_EQ(0, ret);
+  id.sstable_file_id_ = 2;
+  id.sstable_file_offset_ = 0;
+  tablet->set_disk_no(2);
+  tablet->add_sstable_by_id(id);
+  ret = image.add_tablet(tablet, false);
+  ASSERT_EQ(0, ret);
+
+  ret = image.alloc_tablet_object(r3, VERSION_1, tablet);
+  ASSERT_EQ(0, ret);
+  id.sstable_file_id_ = 3;
+  id.sstable_file_offset_ = 0;
+  tablet->set_disk_no(3);
+  tablet->add_sstable_by_id(id);
+  ret = image.add_tablet(tablet, false);
+  ASSERT_EQ(0, ret);
+
+  ret = image.alloc_tablet_object(r4, VERSION_1, tablet);
+  ASSERT_EQ(0, ret);
+  id.sstable_file_id_ = 4;
+  id.sstable_file_offset_ = 0;
+  tablet->set_disk_no(4);
+  tablet->add_sstable_by_id(id);
+  ret = image.add_tablet(tablet, false);
+  ASSERT_EQ(0, ret);
+
+  image.prepare_for_service();
+  image.dump(false);
+
+  /// querys;;
+  ret = image.acquire_tablet(r1, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);
+  ASSERT_EQ(0, ret);
+  ASSERT_EQ(true, tablet->get_range().equal(r1));
+  image.release_tablet(tablet);
+
+  ret = image.acquire_tablet(r2, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);
+  ASSERT_EQ(0, ret);
+  ASSERT_EQ(true, tablet->get_range().equal(r2));
+  image.release_tablet(tablet);
+
+  ret = image.acquire_tablet(r3, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);
+  ASSERT_EQ(0, ret);
+  ASSERT_EQ(true, tablet->get_range().equal(r3));
+  image.release_tablet(tablet);
+
+  ret = image.acquire_tablet(g1, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);
+  ASSERT_EQ(OB_CS_TABLET_NOT_EXIST, ret);
+
+  ret = image.acquire_tablet(g2, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);
+  ASSERT_EQ(0, ret);
+  ASSERT_EQ(true, tablet->get_range().equal(r2));
+  image.release_tablet(tablet);
+
+  ret = image.acquire_tablet(g3, ObMultiVersionTabletImage::SCAN_FORWARD, 0, tablet);
+  ASSERT_EQ(OB_CS_TABLET_NOT_EXIST, ret);
+}
+
+
 TEST(ObMultiVersionTabletImage, test_query_complex)
 {
   FileInfoCache fic;
@@ -719,7 +812,7 @@ class FooEnvironment : public testing::Environment
     virtual void SetUp()
     {
       //TBSYS_LOGGER.setLogLevel("ERROR");
-      ob_init_memory_pool();
+      //ob_init_memory_pool();
       prepare_sstable_directroy(DISK_NUM);
     }
     virtual void TearDown()

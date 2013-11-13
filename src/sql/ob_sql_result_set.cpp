@@ -31,7 +31,7 @@ int ObSQLResultSet::serialize(char *buf,
 {
   int ret = OB_SUCCESS;
   const int64_t pos_bk = pos;
-  const ObArray<ObResultSet::Field> &fields = rs_.get_field_columns();
+  const ObIArray<ObResultSet::Field> &fields = rs_.get_field_columns();
   const ObRow *row = NULL;
 
   if (OB_SUCCESS != (ret = encode_vi32(buf, len, pos, errno_)))
@@ -65,83 +65,84 @@ int ObSQLResultSet::serialize(char *buf,
         break;
       }
     }
-  }
 
-  const ObRowDesc *row_desc = NULL;
-  bool select_stmt = rs_.is_with_rows();
-  if (OB_SUCCESS == ret && select_stmt)
-  {
-    if (OB_SUCCESS != (ret = rs_.get_row_desc(row_desc)))
+    const ObRowDesc *row_desc = NULL;
+    bool select_stmt = rs_.is_with_rows();
+    if (OB_SUCCESS == ret && select_stmt)
     {
-      TBSYS_LOG(ERROR, "get row desc error, ret = [%d]", ret);
-    }
-    else if (NULL == row_desc)
-    {
-      TBSYS_LOG(ERROR, "row or row_desc is NULL");
-      ret = OB_SERIALIZE_ERROR;
-    }
-    else if (OB_SUCCESS != (ret = row_desc->serialize(buf, len, pos)))
-    {
-      TBSYS_LOG(ERROR, "serilize row desc error, ret = [%d]", ret);
-    }
-    else if (NULL != extra_row_)
-    {
-      row = extra_row_;
-    }
+      if (OB_SUCCESS != (ret = rs_.get_row_desc(row_desc)))
+      {
+        TBSYS_LOG(ERROR, "get row desc error, ret = [%d]", ret);
+      }
+      else if (NULL == row_desc)
+      {
+        TBSYS_LOG(ERROR, "row or row_desc is NULL");
+        ret = OB_SERIALIZE_ERROR;
+      }
+      else if (OB_SUCCESS != (ret = row_desc->serialize(buf, len, pos)))
+      {
+        TBSYS_LOG(ERROR, "serilize row desc error, ret = [%d]", ret);
+      }
+      else if (NULL != extra_row_)
+      {
+        row = extra_row_;
+      }
 
-    if (OB_SUCCESS == ret || OB_ITER_END == ret)
-    {
-      /* carry data or not */
-      scanner_.set_mem_size_limit(
-        ObNewScanner::DEFAULT_MAX_SERIALIZE_SIZE - pos);
-      do
+      if (OB_SUCCESS == ret || OB_ITER_END == ret)
       {
-        if (NULL != row)
+        /* carry data or not */
+        scanner_.set_mem_size_limit(
+          ObNewScanner::DEFAULT_MAX_SERIALIZE_SIZE - pos);
+        do
         {
-          if (OB_SIZE_OVERFLOW == (ret = scanner_.add_row(*row)))
+          if (NULL != row)
           {
-            TBSYS_LOG(DEBUG, "add new row to ob_new_scanner "
-                      "fullfilled while execute sql [%.*s] ",
-                      sqlstr_.length(), sqlstr_.ptr());
-            break;
+            if (OB_SIZE_OVERFLOW == (ret = scanner_.add_row(*row)))
+            {
+              TBSYS_LOG(DEBUG, "add new row to ob_new_scanner "
+                        "fullfilled while execute sql [%.*s] ",
+                        sqlstr_.length(), sqlstr_.ptr());
+              break;
+            }
+            else if (OB_SUCCESS != ret)
+            {
+              TBSYS_LOG(ERROR, "add new row to ob_new_scanner error "
+                        "while execute sql [%.*s], ret = [%d]",
+                        sqlstr_.length(), sqlstr_.ptr(), ret);
+              break;
+            }
           }
-          else if (OB_SUCCESS != ret)
+          else
           {
-            TBSYS_LOG(ERROR, "add new row to ob_new_scanner error "
-                      "while execute sql [%.*s], ret = [%d]",
-                      sqlstr_.length(), sqlstr_.ptr(), ret);
-            break;
+            /* fisrt loop first serialize */
           }
-        }
-        else
+        } while (OB_SUCCESS == (ret = rs_.get_next_row(row)));
+        if (OB_ITER_END == ret)
         {
-          /* fisrt loop first serialize */
+          /* process successfully and no data remain */
+          set_fullfilled(true);
+          extra_row_ = NULL;
+          ret = scanner_.serialize(buf, len, pos);
         }
-      } while (OB_SUCCESS == (ret = rs_.get_next_row(row)));
-      if (OB_ITER_END == ret)
+        else if (OB_SIZE_OVERFLOW == ret)
+        {
+          /* process successfully and have more data need serilize */
+          set_fullfilled(false);
+          extra_row_ = row;
+          ret = scanner_.serialize(buf, len, pos);
+        }
+        else if (OB_SUCCESS != ret) /* else */
+        {
+          TBSYS_LOG(ERROR, "fail to serialize scanner, ret = [%d]", ret);
+        }
+      }
+      else
       {
-        /* process successfully and no data remain */
         set_fullfilled(true);
-        extra_row_ = NULL;
-        ret = scanner_.serialize(buf, len, pos);
       }
-      else if (OB_SIZE_OVERFLOW == ret)
-      {
-        /* process successfully and have more data need serilize */
-        set_fullfilled(false);
-        extra_row_ = row;
-        ret = scanner_.serialize(buf, len, pos);
-      }
-      else if (OB_SUCCESS != ret) /* else */
-      {
-        TBSYS_LOG(ERROR, "fail to serialize scanner, ret = [%d]", ret);
-      }
-    }
-    else
-    {
-      set_fullfilled(true);
     }
   }
+
   if (OB_SUCCESS != ret)
   {
     pos = pos_bk;

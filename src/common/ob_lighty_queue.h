@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "ob_define.h"
+#include "ob_malloc.h"
 
 namespace oceanbase
 {
@@ -30,10 +31,14 @@ namespace oceanbase
         LightyQueue();
         ~LightyQueue();
         static uint64_t get_item_size();
-        int init(const uint64_t len, void* buf = NULL);
+        int init(const uint64_t len, void* buf = NULL,
+            uint32_t mod_id = ObModIds::OB_LIGHTY_QUEUE);
         int destroy();
+        void reset();
+        int size() const;
         int64_t remain() const;
-        int push(void* data, const timespec* timeout);
+        int push(void* data);
+        int push(void* data, const timespec* timeout, bool block);
         int pop(void*& data, const timespec* timeout);
       private:
         volatile uint64_t push_ CACHE_ALIGNED;
@@ -41,6 +46,7 @@ namespace oceanbase
         uint64_t pos_mask_ CACHE_ALIGNED;
         Item* items_;
         void* allocated_;
+        int queued_item_;
     };
   }; // end namespace common
 }; // end namespace oceanbase

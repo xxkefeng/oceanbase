@@ -95,6 +95,7 @@ namespace oceanbase
             int32_t disk_no, const char* dir, const char* filename);
         bool check_if_expired_sstable(
             int32_t disk_no, const char* dir, const char* filename);
+        int64_t get_mtime(const char* filename);
 
         static int do_recycle_file(
             int32_t disk_no, const char* dir, const char* filename);
@@ -104,6 +105,8 @@ namespace oceanbase
 
         int do_scan(int32_t disk_no, Filter filter, Predicate pred, Operate op);
       private:
+        static const int64_t SCAN_RECYCLE_SSTABLE_TIME_BEFORE = 10L * 60L * 1000000L; //10 minutes
+
         ObTabletManager& manager_;
     };
 

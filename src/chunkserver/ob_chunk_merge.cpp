@@ -272,10 +272,7 @@ namespace oceanbase
 
       // empty chunkserver, reset current frozen_version_ if
       // chunkserver got new tablet by migrate in or create new table;
-      if ( 0 == frozen_version_ )
-      {
-        frozen_version_ = tablet_manager_->get_serving_data_version();
-      }
+      frozen_version_ = tablet_manager_->get_serving_data_version();
 
       if (1 >= frozen_version || (!can_launch_next_round(frozen_version)))
       {
@@ -414,8 +411,10 @@ namespace oceanbase
           }
           else if ((tablet->get_merge_count() > retry_times) && (have_new_version_in_othercs(tablet)))
           {
+            ObVector<ObTablet*> tablet_list;
+            tablet_list.push_back(tablet);
             TBSYS_LOG(WARN,"too many times(%d),discard this tablet,wait for migrate copy.", tablet->get_merge_count());
-            if (OB_SUCCESS == delete_tablet_on_rootserver(tablet))
+            if (OB_SUCCESS == tablet_manager_->delete_tablet_on_rootserver(tablet_list))
             {
               TBSYS_LOG(INFO, "delete tablet (version=%ld) on rs succeed. ", tablet->get_data_version());
               tablet->set_merged();
@@ -626,8 +625,14 @@ namespace oceanbase
         tablet_manager_->get_disk_manager().scan(THE_CHUNK_SERVER.get_config().datadir,
                                                  OB_DEFAULT_MAX_TABLET_SIZE);
         // report tablets
-        tablet_manager_->report_tablets();
-        tablet_manager_->report_capacity_info();
+        if (OB_RESPONSE_TIME_OUT == tablet_manager_->report_tablets())
+        {
+          THE_CHUNK_SERVER.schedule_report_tablet();
+        }
+        else
+        {
+          tablet_manager_->report_capacity_info();
+        }
 
         // upgrade complete, no need pending, for migrate in.
         pending_in_upgrade_ = false;
@@ -664,7 +669,7 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN,"tablet that get from tablet image is null");
         }
-        if (0 == tablet_index_ % print_step)
+        if (0 == tablet_index_ % print_step || tablet_index_ == tablets_num_)
         {
           int64_t seconds = (tbsys::CTimeUtil::getTime() - merge_start_time_) / 1000L / 1000L;
           TBSYS_LOG(INFO, "merge consume seconds:%lds, minutes:%.2fm, hours:%.2fh, merge process:%s",
@@ -750,34 +755,6 @@ namespace oceanbase
         }
         if (OB_SAFE_COPY_COUNT - 1 == new_copy)
           ret = true;
-      }
-      return ret;
-    }
-
-    int ObChunkMerge::delete_tablet_on_rootserver(const ObTablet* tablet)
-    {
-      int ret = OB_SUCCESS;
-      ObTabletReportInfoList *discard_tablet_list =  GET_TSI_MULT(ObTabletReportInfoList, TSI_CS_TABLET_REPORT_INFO_LIST_1);
-
-      if (NULL == tablet || NULL == discard_tablet_list)
-      {
-      }
-      else
-      {
-        discard_tablet_list->reset();
-        ObTabletReportInfo tablet_info;
-        if (OB_SUCCESS != (ret = tablet_manager_->fill_tablet_info(*tablet,  tablet_info)))
-        {
-          TBSYS_LOG(WARN, "fill_tablet_info error.");
-        }
-        else if (OB_SUCCESS != (ret = discard_tablet_list->add_tablet(tablet_info)))
-        {
-          TBSYS_LOG(WARN, "add tablet(version=%ld) info to list error. ", tablet->get_data_version());
-        }
-        else if (OB_SUCCESS != (ret = CS_RPC_CALL_RS(delete_tablets, THE_CHUNK_SERVER.get_self(), *discard_tablet_list)))
-        {
-          TBSYS_LOG(WARN, "delete tablets rpc error, ret= %d", ret);
-        }
       }
       return ret;
     }

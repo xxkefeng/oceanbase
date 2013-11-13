@@ -718,9 +718,17 @@ namespace oceanbase
       {
         if (scan_param_->is_sync_read())
         {
-          iret = block_cache_->get_block_readahead(sstable_file_id,
-              table_id, index_array_, index_array_cursor_, 
-              scan_param_->is_reverse_scan(), handler);
+          if (scan_param_->get_is_result_cached())
+          {
+            iret = block_cache_->get_block_readahead(sstable_file_id,
+                table_id, index_array_, index_array_cursor_, 
+                scan_param_->is_reverse_scan(), handler);
+          }
+          else
+          {
+            iret = block_cache_->get_block_sync_io(sstable_file_id,
+                pos.offset_, pos.size_, handler, table_id, true);
+          }
         }
         else
         {

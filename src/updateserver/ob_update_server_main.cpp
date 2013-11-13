@@ -16,7 +16,7 @@
  */
 
 #include "ob_update_server_main.h"
-
+#include "stress.h"
 using namespace oceanbase::common;
 
 namespace oceanbase
@@ -46,6 +46,7 @@ namespace oceanbase
       char dump_config_path[OB_MAX_FILE_NAME_LENGTH];
 
       print_version();
+      ups_config_.init();
 
       ups_reload_config_.set_update_server(server_);
 
@@ -55,6 +56,7 @@ namespace oceanbase
       add_signal_catched(SIG_RESET_MEMORY_LIMIT);
       add_signal_catched(SIG_INC_WORK_THREAD);
       add_signal_catched(SIG_DEC_WORK_THREAD);
+      add_signal_catched(SIG_START_STRESS);
       if (OB_SUCCESS != (ret = config_mgr_.base_init()))
       {
         TBSYS_LOG(ERROR, "init config manager error, ret: [%d]", ret);
@@ -130,6 +132,8 @@ namespace oceanbase
       {
       case SIGTERM:
       case SIGINT:
+        signal(SIGINT, SIG_IGN);
+        signal(SIGTERM, SIG_IGN);
         TBSYS_LOG(INFO, "KILLED by signal, sig=%d", sig);
         server_.stop_eio();
         shadow_server_.stop_eio();
@@ -138,10 +142,14 @@ namespace oceanbase
         common::ob_set_memory_size_limit(INT64_MAX);
         break;
       case SIG_INC_WORK_THREAD:
-        server_.get_trans_executor().add_thread(1, 100000);
+        server_.get_trans_executor().TransHandlePool::add_thread(1, 100000);
         break;
       case SIG_DEC_WORK_THREAD:
-        server_.get_trans_executor().sub_thread(1);
+        server_.get_trans_executor().TransHandlePool::sub_thread(1);
+        break;
+      case SIG_START_STRESS:
+        TBSYS_LOG(INFO, "KILLED by signal, sig=%d", sig);
+        StressRunnable::start_stress(server_.get_trans_executor());
         break;
       default:
         break;

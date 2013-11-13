@@ -29,9 +29,9 @@ namespace oceanbase
       public:
         ObJoin();
         virtual ~ObJoin();
-
+        virtual void reset();
+        virtual void reuse();
         virtual int get_next_row(const ObRow *&row);
-
         enum JoinType{
           INNER_JOIN,
           LEFT_OUTER_JOIN,
@@ -47,14 +47,16 @@ namespace oceanbase
         virtual int add_other_join_condition(const ObSqlExpression& expr);
         JoinType get_join_type() { return join_type_; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         // disallow copy
         ObJoin(const ObJoin &other);
         ObJoin& operator=(const ObJoin &other);
       protected:
         JoinType join_type_;
-        oceanbase::common::ObArray<ObSqlExpression> equal_join_conds_;
-        oceanbase::common::ObArray<ObSqlExpression> other_join_conds_;
+        ObExpressionArray equal_join_conds_;
+        ObExpressionArray other_join_conds_;
     };
   } // end namespace sql
 } // end namespace oceanbase

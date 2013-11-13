@@ -106,6 +106,7 @@ namespace oceanbase
                  packet->get_data_length());
           response_.get_position() += packet->get_data_length();
         }
+        handle_response(packet);
         done_count_++;
         cond_.signal();
         cond_.unlock();

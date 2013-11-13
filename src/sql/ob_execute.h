@@ -27,13 +27,15 @@ namespace oceanbase
       public:
         ObExecute();
         virtual ~ObExecute();
-
+        virtual void reset();
+        virtual void reuse();
         void set_stmt_id(const uint64_t stmt_id);
         int add_param_name(const common::ObString& name);
 
         /// execute the prepare statement
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_EXECUTE; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int get_next_row(const common::ObRow *&row);

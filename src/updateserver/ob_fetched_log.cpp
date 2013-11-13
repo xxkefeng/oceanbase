@@ -33,7 +33,7 @@ namespace oceanbase
       return mem_chunk_serialize(buf, len, pos, data_, data_len_);
     }
 
-    int ObSessionBuffer:: deserialize(char* buf, int64_t len, int64_t& pos)
+    int ObSessionBuffer:: deserialize(const char* buf, int64_t len, int64_t& pos)
     {
       return mem_chunk_deserialize(buf, len, pos, data_, sizeof(data_), data_len_);
     }
@@ -65,7 +65,7 @@ namespace oceanbase
       return err;
     }
 
-    int ObFetchLogReq::deserialize(char* buf, int64_t len, int64_t& pos)
+    int ObFetchLogReq::deserialize(const char* buf, int64_t len, int64_t& pos)
     {
       int err = OB_SUCCESS;
       int64_t tmp_pos = pos;
@@ -150,7 +150,7 @@ namespace oceanbase
       return err;
     }
 
-    int ObFetchedLog::deserialize(char* buf, int64_t len, int64_t& pos)
+    int ObFetchedLog::deserialize(const char* buf, int64_t len, int64_t& pos)
     {
       int err = OB_SUCCESS;
       int64_t tmp_pos = pos;

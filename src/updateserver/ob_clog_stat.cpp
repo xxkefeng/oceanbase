@@ -89,11 +89,27 @@ namespace oceanbase
     {
       disk_stat_.add(start_id, end_id, time);
       batch_stat_.add(start_id, end_id, end_id-start_id);
+      //if (time > disk_warn_us_)
+      //{
+      //  TBSYS_LOG(WARN, "flush_log: disk_delay=%ld, warn_us=%ld", time, disk_warn_us_);
+      //}
+      if (disk_warn_stat_.warn(time))
+      {
+        TBSYS_LOG(WARN, "flush_log: disk_delay=%ld %s", time, to_cstring(disk_warn_stat_));
+      }
     }
 
     void ObClogStat::add_net_us(int64_t start_id, int64_t end_id, int64_t time)
     {
       net_stat_.add(start_id, end_id, time); 
+      //if (time > net_warn_us_)
+      //{
+      //  TBSYS_LOG(WARN, "flush_log: net_delay=%ld, warn_us=%ld", time, net_warn_us_);
+      //}
+      if (net_warn_stat_.warn(time))
+      {
+        TBSYS_LOG(WARN, "flush_log: net_delay=%ld %s", time, to_cstring(net_warn_stat_));
+      }
     }
 
     void ObClogStat::clear()

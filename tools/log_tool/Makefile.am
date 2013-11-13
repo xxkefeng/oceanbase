@@ -13,9 +13,9 @@ LDADD = $(top_builddir)/src/updateserver/libupdateserver.a \
 	$(top_builddir)/src/chunkserver/libchunkserver.a  \
 	$(top_builddir)/src/mergeserver/libmergeserver.a \
 	$(top_builddir)/src/sstable/libsstable.a \
+        ${top_builddir}/src/common/libcommon.a        \
 	$(top_builddir)/src/sql/libsql.a \
 	$(top_builddir)/src/common/libcommon.a \
-	$(top_builddir)/src/sql/libsql.a \
 		$(top_builddir)/src/common/compress/libcomp.a \
 		$(top_builddir)/src/common/btree/libbtree.a \
 		${EASY_LIB_PATH}/libeasy.a \

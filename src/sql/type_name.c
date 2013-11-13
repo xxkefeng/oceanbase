@@ -68,6 +68,10 @@ const char* get_type_name(int type)
 	case T_FUN_SYS : return "T_FUN_SYS";                    // system functions, CHAR_LENGTH, ROUND, etc.
 	case T_OP_LEFT_PARAM_END : return "T_OP_LEFT_PARAM_END";
 	case T_MAX_OP : return "T_MAX_OP";
+	case T_CUR_TIME : return "T_CUR_TIME";
+	case T_CUR_TIME_UPS : return "T_CUR_TIME_UPS";
+	case T_CUR_TIME_OP : return "T_CUR_TIME_OP";
+	case T_ROW_COUNT : return "T_ROW_COUNT";
 	case T_FUN_SYS_CAST : return "T_FUN_SYS_CAST";               // special system function : CAST(val AS type)
 	case T_OP_NAME_FIELD : return "T_OP_NAME_FIELD";
 	case T_FUN_MAX : return "T_FUN_MAX";
@@ -125,11 +129,14 @@ const char* get_type_name(int type)
 	case T_CONSTR_PRIMARY_KEY : return "T_CONSTR_PRIMARY_KEY";
 	case T_IF_NOT_EXISTS : return "T_IF_NOT_EXISTS";
 	case T_IF_EXISTS : return "T_IF_EXISTS";
+	case T_JOIN_INFO : return "T_JOIN_INFO";
 	case T_EXPIRE_INFO : return "T_EXPIRE_INFO";
 	case T_TABLET_MAX_SIZE : return "T_TABLET_MAX_SIZE";
 	case T_TABLET_BLOCK_SIZE : return "T_TABLET_BLOCK_SIZE";
+	case T_TABLET_ID : return "T_TABLET_ID";
 	case T_REPLICA_NUM : return "T_REPLICA_NUM";
 	case T_COMPRESS_METHOD : return "T_COMPRESS_METHOD";
+	case T_COMMENT : return "T_COMMENT";
 	case T_USE_BLOOM_FILTER : return "T_USE_BLOOM_FILTER";
 	case T_CONSISTENT_MODE : return "T_CONSISTENT_MODE";
 	case T_DROP_TABLE : return "T_DROP_TABLE";
@@ -141,6 +148,11 @@ const char* get_type_name(int type)
 	case T_COLUMN_ALTER : return "T_COLUMN_ALTER";
 	case T_COLUMN_RENAME : return "T_COLUMN_RENAME";
 	case T_ALTER_SYSTEM : return "T_ALTER_SYSTEM";
+	case T_CHANGE_OBI : return "T_CHANGE_OBI";
+	case T_FORCE : return "T_FORCE";
+	case T_SET_MASTER : return "T_SET_MASTER";
+	case T_SET_SLAVE : return "T_SET_SLAVE";
+	case T_SET_MASTER_SLAVE : return "T_SET_MASTER_SLAVE";
 	case T_SYTEM_ACTION_LIST : return "T_SYTEM_ACTION_LIST";
 	case T_SYSTEM_ACTION : return "T_SYSTEM_ACTION";
 	case T_CLUSTER : return "T_CLUSTER";
@@ -155,6 +167,7 @@ const char* get_type_name(int type)
 	case T_SHOW_SERVER_STATUS : return "T_SHOW_SERVER_STATUS";
 	case T_SHOW_WARNINGS : return "T_SHOW_WARNINGS";
 	case T_SHOW_GRANTS : return "T_SHOW_GRANTS";
+	case T_SHOW_PROCESSLIST : return "T_SHOW_PROCESSLIST";
 	case T_SHOW_LIMIT : return "T_SHOW_LIMIT";
 	case T_CREATE_USER : return "T_CREATE_USER";
 	case T_CREATE_USER_SPEC : return "T_CREATE_USER_SPEC";
@@ -180,6 +193,9 @@ const char* get_type_name(int type)
 	case T_ROLLBACK : return "T_ROLLBACK";
 	case T_HINT_OPTION_LIST : return "T_HINT_OPTION_LIST";
 	case T_READ_STATIC : return "T_READ_STATIC";
+	case T_HOTSPOT : return "T_HOTSPOT";
+	case T_READ_CONSISTENCY : return "T_READ_CONSISTENCY";
+	case T_KILL : return "T_KILL";
 	case T_MAX : return "T_MAX";
 	default:return "Unknown";
 	}

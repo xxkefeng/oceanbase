@@ -27,7 +27,7 @@ namespace oceanbase
     {
       if (allocated_ != 0)
       {
-        TBSYS_LOG(ERROR, "allocated_[%ld] != 0", allocated_);
+        TBSYS_LOG(WARN, "allocated_[%ld] != 0", allocated_);
       }
     }
 
@@ -76,11 +76,11 @@ namespace oceanbase
         __sync_add_and_fetch(&allocated_, -alloc_size);
         TBSYS_LOG(ERROR, "allocated[%ld] + size[%ld] > limit[%ld]", allocated_, alloc_size, limit_);
       }
-      else if (NULL == (p = ob_malloc(alloc_size, mod_)))
+      else if (NULL == (p = ob_tc_malloc(alloc_size, mod_)))
       {
         err = OB_MEM_OVERFLOW;
         __sync_add_and_fetch(&allocated_, -alloc_size);
-        TBSYS_LOG(ERROR, "ob_malloc(size=%ld) failed", alloc_size);
+        TBSYS_LOG(ERROR, "ob_tc_malloc(size=%ld) failed", alloc_size);
       }
       else
       {
@@ -111,7 +111,7 @@ namespace oceanbase
       }
       else
       {
-        ob_free((void*)((char*)p - sizeof(int64_t)), mod_);
+        ob_tc_free((void*)((char*)p - sizeof(int64_t)), mod_);
       }
     }
 
@@ -433,7 +433,7 @@ namespace oceanbase
       return err;
     }
 
-    TSIStackAllocator::TSIStackAllocator(): seq_(0), block_size_(0), head_(NULL), block_allocator_(NULL), container_(*this)
+    TSIStackAllocator::TSIStackAllocator(): block_size_(0), block_allocator_(NULL)
     {}
 
     TSIStackAllocator::~TSIStackAllocator()
@@ -452,11 +452,11 @@ namespace oceanbase
       {
         err = OB_INIT_TWICE;
       }
-      else if (OB_SUCCESS != (err = inst_allocator_.init(block_allocator, block_size)))
+      for(int64_t i = 0; OB_SUCCESS == err && i < (int64_t)ARRAYSIZEOF(allocator_array_); i++)
       {
-        TBSYS_LOG(ERROR, "inst_allocator.init(block_size=%ld)=>%d", block_size, err);
+        err = allocator_array_[i].init(block_allocator, block_size);
       }
-      else
+      if (OB_SUCCESS == err)
       {
         block_allocator_ = block_allocator;
         block_size_ = block_size;
@@ -467,23 +467,9 @@ namespace oceanbase
     int TSIStackAllocator::clear(const bool slow)
     {
       int err = OB_SUCCESS;
-      while(OB_SUCCESS == err && head_ != NULL)
+      for(int64_t i = 0; OB_SUCCESS == err && i < (int64_t)ARRAYSIZEOF(allocator_array_); i++)
       {
-        err = head_->allocator_.clear(slow);
-        head_ = head_->next_;
-      }
-      if (OB_SUCCESS != err)
-      {
-        TBSYS_LOG(ERROR, "clear thread_local stack allocator fail, err=%d", err);
-      }
-      else if (OB_SUCCESS != (err = inst_allocator_.clear()))
-      {
-        TBSYS_LOG(ERROR, "clear StackAllocatorAllocator fail, err=%d", err);
-      }
-      else
-      {
-        container_.clear();
-        TBSYS_LOG(TRACE, "clear() OK");
+        err = allocator_array_[i].clear(slow);
       }
       return err;
     }
@@ -569,35 +555,10 @@ namespace oceanbase
       return err;
     }
 
-    int TSIStackAllocator::new_instance(StackAllocator*& allocator)
-    {
-      int err = OB_SUCCESS;
-      SeqLockGuard guard(seq_);
-      AllocatorNode* node = NULL;
-      if (NULL == (node = (AllocatorNode*)inst_allocator_.alloc(sizeof(*node))))
-      {
-        err = OB_MEM_OVERFLOW;
-        TBSYS_LOG(ERROR, "alloc inst node failed.");
-      }
-      else if (NULL == (allocator = new(&node->allocator_)StackAllocator()))
-      {
-        err = OB_ERR_UNEXPECTED;
-      }
-      else if (OB_SUCCESS != (err = allocator->init(block_allocator_, block_size_)))
-      {
-        TBSYS_LOG(ERROR, "allocator->init(%ld)=>%d", block_size_, err);
-      }
-      else
-      {
-        node->next_ = head_;
-        head_ = node;
-      }
-      return err;
-    }
-
     StackAllocator* TSIStackAllocator::get()
     {
-      return container_.get();
+      int64_t idx = itid();
+      return (idx >= 0 && idx < (int64_t)ARRAYSIZEOF(allocator_array_))? allocator_array_ + idx: NULL;
     }
   }; // end namespace common
 }; // end namespace oceanbase

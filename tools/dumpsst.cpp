@@ -670,6 +670,7 @@ int get_block_buffer(const char* file_name,
 
   data_checksum = header.data_checksum_;
   real_size = sstable_block_data_size;
+  char* uncompressed_data_ptr = (char*)ob_malloc(max_block_size, ObModIds::TEST);
   if(OB_SUCCESS == ret)
   {
     if (header.is_compress())
@@ -677,7 +678,6 @@ int get_block_buffer(const char* file_name,
       ObCompressor* dec = reader.get_decompressor();
       if (NULL != dec)
       {
-        char* uncompressed_data_ptr = (char*)ob_malloc(max_block_size, ObModIds::TEST);
         ret = dec->decompress(sstable_block_data_ptr, sstable_block_data_size,
             uncompressed_data_ptr, max_block_size, real_size);
 
@@ -699,10 +699,10 @@ int get_block_buffer(const char* file_name,
         ret = OB_CS_COMPRESS_LIB_ERROR;
       }
     }
-
     else
     {
-      sstable_block_data_ptr = compressed_data_ptr;
+      memcpy(uncompressed_data_ptr, sstable_block_data_ptr, sstable_block_data_size);
+      sstable_block_data_ptr = uncompressed_data_ptr;
       sstable_block_data_size = real_size;
     }
   }
@@ -712,7 +712,7 @@ int get_block_buffer(const char* file_name,
      ret = block_reader.deserialize(sstable_block_data_ptr, sstable_block_data_size, pos);
      */
 
-  if (NULL != compressed_data_ptr && sstable_block_data_ptr != compressed_data_ptr) ob_free(compressed_data_ptr);
+  if (NULL != compressed_data_ptr) ob_free(compressed_data_ptr);
   if (fd > 0) close(fd);
   return ret;
 }
@@ -757,9 +757,7 @@ int compare_block_content(
       }
       if((0 == ret) && (src_key.compare(dst_key) != 0))
       {
-        fprintf(stderr, "rowkey %ld not equal \n", i);
-        TBSYS_LOG(WARN, "%s", to_cstring(src_key));
-        TBSYS_LOG(WARN, "%s", to_cstring(dst_key));
+        fprintf(stderr, "rowkey %ld not equal, src[%s], dst[%s] \n", i, to_cstring(src_key), to_cstring(dst_key));
         ret = -1;
       }
 
@@ -781,7 +779,7 @@ int compare_block_content(
           {
             fprintf(stderr, "row index %ld column %ld src type[%d] != dst type[%d], dump rowkey :\n",
                 i, j, ltype, rtype);
-            TBSYS_LOG(WARN, "%s", to_cstring(src_key));
+            fprintf(stderr, "%s", to_cstring(src_key));
             ret = -1;
           }
 
@@ -904,7 +902,7 @@ int DumpSSTable::compare_block(
   if(OB_SUCCESS == ret)
   {
     char src_internal_buf[internal_bufsiz];
-    src_reader.get_schema()->get_rowkey_column_count(1,column_count);
+    src_reader.get_schema()->get_rowkey_column_count(src_block_pos->table_id_,column_count);
     ObSSTableBlockReader::BlockDataDesc data_desc( NULL, column_count,
         src_reader.get_trailer().get_row_value_store_style());
     ObSSTableBlockReader::BlockData block_data(src_internal_buf, internal_bufsiz,
@@ -920,7 +918,7 @@ int DumpSSTable::compare_block(
   if(OB_SUCCESS == ret)
   {
     char dst_internal_buf[internal_bufsiz];
-    dst_reader.get_schema()->get_rowkey_column_count(1,column_count);
+    dst_reader.get_schema()->get_rowkey_column_count(dst_block_pos->table_id_,column_count);
     ObSSTableBlockReader::BlockDataDesc data_desc(NULL, column_count,
         dst_reader.get_trailer().get_row_value_store_style());
     ObSSTableBlockReader::BlockData block_data(dst_internal_buf, internal_bufsiz,
@@ -982,8 +980,8 @@ int DumpSSTable::compare_block_index(
             "size = %ld, dst offset = %ld, size = %ld\n", i,
             src_it->block_offset_, src_it->block_record_size_,
             dst_it->block_offset_, dst_it->block_record_size_);
-        TBSYS_LOG(WARN, "%s", to_cstring(src_end_key));
-        TBSYS_LOG(WARN, "%s", to_cstring(dst_end_key));
+        fprintf(stderr, "src key [%s]\n", to_cstring(src_end_key));
+        fprintf(stderr, "dst key [%s]\n", to_cstring(dst_end_key));
         ret = -1;
       }
       if(0 == ret)
@@ -1668,6 +1666,20 @@ void DumpSSTable::display_trailer_info()
   display_trailer_table_info(trailer);
 }
 
+void DumpSSTable::display_bloom_filter()
+{
+  const ObBloomFilterV1* bfv1 = dynamic_cast<const ObBloomFilterV1*>(reader_.get_bloom_filter());
+  if (NULL == bfv1)
+  {
+    fprintf(stderr, "sstable has no bloom filter\n");
+  }
+  else
+  {
+    fprintf(stderr, "ptr=%p, size=%ld\n", bfv1->get_buffer(), bfv1->get_nbyte());
+    hex_dump(bfv1->get_buffer(), (int32_t)bfv1->get_nbyte());
+  }
+}
+
 void DumpSSTable::display_block_index()
 {
   const ObSSTableBlockIndexV2::IndexEntryType *entry = block_index_->begin();
@@ -2311,6 +2323,10 @@ int main(const int argc, char **argv)
     if(0 == strcmp("dump_trailer",clp.dump_content))
     {
       dump.display_trailer_info();
+    }
+    if(0 == strcmp("dump_bloom_filter",clp.dump_content))
+    {
+      dump.display_bloom_filter();
     }
     if(0 == strcmp("dump_block",clp.dump_content))
     {

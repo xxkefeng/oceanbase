@@ -30,6 +30,7 @@ class PriorityPacketQueueThread : public tbsys::CDefaultRunnable
 {
 public:
   enum QueuePriority {
+    HIGH_PRIV = -1,
     NORMAL_PRIV = 0,
     LOW_PRIV = 1,
   };

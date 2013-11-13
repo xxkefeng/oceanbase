@@ -212,7 +212,7 @@ int ObTabletLocationRangeIterator::next(common::ObChunkServerItem * replicas_out
   if (OB_SUCCESS == ret &&
     OB_SUCCESS != (ret = cache_proxy_->get_tablet_location(scan_direction_, &next_range_, location_list)))
   {
-    TBSYS_LOG(ERROR, "get tablet location fail:ret[%d]", ret);
+    TBSYS_LOG(WARN, "get tablet location fail:ret[%d]", ret);
   }
 
   if (OB_SUCCESS == ret)

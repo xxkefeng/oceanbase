@@ -51,6 +51,7 @@ namespace oceanbase
           const ObUpsManager & ups_manager);
       // get request
       int get(const common::ObRowkey & rowkey, common::ObScanner & scanner);
+      int get_ms_only(const common::ObRowkey & rowkey, common::ObScanner & scanner);
       // print all the server info
       void print_info(const bool sort = false) const;
     protected:
@@ -85,11 +86,14 @@ namespace oceanbase
       int find_first_tablet(const common::ObRowkey & rowkey, const ServerVector & servers) const;
       // init all rs\cs\ms\ups
       void init_all_servers(ServerVector & servers, int64_t & count) const;
+      // init all ms
+      void init_all_ms(ServerVector & servers, int64_t &count) const;
       // sort the table rows
       void sort_all_servers(ServerVector & servers) const;
     private:
       int insert_all_meta_servers(ServerVector & servers) const;
       int insert_all_query_servers(ServerVector & servers) const;
+      int insert_all_merge_servers(ServerVector & servers) const;
       int insert_all_update_servers(ServerVector & servers) const;
     private:
       static const int64_t OB_MAX_ADDR_LEN = 64;

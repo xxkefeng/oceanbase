@@ -34,8 +34,8 @@ namespace oceanbase
         virtual int open();
         /// close child_op_
         virtual int close();
-
-        void clear();
+        virtual void reset() = 0;
+        virtual void reuse() = 0;
       private:
         // disallow copy
         ObSingleChildPhyOperator(const ObSingleChildPhyOperator &other);

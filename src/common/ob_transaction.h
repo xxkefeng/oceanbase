@@ -32,6 +32,8 @@ namespace oceanbase
     {
       READ_ONLY_TRANS = 0,
       READ_WRITE_TRANS = 1,
+      INTERNAL_WRITE_TRANS = 2, // 不加锁,避免触发trigger
+      REPLAY_TRANS = 3, // 不加锁，
     };
 
     struct ObTransReq

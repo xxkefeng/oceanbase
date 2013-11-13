@@ -74,6 +74,7 @@ int repr(char* buf, const int64_t len, int64_t& pos, const  ObString& _str);
 int repr(char* buf, const int64_t len, int64_t& pos, const ObRowkey& rowkey);
 int repr(char* buf, const int64_t len, int64_t& pos, const ObServer& server);
 int repr(char* buf, const int64_t len, int64_t& pos, ObScanner& scanner, int64_t row_limit=-1);
+int obstring2cstr(char* buf, const int64_t len, int64_t& pos, const char*& dest, ObString& src);
 int copy_str(char* buf, const int64_t len, int64_t& pos, char*& str, const char* _str);
 int alloc_str(char* buf, const int64_t len, int64_t& pos, ObString& str, const char* _str);
 int alloc_str(char* buf, const int64_t len, int64_t& pos, ObString& str, const ObString _str);

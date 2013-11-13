@@ -33,6 +33,8 @@ namespace oceanbase
                                 const int64_t log_buf_limit, const int64_t queue_len)
     {
       int err = OB_SUCCESS;
+      bool queue_rebalance = true;
+      bool dynamic_rebalance = false;
       if (NULL == log_applier || n_worker <= 0 || n_worker > MAX_N_WORKER || log_buf_limit < 0 || queue_len <= 0)
       {
         err = OB_INVALID_ARGUMENT;
@@ -45,7 +47,7 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "allocator.init(limit=%ld, page_size=%ld)=>%d", log_buf_limit, OB_MAX_PACKET_LENGTH, err);
       }
-      else if (OB_SUCCESS != (err = apply_worker_.init(n_worker, queue_len/n_worker)))
+      else if (OB_SUCCESS != (err = apply_worker_.init(n_worker, queue_len/n_worker, queue_rebalance, dynamic_rebalance)))
       {
         TBSYS_LOG(ERROR, "apply_worker_.init(n_thread=%d, queue_len=%ld)=>%d", n_worker, queue_len, err);
       }
@@ -86,6 +88,17 @@ namespace oceanbase
                         to_cstring(replay_cursor_), next_submit_log_id_, next_commit_log_id_, next_flush_log_id_, last_barrier_log_id_, err_);
       }
       return pos;
+    }
+
+    void ObLogReplayWorker::on_error(ObLogTask* task, int err)
+    {
+      static int64_t killed = 0;
+      TBSYS_LOG(ERROR, "replay error: task=%s, err=%d, will kill self", NULL == task? "NULL": to_cstring(*task), err);
+      if (__sync_bool_compare_and_swap(&killed, 0, 1))
+      {
+        kill(getpid(), SIGTERM);
+        TBSYS_LOG(ERROR, "kill self, pid=%d", getpid());
+      }
     }
 
     int ObLogReplayWorker::get_replay_cursor(ObLogCursor& cursor) const
@@ -282,6 +295,10 @@ namespace oceanbase
           }
         }
       }
+      if (OB_SUCCESS != err)
+      {
+        on_error(task, err);
+      }
       return err;
     }
 
@@ -321,6 +338,10 @@ namespace oceanbase
           err_ = err;
           TBSYS_LOG(ERROR, "commit_queue.add(%ld, %p)=>%d", task->log_id_, task, err);
         }
+      }
+      if (OB_SUCCESS != err)
+      {
+        on_error(task, err);
       }
       return err;
     }
@@ -531,7 +552,7 @@ namespace oceanbase
       }
       else if (_stop)
       {
-        err = (OB_EAGAIN == err_? OB_CANCELED: err_);
+        err = OB_CANCELED;
       }
       else if (OB_SUCCESS != err_)
       {

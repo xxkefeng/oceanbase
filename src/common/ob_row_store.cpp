@@ -28,6 +28,7 @@ struct ObRowStore::BlockInfo
    * cur_data_pos_ must be set when BlockInfo deserialized
    */
   int64_t curr_data_pos_;
+  int64_t block_size_;
   char data_[0];
 
   BlockInfo()
@@ -36,11 +37,11 @@ struct ObRowStore::BlockInfo
   }
   inline int64_t get_remain_size() const
   {
-    return ObRowStore::BLOCK_SIZE - curr_data_pos_ - sizeof(BlockInfo);
+    return block_size_ - curr_data_pos_ - sizeof(BlockInfo);
   }
   inline int64_t get_remain_size_for_read(int64_t pos) const
   {
-    //TBSYS_LOG(DEBUG, "cur=%ld, pos=%ld, remain=%ld", curr_data_pos_, pos, curr_data_pos_ - pos);
+    TBSYS_LOG(DEBUG, "cur=%ld, pos=%ld, remain=%ld", curr_data_pos_, pos, curr_data_pos_ - pos);
     return curr_data_pos_ - pos;
   }
   inline char* get_buffer()
@@ -63,16 +64,180 @@ struct ObRowStore::BlockInfo
   {
     curr_data_pos_ = pos;
   }
+  inline bool is_fresh_block()
+  {
+    return (get_curr_data_pos() == 0);
+  }
 };
+
+ObRowStore::iterator::iterator()
+  : row_store_(NULL),
+    cur_iter_pos_(0),
+    cur_iter_block_(NULL),
+    got_first_next_(false)
+{
+}
+
+ObRowStore::iterator::iterator(const iterator & r)
+  : row_store_(r.row_store_),
+    cur_iter_pos_(r.cur_iter_pos_),
+    cur_iter_block_(r.cur_iter_block_),
+    got_first_next_(r.got_first_next_)
+{
+}
+
+ObRowStore::iterator::iterator(ObRowStore * row_store, int64_t cur_iter_pos,
+    BlockInfo * cur_iter_block, bool got_first_next)
+  : row_store_(row_store),
+    cur_iter_pos_(cur_iter_pos),
+    cur_iter_block_(cur_iter_block),
+    got_first_next_(got_first_next)
+{
+}
+
+int ObRowStore::iterator::get_next_row(const ObRowkey *&rowkey, ObRow &row, common::ObString *compact_row /* = NULL */)
+{
+  int ret = OB_SUCCESS;
+  ret = get_next_row(&cur_rowkey_, cur_rowkey_obj_, row, compact_row);
+  if(OB_SUCCESS == ret)
+  {
+    rowkey = &cur_rowkey_;
+  }
+  else if(OB_ITER_END != ret)
+  {
+    TBSYS_LOG(WARN, "get next row fail:ret[%d]", ret);
+  }
+  return ret;
+}
+
+int ObRowStore::iterator::get_next_ups_row(const ObRowkey *&rowkey, ObUpsRow &row, common::ObString *compact_row /* = NULL */)
+{
+  int ret = OB_SUCCESS;
+  ret = get_next_row(rowkey, row, compact_row);
+  if(OB_SUCCESS != ret && OB_ITER_END != ret)
+  {
+    TBSYS_LOG(WARN, "get next ups row fail:ret[%d]", ret);
+  }
+  return ret;
+}
+
+int ObRowStore::iterator::get_next_ups_row(ObUpsRow &row, common::ObString *compact_row /* = NULL */)
+{
+  return get_next_row(NULL, NULL, row, compact_row);
+}
+
+int ObRowStore::iterator::get_next_row(ObRow &row, common::ObString *compact_row /* = NULL */)
+{
+  return get_next_row(NULL, NULL, row, compact_row);
+}
+
+int ObRowStore::iterator::get_next_row(ObRowkey *rowkey, ObObj *rowkey_obj, ObRow &row, common::ObString *compact_row)
+{
+  int ret = OB_SUCCESS;
+  const StoredRow *stored_row = NULL;
+
+  if (NULL == row_store_)
+  {
+    TBSYS_LOG(ERROR, "row_store_ is NULL, should not reach here");
+    ret = OB_ERROR;
+  }
+
+  if (OB_SUCCESS == ret && !got_first_next_)
+  {
+    cur_iter_block_ = row_store_->block_list_tail_;
+    cur_iter_pos_ = 0;
+    got_first_next_ = true;
+  }
+
+  if (OB_SUCCESS == ret && OB_ITER_END == (ret = next_iter_pos(cur_iter_block_, cur_iter_pos_)))
+  {
+    TBSYS_LOG(DEBUG, "iter end.block=%p, pos=%ld", cur_iter_block_, cur_iter_pos_);
+  }
+  else if (OB_SUCCESS == ret)
+  {
+    const char *buffer = cur_iter_block_->get_buffer_head() + cur_iter_pos_;
+    stored_row = reinterpret_cast<const StoredRow *>(buffer);
+    cur_iter_pos_ += (row_store_->get_reserved_cells_size(stored_row->reserved_cells_count_)
+        + stored_row->compact_row_size_);
+    //TBSYS_LOG(DEBUG, "stored_row->reserved_cells_count_=%d, stored_row->compact_row_size_=%d, sizeof(ObObj)=%lu, next_pos_=%ld",
+    //stored_row->reserved_cells_count_, stored_row->compact_row_size_, sizeof(ObObj), cur_iter_pos_);
+
+    if (OB_SUCCESS == ret && NULL != stored_row)
+    {
+      ObUpsRow *ups_row = dynamic_cast<ObUpsRow*>(&row);
+      if (NULL != ups_row)
+      {
+        const ObRowDesc *row_desc = row.get_row_desc();
+        uint64_t table_id = OB_INVALID_ID;
+        uint64_t column_id = OB_INVALID_ID;
+
+        if(NULL == row_desc)
+        {
+          ret = OB_INVALID_ARGUMENT;
+          TBSYS_LOG(WARN, "row should set row desc first");
+        }
+        else if(OB_SUCCESS != (ret = row_desc->get_tid_cid(0, table_id, column_id)))
+        {
+          TBSYS_LOG(WARN, "get tid cid fail:ret[%d]", ret);
+        }
+        else if (OB_SUCCESS != (ret = ObUpsRowUtil::convert(table_id, stored_row->get_compact_row(), *ups_row, rowkey, rowkey_obj)))
+        {
+          TBSYS_LOG(WARN, "fail to convert compact row to ObUpsRow. ret=%d", ret);
+        }
+      }
+      else
+      {
+        if(OB_SUCCESS != (ret = ObRowUtil::convert(stored_row->get_compact_row(), row, rowkey, rowkey_obj)))
+        {
+          TBSYS_LOG(WARN, "fail to convert compact row to ObRow:ret[%d]", ret);
+        }
+      }
+      if (OB_SUCCESS == ret && NULL != compact_row)
+      {
+        *compact_row = stored_row->get_compact_row();
+      }
+    }
+    else
+    {
+      TBSYS_LOG(WARN, "fail to get next row. stored_row=%p, ret=%d", stored_row, ret);
+    }
+  }
+
+  return ret;
+}
+
+int ObRowStore::iterator::next_iter_pos(BlockInfo *&iter_block, int64_t &iter_pos)
+{
+  int ret = OB_SUCCESS;
+  if (NULL == iter_block)
+  {
+    ret = OB_ITER_END;
+  }
+  else
+  {
+    while (0 >= iter_block->get_remain_size_for_read(iter_pos))
+    {
+      iter_block = iter_block->next_block_;
+      iter_pos = 0;
+      if (NULL == iter_block)
+      {
+        ret = OB_ITER_END;
+        break;
+      }
+    }
+  }
+  return ret;
+}
+
 
 ////////////////////////////////////////////////////////////////
 ObRowStore::ObRowStore(const int32_t mod_id/*=ObModIds::OB_SQL_ROW_STORE*/, ObIAllocator* allocator/*=NULL*/)
   :allocator_(allocator ?: &get_global_tsi_block_allocator()),
    block_list_head_(NULL), block_list_tail_(NULL),
-   block_count_(0), cur_size_counter_(0), got_first_next_(false),
-   cur_iter_pos_(0), cur_iter_block_(NULL),
+   block_count_(0), cur_size_counter_(0),
    rollback_iter_pos_(-1), rollback_block_list_(NULL),
-   mod_id_(mod_id)
+   mod_id_(mod_id), block_size_(NORMAL_BLOCK_SIZE), is_read_only_(false),
+   inner_(this, 0, block_list_head_, false)
 {
 }
 
@@ -80,7 +245,60 @@ ObRowStore::~ObRowStore()
 {
   clear();
 }
-
+ObRowStore *ObRowStore::clone(char *buffer) const
+{
+  ObRowStore *copy = NULL;
+  if (OB_UNLIKELY(NULL == buffer))
+  {
+    TBSYS_LOG(WARN, "buffer is NULL");
+  }
+  else
+  {
+    copy = reinterpret_cast<ObRowStore*>(buffer);
+    copy->is_read_only_ = true;
+    buffer += get_meta_size();
+    BlockInfo *bip = block_list_tail_;
+    BlockInfo *prev = NULL;
+    BlockInfo *tmp = NULL;
+    while(NULL != bip)
+    {
+      memcpy(buffer, bip, sizeof(BlockInfo) + bip->curr_data_pos_);
+      tmp = reinterpret_cast<BlockInfo*>(buffer);
+      tmp->curr_data_pos_ = bip->curr_data_pos_;
+      tmp->block_size_ = tmp->curr_data_pos_ + sizeof(BlockInfo);
+      if (prev != NULL)
+      {
+        prev->next_block_ = tmp;
+      }
+      else
+      {
+        copy->block_list_tail_ = tmp;
+      }
+      prev = tmp;
+      copy->block_list_head_ = tmp;
+      buffer += sizeof(BlockInfo) + bip->curr_data_pos_;
+      bip = bip->next_block_;
+    }
+    tmp->next_block_ = NULL;
+    // fill meta data
+    copy->block_count_ = block_count_;
+    copy->cur_size_counter_ = cur_size_counter_;
+    copy->mod_id_ = mod_id_;
+  }
+  return copy;
+}
+void ObRowStore::set_block_size(int64_t block_size)
+{
+  block_size_ = block_size;
+}
+int32_t ObRowStore::get_copy_size() const
+{
+  return static_cast<int32_t>(cur_size_counter_ + sizeof(BlockInfo) * block_count_ + get_meta_size());
+}
+int32_t ObRowStore::get_meta_size() const
+{
+  return static_cast<int32_t>(sizeof(ObRowStore));
+}
 int ObRowStore::add_reserved_column(uint64_t tid, uint64_t cid)
 {
   int ret = OB_SUCCESS;
@@ -93,7 +311,19 @@ int ObRowStore::add_reserved_column(uint64_t tid, uint64_t cid)
 
 void ObRowStore::reuse()
 {
-  clear();
+  BlockInfo * block = NULL;
+  block_list_head_ = block_list_tail_;
+  block = block_list_head_;
+  while(NULL != block)
+  {
+    block->curr_data_pos_ = 0;
+    block = block->next_block_;
+  }
+  cur_size_counter_ = 0;
+  rollback_iter_pos_ = -1;
+  rollback_block_list_ = NULL;
+  reset_iterator();
+  reserved_columns_.clear();
 }
 
 void ObRowStore::clear()
@@ -118,11 +348,9 @@ void ObRowStore::clear_rows()
   block_list_head_ = NULL;
   block_count_ = 0;
   cur_size_counter_ = 0;
-  got_first_next_ = false;
-  cur_iter_pos_ = 0;
-  cur_iter_block_ = NULL;
   rollback_iter_pos_ = -1;
   rollback_block_list_ = NULL;
+  reset_iterator();
 }
 
 int ObRowStore::rollback_last_row()
@@ -147,7 +375,7 @@ int ObRowStore::rollback_last_row()
   return ret;
 }
 
-int ObRowStore::new_block()
+int ObRowStore::new_block(int64_t block_size)
 {
   int ret = OB_SUCCESS;
   // when row store was ever rolled back, block_list_head_->next_block_ may not be NULL
@@ -155,13 +383,36 @@ int ObRowStore::new_block()
   if ((NULL != block_list_head_) && (NULL != block_list_head_->next_block_))
   {
     // reuse block
-    block_list_head_ = block_list_head_->next_block_;
-    block_list_head_->curr_data_pos_ = 0;
+    if (block_size <= block_list_head_->next_block_->block_size_)
+    {
+      block_list_head_ = block_list_head_->next_block_;
+      block_list_head_->curr_data_pos_ = 0;
+    }
+    else
+    {
+      // create a new block
+      BlockInfo *block = static_cast<BlockInfo*>(ob_tc_malloc(block_size, mod_id_));
+      if (NULL == block)
+      {
+        TBSYS_LOG(ERROR, "no memory");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else
+      {
+        block = new (block) BlockInfo();
+        block->next_block_ = block_list_head_->next_block_;
+        block_list_head_->next_block_ = block;
+        block->curr_data_pos_ = 0;
+        block->block_size_ = block_size;
+        block_list_head_ = block;
+        ++block_count_;
+      }
+    }
   }
   else
   {
     // create a new block
-    BlockInfo *block = static_cast<BlockInfo*>(ob_tc_malloc(BLOCK_SIZE, mod_id_));
+    BlockInfo *block = static_cast<BlockInfo*>(ob_tc_malloc(block_size, mod_id_));
     if (NULL == block)
     {
       TBSYS_LOG(ERROR, "no memory");
@@ -172,6 +423,7 @@ int ObRowStore::new_block()
       block = new (block) BlockInfo();
       block->next_block_ = NULL;
       block->curr_data_pos_ = 0;
+      block->block_size_ = block_size;
       if (NULL == block_list_tail_)
       {
         block_list_tail_ = block;  // this is the first block allocated
@@ -189,6 +441,10 @@ int ObRowStore::new_block()
     }
   }
   return ret;
+}
+int ObRowStore::new_block()
+{
+  return new_block(block_size_);
 }
 
 int ObRowStore::append_row(const ObRowkey *rowkey, const ObRow &row, BlockInfo &block, StoredRow &stored_row)
@@ -221,7 +477,7 @@ int ObRowStore::append_row(const ObRowkey *rowkey, const ObRow &row, BlockInfo &
     }
   }
 
-  if(NULL != ups_row)
+  if(OB_SUCCESS == ret && NULL != ups_row)
   {
     if( ups_row->get_is_delete_row() )
     {
@@ -357,79 +613,107 @@ int ObRowStore::add_row(const ObRowkey &rowkey, const ObRow &row, int64_t &cur_s
 int ObRowStore::add_row(const ObRowkey *rowkey, const ObRow &row, const StoredRow *&stored_row, int64_t &cur_size_counter)
 {
   int ret = OB_SUCCESS;
-  stored_row = NULL;
-  const int32_t reserved_columns_count = static_cast<int32_t>(reserved_columns_.count());
-
-  // in case this row would be rollback
-  rollback_block_list_ = block_list_head_;
-  rollback_iter_pos_ = ((block_list_head_==NULL) ? (-1) : block_list_head_->get_curr_data_pos());
-
-  if (NULL == block_list_head_
-      || block_list_head_->get_remain_size() <= get_compact_row_min_size(row.get_column_num())
-      + get_reserved_cells_size(reserved_columns_count))
+  if (is_read_only_)
   {
-    ret = new_block();
-  }
-
-  int64_t retry = 0;
-  while(OB_SUCCESS == ret && retry < 2)
-  {
-    // append OrderByCells
-    OB_ASSERT(block_list_head_);
-    StoredRow *reserved_cells = reinterpret_cast<StoredRow*>(block_list_head_->get_buffer());
-    reserved_cells->reserved_cells_count_ = static_cast<int32_t>(reserved_columns_count);
-    block_list_head_->advance(get_reserved_cells_size(reserved_columns_count));
-    if (OB_SUCCESS != (ret = append_row(rowkey, row, *block_list_head_, *reserved_cells)))
-    {
-      if (OB_BUF_NOT_ENOUGH == ret)
-      {
-        // buffer not enough
-        block_list_head_->advance( -get_reserved_cells_size(reserved_columns_count) );
-        TBSYS_LOG(DEBUG, "block buffer not enough, buff=%p remain_size=%ld block_count=%ld",
-                  block_list_head_, block_list_head_->get_remain_size(), block_count_);
-        ret = OB_SUCCESS;
-        ++retry;
-        ret = new_block();
-      }
-      else
-      {
-        TBSYS_LOG(WARN, "failed to append row, err=%d", ret);
-      }
-    }
-    else
-    {
-      cur_size_counter_ += get_reserved_cells_size(reserved_columns_count);
-      stored_row = reserved_cells;
-      cur_size_counter = cur_size_counter_;
-      break;                  // done
-    }
-  } // end while
-  if (2 <= retry)
-  {
-    ret = OB_ERR_UNEXPECTED;
-    TBSYS_LOG(ERROR, "unexpected branch");
-  }
-  return ret;
-}
-
-int ObRowStore::next_iter_pos(BlockInfo *&iter_block, int64_t &iter_pos)
-{
-  int ret = OB_SUCCESS;
-  if (NULL == iter_block)
-  {
-    ret = OB_ITER_END;
+    ret = OB_NOT_SUPPORTED;
+    TBSYS_LOG(WARN, "read only ObRowStore, not allow add row, ret=%d", ret);
   }
   else
   {
-    while (0 >= iter_block->get_remain_size_for_read(iter_pos))
+    stored_row = NULL;
+    const int32_t reserved_columns_count = static_cast<int32_t>(reserved_columns_.count());
+
+
+    if (NULL == block_list_head_
+        || block_list_head_->get_remain_size() <= get_compact_row_min_size(row.get_column_num())
+        + get_reserved_cells_size(reserved_columns_count))
     {
-      iter_block = iter_block->next_block_;
-      iter_pos = 0;
-      if (NULL == iter_block)
+      ret = new_block();
+    }
+
+    int64_t retry = 0;
+    while(OB_SUCCESS == ret && retry < 3)
+    {
+      // in case this row would be rollback
+      rollback_block_list_ = block_list_head_;
+      rollback_iter_pos_ = ((block_list_head_==NULL) ? (-1) : block_list_head_->get_curr_data_pos());
+      // append OrderByCells
+      OB_ASSERT(block_list_head_);
+      StoredRow *reserved_cells = reinterpret_cast<StoredRow*>(block_list_head_->get_buffer());
+      reserved_cells->reserved_cells_count_ = static_cast<int32_t>(reserved_columns_count);
+      block_list_head_->advance(get_reserved_cells_size(reserved_columns_count));
+      if (OB_SUCCESS != (ret = append_row(rowkey, row, *block_list_head_, *reserved_cells)))
       {
-        ret = OB_ITER_END;
-        break;
+        if (OB_BUF_NOT_ENOUGH == ret)
+        {
+          // buffer not enough
+          block_list_head_->advance( -get_reserved_cells_size(reserved_columns_count) );
+          TBSYS_LOG(DEBUG, "block buffer not enough, buff=%p remain_size=%ld block_count=%ld block_size=%ld",
+                    block_list_head_, block_list_head_->get_remain_size(), block_count_, block_list_head_->block_size_);
+          ret = OB_SUCCESS;
+          ++retry;
+          if (block_list_head_->is_fresh_block())
+          {
+            if (block_list_head_ == block_list_tail_)
+            {
+              ob_tc_free(block_list_head_, mod_id_);
+              --block_count_;
+              block_list_head_ = block_list_tail_ = NULL;
+              ret = new_block(BIG_BLOCK_SIZE);
+            }
+            else
+            {
+              // free the last normal block
+              BlockInfo *before_last = NULL;
+              BlockInfo *curr = block_list_tail_;
+              BlockInfo *next = NULL;
+              while (NULL != curr)
+              {
+                next = curr->next_block_;
+                if (next == block_list_head_)
+                {
+                  before_last = curr;
+                  break;
+                }
+                curr = next;
+              }
+              if (NULL == before_last)
+              {
+                TBSYS_LOG(ERROR, "This branch should not be reached, before_last = NULL");
+                ret = OB_ERR_UNEXPECTED;
+              }
+              else
+              {
+                block_list_head_ = before_last;
+                block_list_head_->next_block_ = NULL;
+                --block_count_;
+                ob_tc_free(next, mod_id_);
+                ret = new_block(BIG_BLOCK_SIZE);
+              }
+            }
+          }
+          else
+          {
+            ret = new_block(NORMAL_BLOCK_SIZE);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "failed to append row, err=%d", ret);
+        }
       }
+      else
+      {
+        cur_size_counter_ += get_reserved_cells_size(reserved_columns_count);
+        stored_row = reserved_cells;
+        cur_size_counter = cur_size_counter_;
+        break;                  // done
+      }
+    } // end while
+    if (3 <= retry)
+    {
+      ret = OB_ERR_UNEXPECTED;
+      TBSYS_LOG(ERROR, "unexpected branch");
     }
   }
   return ret;
@@ -437,119 +721,57 @@ int ObRowStore::next_iter_pos(BlockInfo *&iter_block, int64_t &iter_pos)
 
 int ObRowStore::get_next_row(const ObRowkey *&rowkey, ObRow &row, common::ObString *compact_row /* = NULL */)
 {
-  int ret = OB_SUCCESS;
-  ret = get_next_row(&cur_rowkey_, cur_rowkey_obj_, row, compact_row);
-  if(OB_SUCCESS == ret)
-  {
-    rowkey = &cur_rowkey_;
-  }
-  else if(OB_ITER_END != ret)
-  {
-    TBSYS_LOG(WARN, "get next row fail:ret[%d]", ret);
-  }
-  return ret;
+  return inner_.get_next_row(rowkey, row, compact_row);
 }
 
 int ObRowStore::get_next_ups_row(const ObRowkey *&rowkey, ObUpsRow &row, common::ObString *compact_row /* = NULL */)
 {
-  int ret = OB_SUCCESS;
-  ret = get_next_row(rowkey, row, compact_row);
-  if(OB_SUCCESS != ret && OB_ITER_END != ret)
-  {
-    TBSYS_LOG(WARN, "get next ups row fail:ret[%d]", ret);
-  }
-  return ret;
+  return inner_.get_next_ups_row(rowkey, row, compact_row);
 }
 
 int ObRowStore::get_next_ups_row(ObUpsRow &row, common::ObString *compact_row /* = NULL */)
 {
-  return get_next_row(NULL, NULL, row, compact_row);
+  return inner_.get_next_ups_row(row, compact_row);
 }
 
 void ObRowStore::reset_iterator()
 {
-  cur_iter_block_ = block_list_tail_;
-  cur_iter_pos_ = 0;
-  got_first_next_ = false;
+  inner_.cur_iter_block_ = block_list_tail_;
+  inner_.cur_iter_pos_ = 0;
+  inner_.got_first_next_ = false;
+}
+
+ObRowStore::iterator ObRowStore::begin()
+{
+  TBSYS_LOG(DEBUG, "ObRowStore::begin block_list_tail_ date_ = %p  curr_data_pos_ = %ld",
+      block_list_tail_->data_, block_list_tail_->curr_data_pos_);
+  return iterator(this, 0, block_list_tail_, false);
 }
 
 int ObRowStore::get_next_row(ObRow &row, common::ObString *compact_row /* = NULL */)
 {
-  return get_next_row(NULL, NULL, row, compact_row);
+  return inner_.get_next_row(row, compact_row);
 }
-
-int ObRowStore::get_next_row(ObRowkey *rowkey, ObObj *rowkey_obj, ObRow &row, common::ObString *compact_row)
-{
-  int ret = OB_SUCCESS;
-  const StoredRow *stored_row = NULL;
-
-  if (!got_first_next_)
-  {
-    cur_iter_block_ = block_list_tail_;
-    cur_iter_pos_ = 0;
-    got_first_next_ = true;
-  }
-
-  if (OB_ITER_END == (ret = next_iter_pos(cur_iter_block_, cur_iter_pos_)))
-  {
-    TBSYS_LOG(DEBUG, "iter end.block=%p, pos=%ld", cur_iter_block_, cur_iter_pos_);
-  }
-  else if (OB_SUCCESS == ret)
-  {
-    const char *buffer = cur_iter_block_->get_buffer_head() + cur_iter_pos_;
-    stored_row = reinterpret_cast<const StoredRow *>(buffer);
-    cur_iter_pos_ += (get_reserved_cells_size(stored_row->reserved_cells_count_) + stored_row->compact_row_size_);
-    //TBSYS_LOG(DEBUG, "stored_row->reserved_cells_count_=%d, stored_row->compact_row_size_=%d, sizeof(ObObj)=%lu, next_pos_=%ld",
-    //stored_row->reserved_cells_count_, stored_row->compact_row_size_, sizeof(ObObj), cur_iter_pos_);
-
-    if (OB_SUCCESS == ret && NULL != stored_row)
-    {
-      ObUpsRow *ups_row = dynamic_cast<ObUpsRow*>(&row);
-      if (NULL != ups_row)
-      {
-        const ObRowDesc *row_desc = row.get_row_desc();
-        uint64_t table_id = OB_INVALID_ID;
-        uint64_t column_id = OB_INVALID_ID;
-
-        if(NULL == row_desc)
-        {
-          ret = OB_INVALID_ARGUMENT;
-          TBSYS_LOG(WARN, "row should set row desc first");
-        }
-        else if(OB_SUCCESS != (ret = row_desc->get_tid_cid(0, table_id, column_id)))
-        {
-          TBSYS_LOG(WARN, "get tid cid fail:ret[%d]", ret);
-        }
-        else if (OB_SUCCESS != (ret = ObUpsRowUtil::convert(table_id, stored_row->get_compact_row(), *ups_row, rowkey, rowkey_obj)))
-        {
-          TBSYS_LOG(WARN, "fail to convert compact row to ObUpsRow. ret=%d", ret);
-        }
-      }
-      else
-      {
-        if(OB_SUCCESS != (ret = ObRowUtil::convert(stored_row->get_compact_row(), row, rowkey, rowkey_obj)))
-        {
-          TBSYS_LOG(WARN, "fail to convert compact row to ObRow:ret[%d]", ret);
-        }
-      }
-      if (OB_SUCCESS == ret && NULL != compact_row)
-      {
-        *compact_row = stored_row->get_compact_row();
-      }
-    }
-    else
-    {
-      TBSYS_LOG(WARN, "fail to get next row. stored_row=%p, ret=%d", stored_row, ret);
-    }
-  }
-
-  return ret;
-}
-
 
 int64_t ObRowStore::get_used_mem_size() const
 {
-  return block_count_ * BLOCK_SIZE;
+  int64_t used = 0;
+  BlockInfo *tmp = block_list_tail_;
+  while (tmp != NULL)
+  {
+    used += tmp->block_size_;
+    if (tmp == block_list_head_)
+    {
+      break;
+    }
+    tmp = tmp->next_block_;
+  }
+  return used;
+}
+
+bool ObRowStore::is_empty() const
+{
+  return block_count_ == 0 || block_list_tail_->curr_data_pos_ == 0;
 }
 
 
@@ -631,7 +853,7 @@ DEFINE_DESERIALIZE(ObRowStore)
       break;
     }
     // copy data to store
-    if (OB_SUCCESS != (ret = this->new_block()))
+    if (OB_SUCCESS != (ret = this->new_block(block_size + sizeof(BlockInfo))))
     {
       TBSYS_LOG(WARN, "fail to allocate new block. ret=%d", ret);
       break;

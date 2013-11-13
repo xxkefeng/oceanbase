@@ -100,6 +100,18 @@ def dict_merge(d1, d2):
         d1[k] = dict_merge(d1.get(k), v)
     return d1
 
+def dict_add(d1, d2):
+    if type(d1) != dict: return d2
+    if type(d2) != dict: return d1
+    for k,v in d2.items():
+      if type(v) != int:
+        raise Exception("Not Integer")
+      elif d1.has_key(k):
+        d1[k] += v
+      else:
+        d1[k] = v
+    return d1
+
 def list_merge(ls):
     '''>>> list_merge([[1,2], [3,4]])
 [1, 2, 3, 4]'''
@@ -352,6 +364,7 @@ def popen(cmd, cwd=None, exception_on_fail=False, timeout=-1):
 
 def sh(cmd, cwd=None, exception_on_fail=False, timeout=-1):
     if gcfg.get('_dryrun_', False): return cmd
+    if gcfg.get('_verbose_', False): print cmd
     p = Popen(cmd, shell=True)
     err = wait_child(p, timeout)
     if err:

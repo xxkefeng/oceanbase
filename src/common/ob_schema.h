@@ -24,6 +24,7 @@
 #include "hash/ob_hashutils.h"
 #include "hash/ob_hashmap.h"
 #include "ob_postfix_expression.h"
+#include "ob_hint.h"
 
 #define PERM_TABLE_NAME "__perm_info"
 #define USER_TABLE_NAME "__user_info"
@@ -47,10 +48,13 @@ namespace oceanbase
     const int64_t OB_SCHEMA_VERSION_TWO = 2;
     const int64_t OB_SCHEMA_VERSION_THREE = 3;
     const int64_t OB_SCHEMA_VERSION_FOUR = 4;
+    const int64_t OB_SCHEMA_VERSION_FOUR_FIRST = 401;
+    const int64_t OB_SCHEMA_VERSION_FOUR_SECOND = 402;
 
     struct TableSchema;
     //these classes are so close in logical, so I put them together to make client have a easy life
     typedef ObObjType ColumnType;
+    const char* convert_column_type_to_str(ColumnType type);
     struct ObRowkeyColumn
     {
       enum Order
@@ -136,6 +140,14 @@ namespace oceanbase
           //this means which part of left_column_ to be used make rowkey
           uint64_t left_column_offset_array_[OB_MAX_ROWKEY_COLUMN_NUMBER];
           uint64_t left_column_count_;
+
+          int64_t to_string(char *buf, const int64_t buf_len) const
+          {
+            int64_t pos = 0;
+            databuff_printf(buf, buf_len, pos, "join_table[%lu], correlated_column[%lu], left_column_count[%lu]",
+              join_table_, correlated_column_, left_column_count_);
+            return pos;
+          }
         };
 
         ObColumnSchemaV2();
@@ -239,11 +251,12 @@ namespace oceanbase
           SSTABLE_IN_DISK,
           SSTABLE_IN_RAM,
         };
-
+        bool is_merge_dynamic_data() const;
         uint64_t    get_table_id()   const;
         TableType   get_table_type() const;
         const char* get_table_name() const;
         const char* get_compress_func_name() const;
+        const char* get_comment_str() const;
         uint64_t    get_max_column_id() const;
         const char* get_expire_condition() const;
         const ObRowkeyInfo&  get_rowkey_info() const;
@@ -257,7 +270,6 @@ namespace oceanbase
         bool is_use_bloomfilter()   const;
         bool is_read_static()   const;
         bool has_baseline_data() const;
-        bool is_merge_dynamic_data() const;
         bool is_expire_effect_immediately() const;
         int32_t get_block_size()    const;
         int64_t get_max_sstable_size() const;
@@ -267,6 +279,7 @@ namespace oceanbase
         int64_t get_internal_ups_scan_size() const;
         int64_t get_merge_write_sstable_version() const;
         int64_t get_replica_count() const;
+        int64_t get_schema_version() const;
 
         uint64_t get_create_time_column_id() const;
         uint64_t get_modify_time_column_id() const;
@@ -291,12 +304,12 @@ namespace oceanbase
         void set_use_bloomfilter(bool use_bloomfilter);
         void set_read_static(bool read_static);
         void set_has_baseline_data(const bool base_data);
-        void set_merge_dynamic_data(bool merge_danamic_data);
         void set_expire_effect_immediately(const int64_t expire_effect_immediately);
 
         void set_expire_condition(const char* expire_condition);
         void set_expire_condition(const ObString& expire_condition);
 
+        void set_comment_str(const char* comment_str);
         void set_expire_frequency(const int64_t expire_frequency);
         void set_query_cache_expire_time(const int64_t expire_time);
         void set_rowkey_info(ObRowkeyInfo& rowkey_info);
@@ -304,9 +317,12 @@ namespace oceanbase
         void set_internal_ups_scan_size(const int64_t scan_size);
         void set_merge_write_sstable_version(const int64_t version);
         void set_replica_count(const int64_t count) ;
+        void set_schema_version(const int64_t version);
 
         void set_create_time_column(uint64_t id);
         void set_modify_time_column(uint64_t id);
+        ObConsistencyLevel get_consistency_level() const;
+        void set_consistency_level(int64_t consistency_level);
 
         bool operator ==(const ObTableSchema& r) const;
         bool operator ==(const ObString& table_name) const;
@@ -320,7 +336,7 @@ namespace oceanbase
         int deserialize_v3(const char* buf, const int64_t data_len, int64_t& pos);
         int deserialize_v4(const char* buf, const int64_t data_len, int64_t& pos);
       private:
-        static const int64_t TABLE_SCHEMA_RESERVED_NUM = 4;
+        static const int64_t TABLE_SCHEMA_RESERVED_NUM = 1;
         uint64_t table_id_;
         uint64_t max_column_id_;
         int64_t rowkey_split_;
@@ -332,9 +348,11 @@ namespace oceanbase
         char name_[OB_MAX_TABLE_NAME_LENGTH];
         char compress_func_name_[OB_MAX_TABLE_NAME_LENGTH];
         char expire_condition_[OB_MAX_EXPIRE_CONDITION_LENGTH];
+        char comment_str_[OB_MAX_TABLE_COMMENT_LENGTH];
         bool is_pure_update_table_;
         bool is_use_bloomfilter_;
         bool is_merge_dynamic_data_;
+        ObConsistencyLevel consistency_level_;
         bool has_baseline_data_;
         ObRowkeyInfo rowkey_info_;
         int64_t expire_frequency_;  // how many frozen version passed before do expire once
@@ -347,7 +365,7 @@ namespace oceanbase
         int64_t replica_count_;
         int64_t reserved_[TABLE_SCHEMA_RESERVED_NUM];
         int64_t version_;
-
+        int64_t schema_version_;
         //in mem
         uint64_t create_time_column_id_;
         uint64_t modify_time_column_id_;
@@ -357,6 +375,12 @@ namespace oceanbase
     class ObSchemaManagerV2
     {
       public:
+        enum Status{
+          INVALID,
+          CORE_TABLES,
+          ALL_TABLES,
+        };
+
         friend class ObSchemaSortByIdHelper;
       public:
         ObSchemaManagerV2();
@@ -366,6 +390,7 @@ namespace oceanbase
         ObSchemaManagerV2& operator=(const ObSchemaManagerV2& schema); //ugly,for hashMap
         ObSchemaManagerV2(const ObSchemaManagerV2& schema);
       public:
+        ObSchemaManagerV2::Status get_status() const;
         const ObColumnSchemaV2* column_begin() const;
         const ObColumnSchemaV2* column_end() const;
         const char* get_app_name() const;
@@ -468,6 +493,7 @@ namespace oceanbase
         bool is_compatible(const ObSchemaManagerV2& schema_manager) const;
 
         int add_column(ObColumnSchemaV2& column);
+        int add_column_without_sort(ObColumnSchemaV2& column);
         int add_table(ObTableSchema& table);
         void del_column(const ObColumnSchemaV2& column);
 
@@ -493,6 +519,12 @@ namespace oceanbase
         bool parse_column_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
         bool parse_join_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
         bool parse_rowkey_info(const char* section_name, tbsys::CConfig& config, ObTableSchema& schema);
+        int change_table_id(const uint64_t table_id, const uint64_t new_table_id);
+        int write_to_file(const char* file_name);
+        int write_table_to_file(FILE *fd, const int64_t table_index);
+        int write_column_group_info_to_file(FILE *fd, const int64_t table_index);
+        int write_column_info_to_file(FILE *fd, const ObColumnSchemaV2 *column_schema);
+        int write_rowkey_info_to_file(FILE *fd, const uint64_t table_id, const ObRowkeyInfo &rowkey);
 
       private:
         /**
@@ -552,7 +584,7 @@ namespace oceanbase
         NEED_SERIALIZE_AND_DESERIALIZE;
         int sort_column();
         bool check_table_expire_condition() const;
-
+        bool check_compress_name() const;
         static const int64_t MAX_COLUMNS_LIMIT = OB_MAX_TABLE_NUMBER * OB_MAX_COLUMN_NUMBER;
         static const int64_t DEFAULT_MAX_COLUMNS = 16 * OB_MAX_COLUMN_NUMBER;;
 

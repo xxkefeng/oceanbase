@@ -186,7 +186,7 @@ int ObTabletCacheJoin::fetch_ups_row(const ObGetParam &get_param)
 
   if(OB_SUCCESS == ret && get_param.get_cell_size() > 0)
   {
-    ups_multi_get_.reset();
+    ups_multi_get_.reuse();
     ups_multi_get_.set_get_param(get_param);
     ups_multi_get_.set_row_desc(ups_row_desc_);
 

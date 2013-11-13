@@ -22,12 +22,11 @@ enum enum_server_command
  COM_SLEEP, COM_QUIT, COM_INIT_DB, COM_QUERY, COM_FIELD_LIST,
  COM_CREATE_DB, COM_DROP_DB, COM_REFRESH, COM_SHUTDOWN, COM_STATISTICS,
  COM_PROCESS_INFO, COM_CONNECT, COM_PROCESS_KILL, COM_DEBUG, COM_PING,
- COM_TIME, COM_DELAYED_INSERT, COM_CHANGE_USER, COM_BINLOG_DUMP,
- COM_TABLE_DUMP, COM_CONNECT_OUT, COM_REGISTER_SLAVE,
- COM_STMT_PREPARE, COM_STMT_EXECUTE, COM_STMT_SEND_LONG_DATA, COM_STMT_CLOSE,
- COM_STMT_RESET, COM_SET_OPTION, COM_STMT_FETCH, COM_DAEMON,
- COM_END, COM_DELETE_SESSION    /* COM_DELETE_SESSION 不是标准的mysql包类型 这个是用来处理删除session的包
-                                 在连接断开的时候，需要删除session 但是此时有可能在回调函数disconnect中获取不到
-                                session的锁，此时会往obmysql的队列中添加一个异步任务*/
+ COM_TIME, COM_DELAYED_INSERT, COM_CHANGE_USER, COM_BINLOG_DUMP, COM_TABLE_DUMP,
+ COM_CONNECT_OUT, COM_REGISTER_SLAVE, COM_STMT_PREPARE, COM_STMT_EXECUTE, COM_STMT_SEND_LONG_DATA,
+ COM_STMT_CLOSE, COM_STMT_RESET, COM_SET_OPTION, COM_STMT_FETCH, COM_DAEMON,
+ COM_END/*30*/, COM_DELETE_SESSION    /* COM_DELETE_SESSION 不是标准的mysql包类型 这个是用来处理删除session的包
+                                    在连接断开的时候，需要删除session 但是此时有可能在回调函数disconnect中获取不到
+                                    session的锁，此时会往obmysql的队列中添加一个异步任务*/
 };
 #endif

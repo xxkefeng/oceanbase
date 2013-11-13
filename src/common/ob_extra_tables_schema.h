@@ -50,6 +50,8 @@ namespace oceanbase
       static int all_client_schema(TableSchema& table_schema);
       // virtual sys tables
       static int all_server_stat_schema(TableSchema &table_schema);
+      static int all_server_session_schema(TableSchema &table_schema);
+      static int all_statement_schema(TableSchema &table_schema);
     private:
       ObExtraTablesSchema();
     };

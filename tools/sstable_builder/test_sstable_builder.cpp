@@ -14,7 +14,7 @@ int main(int argc, char **argv)
   (void)argc;
   (void)argv;
   
-  ret = init("schema.ini", "data_syntax.ini", 1007, "0-0-3,1-1-3,2-2-3", true);
+  ret = init("schema.ini", "data_syntax.ini", 1007, true);
   assert(ret == 0);
 
   buffer = (char*)malloc(2 * 1024 *1024);

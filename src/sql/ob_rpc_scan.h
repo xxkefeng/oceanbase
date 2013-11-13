@@ -31,7 +31,9 @@
 #include "mergeserver/ob_ms_rpc_proxy.h"
 #include "mergeserver/ob_rs_rpc_proxy.h"
 #include "mergeserver/ob_merge_server_service.h"
+#include "mergeserver/ob_frozen_data_cache.h"
 #include "sql/ob_sql_read_strategy.h"
+#include "mergeserver/ob_insert_cache.h"
 
 namespace oceanbase
 {
@@ -43,16 +45,18 @@ namespace oceanbase
       public:
         ObRpcScan();
         virtual ~ObRpcScan();
-
+        virtual void reset();
+        virtual void reuse();
         int set_child(int32_t child_idx, ObPhyOperator &child_operator)
         {
           UNUSED(child_idx);
           UNUSED(child_operator);
           return OB_ERROR;
         }
-        int init(ObSqlContext *context, const common::ObRpcScanHint &hint);
+        int init(ObSqlContext *context, const common::ObRpcScanHint *hint = NULL);
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_RPC_SCAN; }
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         /**
@@ -106,7 +110,18 @@ namespace oceanbase
         {
           cur_row_desc_.set_rowkey_cell_count(rowkey_cell_count);
         }
+        inline void set_need_cache_frozen_data(bool need_cache_frozen_data)
+        {
+          need_cache_frozen_data_ = need_cache_frozen_data;
+        }
+        inline void set_cache_bloom_filter(bool cache_bloom_filter)
+        {
+          cache_bloom_filter_ = cache_bloom_filter;
+        }
+
         int64_t to_string(char* buf, const int64_t buf_len) const;
+
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         // disallow copy
         ObRpcScan(const ObRpcScan &other);
@@ -125,15 +140,18 @@ namespace oceanbase
         int create_get_param(ObSqlGetParam &get_param);
         int cons_get_rows(ObSqlGetParam &get_param);
         void set_hint(const common::ObRpcScanHint &hint);
+        void cleanup_request();
       private:
         static const int64_t REQUEST_EVENT_QUEUE_SIZE = 8192;
         // 等待结果返回的超时时间
         int64_t timeout_us_;
-        mergeserver::ObMsSqlScanRequest sql_scan_request_;
-        mergeserver::ObMsSqlGetRequest sql_get_request_;
+        mergeserver::ObMsSqlScanRequest *sql_scan_request_;
+        mergeserver::ObMsSqlGetRequest *sql_get_request_;
         ObSqlScanParam *scan_param_;
         ObSqlGetParam *get_param_;
         ObSqlReadParam *read_param_;
+        bool is_scan_;
+        bool is_get_;
         ObRowDesc get_row_desc_;
         common::ObRowkeyInfo rowkey_info_;
         common::ObTabletLocationCacheProxy * cache_proxy_;
@@ -150,6 +168,22 @@ namespace oceanbase
         char* start_key_buf_;
         char* end_key_buf_;
         ObSqlReadStrategy sql_read_strategy_;
+        ObSEArray<ObRowkey, OB_PREALLOCATED_NUM> get_rowkey_array_;
+        bool is_rpc_failed_;
+        bool need_cache_frozen_data_;
+        mergeserver::ObFrozenDataKey    frozen_data_key_;
+        mergeserver::ObFrozenDataKeyBuf frozen_data_key_buf_;
+        mergeserver::ObFrozenData       frozen_data_;
+        mergeserver::ObCachedFrozenData cached_frozen_data_;
+        bool cache_bloom_filter_;
+        bool rowkey_not_exists_;
+        ObObj obj_row_not_exists_;
+        ObRow row_not_exists_;
+        int insert_cache_iter_counter_;
+        mergeserver::InsertCacheWrapValue value_;
+        common::ObStringBuf tablet_location_list_buf_;
+        //ObSEArray<bool, OB_PREALLOCATED_NUM> rowkeys_exists_;
+        bool insert_cache_need_revert_;
     };
   } // end namespace sql
 } // end namespace oceanbase

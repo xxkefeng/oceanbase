@@ -19,6 +19,7 @@
 #include "common/ob_range.h"
 #include "common/ob_range2.h"
 #include "common/ob_array_helper.h"
+#include "common/ob_se_array.h"
 #include "sstable/ob_disk_path.h"
 #include "sstable/ob_sstable_reader.h"
 #include "compactsstable/ob_compactsstable_mem.h"
@@ -48,7 +49,6 @@ namespace oceanbase
       {
         memset(this, 0, sizeof(ObTabletExtendInfo));
       }
-      static const int64_t RESERVED_LEN = 2;
       int64_t row_count_;
       int64_t occupy_size_;
       uint64_t check_sum_;
@@ -57,7 +57,8 @@ namespace oceanbase
       int16_t sstable_version_;
       int16_t reserved16_;
       int32_t reserved32_;
-      int64_t reserved_[RESERVED_LEN];
+      uint64_t row_checksum_;
+      int64_t reserved64_;
 
       NEED_SERIALIZE_AND_DESERIALIZE;
     };
@@ -88,9 +89,9 @@ namespace oceanbase
       public:
         int include_sstable(const sstable::ObSSTableId& sstable_id) const;
         int add_sstable_by_id(const sstable::ObSSTableId& sstable_id);
-        inline const common::ObArray<sstable::ObSSTableId>& 
+        inline const common::ObSEArray<sstable::ObSSTableId, MAX_SSTABLE_PER_TABLET>& 
           get_sstable_id_list() const { return sstable_id_list_; }
-        inline const common::ObArray<sstable::SSTableReader*>& 
+        inline const common::ObSEArray<sstable::SSTableReader*, MAX_SSTABLE_PER_TABLET>& 
           get_sstable_reader_list() const { return sstable_reader_list_; }
         int load_sstable(const int64_t tablet_version = 0);
         int dump(const bool dump_sstable = false) const;
@@ -138,6 +139,14 @@ namespace oceanbase
         {
           return extend_info_.sequence_num_;
         }
+        inline uint64_t get_row_checksum() const
+        {
+          return extend_info_.row_checksum_;
+        }
+        inline void set_row_checksum(const int64_t row_checksum)
+        {
+          extend_info_.row_checksum_ = row_checksum;
+        }
         inline void set_sequence_num(const int64_t sequence_num)
         {
           extend_info_.sequence_num_ = sequence_num;
@@ -159,8 +168,8 @@ namespace oceanbase
         inline bool is_with_next_brother() const { return with_next_brother_ > 0; }
         inline int32_t get_merge_count() const { return merge_count_; }
         inline void inc_merge_count() { ++merge_count_; }
-        inline uint32_t inc_ref() { return common::atomic_inc(&ref_count_); }
-        inline uint32_t dec_ref() { return common::atomic_dec(&ref_count_); }
+        inline int64_t inc_ref() { return __sync_add_and_fetch(&ref_count_, 1); }
+        inline int64_t dec_ref() { return __sync_sub_and_fetch(&ref_count_, 1); }
         inline int32_t get_compactsstable_num() {return compactsstable_num_;}
         int add_compactsstable(compactsstable::ObCompactSSTableMemNode* cache);
         compactsstable::ObCompactSSTableMemNode* get_compactsstable_list();
@@ -196,15 +205,15 @@ namespace oceanbase
         int32_t disk_no_;
         int32_t compactsstable_num_;
         volatile uint32_t compactsstable_loading_;
-        volatile uint32_t ref_count_;
+        volatile int64_t ref_count_ CACHE_ALIGNED;
         int64_t data_version_;
         ObTabletExtendInfo extend_info_;
         tbsys::CThreadMutex extend_info_mutex_;
         ObTabletImage * image_;
         compactsstable::ObCompactSSTableMemNode* compact_header_;
         compactsstable::ObCompactSSTableMemNode* compact_tail_;
-        common::ObArray<sstable::ObSSTableId> sstable_id_list_;
-        common::ObArray<sstable::SSTableReader*> sstable_reader_list_;
+        common::ObSEArray<sstable::ObSSTableId, MAX_SSTABLE_PER_TABLET> sstable_id_list_;
+        common::ObSEArray<sstable::SSTableReader*, MAX_SSTABLE_PER_TABLET> sstable_reader_list_;
         tbsys::CThreadMutex load_sstable_mutex_;
     };
 

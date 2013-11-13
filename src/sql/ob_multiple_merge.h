@@ -31,21 +31,22 @@ namespace oceanbase
       public:
         ObMultipleMerge();
         virtual ~ObMultipleMerge();
-
+        virtual void reset();
+        virtual void reuse();
         static const int64_t MAX_CHILD_OPERATOR_NUM = 128;
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator );
         virtual ObPhyOperator *get_child(int32_t child_idx) const;
 
         virtual int32_t get_child_num() const;
-        
+
         virtual int get_row_desc(const ObRowDesc *&row_desc) const;
         void set_is_ups_row(bool is_ups_row);
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
         VIRTUAL_NEED_SERIALIZE_AND_DESERIALIZE;
-
       protected:
         int copy_rowkey(const ObRow &row, ObRow &result_row, bool deep_copy);
-      
+
       protected:
         CharArena allocator_;
         ObPhyOperator *child_array_[MAX_CHILD_OPERATOR_NUM];

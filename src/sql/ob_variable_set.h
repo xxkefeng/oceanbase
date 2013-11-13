@@ -35,17 +35,19 @@ namespace oceanbase
         {
           VariableSetNode()
           {
+            variable_expr_ = NULL;
             is_system_variable_ = false;
             is_global_ = false;
           }
           common::ObString variable_name_;
-          common::ObObj variable_value_;
+          ObSqlExpression *variable_expr_;
           bool is_system_variable_;
           bool is_global_;
         };
         ObVariableSet();
         virtual ~ObVariableSet();
-
+        virtual void reset();
+        virtual void reuse();
         void set_rpc_stub(mergeserver::ObMergerRpcProxy* rpc);
         void set_rowkey_info(const common::ObRowkeyInfo &rowkey_info);
         void set_table_id(const uint64_t& id);
@@ -57,6 +59,7 @@ namespace oceanbase
         /// execute the prepare statement
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_VARIABLE_SET; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         /// @note always return OB_ITER_END
         virtual int get_next_row(const common::ObRow *&row);
@@ -68,19 +71,19 @@ namespace oceanbase
         ObVariableSet(const ObVariableSet &other);
         ObVariableSet& operator=(const ObVariableSet &other);
         // function members
+        void destroy_variable_nodes();
         int process_variables_set();
         int set_autocommit();
         int clear_autocommit();
       private:
+        static const int64_t VAR_NUM_PER_CMD = 16;
         // data members
-        common::ObArray<VariableSetNode> variable_nodes_;
+        common::ObSEArray<VariableSetNode, VAR_NUM_PER_CMD> variable_nodes_;
         mergeserver::ObMergerRpcProxy* rpc_;
         uint64_t table_id_;
         // rowkeys of __all_sys_params
         common::ObRowkeyInfo rowkey_info_;
         uint64_t name_cid_;
-        uint64_t type_cid_;
-        common::ObObjType type_type_;
         uint64_t value_cid_;
         common::ObObjType value_type_;
         common::ObMutator mutator_;
@@ -88,6 +91,8 @@ namespace oceanbase
 
     inline int ObVariableSet::add_variable_node(const VariableSetNode& node)
     {
+      if (node.variable_expr_)
+        node.variable_expr_->set_owner_op(this);
       return variable_nodes_.push_back(node);
     }
     inline void ObVariableSet::set_rpc_stub(mergeserver::ObMergerRpcProxy* rpc)
@@ -105,11 +110,6 @@ namespace oceanbase
     inline void ObVariableSet::set_name_cid(const uint64_t& id)
     {
       name_cid_ = id;
-    }
-    inline void ObVariableSet::set_type_column(const uint64_t& id, const common::ObObjType& type)
-    {
-      type_cid_ = id;
-      type_type_ = type;
     }
     inline void ObVariableSet::set_value_column(const uint64_t& id, const common::ObObjType& type)
     {

@@ -14,11 +14,13 @@ LDADD = $(top_builddir)/src/sql/libsql.a              \
         $(top_builddir)/src/sql/libsql.a              \
         ${top_builddir}/src/common/libcommon.a        \
         ${top_builddir}/src/common/btree/libbtree.a   \
+				$(top_builddir)/src/common/timezone/libtimezone.a    \
         ${EASY_LIB_PATH}/libeasy.a                    \
         ${TBLIB_ROOT}/lib/libtbsys.a -lcrypt
 
 CXXFLAGS+=-D__VERSION_ID__="\"updateserver 1.0.0.0\""
 CXXFLAGS+=-D_BTREE_ENGINE_
+CXXFLAGS+=-fPIC
 #CXXFLAGS+=-pg
 #CXXFLAGS+=-O2 -Wno-strict-aliasing
 AM_LDFLAGS = -lpthread -lc -lm -lrt -ldl -laio -lcrypt -lssl
@@ -38,8 +40,6 @@ libupdateserver_a_SOURCES =                                                 \
   ob_cached_pos_log_reader.h        ob_cached_pos_log_reader.cpp            \
   ob_data_block.h                   ob_data_block.cpp                       \
   ob_fetched_log.h                  ob_fetched_log.cpp                      \
-  ob_fifo_allocator.h               ob_fifo_allocator.cpp                   \
-  ob_id_map.h                                                               \
   ob_lighty_hash.h                                                          \
   ob_located_log_reader.h           ob_located_log_reader.cpp               \
   ob_lock_mgr.h                     ob_lock_mgr.cpp                         \
@@ -57,7 +57,6 @@ libupdateserver_a_SOURCES =                                                 \
   ob_pos_log_reader.h               ob_pos_log_reader.cpp                   \
   ob_prefetch_log_buffer.h          ob_prefetch_log_buffer.cpp              \
   ob_query_engine.h                 ob_query_engine.cpp                     \
-  ob_queue_thread.h                 ob_queue_thread.cpp                     \
   ob_recent_cache.h                                                         \
   ob_remote_log_src.h               ob_remote_log_src.cpp                   \
   ob_replay_log_src.h               ob_replay_log_src.cpp                   \
@@ -80,6 +79,7 @@ libupdateserver_a_SOURCES =                                                 \
   ob_update_server_main.h           ob_update_server_main.cpp               \
   ob_ups_cache.h                    ob_ups_cache.cpp                        \
   ob_ups_clog_status.h              ob_ups_clog_status.cpp                  \
+  stress.h \
   ob_ups_compact_cell_iterator.h    ob_ups_compact_cell_iterator.cpp        \
   ob_ups_compact_cell_writer.h      ob_ups_compact_cell_writer.cpp          \
   ob_ups_fetch_runnable.h           ob_ups_fetch_runnable.cpp               \
@@ -107,8 +107,7 @@ libupdateserver_a_SOURCES =                                                 \
   ob_trigger_handler.h              ob_trigger_handler.cpp                  \
   ob_update_reload_config.h         ob_update_reload_config.cpp             \
   ob_util_interface.h                                                       \
-  config_helper.h                                                           \
-  ob_inc_seq.h
+  ob_inc_seq.h                      ob_inc_seq.cpp
 
 bin_PROGRAMS = updateserver ob_ping
 updateserver_SOURCES = main.cpp ${libupdateserver_a_SOURCES}

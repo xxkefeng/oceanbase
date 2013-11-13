@@ -110,7 +110,8 @@ namespace oceanbase
         {
           err = OB_INVALID_ARGUMENT;
         }
-        else if (!__sync_bool_compare_and_swap(&uid_, 0, uid|EXCLUSIVE_BIT))
+        else if (0 != n_ref_
+                || !__sync_bool_compare_and_swap(&uid_, 0, uid|EXCLUSIVE_BIT))
         {
           err = OB_EAGAIN;
         }
@@ -185,6 +186,11 @@ namespace oceanbase
       bool is_exclusive_locked_by(const uint32_t uid) const
       {
         return (uid_ & ~UID_MASK) && (uid == (uid_ & UID_MASK));
+      }
+
+      uint32_t get_uid() const
+      {
+        return (uint32_t)(uid_ & UID_MASK);
       }
 
       // 多个线程拿着同一个uid去加互斥锁也没关系

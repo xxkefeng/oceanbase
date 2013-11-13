@@ -81,6 +81,34 @@ namespace oceanbase
           return ret;
         }
 
+        inline int clone(const ObString& src)
+        {
+          int ret = OB_BUF_NOT_ENOUGH;
+          obstr_size_t writed_length = write(src.ptr(), src.length());
+          if (writed_length == src.length())
+          {
+            ret = OB_SUCCESS;
+          }
+          return ret;
+        }
+
+        inline const char* find(const char c)
+        {
+          const char* ret = NULL;
+          if (NULL != ptr_)
+          {
+            for(obstr_size_t i=0; i < data_length_; ++i)
+            {
+              if (ptr_[i] == c)
+              {
+                ret = &ptr_[i];
+                break;
+              }
+            }
+          }
+          return ret;
+        }
+
         // not virtual, i'm not a base class.
         ~ObString()
         {

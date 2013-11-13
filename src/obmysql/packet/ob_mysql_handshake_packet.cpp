@@ -11,7 +11,7 @@ namespace oceanbase
       const char* str = "5.5.1";
       protocol_version_ = 10;//Protocol::HandshakeV10
       server_version_.assign(const_cast<char*>(str), static_cast<int32_t>(strlen(str)));
-      thread_id_ = 0;
+      thread_id_ = 100;
       memset(scramble_buff_, 'a', 8);
       filler_ = 0;
       //0xF7FF, 多个flag的组合，其中支持4.1 协议的flag置了1,

@@ -53,9 +53,9 @@ int ObRootTriggerUtil::notify_slave_refresh_schema(ObTriggerEvent & trigger)
   return err;
 }
 
-int ObRootTriggerUtil::create_table(ObTriggerEvent & trigger)
+int ObRootTriggerUtil::create_table(ObTriggerEvent & trigger, const uint64_t table_id)
 {
-  int err = ObTriggerEventUtil::execute(REFRESH_NEW_SCHEMA_TRIGGER, DEFAULT_PARAM, trigger);
+  int err = ObTriggerEventUtil::execute(CREATE_TABLE_TRIGGER, table_id, trigger);
   if (err != OB_SUCCESS)
   {
     TBSYS_LOG(ERROR, "fail to trigger create_table event. err[%d]", err);
@@ -81,9 +81,9 @@ int ObRootTriggerUtil::alter_table(ObTriggerEvent & trigger)
   return err;
 }
 
-int ObRootTriggerUtil::drop_tables(ObTriggerEvent & trigger)
+int ObRootTriggerUtil::drop_tables(ObTriggerEvent & trigger, const uint64_t table_id)
 {
-  int err = ObTriggerEventUtil::execute(REFRESH_NEW_SCHEMA_TRIGGER, DEFAULT_PARAM, trigger);
+  int err = ObTriggerEventUtil::execute(DROP_TABLE_TRIGGER, (int64_t)table_id, trigger);
   if (err != OB_SUCCESS)
   {
     TBSYS_LOG(WARN, "fail to trigger drop_table event. err[%d]", err);

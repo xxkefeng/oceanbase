@@ -29,7 +29,7 @@ namespace oceanbase
       OB_STAT_OBMYSQL = 5, // obmysql
       OB_STAT_COMMON = 6, // common
       OB_STAT_SSTABLE = 7, // sstable
-      OB_MAX_MOD_NUMBER, // max 
+      OB_MAX_MOD_NUMBER, // max
     };
 
     class ObNewScanner;
@@ -39,7 +39,7 @@ namespace oceanbase
       public:
         enum
         {
-          MAX_STATICS_PER_TABLE = 30,
+          MAX_STATICS_PER_TABLE = 100,
         };
         ObStat();
         uint64_t get_mod_id() const;
@@ -68,7 +68,7 @@ namespace oceanbase
         static int64_t subop(const int64_t lv, const int64_t rv);
       public:
         typedef const ObStat* const_iterator;
-        
+
         ObStatManager(ObRole server_type = OB_INVALID);
         virtual ~ObStatManager();
         ObStatManager & operator=(const ObStatManager &rhs);
@@ -77,10 +77,12 @@ namespace oceanbase
         ObRole get_server_type() const;
         void set_server_type(const ObRole server_type);
 
+        int add_new_stat(const ObStat& stat);
         int set_value(const uint64_t mod, const uint64_t table_id, const int32_t index, const int64_t value);
         int inc(const uint64_t mod, const uint64_t table_id, const int32_t index, const int64_t inc_value = 1);
         int reset();
         int get_stat(const uint64_t mod, const uint64_t table_id, ObStat* &stat) const;
+        int64_t get_value(const uint64_t mod, const uint64_t table_id, const int32_t index) const;
         const char* get_name(const uint64_t mod, int32_t index) const;
 
         int get_scanner(ObNewScanner &scanner) const;
@@ -95,6 +97,7 @@ namespace oceanbase
         const_iterator end(uint64_t mod) const;
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
+        tbsys::CThreadMutex lock_;
         ObRole server_type_;
         ObServer server_;
         int32_t stat_cnt_[OB_MAX_MOD_NUMBER];

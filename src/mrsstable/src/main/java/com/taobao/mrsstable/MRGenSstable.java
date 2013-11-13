@@ -18,6 +18,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -49,10 +50,9 @@ public class MRGenSstable extends Configured implements Tool {
 
   private static final MRLogger LOG = MRLogger.getLogger(MRGenSstable.class);
   private static String PRIMARY_DELIM;
+  private static String NULL_FLAG;
 
-  public enum ColumnType {
-    INT8, INT16, INT32, LONG, STRING, DATETIME
-  }
+  boolean writePartsFile = false;
 
   private static final String LIB_MRSSTABLE_NAME = "libmrsstable.so";
   private static final String LIB_NONE_OB_NAME = "libnone.so";
@@ -62,7 +62,8 @@ public class MRGenSstable extends Configured implements Tool {
   private static final String LIB_SNAPPY_OB_NAME = "libsnappy_1.0.so";
 
   private static final String RANGE_FILE_NAME = "config/range.lst";
-  private static final String PARTITIOIN_FILE_NAME = "_partition.lst";
+  private static final String PARTITIOIN_FILE_NAME = "_partition_file";
+  private static final String TABLE_INFO_FILE = "_table_info";
   private static final String CONFIG_DIR = "config";
 
   public static String getEscapeStr(Configuration conf, String confSetting, String defaultSetting) {
@@ -71,12 +72,38 @@ public class MRGenSstable extends Configured implements Tool {
   }
 
   public static class RowKeyDesc {
+    // type must same with common/ob_obj_type.h
+    public final int INT = 1;
+    public final int PRECISE_DATETIME = 5;
+    public final int VARCHAR = 6;
     private static final String INDEX_DELIM = "-";
     private int[] orgColumnIndex;
     private int[] columnType;
     private int[] size;
-    private int[] flag;
     private int length;
+    private int maxColumnId;
+    private SimpleDateFormat dfList[] = {
+        new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"),// 0
+        new SimpleDateFormat("yyyy-MM-dd"),         // 1
+        new SimpleDateFormat("yyyyMMdd HH:mm:ss"),  // 2
+        new SimpleDateFormat("yyyyMMddHHmmss"),     // 3
+        new SimpleDateFormat("yyyyMMdd")            // 4
+    };
+
+    public String getSimpleDesc() {
+      StringBuffer desc = new StringBuffer();
+      for(int i=0; i<length; ++i){
+        if (i!=0){
+          desc.append(",");
+        }
+        if (columnType[i] == VARCHAR) {
+          desc.append(String.format("%d-%d", columnType[i], size[i]));
+        } else {
+          desc.append(String.format("%d", columnType[i]));
+        }
+      }
+      return desc.toString();
+    }
 
     void checkRowKeyDesc(String rowkeyDescStr) {
       StringBuffer desc = new StringBuffer();
@@ -84,10 +111,10 @@ public class MRGenSstable extends Configured implements Tool {
         if (i != 0) {
           desc.append(",");
         }
-        if (flag[i] == 1) {
-          desc.append(String.format("%d-%d-%d-%d", orgColumnIndex[i], columnType[i], size[i], flag[i]));
-        } else {
+        if (columnType[i] == VARCHAR) {
           desc.append(String.format("%d-%d-%d", orgColumnIndex[i], columnType[i], size[i]));
+        } else {
+          desc.append(String.format("%d-%d", orgColumnIndex[i], columnType[i]));
         }
       }
       String newRowkeyDescStr = desc.toString();
@@ -98,7 +125,7 @@ public class MRGenSstable extends Configured implements Tool {
     }
 
     public RowKeyDesc buildRowKeyDesc(JobConf conf) {
-      String rowkeyDescStr = conf.get("mrsstable.rowkey.desc", "0-0-0");
+      String rowkeyDescStr = conf.get("mrsstable.rowkey.desc", "");
       try {
         if (rowkeyDescStr.isEmpty()) {
           throw new InvalidParameterException("not mrsstable.rowkey.desc config found");
@@ -111,22 +138,35 @@ public class MRGenSstable extends Configured implements Tool {
         orgColumnIndex = new int[rowKeyDesc.length];
         columnType = new int[rowKeyDesc.length];
         size = new int[rowKeyDesc.length];
-        flag = new int[rowKeyDesc.length];
         length = rowKeyDesc.length;
 
         for (int i = 0; i < rowKeyDesc.length; i++) {
           String[] columnDesc = rowKeyDesc[i].split(INDEX_DELIM, -1);
-          if (columnDesc.length == 3 || columnDesc.length == 4) {
+          if (columnDesc.length == 2 || columnDesc.length == 3) {
             orgColumnIndex[i] = Integer.parseInt(columnDesc[0]);
             columnType[i] = Integer.parseInt(columnDesc[1]);
-            size[i] = Integer.parseInt(columnDesc[2]);
-            if (columnDesc.length == 4) {
-              if (Integer.parseInt(columnDesc[3]) != 1) {
-                throw new InvalidParameterException("the 4th column desc of rowkey could only be 1!");
-              }
-              flag[i] = 1;
+            if (columnDesc.length == 3){
+              size[i] = Integer.parseInt(columnDesc[2]);
             } else {
-              flag[i] = 0;
+              size[i] = 0;
+            }
+            // check size
+            int expectSize = -1;
+            switch(columnType[i]){
+            case INT:
+              expectSize = 0;
+              break;
+            case PRECISE_DATETIME:
+              expectSize = 0;
+              break;
+            case VARCHAR:
+              expectSize = size[i];
+              break;
+            default:
+              throw new InvalidParameterException("miss col type:" + columnType[i]);
+            }
+            if (expectSize != size[i]){
+              throw new InvalidParameterException("for rowkeyDesc ("+rowKeyDesc+")["+i+"] expect size["+expectSize+"] not equals to size["+size[i]+"]");
             }
           } else {
             throw new InvalidParameterException("each column desc of rowkey must include 3 part or 4 part");
@@ -139,7 +179,18 @@ public class MRGenSstable extends Configured implements Tool {
       assert (orgColumnIndex.length > 0);
 
       checkRowKeyDesc(rowkeyDescStr);
+      this.maxColumnId = 0;
+      for (int column : this.orgColumnIndex) {
+        if (this.maxColumnId < column) {
+          this.maxColumnId = column;
+        }
+      }
+
       return this;
+    }
+
+    public int getMaxColumnId() {
+      return this.maxColumnId;
     }
 
     public int[] getOrgColumnIndex() {
@@ -148,6 +199,102 @@ public class MRGenSstable extends Configured implements Tool {
 
     public int[] getColumnType() {
       return columnType;
+    }
+
+    public SimpleDateFormat getDateFromat(String field){
+      SimpleDateFormat df;
+
+      if (field.indexOf("-") > -1) {
+        if (field.indexOf(":") > -1) {
+          df = dfList[0];//new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        } else {
+          df = dfList[1];//new SimpleDateFormat("yyyy-MM-dd");
+        }
+      } else {
+        if (field.indexOf(":") > -1) {
+          df = dfList[2];//new SimpleDateFormat("yyyyMMdd HH:mm:ss");
+        } else if (field.length() > 8) {
+          df = dfList[3];//new SimpleDateFormat("yyyyMMddHHmmss");
+        } else {
+          df = dfList[4];//new SimpleDateFormat("yyyyMMdd");
+        }
+      }
+      return df;
+    }
+
+    public boolean isRowkeyValid(String[] vec) {
+      boolean is_valid = true;
+
+      if (vec.length <= maxColumnId){
+        is_valid = false;
+      } else {
+        for (int i = 0; i < orgColumnIndex.length; ++i) {
+          if (!checkField(vec[orgColumnIndex[i]], i)){
+            is_valid = false;
+            break;
+          }
+        }
+      }
+
+      return is_valid;
+    }
+
+    public boolean checkField(String field, int idx)
+    {
+      boolean is_valid = true;
+      if (idx >= length)
+      { // should not reach here, if reach here, maybe come code logic is wrong
+        is_valid = false;
+        throw new InvalidParameterException("Parameter idx["+idx+"] is must less than length["+length+"]");
+      }
+      else
+      {
+        switch(columnType[idx]){
+        case INT:
+        {
+          try {
+            long value = Long.parseLong(field);
+            if (value < (-9223372036854775807L-1) || value > 9223372036854775807L){
+              is_valid = false;
+            }
+          } catch (NumberFormatException e) {
+            System.out.println("failed to parse int [" + field + "]");
+            is_valid = false;
+          }
+          break;
+        }
+        case VARCHAR:
+        {
+          if (field.length() > size[idx]){
+            is_valid = false;
+            System.out.println("varchar is too long(limit="+size[idx]+") [" + field + "]");
+          }
+          else if (field.length() == 1 && field.equals(NULL_FLAG))
+          {
+            is_valid = false;
+            System.out.println("rowkey must not have null field [" + field + "]");
+          }
+          break;
+        }
+        case PRECISE_DATETIME:
+        {
+          SimpleDateFormat df = this.getDateFromat(field);
+
+          try {
+            df.parse(field);
+          } catch (ParseException e) {
+            System.out.println("failed to parse datetime [" + field + "]");
+            is_valid = false;
+          }
+          break;
+        }
+        default:
+          // should not reach here, if reach here, maybe come code logic is wrong
+          is_valid = false;
+          throw new InvalidParameterException("miss col type:" + columnType[idx]);
+        }
+      }
+      return is_valid;
     }
   }
 
@@ -159,22 +306,11 @@ public class MRGenSstable extends Configured implements Tool {
     RowKeyDesc rowKeyDesc;
     private int[] keyColumnIndex;
     private int minValueColumnIdx = 0;
-    boolean isSkipInvalidRow = true;
+    boolean isSkipInvalidRow = false;
 
     public void map(Object key, Text value, OutputCollector<Text, Text> output, Reporter reporter) throws IOException {
       String[] vec = value.toString().split(PRIMARY_DELIM, -1);
-      if (vec.length <= minValueColumnIdx) {
-        String msg = "value hasn't enough columns " + "vec.length=" + vec.length + "minValueColumnNum="
-            + (minValueColumnIdx + 1);
-        if (isSkipInvalidRow) {
-          LOG.warn(msg);
-          return;
-        } else {
-          throw new IOException(msg);
-        }
-      }
-
-      if (!isRowkeyValid(vec)) {
+      if (!rowKeyDesc.isRowkeyValid(vec)) {
         StringBuilder err_sb = new StringBuilder("invalid rowkey, skip this line, ");
         for (int i = 0; i < keyColumnIndex.length; i++) {
           err_sb.append("[index:" + i + ", type:" + rowKeyDesc.getColumnType()[i] + ", val:" + vec[keyColumnIndex[i]]
@@ -199,9 +335,9 @@ public class MRGenSstable extends Configured implements Tool {
     @Override
     public void configure(JobConf conf) {
       PRIMARY_DELIM = getEscapeStr(conf, "mrsstable.primary.delimeter", "\001");
-      String skipInvalidRow = conf.get("mrsstable.skip.invalid.row", "1");
-      if (skipInvalidRow.equalsIgnoreCase("0")) {
-        isSkipInvalidRow = false;
+      String skipInvalidRow = conf.get("mrsstable.skip.invalid.row", "0");
+      if (skipInvalidRow.equalsIgnoreCase("1")) {
+        isSkipInvalidRow = true;
       }
       rowKeyDesc = new RowKeyDesc();
       keyColumnIndex = rowKeyDesc.buildRowKeyDesc(conf).getOrgColumnIndex();
@@ -213,51 +349,6 @@ public class MRGenSstable extends Configured implements Tool {
           minValueColumnIdx = keyColumnIndex[i];
         }
       }
-    }
-
-    public boolean isRowkeyValid(String[] vec) {
-      boolean is_valid = true;
-
-      for (int i = 0; i < keyColumnIndex.length; ++i) {
-        if (rowKeyDesc.getColumnType()[i] == ColumnType.LONG.ordinal()
-            || rowKeyDesc.getColumnType()[i] == ColumnType.INT32.ordinal()
-            || rowKeyDesc.getColumnType()[i] == ColumnType.INT16.ordinal()
-            || rowKeyDesc.getColumnType()[i] == ColumnType.INT8.ordinal()) {
-          try {
-            Long.parseLong(vec[keyColumnIndex[i]]);
-          } catch (NumberFormatException e) {
-            is_valid = false;
-            break;
-          }
-        } else if (rowKeyDesc.getColumnType()[i] == ColumnType.DATETIME.ordinal()) {
-          SimpleDateFormat df;
-
-          if (vec[keyColumnIndex[i]].indexOf("-") > -1) {
-            if (vec[keyColumnIndex[i]].indexOf(":") > -1) {
-              df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            } else {
-              df = new SimpleDateFormat("yyyy-MM-dd");
-            }
-          } else {
-            if (vec[keyColumnIndex[i]].indexOf(":") > -1) {
-              df = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
-            } else if (vec[keyColumnIndex[i]].length() > 8) {
-              df = new SimpleDateFormat("yyyyMMddHHmmss");
-            } else {
-              df = new SimpleDateFormat("yyyyMMdd");
-            }
-          }
-
-          try {
-            df.parse(vec[keyColumnIndex[i]]);
-          } catch (ParseException e) {
-            is_valid = false;
-            break;
-          }
-        }
-      }
-
-      return is_valid;
     }
 
     @Override
@@ -289,6 +380,7 @@ public class MRGenSstable extends Configured implements Tool {
   public static class TaggedKeyComparator extends Configured implements RawComparator<Text> {
 
     private static String PRIMARY_DELIM;
+    private static String NULL_FLAG;
     RowKeyDesc rowKeyDesc;
     private boolean is_inited = false;
 
@@ -297,7 +389,14 @@ public class MRGenSstable extends Configured implements Tool {
         if (PRIMARY_DELIM == null) {
           PRIMARY_DELIM = getEscapeStr(getConf(), "mrsstable.primary.delimeter", "\001");
         }
-
+        if (NULL_FLAG == null) {
+          NULL_FLAG = getEscapeStr(getConf(), "mrsstable.primary.nullflag", "\002");
+        }
+        if (PRIMARY_DELIM.equals(NULL_FLAG))
+        { // should not reach here
+          LOG.error("PRIMARY_DELIM must not equal with NULL_FLAG, PRIMARY_DELIM=["+PRIMARY_DELIM+
+              "] NULL_FLAG=["+NULL_FLAG+"]");
+        }
         if (rowKeyDesc == null) {
           rowKeyDesc = new RowKeyDesc();
           rowKeyDesc.buildRowKeyDesc((JobConf) getConf());
@@ -319,24 +418,8 @@ public class MRGenSstable extends Configured implements Tool {
     }
 
     public Date getTaggedDate(String str) {
-      SimpleDateFormat df;
+      SimpleDateFormat df = rowKeyDesc.getDateFromat(str);
       Date date = null;
-
-      if (str.indexOf("-") > -1) {
-        if (str.indexOf(":") > -1) {
-          df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        } else {
-          df = new SimpleDateFormat("yyyy-MM-dd");
-        }
-      } else {
-        if (str.indexOf(":") > -1) {
-          df = new SimpleDateFormat("yyyyMMdd HH:mm:ss");
-        } else if (str.length() > 8) {
-          df = new SimpleDateFormat("yyyyMMddHHmmss");
-        } else {
-          df = new SimpleDateFormat("yyyyMMdd");
-        }
-      }
 
       try {
         date = df.parse(str);
@@ -405,20 +488,18 @@ public class MRGenSstable extends Configured implements Tool {
       }
 
       for (int i = 0; i < rowKeyDesc.length; ++i) {
-        if (rowKeyDesc.getColumnType()[i] == ColumnType.LONG.ordinal()
-            || rowKeyDesc.getColumnType()[i] == ColumnType.INT32.ordinal()
-            || rowKeyDesc.getColumnType()[i] == ColumnType.INT16.ordinal()
-            || rowKeyDesc.getColumnType()[i] == ColumnType.INT8.ordinal()) {
+        if (rowKeyDesc.getColumnType()[i] == rowKeyDesc.INT) {
           long left_val = getTaggedInteger(left_columns[i]);
           long right_val = getTaggedInteger(right_columns[i]);
           if (left_val != right_val) {
-            if ((left_val >= 0 && right_val >= 0) || (left_val < 0 && right_val < 0)) {
-              return left_val - right_val > 0 ? 1 : -1;
-            } else if ((left_val >= 0 && right_val < 0) || (left_val < 0 && right_val >= 0)) {
-              return left_val - right_val < 0 ? 1 : -1;
+            if (left_val < right_val){
+              return -1;
+            }
+            if (left_val > right_val){
+              return 1;
             }
           }
-        } else if (rowKeyDesc.getColumnType()[i] == ColumnType.STRING.ordinal()) {
+        } else if (rowKeyDesc.getColumnType()[i] == rowKeyDesc.VARCHAR) {
           int ret = 0;
           try {
             ret = bytesCompare(left_columns[i].getBytes("UTF-8"), right_columns[i].getBytes("UTF-8"));
@@ -430,7 +511,7 @@ public class MRGenSstable extends Configured implements Tool {
           if (0 != ret) {
             return ret;
           }
-        } else if (rowKeyDesc.getColumnType()[i] == ColumnType.DATETIME.ordinal()) {
+        } else if (rowKeyDesc.getColumnType()[i] == rowKeyDesc.PRECISE_DATETIME) {
           Date left_val = getTaggedDate(left_columns[i]);
           Date right_val = getTaggedDate(right_columns[i]);
           int ret = left_val.compareTo(right_val);
@@ -450,7 +531,6 @@ public class MRGenSstable extends Configured implements Tool {
    */
   public static class TotalOrderPartitioner implements Partitioner<Text, Text> {
 
-    private static String RANGE_FILE_DELIM;
     private Text[] splitPoints;
     private Node<Text> partitions;
     private Node<Text> ranges;
@@ -472,9 +552,8 @@ public class MRGenSstable extends Configured implements Tool {
       try {
         final Path partFile = new Path(PARTITIOIN_FILE_NAME);
         final Path rangeFile = new Path(RANGE_FILE_NAME);
-        final FileSystem fs = FileSystem.getLocal(job); // assume in
-                                                        // DistributedCache
-        RANGE_FILE_DELIM = getEscapeStr(job, "mrsstable.range.file.delimeter", " ");
+        final FileSystem fs = FileSystem.getLocal(job); // assume in DistributedCache
+        PRIMARY_DELIM = getEscapeStr(job, "mrsstable.primary.delimeter", "\001");
 
         RawComparator<Text> comparator = (RawComparator<Text>) job.getOutputKeyComparator();
         String samplerType = job.get("mrsstable.presort.sampler", "specify");
@@ -490,7 +569,20 @@ public class MRGenSstable extends Configured implements Tool {
 
         for (int i = 0; i < splitPoints.length - 1; ++i) {
           if (comparator.compare(splitPoints[i], splitPoints[i + 1]) >= 0) {
-            throw new IOException("Split points are out of order");
+            String[] left = splitPoints[i].toString().split(PRIMARY_DELIM, -1);
+            String[] right = splitPoints[i + 1].toString().split(PRIMARY_DELIM, -1);
+            StringBuffer msg = new StringBuffer();
+            msg.append("Split points are out of order, splitPoints[i]:");
+            for (String s: left){
+              msg.append(s);
+              msg.append(" ");
+            }
+            msg.append("splitPoints[i + 1]:");
+            for (String s: right){
+              msg.append(s);
+              msg.append(" ");
+            }
+            throw new IOException(msg.toString());
           }
         }
 
@@ -573,10 +665,11 @@ public class MRGenSstable extends Configured implements Tool {
 
     /**
      * Get the path to the SequenceFile storing the sorted partition keyset.
-     * 
+     * @throws IOException
+     *
      * @see #setPartitionFile(JobConf,Path)
      */
-    public static String getPartitionFile(JobConf job) {
+    public static String getPartitionFile(JobConf job) throws IOException {
       return job.get("total.order.partitioner.path", PARTITIOIN_FILE_NAME);
     }
 
@@ -648,7 +741,7 @@ public class MRGenSstable extends Configured implements Tool {
       Text value = reader.createValue();
       ArrayList<Text> parts = new ArrayList<Text>();
       while (reader.next(key, value)) {
-        String rowkey = value.toString().split(RANGE_FILE_DELIM, 2)[0];
+        String rowkey = value.toString();
         parts.add(new Text(rowkey));
         key = reader.createKey();
       }
@@ -660,24 +753,29 @@ public class MRGenSstable extends Configured implements Tool {
   private void initPartitioner(JobConf conf) throws IOException, URISyntaxException {
     // Set paramters
     PRIMARY_DELIM = getEscapeStr(conf, "mrsstable.primary.delimeter", "\001");
+    NULL_FLAG = getEscapeStr(conf, "mrsstable.primary.nullflag", "\002");
+
+    if (PRIMARY_DELIM.equals(NULL_FLAG))
+    {
+      throw new IOException("PRIMARY_DELIM must not equal with NULL_FLAG, PRIMARY_DELIM=["+PRIMARY_DELIM+
+          "] NULL_FLAG=["+NULL_FLAG+"]");
+    }
+
+    boolean isSkipInvalidRow = false;
+    String skipInvalidRow = conf.get("mrsstable.skip.invalid.row", "1");
+    if (skipInvalidRow.equalsIgnoreCase("1")) {
+      isSkipInvalidRow = true;
+    }
     RowKeyDesc rowKeyDesc = new RowKeyDesc();
     rowKeyDesc.buildRowKeyDesc(conf);
 
     // Sample original files
-    Path input = FileInputFormat.getInputPaths(conf)[0];
-    input = input.makeQualified(input.getFileSystem(conf));
-    Path partitionFile = new Path(input, PARTITIOIN_FILE_NAME);
-    if (!conf.get("mrsstable.partition.file", "").equals("")) {
-      SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyyMMddhhmmssSSS");
-      partitionFile = new Path(conf.get("mrsstable.partition.file", "") + dateFormatter.format(new Date()));
-      LOG.info("Partition Filename is " + partitionFile.toString());
-    }
     conf.setPartitionerClass(TotalOrderPartitioner.class);
 
     int reduceNum = conf.getNumReduceTasks();
     TextInputSampler.Sampler sampler = null;
-    boolean writePartsFile = false;
     String samplerType = conf.get("mrsstable.presort.sampler", "specify");
+
     if (samplerType.equals("split")) {
       LOG.info("Using split sampler...");
       String defaultNumSampleStr = Integer.toString(reduceNum * 10);
@@ -686,10 +784,9 @@ public class MRGenSstable extends Configured implements Tool {
       String defaultMaxSplitStr = Integer.toString(reduceNum / 5);
       String maxSplitStr = conf.get("mrsstable.max.sample.split", defaultMaxSplitStr);
       int maxSampleSplit = Integer.parseInt(maxSplitStr);
-      sampler = new TextInputSampler.SplitSampler(numSample, maxSampleSplit, rowKeyDesc.getOrgColumnIndex(),
-          PRIMARY_DELIM);
+      sampler = new TextInputSampler.SplitSampler(numSample, maxSampleSplit, rowKeyDesc,
+          PRIMARY_DELIM, isSkipInvalidRow);
       writePartsFile = true;
-
     } else if (samplerType.equals("interval")) {
       LOG.info("Using interval sampler...");
       String defaultChoosePercentpStr = Double.toString(0.001);
@@ -699,10 +796,9 @@ public class MRGenSstable extends Configured implements Tool {
       String defaultMaxSplitStr = Integer.toString(maxSplits);
       String maxSplitStr = conf.get("mrsstable.max.sample.split", defaultMaxSplitStr);
       int maxSampleSplit = Integer.parseInt(maxSplitStr);
-      sampler = new TextInputSampler.IntervalSampler(choosePercent, maxSampleSplit, rowKeyDesc.getOrgColumnIndex(),
-          PRIMARY_DELIM);
+      sampler = new TextInputSampler.IntervalSampler(choosePercent, maxSampleSplit, rowKeyDesc,
+          PRIMARY_DELIM, isSkipInvalidRow);
       writePartsFile = true;
-
     } else if (samplerType.equals("random")) {
       LOG.info("Using random sampler...");
       String defaultChoosePercentpStr = Double.toString(0.001);
@@ -715,7 +811,7 @@ public class MRGenSstable extends Configured implements Tool {
       String maxSplitStr = conf.get("mrsstable.max.sample.split", defaultMaxSplitStr);
       int maxSampleSplit = Integer.parseInt(maxSplitStr);
       sampler = new TextInputSampler.RandomSampler(choosePercent, numSample, maxSampleSplit,
-          rowKeyDesc.getOrgColumnIndex(), PRIMARY_DELIM);
+          rowKeyDesc, PRIMARY_DELIM, isSkipInvalidRow);
       writePartsFile = true;
 
     } else {
@@ -723,6 +819,7 @@ public class MRGenSstable extends Configured implements Tool {
       LOG.info("User specify range list...");
       TotalOrderPartitioner.setPartitionFile(conf, new Path(RANGE_FILE_NAME));
     }
+
 
     String[] archivesStr = conf.get("tmparchives", "").split(",", -1);
     if (archivesStr.length == 0 || archivesStr[0].equals("")) {
@@ -733,6 +830,16 @@ public class MRGenSstable extends Configured implements Tool {
     }
 
     if (writePartsFile) {
+      Path input = FileInputFormat.getInputPaths(conf)[0];
+      FileSystem fs = input.getFileSystem(conf);
+      input = input.makeQualified(input.getFileSystem(conf));
+      Path partitionFile = new Path(input, PARTITIOIN_FILE_NAME);
+      if (!conf.get("mrsstable.partition.file", "").equals("")) {
+        SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyyMMddhhmmssSSS");
+        partitionFile = new Path(conf.get("mrsstable.partition.file", "") + "_" + dateFormatter.format(new Date()));
+        LOG.info("Partition Filename is " + partitionFile.toString());
+      }
+
       TotalOrderPartitioner.setPartitionFile(conf, partitionFile);
       TextInputSampler.writePartitionFile(conf, sampler);
 
@@ -742,11 +849,60 @@ public class MRGenSstable extends Configured implements Tool {
     }
   }
 
-  private void deletePartitionFile(JobConf conf) throws IOException {
+  private void mvPartitionFile(JobConf conf) throws IOException {
     Path partitionFile = new Path(TotalOrderPartitioner.getPartitionFile(conf));
-    LOG.info("Delete Partition File " + partitionFile.toString());
+    Path outputDir = FileOutputFormat.getOutputPath(conf);
+    Path newPartitionFile = new Path(outputDir, PARTITIOIN_FILE_NAME);
     FileSystem fs = partitionFile.getFileSystem(conf);
-    fs.delete(partitionFile, false);
+    if (!fs.rename(partitionFile, newPartitionFile)) {
+      String msg = "failed mv Partition File from " + partitionFile.toString() + " to " + newPartitionFile.toString();
+      LOG.error(msg);
+      throw new IOException(msg);
+    }
+    else{
+      LOG.info("mv Partition File from " + partitionFile.toString() + " to " + newPartitionFile.toString());
+    }
+  }
+  
+  private void writeTableInfo(JobConf conf) throws IOException {
+    Path outputDir = FileOutputFormat.getOutputPath(conf);
+    Path tableInfoFile = new Path(outputDir, TABLE_INFO_FILE);
+    LOG.info("write table info file: " + tableInfoFile.toString());
+    FileSystem fs = tableInfoFile.getFileSystem(conf);
+    if (fs.exists(tableInfoFile)) {
+      String msg = tableInfoFile.toString() + " should not exist!";
+      LOG.error(msg);
+      throw new IOException(msg);
+    }
+    
+    FSDataOutputStream fileOut = fs.create(tableInfoFile);
+    
+    // write table id
+    String table_id = "table_id=" + conf.get("mrsstable.table.id", "0") + "\n";
+    fileOut.write(table_id.getBytes("UTF-8"));    
+    
+    // write rowkey desc
+    RowKeyDesc rowKeyDesc;
+    rowKeyDesc = new RowKeyDesc();
+    rowKeyDesc.buildRowKeyDesc(conf);
+    String rowkeyDescStr = "rowkey_desc=" + rowKeyDesc.getSimpleDesc() + "\n";
+    fileOut.write(rowkeyDescStr.getBytes("UTF-8"));    
+    
+    // sstable_version
+    String sstable_verion = "sstable_version=" + conf.get("mrsstable.sstable.version", "-1") + "\n";
+    fileOut.write(sstable_verion.getBytes("UTF-8"));
+    
+    // write delim
+    String delimStr = getEscapeStr(conf, "mrsstable.primary.delimeter", "\001");
+    if (delimStr.length() != 1){
+      throw new IllegalArgumentException("delim length["+delimStr.length()+"] must = 1");
+    }
+    char delimChar = delimStr.charAt(0);
+      
+    String delim = "delim=" + (int)delimChar + "\n";
+    fileOut.write(delim.getBytes("UTF-8"));
+        
+    fileOut.close();
   }
 
   private void initDistributeCache(JobConf conf) throws URISyntaxException {
@@ -837,21 +993,39 @@ public class MRGenSstable extends Configured implements Tool {
       System.err.printf("Unsupport input format: " + inputFormat);
       return -1;
     }
+    
+    String table_name = new Path(args[1]).getName();
+    String app_name = new Path(args[1]).getParent().getParent().getName();
 
     conf.setOutputFormat(SSTableOutputformat.class);
     conf.setOutputKeyClass(Text.class);
     conf.setMapperClass(TokenizerMapper.class);
     conf.setReducerClass(SSTableReducer.class);
     conf.setOutputKeyComparatorClass(TaggedKeyComparator.class);
-
+    
     if (conf.getJobName().isEmpty()) {
-      conf.setJobName("MRGenSstable");
+      String jobName = conf.get("mrsstable.jobname", "mrsstable");
+      conf.setJobName(jobName);
+    }
+    String samplerType = conf.get("mrsstable.presort.sampler", "specify");
+    if (!samplerType.equals("specify")){
+      String path = conf.get("mrsstable.partition.file", "");
+      if(path.isEmpty()){
+        System.err.printf("mrsstable.partition.file is not set");
+        return -1;
+      }
+      else
+      {
+        path += app_name + "_" + table_name;
+        conf.set("mrsstable.partition.file", path);        
+      }
     }
     initDistributeCache(conf);
     initPartitioner(conf);
     DistributedCache.createSymlink(conf);
     RunningJob job = JobClient.runJob(conf);
-    deletePartitionFile(conf);
+    mvPartitionFile(conf);
+    writeTableInfo(conf);
 
     if (job.getJobState() != JobStatus.SUCCEEDED) {
       return -1;

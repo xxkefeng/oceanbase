@@ -51,12 +51,13 @@ namespace oceanbase
         int64_t get_total_capacity(void) const;
         int64_t get_total_used(void) const;
         void add_sstable_num(const int32_t disk_no,const int32_t num);
-        void set_disk_status(const int32_t disk_no,const ObDiskStatus stat);
+        int set_disk_status(const int32_t disk_no,const ObDiskStatus stat);
         const int32_t *get_disk_no_array(int32_t& disk_num) const;
+        bool is_disk_avail(const int32_t disk_no) const;
         void dump();
       private:
         void reset();
-        int32_t find_disk(const int32_t disk_no);
+        int32_t find_disk(const int32_t disk_no) const;
         static const char *PROC_MOUNTS_FILE;
         static const int32_t PROC_MOUNTS_FILE_SIZE;
         bool is_mount_point(const char *path) const;

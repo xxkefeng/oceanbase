@@ -1,5 +1,5 @@
     AC_INIT([OceanBase],
-            [0.4.1.2],
+            [0.4.2.9],
             [qushan@taobao.com],
             [oceanbase],
 			[http://oceanbase.taobao.org/])
@@ -9,11 +9,25 @@
 
     AC_PROG_LIBTOOL
     AC_PROG_RANLIB
-    AM_INIT_AUTOMAKE(oceanbase, 0.4.1.2)
+    AM_INIT_AUTOMAKE(oceanbase, 0.4.2.9)
     ac_default_prefix=${HOME}/oceanbase_bin# for convenience
     AC_PROG_CXX
     AC_LANG([C++])
     AC_PROG_CC
+
+	AC_MSG_CHECKING([drc-root])
+    AC_ARG_WITH([drc-root],
+           AS_HELP_STRING([--with-drc-root],
+           [drc installation path]),
+           DRC_ROOT=${withval})
+
+    if  ! test -d "${DRC_ROOT}"; then
+       AC_MSG_ERROR([DRC_ROOT have not been set])
+       exit 1;
+    fi
+	AC_MSG_RESULT([${DRC_ROOT}])
+    dnl drc include path supplied
+    AC_SUBST([DRC_ROOT])
 
 	AC_MSG_CHECKING([tblib-root])
     AC_ARG_WITH([tblib-root],
@@ -120,7 +134,7 @@
 
     AC_ARG_WITH([preload],
            AS_HELP_STRING([--with-preload],
-		          [with preload (default is YES)]),
+		          [with preload (default is NO)]),
 	   		  [
 			    if test "$withval" = "yes"; then
 			    	with_preload=yes
@@ -128,8 +142,7 @@
 			    fi
 			  ],
 			  [
-                            with_preload=yes
-                            AM_CXXFLAGS="${AM_CXXFLAGS} -D__ENABLE_PRELOAD__"
+			  with_preload=no
                           ]
 	   )
     AC_ARG_WITH([coverage],
@@ -215,9 +228,11 @@
 
     AC_CONFIG_FILES([\
                      Makefile \
+                     script/Makefile \
+                     script/supervisor/Makefile \
                      tools/Makefile \
-                                 tools/syschecker/Makefile \
-                                 tools/syschecker/client/Makefile \
+                     tools/syschecker/Makefile \
+                     tools/syschecker/client/Makefile \
                      tools/dump/Makefile \
                      src/Makefile \
                      src/common/Makefile \
@@ -227,9 +242,12 @@
                      src/common/roottable/Makefile \
                      src/rootserver/Makefile \
                      src/chunkserver/Makefile \
+                     src/proxyserver/Makefile \
                      src/updateserver/Makefile \
                      src/mergeserver/Makefile \
+                     src/importserver/Makefile \
                      src/sstable/Makefile \
+                     src/mrsstable/Makefile \
                      src/lsync/Makefile \
                      src/compactsstable/Makefile \
                      src/compactsstablev2/Makefile \
@@ -240,6 +258,7 @@
                      src/client/obsql/src/Makefile \
                      src/client/obsql/demo/Makefile \
                      src/client/obsql/test/Makefile \
+                     src/common/timezone/Makefile \
                      tests/Makefile \
                      tests/chunkserver/Makefile \
                      tests/common/Makefile \
@@ -254,13 +273,16 @@
                      tests/sstable/Makefile \
                      tests/compactsstablev2/Makefile \
                      tests/lsync/Makefile \
+                     tests/liboblog/Makefile \
                      tools/log_tool/Makefile \
                      tools/mixed_test/Makefile \
                      tools/newsqltest/Makefile \
                      tools/sstable_builder/Makefile \
                      tools/compactsstablev2/Makefile \
                      tools/getquerytest/Makefile \
-                     tools/profiler_helper/Makefile\
-                     tools/mysqltest/Makefile
+                     tools/liboblog/Makefile \
+                     tools/mysqltest/Makefile\
+                     tools/benchmark/runner/Makefile\
+					 tools/benchmark/Makefile
                      ])
     AC_OUTPUT

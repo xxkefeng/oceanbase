@@ -1,6 +1,6 @@
 #!/bin/bash
-sudo yum install lzo snappy-devel libaio-devel openssl-devel mysql-devel numactl-devel
-sudo yum install -b test t-csrd-tbnet-devel t_libeasy-devel
+sudo yum install lzo libaio-devel openssl-devel mysql-devel numactl-devel
+sudo yum install -b test snappy t-csrd-tbnet-devel t_libeasy-devel tb-lua-dev t-db-congo-drcmessage
 # install gtest
 GTEST_SRC='http://googletest.googlecode.com/files/gtest-1.6.0.zip'
 wget $GTEST_SRC -O gtest-1.6.0.zip
@@ -23,4 +23,4 @@ sudo ./libtool --mode=install cp lib/libgmock.la /usr/local/lib/
 cd ..
 # done
 echo "Add the follow lines into your .bashrc:"
-echo -e "\nexport TBLIB_ROOT=/opt/csr/common\nexport EASY_ROOT=/usr\nexport EASY_LIB_PATH=/usr/lib64\n"
+echo -e "\nexport TBLIB_ROOT=/opt/csr/common\nexport EASY_ROOT=/usr\nexport EASY_LIB_PATH=/usr/lib64\nexport DRC_ROOT=/home/ds\nexport LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:/home/ds/lib64/"

@@ -40,9 +40,28 @@
 #include "common/ob_tablet_info.h"
 #include "common/data_buffer.h"
 #include "common/ob_schema.h"
+#include "common/priority_packet_queue_thread.h"
+
+#define APPLY
+#define SCAN
+#define GET
+#define COUNT
+#define TIMEU
+
+#define get_stat_num(level, req_type, stat_type) \
+  (common::PriorityPacketQueueThread::HIGH_PRIV == level) \
+    ? UPS_STAT_HL_##req_type##_##stat_type \
+    : (common::PriorityPacketQueueThread::LOW_PRIV == level) \
+      ? UPS_STAT_LL_##req_type##_##stat_type \
+      : UPS_STAT_NL_##req_type##_##stat_type
 
 namespace oceanbase
 {
+  namespace common
+  {
+    class ObGetParam;
+    class ObScanParam;
+  };
   namespace updateserver
   {
     class CommonSchemaManagerWrapper;
@@ -75,11 +94,71 @@ namespace oceanbase
     extern int64_t get_oldest_memtable_size();
     extern void submit_load_bypass(const common::ObPacket *packet = NULL);
     extern void submit_immediately_drop();
+    extern void submit_check_sstable_checksum(const uint64_t sstable_id, const uint64_t checksum);
     extern uint64_t get_create_time_column_id(const uint64_t table_id);
     extern uint64_t get_modify_time_column_id(const uint64_t table_id);
     extern int get_ups_schema_mgr(CommonSchemaManagerWrapper& schema_mgr);
     extern void set_client_mgr_err(const int err);
     extern int64_t get_memtable_hash_buckets_size();
+    extern bool &tc_is_replaying_log();
+    extern int64_t get_time(const char *str);
+    extern int64_t ob_atoll(const char *str);
+    typedef int64_t (*str_to_int_pt) (const char *str);
+    extern int64_t split_string(const char *str, int64_t *values, str_to_int_pt *callbacks, const int64_t size, const char d = ';');
+    bool is_inmemtable(uint64_t table_id);
+    uint64_t get_table_id(const common::ObGetParam& get_param);
+    uint64_t get_table_id(const common::ObScanParam& scan_param);
+    inline void rebind_cpu(const int64_t cpu)
+    {
+      static __thread int64_t bind_cpu = 0;
+      static __thread int64_t have_bind = false;
+      static const int64_t core_num = sysconf(_SC_NPROCESSORS_ONLN);
+      if (!have_bind
+          || bind_cpu != cpu)
+      {
+        if (0 <= cpu
+            && core_num > cpu)
+        {
+          int64_t cpu2bind = cpu % core_num;
+          cpu_set_t cpuset;
+          CPU_ZERO(&cpuset);
+          CPU_SET(cpu2bind, &cpuset);
+          int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+          TBSYS_LOG(INFO, "rebind setaffinity tid=%ld ret=%d cpu=%ld",
+                    GETTID(), ret, cpu2bind);
+          bind_cpu = cpu2bind;
+          have_bind = true;
+        }
+      }
+    }
+    inline void rebind_cpu(const int64_t cpu_start, const int64_t cpu_end, volatile uint64_t &cpu)
+    {
+      static __thread int64_t bind_cpu_start = 0;
+      static __thread int64_t bind_cpu_end = 0;
+      static __thread int64_t have_bind = false;
+      static const int64_t core_num = sysconf(_SC_NPROCESSORS_ONLN);
+      if (!have_bind
+          || bind_cpu_start != cpu_start
+          || bind_cpu_end != cpu_end)
+      {
+        if (0 <= cpu_start
+            && cpu_start <= cpu_end
+            && core_num > cpu_end)
+        {
+          //static volatile uint64_t cpu = 0;
+          uint64_t cpu2bind = (__sync_fetch_and_add(&cpu, 1) % (cpu_end - cpu_start + 1)) + cpu_start;
+          cpu_set_t cpuset;
+          CPU_ZERO(&cpuset);
+          CPU_SET(cpu2bind, &cpuset);
+          int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+          TBSYS_LOG(INFO, "rebind setaffinity tid=%ld ret=%d cpu=%ld start=%ld end=%ld",
+                    GETTID(), ret, cpu2bind, cpu_start, cpu_end);
+          bind_cpu_start = cpu_start;
+          bind_cpu_end = cpu_end;
+          have_bind = true;
+        }
+      }
+    }
 
     struct GConf
     {
@@ -115,6 +194,29 @@ namespace oceanbase
       public:
         virtual int next_obj() = 0;
         virtual int get_obj(common::ObObj **obj) = 0;
+    };
+
+    template <class T>
+    const char *print_array(const T &array, const int64_t length, const char *deli = ",")
+    {
+      static const int64_t BUFFER_NUM = 5;
+      static const int64_t BUFFER_SIZE = 1024;
+      static __thread char buffers[BUFFER_NUM][BUFFER_SIZE];
+      static __thread uint64_t i = 0;
+      char *buffer = buffers[i++ % BUFFER_NUM];
+      int64_t pos = 0;
+      for (int64_t i = 0; i < length; i++)
+      {
+        if ((length - 1) > i)
+        {
+          databuff_printf(buffer, BUFFER_SIZE, pos, "%s%s", to_cstring(array[i]), deli);
+        }
+        else
+        {
+          databuff_printf(buffer, BUFFER_SIZE, pos, "%s", to_cstring(array[i]));
+        }
+      }
+      return buffer;
     };
 
     template <class T>
@@ -330,7 +432,6 @@ namespace oceanbase
         return (a.range_.end_key_ < b.range_.end_key_);
       };
     };
-
   }
 }
 

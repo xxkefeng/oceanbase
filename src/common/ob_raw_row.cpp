@@ -16,8 +16,9 @@
 #include "ob_raw_row.h"
 using namespace oceanbase::common;
 ObRawRow::ObRawRow()
-  :cells_count_(0), reserved1_(0), reserved2_(0)
+  : cells_((ObObj*)cells_buffer_), cells_count_(0), reserved1_(0), reserved2_(0)
 {
+  memset(cells_buffer_, 0, sizeof(cells_buffer_));
 }
 
 ObRawRow::~ObRawRow()

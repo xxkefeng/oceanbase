@@ -177,7 +177,7 @@ int oceanbase::mergeserver::ObMsSqlSortedOperator::add_sharding_result(ObNewScan
       }
       else
       {
-        last_row_key = cs_tablet_range.end_key_;
+        last_row_key = (cs_tablet_range.end_key_ < query_range.end_key_) ? cs_tablet_range.end_key_ : query_range.end_key_;
 
         if (last_row_key.is_max_row())
         {

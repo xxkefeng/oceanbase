@@ -30,10 +30,10 @@ deploy ob1.major_freeze;
 
 # master cluster ups restart
 let $master_ups=deploy_get_value(ob1.get_master_ups);
-let $slave_ups=deploy_get_value(ob1.get_master_ups);
+let $slave_ups=deploy_get_value(ob1.get_slave_ups);
 deploy ob1.$master_ups.restart;
+sleep 10;
 deploy ob1.$slave_ups.restart;
-
 sleep 10;
 
 #sql

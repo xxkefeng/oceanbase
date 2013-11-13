@@ -18,7 +18,10 @@ void usage(const char *prog)
           "\t-q [queue size, default 1000]\n"
           "\t[-f datafile]\n"
           "\t-g [log level]\n"
+          "\t[--del]\n"
           "\t[--gbk]\n"
+          "\t[--badfile]\n"
+          "\t[--concurrency] default is 10\n"
           "\t[--buffersize] KB default is %dKB\n", prog, kReadBufferSize / 1024);
 }
 
@@ -44,26 +47,6 @@ int run_comsumer_queue(FileReader &reader, TableParam &param, ObRowBuilder *buil
   return ret;
 }
 
-int convert_column_type(ColumnType column_type) 
-{
-  int ret = 0;
-  switch (column_type) {
-    case ObIntType:
-      ret = 1;
-      break;
-    case ObVarcharType:
-      ret = 3;
-      break;
-    case ObDateTimeType:
-      ret = 4;
-      break;
-    default:
-      TBSYS_LOG(ERROR, "not support column type[%d]", column_type);
-      ret = -1;
-  }
-  return ret;
-}
-
 int parse_table_title(Slice &slice, const ObSchemaManagerV2 &schema, TableParam &table_param)
 {
   int ret = OB_SUCCESS;
@@ -72,7 +55,6 @@ int parse_table_title(Slice &slice, const ObSchemaManagerV2 &schema, TableParam 
 
   Tokenizer::tokenize(slice, table_param.delima, token_nr, tokens);
   int rowkey_count = 0;
-  table_param.rowkey_descs.clear();
   table_param.col_descs.clear();
 
   if (0 != table_param.input_column_nr) {
@@ -101,23 +83,6 @@ int parse_table_title(Slice &slice, const ObSchemaManagerV2 &schema, TableParam 
         break;
       }
       else {
-        uint64_t column_id = column_schema->get_id();
-        if (rowkey_info.is_rowkey_column(column_id)) {
-          ObRowkeyColumn rowkey_column;
-          int64_t index = 0;
-          RowkeyDesc rowkey_desc;
-          rowkey_desc.offset = i;
-          rowkey_info.get_index(column_id, index, rowkey_column);
-          rowkey_desc.pos = static_cast<int>(index);
-          rowkey_desc.type = convert_column_type(column_schema->get_type()); 
-          if (-1 == rowkey_desc.type) {
-            ret = OB_ERROR;
-            TBSYS_LOG(ERROR, "not support column type");
-            break;
-          }
-          rowkey_count ++;
-          table_param.rowkey_descs.push_back(rowkey_desc);
-        }
         ColumnDesc col_desc;
         col_desc.name = column_name;
         col_desc.offset = i;
@@ -139,13 +104,13 @@ int parse_table_title(Slice &slice, const ObSchemaManagerV2 &schema, TableParam 
 
 int do_work(const char *config_file, const char *table_name, 
             const char *host, unsigned short port, size_t queue_size,
-            const char *table_datafile)
+            TableParam &cmd_table_param)
 {
   ImportParam param;
   TableParam table_param;
   RecordBlock rec_block;
   Slice slice;
-  
+
   int ret = param.load(config_file);
   if (ret != OB_SUCCESS) {
     TBSYS_LOG(ERROR, "can't load config file, please check file path");
@@ -157,8 +122,18 @@ int do_work(const char *config_file, const char *table_name,
     return ret;
   }
 
-  if (table_datafile != NULL) {                 /* if cmd line specifies data file, use it */
-    table_param.data_file = table_datafile;
+  if (cmd_table_param.data_file.size() != 0) {              /* if cmd line specifies data file, use it */
+    table_param.data_file = cmd_table_param.data_file;
+  }
+
+  table_param.is_delete = cmd_table_param.is_delete;
+
+  if (cmd_table_param.bad_file_ != NULL) {
+    table_param.bad_file_ = cmd_table_param.bad_file_;
+  }
+
+  if (cmd_table_param.concurrency != 0) {
+    table_param.concurrency = cmd_table_param.concurrency;
   }
 
   if (table_param.data_file.empty()) {
@@ -219,7 +194,7 @@ int do_work(const char *config_file, const char *table_name,
 
   if (ret == OB_SUCCESS) {
     /* setup ObRowbuilder */
-    ObRowBuilder builder(schema, table_name, table_param.input_column_nr, table_param.delima, table_param.has_nop_flag, table_param.nop_flag, table_param.has_null_flag, table_param.null_flag);
+    ObRowBuilder builder(schema, table_param);
 
     ret = builder.set_column_desc(table_param.col_descs);
     if (ret != OB_SUCCESS) {
@@ -258,7 +233,8 @@ int main(int argc, char *argv[])
   const char *host = NULL;
   const char *log_file = NULL;
   const char *log_level = "INFO";
-  const char *data_file = NULL;
+  TableParam cmd_table_param;
+  cmd_table_param.concurrency = 0;
   unsigned short port = 0;
   size_t queue_size = 1000;
   int ret = 0;
@@ -268,6 +244,9 @@ int main(int argc, char *argv[])
   static struct option long_options[] = {
     {"gbk", 0, 0, 1000},
     {"buffersize", 1, 0, 1001},
+    {"badfile", 1, 0, 1002},
+    {"concurrency", 1, 0, 1003},
+    {"del", 0, 0, 1004},
     {0, 0, 0, 0}
   };
   int option_index = 0;
@@ -296,13 +275,22 @@ int main(int argc, char *argv[])
        queue_size = static_cast<size_t>(atol(optarg)); 
        break;
      case 'f':
-       data_file = optarg;
+       cmd_table_param.data_file = optarg;
        break;
      case 1000:
        g_gbk_encoding = true;
        break;
      case 1001:
        kReadBufferSize = static_cast<int>(atol(optarg)) * 1024;
+       break;
+     case 1002:
+       cmd_table_param.bad_file_ = optarg;
+       break;
+     case 1003:
+       cmd_table_param.concurrency = static_cast<int>(atol(optarg)); 
+       break;
+     case 1004:
+       cmd_table_param.is_delete = true;
        break;
      default:
        usage(argv[0]);
@@ -321,5 +309,5 @@ int main(int argc, char *argv[])
 
   OceanbaseDb::global_init(log_file, log_level);
 
-  return do_work(config_file, table_name, host, port, queue_size, data_file);
+  return do_work(config_file, table_name, host, port, queue_size, cmd_table_param);
 }

@@ -3,8 +3,7 @@ ob2=OBI(cluster=1244)
 ob2.rs0.set master=ob1.rs0
 ob1.reboot
 ob2.reboot
-ob1.prepare
-ob1.start_check
+ob1.mysql set global ob_read_consistency=4
 ob1.create_client
 create table t1(a int primary key,b int);
 insert into t1 values(1,1),(2,2),(0,0),(-1,-1);
@@ -34,4 +33,3 @@ a	b
 0	0
 1	1
 2	2
-ob1.stop_check

@@ -89,6 +89,11 @@ typedef enum ObItemType
   T_OP_LEFT_PARAM_END,
   T_MAX_OP,
 
+  T_CUR_TIME,
+  T_CUR_TIME_UPS,
+  T_CUR_TIME_OP,
+
+  T_ROW_COUNT,
   T_FUN_SYS_CAST,               // special system function : CAST(val AS type)
 
   /* 4. name filed specificator */
@@ -154,11 +159,14 @@ typedef enum ObItemType
   T_CONSTR_PRIMARY_KEY,
   T_IF_NOT_EXISTS,
   T_IF_EXISTS,
+  T_JOIN_INFO,
   T_EXPIRE_INFO,
   T_TABLET_MAX_SIZE,
   T_TABLET_BLOCK_SIZE,
+  T_TABLET_ID,
   T_REPLICA_NUM,
   T_COMPRESS_METHOD,
+  T_COMMENT,
   T_USE_BLOOM_FILTER,
   T_CONSISTENT_MODE,
   T_DROP_TABLE,
@@ -172,6 +180,11 @@ typedef enum ObItemType
   T_COLUMN_RENAME,
 
   T_ALTER_SYSTEM,
+  T_CHANGE_OBI,
+  T_FORCE,
+  T_SET_MASTER,
+  T_SET_SLAVE,
+  T_SET_MASTER_SLAVE,
   T_SYTEM_ACTION_LIST,
   T_SYSTEM_ACTION,
   T_CLUSTER,
@@ -187,7 +200,9 @@ typedef enum ObItemType
   T_SHOW_SERVER_STATUS,
   T_SHOW_WARNINGS,
   T_SHOW_GRANTS,
+  T_SHOW_PROCESSLIST,
   T_SHOW_LIMIT,
+
 
   T_CREATE_USER,
   T_CREATE_USER_SPEC,
@@ -214,6 +229,10 @@ typedef enum ObItemType
 
   T_HINT_OPTION_LIST,
   T_READ_STATIC,
+  T_HOTSPOT,
+  T_READ_CONSISTENCY,
+
+  T_KILL,
 
   T_MAX,
 

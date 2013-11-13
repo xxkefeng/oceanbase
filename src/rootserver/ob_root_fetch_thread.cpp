@@ -13,7 +13,7 @@ namespace oceanbase
     int ObRootFetchThread::wait_recover_done()
     {
       int count = 0;
-      while (!is_recover_done_)
+      while (!is_recover_done_ && !_stop)
       {
         count++;
         if ((count % 100) == 0)
@@ -22,7 +22,7 @@ namespace oceanbase
         }
         usleep(WAIT_INTERVAL);
       }
-
+      TBSYS_LOG(INFO, "wait recover done:recover_ret[%d], recover_done[%d], stop[%d]", recover_ret_, is_recover_done_, _stop);
       return recover_ret_;
     }
 

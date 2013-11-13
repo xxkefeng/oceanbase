@@ -30,16 +30,18 @@ namespace oceanbase
         ObTabletCrcHistoryHelper();
         void reset();
         void rest_all_crc_sum();
-        int check_and_update(const int64_t version, const uint64_t crc_sum);
+        int check_and_update(const int64_t version, const uint64_t crc_sum, const uint64_t row_checksum);
+        int get_row_checksum(const int64_t version, uint64_t &row_checksum) const;
         void reset_crc_sum(const int64_t version);
+        void get_min_max_version(int64_t &min_version, int64_t &max_version) const;
         NEED_SERIALIZE_AND_DESERIALIZE;
         friend class ObTabletInfoManager;
       private:
-        void get_min_max_version(int64_t &min_version, int64_t &max_version) const;
-        void update_crc_sum(const int64_t version, const int64_t new_version, const uint64_t crc_sum);
+        void update_crc_sum(const int64_t version, const int64_t new_version, const uint64_t crc_sum, const uint64_t row_checksum);
       private:
         int64_t version_[MAX_KEEP_HIS_COUNT];
         uint64_t crc_sum_[MAX_KEEP_HIS_COUNT];
+        uint64_t row_checksum_[MAX_KEEP_HIS_COUNT];
     };
     class ObTabletInfoManager
     {
@@ -50,6 +52,7 @@ namespace oceanbase
         ObTabletInfoManager();
         void set_allocator(common::CharArena *allocator);
 
+        void clear();
         int add_tablet_info(const common::ObTabletInfo& tablet_info, int32_t& out_index);
 
         const_iterator begin() const;
@@ -73,7 +76,7 @@ namespace oceanbase
 
         NEED_SERIALIZE_AND_DESERIALIZE;
       public:
-        static const int64_t MAX_TABLET_COUNT = 1024 * 1024;
+        static const int64_t MAX_TABLET_COUNT = 10 * 1024 * 1024;
       private:
         DISALLOW_COPY_AND_ASSIGN(ObTabletInfoManager);
       private:

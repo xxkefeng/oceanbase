@@ -103,6 +103,49 @@ int ObRootMonitorTable::get(const ObRowkey & rowkey, ObScanner & scanner)
   return ret;
 }
 
+int ObRootMonitorTable::get_ms_only(const ObRowkey & rowkey, ObScanner & scanner)
+{
+  int pos = -1;
+  int ret = OB_SUCCESS;
+  // add all type of server for in memory table
+  int64_t count = 0;
+  ServerVector servers;
+  init_all_ms(servers, count);
+  if (count <= 0)
+  {
+    TBSYS_LOG(WARN, "after init all servers:count[%ld]", count);
+    ret = OB_INNER_STAT_ERROR;
+  }
+  else
+  {
+    sort_all_servers(servers);
+  }
+  // find the frist tablet and fill rows to the scanner
+  if (OB_SUCCESS == ret)
+  {
+    pos = find_first_tablet(rowkey, servers);
+    scanner.reset();
+    int64_t row_count = 0;
+    ret = fill_result(pos, servers, row_count, scanner);
+    if (ret != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "fill result failed:rowkey[%s], ret[%d]", to_cstring(rowkey), ret);
+    }
+    else if ((scanner.get_row_num() != row_count) || row_count <= 1)
+    {
+      ret = OB_INNER_STAT_ERROR;
+      TBSYS_LOG(ERROR, "check fill row count error:result[%ld], fill[%ld]",
+          scanner.get_row_num(), row_count);
+    }
+    else
+    {
+      TBSYS_LOG(DEBUG, "fill result succ:rowkey[%s], count[%ld]",
+          to_cstring(rowkey), row_count);
+    }
+  }
+  return ret;
+}
+
 int ObRootMonitorTable::insert_all_meta_servers(ServerVector & servers) const
 {
   ObClusterServer server;
@@ -164,6 +207,36 @@ int ObRootMonitorTable::insert_all_query_servers(ServerVector & servers) const
   return ret;
 }
 
+int ObRootMonitorTable::insert_all_merge_servers(ServerVector & servers) const
+{
+  int ret = OB_SUCCESS;
+  int64_t ms_count = 0;
+  ObClusterServer server;
+  const ObServerStatus* it = NULL;
+  if (cs_manager_ != NULL)
+  {
+    for (it = cs_manager_->begin(); it != cs_manager_->end(); ++it)
+    {
+      if (ObServerStatus::STATUS_DEAD != it->ms_status_)
+      {
+        server.role = OB_MERGESERVER;
+        server.addr = it->server_;
+        server.addr.set_port(it->port_ms_);
+        ret = servers.push_back(server);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "insert merge server failed:ret[%d]", ret);
+          break;
+        }
+        ++ms_count;
+      }
+    }
+  }
+  TBSYS_LOG(DEBUG, "insert all merge server:ret[%d], ms[%ld]",
+      ret, ms_count);
+  return ret;
+}
+
 int ObRootMonitorTable::insert_all_update_servers(ServerVector & servers) const
 {
   int ret = OB_SUCCESS;
@@ -217,6 +290,17 @@ void ObRootMonitorTable::init_all_servers(ServerVector & servers, int64_t & coun
   if (ret != OB_SUCCESS)
   {
     TBSYS_LOG(WARN, "insert all update server failed:ret[%d]", ret);
+  }
+  count = servers.size();
+}
+
+void ObRootMonitorTable::init_all_ms(ServerVector & servers, int64_t & count) const
+{
+  servers.clear();
+  int ret = insert_all_merge_servers(servers);
+  if (ret != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "insert all chunk server failed:ret[%d]", ret);
   }
   count = servers.size();
 }
@@ -416,6 +500,7 @@ int ObRootMonitorTable::add_server_columns(const ObServer & server, ObCellInfo &
         TBSYS_LOG(WARN, "add ip cell failed:ret[%d]", ret);
       }
     }
+
   }
   return ret ;
 }

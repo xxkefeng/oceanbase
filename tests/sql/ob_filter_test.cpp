@@ -47,7 +47,10 @@ class ObPhyOperatorStub : public ObPhyOperator
     }
 
     ~ObPhyOperatorStub(){}
+    virtual ObPhyOperatorType get_type() const { return PHY_INVALID; }
 
+    void reset() {}
+    void reuse() {}
     int get_eq_row_count()
     {
       return 2;

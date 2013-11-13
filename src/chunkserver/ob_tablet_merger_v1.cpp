@@ -342,6 +342,8 @@ namespace oceanbase
       mem_limit.merge_mem_size_ = THE_CHUNK_SERVER.get_config().merge_mem_limit;
       // in order to reuse the internal cell array of merge join agent
       mem_limit.max_merge_mem_size_ = mem_limit.merge_mem_size_ + 1024 * 1024;
+      ms_wrapper_.get_ups_get_cell_stream()->set_timeout(THE_CHUNK_SERVER.get_config().merge_timeout);
+      ms_wrapper_.get_ups_scan_cell_stream()->set_timeout(THE_CHUNK_SERVER.get_config().merge_timeout);
 
       is_tablet_splited = false;
       is_tablet_unchanged = false;
@@ -975,9 +977,15 @@ namespace oceanbase
               frozen_version_, sstable_block_size);
           path_string_.assign_ptr(path_,static_cast<int32_t>(strlen(path_) + 1));
 
+          int64_t element_count = DEFAULT_ESTIMATE_ROW_COUNT;
+          if (NULL != old_tablet_ && old_tablet_->get_row_count() != 0)
+          {
+            element_count = old_tablet_->get_row_count();
+          }
+
           if ((ret = writer_.create_sstable(sstable_schema_,
                   path_string_, compressor_string_, frozen_version_,
-                  OB_SSTABLE_STORE_DENSE, sstable_block_size)) != OB_SUCCESS)
+                  OB_SSTABLE_STORE_DENSE, sstable_block_size, element_count)) != OB_SUCCESS)
           {
             if (OB_IO_ERROR == ret)
               manager_.get_disk_manager().set_disk_status(disk_no,DISK_ERROR);
@@ -1052,7 +1060,7 @@ namespace oceanbase
       // set split_rowkey_ as start key of next range.
       // must copy split_rowkey_ to last_rowkey_buffer_,
       // next split will modify split_rowkey_;
-      ObMemBufAllocatorWrapper allocator(last_rowkey_buffer_);
+      ObMemBufAllocatorWrapper allocator(last_rowkey_buffer_, ObModIds::OB_SSTABLE_WRITER);
       if (OB_SUCCESS != (ret = split_rowkey_.deep_copy(new_range_.start_key_, allocator)))
       {
         TBSYS_LOG(WARN, "set split_rowkey_(%s) as start key of new range error.", to_cstring(split_rowkey_));
@@ -1072,7 +1080,7 @@ namespace oceanbase
       int64_t rowkey_column_count = 0;
       sstable_schema_.get_rowkey_column_count(new_range_.table_id_, rowkey_column_count);
       common::ObRowkey rowkey(NULL, rowkey_column_count);
-      ObMemBufAllocatorWrapper allocator(split_rowkey_buffer_);
+      ObMemBufAllocatorWrapper allocator(split_rowkey_buffer_, ObModIds::OB_SSTABLE_WRITER);
 
       if (rowkey_column_count <= 0)
       {
@@ -1187,10 +1195,12 @@ namespace oceanbase
       int64_t trailer_offset = 0;
       int64_t sstable_size = 0;
       int ret = OB_SUCCESS;
+      uint64_t row_checksum = 0;
       new_tablet = NULL;
       TBSYS_LOG(DEBUG,"Merge : finish_sstable");
       if (!is_tablet_unchanged)
       {
+        row_checksum = writer_.get_row_checksum();
         if (OB_SUCCESS != (ret = writer_.set_tablet_range(new_range_)))
         {
           TBSYS_LOG(ERROR, "failed to set tablet range for sstable writer");
@@ -1223,6 +1233,7 @@ namespace oceanbase
           if (is_tablet_unchanged)
           {
             tablet->set_disk_no(old_tablet_->get_disk_no());
+            row_checksum = old_tablet_->get_row_checksum();
             ret = create_hard_link_sstable(sstable_size);
             if (OB_SUCCESS == ret && sstable_size > 0
                 && old_tablet_->get_sstable_id_list().count() > 0)
@@ -1299,6 +1310,7 @@ namespace oceanbase
 
             //inherit sequence number from parent tablet
             extend_info.sequence_num_ = old_tablet_->get_sequence_num();
+            extend_info.row_checksum_ = row_checksum;
           }
 
           /**

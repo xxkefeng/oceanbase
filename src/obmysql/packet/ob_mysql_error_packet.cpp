@@ -115,7 +115,7 @@ namespace oceanbase
       return len;
     }
 
-    int ObMySQLErrorPacket::set_message(ObString& message)
+    int ObMySQLErrorPacket::set_message(const ObString& message)
     {
       int ret = OB_SUCCESS;
       if (NULL == message.ptr() || 0 > message.length())
@@ -126,7 +126,7 @@ namespace oceanbase
       }
       else
       {
-        message_.assign(message.ptr(), message.length());
+        message_.assign(const_cast<char*>(message.ptr()), message.length());
       }
       return ret;
     }

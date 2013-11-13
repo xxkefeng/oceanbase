@@ -34,6 +34,8 @@ namespace oceanbase
     const int OB_INVALID_INDEX = -1;
     const int64_t OB_INVALID_VERSION = -1;
     const int64_t OB_MAX_ITERATOR = 16;
+    const int64_t MAX_IP_ADDR_LENGTH = 32;
+    const int64_t MAX_IP_PORT_LENGTH = MAX_IP_ADDR_LENGTH + 5;
 
     //////////////////////////////////////////////////////////////// begin ob error code
     //error code for common -1 ---- -1000
@@ -122,11 +124,14 @@ namespace oceanbase
     const int OB_MAYBE_LOOP = -83;
     const int OB_NO_RESULT= -84;
     const int OB_QUEUE_OVERFLOW = -85;
+    const int OB_START_LOG_CURSOR_INVALID = -99;
     const int OB_LOCK_NOT_MATCH = -100;
     const int OB_DEAD_LOCK = -101;
     const int OB_PARTIAL_LOG = -102;
     const int OB_CHECKSUM_ERROR = -103;
     const int OB_INIT_FAIL = -104;
+    const int OB_ASYNC_CLIENT_WAITING_RESPONSE = -108;
+    const int OB_STATE_NOT_MATCH = -109;
     const int OB_READ_ZERO_LOG = -110;
     const int OB_SWITCH_LOG_NOT_MATCH = -111;
     const int OB_LOG_NOT_START = -112;
@@ -160,11 +165,14 @@ namespace oceanbase
     const int OB_INVALID_CONFIG = -147;
     const int OB_WAITING_COMMIT = -148;
     const int OB_STMT_EXPIRED = -149;
+    const int OB_DISCARD_PACKET = -150;
+
 
     //error code for chunk server -1001 ---- -2000
     const int OB_CS_CACHE_NOT_HIT = -1001;   // 缓存没有命中
     const int OB_CS_TIMEOUT = -1002;         // 超时
     const int OB_CS_TABLET_NOT_EXIST = -1008; // tablet not exist
+    const int OB_CS_EMPTY_TABLET = -1009;     // tablet has no data.
     const int OB_CS_EAGAIN = -1010;           //重试
 
     const int OB_GET_NEXT_COLUMN = -1011;
@@ -219,6 +227,46 @@ namespace oceanbase
     const int OB_CONVERT_ERROR = -3007;
     const int OB_MS_ITER_END = -3008;
     const int OB_MS_NOT_EXIST = -3009;
+    const int OB_BYPASS_TIMEOUT = -3010;
+    const int OB_BYPASS_DELETE_DONE = -3011;
+    const int OB_RS_STATE_NOT_ALLOW = -3012;
+    const int OB_BYPASS_NEED_REPORT = -3014;
+    const int OB_ROOT_TABLE_CHANGED = -3015;
+    const int OB_ROOT_REPLICATE_NO_DEST_CS_FOUND = -3016;
+    const int OB_ROOT_TABLE_RANGE_NOT_EXIST = -3017;
+    const int OB_ROOT_MIGRATE_CONCURRENCY_FULL = -3018;
+    const int OB_ROOT_MIGRATE_INFO_NOT_FOUND = -3019;
+    const int OB_NOT_DATA_LOAD_TABLE = -3020;
+    const int OB_DATA_LOAD_TABLE_DUPLICATED = -3021;
+    const int OB_ROOT_TABLE_ID_EXIST = -3022;
+    const int OB_CLUSTER_ALREADY_MASTER = -3023;
+    const int OB_IP_PORT_IS_NOT_SLAVE_CLUSTER = -3024;
+    const int OB_CLUSTER_IS_NOT_SLAVE = -3025;
+    const int OB_CLUSTER_IS_NOT_MASTER = -3026;
+    const int OB_CONFIG_NOT_SYNC = -3027;
+    const int OB_IP_PORT_IS_NOT_CLUSTER = -3028;
+    const int OB_MASTER_CLUSTER_NOT_EXIST = -3029;
+    const int OB_CLUSTER_INFO_NOT_EXIST = -3030;
+    const int OB_GET_CLUSTER_MASTER_UPS_FAILED = -3031;
+    const int OB_MULTIPLE_MASTER_CLUSTERS_EXIST = -3032;
+    const int OB_MULTIPLE_MASTER_CLUSTERS_NOT_EXIST = -3033;
+    const int OB_MASTER_CLUSTER_ALREADY_EXISTS = -3034;
+    const int OB_CREATE_TABLE_TWICE = -3035;
+
+    const int OB_DATA_SOURCE_NOT_EXIST = -3100;
+    const int OB_DATA_SOURCE_TABLE_NOT_EXIST = -3101;
+    const int OB_DATA_SOURCE_RANGE_NOT_EXIST = -3102;
+    const int OB_DATA_SOURCE_DATA_NOT_EXIST = -3103;
+    const int OB_DATA_SOURCE_SYS_ERROR = -3104;
+    const int OB_DATA_SOURCE_TIMEOUT = -3105;
+    const int OB_DATA_SOURCE_CONCURRENCY_FULL = -3106;
+    const int OB_DATA_SOURCE_WRONG_URI_FORMAT = -3107;
+    const int OB_SSTABLE_VERSION_UNEQUAL = -3108;
+    const int OB_DATA_SOURCE_READ_ERROR = -3109;
+    const int OB_ROOT_MIGRATE_INFO_EXIST = -3110;
+    const int OB_ROOT_RANGE_NOT_CONTINUOUS = -3111;
+    const int OB_DATA_SOURCE_TABLET_VERSION_ERROR = -3112;
+    const int OB_DATA_LOAD_TABLE_STATUS_ERROR = -3113;
 
     //error code for merge server -4000 ---- -5000
     const int OB_INNER_STAT_ERROR = -4001;     // inner stat check error
@@ -231,6 +279,7 @@ namespace oceanbase
     const int OB_CHUNK_SERVER_ERROR = -4008;   // chunk server cached is error
     const int OB_NO_NEW_SCHEMA = -4009;        // no new schema when parse error
     const int OB_MS_SUB_REQ_TOO_MANY = -4010; // too many sub scan request
+    const int OB_TOO_MANY_BLOOM_FILTER_TASK = -4011;
 
     // SQL specific error code, -5000 ~ -6000
     const int OB_ERR_SQL_START = -5000;
@@ -298,9 +347,25 @@ namespace oceanbase
     const int OB_ERR_TOO_MANY_PS = -5061;
     const int OB_ERR_NOT_IN_TRANS = -5062;
     const int OB_ERR_HINT_UNKNOWN = -5063;
+    const int OB_ERR_WHEN_UNSATISFIED = -5064;
+    const int OB_ERR_QUERY_INTERRUPTED = -5065;
+    const int OB_ERR_SESSION_INTERRUPTED = -5066;
+    const int OB_ERR_UNKNOWN_SESSION_ID = -5067;
+    const int OB_ERR_PROTOCOL_NOT_RECOGNIZE = -5068;
+    const int OB_ERR_WRITE_AUTH_ERROR = -5069; //write auth packet to client failed 来自监控的连接会立马断开
+    const int OB_ERR_PARSE_JOIN_INFO = -5070;
+
+    const int OB_ERR_PS_TOO_MANY_PARAM = -5080;
+    const int OB_ERR_READ_ONLY = -5081;
 
     const int OB_ERR_SQL_END = -5999;
-#define IS_SQL_ERR(e) (OB_ERR_SQL_END <= e && OB_ERR_SQL_START >= e)
+#define IS_SQL_ERR(e) ((OB_ERR_SQL_END <= e && OB_ERR_SQL_START >= e) \
+                      || OB_ERR_EXCLUSIVE_LOCK_CONFLICT == e \
+                      || OB_ERR_SHARED_LOCK_CONFLICT == e)
+
+    // Fatal errors and the client should close the connection, -8000 ~ -8999
+    const int OB_ERR_SERVER_IN_INIT = -8001;
+    const int OB_PACKET_CHECKSUM_ERROR = -8002;
     //////////////////////////////////////////////////////////////// end of ob error code
 
     typedef int64_t    ObDateTime;
@@ -309,6 +374,8 @@ namespace oceanbase
     typedef ObPreciseDateTime ObCreateTime;
 
     const int64_t OB_MAX_SQL_LENGTH = 10240;
+    const int64_t OB_SQL_LENGTH = 1024;
+    const int64_t OB_MAX_URI_LENGTH = 1024;
     const int64_t OB_MAX_SERVER_ADDR_SIZE = 128;
     const uint64_t OB_MAX_VALID_COLUMN_ID = 10240;   // user table max valid column id
     const int64_t OB_MAX_TABLE_NUMBER = 2048;
@@ -318,8 +385,12 @@ namespace oceanbase
     const int64_t OB_MAX_ROWKEY_COLUMN_NUMBER = 16;
     const int64_t OB_MAX_COLUMN_NAME_LENGTH = 128;  //this means we can use 127 chars for a name.
     const int64_t OB_MAX_APP_NAME_LENGTH = 128;
+    const int64_t OB_MAX_DATA_SOURCE_NAME_LENGTH = 128;
+    const int64_t OB_MAX_YUNTI_USER_LENGTH = 128;
+    const int64_t OB_MAX_YUNTI_GROUP_LENGTH = 128;
     const int64_t OB_MAX_INSTANCE_NAME_LENGTH = 128;
     const int64_t OB_MAX_HOST_NAME_LENGTH = 128;
+    const int64_t OB_MAX_MS_TYPE_LENGTH = 10;
 
     const int64_t OB_MAX_DEBUG_MSG_LEN = 1024;
     const int64_t OB_MAX_COMPRESSOR_NAME_LENGTH = 128;
@@ -339,6 +410,7 @@ namespace oceanbase
     const int64_t OB_RANGE_STR_BUFSIZ = 512;
     const int64_t OB_MAX_FETCH_CMD_LENGTH = 2048;
     const int64_t OB_MAX_EXPIRE_CONDITION_LENGTH = 512;
+    const int64_t OB_MAX_TABLE_COMMENT_LENGTH = 512;
     const int64_t OB_MAX_COLUMN_GROUP_NUMBER = 16;
     const int64_t OB_MAX_THREAD_READ_SSTABLE_NUMBER = 16;
     const int64_t OB_MAX_GET_ROW_NUMBER = 10240;
@@ -357,11 +429,12 @@ namespace oceanbase
     const int64_t OB_MAX_LOG_BUFFER_SIZE = 1966080L;  // 1.875MB
 
     const int32_t OB_SAFE_COPY_COUNT = 3;
-
+    const int32_t OB_DEC_AND_LOCK = 2626; /* used by remoe_plan in ObPsStore */
     // OceanBase Log Synchronization Type
     const int64_t OB_LOG_NOSYNC = 0;
     const int64_t OB_LOG_SYNC = 1;
     const int64_t OB_LOG_DELAYED_SYNC = 2;
+    const int64_t OB_LOG_NOT_PERSISTENT = 4;
 
     const int64_t OB_MAX_UPS_LEASE_DURATION_US = INT64_MAX;
 
@@ -375,7 +448,10 @@ namespace oceanbase
     const int64_t OB_MAX_PREPARE_STMT_NUM_PER_SESSION = 512;
     const int64_t OB_MAX_VAR_NUM_PER_SESSION = 1024;
     const int64_t OB_DEFAULT_SESSION_TIMEOUT = 100L * 1000L * 1000L; // 10s
-    const int64_t OB_DEFAULT_STMT_TIMEOUT = 1L * 1000L * 1000L; // 1s
+    const int64_t OB_DEFAULT_STMT_TIMEOUT = 3L * 1000L * 1000L; // 1s
+    const int64_t OB_DEFAULT_INTERNAL_TABLE_QUERY_TIMEOUT = 10L * 1000L * 1000L; // 10s
+    static const int64_t CORE_SCHEMA_VERSION = 1984;
+    static const int64_t CORE_TABLE_COUNT = 3;
 
     //Oceanbase network protocol
     /*  4bytes    4bytes        4bytes       4bytes
@@ -416,10 +492,12 @@ namespace oceanbase
       OB_CHUNKSERVER = 2, // cs
       OB_MERGESERVER = 3, // ms
       OB_UPDATESERVER = 4,// ups
+      OB_PROXYSERVER = 5,
     };
 
     static const int OB_FAKE_MS_PORT = 2828;
-
+    static const uint64_t OB_MAX_PS_PARAM_COUNT = 65535;
+    static const uint64_t OB_MAX_PS_FIELD_COUNT = 65535;
     static const uint64_t OB_ALL_MAX_COLUMN_ID = 65535;
     // internal columns id
     const uint64_t OB_NOT_EXIST_COLUMN_ID = 0;
@@ -447,6 +525,7 @@ namespace oceanbase
     const char* const OB_ALL_TABLE_PRIVILEGE_TABLE_NAME = "__all_table_privilege";
     const char* const OB_ALL_TRIGGER_EVENT_TABLE_NAME= "__all_trigger_event";
     const char* const OB_ALL_SYS_CONFIG_STAT_TABLE_NAME = "__all_sys_config_stat";
+    const char* const OB_ALL_SERVER_SESSION_TABLE_NAME = "__all_server_session";
     const char* const OB_ALL_CLUSTER = "__all_cluster";
     const char* const OB_ALL_SERVER = "__all_server";
     const char* const OB_ALL_CLIENT = "__all_client";
@@ -458,11 +537,19 @@ namespace oceanbase
     const char* const OB_COLUMNS_SHOW_TABLE_NAME = "__columns_show";
     const char* const OB_SERVER_STATUS_SHOW_TABLE_NAME = "__server_status_show";
     const char* const OB_PARAMETERS_SHOW_TABLE_NAME = "__parameters_show";
+    const char* const OB_ALL_STATEMENT_TABLE_NAME = "__all_statement";
+
     // internal params
     const char* const OB_GROUP_AGG_PUSH_DOWN_PARAM = "ob_group_agg_push_down_param";
-    // internal table id
-    static const uint64_t OB_FIRST_META_VIRTUAL_TID = OB_INVALID_ID - 1; // not a real table
+    const char* const OB_QUERY_TIMEOUT_PARAM = "ob_query_timeout";
+    const char* const OB_READ_CONSISTENCY = "ob_read_consistency";
+
+    ///////////////////////////////////////////////////////////
+    //                 SYSTEM TABLES                         //
+    ///////////////////////////////////////////////////////////
+    // SYTEM TABLES ID (0, 500), they should not be mutated
     static const uint64_t OB_NOT_EXIST_TABLE_TID = 0;
+    static const uint64_t OB_FIRST_META_VIRTUAL_TID = OB_INVALID_ID - 1; // not a real table
     static const uint64_t OB_FIRST_TABLET_ENTRY_TID = 1;
     static const uint64_t OB_ALL_ALL_COLUMN_TID = 2;
     static const uint64_t OB_ALL_JOIN_INFO_TID = 3;
@@ -476,7 +563,12 @@ namespace oceanbase
     static const uint64_t OB_ALL_SYS_CONFIG_TID = 11;
     static const uint64_t OB_ALL_SYS_CONFIG_STAT_TID = 12;
     static const uint64_t OB_ALL_CLIENT_TID = 13;
-    static const uint64_t OB_TABLES_SHOW_TID = 501; // VIRTUAL TABLES start from 501, they should not be mutated
+    ///////////////////////////////////////////////////////////
+    //                 VIRUTAL TABLES                        //
+    ///////////////////////////////////////////////////////////
+    // VIRTUAL TABLES ID (500, 700), they should not be mutated
+#define IS_VIRTUAL_TABLE(tid) ((tid) > 500 && (tid) < 700)
+    static const uint64_t OB_TABLES_SHOW_TID = 501;
     static const uint64_t OB_COLUMNS_SHOW_TID = 502;
     static const uint64_t OB_VARIABLES_SHOW_TID = 503;
     static const uint64_t OB_TABLE_STATUS_SHOW_TID = 504;
@@ -485,9 +577,15 @@ namespace oceanbase
     static const uint64_t OB_PARAMETERS_SHOW_TID = 507;
     static const uint64_t OB_SERVER_STATUS_SHOW_TID = 508;
     static const uint64_t OB_ALL_SERVER_STAT_TID = 509;
-    static const uint64_t OB_APP_MIN_TABLE_ID = 1000;
-
+    static const uint64_t OB_ALL_SERVER_SESSION_TID = 510;
+    static const uint64_t OB_ALL_STATEMENT_TID = 511;
 #define IS_SHOW_TABLE(tid) ((tid) >= OB_TABLES_SHOW_TID && (tid) <= OB_SERVER_STATUS_SHOW_TID)
+    ///////////////////////////////////////////////////////////
+    //                 USER TABLES                           //
+    ///////////////////////////////////////////////////////////
+    // USER TABLE ID (1000, MAX)
+    static const uint64_t OB_APP_MIN_TABLE_ID = 1000;
+    inline bool IS_SYS_TABLE_ID(uint64_t tid) {return (tid < OB_APP_MIN_TABLE_ID);};
 
     static const uint64_t OB_ALL_STAT_COLUMN_MAX_COLUMN_ID = 45;
     static const uint64_t OB_ALL_ALL_COLUMN_MAX_COLUMN_ID = 45;
@@ -500,18 +598,25 @@ namespace oceanbase
 
     static const uint64_t OB_MAX_CLUSTER_NAME = 128;
     static const uint64_t OB_MAX_CLUSTER_INFO = 128;
+    static const int64_t OB_MAX_CLUSTER_COUNT = 6;
     // internal user id
     static const uint64_t OB_ADMIN_UID = 1;
     const char* const OB_ADMIN_USER_NAME = "admin";
 
+    // ob_malloc & ob_tc_malloc
+    static const int64_t OB_TC_MALLOC_BLOCK_HEADER_SIZE = 64; // >= sizeof(TSIBlockCache::Block)
+    static const int64_t OB_MALLOC_BLOCK_SIZE = 64*1024LL+1024LL;
+    static const int64_t OB_TC_MALLOC_BLOCK_SIZE = OB_MALLOC_BLOCK_SIZE - OB_TC_MALLOC_BLOCK_HEADER_SIZE;
+
     /// 一个行可以包含的最大元素/列数
-    static const int64_t OB_MALLOC_BLOCK_SIZE = 64*1024L;
     static const int64_t OB_ROW_MAX_COLUMNS_COUNT = 512; // used in ObRow
-    static const int64_t OB_MAX_VARCHAR_LENGTH = OB_MALLOC_BLOCK_SIZE - 512;
+    static const int64_t OB_MAX_VARCHAR_LENGTH = 64 * 1024;
     static const int64_t OB_COMMON_MEM_BLOCK_SIZE = OB_MAX_VARCHAR_LENGTH;
     static const int64_t OB_MAX_ROW_LENGTH = OB_MAX_PACKET_LENGTH - 512L * 1024L;
     static const int64_t OB_MAX_COLUMN_NUMBER = OB_ROW_MAX_COLUMNS_COUNT; // used in ObSchemaManagerV2
     static const int64_t OB_MAX_USER_DEFINED_COLUMNS_COUNT = OB_ROW_MAX_COLUMNS_COUNT - OB_APP_MIN_COLUMN_ID;
+
+    static const int64_t OB_PREALLOCATED_NUM = 21;
 
     const char* const SYS_DATE = "$SYS_DATE";
     const char* const OB_DEFAULT_COMPRESS_FUNC_NAME = "none";
@@ -530,8 +635,20 @@ namespace oceanbase
     static const int64_t OB_DEFAULT_SSTABLE_BLOCK_SIZE = 16*1024; // 16KB
     static const int64_t OB_DEFAULT_MAX_TABLET_SIZE = 256*1024*1024; // 256MB
     static const int64_t OB_MYSQL_PACKET_BUFF_SIZE = 6 * 1024; //6KB
+    static const int64_t OB_MAX_ERROR_MSG_LEN = 128;
     static const int64_t OB_MAX_ERROR_CODE = 10000;
     static const int64_t OB_MAX_THREAD_NUM = 1024;
+    static const int64_t OB_CHAR_SET_NAME_LENGTH = 16;
+
+    enum ObDmlType
+    {
+      OB_DML_UNKNOW   = 0,
+      OB_DML_REPLACE  = 1,
+      OB_DML_INSERT   = 2,
+      OB_DML_UPDATE   = 3,
+      OB_DML_DELETE   = 4,
+      OB_DML_NUM,
+    };
   } // end namespace common
 } // end namespace oceanbase
 #define DISALLOW_COPY_AND_ASSIGN(TypeName) \
@@ -625,6 +742,15 @@ const int64_t OB_SERVER_VERSION_LENGTH = 64;
     if (NULL != mgr) { mgr->get_stat(OB_STAT_##module, 0, ##args); } \
   }while(0)
 
+#define OB_STAT_GET_VALUE(module, type) \
+  ({ \
+    int64_t ret = 0; \
+    ObStatManager *mgr = ObStatSingleton::get_instance(); \
+    ObStat *stat = NULL; \
+    if (NULL != mgr) { mgr->get_stat(OB_STAT_##module, 0, stat); } \
+    if (NULL != stat) { ret = stat->get_value(type);} \
+    ret; \
+  })
 
 #define OB_STAT_TABLE_INC(module, table_id, args...) \
   do { \

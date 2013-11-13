@@ -24,7 +24,6 @@
 #include "common/location/ob_tablet_location_list.h"
 #include "common/location/ob_tablet_location_cache_proxy.h"
 #include "ob_ms_server_counter.h"
-#include "ob_merge_server_main.h"
 
 namespace oceanbase
 {
@@ -45,22 +44,23 @@ namespace oceanbase
       /// tablet_in this request will access which tablet
       /// return < 0 on error; >= 0 indicate to use which cs for current query
       int select_cs(ObChunkServerItem * replicas_in_out, const int32_t replica_count_in,
-        const int32_t last_query_idx_in, const common::ObNewRange & tablet_in);
+        const int32_t last_query_idx_in);
 
-      int select_cs(ObChunkServerItem * replicas_in_out, const int32_t replica_count_in,
-        const int32_t last_query_idx_in, const common::ObCellInfo & get_cell_in);
-
+      // for get request
+      int32_t select_cs(ObTabletLocationList & list);
+    private:
+      // a patch for get request. actually I prefer to reuse int select_cs(ObChunkServerItem * replicas_in_out ...)
+      // but due to param type convertion cost, I  temporarily give this up.
+      // dont worry, the following code works fine too.
+      int32_t old_select_cs(ObTabletLocationList & list);
+      // using new balance for get request
+      int32_t new_select_cs(ObTabletLocationList & list);
     private:
       ObChunkServerTaskDispatcher();
       virtual ~ObChunkServerTaskDispatcher();
 
     public:
       void set_local_ip(int32_t local_ip) { local_ip_ = local_ip; }
-
-    private:
-      int select_cs(ObChunkServerItem * replicas_in_out,
-        const int32_t replica_count_in, const int32_t last_query_idx_in);
-
       int select_cs(const bool open, ObChunkServerItem * replicas_in_out,
         const int32_t replica_count_in, ObMergerServerCounter * counter);
 

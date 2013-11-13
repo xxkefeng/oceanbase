@@ -23,16 +23,29 @@
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 using namespace oceanbase::common::serialization;
+namespace oceanbase
+{
+  namespace sql
+  {
+    //uint64_t phycount=0;
+    REGISTER_CREATOR(oceanbase::sql::ObPhyPlanGFactory, ObPhysicalPlan, ObPhysicalPlan, 0);
+  } // end namespace sql
+} // end namespace oceanbase
+
 
 ObPhysicalPlan::ObPhysicalPlan()
   :curr_frozen_version_(OB_INVALID_VERSION),
    ts_timeout_us_(0),
    main_query_(NULL),
+   pre_query_id_(common::OB_INVALID_ID),
    operators_store_(common::OB_MALLOC_BLOCK_SIZE, ModulePageAllocator(ObModIds::OB_SQL_PHY_PLAN)),
    allocator_(NULL),
    op_factory_(NULL),
    my_result_set_(NULL),
-   start_trans_(false)
+   start_trans_(false),
+   in_ups_executor_(false),
+   cons_from_assign_(false),
+   next_phy_operator_id_(0)
 {
 }
 
@@ -72,8 +85,24 @@ int ObPhysicalPlan::add_phy_query(ObPhyOperator *phy_query, int32_t* idx, bool m
   return ret;
 }
 
+int ObPhysicalPlan::set_pre_phy_query(ObPhyOperator *phy_query, int32_t* idx)
+{
+  int ret = OB_SUCCESS;
+  if ( (ret = phy_querys_.push_back(phy_query)) == OB_SUCCESS)
+  {
+    if (phy_query)
+      pre_query_id_ = phy_query->get_id();
+    if (idx != NULL)
+    {
+      *idx = static_cast<int32_t>(phy_querys_.count() - 1);
+    }
+  }
+  return ret;
+}
+
 int ObPhysicalPlan::store_phy_operator(ObPhyOperator *op)
 {
+  op->set_id(++next_phy_operator_id_);
   return operators_store_.push_back(op);
 }
 
@@ -82,6 +111,20 @@ ObPhyOperator* ObPhysicalPlan::get_phy_query(int32_t index) const
   ObPhyOperator *op = NULL;
   if (index >= 0 && index < phy_querys_.count())
     op = phy_querys_.at(index);
+  return op;
+}
+
+ObPhyOperator* ObPhysicalPlan::get_phy_query_by_id(uint64_t id) const
+{
+  ObPhyOperator *op = NULL;
+  for(int64_t i = 0; i < phy_querys_.count(); i++)
+  {
+    if (phy_querys_.at(i)->get_id() == id)
+    {
+      op = phy_querys_.at(i);
+      break;
+    }
+  }
   return op;
 }
 
@@ -103,6 +146,11 @@ void ObPhysicalPlan::set_main_query(ObPhyOperator *query)
   main_query_ = query;
 }
 
+ObPhyOperator* ObPhysicalPlan::get_pre_query() const
+{
+  return get_phy_query_by_id(pre_query_id_);
+}
+
 int ObPhysicalPlan::remove_phy_query(ObPhyOperator *phy_query)
 {
   int ret = OB_SUCCESS;
@@ -111,6 +159,101 @@ int ObPhysicalPlan::remove_phy_query(ObPhyOperator *phy_query)
   // {
   //   TBSYS_LOG(WARN, "phy query not exist, phy_query=%p", phy_query);
   // }
+  return ret;
+}
+
+int ObPhysicalPlan::remove_phy_query(int32_t index)
+{
+  int ret = OB_SUCCESS;
+  UNUSED(index);
+  if (OB_SUCCESS != (ret = phy_querys_.remove(index)))
+  {
+    TBSYS_LOG(WARN, "phy query not exist, index=%d", index);
+  }
+  return ret;
+}
+
+bool ObPhysicalPlan::is_terminate(int &ret) const
+{
+  bool bret = false;
+  if (NULL != my_result_set_)
+  {
+    ObSQLSessionInfo *session = my_result_set_->get_session();
+    if (NULL != session)
+    {
+      if (QUERY_KILLED == session->get_session_state())
+      {
+        bret = true;
+        TBSYS_LOG(WARN, "query(%.*s) interrupted session id=%lu", session->get_current_query_string().length(),
+                  session->get_current_query_string().ptr(), session->get_session_id());
+        ret = OB_ERR_QUERY_INTERRUPTED;
+      }
+      else if (SESSION_KILLED == session->get_session_state())
+      {
+        bret = true;
+        ret = OB_ERR_SESSION_INTERRUPTED;
+      }
+    }
+    else
+    {
+      TBSYS_LOG(WARN, "can not get session_info for current query result set is %p", my_result_set_);
+    }
+  }
+  return ret;
+}
+
+// must be unique table_id
+int ObPhysicalPlan::add_base_table_version(int64_t table_id, int64_t version)
+{
+  ObTableVersion table_version;
+  table_version.table_id_ = table_id;
+  table_version.version_ = version;
+  return table_store_.push_back(table_version);
+}
+
+int ObPhysicalPlan::add_base_table_version(const ObTableVersion table_version)
+{
+  return table_store_.push_back(table_version);
+}
+
+int ObPhysicalPlan::get_base_table_version(int64_t table_id, int64_t& version)
+{
+  int ret = OB_ERR_TABLE_UNKNOWN;
+  for (int32_t i = 0; i < table_store_.count(); ++i)
+  {
+    ObTableVersion& table_version = table_store_.at(i);
+    if (table_version.table_id_ == table_id)
+    {
+      ret = OB_SUCCESS;
+      version = table_version.version_;
+    }
+  }
+  return ret;
+}
+
+const ObPhysicalPlan::ObTableVersion& ObPhysicalPlan::get_base_table_version(int64_t index) const
+{
+  OB_ASSERT(0 <= index && index < table_store_.count());
+  return table_store_.at(index);
+}
+
+int64_t ObPhysicalPlan::get_base_table_version_count()
+{
+  return table_store_.count();
+}
+
+bool ObPhysicalPlan::is_user_table_operation() const
+{
+  bool ret = true;
+  for (int32_t i = 0; i < table_store_.count(); ++i)
+  {
+    const ObTableVersion& table_version = table_store_.at(i);
+    if (IS_SYS_TABLE_ID(table_version.table_id_))
+    {
+      ret = false;
+      break;
+    }
+  }
   return ret;
 }
 
@@ -124,9 +267,9 @@ int64_t ObPhysicalPlan::to_string(char* buf, const int64_t buf_len) const
   for (int32_t i = 0; i < phy_querys_.count(); ++i)
   {
     if (main_query_ == phy_querys_.at(i))
-      databuff_printf(buf, buf_len, pos, "====MainQuery====:\n");
+      databuff_printf(buf, buf_len, pos, "====MainQuery====\n");
     else
-      databuff_printf(buf, buf_len, pos, "====SubQuery%d====:\n", i);
+      databuff_printf(buf, buf_len, pos, "====SubQuery%d====\n", i);
     int64_t pos2 = phy_querys_.at(i)->to_string(buf + pos, buf_len-pos);
     pos += pos2;
   }
@@ -180,7 +323,7 @@ int ObPhysicalPlan::deserialize_tree(const char *buf, int64_t data_len, int64_t 
 
   if (OB_SUCCESS == ret)
   {
-    for (int32_t i=0; OB_SUCCESS == ret && i<root->get_child_num();i++)
+    for (int32_t i=0; OB_SUCCESS == ret && i<root->get_child_num(); i++)
     {
       ObPhyOperator *child = NULL;
       if (OB_SUCCESS != (ret = deserialize_tree(buf, data_len, pos, allocator, operators_store, child)))
@@ -234,6 +377,118 @@ int ObPhysicalPlan::serialize_tree(char *buf, int64_t buf_len, int64_t &pos, con
   return ret;
 }
 
+int ObPhysicalPlan::assign(const ObPhysicalPlan& other)
+{
+  int ret = OB_SUCCESS;
+  if (this == &other)
+  {
+    // skip
+  }
+  else if (phy_querys_.count() > 0 || operators_store_.count() > 0)
+  {
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(WARN, "ObPhysicalPlan is not emptyo to assign, ret=%d", ret);
+  }
+  else
+  {
+    trans_id_ = other.trans_id_;
+    curr_frozen_version_ = other.curr_frozen_version_;
+    ts_timeout_us_ = other.ts_timeout_us_;
+    main_query_ = NULL;
+    pre_query_id_ = other.pre_query_id_;
+    // already set before
+    // allocator_;
+    // op_factory_;
+    // my_result_set_; // The result set who owns this physical plan
+    start_trans_ = other.start_trans_;
+    start_trans_req_ = other.start_trans_req_;
+    for (int32_t i = 0; i < other.phy_querys_.count(); ++i)
+    {
+      const ObPhyOperator *subquery = other.phy_querys_.at(i);
+      bool is_main_query = (subquery == other.main_query_);
+      ObPhyOperator *out_op = NULL;
+      ret = create_and_assign_tree(subquery, is_main_query, true, out_op);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "failed to assign tree, err=%d", ret);
+        break;
+      }
+      TBSYS_LOG(DEBUG, "copy subquery=%d", i);
+    }
+    for (int32_t i = 0; ret == OB_SUCCESS && i < other.table_store_.count(); ++i)
+    {
+      if ((ret = table_store_.push_back(other.table_store_.at(i))) != OB_SUCCESS)
+      {
+        TBSYS_LOG(WARN, "Assign table version failed, err=%d, idx=%d", ret, i);
+        break;
+      }
+    }
+    cons_from_assign_ = true;
+  }
+  return ret;
+}
+
+int ObPhysicalPlan::create_and_assign_tree(
+    const ObPhyOperator *other,
+    bool main_query,
+    bool is_query,
+    ObPhyOperator *&out_op)
+{
+  int ret = OB_SUCCESS;
+  ObPhyOperator *op = NULL;
+  if (!other)
+  {
+    ret = OB_ERR_UNEXPECTED;
+    TBSYS_LOG(WARN, "Operator to be assigned cna not be NULL, ret=%d", ret);
+  }
+  else if ((op = ObPhyOperator::alloc(other->get_type())) == NULL)
+  {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+    TBSYS_LOG(WARN, "Create operator fail:type[%d]", other->get_type());
+  }
+  else if ((ret = operators_store_.push_back(op)) != OB_SUCCESS)
+  {
+    // should free op here
+    ObPhyOperator::free(op);
+    TBSYS_LOG(WARN, "Fail to push operator to operators_store:ret[%d]", ret);
+  }
+  else if (is_query && (ret = this->add_phy_query(op, NULL, main_query)) != OB_SUCCESS)
+  {
+    TBSYS_LOG(WARN, "Add operator to physical plan failed, ret=%d", ret);
+  }
+  else
+  {
+    op->set_phy_plan(this);
+    op->set_id(other->get_id());
+    out_op = op;
+
+    if ((ret = op->assign(other)) != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "Assign operator of physical plan failed, ret=%d", ret);
+    }
+    TBSYS_LOG(DEBUG, "assign operator, type=%s main_query=%c", ob_phy_operator_type_str(other->get_type()),
+              main_query?'Y':'N');
+  }
+  for (int32_t i = 0; ret == OB_SUCCESS && i < other->get_child_num(); i++)
+  {
+    ObPhyOperator *child = NULL;
+    if (!other->get_child(i))
+    {
+      ret = OB_ERR_GEN_PLAN;
+      TBSYS_LOG(WARN, "Wrong physical plan, ret=%d", ret);
+    }
+    else if ((ret = create_and_assign_tree(other->get_child(i), false, false, child)) != OB_SUCCESS)
+    {
+      TBSYS_LOG(WARN, "Fail to create_and_assign tree:ret[%d]", ret);
+    }
+    else if (OB_SUCCESS != (ret = op->set_child(i, *child)))
+    {
+      TBSYS_LOG(WARN, "Fail to set child:ret[%d]", ret);
+    }
+  }
+  return ret;
+}
+
 DEFINE_SERIALIZE(ObPhysicalPlan)
 {
   int ret = OB_SUCCESS;
@@ -277,7 +532,6 @@ DEFINE_DESERIALIZE(ObPhysicalPlan)
   int32_t main_query_idx = -1;
   int32_t phy_querys_size = 0;
   ObPhyOperator *root = NULL;
-
   clear();
   if (NULL == allocator_)
   {

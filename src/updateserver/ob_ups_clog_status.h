@@ -31,7 +31,10 @@ namespace oceanbase
                       obi_role_(), role_mgr_(), 
                       rs_(), self_(), ups_master_(), inst_ups_master_(), lsync_(),
                       last_frozen_version_(0),  replay_switch_(),
-                      replayed_cursor_(), max_log_id_replayable_(0), master_log_id_(0)
+                         replayed_cursor_(), max_log_id_replayable_(0), master_log_id_(0),
+                         next_submit_log_id_(), next_commit_log_id_(), next_flush_log_id_(), last_barrier_log_id_(),
+                         wait_trans_(), wait_commit_(), wait_response_()
+                         
       {}
       ~ObUpsCLogStatus() {}
       int serialize(char* buf, int64_t len, int64_t& pos) const;
@@ -55,6 +58,9 @@ namespace oceanbase
       int64_t next_commit_log_id_;
       int64_t next_flush_log_id_;
       int64_t last_barrier_log_id_;
+      int64_t wait_trans_;
+      int64_t wait_commit_;
+      int64_t wait_response_;
     };
   }; // end namespace updateserver
 }; // end namespace oceanbase

@@ -2,7 +2,7 @@
  //
  // ob_trace_log.cpp / hash / common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
  // Created on 2010-09-01 by Yubai (yubai.lk@taobao.com)
  //
@@ -106,7 +106,7 @@ namespace oceanbase
 
     void TraceLog::fill_log(LogBuffer &log_buffer, const char *fmt, ...)
     {
-      if (get_log_level() > TBSYS_LOGGER._level)
+      if (get_log_level() > TBSYS_LOGGER._level && !log_buffer.force_log_)
       {
         if (0 == log_buffer.prev_timestamp)
         {
@@ -156,7 +156,7 @@ namespace oceanbase
       log_buffer.cur_pos = 0;
       log_buffer.prev_timestamp = 0;
       log_buffer.start_timestamp = 0;
+      log_buffer.force_log_ = false;
     }
   }
 }
-

@@ -28,6 +28,8 @@ namespace oceanbase
     const static int64_t UPDATE_PRIVILEGE_TIMESTAMP_TRIGGER = 2;
     const static int64_t SLAVE_BOOT_STRAP_TRIGGER = 3;
     const static int64_t REFRESH_NEW_CONFIG_TRIGGER = 4;
+    const static int64_t CREATE_TABLE_TRIGGER = 5;
+    const static int64_t DROP_TABLE_TRIGGER = 6;
 
     class ObTriggerMsg{
      public:

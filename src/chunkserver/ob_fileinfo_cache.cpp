@@ -38,6 +38,7 @@ namespace oceanbase
       if (-1 != other.fd_)
       {
         fd_ = dup(other.fd_);
+        std::swap(fd_, const_cast<FileInfo&>(other).fd_);
       }
     }
 

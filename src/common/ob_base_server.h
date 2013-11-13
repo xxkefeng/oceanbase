@@ -10,7 +10,6 @@
 #include "data_buffer.h"
 #include "ob_packet_factory.h"
 #include "ob_packet_queue.h"
-#include "ob_libeasy_statistics.h"
 
 namespace oceanbase
 {
@@ -21,7 +20,8 @@ namespace oceanbase
       public:
         static const int MAX_TASK_QUEUE_SIZE = 1000;
         static const int DEV_NAME_LENGTH = 16;
-        static const int OB_LIBEASY_STATISTICS_INTERVAL = 60L * 1000 * 1000;
+        static const int OB_LIBEASY_STATISTICS_TIMER = 60; // 60s
+        static const int FD_BUFFER_SIZE = 1024;
 
         ObBaseServer();
         virtual ~ObBaseServer();
@@ -64,9 +64,21 @@ namespace oceanbase
         int set_listen_port(const int port);
 
         uint64_t get_server_id() const;
-        int start_ob_libeasy_statistics_task(easy_io_t *eio);
 
         int send_response(const int32_t pcode, const int32_t version, const ObDataBuffer& buffer, easy_request_t* req, const uint32_t channel_id, const int64_t session_id = 0);
+        static void easy_timer_cb(EV_P_ ev_timer *w, int revents);
+
+        virtual void on_ioth_start() {};
+
+      private:
+        static void easy_on_ioth_start(void *arg)
+        {
+          ObBaseServer *server = (ObBaseServer*)arg;
+          if (NULL != server)
+          {
+            server->on_ioth_start();
+          }
+        };
 
       protected:
         volatile bool stoped_;
@@ -81,8 +93,6 @@ namespace oceanbase
         easy_io_t *eio_;
         easy_io_handler_pt server_handler_;
         uint32_t local_ip_;
-        ObLibEasyStatistics libeasy_statistics_;
-        common::ObTimer libeasy_timer_;
 
     };
   } /* common */

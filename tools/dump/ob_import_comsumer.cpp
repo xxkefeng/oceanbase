@@ -14,6 +14,7 @@ ImportComsumer::ImportComsumer(oceanbase::api::OceanbaseDb *db, ObRowBuilder *bu
   assert(db_ != NULL);
   assert(builder_ != NULL);
   bad_file_ = NULL;
+  line_buffer_ = NULL;
 }
 
 int ImportComsumer::init()
@@ -26,6 +27,13 @@ int ImportComsumer::init()
       TBSYS_LOG(ERROR, "can't create appendable file %s", param_.bad_file_);
     }
   }
+  if (OB_SUCCESS == ret) {
+    line_buffer_ = (char *)malloc(sizeof(char) * 1024 * 1024 * 2);  // 2M
+    if (NULL == line_buffer_) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      TBSYS_LOG(ERROR, "fail to allocate line buffer");
+    }
+  }
 
   return ret;
 }
@@ -35,12 +43,15 @@ ImportComsumer::~ImportComsumer()
   if (bad_file_ != NULL) {
     delete bad_file_;
   }
+
+  if (line_buffer_ != NULL) {
+    free(line_buffer_);
+  }
 }
 
 int ImportComsumer::write_bad_record(RecordBlock &rec)
 {
   Slice slice;
-
   size_t rec_delima_len = param_.rec_delima.length();
   size_t delima_len = param_.delima.length();
   char delima_buf[4];
@@ -59,8 +70,9 @@ int ImportComsumer::write_bad_record(RecordBlock &rec)
       continue;
     }
 
-    if(bad_file_->Append(slice.data(), slice.size() - delima_len) != OB_SUCCESS ||
-       bad_file_->Append(delima_buf, rec_delima_len) != OB_SUCCESS) {
+    memcpy(line_buffer_, slice.data(), slice.size() - delima_len);
+    memcpy(line_buffer_ + slice.size() - delima_len, delima_buf, rec_delima_len);
+    if(bad_file_->Append(line_buffer_, slice.size() - delima_len + rec_delima_len) != OB_SUCCESS) {
       ret = OB_ERROR;
       TBSYS_LOG(ERROR, "can't write to bad_file name = %s", param_.bad_file_);
       break;

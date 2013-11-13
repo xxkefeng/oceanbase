@@ -38,8 +38,7 @@ namespace
   const char* STR_BLOCK_SIZE = "block_size";
   const char* STR_USE_BLOOMFILTER = "use_bloomfilter";
   const char* STR_HAS_BASELINE_DATA = "has_baseline_data";
-  const char* STR_IS_MERGE_DYNAMIC_DATA = "merge_dynamic_data";
-
+  const char* STR_CONSISTENCY_LEVEL = "consistency_level";
   const char* STR_MAX_COLUMN_ID = "max_column_id";
   const char* STR_COLUMN_TYPE_INT = "int";
   const char* STR_COLUMN_TYPE_FLOAT = "float";
@@ -266,7 +265,7 @@ namespace oceanbase
       if (size_ >= OB_MAX_ROWKEY_COLUMN_NUMBER)
       {
         TBSYS_LOG(WARN, "No more column can be add, split_size=%ld, OB_MAX_ROWKEY_COLUMN_NUMBER=%ld",
-                  size_, OB_MAX_ROWKEY_COLUMN_NUMBER);
+            size_, OB_MAX_ROWKEY_COLUMN_NUMBER);
       }
       else
       {
@@ -343,9 +342,9 @@ namespace oceanbase
      *-----------------------------------------------------------------------------*/
 
     ObColumnSchemaV2::ObColumnSchemaV2() : maintained_(false), is_nullable_(true),
-                                           table_id_(OB_INVALID_ID),column_group_id_(OB_INVALID_ID),
-                                           column_id_(OB_INVALID_ID),size_(0),type_(ObNullType),
-                                           default_value_(), column_group_next_(NULL)
+    table_id_(OB_INVALID_ID),column_group_id_(OB_INVALID_ID),
+    column_id_(OB_INVALID_ID),size_(0),type_(ObNullType),
+    default_value_(), column_group_next_(NULL)
     {}
 
     ObColumnSchemaV2& ObColumnSchemaV2::operator=(const ObColumnSchemaV2& src_schema)
@@ -542,7 +541,7 @@ namespace oceanbase
         if (NULL != columns_info[i].get_name() )
         {
           if ( strlen(columns_info[i].get_name()) == strlen(column_name) &&
-               0 == strncmp(columns_info[i].get_name(),column_name,strlen(column_name)) )
+              0 == strncmp(columns_info[i].get_name(),column_name,strlen(column_name)) )
           {
             info = &columns_info[i];
             break;
@@ -668,7 +667,7 @@ namespace oceanbase
       {
         int64_t len = 0;
         serialization::decode_vstr(buf, data_len, tmp_pos,
-                                   name_, OB_MAX_COLUMN_NAME_LENGTH, &len);
+            name_, OB_MAX_COLUMN_NAME_LENGTH, &len);
         if (-1 == len)
         {
           ret = OB_ERROR;
@@ -756,7 +755,7 @@ namespace oceanbase
       {
         int64_t len = 0;
         serialization::decode_vstr(buf, data_len, tmp_pos,
-                                   name_, OB_MAX_COLUMN_NAME_LENGTH, &len);
+            name_, OB_MAX_COLUMN_NAME_LENGTH, &len);
         if (-1 == len)
         {
           ret = OB_ERROR;
@@ -828,27 +827,30 @@ namespace oceanbase
      *-----------------------------------------------------------------------------*/
 
     ObTableSchema::ObTableSchema() : table_id_(OB_INVALID_ID),
-                                     rowkey_split_(0),
-                                     block_size_(0),
-                                     table_type_(SSTABLE_IN_DISK),
-                                     is_pure_update_table_(false),
-                                     is_use_bloomfilter_(false),
-                                     is_merge_dynamic_data_(true),
-                                     has_baseline_data_(false),
-                                     expire_frequency_(1),
-                                     max_sstable_size_(0),
-                                     query_cache_expire_time_(0),
-                                     is_expire_effect_immediately_(0),
-                                     max_scan_rows_per_tablet_(0),
-                                     internal_ups_scan_size_(0),
-                                     merge_write_sstable_version_(2),
-                                     replica_count_(2),
-                                     version_(OB_SCHEMA_VERSION_FOUR),
-                                     create_time_column_id_(OB_INVALID_ID),
-                                     modify_time_column_id_(OB_INVALID_ID)
+    rowkey_split_(0),
+    block_size_(0),
+    table_type_(SSTABLE_IN_DISK),
+    is_pure_update_table_(false),
+    is_use_bloomfilter_(false),
+    is_merge_dynamic_data_(true),
+    consistency_level_(NO_CONSISTENCY),
+    has_baseline_data_(false),
+    expire_frequency_(1),
+    max_sstable_size_(0),
+    query_cache_expire_time_(0),
+    is_expire_effect_immediately_(0),
+    max_scan_rows_per_tablet_(0),
+    internal_ups_scan_size_(0),
+    merge_write_sstable_version_(2),
+    replica_count_(2),
+    version_(OB_SCHEMA_VERSION_FOUR_SECOND),
+    schema_version_(0),
+    create_time_column_id_(OB_INVALID_ID),
+    modify_time_column_id_(OB_INVALID_ID)
     {
       name_[0] = '\0';
       expire_condition_[0] = '\0';
+      comment_str_[0] = '\0';
       memset(reserved_, 0, sizeof(reserved_));
     }
 
@@ -861,6 +863,10 @@ namespace oceanbase
     uint64_t    ObTableSchema::get_table_id()   const
     {
       return table_id_;
+    }
+    bool ObTableSchema::is_merge_dynamic_data() const
+    {
+      return is_merge_dynamic_data_;
     }
 
     ObTableSchema::TableType   ObTableSchema::get_table_type() const
@@ -876,6 +882,11 @@ namespace oceanbase
     const char* ObTableSchema::get_compress_func_name() const
     {
       return compress_func_name_;
+    }
+
+    const char* ObTableSchema::get_comment_str() const
+    {
+      return comment_str_;
     }
 
     uint64_t ObTableSchema::get_max_column_id() const
@@ -913,9 +924,9 @@ namespace oceanbase
       return has_baseline_data_;
     }
 
-    bool ObTableSchema::is_merge_dynamic_data() const
+    ObConsistencyLevel ObTableSchema::get_consistency_level() const
     {
-      return is_merge_dynamic_data_;
+      return consistency_level_;
     }
 
     bool ObTableSchema::is_expire_effect_immediately() const
@@ -963,9 +974,14 @@ namespace oceanbase
       return replica_count_;
     }
 
+    int64_t ObTableSchema::get_schema_version() const
+    {
+      return schema_version_;
+    }
+
     void ObTableSchema::print(FILE* fd) const
     {
-      fprintf(fd, "table=%s id=%ld, version=%ld\n", name_, table_id_, version_);
+      fprintf(fd, "table=%s id=%ld, version=%ld, schema_version=%ld\n", name_, table_id_, version_, schema_version_);
       fprintf(fd, "properties: max_column_id_=%lu, rowkey_split_=%ld,\n"
           "rowkey_max_length_=%ld, block_size_=%d, table_type_=%d,"
           "is_pure_update_table_=%d,is_use_bloomfilter_=%d,"
@@ -981,6 +997,7 @@ namespace oceanbase
             i < rowkey_info_.get_size()-1 ? "," : "\n");
       }
       fprintf(fd, "expire_condition_=%s\n", expire_condition_);
+      fprintf(fd, "comment_str_=%s\n", comment_str_);
     }
 
     const char* ObTableSchema::get_expire_condition() const
@@ -1095,13 +1112,14 @@ namespace oceanbase
       has_baseline_data_ = base_data;
     }
 
-    void ObTableSchema::set_merge_dynamic_data(bool merge_danamic_data)
+    void ObTableSchema::set_consistency_level(int64_t consistency_level)
     {
-      is_merge_dynamic_data_ = merge_danamic_data;
+      consistency_level_ = (ObConsistencyLevel)consistency_level;
+      is_merge_dynamic_data_ = (consistency_level_ != STATIC);
     }
 
     void ObTableSchema::set_expire_effect_immediately(
-      const int64_t expire_effect_immediately)
+        const int64_t expire_effect_immediately)
     {
       is_expire_effect_immediately_ = expire_effect_immediately;
     }
@@ -1125,6 +1143,14 @@ namespace oceanbase
           && static_cast<uint32_t>(expire_condition.length()) < sizeof(expire_condition_))
       {
         snprintf(expire_condition_, expire_condition.length() + 1, "%s", expire_condition.ptr());
+      }
+    }
+
+    void ObTableSchema::set_comment_str(const char* comment_str)
+    {
+      if (comment_str != NULL && *comment_str != '\0')
+      {
+        snprintf(comment_str_, sizeof(comment_str_), "%s", comment_str);
       }
     }
 
@@ -1163,6 +1189,11 @@ namespace oceanbase
       replica_count_ = count;
     }
 
+    void ObTableSchema::set_schema_version(const int64_t version)
+    {
+      schema_version_ = version;
+    }
+
     void ObTableSchema::set_modify_time_column(uint64_t id)
     {
       modify_time_column_id_ = id;
@@ -1173,7 +1204,7 @@ namespace oceanbase
       bool ret = false;
 
       if ( (table_id_ != OB_INVALID_ID && table_id_ == r.table_id_) ||
-           (('\0' != *name_ && '\0' != *r.name_) && strlen(name_) == strlen(r.name_)
+          (('\0' != *name_ && '\0' != *r.name_) && strlen(name_) == strlen(r.name_)
            && 0 == strncmp(name_,r.name_,strlen(name_))) )
       {
         ret = true;
@@ -1295,10 +1326,40 @@ namespace oceanbase
       {
         ret = serialization::encode_vi64(buf, buf_len, tmp_pos, replica_count_);
       }
+      if (OB_SUCCESS == ret)
+      {
+        ret = serialization::encode_vi64(buf, buf_len, tmp_pos, version_);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        if (version_ >= OB_SCHEMA_VERSION_FOUR_SECOND)
+        {
+          ret = serialization::encode_vi64(buf, buf_len, tmp_pos, schema_version_);
+        }
+        else
+        {
+          ret = serialization::encode_vi64(buf, buf_len, tmp_pos, reserved_[0]);
+        }
+      }
       for (int64_t i = 0; i < TABLE_SCHEMA_RESERVED_NUM && OB_SUCCESS == ret; ++i)
       {
         ret = serialization::encode_vi64(buf, buf_len, tmp_pos, reserved_[i]);
       }
+      if (OB_SUCCESS == ret)
+      {
+        // count
+        ret = serialization::encode_vi64(buf, buf_len, tmp_pos, 0);
+      }
+      /*
+      if (OB_SUCCESS == ret && version_ >= OB_SCHEMA_VERSION_FOUR_FIRST)
+      {
+        ret = serialization::encode_vstr(buf, buf_len, tmp_pos, comment_str_);
+      }
+      if (OB_SUCCESS == ret && version_ >= OB_SCHEMA_VERSION_FOUR_SECOND)
+      {
+        ret = serialization::encode_vi64(buf, buf_len, tmp_pos, consistency_level_);
+      }
+      */
       if (OB_SUCCESS == ret)
       {
         pos = tmp_pos;
@@ -1314,12 +1375,12 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         ret = serialization::decode_vi64(buf, data_len, tmp_pos,
-                                         reinterpret_cast<int64_t *>(&table_id_));
+            reinterpret_cast<int64_t *>(&table_id_));
       }
       if (OB_SUCCESS == ret)
       {
         ret = serialization::decode_vi64(buf, data_len, tmp_pos,
-                                         reinterpret_cast<int64_t *>(&max_column_id_));
+            reinterpret_cast<int64_t *>(&max_column_id_));
       }
       if (OB_SUCCESS == ret)
       {
@@ -1344,7 +1405,7 @@ namespace oceanbase
       {
         int64_t len = 0;
         serialization::decode_vstr(buf, data_len, tmp_pos,
-                                   name_, OB_MAX_TABLE_NAME_LENGTH, &len);
+            name_, OB_MAX_TABLE_NAME_LENGTH, &len);
         if (-1 == len)
         {
           ret = OB_ERROR;
@@ -1354,7 +1415,7 @@ namespace oceanbase
       {
         int64_t len = 0;
         serialization::decode_vstr(buf, data_len, tmp_pos,
-                                   compress_func_name_, OB_MAX_TABLE_NAME_LENGTH, &len);
+            compress_func_name_, OB_MAX_TABLE_NAME_LENGTH, &len);
         if (-1 == len)
         {
           ret = OB_ERROR;
@@ -1393,7 +1454,7 @@ namespace oceanbase
       {
         int64_t len = 0;
         serialization::decode_vstr(buf, data_len, tmp_pos,
-                                   expire_condition_, OB_MAX_EXPIRE_CONDITION_LENGTH, &len);
+            expire_condition_, OB_MAX_EXPIRE_CONDITION_LENGTH, &len);
         if (-1 == len)
         {
           ret = OB_ERROR;
@@ -1446,12 +1507,12 @@ namespace oceanbase
       if (OB_SUCCESS == ret)
       {
         ret = serialization::decode_vi64(buf, data_len, tmp_pos,
-                                         reinterpret_cast<int64_t *>(&table_id_));
+            reinterpret_cast<int64_t *>(&table_id_));
       }
       if (OB_SUCCESS == ret)
       {
         ret = serialization::decode_vi64(buf, data_len, tmp_pos,
-                                         reinterpret_cast<int64_t *>(&max_column_id_));
+            reinterpret_cast<int64_t *>(&max_column_id_));
       }
       if (OB_SUCCESS == ret)
       {
@@ -1555,10 +1616,62 @@ namespace oceanbase
       {
         ret = serialization::decode_vi64(buf, data_len, tmp_pos, &replica_count_);
       }
+      if (OB_SUCCESS == ret)
+      {
+        ret = serialization::decode_vi64(buf, data_len, tmp_pos, &version_);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        if (version_ >= OB_SCHEMA_VERSION_FOUR_SECOND)
+        {
+          ret = serialization::decode_vi64(buf, data_len, tmp_pos, &schema_version_);
+        }
+        else
+        {
+          ret = serialization::decode_vi64(buf, data_len, tmp_pos, &reserved_[0]);
+        }
+      }
       for (int64_t i = 0; i < TABLE_SCHEMA_RESERVED_NUM && OB_SUCCESS == ret; ++i)
       {
         ret = serialization::decode_vi64(buf, data_len, tmp_pos, &reserved_[i]);
       }
+      int64_t count = 0;
+      if (OB_SUCCESS == ret)
+      {
+        ret = serialization::decode_vi64(buf, data_len, tmp_pos, &count);
+      }
+      if (OB_SUCCESS == ret)
+      {
+        for (int64_t i = 0;i < count;++i)
+        {
+          ObObj value_obj;
+          if (OB_SUCCESS != (ret = value_obj.deserialize(buf, data_len, tmp_pos)))
+          {
+            TBSYS_LOG(WARN, "deserialize value failed, ret=%d", ret);
+          }
+          if (OB_SUCCESS != ret)
+          {
+            break;
+          }
+        }
+      }
+      /*
+      if (OB_SUCCESS == ret && version_ >= OB_SCHEMA_VERSION_FOUR_FIRST)
+      {
+        int64_t len = 0;
+        serialization::decode_vstr(buf, data_len, tmp_pos, comment_str_, OB_MAX_TABLE_COMMENT_LENGTH, &len);
+        if (-1 == len)
+        {
+          ret = OB_ERROR;
+        }
+      }
+      if (OB_SUCCESS == ret && version_ == OB_SCHEMA_VERSION_FOUR_SECOND)
+      {
+        int64_t consistency_level_value = -1;
+        ret = serialization::decode_vi64(buf, data_len, tmp_pos, &consistency_level_value);
+        consistency_level_ = (ObConsistencyLevel)consistency_level_value;
+      }
+      */
       if (OB_SUCCESS == ret)
       {
         pos = tmp_pos;
@@ -1604,7 +1717,28 @@ namespace oceanbase
       len += serialization::encoded_length_vi64(internal_ups_scan_size_);
       len += serialization::encoded_length_vi64(merge_write_sstable_version_);
       len += serialization::encoded_length_vi64(replica_count_);
+      len += serialization::encoded_length_vi64(version_);
+      if (OB_SCHEMA_VERSION_FOUR_SECOND <= version_)
+      {
+        len += serialization::encoded_length_vi64(schema_version_);
+      }
+      else
+      {
+        len += serialization::encoded_length_vi64(reserved_[0]);
+      }
       len += serialization::encoded_length_vi64(reserved_[0]) * TABLE_SCHEMA_RESERVED_NUM;
+      len += serialization::encoded_length_vi64(0);
+      /*
+      if (OB_SCHEMA_VERSION_FOUR_FIRST <= version_)
+      {
+        len += serialization::encoded_length_vstr(comment_str_);
+        len += serialization::encoded_length_vi64(schema_version_);
+      }
+      if (OB_SCHEMA_VERSION_FOUR_SECOND == version_ )
+      {
+        len += serialization::encoded_length_vi64(consistency_level_);
+      }
+      */
       return len;
     }
 
@@ -1614,20 +1748,20 @@ namespace oceanbase
      *  ObSchemaManagerV2
      *-----------------------------------------------------------------------------*/
     ObSchemaManagerV2::ObSchemaManagerV2(): schema_magic_(OB_SCHEMA_MAGIC_NUMBER),version_(OB_SCHEMA_VERSION_FOUR),
-                                            timestamp_(0), max_table_id_(OB_INVALID_ID),column_nums_(0),
-                                            table_nums_(0), columns_(NULL), column_capacity_(0),
-                                            drop_column_group_(false),hash_sorted_(false),
-                                            column_group_nums_(0)
+    timestamp_(0), max_table_id_(OB_INVALID_ID),column_nums_(0),
+    table_nums_(0), columns_(NULL), column_capacity_(0),
+    drop_column_group_(false),hash_sorted_(false),
+    column_group_nums_(0)
     {
       app_name_[0] = '\0';
     }
 
     ObSchemaManagerV2::ObSchemaManagerV2(const int64_t timestamp): schema_magic_(OB_SCHEMA_MAGIC_NUMBER),
-                                                                   version_(OB_SCHEMA_VERSION_FOUR), timestamp_(timestamp),
-                                                                   max_table_id_(OB_INVALID_ID),column_nums_(0),
-                                                                   table_nums_(0), columns_(NULL), column_capacity_(0),
-                                                                   drop_column_group_(false),hash_sorted_(false),
-                                                                   column_group_nums_(0)
+    version_(OB_SCHEMA_VERSION_FOUR), timestamp_(timestamp),
+    max_table_id_(OB_INVALID_ID),column_nums_(0),
+    table_nums_(0), columns_(NULL), column_capacity_(0),
+    drop_column_group_(false),hash_sorted_(false),
+    column_group_nums_(0)
     {
       app_name_[0] = '\0';
     }
@@ -1676,16 +1810,16 @@ namespace oceanbase
     }
 
     ObSchemaManagerV2::ObSchemaManagerV2(const ObSchemaManagerV2& schema) : schema_magic_(OB_SCHEMA_MAGIC_NUMBER),
-                                                                            version_(OB_SCHEMA_VERSION_FOUR),
-                                                                            timestamp_(0),
-                                                                            max_table_id_(OB_INVALID_ID),
-                                                                            column_nums_(0),
-                                                                            table_nums_(0),
-                                                                            columns_(NULL),
-                                                                            column_capacity_(0),
-                                                                            drop_column_group_(false),
-                                                                            hash_sorted_(false),
-                                                                            column_group_nums_(0)
+    version_(OB_SCHEMA_VERSION_FOUR),
+    timestamp_(0),
+    max_table_id_(OB_INVALID_ID),
+    column_nums_(0),
+    table_nums_(0),
+    columns_(NULL),
+    column_capacity_(0),
+    drop_column_group_(false),
+    hash_sorted_(false),
+    column_group_nums_(0)
     {
       app_name_[0] = '\0';
       *this = schema;
@@ -1824,11 +1958,11 @@ namespace oceanbase
     {
       __table_sort(tbsys::CConfig& config): config_(config) {}
       bool operator()(const std::string& l,const std::string& r)
-        {
-          uint64_t l_table_id = config_.getInt(l.c_str(),STR_TABLE_ID,0);
-          uint64_t r_table_id = config_.getInt(r.c_str(),STR_TABLE_ID,0);
-          return l_table_id < r_table_id;
-        }
+      {
+        uint64_t l_table_id = config_.getInt(l.c_str(),STR_TABLE_ID,0);
+        uint64_t r_table_id = config_.getInt(r.c_str(),STR_TABLE_ID,0);
+        return l_table_id < r_table_id;
+      }
       tbsys::CConfig& config_;
     };
 
@@ -1874,17 +2008,17 @@ namespace oceanbase
           }
 
           version_ = config.getInt(STR_SECTION_APP_NAME, STR_SCHEMA_VERSION,
-            OB_SCHEMA_VERSION_FOUR);
+              OB_SCHEMA_VERSION_FOUR);
           if (version_ > OB_SCHEMA_VERSION_FOUR)
           {
             TBSYS_LOG(ERROR, "we limit our schema version less than %ld",
-              OB_SCHEMA_VERSION_FOUR);
+                OB_SCHEMA_VERSION_FOUR);
             parse_ok = false;
           }
           if (version_ < OB_SCHEMA_VERSION_TWO)
           {
             TBSYS_LOG(ERROR, "version_ is %d, must greater than %ld",
-              version_, OB_SCHEMA_VERSION);
+                version_, OB_SCHEMA_VERSION);
             parse_ok = false;
           }
 
@@ -1975,6 +2109,10 @@ namespace oceanbase
           {
             parse_ok = check_table_expire_condition();
           }
+          if (parse_ok)
+          {
+            parse_ok = check_compress_name();
+          }
         }
 
       }
@@ -2063,13 +2201,13 @@ namespace oceanbase
       if (parse_ok)
       {
         compress_func_name = config.getString(section_name, STR_COMPRESS_FUNC_NAME,"none");
-        block_size = config.getInt(section_name, STR_BLOCK_SIZE, 64);
+        block_size = config.getInt(section_name, STR_BLOCK_SIZE, OB_DEFAULT_SSTABLE_BLOCK_SIZE);
         is_use_bloomfilter = config.getInt(section_name, STR_USE_BLOOMFILTER, 0);
         has_baseline_data = config.getInt(section_name, STR_HAS_BASELINE_DATA, 0);
         if (block_size < 0)
         {
           TBSYS_LOG(ERROR, "block_size is %d, must >= 0",
-            block_size);
+              block_size);
           parse_ok = false;
         }
       }
@@ -2095,9 +2233,9 @@ namespace oceanbase
         int64_t expire_frequency =
           config.getInt(section_name, STR_EXPIRE_FREQUENCY, 1);
         int64_t max_sstable_size =
-          config.getInt(section_name, STR_MAX_SSTABLE_SIZE, 0);
-        int64_t merge_dynamic_data =
-          config.getInt(section_name, STR_IS_MERGE_DYNAMIC_DATA, 1);
+          config.getInt(section_name, STR_MAX_SSTABLE_SIZE, OB_DEFAULT_MAX_TABLET_SIZE);
+        int64_t consistency_level =
+          config.getInt(section_name, STR_CONSISTENCY_LEVEL, 0);
         int64_t expire_time =
           config.getInt(section_name, STR_QUERY_CACHE_EXPIRE_TIME, 0);
         int64_t expire_effect =
@@ -2109,36 +2247,36 @@ namespace oceanbase
         if (expire_frequency < 1)
         {
           TBSYS_LOG(ERROR, "expire_frequency is %ld, must greater than 0",
-            expire_frequency);
+              expire_frequency);
           parse_ok = false;
         }
         else if (max_sstable_size < 0)
         {
           TBSYS_LOG(ERROR, "max_sstable_size is %ld, must >= 0",
-            max_sstable_size);
+              max_sstable_size);
           parse_ok = false;
         }
         else if (expire_time < 0)
         {
           TBSYS_LOG(ERROR, "query_cache_expire_second is %ld, must >= 0",
-            expire_time);
+              expire_time);
           parse_ok = false;
         }
         else if (expire_effect < 0)
         {
           TBSYS_LOG(ERROR, "is_expire_effect_immediately is %ld, must >= 0",
-            expire_time);
+              expire_time);
           parse_ok = false;
         }
         else if (max_scan_rows < 0)
         {
           TBSYS_LOG(ERROR, "max_scan_rows_per_tablet is %ld, must >= 0",
-            max_scan_rows);
+              max_scan_rows);
           parse_ok = false;
         }
         else if (scan_size < 0 || scan_size >= OB_MAX_PACKET_LENGTH) {
           TBSYS_LOG(ERROR, "internal_ups_scan_size is %ld, must >= 0",
-            scan_size);
+              scan_size);
           parse_ok = false;
         }
         else
@@ -2146,7 +2284,7 @@ namespace oceanbase
           schema.set_expire_condition(expire_condition);
           schema.set_expire_frequency(expire_frequency);
           schema.set_max_sstable_size(max_sstable_size);
-          schema.set_merge_dynamic_data(merge_dynamic_data != 0);
+          schema.set_consistency_level(consistency_level);
           schema.set_query_cache_expire_time(expire_time * 1000L);
           schema.set_expire_effect_immediately(expire_effect);
           schema.set_max_scan_rows_per_tablet(max_scan_rows);
@@ -2636,6 +2774,20 @@ namespace oceanbase
       return table_nums_;
     }
 
+    ObSchemaManagerV2::Status ObSchemaManagerV2::get_status() const
+    {
+      Status status = INVALID;
+      if (get_version() == CORE_SCHEMA_VERSION  && get_table_count() == CORE_TABLE_COUNT)
+      {
+        status = CORE_TABLES;
+      }
+      else if (get_version() > CORE_SCHEMA_VERSION && get_table_count() > CORE_TABLE_COUNT)
+      {
+        status = ALL_TABLES;
+      }
+      return status;
+    }
+
     int64_t ObSchemaManagerV2::get_version() const
     {
       return timestamp_;
@@ -2667,8 +2819,8 @@ namespace oceanbase
     }
 
     const ObColumnSchemaV2* ObSchemaManagerV2::get_column_schema(const uint64_t table_id,
-                                                                 const uint64_t column_group_id,
-                                                                 const uint64_t column_id) const
+        const uint64_t column_group_id,
+        const uint64_t column_id) const
     {
       const ObColumnSchemaV2 *column = NULL;
 
@@ -2702,8 +2854,8 @@ namespace oceanbase
     }
 
     const ObColumnSchemaV2* ObSchemaManagerV2::get_column_schema(const uint64_t table_id,
-                                                                 const uint64_t column_id,
-                                                                 int32_t* idx /*=NULL*/) const
+        const uint64_t column_id,
+        int32_t* idx /*=NULL*/) const
     {
       const ObColumnSchemaV2 *column = NULL;
 
@@ -2737,8 +2889,8 @@ namespace oceanbase
     }
 
     const ObColumnSchemaV2* ObSchemaManagerV2::get_column_schema(const char* table_name,
-                                                                 const char* column_name,
-                                                                 int32_t* idx /*=NULL*/) const
+        const char* column_name,
+        int32_t* idx /*=NULL*/) const
     {
       const ObColumnSchemaV2 *column = NULL;
 
@@ -2753,8 +2905,8 @@ namespace oceanbase
     }
 
     const ObColumnSchemaV2* ObSchemaManagerV2::get_column_schema(const ObString& table_name,
-                                                                 const ObString& column_name,
-                                                                 int32_t* idx /*=NULL*/) const
+        const ObString& column_name,
+        int32_t* idx /*=NULL*/) const
     {
       const ObColumnSchemaV2 *column = NULL;
 
@@ -2808,7 +2960,7 @@ namespace oceanbase
       }
 
       if  (OB_SUCCESS == err && begin != NULL && begin != column_end()
-           && begin->get_table_id() == table_id)
+          && begin->get_table_id() == table_id)
       {
         target.set_column_group_id(OB_INVALID_ID);
         target.set_column_id(OB_INVALID_ID);
@@ -2819,7 +2971,7 @@ namespace oceanbase
     }
 
     const ObColumnSchemaV2* ObSchemaManagerV2::get_group_schema(const uint64_t table_id,
-                                                                const uint64_t column_group_id,int32_t& size) const
+        const uint64_t column_group_id,int32_t& size) const
     {
       int err = OB_SUCCESS;
 
@@ -2846,8 +2998,8 @@ namespace oceanbase
       }
 
       if  (OB_SUCCESS == err && group_begin != NULL && group_begin != column_end()
-           && group_begin->get_table_id() == table_id
-           && group_begin->get_column_group_id() == column_group_id)
+          && group_begin->get_table_id() == table_id
+          && group_begin->get_column_group_id() == column_group_id)
       {
         target.set_column_id(OB_INVALID_ID);
         group_end = std::upper_bound(group_begin,column_end(),target,ObColumnSchemaV2Compare());
@@ -2870,7 +3022,7 @@ namespace oceanbase
           && NULL != columns_)
       {
         ret = double_expand_storage(columns_, column_nums_, MAX_COLUMNS_LIMIT,
-          column_capacity_, ObModIds::OB_SCHEMA);
+            column_capacity_, ObModIds::OB_SCHEMA);
       }
 
       return ret;
@@ -2911,6 +3063,44 @@ namespace oceanbase
         {
           memset(columns_, 0x0, column_capacity_ * sizeof(ObColumnSchemaV2));
         }
+      }
+      return ret;
+    }
+
+    int ObSchemaManagerV2::add_column_without_sort(ObColumnSchemaV2& column)
+    {
+      int ret = OB_ERROR;
+      const ObTableSchema *table = get_table_schema(column.get_table_id());
+      if (NULL == table)
+      {
+        TBSYS_LOG(ERROR,"can't find this table:%lu",column.get_table_id());
+        ret = OB_ENTRY_NOT_EXIST;
+      }
+      else if (column.get_id() < COLUMN_ID_RESERVED )
+      {
+        TBSYS_LOG(ERROR,"column id %ld reserved for internal usage.", column.get_id());
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (column.get_id() > table->get_max_column_id())
+      {
+        TBSYS_LOG(ERROR,"column id %lu greater thean max_column_id %lu",
+            column.get_id(), table->get_max_column_id());
+        ret = OB_INVALID_ARGUMENT;
+      }
+      else if (column_nums_ >= MAX_COLUMNS_LIMIT)
+      {
+        TBSYS_LOG(ERROR, "schema column_nums_ =%ld large than %ld",
+            column_nums_, MAX_COLUMNS_LIMIT);
+        ret = OB_SIZE_OVERFLOW;
+      }
+      else if (column_nums_ >= column_capacity_ && OB_SUCCESS != (ret = ensure_column_storage()))
+      {
+        TBSYS_LOG(ERROR, "expand error, ret= %d", ret);
+      }
+      else
+      {
+        columns_[column_nums_++] = column;
+        ret = OB_SUCCESS;
       }
       return ret;
     }
@@ -3039,8 +3229,8 @@ namespace oceanbase
     }
 
     int ObSchemaManagerV2::get_column_index(const char *table_name,
-                                            const char* column_name,
-                                            int32_t index_array[],int32_t& size) const
+        const char* column_name,
+        int32_t index_array[],int32_t& size) const
     {
       int ret = OB_SUCCESS;
 
@@ -3078,8 +3268,8 @@ namespace oceanbase
     }
 
     int ObSchemaManagerV2::get_column_index(const uint64_t table_id,
-                                            const uint64_t column_id,
-                                            int32_t index_array[],int32_t& size) const
+        const uint64_t column_id,
+        int32_t index_array[],int32_t& size) const
     {
       int ret = OB_SUCCESS;
 
@@ -3116,7 +3306,7 @@ namespace oceanbase
     }
 
     int ObSchemaManagerV2::get_column_schema(const uint64_t table_id, const uint64_t column_id,
-                                             ObColumnSchemaV2* columns[],int32_t& size) const
+        ObColumnSchemaV2* columns[],int32_t& size) const
     {
       int ret = OB_SUCCESS;
 
@@ -3153,7 +3343,7 @@ namespace oceanbase
     }
 
     int ObSchemaManagerV2::get_column_schema(const char *table_name, const char* column_name,
-                                             ObColumnSchemaV2* columns[],int32_t& size) const
+        ObColumnSchemaV2* columns[],int32_t& size) const
     {
       int ret = OB_SUCCESS;
 
@@ -3173,8 +3363,8 @@ namespace oceanbase
     }
 
     int ObSchemaManagerV2::get_column_schema(const ObString& table_name,
-                                             const ObString& column_name,
-                                             ObColumnSchemaV2* columns[],int32_t& size) const
+        const ObString& column_name,
+        ObColumnSchemaV2* columns[],int32_t& size) const
     {
       int ret = OB_SUCCESS;
 
@@ -3245,7 +3435,7 @@ namespace oceanbase
         if (NULL == column_right)
         {
           TBSYS_LOG(INFO, "column is delete. table_name=%s, table_id=%lu, "
-                          "column_name=%s, column_id=%lu",
+              "column_name=%s, column_id=%lu",
               left_table_schema->get_table_name(), left_table_id,
               column_left->get_name(), column_left->get_id());
           continue;
@@ -3299,15 +3489,15 @@ namespace oceanbase
         if (NULL == left_table_schema)
         {
           TBSYS_LOG(INFO, "new table add. table_name=%s, table_id=%lu",
-                    right_table_schema->get_table_name(), right_column->get_table_id());
+              right_table_schema->get_table_name(), right_column->get_table_id());
           continue;
         }
         if (NULL == left_column)
         {
           TBSYS_LOG(INFO, "table add new column. table_name=%s, table_id=%lu, "
-                          "column_name=%s, column_id=%lu",
-                    right_table_schema->get_table_name(), right_column->get_table_id(),
-                    right_column->get_name(), right_column->get_id());
+              "column_name=%s, column_id=%lu",
+              right_table_schema->get_table_name(), right_column->get_table_id(),
+              right_column->get_name(), right_column->get_id());
           if (right_column->get_id() <= left_table_schema->get_max_column_id())
           {
             TBSYS_LOG(WARN, "column id =%lu not legal. should bigger than %lu",
@@ -3614,6 +3804,39 @@ namespace oceanbase
         columns_[i].print_info();
       }
     }
+    const char* convert_column_type_to_str(ColumnType type)
+    {
+      if (type == ObIntType)
+      {
+        return STR_COLUMN_TYPE_INT;
+      }
+      else if (type == ObVarcharType)
+      {
+        return STR_COLUMN_TYPE_VCHAR;
+      }
+      else if (type == ObDateTimeType)
+      {
+        return STR_COLUMN_TYPE_DATETIME;
+      }
+      else if (type == ObPreciseDateTimeType)
+      {
+        return STR_COLUMN_TYPE_PRECISE_DATETIME;
+      }
+      else if (type == ObCreateTimeType)
+      {
+        return STR_COLUMN_TYPE_C_TIME;
+      }
+      else if (type == ObModifyTimeType)
+      {
+        return STR_COLUMN_TYPE_M_TIME;
+      }
+      else
+      {
+        TBSYS_LOG(ERROR,"column type %d not be supported", type);
+        return NULL;
+      }
+    }
+
 
     void ObSchemaManagerV2::print(FILE* fd) const
     {
@@ -3817,7 +4040,7 @@ namespace oceanbase
     }
 
     int ObSchemaManagerV2::replace_system_variable(
-      char* expire_condition, const int64_t buf_size) const
+        char* expire_condition, const int64_t buf_size) const
     {
       int ret = OB_SUCCESS;
       struct tm* tm = NULL;
@@ -3827,7 +4050,7 @@ namespace oceanbase
       if (NULL == expire_condition || buf_size <= 0)
       {
         TBSYS_LOG(WARN, "invalid param, expire_condition=%p, buf_size=%ld",
-          expire_condition, buf_size);
+            expire_condition, buf_size);
         ret = OB_ERROR;
       }
       else
@@ -3836,13 +4059,13 @@ namespace oceanbase
         if (NULL == tm)
         {
           TBSYS_LOG(WARN, "failed to transfer system date to tm, sys_date=%ld",
-            sys_date);
+              sys_date);
           ret = OB_ERROR;
         }
         else
         {
           strftime(replace_str_buf, sizeof(replace_str_buf),
-            "#%Y-%m-%d %H:%M:%S#", tm);
+              "#%Y-%m-%d %H:%M:%S#", tm);
           ret = replace_str(expire_condition, buf_size, SYS_DATE, replace_str_buf);
           if (OB_SUCCESS != ret)
           {
@@ -3855,8 +4078,8 @@ namespace oceanbase
     }
 
     int ObSchemaManagerV2::check_expire_dependent_columns(
-      const ObString& expr, const ObTableSchema& table_schema,
-      ObExpressionParser& parser) const
+        const ObString& expr, const ObTableSchema& table_schema,
+        ObExpressionParser& parser) const
     {
       int ret               = OB_SUCCESS;
       int i                 = 0;
@@ -3877,7 +4100,7 @@ namespace oceanbase
       else
       {
         TBSYS_LOG(WARN, "parse infix expression to postfix expression "
-                        "error, ret=%d", ret);
+            "error, ret=%d", ret);
       }
 
       if (OB_SUCCESS == ret)
@@ -3899,7 +4122,7 @@ namespace oceanbase
               if (OB_SUCCESS != expr_array.at(i+1)->get_varchar(key_col_name))
               {
                 TBSYS_LOG(WARN, "unexpected data type. varchar expected, "
-                                "but actual type is %d",
+                    "but actual type is %d",
                     expr_array.at(i+1)->get_type());
                 ret = OB_ERR_UNEXPECTED;
                 break;
@@ -3907,13 +4130,14 @@ namespace oceanbase
               else
               {
                 table_name.assign_ptr(const_cast<char*>(table_schema.get_table_name()),
-                  static_cast<int32_t>(strlen(table_schema.get_table_name())));
+                    static_cast<int32_t>(strlen(table_schema.get_table_name())));
                 column_schema = get_column_schema(table_name, key_col_name);
                 if (NULL == column_schema)
                 {
-                  TBSYS_LOG(WARN, "expire condition includes invalid column name, "
-                                  "table_name=%s, column_name=%.*s",
-                    table_schema.get_table_name(), key_col_name.length(), key_col_name.ptr());
+                  TBSYS_LOG(ERROR, "expire condition includes invalid column name, "
+                      "table_name=%s, column_name=%.*s, expire_condition=%.*s",
+                      table_schema.get_table_name(), key_col_name.length(), key_col_name.ptr(),
+                      expr.length(), expr.ptr());
                   ret = OB_ERROR;
                   break;
                 }
@@ -3925,6 +4149,35 @@ namespace oceanbase
       }
 
       return ret;
+    }
+
+    bool ObSchemaManagerV2::check_compress_name() const
+    {
+      int ret = OB_SUCCESS;
+      bool bret = true;
+      const char* compress_name = NULL;
+      for (int64_t i = 0; i < table_nums_ && OB_SUCCESS == ret; ++i)
+      {
+        if (NULL != (compress_name = table_infos_[i].get_compress_func_name())
+            && compress_name[0] != '\0')
+        {
+          if (0 != strcmp(compress_name, "lzo_1.0")
+              && 0 != strcmp(compress_name, "none")
+              && 0 != strcmp(compress_name, "snappy_1.0"))
+          {
+            bret = false;
+            TBSYS_LOG(ERROR, "table compress function name check failed. table_name=%s, compress_name=%s",
+                table_infos_[i].get_table_name(), compress_name);
+          }
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "fail to get tabel compress name, table_name=%s, compress_name=%p", table_infos_[i].get_table_name(), compress_name);
+          bret = false;
+          ret = OB_ERROR;
+        }
+      }
+      return bret;
     }
 
     bool ObSchemaManagerV2::check_table_expire_condition() const
@@ -3950,26 +4203,26 @@ namespace oceanbase
           if (static_cast<int64_t>(strlen(expire_condition)) >= OB_MAX_EXPIRE_CONDITION_LENGTH)
           {
             TBSYS_LOG(WARN, "expire condition too large, expire_condition_len=%zu, "
-                            "max_condition_len=%ld, table_name=%s",
-              strlen(expire_condition), OB_MAX_EXPIRE_CONDITION_LENGTH,
-              table_infos_[i].get_table_name());
+                "max_condition_len=%ld, table_name=%s",
+                strlen(expire_condition), OB_MAX_EXPIRE_CONDITION_LENGTH,
+                table_infos_[i].get_table_name());
             ret = OB_ERROR;
           }
           else
           {
             strcpy(infix_condition_expr, expire_condition);
             ret = replace_system_variable(infix_condition_expr,
-              OB_MAX_EXPIRE_CONDITION_LENGTH);
+                OB_MAX_EXPIRE_CONDITION_LENGTH);
             if (OB_SUCCESS == ret)
             {
               cond_expr.assign_ptr(infix_condition_expr,
-                static_cast<int32_t>(strlen(infix_condition_expr)));
+                  static_cast<int32_t>(strlen(infix_condition_expr)));
               ret = check_expire_dependent_columns(cond_expr,
-                table_infos_[i], *parser);
+                  table_infos_[i], *parser);
               if (OB_SUCCESS != ret)
               {
                 TBSYS_LOG(WARN, "failed to check expire dependent columns, infix_expr=%s",
-                  infix_condition_expr);
+                    infix_condition_expr);
               }
             }
           }
@@ -3991,7 +4244,7 @@ namespace oceanbase
     }
 
     bool ObSchemaManagerV2::ObColumnGroupHelperCompare::operator() (const ObColumnGroupHelper& l,
-                                                                    const ObColumnGroupHelper& r) const
+        const ObColumnGroupHelper& r) const
     {
       bool ret = false;
       if (l.table_id_ < r.table_id_ ||
@@ -4029,7 +4282,7 @@ namespace oceanbase
         begin = std::lower_bound(column_groups_,column_groups_ + column_group_nums_,target,ObColumnGroupHelperCompare());
 
         if  (begin != NULL && begin != column_groups_ + column_group_nums_
-             && begin->table_id_ == table_id)
+            && begin->table_id_ == table_id)
         {
           target.column_group_id_ = OB_INVALID_ID;
           end = std::upper_bound(begin,column_groups_ + column_group_nums_,target,ObColumnGroupHelperCompare());
@@ -4172,7 +4425,7 @@ namespace oceanbase
         if (schema_magic_ != OB_SCHEMA_MAGIC_NUMBER) //old schema
         {
           TBSYS_LOG(ERROR,"schema magic numer is wrong, schema_magic_=%x, OB_SCHEMA_MAGIC_NUMBER=%x",
-                    schema_magic_, OB_SCHEMA_MAGIC_NUMBER);
+              schema_magic_, OB_SCHEMA_MAGIC_NUMBER);
           ret = OB_ERROR;
         }
         else
@@ -4205,7 +4458,7 @@ namespace oceanbase
           {
             int64_t len = 0;
             serialization::decode_vstr(buf, data_len, tmp_pos,
-                                       app_name_, OB_MAX_APP_NAME_LENGTH, &len);
+                app_name_, OB_MAX_APP_NAME_LENGTH, &len);
             if (-1 == len)
             {
               ret = OB_ERROR;
@@ -4314,19 +4567,24 @@ namespace oceanbase
         old_tschema.set_split_pos(tschema->rowkey_split_);            //
         old_tschema.set_rowkey_max_length(tschema->max_rowkey_length_);
         old_tschema.set_merge_write_sstable_version(tschema->merge_write_sstable_version_);
+        old_tschema.set_schema_version(tschema->schema_version_);
         old_tschema.set_compressor_name(tschema->compress_func_name_); //
         old_tschema.set_block_size(tschema->tablet_block_size_);
         old_tschema.set_max_sstable_size(tschema->tablet_max_size_);
         old_tschema.set_use_bloomfilter(tschema->is_use_bloomfilter_); //
-        old_tschema.set_merge_dynamic_data(!tschema->is_read_static_);
+        old_tschema.set_consistency_level(tschema->consistency_level_);
         old_tschema.set_pure_update_table(tschema->is_pure_update_table_); // @deprecated
         old_tschema.set_create_time_column(tschema->create_time_column_id_);
         old_tschema.set_modify_time_column(tschema->modify_time_column_id_);
-        if (tschema->expire_condition_[0] != 0)
+        if (tschema->expire_condition_[0] != '\0')
         {
+          TBSYS_LOG(INFO, "expire condition =%s", tschema->expire_condition_);
           old_tschema.set_expire_condition(tschema->expire_condition_);
         }
-
+        if (tschema->comment_str_[0] != '\0')
+        {
+          old_tschema.set_comment_str(tschema->comment_str_);
+        }
         if (OB_SUCCESS != (ret = add_table(old_tschema)))
         {
           TBSYS_LOG(WARN, "failed to add table, err=%d", ret);
@@ -4342,7 +4600,7 @@ namespace oceanbase
           {
             TBSYS_LOG(DEBUG, "this is a wide_table. add join info");
             if (OB_SUCCESS != (ret = ObSchemaHelper::get_left_offset_array(schema_array, i,
-                  tschema->join_info_.at(0).right_table_id_,left_column_offset_array, right_rowkey_column_count)))
+                    tschema->join_info_.at(0).right_table_id_,left_column_offset_array, right_rowkey_column_count)))
             {
               TBSYS_LOG(WARN, "fail to get offset array.");
             }
@@ -4377,7 +4635,7 @@ namespace oceanbase
             {
               rowkey_column.column_id_ = tcolumn.column_id_;
               rowkey_column.type_ = tcolumn.data_type_;
-              rowkey_column.length_ = tcolumn.length_in_rowkey_ ;
+              rowkey_column.length_ = tcolumn.length_in_rowkey_;
               rowkey_column.order_ = static_cast<ObRowkeyColumn::Order>(tcolumn.order_in_rowkey_);
               if (OB_SUCCESS != (ret = rowkey_info.set_column(tcolumn.rowkey_id_-1, rowkey_column)))
               {
@@ -4387,7 +4645,7 @@ namespace oceanbase
             }
             if (OB_SUCCESS == ret)
             {
-              if (OB_SUCCESS != (ret = add_column(old_tcolumn)))
+              if (OB_SUCCESS != (ret = add_column_without_sort(old_tcolumn)))
               {
                 TBSYS_LOG(WARN, "failed to add column, err=%d", ret);
                 break;
@@ -4433,6 +4691,389 @@ namespace oceanbase
       else
       {
         ret = add_new_table_schema(array_wrapper);
+      }
+      return ret;
+    }
+    int ObSchemaManagerV2::write_to_file(const char* file_name)
+    {
+      int ret = OB_SUCCESS;
+      TBSYS_LOG(INFO, "write schema to file. file_name=%s", file_name);
+      FILE *fd = NULL;
+      if (NULL == file_name || (NULL == (fd = fopen(file_name, "w"))))
+      {
+        TBSYS_LOG(WARN, "can't open file. file_name=%p", file_name);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      if (OB_SUCCESS == ret)
+      {
+        if (0 >= (ret = fprintf(fd, "[%s]\n", STR_SECTION_APP_NAME)))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%s\n", STR_KEY_APP_NAME, app_name_)))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%lu\n", STR_MAX_TABLE_ID, max_table_id_)))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_SCHEMA_VERSION, version_)))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else
+        {
+          ret = OB_SUCCESS;
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        for (int64_t i = 0; i < table_nums_; i++)
+        {
+          ret = write_table_to_file(fd, i);
+          if (OB_SUCCESS != ret)
+          {
+            TBSYS_LOG(WARN, "fail to write table to file. table index =%ld, ret=%d", i, ret);
+            break;
+          }
+        }
+      }
+      if (NULL != fd)
+      {
+        fclose(fd);
+      }
+      return ret;
+    }
+
+    int ObSchemaManagerV2::write_table_to_file(FILE *fd, const int64_t table_index)
+    {
+      int ret = OB_SUCCESS;
+      if (table_index >= table_nums_ || NULL == fd)
+      {
+        TBSYS_LOG(WARN, "invalid index. index=%ld, table_num=%ld, fd=%p",
+            table_index, table_nums_, fd);
+        ret = OB_INVALID_ARGUMENT;
+      }
+
+      const ObTableSchema *table_schema = NULL;
+      if (OB_SUCCESS == ret)
+      {
+        table_schema = table_begin() + table_index;
+        if (NULL == table_schema)
+        {
+          TBSYS_LOG(WARN, "table_schema = %p, error here.!", table_schema);
+          ret = OB_ERROR;
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        if (0 >= (ret = fprintf(fd, "\n\n[%s]\n", table_schema->get_table_name())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%lu\n", STR_TABLE_ID, table_schema->get_table_id())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_TABLE_TYPE, table_schema->get_table_type())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_MAX_COLUMN_ID, table_schema->get_max_column_id())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%s\n", STR_COMPRESS_FUNC_NAME, table_schema->get_compress_func_name())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_BLOCK_SIZE, table_schema->get_block_size())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_USE_BLOOMFILTER, table_schema->is_use_bloomfilter())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_HAS_BASELINE_DATA, table_schema->has_baseline_data())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_EXPIRE_FREQUENCY, table_schema->get_expire_frequency())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_CONSISTENCY_LEVEL, table_schema->get_consistency_level())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_QUERY_CACHE_EXPIRE_TIME, table_schema->get_query_cache_expire_time())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%d\n", STR_IS_EXPIRE_EFFECT_IMMEDIATELY, table_schema->is_expire_effect_immediately())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_MAX_SCAN_ROWS_PER_TABLET, table_schema->get_max_scan_rows_per_tablet())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_INTERNAL_UPS_SCAN_SIZE, table_schema->get_internal_ups_scan_size())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%s\n", STR_EXPIRE_CONDITION, table_schema->get_expire_condition())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else if (0 >= (ret = fprintf(fd, "%s=%ld\n", STR_MAX_SSTABLE_SIZE, table_schema->get_max_sstable_size())))
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+        }
+        else
+        {
+          ret = OB_SUCCESS;
+        }
+      }
+
+      //row_key
+      if (OB_SUCCESS == ret)
+      {
+        ret = write_rowkey_info_to_file(fd, table_schema->get_table_id(), table_schema->get_rowkey_info());
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to write rowkey info to file. ret=%d", ret);
+        }
+      }
+      if (OB_SUCCESS == ret)
+      {
+        bool have_join_info = false;
+        char join_buff[OB_MAX_PACKET_LENGTH]; //for join_info
+        int64_t pos = 0;
+        const ObColumnSchemaV2* column_schema = NULL;
+        for (uint64_t i = 0; i <= table_schema->get_max_column_id(); i++)
+        {
+          column_schema = get_column_schema(table_schema->get_table_id(), i);
+          if (NULL != column_schema)
+          {
+            ret = write_column_info_to_file(fd, column_schema);
+            if (OB_SUCCESS != ret)
+            {
+              TBSYS_LOG(WARN, "fail to write column info to file. ret=%d", ret);
+              break;
+            }
+            else
+            {
+              const ObColumnSchemaV2::ObJoinInfo* join_info = column_schema->get_join_info();
+              if (join_info != NULL)
+              {
+                const ObTableSchema *join_table_schema = get_table_schema(join_info->join_table_);
+                const ObColumnSchemaV2 *join_column_schema = get_column_schema(join_info->join_table_, join_info->correlated_column_);
+                if (NULL == join_table_schema || NULL == join_column_schema)
+                {
+                  TBSYS_LOG(WARN, "table schema =%p, column_schema=%p, table_id=%ld, column_id=%ld",
+                      join_table_schema, join_column_schema, join_info->join_table_, join_info->correlated_column_);
+                  ret = OB_ERROR;
+                  break;
+                }
+                if (!have_join_info)
+                {
+                  have_join_info = true;
+                  //[r1$jr1,r2$jr2]%joined_table_name:f1$jf1,f2$jf2,
+                  pos += snprintf(join_buff + pos, OB_MAX_PACKET_LENGTH, "%s=[", STR_JOIN_RELATION);
+                  for (uint64_t i = 0 ; i < join_info->left_column_count_; i ++)
+                  {
+                    uint64_t left_column_id = 0;
+                    table_schema->get_rowkey_info().get_column_id(join_info->left_column_offset_array_[i], left_column_id);
+                    const ObColumnSchemaV2 *left_column= get_column_schema(table_schema->get_table_id(), left_column_id);
+                    ObRowkeyInfo join_rowkey = join_table_schema->get_rowkey_info();
+                    uint64_t rowkey_column_id = 0;
+                    join_rowkey.get_column_id(i, rowkey_column_id);
+                    const ObColumnSchemaV2 *rowkey_column_schema = get_column_schema(join_info->join_table_, rowkey_column_id);
+                    pos += snprintf(join_buff + pos, OB_MAX_PACKET_LENGTH, "%s$%s,", left_column->get_name(), rowkey_column_schema->get_name());
+                  }
+                  pos += snprintf(join_buff + pos - 1, OB_MAX_PACKET_LENGTH, "]%%%s:", join_table_schema->get_table_name());
+                  pos = pos - 1;
+                  pos += snprintf(join_buff + pos, OB_MAX_PACKET_LENGTH, "%s$%s", column_schema->get_name(), join_column_schema->get_name());
+                }
+                else
+                {
+                  pos += snprintf(join_buff + pos, OB_MAX_PACKET_LENGTH, ",%s$%s", column_schema->get_name(), join_column_schema->get_name());
+                }
+              }
+            }
+          }
+        }
+        join_buff[pos] = '\0';
+        if (OB_SUCCESS == ret)
+        {
+          fprintf(fd, "%s\n", join_buff);
+        }
+      }
+      return ret;
+    }
+    int ObSchemaManagerV2::write_rowkey_info_to_file(FILE *fd, const uint64_t table_id, const ObRowkeyInfo &rowkey)
+    {
+      int ret = OB_SUCCESS;
+      char rowkey_buf[OB_MAX_PACKET_LENGTH];
+      memset(rowkey_buf, '\0', OB_MAX_PACKET_LENGTH);
+      int64_t pos = 0;
+      pos += snprintf(rowkey_buf + pos, OB_MAX_PACKET_LENGTH, "%s=", STR_ROWKEY);
+      for (int64_t i = 0; i < rowkey.get_size(); i++)
+      {
+        const ObRowkeyColumn *rowkey_column = rowkey.get_column(i);
+        if (rowkey_column == NULL)
+        {
+          TBSYS_LOG(WARN, "invalid column. column point is NULL");
+          ret = OB_ERROR;
+          break;
+        }
+        uint64_t column_id = rowkey_column->column_id_;
+        const ObColumnSchemaV2* column_schema = get_column_schema(table_id, column_id);
+        if (column_schema == NULL)
+        {
+          TBSYS_LOG(WARN, "cann't find the column_schema. table_id=%ld, column_id=%ld",
+              table_id, column_id);
+          ret = OB_ERROR;
+          break;
+        }
+
+
+        pos += snprintf(rowkey_buf + pos, OB_MAX_PACKET_LENGTH, "%s(%ld%%%s),",
+            column_schema->get_name(), rowkey_column->length_, convert_column_type_to_str(rowkey_column->type_));
+      }
+      rowkey_buf[pos - 1] = '\0';
+      fprintf(fd, "%s\n", rowkey_buf);
+      return ret;
+    }
+    int ObSchemaManagerV2::write_column_info_to_file(FILE *fd, const ObColumnSchemaV2 *column_schema)
+    {
+      int ret = OB_SUCCESS;
+      if (NULL == fd || NULL == column_schema)
+      {
+        TBSYS_LOG(WARN, "invalid argument. fd=%p, column_schema=%p", fd, column_schema);
+        ret = OB_INVALID_ARGUMENT;
+      }
+      if (OB_SUCCESS == ret)
+      {
+        if (ObVarcharType != column_schema->get_type())
+        {
+          if (0 >= (ret = fprintf(fd, "%s=%d,%ld,%s,%s\n", STR_COLUMN_INFO, column_schema->is_maintained(),
+                  column_schema->get_id(),
+                  column_schema->get_name(),
+                  convert_column_type_to_str(column_schema->get_type()))))
+          {
+            TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+            ret = OB_ERROR;
+          }
+          else
+          {
+            ret = OB_SUCCESS;
+          }
+        }
+        else
+        {
+          if (0 >= (ret = fprintf(fd, "%s=%d,%ld,%s,%s,%ld\n", STR_COLUMN_INFO, column_schema->is_maintained(),
+                  column_schema->get_id(),
+                  column_schema->get_name(),
+                  convert_column_type_to_str(column_schema->get_type()),
+                  column_schema->get_size())))
+          {
+            TBSYS_LOG(WARN, "fprintf buf content to file fail. ret=%d", ret);
+            ret = OB_ERROR;
+          }
+          else
+          {
+            ret = OB_SUCCESS;
+          }
+        }
+      }
+      return ret;
+    }
+int ObSchemaManagerV2::change_table_id(const uint64_t table_id, const uint64_t new_table_id)
+    {
+      int ret = OB_SUCCESS;
+      //tableschema
+      ObTableSchema *table_schema = NULL;
+      if (NULL == (table_schema = const_cast<ObTableSchema*>(get_table_schema(table_id))))
+      {
+        TBSYS_LOG(WARN, "fail to find table_schema. table_id=%ld", table_id);
+        ret = OB_ERROR;
+      }
+      else
+      {
+        table_schema->set_table_id(new_table_id);
+      }
+      //columnschema
+      //join_tables
+      if (OB_SUCCESS == ret)
+      {
+        for (int64_t i = 0; i < column_nums_; i++)
+        {
+          ObColumnSchemaV2 *column = const_cast<ObColumnSchemaV2 *>(columns_ + i);
+          ObColumnSchemaV2::ObJoinInfo *join_info = NULL;
+          if (NULL != column)
+          {
+            if (NULL != (join_info = const_cast<ObColumnSchemaV2::ObJoinInfo *>(column->get_join_info())))
+            {
+              if (join_info->join_table_ == table_id)
+              {
+                join_info->join_table_ = new_table_id;
+              }
+            }
+            if (column->get_table_id() == table_id)
+            {
+              column->set_table_id(new_table_id);
+            }
+          }
+          else
+          {
+            TBSYS_LOG(WARN, "error happened. i=%ld, column_num=%ld", i, column_nums_);
+            break;
+          }
+        }
+      }
+      //column_groups
+      if (OB_SUCCESS == ret)
+      {
+        for (int64_t i = 0; i < column_group_nums_; i++)
+        {
+          if (column_groups_[i].table_id_ == table_id)
+          {
+            column_groups_[i].table_id_ = new_table_id;
+          }
+        }
+      }
+      //sort
+      if (OB_SUCCESS == ret)
+      {
+        ret = sort_column();
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to sort column. ert=%d", ret);
+        }
       }
       return ret;
     }

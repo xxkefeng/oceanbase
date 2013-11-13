@@ -30,13 +30,26 @@ ObSort::~ObSort()
 
 void ObSort::reset()
 {
-  ObSingleChildPhyOperator::clear();
   sort_columns_.clear();
   mem_size_limit_ = 0;
   in_mem_sort_.reset();
   merge_sort_.reset();
+  // FIXME: why not reset to NULL?
   sort_reader_ = &in_mem_sort_;
+  ObSingleChildPhyOperator::reset();
 }
+
+
+void ObSort::reuse()
+{
+  sort_columns_.clear();
+  mem_size_limit_ = 0;
+  in_mem_sort_.reuse();
+  merge_sort_.reuse();
+  sort_reader_ = &in_mem_sort_;
+  ObSingleChildPhyOperator::reuse();
+}
+
 
 void ObSort::set_mem_size_limit(const int64_t limit)
 {
@@ -178,11 +191,21 @@ int ObSort::get_next_row(const common::ObRow *&row)
     TBSYS_LOG(WARN, "execution timeout, ts=%ld", my_phy_plan_->get_timeout_timestamp());
     ret = OB_PROCESS_TIMEOUT;
   }
+  else if (OB_UNLIKELY(NULL != my_phy_plan_ && my_phy_plan_->is_terminate(ret)))
+  {
+    TBSYS_LOG(WARN, "execution was terminated ret is %d", ret);
+  }
   else
   {
     ret = sort_reader_->get_next_row(row);
   }
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObSort, PHY_SORT);
+  }
 }
 
 int64_t ObSort::to_string(char* buf, const int64_t buf_len) const
@@ -292,10 +315,14 @@ DEFINE_GET_SERIALIZE_SIZE(ObSort)
   return size;
 }
 
-void ObSort::assign(const ObSort &other)
+PHY_OPERATOR_ASSIGN(ObSort)
 {
-  sort_columns_ = other.get_sort_columns();
-  mem_size_limit_ = other.get_mem_size_limit();
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObSort);
+  reset();
+  sort_columns_ = o_ptr->get_sort_columns();
+  mem_size_limit_ = o_ptr->get_mem_size_limit();
+  return ret;
 }
 
 ObPhyOperatorType ObSort::get_type() const

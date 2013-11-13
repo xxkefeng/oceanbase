@@ -98,6 +98,8 @@ namespace oceanbase
       // get master update server
       int get_update_server(const bool renew, common::ObServer & server, bool need_master = true);
 
+      int get_master_master_update_server(const bool renew, ObServer & master_master_ups);
+
       // some get func as temperary interface
       const common::ObGeneralRpcStub * get_rpc_stub() const
       {
@@ -111,10 +113,9 @@ namespace oceanbase
       {
         return root_server_;
       }
-
     public:
       // retry interval time
-      static const int64_t RETRY_INTERVAL_TIME = 20; // 20 ms usleep
+      static const int64_t RETRY_INTERVAL_TIME = 20000; // 20 ms usleep
 
       // least fetch schema time interval
       static const int64_t LEAST_FETCH_SCHEMA_INTERVAL = 1000 * 1000; // 1s
@@ -257,6 +258,10 @@ namespace oceanbase
       // not in blacklist and read percentage is gt 0
       bool check_server(const int32_t index, const common::ObServerType server_type);
 
+      // for CS consistency read
+      int get_inst_master_ups(const common::ObServer &root_server, common::ObServer &ups_master);
+      int get_master_obi_rs(const common::ObServer &rootserver, common::ObServer &master_obi_rs);
+
     private:
       // check inner stat
       bool check_inner_stat(void) const;
@@ -273,6 +278,9 @@ namespace oceanbase
       // param  @timestamp old schema timestamp
       //        @manager the new schema pointer
       int get_new_schema(const int64_t timestamp, const common::ObSchemaManagerV2 ** manager);
+
+      // check if need retry ups when got a error code
+      inline bool check_need_retry_ups(const int rc);
 
       /// max len
       static const int64_t MAX_RANGE_LEN = 128;
@@ -305,7 +313,22 @@ namespace oceanbase
       ObUpsBlackList black_list_;                   // black list of update server
       ObUpsBlackList ups_black_list_for_merge_;     // black list of update server
       common::ObUpsList update_server_list_;        // update server list for read
+      // get master master ups for consistency read
+      int64_t fetch_mm_ups_timestamp_;              // last fetch update server timestamp
+      tbsys::CRWLock mm_ups_list_lock_;             // lock for update server list
+      tbsys::CThreadMutex mm_update_lock_;          // lock for fetch update server info
+      common::ObServer master_master_ups_;          // update server vip addr
     };
+
+    inline bool ObMergerRpcProxy::check_need_retry_ups(const int rc)
+    {
+      bool need_retry = false;
+      if (OB_NOT_MASTER == rc || OB_RESPONSE_TIME_OUT == rc)
+      {
+        need_retry = true;
+      }
+      return need_retry;
+    }
   }
 }
 

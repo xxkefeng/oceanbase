@@ -17,6 +17,12 @@
 
 using namespace oceanbase::sql;
 
+namespace oceanbase{
+  namespace updateserver{
+    REGISTER_CREATOR(oceanbase::sql::ObPhyOperatorGFactory, oceanbase::sql::ObPhyOperator, ObIncGetIter, oceanbase::sql::PHY_INC_GET_ITER);
+  }
+}
+
 namespace oceanbase
 {
   namespace updateserver
@@ -67,9 +73,9 @@ namespace oceanbase
                   session_ctx, table_mgr, get_param);
       }
       else if (OB_SUCCESS != (err = ObTableListQuery::open(session_ctx, table_mgr,
-                                                           get_param->get_version_range())))
+                                                           get_param->get_version_range(), get_table_id(*get_param))))
       {
-        TBSYS_LOG(WARN, "open()=>%d", err);
+        TBSYS_LOG(WARN, "open(%s)=>%d", to_cstring(*get_param), err);
       }
       else
       {
@@ -183,7 +189,10 @@ namespace oceanbase
       }
       else if (OB_SUCCESS != (err = query(&get_query_, &row_desc_, result_)))
       {
-        TBSYS_LOG(WARN, "query()=>%d", err);
+        if (!IS_SQL_ERR(err))
+        {
+          TBSYS_LOG(WARN, "query()=>%d", err);
+        }
       }
       else if (OB_SUCCESS != (err = result_->open()))
       {
@@ -226,9 +235,9 @@ namespace oceanbase
         TBSYS_LOG(WARN, "open(session_ctx=%p, table_mgr=%p, scan_param=%p): INVALID_ARGUMENT",
                   session_ctx, table_mgr, scan_param);
       }
-      else if (OB_SUCCESS != (err = ObTableListQuery::open(session_ctx, table_mgr, scan_param->get_version_range())))
+      else if (OB_SUCCESS != (err = ObTableListQuery::open(session_ctx, table_mgr, scan_param->get_version_range(), get_table_id(*scan_param))))
       {
-        TBSYS_LOG(WARN, "open()=>%d", err);
+        TBSYS_LOG(WARN, "open(%s)=>%d", to_cstring(*scan_param), err);
       }
       else
       {
@@ -268,14 +277,14 @@ namespace oceanbase
       }
       else if (ObIncScan::ST_SCAN == scan_type_)
       {
-        if (OB_SUCCESS != (err = scan_iter_.open(&session_ctx_, table_mgr, scan_param_, result_)))
+        if (OB_SUCCESS != (err = scan_iter_.open(session_ctx_, table_mgr, scan_param_, result_)))
         {
           TBSYS_LOG(WARN, "scan_iter_.open()=>%d", err);
         }
       }
       else if (ObIncScan::ST_MGET == scan_type_)
       {
-        if (OB_SUCCESS != (err = get_iter_.open(&session_ctx_, table_mgr, get_param_, lock_flag_, result_)))
+        if (OB_SUCCESS != (err = get_iter_.open(session_ctx_, table_mgr, get_param_, lock_flag_, result_)))
         {
           TBSYS_LOG(WARN, "get_iter_.open()=>%d", err);
         }
@@ -328,7 +337,7 @@ namespace oceanbase
       int64_t pos = 0;
       pos = sql::ObIncScan::to_string(buf, buf_len);
       databuff_printf(buf, buf_len, pos, "UpsIncScan(session=%p[%d:%ld])\n",
-                      &session_ctx_, session_ctx_.get_session_descriptor(), session_ctx_.get_session_start_time());
+                      session_ctx_, session_ctx_->get_session_descriptor(), session_ctx_->get_session_start_time());
       return pos;
     }
 
@@ -343,7 +352,10 @@ namespace oceanbase
       else if (OB_SUCCESS != (err = result_->get_next_row(row))
                && OB_ITER_END != err)
       {
-        TBSYS_LOG(WARN, "result->get_next_row()=>%d", err);
+        if (!IS_SQL_ERR(err))
+        {
+          TBSYS_LOG(WARN, "result->get_next_row()=>%d", err);
+        }
       }
       return err;
     }
@@ -364,4 +376,3 @@ namespace oceanbase
     }
   }; // end namespace updateserver
 }; // end namespace oceanbase
-

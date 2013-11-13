@@ -70,7 +70,9 @@ TEST_F(ObUpsMultiGetTest, basic_test)
 
   rpc_proxy.set_column_count(column_count);
   ups_multi_get.set_rpc_proxy(&rpc_proxy);
-  ups_multi_get.set_network_timeout(1000 * 1000);
+
+  int64_t now = tbsys::CTimeUtil::getTime();
+  ups_multi_get.set_ts_timeout_us(1000 * 1000 + now);
 
   ObRowkey rowkey;
 

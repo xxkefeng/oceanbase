@@ -42,6 +42,9 @@ namespace oceanbase
         /// execute the create table statement
         virtual int open();
         virtual int close();
+        virtual void reset();
+        virtual void reuse();
+        virtual ObPhyOperatorType get_type() const { return PHY_CREATE_TABLE; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         /// @note always return OB_ITER_END
         virtual int get_next_row(const common::ObRow *&row);

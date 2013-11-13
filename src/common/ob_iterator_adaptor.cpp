@@ -2,16 +2,16 @@
  //
  // ob_iterator_adaptor.cpp common / Oceanbase
  //
- // Copyright (C) 2010 Taobao.com, Inc.
+ // Copyright (C) 2010, 2013 Taobao.com, Inc.
  //
- // Created on 2012-11-21 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2012-11-21 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
  // Description
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -20,6 +20,13 @@
 #include "ob_schema.h"
 #include "ob_obj_cast.h"
 #include "utility.h"
+
+
+namespace oceanbase{
+  namespace common{
+    REGISTER_CREATOR(oceanbase::sql::ObPhyOperatorGFactory, oceanbase::sql::ObPhyOperator, ObRowIterAdaptor, oceanbase::sql::PHY_ROW_ITER_ADAPTOR);
+  }
+}
 
 namespace oceanbase
 {
@@ -38,7 +45,7 @@ namespace oceanbase
     {
       need_cast_ = need_cast;
     }
-    
+
     int ObObjCastHelper::reset(const ObRowDesc &row_desc, const ObSchemaManagerV2 &schema_mgr)
     {
       int ret = OB_SUCCESS;
@@ -713,8 +720,15 @@ namespace oceanbase
       cell_iter_ = NULL;
       cur_row_.reset(false, is_ups_row_ ? ObRow::DEFAULT_NOP : ObRow::DEFAULT_NULL);
       deep_copy_ = false;
+      allocator_.free();
+    }
+
+    void ObRowIterAdaptor::reuse()
+    {
+      cell_iter_ = NULL;
+      cur_row_.reset(false, is_ups_row_ ? ObRow::DEFAULT_NOP : ObRow::DEFAULT_NULL);
+      deep_copy_ = false;
       allocator_.reuse();
     }
   }
 }
-

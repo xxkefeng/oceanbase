@@ -1,10 +1,13 @@
 #include "common/ob_client_manager.h"
 #include "ob_ms_async_rpc.h"
+#include "ob_ms_tsi.h"
 #include "ob_ms_sql_request.h"
 #include "common/ob_spop_spush_queue.h"
 #include "common/ob_atomic.h"
 #include "common/ob_common_param.h"
 #include "common/ob_malloc.h"
+#include "common/ob_profile_fill_log.h"
+#include "ob_ms_server_counter.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::mergeserver;
@@ -12,7 +15,7 @@ using namespace oceanbase::mergeserver;
 uint64_t ObMsSqlRequest::id_allocator_ = 0;
 
 ObMsSqlRequest::ObMsSqlRequest()
-  :buffer_pool_(ObModIds::OB_SQL_RPC_REQUEST),
+  :buffer_pool_(ObModIds::OB_SQL_REQUEST),
   finish_(false)
 {
   timeout_ = 0;
@@ -37,9 +40,9 @@ ObMsSqlRequest::~ObMsSqlRequest()
 int ObMsSqlRequest::close()
 {
   int ret = OB_SUCCESS;
-  if (OB_SUCCESS != (ret = invalidate_event_in_waiting_queue()))
+  if (OB_SUCCESS != (ret = invalidate_request_id()))
   {
-    TBSYS_LOG(WARN, "fail to remove invalid event in wating queue. ret=%d", ret);
+    TBSYS_LOG(WARN, "fail to invalidate request id. ret=%d", ret);
   }
   if (OB_SUCCESS != (ret = remove_invalid_event_in_finish_queue(timeout_)))
   {
@@ -51,16 +54,19 @@ int ObMsSqlRequest::close()
 int ObMsSqlRequest::init(const uint64_t count, const uint32_t mod_id,  ObSessionManager * session_mgr)
 {
   int err = OB_SUCCESS;
-  if (OB_SUCCESS != (err = finish_queue_.init(count, mod_id)))
+  if (!finish_queue_inited_)
   {
-    finish_queue_inited_ = false;
-    TBSYS_LOG(WARN,"fail to init finish_queue_ [err:%d]", err);
+    if (OB_SUCCESS != (err = finish_queue_.init(count, NULL, mod_id)))
+    {
+      finish_queue_inited_ = false;
+      TBSYS_LOG(WARN,"fail to init finish_queue_ [err:%d]", err);
+    }
+    else
+    {
+      finish_queue_inited_ = true;
+    }
   }
-  else
-  {
-    finish_queue_inited_ = true;
-    session_mgr_ = session_mgr;
-  }
+  session_mgr_ = session_mgr;
   return err;
 }
 
@@ -76,13 +82,13 @@ int ObMsSqlRequest::reset()
         request_id_, ret);
   }
   buffer_pool_.clear();
-  finish_queue_.reset();
+  //finish_queue_.reset();
   // bugfix #224057, if queue is not clear, will cause deadlock
+  tbsys::CThreadGuard lock(&lock_);
   waiting_queue_.clear();
   timeout_ = 0;
   rpc_timeout_percent_ = DEFAULT_TIMEOUT_PERCENT;
   read_param_ = NULL;
-  finish_queue_inited_ = false;
   finish_ = false;
   return ret;
 }
@@ -94,7 +100,6 @@ uint64_t ObMsSqlRequest::get_request_id(void) const
 {
   return request_id_;
 }
-
 const ObMergerAsyncRpcStub * ObMsSqlRequest::get_rpc(void) const
 {
   return async_rpc_stub_;
@@ -117,7 +122,7 @@ int64_t ObMsSqlRequest::get_timeout(void) const
 }
 
 
-int ObMsSqlRequest::get_timeout_percent(void) const 
+int ObMsSqlRequest::get_timeout_percent(void) const
 {
   return rpc_timeout_percent_;
 }
@@ -155,6 +160,7 @@ int ObMsSqlRequest::create(ObMsSqlRpcEvent ** event)
         TBSYS_LOG(ERROR, "push new event to waiting queue failed:request[%lu], event[%lu], "
             "client[%lu], ret[%d]", request_id_, (*event)->get_event_id(),
             (*event)->get_client_id(), ret);
+        destroy_rpc_event(*event);
       }
       else
       {
@@ -189,22 +195,23 @@ int ObMsSqlRequest::destroy(ObMsSqlRpcEvent * event)
   return ret;
 }
 
-// by the tbnet thread so lightweight
+// callback by io thread
 int ObMsSqlRequest::signal(ObMsSqlRpcEvent & event)
 {
   // only push to the finish_queue not check request id or in wait queue
   int ret = OB_SUCCESS;
   if (request_id_ != event.get_client_id())
   {
-    TBSYS_LOG(INFO , "the event we do not expect from server, "
-        "event[%ld], client[%ld], current client[%ld], session id[%ld], rcode[%d]",
-        event.get_event_id(), event.get_client_id(), request_id_,
-        event.get_session_id(), event.get_result_code());
+    TBSYS_LOG(INFO , "rpc timeout event[%p] event_id[%ld], request_id[%ld], "
+        "current_request_id[%ld], session id[%ld], code[%d], "
+        "timeout[%ld], time_used[%ld]",
+        &event, event.get_event_id(), event.get_client_id(), request_id_,
+        event.get_session_id(), event.get_result_code(),
+        event.get_timeout_us(), event.get_time_used());
     ret = OB_INVALID_ERROR;
   }
   else
   {
-    tbsys::CThreadGuard lock(&flock_);
     ret = finish_queue_.push(&event);
   }
 
@@ -212,8 +219,8 @@ int ObMsSqlRequest::signal(ObMsSqlRpcEvent & event)
   {
     if (OB_INVALID_ERROR != ret)
     {
-      TBSYS_LOG(ERROR, "push to finish queue failed:client[%lu], event[%lu], "
-          "request[%lu], finish_size[%ld], ret[%d]", event.get_client_id(), event.get_event_id(),
+      TBSYS_LOG(ERROR, "push rpc_event[%p] to finish queue failed:request_id[%lu], event_id[%lu], "
+          "current_request_id[%lu], finish_size[%d], ret[%d]", &event, event.get_client_id(), event.get_event_id(),
           request_id_, finish_queue_.size(), ret);
     }
     else if (OB_INVALID_ERROR == ret && OB_SUCCESS == event.get_result_code()
@@ -225,16 +232,19 @@ int ObMsSqlRequest::signal(ObMsSqlRpcEvent & event)
     }
     else
     {
-      TBSYS_LOG(ERROR, "push to finish queue failed. destroy it:client[%lu], event[%lu], "
-          "request[%lu], finish_size[%ld], ret[%d]", event.get_client_id(), event.get_event_id(),
-          request_id_, finish_queue_.size(), ret);
+      TBSYS_LOG(WARN, "push to finish queue failed. destroy it:event_request_id[%lu], event_id[%lu], "
+          "current_request_id[%lu], ret[%d]", event.get_client_id(), event.get_event_id(),
+          request_id_, ret);
     }
-    bool is_valid = false;
-    remove_wait_queue(&event, is_valid);
+    if (request_id_ == event.get_client_id())
+    {
+      bool is_valid = false;
+      remove_wait_queue(&event, is_valid);
+    }
   }
   else
   {
-    TBSYS_LOG(DEBUG, "push to finish queue succ:client[%lu], event[%lu], request[%lu]",
+    TBSYS_LOG(DEBUG, "push to finish queue succ:request_id[%lu], event_id[%lu], current_request_id[%lu]",
         event.get_client_id(), event.get_event_id(), request_id_);
   }
   return ret;
@@ -246,9 +256,23 @@ const ObReadParam * ObMsSqlRequest::get_request_param(int64_t & timeout) const
   return read_param_;
 }
 
+void ObMsSqlRequest::request_used_time(const ObMsSqlRpcEvent * rpc)
+{
+  if (rpc != NULL)
+  {
+    ObMergerServerCounter * counter = GET_TSI_MULT(ObMergerServerCounter, SERVER_COUNTER_ID);
+    if (counter != NULL)
+    {
+      counter->inc(rpc->get_server(), rpc->get_time_used() >> 9);
+    }
+  }
+}
+
+
 int ObMsSqlRequest::process_rpc_event(const int64_t timeout, ObMsSqlRpcEvent * event, bool & finish)
 {
   bool is_valid = false;
+  request_used_time(event);
   int ret = remove_wait_queue(event, is_valid);
   if (ret != OB_SUCCESS)
   {
@@ -304,16 +328,15 @@ int ObMsSqlRequest::remove_wait_queue(ObMsSqlRpcEvent * event, bool & is_valid)
     ret = waiting_queue_.erase(event);
     if (ret != OB_SUCCESS)
     {
-      TBSYS_LOG(ERROR, "find event not in waiting queue:client[%lu], event[%lu], result[%d], "
-          "request[%lu], ret[%d]", event->get_client_id(), event->get_event_id(),
+      TBSYS_LOG(WARN, "event[%p] not found in waiting queue:request_id[%lu], event_id[%lu], rcode[%d], "
+          "current_request_id[%lu], ret[%d]", event, event->get_client_id(), event->get_event_id(),
           event->get_result_code(), request_id_, ret);
     }
     else if (event->get_client_id() != request_id_)
     {
-      TBSYS_LOG(WARN, "check the event client id not equal with request:"
-          "client[%lu], event[%lu], result[%d], request[%lu]", event->get_client_id(),
-          event->get_event_id(), event->get_result_code(), request_id_);
-      /// destroy_rpc_event(event);
+      TBSYS_LOG(WARN, "the event request id not equal with current_request_id, destroy myself"
+          "event[%p], request_id[%lu], event_id[%lu], rcode[%d], current_request_id[%lu]",
+          event, event->get_client_id(),event->get_event_id(), event->get_result_code(), request_id_);
     }
     else
     {
@@ -333,24 +356,46 @@ int ObMsSqlRequest::wait(const int64_t timeout)
   ObMsSqlRpcEvent * event = NULL;
   while (remainder > 0)
   {
-    if (OB_SUCCESS == (ret = finish_queue_.pop(remainder, (void *&)event)))
+    timespec to; to.tv_sec = remainder / 1000000; to.tv_nsec = remainder % 1000000 * 1000;
+    if (OB_SUCCESS == (ret = finish_queue_.pop((void *&)event, &to)))
     {
-      /// process a new finished event
-      ret = process_rpc_event(remainder, event, finish);
-      if (ret != OB_SUCCESS)
+      if (NULL == event)
       {
-        TBSYS_LOG(WARN, "process rpc event failed:request[%lu], event[%p], ret[%d]",
-            request_id_, event, ret);
-        break;
+        TBSYS_LOG(ERROR, "pop a NULL value from finish_queue_");
+        ret = OB_ERR_UNEXPECTED;
       }
-      else if (true == finish)
+      else if (request_id_ != event->get_client_id())
       {
-        ret = OB_SUCCESS;
-        break;
+        TBSYS_LOG(WARN, "expired rpc event[%p] timeout event_id[%ld], request_id[%ld], "
+            "current_request_id[%ld], session_id[%ld]",
+            event, event->get_event_id(), event->get_client_id(), request_id_,
+            event->get_session_id());
+        destroy_rpc_event(event);
+      }
+      else
+      {
+        PFILL_RPC_END(event->get_channel_id());
+        /// process a new finished event
+        ret = process_rpc_event(remainder, event, finish);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "process rpc event failed:request[%lu], event[%p], ret[%d]",
+              request_id_, event, ret);
+          break;
+        }
+        else if (true == finish)
+        {
+          ret = OB_SUCCESS;
+          break;
+        }
       }
     }
     else
     {
+      if (NULL != event)
+      {
+        PFILL_RPC_END(event->get_channel_id());
+      }
       TBSYS_LOG(WARN, "pop result from finish queue failed:request[%lu], event[%p], ret[%d]",
           request_id_, event, ret);
     }
@@ -367,17 +412,11 @@ int ObMsSqlRequest::wait(const int64_t timeout)
     }
   }
 
-  // wait finished, switch to next request and clean current queue_
-  request_id_ = atomic_inc(reinterpret_cast<volatile uint64_t*>(&id_allocator_));
-  TBSYS_LOG(DEBUG, "check all the event finish:request[%lu], remain finish queue size[%lu]",
-      request_id_, finish_queue_.size());
-  remove_invalid_event_in_finish_queue(remainder);
-
   if (remainder <= 0)
   {
     ret = OB_RESPONSE_TIME_OUT;
-    TBSYS_LOG(WARN, "check remainder less than zero:request[%lu], remainder[%ld]",
-      request_id_, remainder);
+    TBSYS_LOG(WARN, "check remainder less than zero:request[%lu], remainder[%ld], timeout[%ld]",
+      request_id_, remainder, timeout);
   }
   return ret;
 }
@@ -388,7 +427,7 @@ int ObMsSqlRequest::release_succ_event(uint64_t & event_count)
   int ret = OB_SUCCESS;
   ObMsSqlRpcEvent * rpc = NULL;
   event_count = result_queue_.size();
-  TBSYS_LOG(DEBUG, "relase all the succ event:request[%lu], count[%lu], finish_size[%lu], result_size[%lu]",
+  TBSYS_LOG(DEBUG, "relase all the succ event:request[%lu], count[%lu], finish_size[%d], result_size[%lu]",
             request_id_, event_count, finish_queue_.size(), waiting_queue_.size());
   for (uint64_t i = 0; i < event_count; ++i)
   {
@@ -414,7 +453,7 @@ int ObMsSqlRequest::create_rpc_event(ObMsSqlRpcEvent ** event)
 {
   int ret = OB_SUCCESS;
   /// ObMsSqlRpcEvent * rpc = new(std::nothrow) ObMsSqlRpcEvent;
-  ObMsSqlRpcEvent * rpc = reinterpret_cast<ObMsSqlRpcEvent *>(ob_malloc(sizeof(ObMsSqlRpcEvent),
+  ObMsSqlRpcEvent * rpc = reinterpret_cast<ObMsSqlRpcEvent *>(ob_tc_malloc(sizeof(ObMsSqlRpcEvent),
         ObModIds::OB_MS_RPC_EVENT));
   if (NULL == rpc)
   {
@@ -445,13 +484,13 @@ void ObMsSqlRequest::destroy_rpc_event(ObMsSqlRpcEvent * rpc)
 {
   if (NULL != rpc)
   {
-    rpc->lock();
+    //rpc->lock();
     TBSYS_LOG(DEBUG, "destroy rpc event succ:client[%lu], request[%lu], event[%lu], "
         "result[%d], ptr[%p]", rpc->get_client_id(), request_id_, rpc->get_event_id(),
         rpc->get_result_code(), rpc);
     /// delete rpc;
     rpc->~ObCommonSqlRpcEvent();
-    ob_free(rpc, ObModIds::OB_MS_RPC_EVENT);
+    ob_tc_free(rpc, ObModIds::OB_MS_RPC_EVENT);
     rpc = NULL;
   }
   else
@@ -466,7 +505,7 @@ void ObMsSqlRequest::print_info(FILE * file) const
   if (NULL != file)
   {
     // no need lock
-    fprintf(file, "merger request event:allocator[%lu], id[%lu], wait[%ld], finish[%ld], succ[%d]\n",
+    fprintf(file, "merger request event:allocator[%lu], id[%lu], wait[%ld], finish[%d], succ[%d]\n",
         ObMsSqlRequest::id_allocator_, request_id_, waiting_queue_.size(), finish_queue_.size(),
         result_queue_.size());
     // print waiting event list
@@ -594,7 +633,8 @@ int ObMsSqlRequest::remove_invalid_event_in_finish_queue(const int64_t timeout)
   ObMsSqlRpcEvent * event = NULL;
   while (remainder > 0 && size > 0)
   {
-    if (OB_SUCCESS == (ret = finish_queue_.pop(remainder, (void *&)event)))
+    timespec to; to.tv_sec = timeout / 1000000; to.tv_nsec = timeout % 1000000 * 1000;
+    if (OB_SUCCESS == (ret = finish_queue_.pop((void *&)event, &to)))
     {
       if (NULL != event && OB_SUCCESS == event->get_result_code()
           && event->get_session_id() >  ObCommonSqlRpcEvent::INVALID_SESSION_ID)
@@ -617,15 +657,11 @@ int ObMsSqlRequest::remove_invalid_event_in_finish_queue(const int64_t timeout)
 }
 
 
-int ObMsSqlRequest::invalidate_event_in_waiting_queue()
+int ObMsSqlRequest::invalidate_request_id()
 {
   int ret = OB_SUCCESS;
-  //ObMsSqlRpcEvent * event = NULL;
-  ObList<ObMsSqlRpcEvent * >::iterator iter = waiting_queue_.begin();
-  for (; iter != waiting_queue_.end(); iter++)
-  {
-    (*iter)->invalidate();
-  }
+  const uint64_t REQUEST_INVALID_ID = 0;
+  request_id_ = REQUEST_INVALID_ID;
   return ret;
 }
 
@@ -649,6 +685,7 @@ bool ObMsSqlRequest::is_finish()
 int ObMsSqlRequest::wait_single_event(int64_t &timeout)
 {
   int ret = OB_SUCCESS;
+  const int64_t user_timeout = timeout;
   int64_t cur_timestamp = tbsys::CTimeUtil::getTime();
   int64_t last_timestamp = cur_timestamp + timeout;
   int64_t &remainder = timeout;
@@ -656,27 +693,50 @@ int ObMsSqlRequest::wait_single_event(int64_t &timeout)
 
   TBSYS_LOG(DEBUG, "wait_single_event:timeout:%ld", timeout);
 
-  do{
-    if (OB_SUCCESS == (ret = finish_queue_.pop(remainder, (void *&)event)))
+  do
+  {
+    timespec to; to.tv_sec = timeout / 1000000; to.tv_nsec = timeout % 1000000 * 1000;
+    if (OB_SUCCESS == (ret = finish_queue_.pop((void *&)event, &to)))
     {
-      /// process a new finished event
-      ret = process_rpc_event(remainder, event, finish_);
-      if (ret != OB_SUCCESS)
+      if (NULL == event)
       {
-        TBSYS_LOG(WARN, "process rpc event failed:request[%lu], event[%p], ret[%d]",
-            request_id_, event, ret);
-        break;
+        TBSYS_LOG(ERROR, "pop a NULL value from finish_queue_");
+        ret = OB_ERR_UNEXPECTED;
       }
-      else if (true == finish_)
+      else if (request_id_ != event->get_client_id())
       {
-        ret = OB_SUCCESS;
-        break;
+        TBSYS_LOG(WARN, "expired rpc event[%p] timeout event_id[%ld], request_id[%ld], "
+            "current_request_id[%ld], session_id[%ld]",
+            event, event->get_event_id(), event->get_client_id(), request_id_,
+            event->get_session_id());
+        destroy_rpc_event(event);
+      }
+      else
+      {
+        PFILL_RPC_END(event->get_channel_id());
+        /// process a new finished event
+        ret = process_rpc_event(remainder, event, finish_);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "process rpc event failed:request[%lu], event[%p], ret[%d]",
+              request_id_, event, ret);
+          break;
+        }
+        else if (true == finish_)
+        {
+          ret = OB_SUCCESS;
+          break;
+        }
       }
     }
     else
     {
-      TBSYS_LOG(WARN, "pop result from finish queue failed:request[%lu], event[%p], ret[%d]",
-          request_id_, event, ret);
+      if (NULL != event)
+      {
+        PFILL_RPC_END(event->get_channel_id());
+      }
+      TBSYS_LOG(WARN, "pop result from finish queue failed:request[%lu], event[%p], ret[%d], timeout[%ld]",
+          request_id_, event, ret, user_timeout);
     }
     // update the remainder time
     cur_timestamp = tbsys::CTimeUtil::getTime();
@@ -695,15 +755,15 @@ int ObMsSqlRequest::wait_single_event(int64_t &timeout)
 
   // wait finished, switch to next request and clean current queue_
   //request_id_ = atomic_inc(reinterpret_cast<volatile uint64_t*>(&id_allocator_));
-  TBSYS_LOG(DEBUG, "check all the event finish:request[%lu], remain finish queue size[%lu]",
+  TBSYS_LOG(DEBUG, "check all the event finish:request[%lu], remain finish queue size[%d]",
       request_id_, finish_queue_.size());
   //remove_invalid_event_in_finish_queue(remainder);
 
   if (remainder <= 0)
   {
     ret = OB_RESPONSE_TIME_OUT;
-    TBSYS_LOG(WARN, "check remainder less than zero:request[%lu], remainder[%ld]",
-      request_id_, remainder);
+    TBSYS_LOG(WARN, "check remainder less than zero:request[%lu], remainder[%ld], timeout[%ld]",
+      request_id_, remainder, user_timeout);
   }
   return ret;
 }

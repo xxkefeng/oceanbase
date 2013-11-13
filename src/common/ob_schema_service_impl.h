@@ -22,6 +22,7 @@
 #include "common/hash/ob_hashmap.h"
 
 class TestSchemaService_assemble_table_Test;
+class TestSchemaTable_generate_new_table_name_Test;
 class TestSchemaService_assemble_column_Test;
 class TestSchemaService_assemble_join_info_Test;
 class TestSchemaService_create_table_mutator_Test;
@@ -36,6 +37,9 @@ namespace oceanbase
     static ObString first_tablet_entry_name = OB_STR(FIRST_TABLET_TABLE_NAME);
     static ObString column_table_name = OB_STR(OB_ALL_COLUMN_TABLE_NAME);
     static ObString joininfo_table_name = OB_STR(OB_ALL_JOININFO_TABLE_NAME);
+    static ObString privilege_table_name = OB_STR(OB_ALL_TABLE_PRIVILEGE_TABLE_NAME);
+    static ObString table_name_str = OB_STR("table_id");
+    static const char* const TMP_PREFIX = "tmp_";
 
     class ObSchemaServiceImpl : public ObSchemaService
     {
@@ -48,11 +52,14 @@ namespace oceanbase
         virtual int get_table_schema(const ObString& table_name, TableSchema& table_schema);
         virtual int create_table(const TableSchema& table_schema);
         virtual int drop_table(const ObString& table_name);
-        virtual int alter_table(const AlterTableSchema& table_schema);
+        virtual int alter_table(const AlterTableSchema& table_schema, const int64_t old_schema_version);
         virtual int get_table_id(const ObString& table_name, uint64_t& table_id);
         virtual int get_table_name(uint64_t table_id, ObString& table_name);
+        virtual int modify_table_id(TableSchema& table_schema, const int64_t new_table_id);
         virtual int get_max_used_table_id(uint64_t &max_used_tid);
         virtual int set_max_used_table_id(const uint64_t max_used_tid);
+        virtual int prepare_privilege_for_table(const nb_accessor::TableRow* table_row,
+            ObMutator *mutator, const int64_t table_id);
 
         friend class ::TestSchemaService_assemble_table_Test;
         friend class ::TestSchemaService_assemble_column_Test;
@@ -65,7 +72,7 @@ namespace oceanbase
         // for read
         int fetch_table_schema(const ObString& table_name, TableSchema& table_schema);
         int create_table_mutator(const TableSchema& table_schema, ObMutator* mutator);
-        int alter_table_mutator(const AlterTableSchema& table_schema, ObMutator* mutator);
+        int alter_table_mutator(const AlterTableSchema& table_schema, ObMutator* mutator, const int64_t old_schema_version);
         int assemble_table(const nb_accessor::TableRow* table_row, TableSchema& table_schema);
         int assemble_column(const nb_accessor::TableRow* table_row, ColumnSchema& column);
         int assemble_join_info(const nb_accessor::TableRow* table_row, JoinInfo& join_info);
@@ -75,7 +82,11 @@ namespace oceanbase
         int add_column(ObMutator* mutator, const TableSchema& table_schema);
         int update_column_mutator(ObMutator* mutator, ObRowkey & rowkey, const ColumnSchema & column);
         int reset_column_id_mutator(ObMutator* mutator, const AlterTableSchema & schema, const uint64_t max_column_id);
+        int reset_schema_version_mutator(ObMutator* mutator, const AlterTableSchema & schema, const int64_t old_schema_version);
         int init_id_name_map();
+      int generate_new_table_name(char* buf, const uint64_t lenght, const char* table_name, const uint64_t table_name_length);
+
+
       private:
         static const int64_t TEMP_VALUE_BUFFER_LEN = 32;
         ObScanHelper* client_proxy_;

@@ -28,6 +28,10 @@ range_sum_join_query = 0
 range_order_join_query = 0
 range_distinct_join_query = 0
 
+deletes = 0
+update_query = 0
+replace_query = 0
+
 check_local_file = 'sh: ls benchmark/{sysbench,stress.sh,benchmark.conf.template,ups_admin,oltp.sql} # ExceptionOnFail'
 client_start_args = 'benchmark.conf.$ip'
 client_env_vars = 'LD_LIBRARY_PATH=/usr/lib64/mysql'

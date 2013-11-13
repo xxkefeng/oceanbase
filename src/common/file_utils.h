@@ -44,6 +44,7 @@ namespace oceanbase
         int64_t pread(char *data, const int64_t size, const int64_t offset);
         int64_t pwrite(const char *data, const int64_t size, const int64_t offfset, 
                        bool sync = false);
+        int64_t get_size();
         virtual int ftruncate(int64_t length);
       private:
         bool own_fd_;

@@ -26,10 +26,11 @@ namespace oceanbase
       public:
         ObScalarAggregate();
         virtual ~ObScalarAggregate();
-        void reset();
-
+        virtual void reset();
+        virtual void reuse();
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_SCALAR_AGGREGATE; }
         virtual int get_next_row(const ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
@@ -42,9 +43,11 @@ namespace oceanbase
          */
         virtual int add_aggr_column(const ObSqlExpression& expr);
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
-        void assign(const ObScalarAggregate &other);
+        void set_phy_plan(ObPhysicalPlan *the_plan);
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
+     
       private:
         // disallow copy
         ObScalarAggregate(const ObScalarAggregate &other);
@@ -54,6 +57,11 @@ namespace oceanbase
         bool is_first_row_;
         bool is_input_empty_;
     };
+    inline void ObScalarAggregate::set_phy_plan(ObPhysicalPlan *the_plan)
+    {
+      ObPhyOperator::set_phy_plan(the_plan);
+      merge_groupby_.set_phy_plan(the_plan);
+    }
   } // end namespace sql
 } // end namespace oceanbase
 

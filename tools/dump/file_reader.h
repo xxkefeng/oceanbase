@@ -46,6 +46,7 @@ class FileReader {
     virtual int get_records(RecordBlock &block, const RecordDelima &rec_delima, const RecordDelima &col_delima, int64_t max_rec_extracted);
 
     bool eof() const { return eof_; }
+    int64_t get_buffer_size() { return buffer_size_; }
 
   protected:
     void shrink(int64_t pos);

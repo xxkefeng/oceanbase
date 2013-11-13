@@ -62,6 +62,9 @@ namespace oceanbase
         /// register to root server
         int register_root_server(void);
 
+        sql::ObSQLSessionMgr* get_sql_session_mgr() const;
+        void set_sql_session_mgr(sql::ObSQLSessionMgr* mgr);
+        void set_sql_id_mgr(sql::ObSQLIdMgr *mgr) {sql_id_mgr_ = mgr;};
         /* reload config after update local configuration succ */
         int reload_config();
 
@@ -93,8 +96,8 @@ namespace oceanbase
         ObMergeServerConfig& get_config();
         const ObMergeServerConfig& get_config() const;
       private:
-        // lease init 20s
-        static const int64_t DEFAULT_LEASE_TIME = 20 * 1000 * 1000L;
+        // lease init 10s
+        static const int64_t DEFAULT_LEASE_TIME = 10 * 1000 * 1000L;
 
         // warning: fetch schema interval can not be too long
         // because of the heartbeat handle will block tbnet thread
@@ -114,6 +117,16 @@ namespace oceanbase
           easy_request_t* req,
           common::ObDataBuffer& in_buffer,
           common::ObDataBuffer& out_buffer);
+        // kill sql session
+        int ms_sql_kill_session(
+          const int64_t receive_time,
+          const int32_t version,
+          const int32_t channel_id,
+          easy_request_t* req,
+          common::ObDataBuffer& in_buffer,
+          common::ObDataBuffer& out_buffer,
+          const int64_t timeout_us
+          );
         // heartbeat
         int ms_heartbeat(
           const int64_t receive_time,
@@ -287,9 +300,11 @@ namespace oceanbase
         common::ObTabletLocationCacheProxy *cache_proxy_;
         ObMergerServiceMonitor *service_monitor_;
         oceanbase::common::ObSessionManager session_mgr_;
+        sql::ObSQLSessionMgr *sql_session_mgr_;
         ObQueryCache* query_cache_;
         common::ObPrivilegeManager *privilege_mgr_;
         ObGetPrivilegeTask update_privilege_task_;
+        sql::ObSQLIdMgr *sql_id_mgr_;
     };
 
     inline void ObMergeServerService::extend_lease(const int64_t delay)
@@ -301,6 +316,17 @@ namespace oceanbase
     {
       return tbsys::CTimeUtil::getTime() <= lease_expired_time_;
     }
+
+    inline sql::ObSQLSessionMgr* ObMergeServerService::get_sql_session_mgr() const
+    {
+      return sql_session_mgr_;
+    }
+
+    inline void ObMergeServerService::set_sql_session_mgr(sql::ObSQLSessionMgr* mgr)
+    {
+      sql_session_mgr_ = mgr;
+    }
+
   } /* mergeserver */
 } /* oceanbase */
 

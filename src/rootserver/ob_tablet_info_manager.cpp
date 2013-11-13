@@ -1,12 +1,12 @@
 /*===============================================================
 *   (C) 2007-2010 Taobao Inc.
-*   
-*   
+*
+*
 *   Version: 0.1 2010-10-20
-*   
+*
 *   Authors:
 *          daoan(daoan@taobao.com)
-*   
+*
 *
 ================================================================*/
 #include "rootserver/ob_tablet_info_manager.h"
@@ -28,18 +28,19 @@ namespace oceanbase
     void ObTabletCrcHistoryHelper::rest_all_crc_sum()
     {
       memset(crc_sum_, 0, sizeof(uint64_t) * MAX_KEEP_HIS_COUNT);
+      memset(row_checksum_, 0, sizeof(uint64_t) * MAX_KEEP_HIS_COUNT);
     }
-    int ObTabletCrcHistoryHelper::check_and_update(const int64_t version, const uint64_t crc_sum)
+    int ObTabletCrcHistoryHelper::check_and_update(const int64_t version, const uint64_t crc_sum, const uint64_t row_checksum)
     {
       int ret = OB_SUCCESS;
       int64_t min_version = 0;
       int64_t max_version = 0;
       get_min_max_version(min_version, max_version);
-      if (version > max_version) 
+      if (version > max_version)
       {
-        update_crc_sum(min_version, version, crc_sum);
+        update_crc_sum(min_version, version, crc_sum, row_checksum);
       }
-      else 
+      else
       {
         bool found_same_version = false;
         for (int i = 0; i < MAX_KEEP_HIS_COUNT; i++)
@@ -50,6 +51,7 @@ namespace oceanbase
             if (crc_sum_[i] == 0)
             {
               crc_sum_[i] = crc_sum;
+              row_checksum_[i] = row_checksum;
             }
             else
             {
@@ -58,12 +60,18 @@ namespace oceanbase
                 TBSYS_LOG(WARN, "crc check error version %ld crc sum %lu, %lu", version_[i], crc_sum_[i], crc_sum);
                 ret = OB_ERROR;
               }
+
+              //not return OB_ERROR, just in case
+              if(row_checksum != 0 && row_checksum != row_checksum_[i])
+              {
+                TBSYS_LOG(WARN, "row_checksum check error version %ld row_checksum %lu, %lu", version_[i], row_checksum_[i], row_checksum);
+              }
             }
           }
         }
         if (!found_same_version)
         {
-          if (version > min_version) update_crc_sum(min_version, version, crc_sum);
+          if (version > min_version) update_crc_sum(min_version, version, crc_sum, row_checksum);
         }
       }
       return ret;
@@ -92,6 +100,10 @@ namespace oceanbase
         {
           ret = serialization::encode_vi64(buf, buf_len, tmp_pos, crc_sum_[i]);
         }
+        if (OB_SUCCESS == ret)
+        {
+          ret = serialization::encode_vi64(buf, buf_len, tmp_pos, row_checksum_[i]);
+        }
       }
       if (OB_SUCCESS == ret)
       {
@@ -101,7 +113,7 @@ namespace oceanbase
     }
     DEFINE_DESERIALIZE(ObTabletCrcHistoryHelper)
     {
-      int ret = OB_SUCCESS;      
+      int ret = OB_SUCCESS;
       int64_t tmp_pos = pos;
       for (int i = 0; i < MAX_KEEP_HIS_COUNT; i++)
       {
@@ -112,6 +124,10 @@ namespace oceanbase
         if (OB_SUCCESS == ret)
         {
           ret = serialization::decode_vi64(buf, data_len, tmp_pos, reinterpret_cast<int64_t *>(&crc_sum_[i]));
+        }
+        if (OB_SUCCESS == ret)
+        {
+          ret = serialization::decode_vi64(buf, data_len, tmp_pos, reinterpret_cast<int64_t *>(&row_checksum_[i]));
         }
       }
       if (OB_SUCCESS == ret)
@@ -128,26 +144,48 @@ namespace oceanbase
       {
         len += serialization::encoded_length_vi64(version_[i]);
         len += serialization::encoded_length_vi64(crc_sum_[i]);
+        len += serialization::encoded_length_vi64(row_checksum_[i]);
       }
       return len;
     }
-    void ObTabletCrcHistoryHelper::update_crc_sum(const int64_t version, const int64_t new_version, const uint64_t crc_sum)
+    void ObTabletCrcHistoryHelper::update_crc_sum(const int64_t version, const int64_t new_version, const uint64_t crc_sum, const uint64_t row_checksum)
     {
       for (int i = 0; i < MAX_KEEP_HIS_COUNT; i++)
       {
-        if (version_[i] == version) 
+        if (version_[i] == version)
         {
           version_[i] = new_version;
           crc_sum_[i] = crc_sum;
+          row_checksum_[i] = row_checksum;
           break;
         }
       }
     }
+
+    int ObTabletCrcHistoryHelper::get_row_checksum(const int64_t version, uint64_t &row_checksum) const
+    {
+      int ret = OB_ERROR;
+      for (int i = 0 ; i < MAX_KEEP_HIS_COUNT; i++)
+      {
+        if (version_[i] == version)
+        {
+          row_checksum = row_checksum_[i];
+          ret = OB_SUCCESS;
+        }
+      }
+
+      return ret;
+    }
+
     void ObTabletCrcHistoryHelper::reset_crc_sum(const int64_t version)
     {
       for (int i = 0 ; i < MAX_KEEP_HIS_COUNT; i++)
       {
-        if (version_[i] == version) crc_sum_[i] = 0;
+        if (version_[i] == version)
+        {
+         row_checksum_[i] = 0;
+         crc_sum_[i] = 0;
+        }
       }
     }
 ////////////////////////////////////////////////////////////////
@@ -208,13 +246,28 @@ namespace oceanbase
     {
       return begin() + tablet_infos_.get_array_index();
     }
-    ObTabletInfoManager::iterator ObTabletInfoManager::end() 
+    ObTabletInfoManager::iterator ObTabletInfoManager::end()
     {
       return begin() + tablet_infos_.get_array_index();
     }
     int32_t ObTabletInfoManager::get_array_size() const
     {
       return static_cast<int32_t>(tablet_infos_.get_array_index());
+    }
+    void ObTabletInfoManager::clear()
+    {
+      for (int64_t i = 0; i < tablet_infos_.get_array_index(); i++)
+      {
+        allocator_.free(const_cast<char*>(reinterpret_cast<const char*>(tablet_infos_.at(i)->range_.start_key_.ptr())));
+        allocator_.free(const_cast<char*>(reinterpret_cast<const char*>(tablet_infos_.at(i)->range_.end_key_.ptr())));
+        tablet_infos_.at(i)->range_.start_key_.assign(NULL, 0);
+        tablet_infos_.at(i)->range_.end_key_.assign(NULL, 0);
+      }
+      tablet_infos_.clear();
+      for (int64_t i = 0; i < MAX_TABLET_COUNT; i++)
+      {
+        crc_helper_[i].reset();
+      }
     }
 
     ObTabletCrcHistoryHelper *ObTabletInfoManager::get_crc_helper(const int32_t index)
@@ -243,12 +296,12 @@ namespace oceanbase
       {
         data_holder_[index].range_.to_string(row_key_dump_buff, OB_MAX_ROW_KEY_LENGTH * 2);
         TBSYS_LOG(INFO, "%s", row_key_dump_buff);
-        TBSYS_LOG(INFO, "row_count = %ld occupy_size = %ld", 
+        TBSYS_LOG(INFO, "row_count = %ld occupy_size = %ld",
             data_holder_[index].row_count_, data_holder_[index].occupy_size_);
         for (int i = 0; i < ObTabletCrcHistoryHelper::MAX_KEEP_HIS_COUNT; i++)
         {
-          TBSYS_LOG(INFO, "crc_info %d version %ld, crc_sum %lu", 
-              i, crc_helper_[index].version_[i], crc_helper_[index].crc_sum_[i]);
+          TBSYS_LOG(INFO, "crc_info %d version %ld, crc_sum %lu row_checksum %lu",
+              i, crc_helper_[index].version_[i], crc_helper_[index].crc_sum_[i], crc_helper_[index].row_checksum_[i]);
         }
       }
 
@@ -262,7 +315,7 @@ namespace oceanbase
       fprintf(stream, "size %d", size);
       for (int64_t i = 0; i < tablet_infos_.get_array_index(); i++)
       {
-        fprintf(stream, "index %ld row_count %ld occupy_size %ld crcinfo %lu ", 
+        fprintf(stream, "index %ld row_count %ld occupy_size %ld crcinfo %lu ",
             i, data_holder_[i].row_count_, data_holder_[i].occupy_size_, data_holder_[i].crc_sum_ );
         for (int crc_i = 0; crc_i < ObTabletCrcHistoryHelper::MAX_KEEP_HIS_COUNT; crc_i++)
         {
@@ -381,7 +434,7 @@ namespace oceanbase
     }
     DEFINE_DESERIALIZE(ObTabletInfoManager)
     {
-      int ret = OB_SUCCESS;      
+      int ret = OB_SUCCESS;
       int64_t tmp_pos = pos;
       int64_t total_size = 0;
       if (OB_SUCCESS == ret)

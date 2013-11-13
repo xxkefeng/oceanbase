@@ -33,6 +33,39 @@ ObMergeIntersect::ObMergeIntersect()
 ObMergeIntersect::~ObMergeIntersect()
 {
 }
+
+void ObMergeIntersect::reset()
+{
+  get_next_row_func_ = NULL;
+  //left_last_row_.reset(false, ObRow::DEFAULT_NULL);
+  //right_last_row_.reset(false, ObRow::DEFAULT_NULL);
+  cur_first_query_row_ = NULL;
+  cur_second_query_row_ = NULL;
+  left_ret_ = OB_SUCCESS;
+  right_ret_ = OB_SUCCESS;
+  last_cmp_ = -1;
+  got_first_row_ = false;
+  left_last_row_buf_ = NULL;
+  right_last_row_buf_ = NULL;
+  ObSetOperator::reset();
+}
+
+void ObMergeIntersect::reuse()
+{
+  get_next_row_func_ = NULL;
+  //left_last_row_.reset(false, ObRow::DEFAULT_NULL);
+  //right_last_row_.reset(false, ObRow::DEFAULT_NULL);
+  cur_first_query_row_ = NULL;
+  cur_second_query_row_ = NULL;
+  left_ret_ = OB_SUCCESS;
+  right_ret_ = OB_SUCCESS;
+  last_cmp_ = -1;
+  got_first_row_ = false;
+  left_last_row_buf_ = NULL;
+  right_last_row_buf_ = NULL;
+  ObSetOperator::reuse();
+}
+
 int ObMergeIntersect::set_distinct(bool is_distinct)
 {
   int ret = OB_SUCCESS;
@@ -47,6 +80,7 @@ int ObMergeIntersect::set_distinct(bool is_distinct)
   }
   return ret;
 }
+
 int ObMergeIntersect::open()
 {
   int ret = OB_SUCCESS;
@@ -458,6 +492,13 @@ int ObMergeIntersect::get_row_desc(const common::ObRowDesc *&row_desc) const
   }
   return ret;
 }
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObMergeIntersect, PHY_MERGE_INTERSECT);
+  }
+}
+
 int64_t ObMergeIntersect::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -473,4 +514,20 @@ int64_t ObMergeIntersect::to_string(char* buf, const int64_t buf_len) const
     pos += right_op_->to_string(buf+pos, buf_len-pos);
   }
   return pos;
+}
+
+PHY_OPERATOR_ASSIGN(ObMergeIntersect)
+{
+  int ret = OB_SUCCESS;
+  reset();
+  ObSetOperator::assign(other);
+  if (distinct_)
+  {
+    get_next_row_func_ = &ObMergeIntersect::distinct_get_next_row;
+  }
+  else
+  {
+    get_next_row_func_ = &ObMergeIntersect::all_get_next_row;
+  }
+  return ret;
 }

@@ -82,6 +82,7 @@ namespace oceanbase
         static const int64_t TABLET_LOCATION_FIELD    = 89;
         // add for SQL
         static const int64_t SQL_DATA_VERSION        = 90;
+        static const int64_t DML_TYPE_FIELD          = 91;
     };
   } /* common */
 } /* oceanbase */

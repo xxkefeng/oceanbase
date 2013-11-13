@@ -72,10 +72,33 @@ namespace oceanbase
                          session_ctx_(NULL), table_mgr_(NULL), guard_(NULL)
         {
           //memset(guard_buf_, 0, sizeof(guard_buf_));
+          if (NULL == (merger_ = rp_alloc(sql::ObMultipleScanMerge)))
+          {
+            TBSYS_LOG(ERROR, "alloc sql::ObMultipleScanMerge from resource_pool fail");
+          }
         }
-        ~ObTableListQuery() { close(); }
+        ~ObTableListQuery()
+        {
+          close();
+          if (NULL != merger_)
+          {
+            rp_free(merger_);
+            merger_ = NULL;
+          }
+        }
+        void reset()
+        {
+          close();
+          max_valid_version_ = 0;
+          is_final_minor_ = false;
+          session_ctx_ = NULL;
+          table_mgr_ = NULL;
+          guard_ = NULL;
+          table_list_.reset();
+          merger_->reset();
+        }
       public:
-        int open(BaseSessionCtx* session_ctx, ObUpsTableMgr* table_mgr, const ObVersionRange& version_range);
+        int open(BaseSessionCtx* session_ctx, ObUpsTableMgr* table_mgr, const ObVersionRange& version_range, uint64_t table_id);
         int close();
         int query(IObSingleTableQuery* table_query, common::ObRowDesc* row_desc, sql::ObPhyOperator*& result);
       protected:
@@ -88,7 +111,7 @@ namespace oceanbase
         TableList table_list_;
         ITableEntity::Guard* guard_;
         char guard_buf_[sizeof(ITableEntity::Guard)];
-        sql::ObMultipleScanMerge merger_;
+        sql::ObMultipleScanMerge *merger_;
     };
   }; // end namespace updateserver
 }; // end namespace oceanbase

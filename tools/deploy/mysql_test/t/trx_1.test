@@ -29,7 +29,7 @@ connection conn2;
 begin;
 --echo -- conn2 update row2 to  +1, then update row1 to +1
 update t1 set a=a+1 where pk = 2;
---error 23
+--error 5049
 update t1 set a=a+1 where pk = 1;
 ROLLBACK;
 
@@ -60,7 +60,7 @@ connection conn2;
 begin;
 --echo -- conn2 update row2 to  '2', then update row1 to '3'
 update t1 set a='2' where pk = '2';
---error 23
+--error 5049
 update t1 set a='3' where pk = '1';
 ROLLBACK;
 
@@ -111,9 +111,9 @@ connection conn4;
 begin;
 update t1 set int3=int3-1 where pk=3;
 update t1 set int1=int1+1 where pk=3;
---error 23
+--error 5049
 update t1 set int1=int1+1 where pk=2;
---error 23
+--error 5049
 update t1 set int3=int3-1 where pk=2;
 ROLLBACK;
 
@@ -168,7 +168,7 @@ update t1 set a=a+1 where f1=2 and f2=1;
 connection conn2;
 begin;
 update t1 set a=a+1 where f1=1 and f2=2;
---error 23
+--error 5049
 update t1 set a=a+1 where f1=1 and f2=1;
 ROLLBACK;
 
@@ -235,7 +235,7 @@ update t1 set a=a+1 where f1=2 and f2='1';
 connection conn2;
 begin;
 update t1 set a=a+1 where f1=1 and f2='2';
---error 23
+--error 5049
 update t1 set a=a+1 where f1=1 and f2='1';
 ROLLBACK;
 
@@ -299,7 +299,7 @@ update t1 set a=a+1,b=b-1 where f1=2 and f2='1';
 connection conn2;
 begin;
 update t1 set a=a+1,b=b-1 where f1=1 and f2='2';
---error 23
+--error 5049
 update t1 set a=a+1,b=b-1 where f1=1 and f2='1';
 ROLLBACK;
 

@@ -13,7 +13,7 @@
  /* 连接池的互斥锁 */
  pthread_mutex_t pool_mutex;
 
- static ObDataSource* select_ds(ObClusterInfo *cluster, const char* sql, unsigned long length)
+static ObDataSource* select_ds(ObClusterInfo *cluster, const char* sql, unsigned long length, ObSQLMySQL *mysql)
  {
    ObDataSource *ds = NULL;
    if (NULL == cluster || NULL == sql)
@@ -24,7 +24,7 @@
    {
      if (0 == cluster->read_strategy_)
      {
-       ds = random_mergeserver_select(cluster);
+       ds = random_mergeserver_select(cluster, mysql);
      }
      else
      {
@@ -54,7 +54,7 @@
   *
   * 一致性hash选择ms 如果ms上的连接全忙则round-robbin选择一条连接
   */
- ObSQLConn* acquire_conn(ObClusterInfo *cluster, const char* sql, unsigned long length)
+ObSQLConn* acquire_conn(ObClusterInfo *cluster, const char* sql, unsigned long length, ObSQLMySQL *mysql)
  {
    ObSQLConn *real_conn = NULL;
    if (NULL == cluster || NULL == sql)
@@ -64,9 +64,10 @@
    else
    {
      pthread_mutex_lock(&pool_mutex);
-     ObDataSource *server = select_ds(cluster, sql, length);
+     ObDataSource *server = select_ds(cluster, sql, length, mysql);
      if (NULL != server)
      {
+       mysql->last_ds_ = server->server_;
        real_conn = select_conn(server);
        if (NULL == real_conn)
        {
@@ -83,7 +84,7 @@
    return real_conn;
  }
 
- ObSQLConn* acquire_conn_random(ObGroupDataSource *gds)
+ObSQLConn* acquire_conn_random(ObGroupDataSource *gds, ObSQLMySQL* mysql)
  {
    int32_t index = 0;
    ObClusterInfo *scluster = NULL;
@@ -99,7 +100,7 @@
      for(; index < gds->csize_; ++index)
      {
        scluster = gds->clusters_ + index;
-       ds = random_mergeserver_select(scluster);
+       ds = random_mergeserver_select(scluster, mysql);
        if (NULL != ds)
        {
          real_conn = random_conn_select(ds);

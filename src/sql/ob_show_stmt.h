@@ -34,6 +34,7 @@ namespace oceanbase
       void set_show_table(uint64_t table_id);
       void set_warnings_limit(int64_t offset = 0, int64_t count = -1);
       void set_count_warnings(bool count_warnings);
+      void set_full_process(bool full_process);
       void set_user_name(common::ObString name);
       uint64_t get_sys_table_id() const;
       uint64_t get_show_table_id() const;
@@ -41,6 +42,7 @@ namespace oceanbase
       int64_t get_warnings_count() const;
       bool is_global_scope() const;
       bool is_count_warnings() const;
+      bool is_full_process() const;
       const common::ObString& get_user_name() const;
       const common::ObString& get_like_pattern() const;
       int set_like_pattern(const common::ObString like_pattern);
@@ -63,8 +65,11 @@ namespace oceanbase
       int64_t           offset_;
       int64_t           row_count_; // -1 means all
       bool              count_warnings_;
+      // for T_SHOW_PROCESSLIST
+      bool  full_process_;
       // for T_SHOW_GRANTS
       common::ObString  user_name_;
+
     };
 
     inline void ObShowStmt::set_global_scope(bool global_scope)
@@ -87,6 +92,10 @@ namespace oceanbase
     inline void ObShowStmt::set_count_warnings(bool count_warnings)
     {
       count_warnings_ = count_warnings;
+    }
+    inline void ObShowStmt::set_full_process(bool full_process)
+    {
+      full_process_ = full_process;
     }
     inline void ObShowStmt::set_user_name(common::ObString name)
     {
@@ -120,6 +129,10 @@ namespace oceanbase
     {
       return count_warnings_;
     }
+    inline bool ObShowStmt::is_full_process() const
+    {
+      return full_process_;
+    }
     inline const common::ObString& ObShowStmt::get_user_name() const
     {
       return user_name_;
@@ -128,4 +141,3 @@ namespace oceanbase
 }
 
 #endif //OCEANBASE_SQL_OB_SHOW_STMT_H_
-

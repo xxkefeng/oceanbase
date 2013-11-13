@@ -444,6 +444,23 @@ int repr(char* buf, const int64_t len, int64_t& pos, const char* _str)
   return err;
 }
 
+int obstring2cstr(char* buf, const int64_t len, int64_t& pos, const char*& dest, ObString& src)
+{
+  int err = OB_SUCCESS;
+  int64_t old_pos = pos;
+  dest = NULL;
+  if (OB_SUCCESS != (err = strformat(buf, len, pos, "%.*s", src.length(), src.ptr())))
+  {
+    TBSYS_LOG(ERROR, "strformat(_str=%p)=>%d", &src, err);
+  }
+  else
+  {
+    dest = buf + old_pos;
+    pos++;
+  }
+  return err;
+}
+
 int copy_str(char* buf, const int64_t len, int64_t& pos, char*& str, const char* _str)
 {
   str = buf + pos;
@@ -679,31 +696,33 @@ int rand_rowkey_obj(ObDataBuffer& buf, ObObj& obj, const ObObjType type, const i
 {
   int err = OB_SUCCESS;
   char* p = NULL;
+  int64_t vchar_len = 0;
   switch(type)
   {
     case ObIntType:
       obj.set_int(rand2(seed));
       break;
     case ObVarcharType:
-      if (buf.get_position() + len > buf.get_capacity())
+      vchar_len = (len <= 0)? 4: len;
+      if (buf.get_position() + vchar_len > buf.get_capacity())
       {
         err = OB_BUF_NOT_ENOUGH;
-        TBSYS_LOG(ERROR, "pos[%ld] + len[%ld] > limit[%ld]", buf.get_position(), len, buf.get_capacity());
+        TBSYS_LOG(ERROR, "pos[%ld] + len[%ld] > limit[%ld]", buf.get_position(), vchar_len, buf.get_capacity());
       }
       else
       {
         p = buf.get_data() + buf.get_position();
-        buf.get_position() += len;
+        buf.get_position() += vchar_len;
       }
       if (OB_SUCCESS != err)
       {}
-      else if (OB_SUCCESS != (err = rand_str(p, len, seed)))
+      else if (OB_SUCCESS != (err = rand_str(p, vchar_len, seed)))
       {
-        TBSYS_LOG(ERROR, "rand_str(len=%ld)=>%d", len, err);
+        TBSYS_LOG(ERROR, "rand_str(len=%ld)=>%d", vchar_len, err);
       }
       else
       {
-        ObString str(static_cast<int32_t>(len), static_cast<int32_t>(len), p);
+        ObString str(static_cast<int32_t>(vchar_len), static_cast<int32_t>(vchar_len), p);
         obj.set_varchar(str);
       }
       break;

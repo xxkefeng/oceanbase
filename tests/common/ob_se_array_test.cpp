@@ -79,6 +79,29 @@ TEST_F(ObSEArrayTest, basic_test)
   }
 }
 
+TEST(ObSEArrayTest2, array_remove)
+{
+  ObSEArray<int, 10> ai;
+  for (int i = 0; i < 32; ++i)
+  {
+    ASSERT_EQ(OB_SUCCESS, ai.push_back(i));
+  }
+  ASSERT_EQ(32, ai.count());
+
+  ASSERT_EQ(OB_ARRAY_OUT_OF_RANGE, ai.remove(-1));
+  ASSERT_EQ(OB_ARRAY_OUT_OF_RANGE, ai.remove(32));
+  ASSERT_EQ(32, ai.count());
+
+  ASSERT_EQ(OB_SUCCESS, ai.remove(10));
+  int v = 0;
+  ASSERT_EQ(31, static_cast<int>(ai.count()));
+  for (int i = 0; i < 31; ++i)
+  {
+    ASSERT_EQ(OB_SUCCESS, ai.at(static_cast<int64_t>(i), v));
+    ASSERT_NE(10, v);
+  }
+}
+
 int main(int argc, char **argv)
 {
   ob_init_memory_pool();

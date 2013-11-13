@@ -33,6 +33,8 @@ namespace oceanbase
 
           bool is_invalid() const;
           bool operator== (const Desc &other) const;
+
+          uint64_t hash() const {return ((table_id_ << 16) | ((column_id_ * 29 + 7) & 0xFFFF));};
         };
 
         template <class K, class V, uint64_t N = 1031>
@@ -97,6 +99,10 @@ namespace oceanbase
 
         const Desc* get_cells_desc_array(int64_t& array_size) const;
 
+        ObRowDesc & operator = (const ObRowDesc & r);
+
+        int assign(const ObRowDesc& other);
+
       private:
         struct DescIndex
         {
@@ -119,7 +125,8 @@ namespace oceanbase
     int ObRowDesc::PlacementHashMap<K, V, N>::insert(const K & key, const V & value)
     {
       int ret = OB_SUCCESS;
-      uint64_t pos = murmurhash2(&key, sizeof(key), 0) % N;
+      //uint64_t pos = murmurhash2(&key, sizeof(key), 0) % N;
+      uint64_t pos = key.hash() % N;
       uint64_t i = 0;
       for (; i < N; i++, pos++)
       {
@@ -207,7 +214,8 @@ namespace oceanbase
     int ObRowDesc::PlacementHashMap<K, V, N>::search_(const K & key, uint64_t & pos) const
     {
       int ret = OB_SUCCESS;
-      pos = murmurhash2(&key, sizeof(key), 0) % N;
+      //pos = murmurhash2(&key, sizeof(key), 0) % N;
+      pos = key.hash() % N;
       uint64_t i = 0;
       for (; i < N; i++, pos++)
       {

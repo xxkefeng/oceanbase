@@ -26,8 +26,25 @@ ObValues::~ObValues()
 {
 }
 
+void ObValues::reset()
+{
+  row_desc_.reset();
+  //curr_row_.reset(false, ObRow::DEFAULT_NULL);
+  row_store_.clear();
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObValues::reuse()
+{
+  row_desc_.reset();
+  //curr_row_.reset(false, ObRow::DEFAULT_NULL);
+  row_store_.clear();
+  ObSingleChildPhyOperator::reset();
+}
+
 int ObValues::set_row_desc(const common::ObRowDesc &row_desc)
 {
+  TBSYS_LOG(DEBUG, "DEBUG ObValues set row desc %s", to_cstring(row_desc));
   row_desc_ = row_desc;
   return OB_SUCCESS;
 }
@@ -81,6 +98,12 @@ int ObValues::get_row_desc(const common::ObRowDesc *&row_desc) const
   return OB_SUCCESS;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObValues, PHY_VALUES);
+  }
+}
+
 int64_t ObValues::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -90,6 +113,33 @@ int64_t ObValues::to_string(char* buf, const int64_t buf_len) const
     pos += child_op_->to_string(buf+pos, buf_len-pos);
   }
   return pos;
+}
+
+PHY_OPERATOR_ASSIGN(ObValues)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObValues);
+  reset();
+  ObRowStore *store_ptr = const_cast<ObRowStore*>(&o_ptr->row_store_);
+  if ((ret = row_desc_.assign(o_ptr->row_desc_)) == OB_SUCCESS)
+  {
+    ObRow row;
+    int64_t cur_size_counter;
+    store_ptr->reset_iterator();
+    while ((ret = store_ptr->get_next_row(row)) == OB_SUCCESS)
+    {
+      if ((ret = row_store_.add_row(row, cur_size_counter)) != OB_SUCCESS)
+      {
+        break;
+      }
+    }
+    if (ret == OB_ITER_END)
+    {
+      ret = OB_SUCCESS;
+    }
+    store_ptr->reset_iterator();
+  }
+  return ret;
 }
 
 DEFINE_SERIALIZE(ObValues)

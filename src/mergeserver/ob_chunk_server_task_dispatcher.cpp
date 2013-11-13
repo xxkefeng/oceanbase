@@ -31,6 +31,78 @@ ObChunkServerTaskDispatcher::~ObChunkServerTaskDispatcher()
 {
 }
 
+int32_t ObChunkServerTaskDispatcher::select_cs(ObTabletLocationList & list)
+{
+  int32_t ret = 0;
+  if (using_new_balance_)
+  {
+    ret = new_select_cs(list);
+  }
+  else
+  {
+    ret = old_select_cs(list);
+  }
+  return ret;
+}
+
+int32_t ObChunkServerTaskDispatcher::old_select_cs(ObTabletLocationList & list)
+{
+  int32_t list_size = static_cast<int32_t>(list.size());
+  OB_ASSERT(0 < list_size);
+  int32_t ret = static_cast<int32_t>(random() % list_size);
+  int32_t rand_offset = ret; // prevent hotspot
+  for (int32_t i = rand_offset; i < list_size + rand_offset; ++i)
+  {
+    int32_t pos = i % list_size;
+    if (list[pos].err_times_ >= ObTabletLocationItem::MAX_ERR_TIMES)
+    {
+      continue;
+    }
+    else
+    {
+      ret = pos;
+      break;
+    }
+  }
+  return ret;
+}
+
+int32_t ObChunkServerTaskDispatcher::new_select_cs(ObTabletLocationList & list)
+{
+  int32_t list_size = static_cast<int32_t>(list.size());
+  OB_ASSERT(0 < list_size);
+  int32_t ret = static_cast<int32_t>(random() % list_size);
+  ObMergerServerCounter * counter = GET_TSI_MULT(ObMergerServerCounter, SERVER_COUNTER_ID);
+  if (NULL == counter)
+  {
+    TBSYS_LOG(WARN, "get tsi server counter failed:counter[%p]", counter);
+  }
+  else
+  {
+    int64_t min_count = (((uint64_t)1) << 63) - 1;
+    int64_t cur_count = 0;
+    for (int32_t i = 0; i < list_size; ++i)
+    {
+      if (list[i].err_times_ >= ObTabletLocationItem::MAX_ERR_TIMES)
+      {
+        continue;
+      }
+      cur_count = counter->get(list[i].server_.chunkserver_);
+      if (0 == cur_count)
+      {
+        ret = i;
+        break;
+      }
+      if (cur_count < min_count)
+      {
+        min_count = cur_count;
+        ret = i;
+      }
+    }
+  }
+  return ret;
+}
+
 int ObChunkServerTaskDispatcher::select_cs(const bool open, ObChunkServerItem * replicas_in_out, const int32_t replica_count_in,
     ObMergerServerCounter * counter)
 {
@@ -112,74 +184,5 @@ int ObChunkServerTaskDispatcher::select_cs(ObChunkServerItem * replicas_in_out,
     }
   }
   return ret;
-
 }
-
-int ObChunkServerTaskDispatcher::select_cs(ObChunkServerItem * replicas_in_out, const int32_t replica_count_in,
-    const int32_t last_query_idx_in, const ObNewRange & tablet_in)
-{
-  int ret = OB_SUCCESS;
-  UNUSED(tablet_in);
-  if(OB_SUCCESS == ret && NULL == replicas_in_out)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "parameter replicas_in_out is null");
-  }
-
-  if(OB_SUCCESS == ret && replica_count_in <= 0)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "replica_count_in should be positive:replica_count_in[%d]", replica_count_in);
-  }
-
-  if(OB_SUCCESS == ret && last_query_idx_in >= replica_count_in)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "last_query_idx_in should be less than replica_count_in:last_query_idx_in[%d], replica_count_in[%d]",
-      last_query_idx_in, replica_count_in);
-  }
-
-  if(OB_SUCCESS == ret &&
-    0 > (ret = select_cs(replicas_in_out, replica_count_in, last_query_idx_in)))
-  {
-    TBSYS_LOG(WARN, "select cs fail: replica_count_in[%d], last_query_idx_in[%d] ret[%d]",
-        replica_count_in, last_query_idx_in, ret);
-  }
-
-  return ret;
-}
-
-int ObChunkServerTaskDispatcher::select_cs(ObChunkServerItem * replicas_in_out, const int32_t replica_count_in,
-  const int32_t last_query_idx_in, const ObCellInfo & get_cell_in)
-{
-  int ret = OB_SUCCESS;
-  UNUSED(get_cell_in); 
-  if(OB_SUCCESS == ret && NULL == replicas_in_out)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "parameter replicas_in_out is null");
-  }
-
-  if(OB_SUCCESS == ret && replica_count_in <= 0)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "replica_count_in should be positive:replica_count_in[%d]", replica_count_in);
-  }
-
-  if(OB_SUCCESS == ret && last_query_idx_in >= replica_count_in)
-  {
-    ret = OB_INVALID_ARGUMENT;
-    TBSYS_LOG(WARN, "last_query_idx_in should be less than replica_count_in:last_query_idx_in[%d], replica_count_in[%d]",
-      last_query_idx_in, replica_count_in);
-  }
-
-  if (OB_SUCCESS == ret &&
-    0 > (ret = select_cs(replicas_in_out, replica_count_in, last_query_idx_in)))
-  {
-    TBSYS_LOG(WARN, "select cs fail: replica_count_in[%d], last_query_idx_in[%d] ret[%d]",
-        replica_count_in, last_query_idx_in, ret);
-  }
-  return ret;
-}
-
 

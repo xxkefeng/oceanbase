@@ -37,6 +37,7 @@ namespace oceanbase
         ~DumpSSTable();
         int open(const int64_t sstable_file_id);
         void display_trailer_info();
+        void display_bloom_filter();
         void display_block_index();
         void display_schema_info();
         ObSSTableReader& get_reader();

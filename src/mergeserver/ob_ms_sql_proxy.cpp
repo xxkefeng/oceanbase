@@ -79,6 +79,11 @@ int ObMsSQLProxy::init_sql_env(ObSqlContext &context, int64_t &schema_version,
                                ObSQLResultSet &rs, ObSQLSessionInfo &session)
 {
   int ret = OB_SUCCESS;
+  ObString name = ObString::make_string(OB_READ_CONSISTENCY);
+  ObObj type;
+  type.set_type(ObIntType);
+  ObObj value;
+  value.set_int(WEAK);
   ObResultSet &result = rs.get_result_set();
   schema_version = schema_mgr_->get_latest_version();
   context.schema_manager_ = schema_mgr_->get_user_schema(schema_version); // reference count
@@ -95,6 +100,10 @@ int ObMsSQLProxy::init_sql_env(ObSqlContext &context, int64_t &schema_version,
   {
     TBSYS_LOG(WARN, "failed to init context, ret=%d", ret);
   }
+  else if (OB_SUCCESS != (ret = session.load_system_variable(name, type, value)))
+  {
+    TBSYS_LOG(ERROR, "load system variable %.*s failed, ret=%d", name.length(), name.ptr(), ret);
+  }
   else if (NULL == context.schema_manager_)
   {
     TBSYS_LOG(WARN, "fail to get user schema. schema_version=%ld", schema_version);
@@ -102,6 +111,8 @@ int ObMsSQLProxy::init_sql_env(ObSqlContext &context, int64_t &schema_version,
   }
   else
   {
+    session.set_version_provider(ms_service_);
+    session.set_config_provider(&ms_service_->get_config());
     context.session_info_ = &session;
     context.session_info_->set_current_result_set(&result);
 

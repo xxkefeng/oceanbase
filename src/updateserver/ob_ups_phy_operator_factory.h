@@ -28,6 +28,7 @@ namespace oceanbase
         {}
         virtual ~ObUpsPhyOperatorFactory(){}
         virtual sql::ObPhyOperator *get_one(sql::ObPhyOperatorType phy_operator_type, common::ModuleArena &allocator);
+        virtual void release_one(sql::ObPhyOperator *opt);
         void set_session_ctx(RWSessionCtx* session_ctx) { session_ctx_ = session_ctx; }
         void set_table_mgr(ObIUpsTableMgr* table_mgr) { table_mgr_ = table_mgr; }
       private:

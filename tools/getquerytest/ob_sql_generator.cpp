@@ -22,8 +22,8 @@
 #include <stdio.h>
 
 using namespace oceanbase::common;
-char *ObSqlGenerator::index_table_name_ = "index_table";
-char *ObSqlGenerator::get_table_name_ = "get_table";
+const char *ObSqlGenerator::index_table_name_ = "index_table";
+const char *ObSqlGenerator::get_table_name_ = "get_table";
 int ObSqlGenerator::fail_counter_ = 0;
 
 int64_t ObSqlGenerator::make_rowkey(int64_t index)

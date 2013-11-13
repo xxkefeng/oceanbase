@@ -8,6 +8,7 @@
 #include "common/ob_row_iterator.h"
 #include "common/ob_spop_spush_queue.h"
 #include "common/ob_session_mgr.h"
+#include "common/ob_lighty_queue.h"
 #include "sql/ob_sql_scan_param.h"
 #include "ob_ms_sql_rpc_event.h"
 #include "common/location/ob_tablet_location_range_iterator.h"
@@ -29,7 +30,7 @@ namespace oceanbase
       static const int64_t DEFAULT_MAX_TABLET_COUNT_PERQ = 64;
       static const int64_t DEFAULT_MAX_CS_RESULT_MEM_SIZE = 1024*1024*512;
       static const int64_t DEFAULT_TIMEOUT = 1000 * 1000;
-      static const int32_t DEFAULT_TIMEOUT_PERCENT = 70;
+      static const int32_t DEFAULT_TIMEOUT_PERCENT = 33;
       ObMsSqlRequest();
       virtual ~ObMsSqlRequest();
       void set_tablet_location_cache_proxy(common::ObTabletLocationCacheProxy * proxy);
@@ -100,7 +101,7 @@ namespace oceanbase
        * terminate session with chunkserver when request finished.
        */
       int terminate_remote_session(const common::ObServer& server, const int64_t session_id);
-      int invalidate_event_in_waiting_queue(void);
+      int invalidate_request_id();
 
       int64_t get_waiting_queue_size();
       int64_t get_finish_queue_size();
@@ -110,6 +111,9 @@ namespace oceanbase
       int32_t get_timeout_percent(void) const;
       void set_timeout_percent(const int32_t percent);
     private:
+      // record request latency for user
+      void request_used_time(const ObMsSqlRpcEvent * rpc);
+
       // check and remove the event from the wait queue
       int remove_wait_queue(ObMsSqlRpcEvent * event, bool & is_valid);
 
@@ -140,9 +144,9 @@ namespace oceanbase
       // for allocate request id
       static uint64_t id_allocator_;
       // every reqeust id
-      uint64_t request_id_;
+      volatile uint64_t request_id_;
       // finished rpc event queue
-      common::ObSPopSPushQueue finish_queue_;
+      common::LightyQueue finish_queue_;
       bool finish_queue_inited_;
       // finish queue lock
       tbsys::CThreadMutex flock_; //multi io thread push result to finish queue

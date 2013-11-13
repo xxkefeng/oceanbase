@@ -71,12 +71,15 @@ namespace oceanbase
       public:
         ObTabletScan();
         virtual ~ObTabletScan();
-        
-        void reset(void);
+        virtual void reset();
+        virtual void reuse();
+
+        virtual ObPhyOperatorType get_type() const { return PHY_TABLET_SCAN; }
+
         inline int get_tablet_range(ObNewRange& range);
 
         virtual int create_plan(const ObSchemaManagerV2 &schema_mgr);
-        
+
         bool has_incremental_data() const;
         int64_t to_string(char* buf, const int64_t buf_len) const;
         inline void set_sql_scan_param(const ObSqlScanParam &sql_scan_param);
@@ -92,12 +95,13 @@ namespace oceanbase
 
         bool check_inner_stat() const;
         int need_incremental_data(
-            ObArray<uint64_t> &basic_columns, 
-            ObTabletJoin::TableJoinInfo &table_join_info, 
-            int64_t start_data_version, 
+            ObArray<uint64_t> &basic_columns,
+            ObTabletJoin::TableJoinInfo &table_join_info,
+            int64_t start_data_version,
             int64_t end_data_version);
-        int build_sstable_scan_param(ObArray<uint64_t> &basic_columns, 
+        int build_sstable_scan_param(ObArray<uint64_t> &basic_columns,
             const ObSqlScanParam &sql_scan_param, sstable::ObSSTableScanParam &sstable_scan_param) const;
+        int set_ups_scan_range(const ObNewRange &scan_range);
 
       private:
         // data members
@@ -118,8 +122,8 @@ namespace oceanbase
         ObLimit op_limit_;
     };
 
-    int ObTabletScan::get_tablet_range(ObNewRange& range) 
-    { 
+    int ObTabletScan::get_tablet_range(ObNewRange& range)
+    {
       int ret = OB_SUCCESS;
       ret = op_sstable_scan_.get_tablet_range(range);
       return ret;

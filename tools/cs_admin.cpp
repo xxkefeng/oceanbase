@@ -78,9 +78,15 @@ void GFactory::init_cmd_map()
   cmd_map_["delete_table"] = CMD_DELETE_TABLE;
   cmd_map_["load_sstables"] = CMD_LOAD_SSTABLES;
   cmd_map_["dump_sstable_dist"] = CMD_DUMP_SSTABLE_DIST;
+  cmd_map_["get_bloom_filter"] = CMD_GET_BLOOM_FILTER;
+  cmd_map_["fetch_bypass_table_id"] = CMD_FETCH_BYPASS_TABLE_ID;
+  cmd_map_["request_report_tablet"] = CMD_REQUEST_REPORT_TABLET;
+  cmd_map_["install_disk"] = CMD_INSTALL_DISK;
+  cmd_map_["uninstall_disk"] = CMD_UNINSTALL_DISK;
+  cmd_map_["show_disk"] = CMD_SHOW_DISK;
 }
 
-int GFactory::initialize(const ObServer& remote_server)
+int GFactory::initialize(const ObServer& remote_server, const int64_t timeout)
 {
   common::ob_init_memory_pool();
   common::ob_init_crc64_table(OB_DEFAULT_CRC64_POLYNOM);
@@ -94,11 +100,12 @@ int GFactory::initialize(const ObServer& remote_server)
     return ret;
   }
 
-  ret = rpc_stub_.initialize(remote_server, &client_.get_client_mgr());
+  ret = rpc_stub_.initialize(remote_server, &client_.get_client_mgr(), timeout);
   if (OB_SUCCESS != ret)
   {
     TBSYS_LOG(ERROR, "initialize rpc stub failed, ret:%d", ret);
   }
+  timeout_ = timeout;
   return ret;
 }
 
@@ -159,6 +166,12 @@ int parse_command(const char *cmdlist, vector<string> &param)
         param.push_back(token);
     }
     return cmd;
+}
+
+int request_report_tablet()
+{
+  fprintf(stderr, "request_report_tablet\n");
+  return GFactory::get_instance().get_rpc_stub().request_report_tablet();
 }
 
 int get_tablet_info(const vector<string> &param)
@@ -254,6 +267,74 @@ int dump_tablet_image(const vector<string> &param)
   }
 
   dump_multi_version_tablet_image(image_obj, false);
+  return ret;
+}
+
+int show_disk(const vector<string> &param)
+{
+  int ret = 0;
+
+  UNUSED(param);
+  int32_t disk_no[common::OB_MAX_DISK_NUMBER];
+  bool avail[common::OB_MAX_ROW_KEY_LENGTH];
+  int32_t disk_num = 0;
+
+  ret = GFactory::get_instance().get_rpc_stub().cs_show_disk(disk_no, avail, disk_num);
+  
+  if (OB_SUCCESS == ret)
+  {
+    fprintf(stderr, "show disk succ\n");
+    for(int32_t i = 0; i < disk_num; i++)   
+    {
+      fprintf(stderr, "disk:%02d status:%s\n", disk_no[i], avail[i] ? "OK" : "error");
+    }
+  }
+  else
+  {
+    fprintf(stderr, "show disk failed\n");
+  }
+
+  return ret;
+}
+
+int disk_maintain(const vector<string> &param, int8_t is_install)
+{
+  int ret = 0;
+  if (param.size() < 1)
+  {
+    fprintf(stderr, "install disk or uninstall disk: input param error\n");
+    fprintf(stderr, "install_disk disk_no \n");
+    fprintf(stderr, "uninstall_disk disk_no \n");
+    return OB_ERROR;
+  }
+
+  const string &disk_list = param[0];
+  int32_t disk_no_size = 1;
+  int32_t disk_no = -1;
+  ret = parse_number_range(disk_list.c_str(), &disk_no, disk_no_size);
+  if (ret)
+  {
+    fprintf(stderr, "parse disk_list(%s) parameter failure\n", disk_list.c_str());
+    return ret;
+  }
+
+  if(disk_no < 0)
+  {
+    fprintf(stderr, "disk_no:%d must > 0\n", disk_no);
+    return OB_ERROR;
+  }
+
+  ret = GFactory::get_instance().get_rpc_stub().cs_disk_maintain(is_install, disk_no);
+  
+  if(OB_SUCCESS == ret)
+  {
+    fprintf(stderr, "%s_disk:%d Okay!\n", is_install == 1 ? "install" : "uninstall", disk_no);
+  }
+  else
+  {
+    fprintf(stderr, "%s_disk:%d failed, ret:%d\n", is_install == 1 ? "install" : "uninstall", disk_no, ret);
+  }
+
   return ret;
 }
 
@@ -393,33 +474,36 @@ int check_merge_process(const vector<string> &param)
 int migrate_tablet(const vector<string> &param)
 {
   int ret = 0;
-  if (param.size() < 5)
+  if (param.size() < 8)
   {
     fprintf(stderr, "migrate_tablet: input param error\n");
-    fprintf(stderr, "migrate_tablet table range range_format dest_server keep_src\n");
+    fprintf(stderr, "migrate_tablet table range range_format src_server keep_src data_source_type tablet_version sstable_version uri\n");
     return OB_ERROR;
   }
 
   const int64_t table_id = atoi(param[0].c_str());
   const string &range_str = param[1];
   const int hex_format = atoi(param[2].c_str());
-  const string &dest_server = param[3];
+  const string &src_server = param[3];
   int keep_src = atoi(param[4].c_str());
+  int data_source_type = atoi(param[5].c_str());
+  const int64_t tablet_version = atoi(param[6].c_str());
+  const int64_t sstable_version = atoi(param[7].c_str());
 
-  ObServer dest;
+  ObServer src;
 
   string ip,port;
 
-  string::size_type pos = dest_server.find_first_of(":");
+  string::size_type pos = src_server.find_first_of(":");
   if (pos == string::npos)
   {
-    fprintf(stderr, "parse dest_server(%s) parameter failure\n", dest_server.c_str());
+    fprintf(stderr, "parse dest_server(%s) parameter failure\n", src_server.c_str());
   }
   else
   {
-    ip = dest_server.substr(0, pos);
-    port = dest_server.substr(pos+1, string::npos);
-    dest.set_ipv4_addr(ip.c_str(), atoi(port.c_str()));
+    ip = src_server.substr(0, pos);
+    port = src_server.substr(pos+1, string::npos);
+    src.set_ipv4_addr(ip.c_str(), atoi(port.c_str()));
   }
 
   ObNewRange range;
@@ -431,14 +515,25 @@ int migrate_tablet(const vector<string> &param)
     return ret;
   }
 
-  fprintf(stderr, "migrate tablet : %s to dest server : %s \n",
-      to_cstring(range), to_cstring(dest));
+  ObDataSourceDesc desc;
+  desc.src_server_ = src;
+  desc.range_ = range;
+  desc.keep_source_ = keep_src;
+  if(param.size() == 9)
+  {
+    const string &uri = param[8];
+    desc.uri_.assign(const_cast<char*>(uri.c_str()), static_cast<int32_t>(uri.size()));
+  }
+  desc.tablet_version_ = tablet_version;
+  desc.sstable_version_ = sstable_version; 
+  desc.type_ = static_cast<common::ObDataSourceDesc::ObDataSourceType>(data_source_type);
+  fprintf(stderr, "migrate tablet, param:%s\n",to_cstring(desc));
 
-  ret = GFactory::get_instance().get_rpc_stub().migrate_tablet(dest, range, keep_src);
+  ret = GFactory::get_instance().get_rpc_stub().migrate_tablet(desc);
   if (OB_SUCCESS != ret)
   {
     fprintf(stderr, "migrate range (%s) to server (%s) keep_src(%d) failed.\n",
-        range_str.c_str(), dest_server.c_str(), keep_src);
+        range_str.c_str(), src_server.c_str(), keep_src);
   }
 
   return ret;
@@ -2243,6 +2338,53 @@ int dump_sstable_dist(const vector<string> &param)
   return ret;
 }
 
+int get_bloom_filter(const vector<string> &param)
+{
+  int ret = OB_SUCCESS;
+
+  ObNewRange range;
+  int64_t data_version = 0;
+  int64_t bf_version = 1;
+  int64_t table_id = 0;
+  if (param.size() < 3)
+  {
+    fprintf(stderr, "get_bloom_filter table_id range tablet_data_version [bloom_filter_version]\n"); 
+    return OB_INVALID_ARGUMENT;
+  }
+  else
+  {
+    table_id = atoi(param[0].c_str());
+    const char* range_str = param[1].c_str();
+    parse_range_str(range_str, 1, range);
+    range.table_id_ = table_id;
+    data_version = atoi(param[2].c_str());
+    if (param.size() > 3) bf_version = atoi(param[3].c_str());
+    fprintf(stderr, "ragne_str[%s], table_id[%ld], data_version[%ld], bf_version[%ld]\n",
+        range_str, table_id, data_version, bf_version);
+  }
+
+  ObString response_buffer;
+  ret = GFactory::get_instance().get_rpc_stub().get_bloom_filter(range, data_version, bf_version, response_buffer);
+  fprintf(stderr, "return ret[%d], buffer[%d]\n", ret, response_buffer.length());
+  if (OB_SUCCESS == ret)
+  {
+    int64_t pos = 0;
+    ObBloomFilterV1* bfv1 = dynamic_cast<ObBloomFilterV1*>(create_bloom_filter<ObTCMalloc>(1));
+    if (NULL == bfv1)
+    {
+      fprintf(stderr, "create bloom filter error.\n");
+    }
+    else if (OB_SUCCESS == bfv1->deserialize(response_buffer.ptr(), response_buffer.length(), pos))
+    {
+      fprintf(stderr, "ptr=%p, size=%ld\n", bfv1->get_buffer(), bfv1->get_nbyte());
+      hex_dump(bfv1->get_buffer(), (int32_t)bfv1->get_nbyte());
+    }
+    if (NULL != bfv1) destroy_bloom_filter(bfv1);
+  }
+
+  return ret;
+}
+
 int delete_table(const vector<string> &param)
 {
   int ret = 0;
@@ -2318,11 +2460,85 @@ int load_sstables(const vector<string> &param)
   return ret;
 }
 
+int fetch_bypass_table_id(const vector<string> & param)
+{
+  int ret = OB_SUCCESS;
+  char *input = NULL;
+
+  if (param.size() != 1)
+  {
+    fprintf(stderr, "invalid input\n");
+    fprintf(stderr, "fetch_bypass_table_id table_name1,table_name2...\n");
+    ret = OB_INVALID_ARGUMENT;
+  }
+  else
+  {
+    ObBypassTaskInfo info;
+    int64_t buf_size = param[0].length();
+    input = strndup(param[0].c_str(), buf_size);
+    if (NULL == input)
+    {
+      TBSYS_LOG(ERROR, "failed to dup input param %s", param[0].c_str());
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    }
+
+    char *token = NULL;
+    const char* sep = ",";
+    while (OB_SUCCESS == ret && (token = strsep(&input, sep)) != NULL)
+    {
+      ObString table_name;
+      table_name.assign_ptr(token, static_cast<int32_t>(strlen(token)));
+      TBSYS_LOG(INFO, "add table name %.*s", table_name.length(),table_name.ptr());
+      ret = info.push_back(pair<ObString, uint64_t>(table_name, OB_INVALID_ID));
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(ERROR, "failed to add table %s to bypass task info", token);
+        break;
+      }
+    }
+    if (OB_SUCCESS == ret)
+    {
+      ret = GFactory::get_instance().get_rpc_stub().fetch_bypass_table_id(info);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(ERROR, "failed to fetch bypass table id, ret=%d", ret);
+      }
+    }
+
+    if (OB_SUCCESS == ret)
+    {
+      int64_t count = info.count();
+      if (count <= 0)
+      {
+        TBSYS_LOG(ERROR, "failed to fetch bypass table id, count is %ld", count);
+      }
+      else
+      {
+        fprintf(stderr, "fetch_bypass_table_id>");
+        for(int64_t i=0; i<count; ++i)
+        {
+          pair<ObString, uint64_t>& table = info.at(i);
+          fprintf(stderr, " %.*s:%lu", table.first.length(), table.first.ptr(), table.second);
+        }
+        fprintf(stderr, "\n");
+      }
+    }
+  }
+  if (NULL != input)
+  {
+    free(input);
+  }
+  return ret;
+}
+
 int do_work(const int cmd, const vector<string> &param)
 {
   int ret = OB_SUCCESS;
   switch (cmd)
   {
+    case CMD_REQUEST_REPORT_TABLET:
+      ret = request_report_tablet();
+      break;
     case CMD_DUMP_TABLET:
       ret = dump_tablet_image(param);
       break;
@@ -2389,6 +2605,21 @@ int do_work(const int cmd, const vector<string> &param)
     case CMD_DUMP_SSTABLE_DIST:
       ret = dump_sstable_dist(param);
       break;
+    case CMD_GET_BLOOM_FILTER:
+      ret = get_bloom_filter(param);
+      break;
+    case CMD_FETCH_BYPASS_TABLE_ID:
+      ret = fetch_bypass_table_id(param);
+      break;
+    case CMD_INSTALL_DISK:
+      ret = disk_maintain(param, 1);
+      break;
+    case CMD_UNINSTALL_DISK:
+      ret = disk_maintain(param, 0);
+      break;
+    case CMD_SHOW_DISK:
+      ret = show_disk(param);
+      break;
     default:
       fprintf(stderr, "unsupported command : %d\n", cmd);
       ret = OB_ERROR;
@@ -2399,7 +2630,7 @@ int do_work(const int cmd, const vector<string> &param)
 
 void usage()
 {
-  fprintf(stderr, "usage: ./cs_admin -s chunkserver_ip -p chunkserver_port -i \"command args\"\n"
+  fprintf(stderr, "usage: ./cs_admin -t timeout_second -s chunkserver_ip -p chunkserver_port -i \"command args\"\n"
           "command: \n\tdump_tablet_image dump_server_stats dump_cluster_stats dump_app_stats\n\t"
           "manual_merge manual_drop_tablet manual_gc get_tablet_info scan_root_table migrate_tablet\n\t"
           "check_merge_process change_log_level stop_server restart_server create_tablet delete_tablet\n\t"
@@ -2407,6 +2638,9 @@ void usage()
           "run command for detail.\n");
   fprintf(stderr, "    command args: \n");
   fprintf(stderr, "\tdump_tablet_image disk_no \n");
+  fprintf(stderr, "\trequest_report_tablet \n");
+  fprintf(stderr, "\tinstall_disk disk_no\n");
+  fprintf(stderr, "\tuninstall_disk disk_no \n");
   fprintf(stderr, "\tdump_tablet_image disk_no_1, disk_no_2, ... \n");
   fprintf(stderr, "\tdump_tablet_image disk_no_min~disk_no_max \n");
   fprintf(stderr, "\tdump_server_stats <server_type=rs/cs/ms/ups/dm> [interval=1] "
@@ -2431,7 +2665,7 @@ void usage()
                   "\t     datetime_3 7 YYMMDD HH:MM:SS \n"
                   "\t     datetime_4 8 YYMMDDHHMMSS \n"
                   "\t     datetime_5 9 YYMMDD)\n");
-  fprintf(stderr, "\tmigrate_tablet table range range_format dest_server keep_src\n");
+  fprintf(stderr, "\tmigrate_tablet table range range_format src_server keep_src data_source_type tablet_version sstable_version uri\n");
   fprintf(stderr, "\tcreate_tablet table range range_format last_frozen_version\n");
   fprintf(stderr, "\tdelete_tablet table range range_format tablet_version is_force\n"
                   "\t    range_format: 0 : plain string, 1 : hex format string 'FACB012D', 2 : int64_t number '1232'\n");
@@ -2445,6 +2679,7 @@ void usage()
   fprintf(stderr, "\tload_sstables load_version [is_response_rootserver=0/1] "
                   "[table = 0/1001~1005/1001,1003] \n");
   fprintf(stderr, "\tdump_sstable_dist sstable_dist_file [write_range]\n");
+  fprintf(stderr, "\tfetch_bypass_table_id table_name1,table_name2...\n");
 }
 
 int main(const int argc, char *argv[])
@@ -2455,12 +2690,14 @@ int main(const int argc, char *argv[])
 
   int ret = 0;
   int silent = 0;
+  int64_t timeout = 0;
+
 
   ObServer chunk_server;
 
   memset(g_config_file_name, OB_MAX_FILE_NAME_LENGTH, 0);
 
-  while((ret = getopt(argc,argv,"s:p:i:f:q")) != -1)
+  while((ret = getopt(argc,argv,"s:p:i:f:qt:")) != -1)
   {
     switch(ret)
     {
@@ -2479,6 +2716,9 @@ int main(const int argc, char *argv[])
       case 'f':
         strcpy(g_config_file_name, optarg);
         break;
+      case 't':
+        timeout = 1000000L * atoi(optarg);
+        break;
       default:
         fprintf(stderr, "%s is not identified\n",optarg);
         usage();
@@ -2493,7 +2733,7 @@ int main(const int argc, char *argv[])
   }
   else
   {
-    TBSYS_LOGGER.setLogLevel("INFO");
+    TBSYS_LOGGER.setLogLevel("DEBUG");
   }
 
   ret = chunk_server.set_ipv4_addr(addr, port);
@@ -2503,8 +2743,7 @@ int main(const int argc, char *argv[])
     usage();
     return ret;
   }
-
-  ret = GFactory::get_instance().initialize(chunk_server);
+  ret = GFactory::get_instance().initialize(chunk_server, timeout);
   if (OB_SUCCESS != ret)
   {
     fprintf(stderr, "initialize GFactory error, ret=%d\n", ret);

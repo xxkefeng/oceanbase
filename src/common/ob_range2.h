@@ -18,6 +18,7 @@
 #include "ob_rowkey.h"
 #include "ob_range.h"
 #include "ob_malloc.h"
+#include "common/utility.h"
 
 namespace oceanbase 
 { 
@@ -301,7 +302,6 @@ namespace oceanbase
       inline int deep_copy_range(Allocator& allocator, const ObNewRange &src, ObNewRange &dst)
       {
         int ret = OB_SUCCESS;
-
         if ( OB_SUCCESS == (ret = src.start_key_.deep_copy(dst.start_key_, allocator)) 
             && OB_SUCCESS == (ret = src.end_key_.deep_copy(dst.end_key_, allocator)) )
         {

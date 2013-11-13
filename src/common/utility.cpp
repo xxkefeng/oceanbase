@@ -25,7 +25,6 @@ namespace oceanbase
 {
   namespace common
   {
-
     void hex_dump(const void* data, const int32_t size,
         const bool char_type /*= true*/, const int32_t log_level /*= TBSYS_LOG_LEVEL_DEBUG*/)
     {
@@ -426,7 +425,7 @@ namespace oceanbase
         int64_t pos = strftime(buffer[i % 2], BUFFER_SIZE, format, &time_struct);
         if (pos < BUFFER_SIZE)
         {
-          snprintf(&buffer[i % 2][pos], BUFFER_SIZE - pos, " %ld %ld", cur_second_time_us, time_us);
+          snprintf(&buffer[i % 2][pos], BUFFER_SIZE - pos, " %ldus %ld", cur_second_time_us, time_us);
         }
       }
       return buffer[i++ % 2];
@@ -548,16 +547,38 @@ namespace oceanbase
       return ret;
     }
 
+    uint16_t bswap16(uint16_t a)
+    {
+      return static_cast<uint16_t>(((a >> 8) & 0xFFU) | ((a << 8) & 0xFF00U));
+    }
+
     easy_addr_t convert_addr_from_server(const ObServer *server)
     {
-      int64_t server_id = server->get_ipv4_server_id();
-      uint32_t port = static_cast<uint32_t>(server_id >> 32 & 0xFFFFFFFF);
-      uint32_t ip = static_cast<uint32_t>(server_id & 0xFFFFFFFF);
-      char host[OB_SERVER_ADDR_STR_LEN];
-      snprintf(host, OB_SERVER_ADDR_STR_LEN, "%d.%d.%d.%d",
-               ip & 0xFF, (ip >> 8) & 0xFF,
-               (ip >> 16) & 0xFF, (ip >> 24) & 0xFF);
-      return easy_inet_str_to_addr(host, port);
+      easy_addr_t ret;
+      if (server != NULL)
+      {
+        if (server->get_version() == ObServer::IPV4)
+        {
+          ret.family = AF_INET;
+          ret.port   = bswap16(static_cast<uint16_t>(server->get_port()));
+          memset(&ret.u, 0, sizeof(ret.u));
+          ret.u.addr = server->get_ipv4();
+          ret.cidx   = 0;
+        }
+        else
+        {
+          ret.family = AF_INET6;
+          ret.port   = bswap16(static_cast<uint16_t>(server->get_port()));
+          *reinterpret_cast<uint64_t *>(ret.u.addr6) = server->get_ipv6_high();
+          *reinterpret_cast<uint64_t *>(ret.u.addr6 + 4) = server->get_ipv6_low();
+          ret.cidx   = 0;
+        }
+      }
+      else
+      {
+        memset(&ret, 0x00, sizeof(ret));
+      }
+      return ret;
     }
 
     int64_t convert_addr_to_server(easy_addr_t addr)
@@ -1002,11 +1023,27 @@ namespace oceanbase
       }
       return ret;
     }
+    template <>
+    int64_t to_string<int64_t>(const int64_t &v, char *buffer, const int64_t buffer_size)
+    {
+      int64_t pos = 0;
+      databuff_printf(buffer, buffer_size, pos, "%ld", v);
+      return pos;
+    }
 
     template <>
     const char* to_cstring<const char*>(const char* const& str)
     {
       return str;
     }
+
+    template <>
+    const char* to_cstring<int64_t>(const int64_t &v)
+    {
+      return to_cstring<int64_t, 5>(v);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
   } // end namespace common
 } // end namespace oceanbase

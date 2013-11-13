@@ -28,6 +28,18 @@ ObDropTable::~ObDropTable()
 {
 }
 
+void ObDropTable::reset()
+{
+  if_exists_ = false;
+  rpc_ = NULL;
+}
+
+void ObDropTable::reuse()
+{
+  if_exists_ = false;
+  rpc_ = NULL;
+}
+
 void ObDropTable::set_if_exists(bool if_exists)
 {
   if_exists_ = if_exists;
@@ -62,6 +74,12 @@ int ObDropTable::close()
 {
   int ret = OB_SUCCESS;
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObDropTable, PHY_DROP_TABLE);
+  }
 }
 
 int64_t ObDropTable::to_string(char* buf, const int64_t buf_len) const

@@ -30,10 +30,18 @@ ObGroupBy::~ObGroupBy()
 
 void ObGroupBy::reset()
 {
-  ObSingleChildPhyOperator::clear();
   group_columns_.clear();
   aggr_columns_.clear();
   mem_size_limit_ = 0;
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObGroupBy::reuse()
+{
+  group_columns_.clear();
+  aggr_columns_.clear();
+  mem_size_limit_ = 0;
+  ObSingleChildPhyOperator::reuse();
 }
 
 void ObGroupBy::set_mem_size_limit(const int64_t limit)
@@ -61,6 +69,10 @@ int ObGroupBy::add_aggr_column(const ObSqlExpression& expr)
   if (OB_SUCCESS != (ret = aggr_columns_.push_back(expr)))
   {
     TBSYS_LOG(WARN, "failed to push back, err=%d", ret);
+  }
+  else
+  {
+    aggr_columns_.at(aggr_columns_.count() - 1).set_owner_op(this);
   }
   return ret;
 }
@@ -95,6 +107,26 @@ int64_t ObGroupBy::to_string(char* buf, const int64_t buf_len) const
     pos += pos2;
   }
   return pos;
+}
+
+PHY_OPERATOR_ASSIGN(ObGroupBy)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObGroupBy);
+  reset();
+  group_columns_ = o_ptr->group_columns_;
+  for (int64_t i = 0; i < o_ptr->aggr_columns_.count(); i++)
+  {
+    if ((ret = aggr_columns_.push_back(o_ptr->aggr_columns_.at(i))) == OB_SUCCESS)
+    {
+      aggr_columns_.at(i).set_owner_op(this);
+    }
+    else
+    {
+      break;
+    }
+  }
+  return ret;
 }
 
 DEFINE_SERIALIZE(ObGroupBy)
@@ -172,7 +204,7 @@ DEFINE_DESERIALIZE(ObGroupBy)
       else if ((ret = add_group_column(static_cast<uint64_t>(table_id),
          static_cast<uint64_t>(column_id))) != OB_SUCCESS)
       {
-        TBSYS_LOG(DEBUG, "fail to add group column, table_id=%lu, column_id=%lu. ret=%d", 
+        TBSYS_LOG(DEBUG, "fail to add group column, table_id=%lu, column_id=%lu. ret=%d",
           static_cast<uint64_t>(table_id), static_cast<uint64_t>(column_id), ret);
       }
     }
@@ -199,7 +231,7 @@ DEFINE_DESERIALIZE(ObGroupBy)
       }
       else if (OB_SUCCESS != (ret = add_aggr_column(expr)))
       {
-        TBSYS_LOG(DEBUG, "fail to add aggregate function,ret=%d. buf=%p, data_len=%ld, pos=%ld", 
+        TBSYS_LOG(DEBUG, "fail to add aggregate function,ret=%d. buf=%p, data_len=%ld, pos=%ld",
           ret, buf, data_len, pos);
       }
     }
@@ -233,4 +265,3 @@ DEFINE_GET_SERIALIZE_SIZE(ObGroupBy)
   size += encoded_length_vi64(mem_size_limit_);
   return size;
 }
-

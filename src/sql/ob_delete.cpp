@@ -30,6 +30,22 @@ ObDelete::~ObDelete()
 {
 }
 
+void ObDelete::reset()
+{
+  rpc_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  mutator_.reset();
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObDelete::reuse()
+{
+  rpc_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  mutator_.clear();
+  ObSingleChildPhyOperator::reuse();
+}
+
 int ObDelete::open()
 {
   int ret = OB_SUCCESS;
@@ -171,6 +187,12 @@ int ObDelete::delete_by_mutator()
     varchar_buff = NULL;
   }
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObDelete, PHY_DELETE);
+  }
 }
 
 int64_t ObDelete::to_string(char* buf, const int64_t buf_len) const

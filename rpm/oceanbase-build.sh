@@ -21,16 +21,18 @@ else
 	SPEC_FILE=oceanbase.spec
 	TBLIB_ROOT=/opt/csr/common
 	EASY_ROOT=/usr
+  DRC_ROOT=/home/ds
 fi
 echo "[BUILD] args: TOP_DIR=${TOP_DIR} PACKAGE=${PACKAGE} VERSION=${VERSION} RELEASE=${RELEASE} SPEC=${SPEC_FILE}"
 echo "[BUILD] TBLIB_ROOT=${TBLIB_ROOT}"
 echo "[BUILD] EASY_ROOT=${EASY_ROOT}"
+echo "[BUILD] DRC_ROOT=${DRC_ROOT}"
 
 echo "[BUILD] config..."
 cd $TOP_DIR
 chmod +x build.sh
 ./build.sh init
-./configure  --with-test-case=no --with-release=yes --with-tblib-root=$TBLIB_ROOT --with-easy-root=$EASY_ROOT
+./configure  --with-test-case=no --with-release=yes --with-tblib-root=$TBLIB_ROOT --with-easy-root=$EASY_ROOT --with-drc-root=/home/ds
 echo "[BUILD] make dist..."
 make dist-gzip
 

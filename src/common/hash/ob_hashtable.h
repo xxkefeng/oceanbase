@@ -541,8 +541,9 @@ namespace oceanbase
                     ret = internal_get(bucket, key, value, is_fake);
                     if (HASH_NOT_EXIST == ret)
                     {
-                      // maybe different keys hit the same bucket, wait the correct kv pair ready
-                      continue;
+                      HASH_WRITE_LOG(HASH_WARNING, "after wake up, fake node is non-existent or deleted");
+                      ret = OB_ERROR;
+                      break;
                     }
                   }
                   while (HASH_EXIST == ret && is_fake);
@@ -603,8 +604,9 @@ namespace oceanbase
                     ret = internal_get(bucket, key, value, is_fake);
                     if (HASH_NOT_EXIST == ret)
                     {
-                      // maybe different keys hit the same bucket, wait the correct kv pair ready
-                      continue;
+                      HASH_WRITE_LOG(HASH_WARNING, "after wake up, fake node is non-existent or deleted");
+                      ret = OB_ERROR;
+                      break;
                     }
                   }
                   while (HASH_EXIST == ret && is_fake);
@@ -736,6 +738,7 @@ namespace oceanbase
                   }
                   allocer_->free(node);
                   atomic_dec((uint64_t*)&size_);
+                  cond_broadcaster()(bucket.cond); 
                   ret = HASH_EXIST;
                   break;
                 }
@@ -748,6 +751,39 @@ namespace oceanbase
             }
             return ret;
           };
+
+          /**
+           * thread safe scan, will add read lock to the bucket, the modification to the value is forbidden
+           *
+           * @param callback
+           * @return 0 in case success
+           *         -1 in case not initialized
+           */
+          template<class _callback>
+          int foreach(_callback &callback)
+          {
+            int ret = 0;
+            if (!inited(buckets_) || NULL == allocer_)
+            {
+              HASH_WRITE_LOG(HASH_WARNING, "hashtable is empty");
+              ret = -1;
+            }
+            else
+            {
+              for (int64_t i = 0; i < bucket_num_; i++)
+              {
+                const hashbucket &bucket = buckets_[i];
+                readlocker locker(bucket.lock);
+                hashnode *node = bucket.node;
+                while (NULL != node)
+                {
+                  callback(node->data);
+                  node = node->next;
+                }
+              }
+            }
+            return ret;
+          }
         public:
           int64_t size() const
           {

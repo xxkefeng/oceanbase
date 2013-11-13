@@ -70,3 +70,9 @@ select 1 union select 1;
 create table dual(name varchar primary key,a int);
 --error 5001
 insert into dual values(1);
+
+# select * without table specified
+--error 5002
+select *;
+--error 5002
+select * from dual;

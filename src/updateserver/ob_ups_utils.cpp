@@ -540,6 +540,19 @@ namespace oceanbase
       }
     }
 
+    void submit_check_sstable_checksum(const uint64_t sstable_id, const uint64_t checksum)
+    {
+      ObUpdateServerMain *ups_main = ObUpdateServerMain::get_instance();
+      if (NULL == ups_main)
+      {
+        TBSYS_LOG(WARN, "get updateserver main fail");
+      }
+      else
+      {
+        ups_main->get_update_server().submit_check_sstable_checksum(sstable_id, checksum);
+      }
+    }
+
     uint64_t get_create_time_column_id(const uint64_t table_id)
     {
       static const int64_t CACHE_SIZE = 32;
@@ -726,12 +739,165 @@ namespace oceanbase
     {
       return ObUpdateServerMain::get_instance()->get_update_server().get_param().memtable_hash_buckets_size;
     }
+
+    bool is_inmemtable(uint64_t table_id)
+    {
+      return OB_INVALID_ID != table_id && table_id < OB_APP_MIN_TABLE_ID;
+    }
+
+    uint64_t get_table_id(const ObGetParam& get_param)
+    {
+      uint64_t ret = OB_INVALID_ID;
+      ObCellInfo* cell = NULL;
+
+      if (get_param.get_cell_size() <= 0)
+      {}
+      else if (NULL == (cell = get_param[0]))
+      {
+        TBSYS_LOG(ERROR, "get_param[0] == NULL");
+      }
+      else
+      {
+        ret = cell->table_id_;
+      }
+      return ret;
+    }
+
+    uint64_t get_table_id(const ObScanParam& scan_param)
+    {
+      return scan_param.get_table_id();
+    }
+
+    bool &tc_is_replaying_log()
+    {
+      static __thread bool is_replaying_log = false;
+      return is_replaying_log;
+    }
+
+    int64_t get_time(const char *str)
+    {
+      const static int64_t TIME_MICROSECOND = 1UL;
+      const static int64_t TIME_MILLISECOND = 1000UL;
+      const static int64_t TIME_SECOND = 1000 * 1000UL;
+      const static int64_t TIME_MINUTE = 60 * 1000 * 1000UL;
+      const static int64_t TIME_HOUR = 60 * 60 * 1000 * 1000UL;
+      const static int64_t TIME_DAY = 24 * 60 * 60 * 1000 * 1000UL;
+
+      int64_t value = -1;
+      if (NULL == str || '\0' == str[0])
+      {
+        TBSYS_LOG(ERROR, "invalid param, str=%p", str);
+      }
+      else
+      {
+        char* p_unit = NULL;
+        value = strtol(str, &p_unit, 0);
+        if (0 > value)
+        {
+          TBSYS_LOG(ERROR, "invalid time, str=[%s]", str);
+          value = -1;
+        }
+        else if ('\0' == *p_unit || 0 == strcasecmp("us", p_unit))
+        {
+          /* default is usec */
+          value *= TIME_MICROSECOND;
+        }
+        else if (0 == strcasecmp("ms", p_unit))
+        {
+          value *= TIME_MILLISECOND;
+        }
+        else if (0 == strcasecmp("s", p_unit))
+        {
+          value *= TIME_SECOND;
+        }
+        else if (0 == strcasecmp("m", p_unit))
+        {
+          value *= TIME_MINUTE;
+        }
+        else if (0 == strcasecmp("h", p_unit))
+        {
+          value *= TIME_HOUR;
+        }
+        else if (0 == strcasecmp("d", p_unit))
+        {
+          value *= TIME_DAY;
+        }
+        else
+        {
+          TBSYS_LOG(ERROR, "invalid unit, str=[%s]", str);
+          value = -1;
+        }
+      }
+      return value;
+    }
+
+    int64_t ob_atoll(const char *str)
+    {
+      return ::atoll(str);
+    }
+
+    int64_t split_string(const char *str, int64_t *values, str_to_int_pt *callbacks, const int64_t size, const char d)
+    {
+      int64_t idx = 0;
+      if (NULL != str)
+      {
+        static const int64_t BUFFER_SIZE = 1024;
+        char buffer[BUFFER_SIZE];
+        snprintf(buffer, BUFFER_SIZE, "%s", str);
+        char *iter = buffer;
+        char *deli = NULL;
+        char *end = iter + strlen(iter);
+
+        while (iter < end
+              && idx < size)
+        {
+          deli = strchr(iter, d);
+          TBSYS_LOG(DEBUG, "split deli=[%s] iter=[%s]", deli, iter);
+          if (NULL != deli)
+          {
+            *deli = '\0';
+          }
+
+          values[idx] = callbacks[idx](iter);
+          if (0 > values[idx])
+          {
+            break;
+          }
+
+          idx += 1;
+          if (NULL == deli)
+          {
+            break;
+          }
+          iter = deli + 1;
+        }
+      }
+      TBSYS_LOG(INFO, "str=[%s] num=%ld values=[%s]", str, idx, print_array(values, idx));
+      return idx;
+    }
   }
 }
 
 void memory_limit_callback()
 {
-  TBSYS_LOG(INFO, "ups memory_limit_callback");
-  oceanbase::updateserver::ups_available_memory_warn_callback(0);
+  static __thread bool callback_running = false; // avoid recursion
+  if (!callback_running)
+  {
+    callback_running = true;
+    TBSYS_LOG(INFO, "ups memory_limit_callback");
+    if (REACH_TIME_INTERVAL(1L * 1000000L))
+    {
+      updateserver::ObUpdateServerMain *ups_main = updateserver::ObUpdateServerMain::get_instance();
+      if (NULL == ups_main)
+      {
+        TBSYS_LOG(WARN, "get updateserver main fail");
+      }
+      else
+      {
+        ups_main->get_update_server().submit_immediately_drop();
+      }
+    }
+    callback_running = false;
+  }
 }
 

@@ -54,14 +54,14 @@ c0	c1
 1	2
 3	4
 case 2: 1 commit 2 rollback
-drop table if exists t1;
-create table t1(c0 int primary key, c1 int);
-insert into t1 values(0,0),(-1,-1);
-prepare stmt_i from insert into t1 values(?,?),(?,?);
-prepare stmt_u from update t1 set c1=? where c0=?;
-prepare stmt_d from delete from t1 where c0=?;
-prepare stmt_s from select c0,c1 from t1 where c0=? for update;
-prepare stmt_select from select c0,c1 from t1;
+drop table if exists t2;
+create table t2(c0 int primary key, c1 int);
+insert into t2 values(0,0),(-1,-1);
+prepare stmt_i from insert into t2 values(?,?),(?,?);
+prepare stmt_u from update t2 set c1=? where c0=?;
+prepare stmt_d from delete from t2 where c0=?;
+prepare stmt_s from select c0,c1 from t2 where c0=? for update;
+prepare stmt_select from select c0,c1 from t2;
 set autocommit=0;
 set @a1=1;
 set @b1=1;
@@ -75,11 +75,11 @@ c0	c1
 1	2
 execute stmt_s using @a2;
 c0	c1
-prepare p_stmt_i from insert into t1 values(?,?),(?,?);
-prepare p_stmt_u from update t1 set c1=? where c0=?;
-prepare p_stmt_d from delete from t1 where c0=?;
-prepare p_stmt_s from select c0,c1 from t1 where c0=? for update;
-prepare p_stmt_select from select c0,c1 from t1;
+prepare p_stmt_i from insert into t2 values(?,?),(?,?);
+prepare p_stmt_u from update t2 set c1=? where c0=?;
+prepare p_stmt_d from delete from t2 where c0=?;
+prepare p_stmt_s from select c0,c1 from t2 where c0=? for update;
+prepare p_stmt_select from select c0,c1 from t2;
 set autocommit=0;
 set @p_a1=3;
 set @p_b1=3;
@@ -107,14 +107,14 @@ c0	c1
 0	0
 3	4
 case 2: 1 rollback 2 rollback
-drop table if exists t1;
-create table t1(c0 int primary key, c1 int);
-insert into t1 values(0,0),(-1,-1);
-prepare stmt_i from insert into t1 values(?,?),(?,?);
-prepare stmt_u from update t1 set c1=? where c0=?;
-prepare stmt_d from delete from t1 where c0=?;
-prepare stmt_s from select c0,c1 from t1 where c0=? for update;
-prepare stmt_select from select c0,c1 from t1;
+drop table if exists t3;
+create table t3(c0 int primary key, c1 int);
+insert into t3 values(0,0),(-1,-1);
+prepare stmt_i from insert into t3 values(?,?),(?,?);
+prepare stmt_u from update t3 set c1=? where c0=?;
+prepare stmt_d from delete from t3 where c0=?;
+prepare stmt_s from select c0,c1 from t3 where c0=? for update;
+prepare stmt_select from select c0,c1 from t3;
 set autocommit=0;
 set @a1=1;
 set @b1=1;
@@ -128,11 +128,11 @@ c0	c1
 1	2
 execute stmt_s using @a2;
 c0	c1
-prepare p_stmt_i from insert into t1 values(?,?),(?,?);
-prepare p_stmt_u from update t1 set c1=? where c0=?;
-prepare p_stmt_d from delete from t1 where c0=?;
-prepare p_stmt_s from select c0,c1 from t1 where c0=? for update;
-prepare p_stmt_select from select c0,c1 from t1;
+prepare p_stmt_i from insert into t3 values(?,?),(?,?);
+prepare p_stmt_u from update t3 set c1=? where c0=?;
+prepare p_stmt_d from delete from t3 where c0=?;
+prepare p_stmt_s from select c0,c1 from t3 where c0=? for update;
+prepare p_stmt_select from select c0,c1 from t3;
 set autocommit=0;
 set @p_a1=3;
 set @p_b1=3;

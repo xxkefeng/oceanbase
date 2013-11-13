@@ -7,7 +7,7 @@
  *
  * Version: $Id$
  *
- * ob_multiple_scan_merge.cpp 
+ * ob_multiple_scan_merge.cpp
  *
  * Authors:
  *   Junquan Chen <jianming.cjq@alipay.com>
@@ -24,6 +24,28 @@ ObMultipleScanMerge::ObMultipleScanMerge()
   :child_context_num_(0),
   is_cur_row_valid_(false)
 {
+}
+
+void ObMultipleScanMerge::reset()
+{
+  child_context_num_ = 0;
+  //cur_row_.reset(false, ObRow::DEFAULT_NULL);
+  last_child_context_.child_ = NULL;
+  last_child_context_.row_ = NULL;
+  last_child_context_.seq_ = 0;
+  is_cur_row_valid_ = false;
+  ObMultipleMerge::reset();
+}
+
+void ObMultipleScanMerge::reuse()
+{
+  child_context_num_ = 0;
+  //cur_row_.reset(false, ObRow::DEFAULT_NULL);
+  last_child_context_.child_ = NULL;
+  last_child_context_.row_ = NULL;
+  last_child_context_.seq_ = 0;
+  is_cur_row_valid_ = false;
+  ObMultipleMerge::reuse();
 }
 
 int ObMultipleScanMerge::write_row(ObRow &row)
@@ -276,6 +298,12 @@ int ObMultipleScanMerge::close()
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObMultipleScanMerge, PHY_MULTIPLE_SCAN_MERGE);
+  }
+}
+
 int64_t ObMultipleScanMerge::to_string(char *buf, int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -290,5 +318,13 @@ int64_t ObMultipleScanMerge::to_string(char *buf, int64_t buf_len) const
     }
   }
   return pos;
+}
+
+PHY_OPERATOR_ASSIGN(ObMultipleScanMerge)
+{
+  int ret = OB_SUCCESS;
+  reset();
+  ret = ObMultipleMerge::assign(other);
+  return ret;
 }
 

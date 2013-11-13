@@ -27,6 +27,18 @@ ObJoin::~ObJoin()
 {
 }
 
+void ObJoin::reset()
+{
+  equal_join_conds_.clear();
+  other_join_conds_.clear();
+}
+
+void ObJoin::reuse()
+{
+  equal_join_conds_.clear();
+  other_join_conds_.clear();
+}
+
 int ObJoin::set_join_type(const JoinType join_type)
 {
   join_type_ = join_type;
@@ -35,12 +47,22 @@ int ObJoin::set_join_type(const JoinType join_type)
 
 int ObJoin::add_equijoin_condition(const ObSqlExpression& expr)
 {
-  return equal_join_conds_.push_back(expr);
+  int ret = OB_SUCCESS;
+  if ((ret = equal_join_conds_.push_back(expr)) == OB_SUCCESS)
+  {
+    equal_join_conds_.at(equal_join_conds_.count() - 1).set_owner_op(this);
+  }
+  return ret;
 }
 
 int ObJoin::add_other_join_condition(const ObSqlExpression& expr)
 {
-  return other_join_conds_.push_back(expr);
+  int ret = OB_SUCCESS;
+  if ((ret = other_join_conds_.push_back(expr)) == OB_SUCCESS)
+  {
+    other_join_conds_.at(other_join_conds_.count() - 1).set_owner_op(this);
+  }
+  return ret;
 }
 
 int ObJoin::get_next_row(const ObRow *&row)
@@ -118,4 +140,32 @@ int64_t ObJoin::to_string(char* buf, const int64_t buf_len) const
   return pos;
 }
 
-
+PHY_OPERATOR_ASSIGN(ObJoin)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObJoin);
+  join_type_ = o_ptr->join_type_;
+  for (int64_t i = 0; ret == OB_SUCCESS && i < o_ptr->equal_join_conds_.count(); i++)
+  {
+    if ((ret = equal_join_conds_.push_back(o_ptr->equal_join_conds_.at(i))) == OB_SUCCESS)
+    {
+      equal_join_conds_.at(i).set_owner_op(this);
+    }
+    else
+    {
+      break;
+    }
+  }
+  for (int64_t i = 0; ret == OB_SUCCESS && i < o_ptr->other_join_conds_.count(); i++)
+  {
+    if ((ret = other_join_conds_.push_back(o_ptr->other_join_conds_.at(i))) == OB_SUCCESS)
+    {
+      other_join_conds_.at(i).set_owner_op(this);
+    }
+    else
+    {
+      break;
+    }
+  }
+  return ret;
+}

@@ -8,7 +8,7 @@ LDADD = ${top_srcdir}/src/mergeserver/libmergeserver.a \
         ${EASY_LIB_PATH}/libeasy.a                     \
         ${TBLIB_ROOT}/lib/libtbsys.a
 
-AM_LDFLAGS=-lpthread -lc -lm  -lrt -lnuma -lcrypt -lssl #-pg
+AM_LDFLAGS=-lpthread -lc -lm  -lrt -lcrypt -lssl #-pg
 if COVERAGE
 CXXFLAGS+=-fprofile-arcs -ftest-coverage
 AM_LDFLAGS+=-lgcov
@@ -32,7 +32,7 @@ sql_parser_sources=                                    \
   ob_deallocate_stmt.h        ob_deallocate_stmt.cpp   \
   ob_delete_stmt.h            ob_delete_stmt.cpp       \
   ob_drop_table_stmt.h        ob_drop_table_stmt.cpp   \
-  ob_dual_table_scan.h                                 \
+  ob_dual_table_scan.h ob_dual_table_scan.cpp          \
   ob_execute_stmt.h           ob_execute_stmt.cpp      \
   ob_explain_stmt.h           ob_explain_stmt.cpp      \
   ob_insert_stmt.h            ob_insert_stmt.cpp       \
@@ -53,6 +53,7 @@ sql_parser_sources=                                    \
   ob_transformer.h            ob_transformer.cpp       \
   ob_update_stmt.h            ob_update_stmt.cpp       \
   ob_variable_set_stmt.h      ob_variable_set_stmt.cpp \
+  ob_kill_stmt.h              ob_kill_stmt.cpp         \
   parse_malloc.h              parse_malloc.cpp         \
   parse_node.h                parse_node.c             \
   sql_parser.lex.c         	\
@@ -68,7 +69,8 @@ sql_parser_sources=                                    \
   ob_start_trans_stmt.h\
   ob_end_trans_stmt.h\
   ob_non_reserved_keywords.h  ob_non_reserved_keywords.c \
-	ob_priv_executor.h ob_priv_executor.cpp
+	ob_priv_executor.h ob_priv_executor.cpp\
+	ob_change_obi_stmt.h ob_change_obi_stmt.cpp
 
 operators_sources=                                                       \
   ob_add_project.h                   ob_add_project.cpp                  \
@@ -120,6 +122,9 @@ operators_sources=                                                       \
   ob_sql_scan_param.h                ob_sql_scan_param.cpp               \
   ob_sql_get_param.h                 ob_sql_get_param.cpp                \
   ob_sql_session_info.h              ob_sql_session_info.cpp             \
+  ob_sql_session_mgr.h               ob_sql_session_mgr.cpp              \
+  ob_sql_session_info_traversal.h    ob_sql_session_info_traversal.cpp   \
+  ob_sql_session_info_callback.h                                         \
   ob_sstable_block_scanner.h         ob_sstable_block_scanner.cpp        \
   ob_sstable_scan.h                  ob_sstable_scan.cpp                 \
   ob_sstable_scanner.h               ob_sstable_scanner.cpp              \
@@ -136,41 +141,59 @@ operators_sources=                                                       \
   ob_ups_scan.h                      ob_ups_scan.cpp                     \
   ob_values.h                        ob_values.cpp                       \
   ob_variable_set.h                  ob_variable_set.cpp                 \
-  ob_ups_modify.h                                                        \
+  ob_ups_modify.h                    ob_ups_modify.cpp                   \
   ob_inc_scan.h                      ob_inc_scan.cpp                     \
   ob_update.h                        ob_update.cpp                       \
   ob_phy_operator_type.h             ob_phy_operator_type.cpp            \
   ob_mem_sstable_scan.h              ob_mem_sstable_scan.cpp             \
   ob_multiple_merge.h                ob_multiple_merge.cpp               \
-  ob_inc_scan.h ob_inc_scan.cpp                                          \
+  ob_inc_scan.h                      ob_inc_scan.cpp                     \
   ob_insert_dbsem_filter.h ob_insert_dbsem_filter.cpp                    \
   ob_cs_create_plan.h                ob_cs_create_plan.cpp               \
   ob_phy_operator_factory.h          ob_phy_operator_factory.cpp         \
-  ob_husk_filter.h                   ob_husk_phy_operator.h              \
+  ob_husk_filter.h	              \
   ob_lock_filter.h                   ob_lock_filter.cpp                  \
-  ob_ups_executor.h ob_ups_executor.cpp\
-  ob_start_trans.h ob_start_trans.cpp\
-  ob_last_rowkey_interface.h\
-  ob_end_trans.h\
-  ob_expr_values.h ob_expr_values.cpp \
-  ob_sstable_get.h ob_sstable_get.cpp \
-  ob_tablet_get_fuse.h ob_tablet_get_fuse.cpp \
-  ob_tablet_scan_fuse.h ob_tablet_scan_fuse.cpp \
-  ob_tablet_read.h ob_tablet_read.cpp \
-  ob_tablet_get.h ob_tablet_get.cpp \
-  ob_sql_read_param.h ob_sql_read_param.cpp \
-  ob_multiple_scan_merge.h ob_multiple_scan_merge.cpp \
-  ob_multiple_get_merge.h ob_multiple_get_merge.cpp \
-  ob_empty_row_filter.h ob_empty_row_filter.cpp \
-  ob_sql_read_strategy.h ob_sql_read_strategy.cpp \
-  ob_tablet_join_cache.h ob_tablet_join_cache.cpp \
-	ob_direct_trigger_event_util.h ob_direct_trigger_event_util.cpp
+  ob_ups_executor.h                  ob_ups_executor.cpp\
+  ob_start_trans.h                   ob_start_trans.cpp \
+  ob_last_rowkey_interface.h \
+  ob_end_trans.h                     ob_end_trans.cpp\
+  ob_expr_values.h                   ob_expr_values.cpp \
+  ob_sstable_get.h                   ob_sstable_get.cpp \
+  ob_tablet_get_fuse.h               ob_tablet_get_fuse.cpp \
+  ob_tablet_scan_fuse.h              ob_tablet_scan_fuse.cpp \
+  ob_tablet_read.h                   ob_tablet_read.cpp \
+  ob_tablet_get.h                    ob_tablet_get.cpp \
+  ob_sql_read_param.h                ob_sql_read_param.cpp \
+  ob_multiple_scan_merge.h           ob_multiple_scan_merge.cpp \
+  ob_multiple_get_merge.h            ob_multiple_get_merge.cpp \
+  ob_empty_row_filter.h              ob_empty_row_filter.cpp \
+  ob_sql_read_strategy.h             ob_sql_read_strategy.cpp \
+  ob_tablet_join_cache.h             ob_tablet_join_cache.cpp \
+  ob_direct_trigger_event_util.h     ob_direct_trigger_event_util.cpp \
+  ob_multi_children_phy_operator.h   ob_multi_children_phy_operator.cpp \
+  ob_row_count.h                     ob_row_count.cpp \
+  ob_when_filter.h                   ob_when_filter.cpp \
+  ob_get_cur_time_phy_operator.h     ob_get_cur_time_phy_operator.cpp \
+  ob_kill_session.h                  ob_kill_session.cpp \
+  ob_sql_id_mgr.h                    ob_sql_id_mgr.cpp \
+	ob_change_obi.h                    ob_change_obi.cpp\
+  ob_sql_query_cache.h               ob_sql_query_cache.cpp \
+  ob_sql_id_mgr.h       ob_sql_id_mgr.cpp \
+  ob_ps_store_item.h    ob_ps_store_item.cpp \
+  ob_ps_store.h         ob_ps_store.cpp      \
+  ob_ps_store_item_callback.h \
+	ob_sql_character_set.h             ob_sql_character_set.cpp
+
+
 
 misc_sources =							\
   ob_type_convertor.h						\
   ob_ups_result.h                    ob_ups_result.cpp		\
   ob_sql_result_set.h                ob_sql_result_set.cpp	\
-  ob_sys_params_mgr.h                ob_sys_params_mgr.cpp
+  ob_sys_params_mgr.h                ob_sys_params_mgr.cpp      \
+  ob_affected_rows.h                                            \
+  ob_duplicate_indicator.h\
+  ob_sql_config_provider.h
 
 noinst_LIBRARIES = libsql.a
 

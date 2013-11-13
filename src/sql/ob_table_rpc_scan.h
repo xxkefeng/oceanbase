@@ -29,6 +29,7 @@
 #include "ob_sql_context.h"
 #include "common/ob_row.h"
 #include "common/ob_hint.h"
+
 namespace oceanbase
 {
   namespace sql
@@ -38,14 +39,15 @@ namespace oceanbase
       public:
         ObTableRpcScan();
         virtual ~ObTableRpcScan();
-
+        virtual void reset();
+        virtual void reuse();
         virtual int open();
         virtual int close();
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual ObPhyOperatorType get_type() const;
 
-        int init(ObSqlContext *context, const common::ObRpcScanHint &hint);
+        int init(ObSqlContext *context, const common::ObRpcScanHint *hint = NULL);
 
         /**
          * 添加一个需输出的column
@@ -87,14 +89,25 @@ namespace oceanbase
          */
         int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset);
         int64_t to_string(char* buf, const int64_t buf_len) const;
+        void set_phy_plan(ObPhysicalPlan *the_plan);
+        int32_t get_child_num() const;
 
         void set_rowkey_cell_count(const int64_t rowkey_cell_count)
         {
           rpc_scan_.set_rowkey_cell_count(rowkey_cell_count);
         }
 
-        NEED_SERIALIZE_AND_DESERIALIZE;
+        inline void set_need_cache_frozen_data(bool need_cache_frozen_data)
+        {
+          rpc_scan_.set_need_cache_frozen_data(need_cache_frozen_data);
+        }
+        inline void set_cache_bloom_filter(bool cache_bloom_filter)
+        {
+          rpc_scan_.set_cache_bloom_filter(cache_bloom_filter);
+        }
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
+        NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy
         ObTableRpcScan(const ObTableRpcScan &other);
@@ -116,6 +129,19 @@ namespace oceanbase
         bool is_skip_empty_row_;
         int32_t read_method_;
     };
+    inline void ObTableRpcScan::set_phy_plan(ObPhysicalPlan *the_plan)
+    {
+      ObPhyOperator::set_phy_plan(the_plan);
+      rpc_scan_.set_phy_plan(the_plan);
+      select_get_filter_.set_phy_plan(the_plan);
+      group_columns_sort_.set_phy_plan(the_plan);
+      limit_.set_phy_plan(the_plan);
+      limit_.set_phy_plan(the_plan);
+    }
+    inline int32_t ObTableRpcScan::get_child_num() const
+    {
+      return 0;
+    }
   } // end namespace sql
 } // end namespace oceanbase
 

@@ -42,7 +42,13 @@ namespace oceanbase
       memset(&pending_files_,0,sizeof(pending_files_));
       memset(&disk_no_array_,0,sizeof(disk_no_array_));
       memset(&sstable_files_,0,sizeof(sstable_files_));
-      memset(&disk_,0,sizeof(disk_));
+      //not reset disk status
+      for(int i=0; i<common::OB_MAX_DISK_NUMBER; ++i)
+      {
+        disk_[i].capacity_ = 0;
+        disk_[i].avail_ = 0;
+        disk_[i].disk_no_ = 0;
+      }
     }
 
     int ObDiskManager::scan(const char *data_dir, const int64_t max_sstable_size)
@@ -172,7 +178,7 @@ namespace oceanbase
 
     int32_t ObDiskManager::get_dest_disk()
     {
-      tbsys::CRLockGuard guard(lock_);
+      tbsys::CWLockGuard guard(lock_);
       int32_t disk_no = -1;
       if (disk_num_ <= 0)
       {
@@ -192,13 +198,12 @@ namespace oceanbase
         int64_t best_avail = 0;
         int64_t best_index = -1;
 
-        int64_t concurrent_writer =  ObChunkServerMain::get_instance()->get_chunk_server()
-                                                            .get_config().merge_thread_per_disk;
+        int64_t concurrent_writer = THE_CHUNK_SERVER.get_config().merge_thread_per_disk;
+        int64_t disk_space_threshold = THE_CHUNK_SERVER.get_config().choose_disk_by_space_threshold;
+        bool choose_by_space = false;
 
         if (concurrent_writer <= 0)
           concurrent_writer = 1; //for test
-
-        concurrent_writer <<= 1;
 
         for(int i=0;i < disk_num_; ++i)
         {
@@ -239,9 +244,22 @@ namespace oceanbase
               sstable_num = sstable_files_[i];
             }
           }
+
+          //check if the disk usage is larger than choose disk by space threshold
+          if (!choose_by_space 
+              && (disk_[i].capacity_ - this_avail) * 100 > disk_[i].capacity_ * disk_space_threshold)
+          {
+            choose_by_space = true;
+          }
         }
 
-        if (best_index != -1)
+        /**
+         * if the disk space usage is larger than the choose disk by 
+         * space threshold, choose disk by disk space, it's better to 
+         * make disk space balance, else select disk by sstable number 
+         * first. 
+         **/ 
+        if (!choose_by_space && best_index != -1)
         {
           avail_index = best_index;
         }
@@ -264,6 +282,24 @@ namespace oceanbase
       return disk_no;
     }
 
+    bool ObDiskManager::is_disk_avail(const int32_t disk_no) const
+    {
+      bool ret = false;
+      tbsys::CRLockGuard guard(lock_);
+      if (disk_no > 0 && disk_no <= OB_MAX_DISK_NUMBER)
+      {
+        int32_t index = find_disk(disk_no);
+        if (index != -1)
+        {
+          if(DISK_NORMAL == disk_[index].status_)
+          {
+            ret = true;
+          }
+        }
+      }
+      return ret;
+    }
+
     void ObDiskManager::add_used_space(const int32_t disk_no,const int64_t used,
       const bool decr_pending_cnt)
     {
@@ -273,10 +309,19 @@ namespace oceanbase
         int32_t index = find_disk(disk_no);
         if (index != -1)
         {
-          disk_[index].avail_ -= used;
           if (decr_pending_cnt)
           {
-            pending_files_[index] -= 1;
+            //doesn't record disk space usage of hard link 
+            disk_[index].avail_ -= used;
+            if(pending_files_[index] > 0)
+            {
+              pending_files_[index] -= 1;
+            }
+            else
+            {
+              TBSYS_LOG(WARN, "disk_no:%d pending_files:%d reset to 0", disk_no, pending_files_[index]);
+              pending_files_[index] = 0;
+            }
           }
           if (used > 0)
           {
@@ -301,18 +346,24 @@ namespace oceanbase
       return;
     }
 
-    void ObDiskManager::set_disk_status(const int32_t disk_no,const ObDiskStatus stat)
+    int ObDiskManager::set_disk_status(const int32_t disk_no, const ObDiskStatus stat)
     {
       tbsys::CWLockGuard guard(lock_);
+      int ret = OB_ERROR;
       if (disk_no > 0 && disk_no <= OB_MAX_DISK_NUMBER)
       {
         int32_t index = find_disk(disk_no);
         if (index != -1)
         {
           disk_[index].status_ = stat;
+          ret = OB_SUCCESS;
+        }
+        else
+        {
+          TBSYS_LOG(WARN, "not found disk:%d", disk_no);
         }
       }
-      return;
+      return ret;
     }
 
     void ObDiskManager::release_space(const int32_t disk_no,const int64_t size)
@@ -436,7 +487,7 @@ namespace oceanbase
       return ret;
     }
 
-    int32_t ObDiskManager::find_disk(const int32_t disk_no)
+    int32_t ObDiskManager::find_disk(const int32_t disk_no) const
     {
       int32_t index = disk_no - 1;
       int32_t ret = -1;
@@ -455,7 +506,7 @@ namespace oceanbase
     {
       for(int i=0;i<disk_num_;++i)
       {
-        TBSYS_LOG(DEBUG,"DISK %d: capacity:%ld,avail:%ld",disk_[i].disk_no_,disk_[i].capacity_,disk_[i].avail_);
+        TBSYS_LOG(DEBUG,"DISK %d: capacity:%ld,avail:%ld stat:%d",disk_[i].disk_no_,disk_[i].capacity_,disk_[i].avail_, disk_[i].status_);
       }
       return;
     }

@@ -31,11 +31,11 @@ namespace oceanbase
 
         ObRowDescExt(const ObRowDescExt &other);
         ObRowDescExt& operator=(const ObRowDescExt &other);
-
+        void reset();
         int get_by_id(const uint64_t table_id, const uint64_t column_id, int64_t &idx, ObObj &data_type) const;
         int get_by_idx(const int64_t idx, uint64_t &table_id, uint64_t &column_id, ObObj &data_type) const;
         int64_t get_column_num() const;
-
+        
         int add_column_desc(const uint64_t table_id, const uint64_t column_id, const ObObj &data_type);
       private:
         // data members

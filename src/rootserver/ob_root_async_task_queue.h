@@ -33,6 +33,9 @@ namespace oceanbase
       CONFIG_CHANGE = 2,
       SCHEMA_CHANGE = 3,
       PRIV_CHANGE = 4,
+      LMS_ONLINE = 6,
+      OBI_ROLE_CHANGE = 7,
+      ROLE_CHANGE = 5,
     };
     // only safe for one thread head first then pop one task
     // multi-thread can push tasks safely
@@ -45,22 +48,28 @@ namespace oceanbase
       struct ObSeqTask
       {
         ObTaskType type_;
+        int32_t inner_port_;
+        int32_t server_status_;
         int64_t remain_times_;
         int64_t max_timeout_;
         int64_t cluster_id_;
         common::ObRole role_;
-        int32_t inner_port_;
-        common::ObServer server_;
+        int32_t flow_percent_;
+        common::ObServer server_;  //server ip will using rootserver ip when lms registed
+        int32_t cluster_role_;
 	      char server_version_[common::OB_SERVER_VERSION_LENGTH];
       public:
         ObSeqTask()
         {
           inner_port_ = 0;
+          flow_percent_ = 0;
+          server_status_ = 0;
           remain_times_ = -1;
           max_timeout_ = -1;
           task_id_ = 0;
-          timestamp_ = -1;
           server_version_[0] = '\0';
+          timestamp_ = -1;
+	  cluster_role_ = 0;
         }
       protected:
         void print_info(void) const;

@@ -83,9 +83,10 @@ namespace oceanbase
       int64_t get_sstable_checksum() const;
 
       const ObSSTableSchema* get_schema() const;
+      const common::BloomFilter* get_bloom_filter() const; 
       inline const ObSSTableTrailer& get_trailer() const { return trailer_; }
       ObCompressor* get_decompressor();
-      bool may_contain(const common::ObString& key) const;
+      bool may_contain(const common::ObRowkey& key) const;
       inline bool empty() const { return (trailer_.get_row_count() == 0); }
 
       static bool check_sstable(const char* sstable_fname, uint64_t *sstable_checksum);
@@ -133,14 +134,15 @@ namespace oceanbase
       int64_t sstable_size_;
       ObSSTableSchema* schema_;
       ObCompressor* compressor_;
+      common::ObBloomFilterV1* bloom_filter_;
       ObSSTableId sstable_id_;
       ObSSTableTrailer trailer_;
-      common::BloomFilter bloom_filter_;
 
       common::ModulePageAllocator mod_;
       common::ModuleArena own_arena_;
       common::ModuleArena &external_arena_;
       tbsys::CThreadMutex* external_arena_mutex_;
+      mutable tbsys::CThreadMutex bf_mutex_;
 
       common::IFileInfoMgr& fileinfo_cache_;
     };

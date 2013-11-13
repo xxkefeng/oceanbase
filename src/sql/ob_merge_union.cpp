@@ -32,6 +32,47 @@ ObMergeUnion::ObMergeUnion()
 ObMergeUnion::~ObMergeUnion()
 {
 }
+
+void ObMergeUnion::reset()
+{
+  get_next_row_func_ = NULL;
+  cur_first_query_row_ = NULL;
+  cur_second_query_row_ = NULL;
+  if (NULL != last_row_buf_)
+  {
+    ob_free(last_row_buf_);
+    last_row_buf_ = NULL;
+  }
+  left_ret_ = OB_SUCCESS;
+  right_ret_ = OB_SUCCESS;
+  last_cmp_ = -1;
+  got_first_row_ = false;
+  last_output_row_ = NULL;
+  right_row_desc_ = NULL;
+  //last_row_.reset(false, ObRow::DEFAULT_NULL);;
+  ObSetOperator::reset();
+}
+
+void ObMergeUnion::reuse()
+{
+  get_next_row_func_ = NULL;
+  cur_first_query_row_ = NULL;
+  cur_second_query_row_ = NULL;
+  if (NULL != last_row_buf_)
+  {
+    ob_free(last_row_buf_);
+    last_row_buf_ = NULL;
+  }
+  left_ret_ = OB_SUCCESS;
+  right_ret_ = OB_SUCCESS;
+  last_cmp_ = -1;
+  got_first_row_ = false;
+  last_output_row_ = NULL;
+  right_row_desc_ = NULL;
+  //last_row_.reset(false, ObRow::DEFAULT_NULL);;
+  ObSetOperator::reuse();
+}
+
 int ObMergeUnion::cons_row_desc()
 {
   int ret = OB_SUCCESS;
@@ -349,6 +390,13 @@ int ObMergeUnion::distinct_get_next_row(const ObRow *&row)
     ret = OB_ITER_END;
     last_cmp_ = -1;
   }
+  else
+  {
+    // (left_ret, right_ret) in ((SUCCESS, ERROR), (ITER_END, ERROR), (ERROR, SUCCESS), (ERROR, ITER_END), (ERROR, ERROR))
+    ret = (OB_SUCCESS != left_ret_ && OB_ITER_END != left_ret_) ? left_ret_ : right_ret_;
+    TBSYS_LOG(WARN, "failed to get next row, err=%d left_err=%d right_err=%d",
+              ret, left_ret_, right_ret_);
+  }
   return ret;
 }
 int ObMergeUnion::set_distinct(bool is_distinct)
@@ -437,6 +485,12 @@ int ObMergeUnion::get_next_row(const ObRow *&row)
   return (this->*(this->ObMergeUnion::get_next_row_func_))(row);
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObMergeUnion, PHY_MERGE_UNION);
+  }
+}
+
 int64_t ObMergeUnion::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -452,4 +506,20 @@ int64_t ObMergeUnion::to_string(char* buf, const int64_t buf_len) const
     pos += right_op_->to_string(buf+pos, buf_len-pos);
   }
   return pos;
+}
+
+PHY_OPERATOR_ASSIGN(ObMergeUnion)
+{
+  int ret = OB_SUCCESS;
+  reset();
+  ObSetOperator::assign(other);
+  if (distinct_)
+  {
+    get_next_row_func_ = &ObMergeUnion::distinct_get_next_row;
+  }
+  else
+  {
+    get_next_row_func_ = &ObMergeUnion::all_get_next_row;
+  }
+  return ret;
 }

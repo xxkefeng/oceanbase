@@ -35,6 +35,8 @@ namespace oceanbase
         virtual int open();
         /// close children operators
         virtual int close();
+        virtual void reset();
+        virtual void reuse();
       private:
         // disallow copy
         ObDoubleChildrenPhyOperator(const ObDoubleChildrenPhyOperator &other);

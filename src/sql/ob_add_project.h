@@ -30,6 +30,10 @@ namespace oceanbase
 
         virtual int open();
         virtual int get_next_row(const common::ObRow *&row);
+        virtual int64_t to_string(char* buf, const int64_t buf_len) const;
+        virtual ObPhyOperatorType get_type() const {return PHY_ADD_PROJECT;};
+
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         // types and constants
       private:

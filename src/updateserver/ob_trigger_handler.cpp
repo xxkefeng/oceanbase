@@ -120,8 +120,8 @@ int ObTriggerHandler::handle_trigger(ObUpsMutator &mutator) const
       }
       else if (NULL != cell)
       {
-        //TBSYS_LOG(INFO, "GOT a trigger event on table %lu, OB_TRIGGER_EVENT_TABLE_TID=%lu",
-        //    cell->cell_info.table_id_, OB_TRIGGER_EVENT_TABLE_TID);
+        // TBSYS_LOG(INFO, "GOT a trigger event on table %lu, OB_TRIGGER_EVENT_TABLE_TID=%lu",
+        //    cell->cell_info.table_id_, OB_TRIGGER_EVENT_TID);
         if (OB_TRIGGER_EVENT_TID == cell->cell_info.table_id_)
         {
           ObTriggerMsg msg;

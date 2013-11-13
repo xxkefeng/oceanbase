@@ -22,9 +22,11 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <pthread.h>
 #include "tbsys.h"
 #include "ob_atomic.h"
 #include "ob_define.h"
+#include "qlock.h"
 #include "tbsys.h"
 
 namespace oceanbase
@@ -48,9 +50,9 @@ namespace oceanbase
         inline bool try_rdlock()
         {
           bool bret = false;
-          while (0 <= ref_cnt_)
+          int64_t tmp = 0;
+          while (0 <= (tmp = ref_cnt_))
           {
-            int64_t tmp = ref_cnt_;
             int64_t nv = tmp + 1;
             if (tmp == (int64_t)atomic_compare_exchange((uint64_t*)&ref_cnt_, nv, tmp))
             {
@@ -196,6 +198,80 @@ namespace oceanbase
       private:
         SpinRWLock& lock_;
     };
+
+    struct DRWLock
+    {
+      const static int64_t N_THREAD = 4096;
+      volatile int64_t read_ref_[N_THREAD][CACHE_ALIGN_SIZE/sizeof(int64_t)];
+      volatile int64_t thread_num_;
+      volatile uint64_t write_uid_ CACHE_ALIGNED;
+      pthread_key_t key_ CACHE_ALIGNED;
+      DRWLock()
+      {
+        write_uid_ = 0;
+        memset((void*)read_ref_, 0, sizeof(read_ref_));
+        pthread_key_create(&key_, NULL);
+      }
+      ~DRWLock()
+      {
+        pthread_key_delete(key_);
+      }
+      void rdlock()
+      {
+        volatile int64_t* ref = (volatile int64_t*)pthread_getspecific(key_);
+        if (NULL == ref)
+        {
+          pthread_setspecific(key_, (void*)(ref = read_ref_[__sync_fetch_and_add(&thread_num_, 1) % N_THREAD]));
+        }
+        while(true)
+        {
+          if (0 == write_uid_)
+          {
+            __sync_fetch_and_add(ref, 1);
+            if (0 == write_uid_)
+            {
+              break;
+            }
+            __sync_fetch_and_sub(ref, 1);
+          }
+          PAUSE();
+        }
+      }
+      void rdunlock()
+      {
+        int64_t* ref = (int64_t*)pthread_getspecific(key_);
+        __sync_synchronize();
+        __sync_fetch_and_sub(ref, 1);
+      }
+      void wrlock()
+      {
+        while(!__sync_bool_compare_and_swap(&write_uid_, 0, 1))
+          ;
+        for(int64_t i = 0; i < std::min((int64_t)thread_num_, N_THREAD); i++)
+        {
+          while(*read_ref_[i] > 0)
+            ;
+        }
+        write_uid_ = 2;
+        __sync_synchronize();
+      }
+      void wrunlock()
+      {
+        __sync_synchronize();
+        write_uid_ = 0;
+      }
+      void unlock()
+      {
+        if (2 == write_uid_)
+        {
+          wrunlock();
+        }
+        else
+        {
+          rdunlock();
+        }
+      }
+    } CACHE_ALIGNED;
   }
 }
 

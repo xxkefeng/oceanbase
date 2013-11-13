@@ -62,6 +62,7 @@ namespace oceanbase
       location_cache_ = NULL;
       cache_proxy_ = NULL;
       service_monitor_ = NULL;
+      sql_session_mgr_ = NULL;
 
       nb_accessor_ = NULL;
       query_cache_ = NULL;
@@ -69,11 +70,17 @@ namespace oceanbase
       frozen_version_ = OB_INVALID_VERSION;
 
       lease_expired_time_ = tbsys::CTimeUtil::getTime() + DEFAULT_LEASE_TIME;
+      sql_id_mgr_ = NULL;
     }
 
     ObMergeServerService::~ObMergeServerService()
     {
       destroy();
+      if (NULL != service_monitor_)
+      {
+        delete service_monitor_;
+        service_monitor_ = NULL;
+      }
     }
 
     int ObMergeServerService::start()
@@ -128,7 +135,8 @@ namespace oceanbase
           merge_server_->get_config().network_timeout,
           merge_server_->get_root_server(),
           merge_server_->get_self(),
-          (int32_t)merge_server_->get_config().obmysql_port, status, server_version);
+          (int32_t)merge_server_->get_config().obmysql_port,
+          merge_server_->get_config().lms, status, server_version);
         if (OB_SUCCESS != err)
         {
           TBSYS_LOG(WARN, "fail to register merge server to root server! "
@@ -163,7 +171,8 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        location_cache_->set_timeout(merge_server_->get_config().location_cache_timeout);
+        location_cache_->set_timeout(merge_server_->get_config().vtable_location_cache_timeout, true);
+        location_cache_->set_timeout(merge_server_->get_config().location_cache_timeout, false);
         ret = location_cache_->set_mem_size(merge_server_->get_config().location_cache_size);
       }
 
@@ -338,6 +347,10 @@ namespace oceanbase
         {
           err = OB_ALLOCATE_MEMORY_FAILED;
         }
+        else
+        {
+          merge_server_->get_bloom_filter_task_queue_thread().init(rpc_proxy_);
+        }
       }
 
       if (OB_SUCCESS == err)
@@ -350,7 +363,8 @@ namespace oceanbase
         else
         {
           err = location_cache_->init(merge_server_->get_config().location_cache_size,
-            1024, merge_server_->get_config().location_cache_timeout);
+            1024, merge_server_->get_config().location_cache_timeout,
+            merge_server_->get_config().vtable_location_cache_timeout);
         }
       }
 
@@ -394,22 +408,22 @@ namespace oceanbase
 
       if (OB_SUCCESS == err)
       {
-        if (merge_server_->get_config().query_cache_size >= 1)
-        {
-          query_cache_ = new(std::nothrow)ObQueryCache();
-          if (NULL == query_cache_)
-          {
-            err = OB_ALLOCATE_MEMORY_FAILED;
-          }
-          else
-          {
-            err = query_cache_->init(merge_server_->get_config().query_cache_size);
-            if (OB_SUCCESS != err)
-            {
-              TBSYS_LOG(WARN, "initialize query cache failed:ret[%d]", err);
-            }
-          }
-        }
+        //if (merge_server_->get_config().query_cache_size >= 1)
+        //{
+        //  query_cache_ = new(std::nothrow)ObQueryCache();
+        //  if (NULL == query_cache_)
+        //  {
+        //    err = OB_ALLOCATE_MEMORY_FAILED;
+        //  }
+        //  else
+        //  {
+        //    err = query_cache_->init(merge_server_->get_config().query_cache_size);
+        //    if (OB_SUCCESS != err)
+        //    {
+        //      TBSYS_LOG(WARN, "initialize query cache failed:ret[%d]", err);
+        //    }
+        //  }
+        //}
       }
       if (OB_SUCCESS == err)
       {
@@ -490,6 +504,10 @@ namespace oceanbase
         sql_proxy_.set_env(rpc_proxy_, root_rpc_,
                            async_rpc_, schema_mgr_, cache_proxy_, this);
       }
+      if (OB_SUCCESS == err)
+      {
+        merge_server_->get_bloom_filter_task_queue_thread().start();
+      }
 
       if (OB_SUCCESS != err)
       {
@@ -560,8 +578,10 @@ namespace oceanbase
       if (inited_)
       {
         inited_ = false;
+        TBSYS_LOG(WARN, "stop mergeserver timer");
         merge_server_->get_timer().destroy();
         merge_server_ = NULL;
+        TBSYS_LOG(WARN, "destroy rpc proxy etc.");
         delete rpc_proxy_;
         rpc_proxy_ = NULL;
         delete rpc_stub_;
@@ -574,13 +594,12 @@ namespace oceanbase
         location_cache_ = NULL;
         delete cache_proxy_;
         cache_proxy_ = NULL;
-        delete service_monitor_;
-        service_monitor_ = NULL;
         if (NULL != query_cache_)
         {
           delete query_cache_;
           query_cache_ = NULL;
         }
+        TBSYS_LOG(WARN, "service stoped");
       }
       else
       {
@@ -678,6 +697,9 @@ namespace oceanbase
           break;
         case OB_GET_CONFIG:
           rc = ms_get_config(receive_time, version, channel_id, req, in_buffer, out_buffer, timeout_us);
+          break;
+        case OB_SQL_KILL_SESSION:
+          rc = ms_sql_kill_session(receive_time, version, channel_id, req, in_buffer, out_buffer, timeout_us);
           break;
         default:
           TBSYS_LOG(WARN, "check packet type failed:type[%d]", packet_code);
@@ -783,6 +805,59 @@ namespace oceanbase
       return send_err;
     }
 
+    int ObMergeServerService::ms_sql_kill_session(
+      const int64_t receive_time,
+      const int32_t version,
+      const int32_t channel_id,
+      easy_request_t* req,
+      common::ObDataBuffer& in_buffer,
+      common::ObDataBuffer& out_buffer,
+      const int64_t timeout_us
+      )
+    {
+      ObResultCode rc;
+      const int32_t MS_SQL_KILL_SESSION_VERSION = 1;
+      int32_t &err = rc.result_code_;
+      UNUSED(receive_time);
+      UNUSED(timeout_us);
+      UNUSED(out_buffer);
+      UNUSED(version);
+      UNUSED(channel_id);
+      UNUSED(req);
+      int32_t session_id = 0;
+      bool is_query = false;
+
+      if (OB_SUCCESS != (err = serialization::decode_vi32(in_buffer.get_data(),
+                                                          in_buffer.get_capacity(),
+                                                          in_buffer.get_position(),
+                                                          &session_id)))
+      {
+        TBSYS_LOG(WARN,"fail to decode session id from request [err:%d]", err);
+      }
+
+      if (OB_SUCCESS == err)
+      {
+        err = serialization::decode_bool(in_buffer.get_data(), in_buffer.get_capacity(),
+                                         in_buffer.get_position(), &is_query);
+        if (OB_SUCCESS != err)
+        {
+          TBSYS_LOG(WARN,"fail to decode is_kill_query from request [err:%d]", err);
+        }
+      }
+      if (OB_SUCCESS == err)
+      {
+        err = sql_session_mgr_->kill_session(static_cast<uint32_t>(session_id), is_query);
+      }
+      int32_t send_err  = OB_SUCCESS;
+      err = rc.serialize(out_buffer.get_data(),out_buffer.get_capacity(), out_buffer.get_position());
+      if (OB_SUCCESS == err)
+      {
+        send_err = merge_server_->send_response(OB_SQL_KILL_SESSION_RESPONSE, MS_SQL_KILL_SESSION_VERSION,
+          out_buffer, req, channel_id);
+      }
+      return send_err;
+    }
+
     int ObMergeServerService::ms_heartbeat(
       const int64_t start_time,
       const int32_t version,
@@ -860,10 +935,11 @@ namespace oceanbase
 
         if (OB_SUCCESS == err)
         {
-          err = root_rpc_->async_heartbeat(merge_server_->get_self(), (int32_t)merge_server_->get_config().obmysql_port);
+          err = root_rpc_->async_heartbeat(merge_server_->get_self(), (int32_t)merge_server_->get_config().obmysql_port,
+              merge_server_->get_config().lms);
           if (err != OB_SUCCESS)
           {
-            TBSYS_LOG(ERROR, "heartbeat to root server failed:ret[%d]", err);
+            TBSYS_LOG(WARN, "heartbeat to root server failed:ret[%d]", err);
           }
           else
           {
@@ -1789,6 +1865,7 @@ namespace oceanbase
             {
               TBSYS_LOG(ERROR, "send sql result error, sql: [%.*s], ret: [%d]",
                         query_str.length(), query_str.ptr(), retcode);
+              ret = retcode;
             }
           }
           sql_proxy_.cleanup_sql_env(context, rs);
@@ -2208,7 +2285,6 @@ namespace oceanbase
       ObNewScanner *new_scanner = GET_TSI_MULT(ObNewScanner, TSI_MS_NEW_SCANNER_1);
       sql::ObSqlScanParam *sql_scan_param_ptr = GET_TSI_MULT(sql::ObSqlScanParam,
                                                              TSI_MS_SQL_SCAN_PARAM_1);
-
       if (version != RS_SCAN_VERSION)
       {
         rc.result_code_ = OB_ERROR_FUNC_VERSION;
@@ -2261,6 +2337,16 @@ namespace oceanbase
 
           new_scanner->set_range(*sql_scan_param_ptr->get_range());
           rc.result_code_ = service_monitor_->get_scanner(*new_scanner);
+        }
+        else if (OB_ALL_SERVER_SESSION_TID == table_id)
+        {
+          new_scanner->set_range(*sql_scan_param_ptr->get_range());
+          rc.result_code_ = sql_session_mgr_->get_scanner(*new_scanner);
+        }
+        else if (OB_ALL_STATEMENT_TID == table_id)
+        {
+          new_scanner->set_range(*sql_scan_param_ptr->get_range());
+          rc.result_code_ = sql_id_mgr_->get_scanner(merge_server_->get_self(), *new_scanner);
         }
         if(OB_SUCCESS != rc.result_code_)
         {
@@ -2414,9 +2500,14 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "Set config failed! ret: [%d]", ret);
       }
+      else if (OB_SUCCESS != (ret = get_config_mgr().reload_config()))
+      {
+        TBSYS_LOG(ERROR, "Reload config failed! ret: [%d]", ret);
+      }
       else
       {
         TBSYS_LOG(INFO, "Set config successfully! str: [%s]", config_str.ptr());
+        get_config().print();
       }
 
       res.result_code_ = ret;

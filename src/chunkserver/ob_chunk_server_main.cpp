@@ -40,7 +40,9 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
       char dump_config_path[OB_MAX_FILE_NAME_LENGTH];
-      print_version();
+      TBSYS_LOG(INFO, "oceanbase-chunk start svn_version=[%s] "
+                "build_data=[%s] build_time=[%s]", svn_version(), build_date(),
+                build_time());
 
       cs_reload_config_.set_chunk_server(server_);
 
@@ -115,6 +117,8 @@ namespace oceanbase
       {
         case SIGTERM:
         case SIGINT:
+          signal(SIGINT, SIG_IGN);
+          signal(SIGTERM, SIG_IGN);
           TBSYS_LOG(INFO, "KILLED by signal, sig is %d", sig);
           server_.stop_eio();
           break;
@@ -130,12 +134,7 @@ namespace oceanbase
       fprintf(stderr, "BUILD_TIME: %s %s\n", build_date(), build_time());
       fprintf(stderr, "BUILD_FLAGS: %s\n\n", build_flags());
       fprintf(stderr, "Copyright (c) 2007-2011 Taobao Inc.\n");
-
-      TBSYS_LOG(INFO, "oceanbase-chunk start svn_version=[%s] "
-                "build_data=[%s] build_time=[%s]", svn_version(), build_date(),
-                build_time());
     }
 
   } // end namespace chunkserver
 } // end namespace oceanbase
-

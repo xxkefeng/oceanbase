@@ -4,16 +4,15 @@
 #include <string.h>
 #include "common/ob_malloc.h"
 #include "common/page_arena.h"
-#include "updateserver/ob_fifo_allocator.h"
+#include "common/ob_fifo_allocator.h"
 #include "gtest/gtest.h"
 
 using namespace oceanbase;
-using namespace updateserver;
 using namespace common;
 
 TEST(TestFIFOAllocator, init)
 {
-  FIFOAllocator allocator;
+  common::FIFOAllocator allocator;
   uint64_t total_limit = 100 * 1024 * 1024;
   uint64_t hold_limit = 50 * 1024 * 1024;
   uint64_t page_size = 2 * 1024 * 1024;

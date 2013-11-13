@@ -113,8 +113,11 @@ namespace oceanbase
         bool need_filter(const int64_t frozen_version, 
           const int64_t last_do_expire_version);
         int fill_cname_to_idx_map(const uint64_t column_group_id);
+        bool check_expire_condition_need_filter(const ObTableSchema& table_schema) const;
+        int check_expire_dependent_columns(const ObString& expr,
+          const ObTableSchema& table_schema, ObExpressionParser& parser) const;
 
-        int replace_system_variable(char* expire_condition, const int64_t buf_size);
+        int replace_system_variable(char* expire_condition, const int64_t buf_size) const;
         int infix_str_to_sql_expression(const common::ObString& table_name, 
             const common::ObString& cond_expr, sql::ObSqlExpression& sql_expr);
         int trans_op_func_obj(const int64_t type, common::ObObj &obj_value1, common::ObObj &obj_value2);

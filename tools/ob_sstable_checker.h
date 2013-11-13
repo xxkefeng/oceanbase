@@ -223,8 +223,8 @@ namespace oceanbase
       oceanbase::common::ObMemBuf row_key_buf_;
       ObSCRecordHeader       *bloom_filter_record_;
       oceanbase::common::ObMemBuffer bloom_filter_buffer_;
-      oceanbase::common::BloomFilter bloom_filter_readed_;
-      oceanbase::common::BloomFilter bloom_filter_generated_;
+      oceanbase::common::ObBloomFilterV1 bloom_filter_readed_;
+      oceanbase::common::ObBloomFilterV1 bloom_filter_generated_;
       ObSCSSTableBlockIndexHeader   *block_index_;
       oceanbase::common::ObMemBuffer block_index_buffer_;
       oceanbase::common::ObMemBuffer block_buffer_;

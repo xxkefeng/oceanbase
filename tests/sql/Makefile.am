@@ -26,7 +26,7 @@ LDADD = \
 		${EASY_LIB_PATH}/libeasy.a \
 		${TBLIB_ROOT}/lib/libtbsys.a
 
-AM_LDFLAGS=-lpthread -lc -lm -lrt -lgtest -lgmock ${GCOV_LIB} -lnuma -lcrypt -lreadline -lncurses -laio -lssl
+AM_LDFLAGS=-lpthread -lc -lm -lrt -lgmock -lgtest ${GCOV_LIB} -lnuma -lcrypt -lreadline -lncurses -laio -lssl
 CXXFLAGS+= -g -DCOMPATIBLE
 if COVERAGE
 CXXFLAGS+=-fprofile-arcs -ftest-coverage
@@ -57,7 +57,7 @@ check_programs= \
             ob_project_test \
             ob_filter_test \
             ob_limit_test \
-            ob_aggregate_function_test \
+            ob_aggregate_function_test\
             ob_phy_operators_test \
             ob_file_table_test \
             sql_logical_plan_test \
@@ -73,18 +73,22 @@ check_programs= \
 			ob_ups_scan_test \
 			ob_ups_multi_get_test \
 			ob_tablet_fuse_test \
-			#ob_tablet_join_test\
-      test_insert_dbsem_filter\
-      test_ups_result\
-      ob_multiple_merge_test\
-      ob_tablet_scan_test\
-			ob_intersect_test\
-			ob_except_test\
-			ob_multiple_merge_test
+			ob_physical_plan_test \
+			ob_except_test
 
 bin_PROGRAMS= ${check_programs}\
             sqlparser \
             sqlplan
+
+#
+#      test_insert_dbsem_filter
+#      ob_multiple_merge_test
+#      ob_tablet_scan_test
+#			ob_intersect_test
+#      test_ups_result
+#ob_tablet_join_test
+#test_ob_ps_store
+#
 
 ob_row_desc_test_SOURCES=ob_row_desc_test.cpp
 ob_run_file_test_SOURCES=ob_run_file_test.cpp ${pub_source}
@@ -115,11 +119,14 @@ ob_ups_scan_test_SOURCES = ob_ups_scan_test.cpp ${pub_source}
 ob_ups_multi_get_test_SOURCES = ob_ups_multi_get_test.cpp ${pub_source}
 ob_tablet_fuse_test_SOURCES = ob_tablet_fuse_test.cpp ${pub_source}
 #ob_tablet_join_test_SOURCES = ob_tablet_join_test.cpp ${pub_source}
-ob_tablet_scan_test_SOURCES = ob_tablet_scan_test.cpp ${pub_source}
+#ob_tablet_scan_test_SOURCES = ob_tablet_scan_test.cpp ${pub_source}
 ob_except_test_SOURCES = ob_except_test.cpp ${pub_source}
-ob_multiple_merge_test_SOURCES = ob_multiple_merge_test.cpp
-test_insert_dbsem_filter_SOURCES = test_insert_dbsem_filter.cpp
-test_ups_result_SOURCES = test_ups_result.cpp
+#ob_multiple_merge_test_SOURCES = ob_multiple_merge_test.cpp
+#test_insert_dbsem_filter_SOURCES = test_insert_dbsem_filter.cpp
+#test_ups_result_SOURCES = test_ups_result.cpp
+ob_physical_plan_test_SOURCES = ob_physical_plan_test.cpp
+#test_ob_ps_store_SOURCES = test_ob_ps_store.cpp
+#test_ob_ps_item_allocator_SOURCES = test_ob_ps_item_allocator.cpp
 #ob_mem_sstable_scan_test_SOURCES = ob_mem_sstable_scan_test.cpp
 
 check_SCRIPTS = $(check_programs)

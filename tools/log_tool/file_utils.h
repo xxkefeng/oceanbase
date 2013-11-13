@@ -1,3 +1,6 @@
+#ifndef __OB_LOG_TOOL_FILE_UTILS_H__
+#define __OB_LOG_TOOL_FILE_UTILS_H__
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -96,3 +99,5 @@ int read_file(const char* path, char* buf, const int64_t buf_size, int64_t& read
   close(fd);
   return err;
 }
+
+#endif /* __OB_LOG_TOOL_FILE_UTILS_H__ */

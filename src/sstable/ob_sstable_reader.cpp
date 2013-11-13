@@ -90,7 +90,7 @@ namespace oceanbase
                                      common::IFileInfoMgr& fileinfo_cache,
                                      tbsys::CThreadMutex* external_arena_mutex)
       : is_opened_(false), enable_bloom_filter_(true), use_external_arena_(true),
-      sstable_size_(0), schema_(NULL), compressor_(NULL), sstable_id_(),
+      sstable_size_(0), schema_(NULL), compressor_(NULL), bloom_filter_(NULL), sstable_id_(),
       mod_(ObModIds::OB_CS_SSTABLE_READER),
       own_arena_(ModuleArena::DEFAULT_PAGE_SIZE, mod_),
       external_arena_(arena), external_arena_mutex_(external_arena_mutex), fileinfo_cache_(fileinfo_cache)
@@ -116,7 +116,6 @@ namespace oceanbase
       }
 
       trailer_.reset();
-      bloom_filter_.reset();
 
       if (!use_external_arena_) own_arena_.free();
       external_arena_mutex_ = NULL;
@@ -128,6 +127,13 @@ namespace oceanbase
         destroy_compressor(compressor_);
         compressor_ = NULL;
       }
+
+      if (NULL != bloom_filter_)
+      {
+        destroy_bloom_filter(bloom_filter_);
+        bloom_filter_ = NULL;
+      }
+
     }
 
     int ObSSTableReader::open(const int64_t sstable_id, const int64_t version)
@@ -216,11 +222,6 @@ namespace oceanbase
         if (OB_SUCCESS == ret)
         {
           ret = load_schema(*file_info);
-        }
-
-        if (OB_SUCCESS == ret)
-        {
-          ret = load_bloom_filter(*file_info);
         }
 
         if (OB_SUCCESS == ret)
@@ -423,6 +424,18 @@ namespace oceanbase
         //no bloom filter data in sstable file, disable floom filter
         enable_bloom_filter_ = false;
       }
+      else if (NULL != bloom_filter_)
+      {
+        // already loaded before.
+        ret = OB_SUCCESS;
+      }
+      else if (NULL == (bloom_filter_ = dynamic_cast<ObBloomFilterV1*>(
+              create_bloom_filter<ObTCMalloc>(
+                ObBasicBloomFilter<ObTCMalloc>::BLOOM_FILTER_VERSION))))
+      {
+        TBSYS_LOG(WARN, "cannot create bloom filter.");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
       else
       {
         enable_bloom_filter_ = true;
@@ -436,9 +449,9 @@ namespace oceanbase
           {
             if (!header.is_compress())
             {
-              bloom_filter_.set_num_hash_functions(
-                  trailer_.get_bloom_filter_hash_count());
-              bloom_filter_.set_bitmap(payload_ptr, payload_size);
+              bloom_filter_->get_allocator()->set_mod_id(ObModIds::OB_BLOOM_FILTER);
+              bloom_filter_->init(trailer_.get_bloom_filter_hash_count(), payload_size);
+              bloom_filter_->set_buffer(reinterpret_cast<const uint8_t*>(payload_ptr), payload_size);
             }
             else
             {
@@ -810,6 +823,22 @@ namespace oceanbase
       return schema_;
     }
 
+    const BloomFilter* ObSSTableReader::get_bloom_filter() const
+    {
+      bf_mutex_.lock();
+      if (NULL == bloom_filter_)
+      {
+        const IFileInfo* file_info  = fileinfo_cache_.get_fileinfo(sstable_id_.sstable_file_id_);
+        if (NULL != file_info)
+        {
+          const_cast<ObSSTableReader*>(this)->load_bloom_filter(*file_info);
+          fileinfo_cache_.revert_fileinfo(file_info);
+        }
+      }
+      bf_mutex_.unlock();
+      return bloom_filter_;
+    }
+
     ObCompressor* ObSSTableReader::get_decompressor()
     {
       const char *compressor_name = trailer_.get_compressor_name();
@@ -828,14 +857,24 @@ namespace oceanbase
     }
 
     // check sstable if may contain %key, check by bloomfilter.
-    bool ObSSTableReader::may_contain(const ObString& key) const
+    bool ObSSTableReader::may_contain(const ObRowkey& key) const
     {
       bool ret = false;
       if (is_opened_)
       {
-        if (enable_bloom_filter_)
+        if (NULL == bloom_filter_)
         {
-          ret = bloom_filter_.may_contain(key);
+          const IFileInfo* file_info  = fileinfo_cache_.get_fileinfo(sstable_id_.sstable_file_id_);
+          if (NULL != file_info)
+          {
+            const_cast<ObSSTableReader*>(this)->load_bloom_filter(*file_info);
+            fileinfo_cache_.revert_fileinfo(file_info);
+          }
+        }
+
+        if (enable_bloom_filter_ && NULL != bloom_filter_)
+        {
+          ret = bloom_filter_->may_contain(key);
         }
         else
         {

@@ -39,18 +39,22 @@ namespace oceanbase
         ObSqlReadStrategy();
         virtual ~ObSqlReadStrategy();
 
+        void reset();
         inline void set_rowkey_info(const common::ObRowkeyInfo &rowkey_info)
         {
           rowkey_info_ = &rowkey_info;
         }
 
         int add_filter(const ObSqlExpression &expr);
-        int get_read_method(ObArray<ObRowkey> &rowkey_array, PageArena<ObObj,common::ModulePageAllocator> &objs_allocator, int32_t &read_method);
+        int get_read_method(ObIArray<ObRowkey> &rowkey_array, PageArena<ObObj,common::ModulePageAllocator> &objs_allocator, int32_t &read_method);
         void destroy();
 
-        int find_rowkeys_from_equal_expr(ObArray<ObRowkey> &rowkey_array, PageArena<ObObj,common::ModulePageAllocator> &objs_allocator);
-        int find_rowkeys_from_in_expr(ObArray<ObRowkey> &rowkey_array, common::PageArena<ObObj,common::ModulePageAllocator> &objs_allocator);
+        int find_rowkeys_from_equal_expr(bool real_val, ObIArray<ObRowkey> &rowkey_array, PageArena<ObObj,common::ModulePageAllocator> &objs_allocator);
+        int find_rowkeys_from_in_expr(bool real_val, ObIArray<ObRowkey> &rowkey_array, common::PageArena<ObObj,common::ModulePageAllocator> &objs_allocator);
         int find_scan_range(ObNewRange &range, bool &found, bool single_row_only);
+
+        int assign(const ObSqlReadStrategy *other, ObPhyOperator *owner_op = NULL);
+        int64_t to_string(char* buf, const int64_t buf_len) const;
       public:
         static const int32_t USE_METHOD_UNKNOWN = 0;
         static const int32_t USE_SCAN = 1;
@@ -67,8 +71,8 @@ namespace oceanbase
         char* end_key_mem_hold_[OB_MAX_ROWKEY_COLUMN_NUMBER];
 
       private:
-        int find_single_column_range(int64_t idx, uint64_t column_id, bool &found);
-        int find_closed_column_range(int64_t idx, uint64_t column_id, bool &found_start, bool &found_end, bool single_row_only);
+        int find_single_column_range(bool real_val, int64_t idx, uint64_t column_id, bool &found);
+        int find_closed_column_range(bool real_val, int64_t idx, uint64_t column_id, bool &found_start, bool &found_end, bool single_row_only);
     };
   }
 }

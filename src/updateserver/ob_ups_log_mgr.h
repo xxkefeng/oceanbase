@@ -93,8 +93,15 @@ namespace oceanbase
           }
           else if (OB_SUCCESS != (err = log_mgr_->replay_local_log()))
           {
-            TBSYS_LOG(ERROR, "replay_local_log()=>%d, will kill self", err);
-            kill(getpid(), SIGTERM);
+            if (OB_CANCELED == err)
+            {
+              TBSYS_LOG(WARN, "cancel replay local log");
+            }
+            else
+            {
+              TBSYS_LOG(ERROR, "replay_local_log()=>%d, will kill self", err);
+              kill(getpid(), SIGTERM);
+            }
           }
           else
           {

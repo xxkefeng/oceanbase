@@ -20,6 +20,7 @@
 #include "common/ob_row_store.h"
 #include "common/ob_malloc.h"
 #include "common/ob_action_flag.h"
+#include "common/ob_kv_storecache.h"
 #include <gtest/gtest.h>
 
 using namespace oceanbase;
@@ -315,6 +316,27 @@ TEST_F(ObRowStoreTest, basic_test)
   CHECK_ROW(1, 2, 4, 5, 3);
   CHECK_ROW(1, 2, 4, 5, 3);
   CHECK_ROW(1, 2, 4, 5, 3);
+  KeyValueCache<ObString, ObRowStore, 8 * 1024, 2 * 1024 * 1024> cache;
+  ASSERT_TRUE(cache.init(100 * 1024 * 1024) == OB_SUCCESS);
+  ObString key1 = ObString::make_string("item1");
+  ASSERT_TRUE(cache.put(key1, row_store) == OB_SUCCESS);
+  ObRowStore *row_store2;
+  common::CacheHandle handle;
+  ASSERT_TRUE(cache.get(key1, row_store2, handle) == OB_SUCCESS);
+  cache.revert(handle);
+  #define CHECK_ROW2(num1, num2, num3, num4, num5) \
+  row_store2->get_next_row(get_row); \
+  CHECK_CELL(1, num1); \
+  CHECK_CELL(2, num2); \
+  CHECK_CELL(3, num3); \
+  CHECK_CELL(4, num4); \
+  CHECK_CELL(5, num5);
+  CHECK_ROW2(1, 2, 4, 5, 3);
+  CHECK_ROW2(1, 2, 4, 5, 3);
+  CHECK_ROW2(1, 2, 4, 5, 3);
+  CHECK_ROW2(1, 2, 4, 5, 3);
+  CHECK_ROW2(1, 2, 4, 5, 3);
+  TBSYS_LOG(INFO, "SUCCESS");
 }
 
 
@@ -351,6 +373,7 @@ TEST_F(ObRowStoreTest, row_store_reset_test)
 
   for (int k=0; k<3; k++)
   {
+    TBSYS_LOG(INFO, "k=%d", k);
     for (int i=0; i<row_num; i++)
     {
       row_store.add_row(row, stored_row);
@@ -383,6 +406,50 @@ TEST_F(ObRowStoreTest, row_store_reset_test)
     row_store.reuse();
     ASSERT_EQ(used_mem_size, row_store.get_used_mem_size());
   }
+}
+
+
+TEST_F(ObRowStoreTest, test_page)
+{
+  ObRowStore row_store;
+  ObUpsRow ups_row;
+  ObRowDesc row_desc;
+  uint64_t table_id = 3001;
+  ObRowkey rowkey;
+  const int column_num = 16;
+  ObObj obj_buf[column_num];
+  row_desc.add_column_desc(table_id, 16);
+
+  ups_row.set_row_desc(row_desc);
+  ups_row.set_is_delete_row(true);
+
+  rowkey.assign(obj_buf, column_num);
+
+  ObObj obj;
+  obj.set_varchar(ObString::make_string("oceanbase is a powerful database. I love oceanbaseoceanbase is a powerful database. I love oceanbase"));
+
+  for (int i = 0; i < column_num; i ++)
+  {
+    obj_buf[i] = obj;
+  }
+
+  obj.set_int(3);
+  ups_row.raw_set_cell(0, obj);
+
+  int64_t cur_size_counter = 0;
+  for (int i = 0; i < 1000; i ++)
+  {
+    row_store.add_ups_row(rowkey, ups_row, cur_size_counter);
+  }
+
+  ObUpsRow result_ups_row;
+  const ObRowkey *result_rowkey = NULL;
+  result_ups_row.set_row_desc(row_desc);
+  for (int i = 0; i < 1000; i ++)
+  {
+    ASSERT_EQ(OB_SUCCESS, row_store.get_next_ups_row(result_rowkey, result_ups_row));
+  }
+  ASSERT_EQ(OB_ITER_END, row_store.get_next_ups_row(result_rowkey, result_ups_row));
 }
 
 int main(int argc, char **argv)

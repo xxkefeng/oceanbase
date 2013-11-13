@@ -30,6 +30,11 @@ namespace oceanbase
       root_server_ = root_server;
     }
 
+    void ObRootLogWorker::set_balancer(ObRootBalancer* balancer)
+    {
+      balancer_ = balancer;
+    }
+
     void ObRootLogWorker::set_log_manager(ObRootLogManager* log_manager)
     {
       log_manager_ = log_manager;
@@ -119,6 +124,51 @@ namespace oceanbase
     int ObRootLogWorker::regist_cs(const ObServer& server, const char* server_version, const int64_t timestamp)
     {
       return log_server_with_ts(OB_RT_CS_REGIST, server, server_version, timestamp);
+    }
+int ObRootLogWorker::regist_lms(const ObServer& server, int32_t sql_port, const char* server_version, const int64_t timestamp)
+    {
+      int ret = OB_SUCCESS;
+
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
+      if (log_data == NULL)
+      {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(ERROR, "allocate memory failed");
+      }
+
+      int64_t pos = 0;
+      if (ret == OB_SUCCESS)
+      {
+        ret = server.serialize(log_data, OB_MAX_PACKET_LENGTH, pos);
+      }
+
+      if (ret == OB_SUCCESS)
+      {
+        ret = serialization::encode_vi32(log_data, OB_MAX_PACKET_LENGTH, pos, sql_port);
+      }
+
+      if (ret == OB_SUCCESS)
+      {
+        ret = serialization::encode_vstr(log_data, OB_MAX_PACKET_LENGTH, pos, server_version);
+      }
+
+      if (ret == OB_SUCCESS)
+      {
+        ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, timestamp);
+      }
+
+      if (ret == OB_SUCCESS)
+      {
+        ret = flush_log(OB_RT_LMS_REGIST, log_data, pos);
+      }
+
+      if (log_data != NULL)
+      {
+        ob_free(log_data);
+        log_data = NULL;
+      }
+
+      return ret;
     }
 
     int ObRootLogWorker::regist_ms(const ObServer& server, int32_t sql_port, const char* server_version, const int64_t timestamp)
@@ -255,7 +305,8 @@ namespace oceanbase
       return ret;
     }
 
-    int ObRootLogWorker::cs_migrate_done(const ObNewRange& range, const ObServer& src_server, const ObServer& dest_server, const bool keep_src, const int64_t tablet_version)
+    int ObRootLogWorker::cs_migrate_done(const int32_t result, const ObDataSourceDesc& desc,
+        const int64_t occupy_size, const uint64_t crc_sum, const uint64_t row_checksum, const int64_t row_count)
     {
       int ret = OB_SUCCESS;
 
@@ -267,30 +318,29 @@ namespace oceanbase
       }
 
       int64_t pos = 0;
-      if (ret == OB_SUCCESS)
+      if (OB_SUCCESS == ret
+          && OB_SUCCESS == (ret = desc.range_.serialize(log_data, OB_MAX_PACKET_LENGTH, pos))
+          && OB_SUCCESS == (ret = desc.src_server_.serialize(log_data, OB_MAX_PACKET_LENGTH, pos))
+          && OB_SUCCESS == (ret = desc.dst_server_.serialize(log_data, OB_MAX_PACKET_LENGTH, pos))
+          && OB_SUCCESS == (ret = serialization::encode_bool(log_data, OB_MAX_PACKET_LENGTH, pos, desc.keep_source_))
+          && OB_SUCCESS == (ret = serialization::encode_i64(log_data, OB_MAX_PACKET_LENGTH, pos, desc.tablet_version_))
+          && OB_SUCCESS == (ret = serialization::encode_i32(log_data, OB_MAX_PACKET_LENGTH, pos, static_cast<int32_t>(desc.type_)))
+          && OB_SUCCESS == (ret = serialization::encode_i64(log_data, OB_MAX_PACKET_LENGTH, pos, desc.sstable_version_))
+          && OB_SUCCESS == (ret = desc.uri_.serialize(log_data, OB_MAX_PACKET_LENGTH, pos))
+          && OB_SUCCESS == (ret = serialization::encode_vi32(log_data, OB_MAX_PACKET_LENGTH, pos, result))
+          && OB_SUCCESS == (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, occupy_size))
+          && OB_SUCCESS == (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, crc_sum))
+          && OB_SUCCESS == (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, row_checksum))
+          && OB_SUCCESS == (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, row_count))
+         )
       {
-        ret = range.serialize(log_data, OB_MAX_PACKET_LENGTH, pos);
+        //ok
+      }
+      else
+      {
+        TBSYS_LOG(WARN, "failed to serialize migrate done, ret=%d", ret);
       }
 
-      if (ret == OB_SUCCESS)
-      {
-        ret = src_server.serialize(log_data, OB_MAX_PACKET_LENGTH, pos);
-      }
-
-      if (ret == OB_SUCCESS)
-      {
-        ret = dest_server.serialize(log_data, OB_MAX_PACKET_LENGTH, pos);
-      }
-
-      if (ret == OB_SUCCESS)
-      {
-        ret = serialization::encode_bool(log_data, OB_MAX_PACKET_LENGTH, pos, keep_src);
-      }
-
-      if (ret == OB_SUCCESS)
-      {
-        ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, tablet_version);
-      }
 
       if (ret == OB_SUCCESS)
       {
@@ -305,11 +355,42 @@ namespace oceanbase
 
       return ret;
     }
-
-    int ObRootLogWorker::report_tablets(const common::ObServer& server, const common::ObTabletReportInfoList& tablets, const int64_t timestamp)
+int ObRootLogWorker::add_range_for_load_data(const common::ObTabletReportInfoList& tablets)
     {
       int ret = OB_SUCCESS;
 
+      char* log_data = NULL;
+      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
+      if (log_data == NULL)
+      {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(ERROR, "allocate memory failed");
+      }
+
+      int64_t pos = 0;
+      if (ret == OB_SUCCESS)
+      {
+        ret = tablets.serialize(log_data, OB_MAX_PACKET_LENGTH, pos);
+      }
+
+      if (ret == OB_SUCCESS)
+      {
+        ret = flush_log(OB_RT_ADD_RANGE_FOR_LOAD_DATA, log_data, pos);
+      }
+
+      if (log_data != NULL)
+      {
+        ob_free(log_data);
+        log_data = NULL;
+      }
+
+      return ret;
+    }
+
+    int ObRootLogWorker::report_tablets(const common::ObServer& server, const common::ObTabletReportInfoList& tablets,
+        const int64_t timestamp)
+    {
+      int ret = OB_SUCCESS;
       char* log_data = NULL;
       log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
       if (log_data == NULL)
@@ -444,6 +525,89 @@ namespace oceanbase
             TBSYS_LOG(WARN, "failed to flush log, err=%d", ret);
           }
         }
+      }
+      if (NULL != log_data)
+      {
+        ob_free(log_data);
+        log_data = NULL;
+      }
+      return ret;
+    }
+
+    int ObRootLogWorker::add_load_table(const ObString& table_name, const uint64_t table_id, const uint64_t old_table_id,
+        const ObString& uri, const int64_t start_time, const int64_t tablet_version)
+    {
+      int ret = OB_SUCCESS;
+      char* log_data = NULL;
+      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
+      int64_t pos = 0;
+      if (log_data == NULL)
+      {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(ERROR, "allocate memory failed");
+      }
+      else if (OB_SUCCESS != (ret = table_name.serialize(log_data, OB_MAX_PACKET_LENGTH, pos)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize table name=%.*s, ret=%d", table_name.length(), table_name.ptr(), ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, table_id)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize tableid=%lu, ret=%d", table_id, ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, old_table_id)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize old tableid=%lu, ret=%d", old_table_id, ret);
+      }
+      else if (OB_SUCCESS != (ret = uri.serialize(log_data, OB_MAX_PACKET_LENGTH, pos)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize uri=%.*s, ret=%d", uri.length(), uri.ptr(), ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, start_time)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize start_time=%ld, ret=%d", start_time, ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, tablet_version)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize tablet_version=%ld, ret=%d", tablet_version, ret);
+      }
+      else if (OB_SUCCESS != (ret = flush_log(OB_RT_ADD_LOAD_TABLE, log_data, pos)))
+      {
+        TBSYS_LOG(WARN, "failed to flush log, err=%d", ret);
+      }
+      if (NULL != log_data)
+      {
+        ob_free(log_data);
+        log_data = NULL;
+      }
+      return ret;
+    }
+
+    int ObRootLogWorker::delete_load_table(const uint64_t table_id, const int32_t status, const int64_t end_time)
+    {
+      int ret = OB_SUCCESS;
+      char* log_data = NULL;
+      log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
+      int64_t pos = 0;
+      if (log_data == NULL)
+      {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+        TBSYS_LOG(ERROR, "allocate memory failed");
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, table_id)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize tableid=%lu, ret=%d", table_id, ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_vi32(log_data, OB_MAX_PACKET_LENGTH, pos, status)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize status=%d, ret=%d", status, ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, end_time)))
+      {
+        TBSYS_LOG(WARN, "failed to serialize end_time=%ld, ret=%d", end_time, ret);
+      }
+      else if (OB_SUCCESS != (ret = flush_log(OB_RT_DELETE_LOAD_TABLE, log_data, pos)))
+      {
+        TBSYS_LOG(WARN, "failed to flush log, err=%d", ret);
       }
       if (NULL != log_data)
       {
@@ -632,6 +796,41 @@ namespace oceanbase
       return ret;
     }
 
+int ObRootLogWorker::clean_root_table()
+{
+  int ret = OB_SUCCESS;
+
+  int64_t pos = 0;
+  int64_t unused_value = 0;
+  char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
+  if (log_data == NULL)
+  {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+    TBSYS_LOG(ERROR, "allocate memory failed");
+  }
+  else if (OB_SUCCESS != (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, unused_value)))
+  {
+    TBSYS_LOG(ERROR, "Seriliaze config version failed! ret: [%d]", ret);
+  }
+
+  if (ret == OB_SUCCESS)
+  {
+    ret = flush_log(OB_RT_CLEAN_ROOT_TABLE, log_data, pos);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "fail to flush log for cmd clean_root_table, ret=%d", ret);
+    }
+  }
+
+  if (log_data != NULL)
+  {
+    ob_free(log_data);
+    log_data = NULL;
+  }
+  return ret;
+}
+
+
     int ObRootLogWorker::got_config_version(int64_t config_version)
     {
       int ret = OB_SUCCESS;
@@ -788,6 +987,9 @@ namespace oceanbase
         case OB_RT_CS_REGIST:
           ret = do_cs_regist(log_data, data_len);
           break;
+        case OB_RT_LMS_REGIST:
+          ret = do_lms_regist(log_data, data_len);
+          break;
         case OB_RT_MS_REGIST:
           ret = do_ms_regist(log_data, data_len);
           break;
@@ -802,6 +1004,9 @@ namespace oceanbase
           break;
         case OB_RT_REPORT_TABLETS:
           ret = do_report_tablets(log_data, data_len);
+          break;
+        case OB_RT_ADD_RANGE_FOR_LOAD_DATA:
+          ret = do_add_range_for_load_data(log_data, data_len);
           break;
         case OB_RT_ADD_NEW_TABLET:
           ret = do_add_new_tablet(log_data, data_len);
@@ -836,6 +1041,9 @@ namespace oceanbase
         case OB_RT_SET_UPS_LIST:
           ret = do_set_ups_list(log_data, data_len);
           break;
+       case OB_RT_SET_BYPASS_VERSION:
+          ret = do_set_bypass_version(log_data, data_len);
+          break;
         case OB_RT_REMOVE_REPLICA:
           ret = do_remove_replica(log_data, data_len);
           break;
@@ -848,8 +1056,17 @@ namespace oceanbase
         case OB_LOG_SWITCH_LOG:
           TBSYS_LOG(INFO, "apply: switch_log");
           break;
+        case OB_RT_CLEAN_ROOT_TABLE:
+          ret = do_clean_root_table(log_data, data_len);
+          break;
         case OB_RT_GOT_CONFIG_VERSION:
           ret = do_got_config_version(log_data, data_len);
+          break;
+        case OB_RT_ADD_LOAD_TABLE:
+          ret = do_add_load_table(log_data, data_len);
+          break;
+        case OB_RT_DELETE_LOAD_TABLE:
+          ret = do_delete_load_table(log_data, data_len);
           break;
         default:
           TBSYS_LOG(WARN, "unknow log command [%d]", cmd);
@@ -926,6 +1143,47 @@ namespace oceanbase
 
       return ret;
     }
+    int ObRootLogWorker::do_lms_regist(const char* log_data, const int64_t& log_length)
+    {
+      int ret = OB_SUCCESS;
+
+      int64_t pos = 0;
+      int32_t sql_port = 0;
+      int64_t msr_ts = 0;
+      const char* server_version = NULL;
+      int64_t server_version_length = 0;
+
+      ObServer server;
+      ret = server.deserialize(log_data, log_length, pos);
+
+      if (ret == OB_SUCCESS)
+      {
+        ret = serialization::decode_vi32(log_data, log_length, pos, &sql_port);
+      }
+
+      if (ret == OB_SUCCESS)
+      {
+        server_version = serialization::decode_vstr(log_data, log_length, pos, &server_version_length);
+        if (server_version == NULL)
+        {
+          ret = OB_ERROR;
+          TBSYS_LOG(ERROR, "decode vstr error");
+        }
+      }
+
+      if (ret == OB_SUCCESS)
+      {
+        ret = serialization::decode_vi64(log_data, log_length, pos, &msr_ts);
+      }
+
+      if (ret == OB_SUCCESS)
+      {
+        ret = root_server_->regist_merge_server(server, sql_port, true, server_version, msr_ts);
+      }
+
+      return ret;
+    }
+
 
     int ObRootLogWorker::do_ms_regist(const char* log_data, const int64_t& log_length)
     {
@@ -962,7 +1220,8 @@ namespace oceanbase
 
       if (ret == OB_SUCCESS)
       {
-        ret = root_server_->regist_merge_server(server, sql_port, server_version, msr_ts);
+        // all logged server are not listen merge server
+        ret = root_server_->regist_merge_server(server, sql_port, false, server_version, msr_ts);
       }
 
       return ret;
@@ -1036,39 +1295,56 @@ namespace oceanbase
       int ret = OB_SUCCESS;
 
       int64_t pos = 0;
-      ObNewRange range;
-      ObObj obj_array[OB_MAX_ROWKEY_COLUMN_NUMBER * 2];
-      range.start_key_.assign(obj_array, OB_MAX_ROWKEY_COLUMN_NUMBER);
-      range.end_key_.assign(obj_array + OB_MAX_ROWKEY_COLUMN_NUMBER, OB_MAX_ROWKEY_COLUMN_NUMBER);
-      ObServer src_server;
-      ObServer dest_server;
-      bool keep_src = false;
-      int64_t tablet_version = 0;
 
-      ret = range.deserialize(log_data, log_length, pos);
+
+      int32_t result = OB_SUCCESS;
+      ObDataSourceDesc desc;
+      int64_t occupy_size = 0;
+      uint64_t crc_sum = 0;
+      int64_t row_checksum = 0;
+      int64_t row_count = 0;
+      int32_t type = 0;
+
+       if(OB_SUCCESS == ret
+          && OB_SUCCESS == (ret = desc.range_.deserialize(log_data, log_length, pos))
+          && OB_SUCCESS == (ret = desc.src_server_.deserialize(log_data, log_length, pos))
+          && OB_SUCCESS == (ret = desc.dst_server_.deserialize(log_data, log_length, pos))
+          && OB_SUCCESS == (ret = serialization::decode_bool(log_data, log_length, pos, &desc.keep_source_))
+          && OB_SUCCESS == (ret = serialization::decode_i64(log_data, log_length, pos, &desc.tablet_version_)))
+       {
+         //ok
+         desc.type_ = ObDataSourceDesc::OCEANBASE_INTERNAL;//before bypass version of ob, all migrate if in oceanbase
+       }
+       else
+       {
+         TBSYS_LOG(WARN, "failed to deserialize part1 of migrate done info, ret=%d", ret);
+       }
+
+       if (log_length == pos)
+       {
+         TBSYS_LOG(INFO, "for compatible old commit log");
+       }
+       else if(OB_SUCCESS == (ret = serialization::decode_i32(log_data, log_length, pos, &type))
+          && OB_SUCCESS == (ret = serialization::decode_i64(log_data, log_length, pos, &desc.sstable_version_))
+          && OB_SUCCESS == (ret = desc.uri_.deserialize(log_data, log_length, pos))
+          && OB_SUCCESS == (ret = serialization::decode_vi32(log_data, log_length, pos, &result))
+          && OB_SUCCESS == (ret = serialization::decode_vi64(log_data, log_length, pos, &occupy_size))
+          && OB_SUCCESS == (ret = serialization::decode_vi64(log_data, log_length, pos, reinterpret_cast<int64_t*>(&crc_sum)))
+          && OB_SUCCESS == (ret = serialization::decode_vi64(log_data, log_length, pos, reinterpret_cast<int64_t*>(&row_checksum)))
+          && OB_SUCCESS == (ret = serialization::decode_vi64(log_data, log_length, pos, &row_count)))
+       {
+         // ok
+         desc.type_ = static_cast<ObDataSourceDesc::ObDataSourceType>(result);
+       }
+       else
+       {
+         TBSYS_LOG(WARN, "failed to deserialize part2 of migrate done, ret=%d", ret);
+       }
+
       if (ret == OB_SUCCESS)
       {
-        ret = src_server.deserialize(log_data, log_length, pos);
-      }
-
-      if (ret == OB_SUCCESS)
-      {
-        ret = dest_server.deserialize(log_data, log_length, pos);
-      }
-
-      if (ret == OB_SUCCESS)
-      {
-        ret = serialization::decode_bool(log_data, log_length, pos, &keep_src);
-      }
-
-      if (ret == OB_SUCCESS)
-      {
-        ret = serialization::decode_vi64(log_data, log_length, pos, &tablet_version);
-      }
-
-      if (ret == OB_SUCCESS)
-      {
-        ret = root_server_->migrate_over(range, src_server, dest_server, keep_src, tablet_version);
+        ret = root_server_->migrate_over(result, desc,
+            occupy_size, crc_sum, row_checksum, row_count);
         if (OB_ENTRY_NOT_EXIST == ret)
         {
           ret = OB_SUCCESS;
@@ -1077,6 +1353,27 @@ namespace oceanbase
 
       return ret;
     }
+int ObRootLogWorker::do_add_range_for_load_data(const char* log_data, const int64_t& log_length)
+{
+  int ret = OB_SUCCESS;
+
+  int64_t pos = 0;
+  const bool is_replay_log = true;
+  ObTabletReportInfoList tablets;
+  if (ret == OB_SUCCESS)
+  {
+    ret = tablets.deserialize(log_data, log_length, pos);
+  }
+  if (ret == OB_SUCCESS)
+  {
+    ret = root_server_->add_range_to_root_table(tablets, is_replay_log);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "fail to report tablet for load data. ret=%d", ret);
+    }
+  }
+  return ret;
+}
 
     int ObRootLogWorker::do_report_tablets(const char* log_data, const int64_t& log_length)
     {
@@ -1093,7 +1390,6 @@ namespace oceanbase
       {
         ret = server.deserialize(log_data, log_length, pos);
       }
-
       if (ret == OB_SUCCESS)
       {
         ret = tablets.deserialize(log_data, log_length, pos);
@@ -1362,6 +1658,95 @@ namespace oceanbase
       return ret;
     }
 
+    int ObRootLogWorker::do_add_load_table(const char* log_data, const int64_t& log_length)
+    {
+      OB_ASSERT(balancer_);
+      int ret = OB_SUCCESS;
+      ObString table_name;
+      uint64_t table_id = 0;
+      uint64_t old_table_id = 0;
+      ObString uri;
+      int64_t start_time = 0;
+      int64_t tablet_version = 0;
+      int64_t pos = 0;
+      if (OB_SUCCESS != (ret = table_name.deserialize(log_data, log_length, pos)))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize table name, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64(log_data, log_length, pos, reinterpret_cast<int64_t*>(&table_id))))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize table id, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64(log_data, log_length, pos, reinterpret_cast<int64_t*>(&old_table_id))))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize old table id, ret=%d", ret);
+      }
+      else if(OB_SUCCESS != (ret = uri.deserialize(log_data, log_length, pos)))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize uri, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64(log_data, log_length, pos, &start_time)))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize start_time, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64(log_data, log_length, pos, &tablet_version)))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize tablet_version, ret=%d", ret);
+      }
+      else
+      {
+        ret = balancer_->add_load_table_from_log(table_name, table_id, old_table_id, uri, start_time, tablet_version);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "add load table failed:table_name=%.*s table_id=%lu uri=%.*s",
+              table_name.length(), table_name.ptr(), table_id, uri.length(), uri.ptr());
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "add load table: table_name=%.*s table_id=%lu uri=%.*s from replay commit log",
+              table_name.length(), table_name.ptr(), table_id, uri.length(), uri.ptr());
+        }
+      }
+      return ret;
+    }
+
+    int ObRootLogWorker::do_delete_load_table(const char* log_data, const int64_t& log_length)
+    {
+      OB_ASSERT(balancer_);
+      int ret = OB_SUCCESS;
+      uint64_t table_id = 0;
+      int32_t status = 0;
+      int64_t end_time = 0;
+      int64_t pos = 0;
+      if (OB_SUCCESS != (ret = serialization::decode_vi64(log_data, log_length, pos, reinterpret_cast<int64_t*>(&table_id))))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize table id, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi32(log_data, log_length, pos, &status)))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize status, ret=%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialization::decode_vi64(log_data, log_length, pos, &end_time)))
+      {
+        TBSYS_LOG(WARN, "failed to deserialize end_time, ret=%d", ret);
+      }
+      else
+      {
+        ret = balancer_->delete_load_table_from_log(table_id, status, end_time);
+        if (ret != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "failed to delete load table task: table_id=%lu status=%d from replay commit log",
+              table_id, status);
+        }
+        else
+        {
+          TBSYS_LOG(INFO, "delete load table task: table_id=%lu status=%d from replay commit log",
+              table_id, status);
+        }
+      }
+      return ret;
+    }
+
     int ObRootLogWorker::do_create_table_done()
     {
       return OB_SUCCESS;
@@ -1488,6 +1873,26 @@ int ObRootLogWorker::do_init_first_meta_row(const char* log_data, const int64_t&
       }
       return ret;
     }
+int ObRootLogWorker::do_clean_root_table(const char* log_data, const int64_t& log_length)
+    {
+      int ret = OB_SUCCESS;
+      int64_t pos = 0;
+      int64_t unused_value = 0;
+      if (ret == OB_SUCCESS)
+      {
+        ret = serialization::decode_vi64(log_data, log_length, pos, &unused_value);
+        if (OB_SUCCESS != ret)
+        {
+          TBSYS_LOG(WARN, "fail to decode unused_value. ret=%d", ret);
+        }
+      }
+      ret = root_server_->slave_clean_root_table();
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "fail to clean root table for slave_rootserver, ret=%d", ret);
+      }
+      return ret;
+    }
 
     int ObRootLogWorker::do_got_config_version(const char* log_data, const int64_t& log_length)
     {
@@ -1501,13 +1906,21 @@ int ObRootLogWorker::do_init_first_meta_row(const char* log_data, const int64_t&
       {
         TBSYS_LOG(ERROR, "root server is NULL!");
       }
-      if (NULL == (config_mgr = root_server_->get_config_mgr()))
+      else if (NULL == (config_mgr = root_server_->get_config_mgr()))
       {
         TBSYS_LOG(ERROR, "Config manager is NULL!");
       }
+      else if (NULL == root_server_->worker_)
+      {
+        TBSYS_LOG(ERROR, "root worker is NULL!");
+      }
       else
       {
-        config_mgr->got_version(config_version);
+        ObRoleMgr::Role role = root_server_->worker_->get_role_manager()->get_role();
+        if (role == ObRoleMgr::SLAVE)
+        {
+          config_mgr->got_version(config_version);
+        }
       }
       return ret;
     }
@@ -1555,6 +1968,47 @@ uint64_t ObRootLogWorker::get_cur_log_seq()
   }
   return ret;
 }
+int ObRootLogWorker::set_frozen_version_for_brodcast(const int64_t bypass_version)
+    {
+      int ret = OB_SUCCESS;
+      int64_t pos = 0;
+      char* log_data = static_cast<char*>(ob_malloc(OB_MAX_PACKET_LENGTH, ObModIds::OB_RS_LOG_WORKER));
+
+      if (NULL == log_data)
+      {
+        TBSYS_LOG(ERROR, "no memory");
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else if (OB_SUCCESS != (ret = serialization::encode_vi64(log_data, OB_MAX_PACKET_LENGTH, pos, bypass_version)))
+      {
+        TBSYS_LOG(ERROR, "serialize error");
+      }
+      else
+      {
+        ret = flush_log(OB_RT_SET_BYPASS_VERSION, log_data, pos);
+      }
+      if (NULL != log_data)
+      {
+        ob_free(log_data);
+        log_data = NULL;
+      }
+      return ret;
+    }
+   int ObRootLogWorker::do_set_bypass_version(const char* log_data, const int64_t& log_length)
+    {
+      int ret = OB_SUCCESS;
+      int64_t pos = 0;
+      int64_t bypass_version = -1;
+      if (OB_SUCCESS != (ret = serialization::decode_vi64(log_data, log_length, pos, &bypass_version)))
+      {
+        TBSYS_LOG(ERROR, "deserialize bypass version error");
+      }
+      else
+      {
+        root_server_->set_bypass_version(bypass_version);
+      }
+      return ret;
+    }
 
   } /* rootserver */
 } /* oceanbase */

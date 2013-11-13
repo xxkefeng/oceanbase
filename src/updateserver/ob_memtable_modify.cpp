@@ -13,13 +13,13 @@
  *   Li Kai <yubai.lk@alipay.com>
  *
  */
-#include "ob_update_server_main.h"
 #include "ob_memtable_modify.h"
 
 namespace oceanbase
 {
   namespace updateserver
   {
+    /*
     MemTableModify::MemTableModify(RWSessionCtx &session, ObIUpsTableMgr &host): session_(session),
                                                                                  host_(host)
     {
@@ -85,7 +85,7 @@ namespace oceanbase
         {
           ObCellIterAdaptor cia;
           cia.set_row_iter(child_op_, rki->get_size(), sm);
-          ret = host_.apply(session_, cia);
+          ret = host_.apply(session_, cia, dml_type_);
         }
       }
       if (OB_SUCCESS != ret)
@@ -116,6 +116,13 @@ namespace oceanbase
       return ret;
     }
 
+    int MemTableModify::get_affected_rows(int64_t& row_count)
+    {
+      int ret = OB_SUCCESS;
+      row_count = session_.get_ups_result().get_affected_rows();
+      return ret;
+    }
+
     int MemTableModify::get_next_row(const common::ObRow *&row)
     {
       UNUSED(row);
@@ -131,15 +138,17 @@ namespace oceanbase
     int64_t MemTableModify::to_string(char* buf, const int64_t buf_len) const
     {
       int64_t pos = 0;
-      databuff_printf(buf, buf_len, pos, "MemTableModify(session=%p[%d:%ld])\n",
-                                &session_,
-                                session_.get_session_descriptor(),
-                                session_.get_session_start_time());
+      databuff_printf(buf, buf_len, pos, "MemTableModify(dml_type=%s session=%p[%d:%ld])\n",
+                      str_dml_type(dml_type_),
+                      &session_,
+                      session_.get_session_descriptor(),
+                      session_.get_session_start_time());
       if (NULL != child_op_)
       {
         pos += child_op_->to_string(buf+pos, buf_len-pos);
       }
       return pos;
     }
+    */
   } // end namespace updateserver
 } // end namespace oceanbase

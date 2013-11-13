@@ -96,7 +96,8 @@ namespace oceanbase
     int deserialize_result_1(const ObDataBuffer & data_buffer, int64_t & pos, ObResultCode & rc, Arg0 & arg0)
     {
       int ret = OB_SUCCESS;
-      if (OB_SUCCESS != (ret = deserialize_result_0(data_buffer, pos, rc)))
+      if (OB_SUCCESS != (ret = deserialize_result_0(data_buffer, pos, rc))
+          && is_errno_sensitive(ret))
       {
         TBSYS_LOG(WARN, "deserialize_result_0 failed. ret:%d, buffer length:%ld, pos:%ld",
             ret, data_buffer.get_position(), pos);

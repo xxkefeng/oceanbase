@@ -31,11 +31,12 @@ namespace oceanbase
     class ObRootSQLProxy
     {
     public:
-      ObRootSQLProxy(const ObChunkServerManager & server_manager, ObRootRpcStub & rpc_stub);
+      ObRootSQLProxy(ObChunkServerManager & server_manager, ObRootServerConfig &config, ObRootRpcStub & rpc_stub);
       virtual ~ObRootSQLProxy();
     public:
       // exectue sql query
       int query(const int64_t retry_times, const int64_t timeout, const common::ObString & sql);
+      int query(const bool query_master_cluster, const int64_t retry_times, const int64_t timeout, const common::ObString & sql);
     private:
       ObRootMsProvider ms_provider_;
       ObRootRpcStub & rpc_stub_;

@@ -29,9 +29,11 @@ namespace oceanbase
       public:
         ObUpsExecutor();
         virtual ~ObUpsExecutor();
-
+        virtual void reset();
+        virtual void reuse();
         void set_rpc_stub(mergeserver::ObMergerRpcProxy* rpc){rpc_ = rpc;}
         void set_inner_plan(ObPhysicalPlan *plan) {inner_plan_ = plan;}
+        ObPhysicalPlan *get_inner_plan() { return inner_plan_; }
 
         /// execute the insert statement
         virtual int open();
@@ -41,6 +43,7 @@ namespace oceanbase
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const {UNUSED(row_desc); return common::OB_NOT_SUPPORTED;}
         virtual enum ObPhyOperatorType get_type() const {return PHY_UPS_EXECUTOR;};
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         // types and constants
       private:

@@ -8,9 +8,9 @@
 #include "sstable/ob_sstable_row.h"
 #include "common/ob_schema.h"
 #include "common/ob_rowkey.h"
+#include "common/ob_row_desc.h"
 #include "sstable_writer.h"
 #include "com_taobao_mrsstable_SSTableBuilder.h"
-#include "row_key_desc.h"
 
 namespace oceanbase
 {
@@ -20,7 +20,7 @@ namespace oceanbase
     {
       common::ObObjType type;
       int32_t len;
-      int32_t column_id;
+      uint32_t column_id;
       int32_t index; //index in raw data, -1 means the item is new ,no data in raw data
     };
 
@@ -37,7 +37,7 @@ namespace oceanbase
         ~SSTableBuilder();
 
         int init(const uint64_t param_table_id, const uint64_t schema_table_id,
-            const common::ObSchemaManagerV2* schema, const RowKeyDesc* row_key_desc,
+            const common::ObSchemaManagerV2* schema,
             const bool is_skip_invalid_row);
         int start_builder();
         int append(const char* input, const int64_t input_size,
@@ -51,7 +51,8 @@ namespace oceanbase
         int process_line(int fields, bool is_start_key, bool is_end_key);
 
         int transform_date_to_time(const char *str, common::ObDateTime& val);
-        int create_rowkey(bool is_rowkey);
+        int build_row_desc();
+        int process_rowkey(int fields);
 
       private:
         int64_t current_sstable_size_;
@@ -63,7 +64,7 @@ namespace oceanbase
 
         ObColumn colums_[common::OB_MAX_COLUMN_NUMBER];
         common::ObMemBuf row_key_buf_;
-        common::ObRowkey row_key_;
+        const common::ObRowkey* row_key_;
         common::ObMemBuf start_rowkey_buf_;
         common::ObMemBuf end_rowkey_buf_;
         common::ObNewRange range_;
@@ -71,12 +72,12 @@ namespace oceanbase
         uint64_t column_id_[common::OB_MAX_COLUMN_NUMBER];
 
         common::ObString compressor_string_;
-        sstable::ObSSTableRow sstable_row_;
+        common::ObRow row_;
 
         const common::ObTableSchema *table_schema_;
         const common::ObSchemaManagerV2 *schema_;
         sstable::ObSSTableSchema *sstable_schema_;
-        const RowKeyDesc* row_key_desc_;
+        common::ObRowDesc row_desc_;
         SSTableWriter writer_;
     };
   } /* chunkserver */
@@ -87,7 +88,7 @@ extern "C" {
 #endif
 
 int init(const char* schema_file, const char* syntax_file, const uint64_t table_id_in,
-    const char* rowkey_desc, bool is_skip_invalid_row);
+    bool is_skip_invalid_row);
 int append(const char* input, const int64_t input_size,
   bool is_first, bool is_last, bool is_include_min, bool is_include_max,
   const char** output, int64_t* output_size);

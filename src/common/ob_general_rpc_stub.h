@@ -21,6 +21,7 @@
 #include "sql/ob_physical_plan.h"
 #include "sql/ob_ups_result.h"
 #include "common/ob_transaction.h"
+#include "common/ob_data_source_desc.h"
 namespace oceanbase
 {
   namespace sql
@@ -74,7 +75,7 @@ namespace oceanbase
         int register_merge_server(const int64_t timeout,
                                   const common::ObServer & root_server,
                                   const common::ObServer & server,
-                                  const int32_t sql_port, int32_t &status, const char* server_version) const;
+                                  const int32_t sql_port, const bool lms, int32_t &status, const char* server_version) const;
 
         // heartbeat to root server for alive
         // param  @timeout  action timeout
@@ -85,7 +86,8 @@ namespace oceanbase
             const common::ObServer & merge_server, const common::ObRole server_role) const;
 
         int heartbeat_merge_server(const int64_t timeout, const common::ObServer & root_server,
-            const common::ObServer & merge_server, const common::ObRole server_role, const int32_t sql_port) const;
+            const common::ObServer & merge_server, const common::ObRole server_role,
+            const int32_t sql_port, const bool is_listen_ms) const;
 
         // get update server vip addr through root server rpc call
         // param  @timeout  action timeout
@@ -182,6 +184,17 @@ namespace oceanbase
             const ObServer &client_server,  const ObTabletReportInfoList& tablets,
             const int64_t time_stamp, bool has_more);
 
+        /*
+         * notify dest_server to delete tablet
+         * @param [in] dest_server    delete tablets server
+         * @param [in] tablets        delete tablets info
+         * @param [in] is_force       force to delete
+         */
+        int delete_tablets(const int64_t timeout,
+            const ObServer & dest_server,
+            const common::ObTabletReportInfoList& tablets,
+            bool is_force);
+
         int delete_tablets(const int64_t timeout, const ObServer & root_server,
             const ObServer &client_server, const common::ObTabletReportInfoList& tablets);
 
@@ -217,12 +230,12 @@ namespace oceanbase
         int migrate_over(
             const int64_t timeout,
             const ObServer & root_server,
-            const ObNewRange &range,
-            const ObServer &src_server,
-            const ObServer &dest_server,
-            const bool keep_src,
-            const int64_t tablet_version,
-            const int64_t tablet_seq_num);
+            const common::ObResultCode &rc,
+            const ObDataSourceDesc &desc,
+            const int64_t occupy_size,
+            const int64_t check_sum,
+            const int64_t row_checksum,
+            const int64_t row_count);
 
         /*
          * report capacity info of chunkserver for load balance.
@@ -320,6 +333,14 @@ namespace oceanbase
         int execute_sql(const int64_t timeout, const ObServer & ms, const ObString &sql_str) const;
         /* get master obi rootserver address */
         int get_master_obi_rs(const int64_t timeout, const ObServer &rs, ObServer &master_obi_rs) const;
+
+        int kill_session(const int64_t timeout, const ObServer &server, int32_t session_id, bool is_query) const;
+        int get_bloom_filter( const int64_t timeout, const common::ObServer &server, const common::ObNewRange &range,
+            const int64_t tablet_version, const int64_t bf_version, ObString &bf_buffer) const;
+        int get_ups_log_seq(const common::ObServer &ups, const int64_t timeout, int64_t & log_seq) const;
+        int set_obi_role(const ObServer &rs, const int64_t timeout, const ObiRole &obi_role) const;
+        int set_master_rs_vip_port_to_cluster(const ObServer &rs, const int64_t timeout, const char *new_master_ip, const int32_t new_master_port) const; 
+
       protected:
         // default cmd version
         static const int32_t DEFAULT_VERSION = 1;

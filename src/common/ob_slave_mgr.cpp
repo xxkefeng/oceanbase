@@ -360,17 +360,22 @@ int ObSlaveMgr::send_data(const char* data, int64_t length)
 }
 
 
-int ObSlaveMgr::post_log_to_slave(const char* data, const int64_t length)
+int ObSlaveMgr::post_log_to_slave(const ObLogCursor& start_cursor, const ObLogCursor& end_cursor, const char* data, const int64_t length)
 {
   int err = OB_SUCCESS;
+  UNUSED(start_cursor);
+  UNUSED(end_cursor);
   UNUSED(data);
   UNUSED(length);
   return err;
 }
 
-int ObSlaveMgr::wait_post_log_to_slave(const char* data, const int64_t length)
+int ObSlaveMgr::wait_post_log_to_slave(const char* data, const int64_t length, int64_t& delay_us)
 {
-  return send_data(data, length);
+  int64_t start_time_us = tbsys::CTimeUtil::getTime();
+  int err = send_data(data, length);
+  delay_us = tbsys::CTimeUtil::getTime() - start_time_us;
+  return err;
 }
 
 int ObSlaveMgr::extend_lease(const ObServer& server, ObLease& lease)

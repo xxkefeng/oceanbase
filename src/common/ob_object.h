@@ -151,6 +151,8 @@ namespace oceanbase
         void checksum(ObBatchChecksum &bc) const;
 
         uint32_t murmurhash2(const uint32_t hash) const;
+        uint64_t murmurhash64A(const uint64_t hash) const;
+
         int64_t hash() const;   // for ob_hashtable.h
 
         bool operator<(const ObObj &that_obj) const;
@@ -160,8 +162,33 @@ namespace oceanbase
         bool operator==(const ObObj &that_obj) const;
         bool operator!=(const ObObj &that_obj) const;
         int compare(const ObObj &other) const;
+        int  compare_same_type(const ObObj &other) const;
 
         int get_timestamp(int64_t & timestamp) const;
+
+        const void *get_data_ptr() const
+        {
+          const void *ret = NULL;
+          if (ObVarcharType == get_type())
+          {
+            ret = const_cast<char*>(value_.varchar_val);
+          }
+          else
+          {
+            ret = &value_;
+          }
+          return ret;
+        };
+
+        int64_t get_data_length() const
+        {
+          int64_t ret = sizeof(value_);
+          if (ObVarcharType == get_type())
+          {
+            ret = val_len_;
+          }
+          return ret;
+        };
       private:
         friend class tests::common::ObjTest;
         friend class ObCompactCellWriter;
@@ -169,7 +196,6 @@ namespace oceanbase
         friend class ObExprObj;
         bool is_datetime() const;
         bool can_compare(const ObObj & other) const;
-        int  compare_same_type(const ObObj &other) const;
         void set_flag(bool is_add);
       private:
         static const uint8_t INVALID_OP_FLAG = 0x0;

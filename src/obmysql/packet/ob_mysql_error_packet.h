@@ -42,7 +42,7 @@ namespace oceanbase
         uint64_t get_serialize_size();
         virtual int encode(char *buffer, int64_t length, int64_t & pos);
 
-        int set_message(common::ObString& message);
+        int set_message(const common::ObString& message);
 
         /**
          * set error code and sql state string.

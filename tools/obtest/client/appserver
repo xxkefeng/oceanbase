@@ -4,9 +4,11 @@ PID_FILE=appserver.pid
 
 jar=`ls client/*.jar`
 
+echo $VERSION  $DATAID $DIAMOND 
+
 start()
 {
-      java -cp $jar com.etao.mytest.main.App $VERSION  $DATAID  &
+      java -cp $jar com.etao.mytest.main.App $VERSION  $DATAID $DIAMOND &
       echo $! > $PID_FILE
 }
 

@@ -17,7 +17,8 @@
 #define _OB_PROJECT_H 1
 #include "ob_single_child_phy_operator.h"
 #include "ob_sql_expression.h"
-#include "common/ob_array.h"
+#include "common/page_arena.h"
+#include "common/ob_se_array.h"
 
 namespace oceanbase
 {
@@ -28,9 +29,8 @@ namespace oceanbase
       public:
         ObProject();
         virtual ~ObProject();
-        void reset();
-        void clear();
-
+        virtual void reset();
+        virtual void reuse();
         int add_output_column(const ObSqlExpression& expr);
         inline int64_t get_output_column_size() const;
         inline int64_t get_rowkey_cell_count() const;
@@ -41,18 +41,19 @@ namespace oceanbase
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         void assign(const ObProject &other);
-        const common::ObArray<ObSqlExpression> &get_output_columns() const;
+        const common::ObSEArray<ObSqlExpression, OB_PREALLOCATED_NUM, common::ModulePageAllocator, ObArrayExpressionCallBack<ObSqlExpression> >  &get_output_columns() const;
         virtual ObPhyOperatorType get_type() const;
-
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
+
       private:
         int cons_row_desc();
         // disallow copy
         ObProject(const ObProject &other);
         ObProject& operator=(const ObProject &other);
       protected:
-        // data members
-        common::ObArray<ObSqlExpression> columns_;
+        // data members 
+        common::ObSEArray<ObSqlExpression, OB_PREALLOCATED_NUM, common::ModulePageAllocator, ObArrayExpressionCallBack<ObSqlExpression> > columns_;
         common::ObRowDesc row_desc_;
         common::ObRow row_;
         int64_t rowkey_cell_count_;
@@ -63,7 +64,7 @@ namespace oceanbase
       return columns_.count();
     }
 
-    inline const common::ObArray<ObSqlExpression> &ObProject::get_output_columns() const
+    inline const common::ObSEArray<ObSqlExpression, OB_PREALLOCATED_NUM, common::ModulePageAllocator, ObArrayExpressionCallBack<ObSqlExpression> >  & ObProject::get_output_columns() const
     {
       return columns_;
     }

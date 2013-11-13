@@ -34,12 +34,12 @@
 #include "common/ob_mutator.h"
 #include "common/ob_read_common_data.h"
 #include "common/ob_scanner.h"
-#include "common/ob_bloomfilter.h"
+#include "common/bloom_filter.h"
 #include "common/ob_range2.h"
 #include "common/ob_cell_meta.h"
 #include "common/ob_column_filter.h"
 #include "common/ob_cellinfo_processor.h"
-#include "sql/ob_husk_phy_operator.h"
+#include "sql/ob_husk_filter.h"
 #include "ob_table_engine.h"
 #include "ob_ups_mutator.h"
 #include "ob_trans_mgr.h"
@@ -240,6 +240,7 @@ namespace oceanbase
       public:
         int init(const int64_t hash_size = 0);
         int destroy();
+        bool is_inited() const { return inited_; }
       public:
         int rollback(void *data);
         int commit(void *data);
@@ -250,7 +251,7 @@ namespace oceanbase
         int set(const MemTableTransDescriptor td, ObUpsMutator &mutator, const bool check_checksum = false,
                 ObUpsTableMgr *ups_table_mgr = NULL, common::ObScanner *scanner = NULL);
         int set(RWSessionCtx &session_ctx, ILockInfo &lock_info, common::ObMutator &mutator);
-        int set(RWSessionCtx &session_ctx, common::ObIterator &iter);
+        int set(RWSessionCtx &session_ctx, common::ObIterator &iter, const common::ObDmlType dml_type);
 
         int ensure_cur_row(const TEKey &key, TEValue*& value);
         int rdlock_row(ILockInfo* lock_info, const TEKey &key, TEValue*& value, const sql::ObLockFlag lock_flag);

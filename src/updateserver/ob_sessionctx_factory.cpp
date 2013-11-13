@@ -4,7 +4,7 @@
  //
  // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2012-08-30 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2012-08-30 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,34 +12,40 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
 
 #include "common/ob_mod_define.h"
 #include "ob_sessionctx_factory.h"
+#include "ob_update_server_main.h"
 
 namespace oceanbase
 {
   namespace updateserver
   {
+    RWSessionCtx::v4si RWSessionCtx::v4si_zero = {0,0,0,0};
+
     RWSessionCtx::RWSessionCtx(const SessionType type,
-                              SessionMgr &host,
-                              FIFOAllocator &fifo_allocator) : BaseSessionCtx(type, host),
+                               SessionMgr &host,
+                               FIFOAllocator &fifo_allocator,
+                               const bool need_gen_mutator) : BaseSessionCtx(type, host),
                                                                CallbackMgr(),
                                                                mod_(fifo_allocator),
                                                                page_arena_(ALLOCATOR_PAGE_SIZE, mod_),
-                                                               page_arena_wrapper_(page_arena_),
+                                                               stmt_page_arena_(ALLOCATOR_PAGE_SIZE, mod_),
+                                                               stmt_page_arena_wrapper_(stmt_page_arena_),
                                                                stat_(ST_ALIVE),
                                                                alive_flag_(true),
                                                                commit_done_(false),
-                                                               is_replaying_(false),
+                                                               need_gen_mutator_(need_gen_mutator),
                                                                ups_mutator_(page_arena_),
-                                                               ups_result_(page_arena_wrapper_),
+                                                               ups_result_(stmt_page_arena_wrapper_),
                                                                uc_info_(),
                                                                lock_info_(NULL),
-                                                               publish_callback_list_()
+                                                               publish_callback_list_(),
+                                                               free_callback_list_()
     {
     }
 
@@ -51,11 +57,18 @@ namespace oceanbase
     {
       if (!commit_done_)
       {
+        commit_prepare_list();
+        commit_prepare_checksum();
         callback(need_rollback, *this);
         if (NULL != lock_info_)
         {
           lock_info_->on_trans_end();
         }
+        int64_t *d = (int64_t*)&dml_count_;
+        OB_STAT_INC(UPDATESERVER, UPS_STAT_DML_REPLACE_COUNT, d[OB_DML_REPLACE - 1]);
+        OB_STAT_INC(UPDATESERVER, UPS_STAT_DML_INSERT_COUNT,  d[OB_DML_INSERT  - 1]);
+        OB_STAT_INC(UPDATESERVER, UPS_STAT_DML_UPDATE_COUNT,  d[OB_DML_UPDATE  - 1]);
+        OB_STAT_INC(UPDATESERVER, UPS_STAT_DML_DELETE_COUNT,  d[OB_DML_DELETE  - 1]);
         commit_done_ = true;
       }
     }
@@ -66,25 +79,26 @@ namespace oceanbase
       publish_callback_list_.callback(rollback, *this);
     }
 
+    void RWSessionCtx::on_free()
+    {
+      bool rollback = false;
+      free_callback_list_.callback(rollback, *this);
+    }
+
     int RWSessionCtx::add_publish_callback(ISessionCallback *callback, void *data)
     {
       return publish_callback_list_.add_callback_info(*this, callback, data);
+    }
+
+    int RWSessionCtx::add_free_callback(ISessionCallback *callback, void *data)
+    {
+      return free_callback_list_.add_callback_info(*this, callback, data);
     }
 
     void *RWSessionCtx::alloc(const int64_t size)
     {
       TBSYS_LOG(DEBUG, "session alloc %p size=%ld", this, size);
       return page_arena_.alloc(size);
-    }
-
-    void RWSessionCtx::set_is_replaying(const bool is_replaying)
-    {
-      is_replaying_ = is_replaying;
-    }
-
-    const bool RWSessionCtx::get_is_replaying() const
-    {
-      return is_replaying_;
     }
 
     void RWSessionCtx::reset()
@@ -94,13 +108,17 @@ namespace oceanbase
       stat_ = ST_ALIVE;
       alive_flag_ = true;
       commit_done_ = false;
-      is_replaying_ = false;
+      stmt_page_arena_.free();
       page_arena_.free();
       CallbackMgr::reset();
       BaseSessionCtx::reset();
       uc_info_.reset();
       lock_info_ = NULL;
       publish_callback_list_.reset();
+      free_callback_list_.reset();
+      checksum_callback_.reset();
+      checksum_callback_list_.reset();
+      dml_count_ = v4si_zero;
     }
 
     ObUpsMutator &RWSessionCtx::get_ups_mutator()
@@ -195,7 +213,13 @@ namespace oceanbase
 
     bool RWSessionCtx::is_frozen() const
     {
-      return (stat_ == ST_FROZEN);
+      return (ST_FROZEN == stat_);
+    }
+
+    void RWSessionCtx::reset_stmt()
+    {
+      ups_result_.clear();
+      stmt_page_arena_.reuse();
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////

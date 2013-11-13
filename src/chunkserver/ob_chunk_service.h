@@ -48,6 +48,7 @@ namespace oceanbase
         int initialize(ObChunkServer* chunk_server);
         int start();
         int destroy();
+        int schedule_report_tablet();
 
       public:
         int do_request(
@@ -80,6 +81,20 @@ namespace oceanbase
             common::ObDataBuffer& in_buffer,
             common::ObDataBuffer& out_buffer);
 
+        int cs_tablet_read(
+            const int32_t version,
+            const int32_t channel_id,
+            easy_request_t* req,
+            common::ObDataBuffer& in_buffer,
+            common::ObDataBuffer& out_buffer,
+            const int64_t timeout_time);
+
+        int cs_fetch_data(
+            const int32_t version,
+            const int32_t channel_id,
+            easy_request_t* req,
+            common::ObDataBuffer& in_buffer,
+            common::ObDataBuffer& out_buffer);
 
         int cs_sql_scan(
             const int32_t version,
@@ -151,14 +166,6 @@ namespace oceanbase
             common::ObDataBuffer& out_buffer);
 
         int cs_delete_tablets(
-            const int32_t version,
-            const int32_t channel_id,
-            easy_request_t* req,
-            common::ObDataBuffer& in_buffer,
-            common::ObDataBuffer& out_buffer);
-
-
-        int cs_migrate_tablet(
             const int32_t version,
             const int32_t channel_id,
             easy_request_t* req,
@@ -289,6 +296,31 @@ namespace oceanbase
             easy_request_t* req,
             common::ObDataBuffer& in_buffer,
             common::ObDataBuffer& out_buffer);
+
+        int cs_get_bloom_filter(
+            const int32_t version,
+            const int32_t channel_id,
+            easy_request_t* req,
+            common::ObDataBuffer& in_buffer,
+            common::ObDataBuffer& out_buffer,
+            const int64_t timeout_time);
+
+  
+        int cs_disk_maintain(
+            const int32_t version,
+            const int32_t channel_id,
+            easy_request_t* req,
+            common::ObDataBuffer& in_buffer,
+            common::ObDataBuffer& out_buffer);
+
+        int cs_show_disk(
+            const int32_t version,
+            const int32_t channel_id,
+            easy_request_t* req,
+            common::ObDataBuffer& in_buffer,
+            common::ObDataBuffer& out_buffer);
+
+
       private:
         class LeaseChecker : public common::ObTimerTask
         {
@@ -342,6 +374,21 @@ namespace oceanbase
             ObChunkService* service_;
         };
 
+        class ReportTabletTask : public common::ObTimerTask
+        {
+          public:
+            ReportTabletTask(ObChunkService* service) 
+              : service_(service), wait_seconds_(1), report_version_(0) {}
+            int64_t get_next_wait_useconds();
+            void start_retry_round();
+          public:
+            virtual void runTimerTask();
+          private:
+            ObChunkService* service_;
+            int64_t wait_seconds_;
+            int64_t report_version_;
+        };
+
       private:
         int check_compress_lib(const char* compress_name_buf);
         int load_tablets();
@@ -356,6 +403,7 @@ namespace oceanbase
         int get_query_service(ObQueryService *&service);
         int reset_internal_status(bool release_table = true);
         int fetch_update_server_list();
+        int get_master_master_update_server();
       private:
         DISALLOW_COPY_AND_ASSIGN(ObChunkService);
         ObChunkServer* chunk_server_;
@@ -372,6 +420,7 @@ namespace oceanbase
         MergeTask    merge_task_;
         FetchUpsTask fetch_ups_task_;
         ObMergerSchemaTask fetch_schema_task_;
+        ReportTabletTask report_tablet_task_;
         common::TimeUpdateDuty time_update_duty_;
         common::MsList ms_list_task_;
         common::ThreadSpecificBuffer query_service_buffer_;

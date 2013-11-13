@@ -31,6 +31,8 @@ namespace oceanbase
       public:
         ObDropTable();
         virtual ~ObDropTable();
+        virtual void reset();
+        virtual void reuse();
         // init
         void set_rpc_stub(mergeserver::ObMergerRootRpcProxy* rpc);
 
@@ -40,6 +42,7 @@ namespace oceanbase
         /// execute the insert statement
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_DROP_TABLE; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
 
         /// @note always return OB_ITER_END

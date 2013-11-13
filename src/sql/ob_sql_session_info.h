@@ -27,11 +27,56 @@
 #include "common/ob_list.h"
 #include "common/page_arena.h"
 #include "common/ob_pool.h"
+#include "easy_io_struct.h"
 #include "common/ob_pooled_allocator.h"
+#include "common/ob_cur_time.h"
+#include "ob_ps_store.h"
+#include "ob_sql_config_provider.h"
 namespace oceanbase
 {
   namespace sql
   {
+    enum ObSQLSessionState
+    {
+      SESSION_SLEEP,
+      QUERY_ACTIVE,
+      QUERY_KILLED,
+      SESSION_KILLED
+    };
+
+    class ObPsSessionInfo
+    {
+    public:
+      static const int64_t COMMON_PARAM_NUM = 12;
+      ObPsSessionInfo(): sql_id_(0), cur_time_(NULL)
+      {
+
+      }
+      ~ObPsSessionInfo()
+      {
+        for (int64_t idx = 0; idx < params_.count(); ++idx)
+        {
+          param_pool_->free(params_.at(idx));
+        }
+      }
+
+      void init(common::ObPooledAllocator<ObObj, common::ObWrapperAllocator> *param_pool)
+      {
+        param_pool_ = param_pool;
+      }
+
+      ObObj* alloc()
+      {
+        return param_pool_->alloc();
+      }
+
+      int64_t sql_id_;
+      common::ObSEArray<obmysql::EMySQLFieldType, COMMON_PARAM_NUM> params_type_; /* params type */
+      common::ObSEArray<common::ObObj*, COMMON_PARAM_NUM> params_;                /* params */
+      common::ObObj* cur_time_;
+      common::ObPooledAllocator<ObObj, ObWrapperAllocator> *param_pool_;
+    };
+
     class ObSQLSessionInfo: public common::ObVersionProvider
     {
       public:
@@ -76,29 +121,68 @@ namespace oceanbase
                                         common::hash::NormalPointer,
                                         common::ObSmallBlockAllocator<>
                                         > SysVarNameValMap;
+        typedef common::ObPooledAllocator<common::hash::HashMapTypes<uint32_t, ObPsSessionInfo*>::AllocType, common::ObWrapperAllocator> IdPsInfoMapAllocer;
+        typedef common::hash::ObHashMap<uint32_t,
+                                        ObPsSessionInfo*,
+                                        common::hash::NoPthreadDefendMode,
+                                        common::hash::hash_func<uint32_t>,
+                                        common::hash::equal_to<uint32_t>,
+                                        IdPsInfoMapAllocer,
+                                        common::hash::NormalPointer,
+                                        common::ObSmallBlockAllocator<>
+                                        > IdPsInfoMap;
       public:
         ObSQLSessionInfo();
         ~ObSQLSessionInfo();
 
         int init(common::DefaultBlockAllocator &block_allocator);
         void destroy();
-
+        int set_peer_addr(const char* addr);
+        const char* get_peer_addr() const{return addr_;}
+        uint64_t get_session_id() const{return session_id_;}
         void set_session_id(uint64_t id){session_id_ = id;}
+        void set_conn(easy_connection_t *conn){conn_ = conn;}
+        int set_ps_store(ObPsStore *store);
         void set_current_result_set(ObResultSet *cur_result_set){cur_result_set_ = cur_result_set;}
+        void set_query_start_time(int64_t time) {cur_query_start_time_ = time;}
+        int store_query_string(const common::ObString &stmt);
         const tbsys::WarningBuffer& get_warnings_buffer() const{return warnings_buf_;}
         uint64_t get_new_stmt_id(){return (common::atomic_inc(&next_stmt_id_));}
         IdPlanMap& get_id_plan_map(){return id_plan_map_;}
         SysVarNameValMap& get_sys_var_val_map(){return sys_var_val_map_;}
         ObResultSet* get_current_result_set(){return cur_result_set_;}
+        const common::ObString get_current_query_string() const;
+        int64_t get_query_start_time() const {return cur_query_start_time_;}
+        const ObSQLSessionState get_session_state() const{return state_;}
+        easy_connection_t *get_conn() const{return conn_;}
+        const char* get_session_state_str()const;
+        void set_session_state(ObSQLSessionState state) {state_ = state;}
         const common::ObString& get_user_name(){return user_name_;}
-
         common::ObStringBuf& get_parser_mem_pool(){return parser_mem_pool_;}
         common::StackAllocator& get_transformer_mem_pool(){return transformer_mem_pool_;}
         common::ObArenaAllocator* get_transformer_mem_pool_for_ps();
         void free_transformer_mem_pool_for_ps(common::ObArenaAllocator* arena);
-
+        //int32_t read_lock() {return pthread_rwlock_rdlock(&rwlock_);}
+        //int32_t write_lock() {return pthread_rwlock_wrlock(&rwlock_);}
+        int32_t try_read_lock(){return pthread_rwlock_tryrdlock(&rwlock_);}
+        int32_t try_write_lock(){return pthread_rwlock_trywrlock(&rwlock_);}
+        int32_t unlock(){return pthread_rwlock_unlock(&rwlock_);}
+        void mutex_lock() {return mutex_.lock();}
+        void mutex_unlock() {return mutex_.unlock();}
         int store_plan(const common::ObString& stmt_name, ObResultSet& result_set);
         int remove_plan(const uint64_t& stmt_id);
+        /**
+         * 根据ObPsStoreItem信息 在session中插入一条pssessioninfo记录，如果这个session已经绑定过item->sql_id_对应的语句
+         * 那么使用id_mgr 获取新id 返回新的id
+         *
+         */
+        int store_ps_session_info(ObPsStoreItem *item, uint64_t &stmt_id);
+        int store_ps_session_info(ObResultSet& result_set);
+
+        int remove_ps_session_info(const uint64_t stmt_id);
+        int close_all_stmt();
+        int get_ps_session_info(const int64_t, ObPsSessionInfo*& info);
+        int store_params_type(int64_t stmt_id, const common::ObIArray<obmysql::EMySQLFieldType> &params_type);
         int replace_variable(const common::ObString& var, const common::ObObj& val);
         int remove_variable(const common::ObString& var);
         int update_system_variable(const common::ObString& var, const common::ObObj& val);
@@ -115,11 +199,12 @@ namespace oceanbase
         int set_username(const common::ObString & user_name);
         void set_warnings_buf();
         int64_t to_string(char* buffer, const int64_t length) const;
-        tbsys::CThreadMutex &get_mutex(){return mutex_;}
         void set_trans_id(const common::ObTransID &trans_id){trans_id_ = trans_id;};
         const common::ObTransID& get_trans_id(){return trans_id_;};
         void set_version_provider(const common::ObVersionProvider *version_provider){version_provider_ = version_provider;};
         const common::ObVersion get_frozen_version() const {return version_provider_->get_frozen_version();};
+        void set_config_provider(const ObSQLConfigProvider *config_provider){ config_provider_ = config_provider;}
+        bool is_read_only() const {return config_provider_->is_read_only();};
         /**
          * @pre 系统变量存在的情况下
          * @synopsis 根据变量名，取得这个变量的类型
@@ -131,23 +216,42 @@ namespace oceanbase
         common::ObObjType get_sys_variable_type(const common::ObString &var_name);
         void set_autocommit(bool autocommit) {is_autocommit_ = autocommit;};
         bool get_autocommit() const {return is_autocommit_;};
+        void set_interactive(bool is_interactive) {is_interactive_ = is_interactive;}
+        bool get_interactive() const { return is_interactive_; }
         // get system variable value
         bool is_create_sys_table_disabled() const;
+        int update_session_timeout();
+        void update_last_active_time() { last_active_time_ = tbsys::CTimeUtil::getTime(); }
+        bool is_timeout();
+        uint16_t get_charset();
+      private:
+        int insert_ps_session_info(uint64_t sql_id, int64_t pcount, uint64_t &new_sql_id, bool has_cur_time=false);
       private:
         static const int64_t MAX_STORED_PLANS_COUNT = 10240;
-        static const int64_t MAX_CACHED_ARENA_COUNT = 2;
+        static const int64_t MAX_IPADDR_LENGTH = 64;
         static const int64_t SMALL_BLOCK_SIZE = 4*1024LL;
+        static const int64_t MAX_CUR_QUERY_LEN = 384;
       private:
-        tbsys::CThreadMutex mutex_; // protect this session
+        pthread_rwlock_t rwlock_; //读写锁保护session在有读的时候不会被析构
+        tbsys::CThreadMutex mutex_;//互斥同一个session上的多次query请求
         uint64_t session_id_;
         tbsys::WarningBuffer warnings_buf_;
         uint64_t user_id_;
         common::ObString user_name_;
         uint64_t next_stmt_id_;
         ObResultSet *cur_result_set_;
+        ObSQLSessionState state_;
+        easy_connection_t *conn_;
+        char addr_[MAX_IPADDR_LENGTH];
+        int64_t cur_query_start_time_;
+        char cur_query_[MAX_CUR_QUERY_LEN];
+        volatile int64_t cur_query_len_;
         common::ObTransID trans_id_;
         bool is_autocommit_;
+        bool is_interactive_;
+        int64_t last_active_time_;
         const common::ObVersionProvider *version_provider_;
+        const ObSQLConfigProvider *config_provider_;
 
         common::ObSmallBlockAllocator<> block_allocator_;
 
@@ -163,12 +267,24 @@ namespace oceanbase
         VarNameValMap var_name_val_map_; // user variables
         SysVarNameValMapAllocer sys_var_val_map_allocer_;
         SysVarNameValMap sys_var_val_map_; // system variables
+        IdPsInfoMapAllocer id_psinfo_map_allocer_;
+        IdPsInfoMap  id_psinfo_map_; // stmt-id -> ObPsSessionInfo
 
+        ObPsStore *ps_store_;   /* point to global ps store */
         // PS related
         common::ObPool<common::ObWrapperAllocator> arena_pointers_;
-        common::ObList<common::ObArenaAllocator *> free_arena_for_transformer_;
+        common::ObArenaAllocator * cached_arena_for_transformer_; // just for optimize purpose
         common::ObPooledAllocator<ObResultSet, common::ObWrapperAllocator> result_set_pool_;
+        common::ObPooledAllocator<ObPsSessionInfo, common::ObWrapperAllocator> ps_session_info_pool_;
+        common::ObPooledAllocator<ObObj, common::ObWrapperAllocator> ps_session_info_param_pool_;
     };
+
+    inline const common::ObString ObSQLSessionInfo::get_current_query_string() const
+    {
+      common::ObString ret;
+      ret.assign_ptr(const_cast<char*>(cur_query_), static_cast<int32_t>(cur_query_len_));
+      return ret;
+    }
   }
 }
 

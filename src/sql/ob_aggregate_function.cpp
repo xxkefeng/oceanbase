@@ -30,18 +30,61 @@ ObAggregateFunction::~ObAggregateFunction()
 
 void ObAggregateFunction::reset()
 {
+  if (NULL != aggr_columns_)
+  {
+    ObItemType aggr_fun;
+    bool is_distinct = false;
+    int ret = OB_SUCCESS;
+    for (int64_t i = 0; i < aggr_columns_->count(); ++i)
+    {
+      if (OB_SUCCESS != (ret
+            = aggr_columns_->at(static_cast<int32_t>(i)).get_aggr_column(aggr_fun, is_distinct)))
+      {
+        TBSYS_LOG(WARN, "failed to get aggr column, err=%d", ret);
+      }
+      else if (is_distinct)
+      {
+        dedup_sets_[i].clear();
+      }
+    }
+  }
   aggr_columns_ = NULL;
   row_desc_.reset();
-  curr_row_.reset(false, ObRow::DEFAULT_NULL);
   varchar_buffs_count_ = 0;
-  row_store_.reuse();
+  row_store_.clear();
   dedup_row_desc_.reset();
-  for (int64_t i = 0; i < OB_ROW_MAX_COLUMNS_COUNT; i++)
-    dedup_sets_[i].clear();
   did_int_div_as_double_ = 0;
 }
 
-int ObAggregateFunction::init(const ObRowDesc &input_row_desc, common::ObArray<ObSqlExpression> &aggr_columns)
+void ObAggregateFunction::reuse()
+{
+  if (NULL != aggr_columns_)
+  {
+    ObItemType aggr_fun;
+    bool is_distinct = false;
+    int ret = OB_SUCCESS;
+    for (int64_t i = 0; i < aggr_columns_->count(); ++i)
+    {
+      if (OB_SUCCESS != (ret
+            = aggr_columns_->at(static_cast<int32_t>(i)).get_aggr_column(aggr_fun, is_distinct)))
+      {
+        TBSYS_LOG(WARN, "failed to get aggr column, err=%d", ret);
+      }
+      else if (is_distinct)
+      {
+        dedup_sets_[i].clear();
+      }
+    }
+  }
+  aggr_columns_ = NULL;
+  row_desc_.reset();
+  varchar_buffs_count_ = 0;
+  row_store_.reuse();
+  dedup_row_desc_.reset();
+  did_int_div_as_double_ = 0;
+}
+
+int ObAggregateFunction::init(const ObRowDesc &input_row_desc, ObExpressionArray &aggr_columns)
 {
   int ret = OB_SUCCESS;
   // copy reference of aggr_column
@@ -59,6 +102,19 @@ int ObAggregateFunction::init(const ObRowDesc &input_row_desc, common::ObArray<O
       break;
     }
   } // end for
+  for (int64_t i = 0;i < row_desc_.get_column_num(); ++i)
+  {
+    if (OB_SUCCESS != (ret = aggr_cells_.push_back(empty_expr_obj_)))
+    {
+      TBSYS_LOG(ERROR, "failed to add cell to aggre_cells, ret=%d", ret);
+      break;
+    }
+    else if (OB_SUCCESS != (ret = aux_cells_.push_back(empty_expr_obj_)))
+    {
+      TBSYS_LOG(ERROR, "failed to add cell to aux_cells_, ret=%d", ret);
+      break;
+    }
+  }
 
   if (OB_SUCCESS == ret)
   {
@@ -83,14 +139,12 @@ void ObAggregateFunction::destroy()
     ob_free(varchar_buffs_[i]);
     varchar_buffs_[i] = NULL;
   }
-  for (int64_t i = 0; i < OB_ROW_MAX_COLUMNS_COUNT; ++i)
-  {
-    aggr_cells_[i].set_null();
-  }
+  aggr_cells_.clear();
+  aux_cells_.clear();
+
   varchar_buffs_count_ = 0;
   row_desc_.reset();
   aggr_columns_ = NULL;
-  curr_row_.reset(false, ObRow::DEFAULT_NULL);
   destroy_dedup_sets();
 }
 
@@ -309,7 +363,7 @@ int ObAggregateFunction::aggr_get_cell(const uint64_t table_id, const uint64_t c
   }
   else
   {
-    cell = &aggr_cells_[cell_idx];
+    cell = &(aggr_cells_.at(cell_idx));
   }
   return ret;
 }
@@ -325,7 +379,7 @@ int ObAggregateFunction::aux_get_cell(const uint64_t table_id, const uint64_t co
   }
   else
   {
-    cell = &aux_cells_[cell_idx];
+    cell = &(aux_cells_.at(cell_idx));
   }
   return ret;
 }
@@ -348,7 +402,7 @@ int ObAggregateFunction::process(const ObRow &input_row)
   if (0 < dedup_row_desc_.get_column_num())
   {
     // has distinct
-    int64_t dedup_cell_idx = 0;
+    int32_t dedup_cell_idx = 0;
     bool has_qualified = false;
     for (int64_t i = 0; OB_SUCCESS == ret && i < aggr_columns_->count(); ++i)
     {
@@ -695,14 +749,14 @@ int ObAggregateFunction::init_dedup_sets()
         TBSYS_LOG(WARN, "failed to add column desc, err=%d", ret);
       }
       else if (OB_SUCCESS != (ret = dedup_sets_[dedup_cell_idx++].create(DEDUP_HASH_SET_SIZE)))
-      {
-        TBSYS_LOG(WARN, "failed to create hash set, err=%d", ret);
-      }
-      else
-      {
-        TBSYS_LOG(DEBUG, "create dedup set, i=%ld dedup_cell_idx=%ld tid=%lu cid=%lu",
-                  i, dedup_cell_idx, tid, cid);
-      }
+          {
+            TBSYS_LOG(WARN, "failed to create hash set, err=%d", ret);
+          }
+          else
+          {
+            TBSYS_LOG(DEBUG, "create dedup set, i=%ld dedup_cell_idx=%ld tid=%lu cid=%lu",
+                      i, dedup_cell_idx, tid, cid);
+          }
     }
   } // end for
   return ret;

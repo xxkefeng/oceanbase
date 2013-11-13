@@ -64,6 +64,8 @@ namespace oceanbase
       static const int64_t AVAILABLE_WARN_SIZE = 2L * 1024L * 1024L * 1024L; //2G
       static const int64_t BLOCK_ALLOCATOR_LIMIT_DELTA = 2L * 1024L * 1024L * 1024L;
       public:
+        static const int64_t REPLAY_MEMTABLE_RESERVE_SIZE_GB = 1; // 1g
+      public:
         MemTank(const int32_t mod_id = common::ObModIds::OB_UPS_MEMTABLE)
           : total_limit_(INT64_MAX),
             extern_mem_total_ptr_(&default_extern_mem_total_)
@@ -72,6 +74,7 @@ namespace oceanbase
           block_allocator_.set_mod_id(mod_id);
           string_buf_.init(&block_allocator_, block_size);
           allocer_.init(&block_allocator_, block_size);
+          undo_allocer_.init(&block_allocator_, block_size);
           tevalue_allocer_.init(&block_allocator_, block_size);
           btree_engine_allocer_.init(&block_allocator_, block_size);
           hash_engine_allocer_.init(&block_allocator_, block_size);
@@ -137,6 +140,23 @@ namespace oceanbase
           }
           return ret;
         };
+        void *undo_node_alloc(const int64_t sz)
+        {
+          void *ret = NULL;
+          if (!mem_over_limit())
+          {
+            void *tmp = undo_allocer_.alloc(common::upper_align(sz, sizeof(void*)));
+            if (NULL != tmp)
+            {
+              ret = (void*)common::upper_align((int64_t)tmp, sizeof(void*));
+            }
+          }
+          else
+          {
+            log_error_(__FUNCTION__);
+          }
+          return ret;
+        };
         void *tevalue_alloc(const int64_t sz)
         {
           void *ret = NULL;
@@ -184,6 +204,7 @@ namespace oceanbase
         {
           string_buf_.clear(slow);
           allocer_.clear(slow);
+          undo_allocer_.clear(slow);
           tevalue_allocer_.clear(slow);
           btree_engine_allocer_.clear(slow);
           hash_engine_allocer_.clear(slow);
@@ -191,6 +212,7 @@ namespace oceanbase
       public:
         bool mem_over_limit() const
         {
+          bool bret = false;
           int64_t table_total = total() + extern_mem_total_ptr_->get_extern_mem_total();
           int64_t table_available = total_limit_ - table_total;
           int64_t table_available_warn_size = get_table_available_warn_size();
@@ -198,7 +220,13 @@ namespace oceanbase
           {
             ups_available_memory_warn_callback(table_available);
           }
-          return (table_total >= total_limit_);
+          bret = (table_total >= total_limit_);
+          if (bret
+              && tc_is_replaying_log())
+          {
+            bret = (table_total >= (total_limit_ + (REPLAY_MEMTABLE_RESERVE_SIZE_GB << 30)));
+          }
+          return bret;
         };
         int64_t used() const
         {
@@ -237,12 +265,14 @@ namespace oceanbase
           TBSYS_LOG(INFO,  "MemTank report used=%ld total=%ld extern=%ld limit=%ld "
                     "string_buf_used=%ld "
                     "allocer_used=%ld "
+                    "undo_allocer_used=%ld "
                     "tevalue_allocer_used=%ld "
                     "btree_engine_allocer_used=%ld "
                     "hash_engine_allocer_used=%ld ",
                     used(), total(), extern_mem_total_ptr_->get_extern_mem_total(), get_total_limit(),
                     string_buf_.get_alloc_size(),
                     allocer_.get_alloc_size(),
+                    undo_allocer_.get_alloc_size(),
                     tevalue_allocer_.get_alloc_size(),
                     btree_engine_allocer_.get_alloc_size(),
                     hash_engine_allocer_.get_alloc_size());
@@ -253,12 +283,14 @@ namespace oceanbase
           TBSYS_LOG(ERROR,  "[%s] MemTank report used=%ld total=%ld extern=%ld limit=%ld"
                     "string_buf_used=%ld "
                     "allocer_used=%ld "
+                    "undo_allocer_used=%ld "
                     "tevalue_allocer_used=%ld "
                     "btree_engine_allocer_used=%ld "
                     "hash_engine_allocer_used=%ld ",
                     caller, used(), total(), extern_mem_total_ptr_->get_extern_mem_total(), get_total_limit(),
                     string_buf_.get_alloc_size(),
                     allocer_.get_alloc_size(),
+                    undo_allocer_.get_alloc_size(),
                     tevalue_allocer_.get_alloc_size(),
                     btree_engine_allocer_.get_alloc_size(),
                     hash_engine_allocer_.get_alloc_size());
@@ -268,6 +300,7 @@ namespace oceanbase
         common::DefaultBlockAllocator block_allocator_;
         Allocator string_buf_;
         Allocator allocer_;
+        Allocator undo_allocer_;
         Allocator tevalue_allocer_;
         Allocator btree_engine_allocer_;
         Allocator hash_engine_allocer_;

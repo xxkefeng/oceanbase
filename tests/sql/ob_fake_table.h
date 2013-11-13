@@ -30,9 +30,12 @@ namespace oceanbase
           static const uint64_t TABLE_ID = 1010;
           ObFakeTable();
           virtual ~ObFakeTable();
+          virtual ObPhyOperatorType get_type() const { return PHY_INVALID; }
           void set_row_count(const int64_t count);
           void set_table_id(const uint64_t tid);
           const common::ObRowDesc &get_row_desc() const;
+          void reset() {}
+          void reuse() {}
 
           virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
           virtual int open();

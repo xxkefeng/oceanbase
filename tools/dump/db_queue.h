@@ -7,7 +7,7 @@
 #include <limits.h>
 
 #include "common/utility.h"
-
+#include "tbsys.h"
 template <class T>
 class QueueComsumer {
   public:

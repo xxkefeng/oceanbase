@@ -47,10 +47,17 @@ namespace oceanbase
             ret = new_operator(ObUpsLockFilter, allocator, *session_ctx_);
             break;
           case PHY_INC_SCAN:
-            ret = new_operator(ObUpsIncScan, allocator, *session_ctx_);
-            break;
+            {
+              ObUpsIncScan *ic = tc_rp_alloc(ObUpsIncScan);
+              ic->set_session_ctx(session_ctx_);
+              ret = ic;
+              break;
+            }
           case PHY_UPS_MODIFY:
             ret = new_operator(MemTableModify, allocator, *session_ctx_, *table_mgr_);
+            break;
+          case PHY_UPS_MODIFY_WITH_DML_TYPE:
+            ret = new_operator(MemTableModifyWithDmlType, allocator, *session_ctx_, *table_mgr_);
             break;
           default:
             ret = ObPhyOperatorFactory::get_one(type, allocator);
@@ -59,5 +66,22 @@ namespace oceanbase
       }
       return ret;
     }
+
+    void ObUpsPhyOperatorFactory::release_one(sql::ObPhyOperator *opt)
+    {
+      if (NULL != opt)
+      {
+        switch (opt->get_type())
+        {
+          case PHY_INC_SCAN:
+            tc_rp_free(dynamic_cast<ObUpsIncScan*>(opt));
+            break;
+          default:
+            ObPhyOperatorFactory::release_one(opt);
+            break;
+        }
+      }
+    }
+
   }; // end namespace updateserver
 }; // end namespace oceanbase

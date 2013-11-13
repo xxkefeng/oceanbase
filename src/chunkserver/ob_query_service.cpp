@@ -77,7 +77,7 @@ namespace oceanbase
             {
               table_id = get_param[row_index[i].offset_]->table_id_;
               table_schema = schema_mgr_->get_table_schema(table_id);
-              if (NULL != table_schema && table_schema->is_merge_dynamic_data())
+              if (NULL != table_schema && table_schema->get_consistency_level() != STATIC)
               {
                 need_merge_dynamic_data = true;
                 break;
@@ -277,7 +277,7 @@ namespace oceanbase
            * version, chunkserver will not read dynamic data from
            * udpateserver.
            */
-          if (!table_schema->is_merge_dynamic_data())
+          if (table_schema->get_consistency_level() == STATIC)
           {
             org_version_range = scan_param.get_version_range();
             is_full_dump =

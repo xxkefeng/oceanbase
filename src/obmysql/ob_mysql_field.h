@@ -32,6 +32,7 @@ namespace oceanbase
          * 构造函数
          */
         ObMySQLField();
+        void set_charset(uint16_t charset) { charsetnr_ = charset; }
         /**
          * 将该行数据序列化成MySQL认识的格式
          *

@@ -30,6 +30,39 @@ namespace oceanbase
   namespace obmysql
   {
     class ObMySQLServer;
+    union ObMySQLClientCapability
+    {
+      ObMySQLClientCapability(uint32_t capability);
+      uint32_t capability_;
+      //ref:http://dev.mysql.com/doc/internals/en/connection-phase.html#packet-Protocol::CapabilityFlags
+      struct CapabilityFlags
+      {
+        uint32_t CLIENT_LONG_PASSWORD:1;
+        uint32_t CLIENT_FOUND_ROWS:1;
+        uint32_t CLIENT_LONG_FLAG:1;
+        uint32_t CLIENT_CONNECT_WITH_DB:1;
+        uint32_t CLIENT_NO_SCHEMA:1;
+        uint32_t CLIENT_COMPRESS:1;
+        uint32_t CLIENT_ODBC:1;
+        uint32_t CLIENT_LOCAL_FILES:1;
+        uint32_t CLIENT_IGNORE_SPACE:1;
+        uint32_t CLIENT_PROTOCOL_41:1;
+        uint32_t CLIENT_INTERACTIVE:1;
+        uint32_t CLIENT_SSL:1;
+        uint32_t CLIENT_IGNORE_SIGPIPE:1;
+        uint32_t CLIENT_TRANSACTIONS:1;
+        uint32_t CLIENT_RESERVED:1;
+        uint32_t CLIENT_SECURE_CONNECTION:1;
+        uint32_t CLIENT_MULTI_STATEMENTS:1;
+        uint32_t CLIENT_MULTI_RESULTS:1;
+        uint32_t CLIENT_PS_MULTI_RESULTS:1;
+        uint32_t CLIENT_PLUGIN_AUTH:1;
+        uint32_t CLIENT_CONNECT_ATTRS:1;
+        uint32_t CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA:1;
+        uint32_t CLIENT_RESERVED_NOT_USE:10;
+      } CapabilityFlags;
+    };
+
     class ObMySQLLoginer
     {
       public:
@@ -38,7 +71,8 @@ namespace oceanbase
         struct LoginInfo
         {
           LoginInfo();
-          uint32_t capability_flags_;
+          //uint32_t capability_flags_;
+          union ObMySQLClientCapability capability_;
           uint32_t max_packet_size_;
           uint8_t character_set_;
           common::ObString user_name_;

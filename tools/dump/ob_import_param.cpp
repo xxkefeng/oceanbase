@@ -5,7 +5,6 @@
 using namespace std;
 
 static const char *kColumnDesc = "column_desc";
-static const char *kRowkeyDesc = "rowkey_desc";
 static const char *kDataFile = "datafile";
 static const char *kInputColumnNr = "input_column_nr";
 static const char *kDelima = "delima";
@@ -47,11 +46,9 @@ int ImportParam::load(const char *file)
 
       //init data_file
       const char *data_file  = TBSYS_CONFIG.getString(param.table_name.c_str(), kDataFile);
-      if (data_file == NULL) {
-        TBSYS_LOG(WARN, "no input file specified for table=%s", param.table_name.c_str());
-      } else {
+      if (data_file != NULL) {
         param.data_file = data_file;
-      }
+      } 
 
       param.bad_file_ = TBSYS_CONFIG.getString(param.table_name.c_str(), kBadFile);
 
@@ -152,29 +149,6 @@ int ImportParam::load(const char *file)
 
         param.col_descs.push_back(col_desc);
       }
-
-      std::vector<const char *> rowkey_desc = 
-        TBSYS_CONFIG.getStringList(param.table_name.c_str(), kRowkeyDesc);
-
-      for (idx = 0;idx < rowkey_desc.size();idx++) {
-        string str = rowkey_desc[idx];
-        vector<string> res;
-
-        Tokenizer::tokenize(str, res, ',');
-        if (res.size() != 3) {                  /* offset,type,pos */
-          ret = OB_ERROR;
-          TBSYS_LOG(ERROR, "error column config, %s", str.c_str());
-          break;
-        }
-
-        RowkeyDesc key_desc;
-        key_desc.offset = atoi(res[0].c_str());
-        key_desc.type = atoi(res[1].c_str());
-        key_desc.pos = atoi(res[2].c_str());
-
-        param.rowkey_descs.push_back(key_desc);
-      }
-
       params_.push_back(param);
     }
   }
@@ -213,11 +187,6 @@ void ImportParam::PrintDebug()
     for (;idx < param.col_descs.size();idx++) {
       ColumnDesc desc = param.col_descs[idx];
       fprintf(stderr, "column desc=[%s, %d]\n", desc.name.c_str(), desc.offset);
-    }
-
-    for (idx = 0;idx < param.rowkey_descs.size();idx++) {
-      RowkeyDesc desc = param.rowkey_descs[idx];
-      fprintf(stderr, "rowkey desc=[%d,%d, %d]\n", desc.offset, desc.type, desc.pos);
     }
   }
 }

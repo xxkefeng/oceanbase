@@ -3,7 +3,7 @@
 #include "common/ob_define.h"
 #include "common/ob_malloc.h"
 #include "common/ob_fileinfo_manager.h"
-#include "common/ob_bloomfilter.h"
+#include "common/bloom_filter.h"
 #include "common/page_arena.h"
 #include "common/ob_file.h"
 #include "common/hash/ob_hashmap.h"
@@ -211,10 +211,19 @@ namespace oceanbase
         return ret;
       }
 
-      inline const common::TableBloomFilter* get_table_bloomfilter(
+      inline const common::BloomFilter*  get_bloom_filter() const
+      {
+        if (sstable_header_.table_count_ > 0)
+        {
+          return &bloom_filter_[0];
+        }
+        return NULL;
+      }
+
+      inline const common::ObBloomFilterV1* get_table_bloomfilter(
           const uint64_t table_id) const
       {
-        common::TableBloomFilter* bloom_filter = NULL;               
+        common::ObBloomFilterV1* bloom_filter = NULL;               
         int64_t table_count = sstable_header_.table_count_;
         for (int64_t i = 0; i < table_count; i ++)
         {
@@ -258,7 +267,7 @@ namespace oceanbase
       int load_table_bloom_filter(const common::IFileInfo& file_info, 
           const ObSSTableHeader& sstable_header,
           const ObSSTableTableIndex* table_index,
-          common::TableBloomFilter*& bloom_filter);
+          common::ObBloomFilterV1*& bloom_filter);
 
       int load_table_range(const common::IFileInfo& file_info, 
           const ObSSTableHeader& sstable_header,
@@ -288,7 +297,7 @@ namespace oceanbase
       //table
       ObSSTableTableIndex* table_index_;
       common::ObNewRange* table_range_;
-      common::TableBloomFilter* bloom_filter_;
+      common::ObBloomFilterV1* bloom_filter_;
 
       //sstable
       ObSSTableSchema* sstable_schema_;

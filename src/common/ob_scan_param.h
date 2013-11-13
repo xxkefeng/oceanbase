@@ -184,6 +184,7 @@ namespace oceanbase
 
       /// get readable scan param info
       int to_str(char *buf, int64_t buf_size, int64_t &pos)const;
+      int64_t to_string(char *buf, int64_t buf_size) const;
 
       NEED_SERIALIZE_AND_DESERIALIZE;
 

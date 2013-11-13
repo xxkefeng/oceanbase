@@ -44,7 +44,6 @@
 #include "ob_thread_objpool.h"
 #include "ob_trace_log.h"
 #include "ob_rowkey.h"
-
 namespace oceanbase
 {
   namespace common
@@ -54,7 +53,6 @@ namespace oceanbase
       struct NotNeedDeepCopyTag {};
       struct ObStringDeepCopyTag {};
       struct ObRowkeyDeepCopyTag {};
-
       template <class T>
       struct traits
       {
@@ -72,7 +70,6 @@ namespace oceanbase
       {
         typedef ObRowkeyDeepCopyTag Tag;
       };
-
       template <class T>
       const char *log_str(const T &obj)
       {
@@ -138,7 +135,6 @@ namespace oceanbase
       {
         data->~ObString();
       }
-
       class BufferAllocator
       {
         public:
@@ -186,8 +182,8 @@ namespace oceanbase
 
       struct DefaultAllocator
       {
-        void *alloc(const int32_t nbyte) {return ob_malloc(nbyte, ObModIds::OB_KVSTORE_CACHE);};
-        void free(void *ptr) {ob_free(ptr, ObModIds::OB_KVSTORE_CACHE);};
+        void *alloc(const int32_t nbyte) {return ob_tc_malloc(nbyte, ObModIds::OB_KVSTORE_CACHE);};
+        void free(void *ptr) {ob_tc_free(ptr, ObModIds::OB_KVSTORE_CACHE);};
       };
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -749,7 +745,7 @@ namespace oceanbase
       class MultiObjFreeListTemp
       {
         static const int64_t BlockSize = T::MEM_BLOCK_SIZE;
-        static const uint64_t MB_SIZE = 1024 * 1024;
+        static const uint64_t MB_SIZE = 2 * 1024 * 1024;
         static const int64_t ITEM_NUM = MB_SIZE / sizeof(T) + ((MB_SIZE >= sizeof(T)) ? 0 : 1);
         typedef hash::SimpleAllocer<T, ITEM_NUM, hash::SpinMutexDefendMode, Allocator> FreeList;
         public:
@@ -831,7 +827,7 @@ namespace oceanbase
       {
       };
 
-      template <class T, class Allocator = ThreadAllocator<T, MutilObjAllocator<T, 1024*1024> > >
+      template <class T, class Allocator = ThreadAllocator<T, MutilObjAllocator<T, 2*1024*1024> > >
       class SingleObjFreeListTemp
       {
         static const int64_t BlockSize = T::MEM_BLOCK_SIZE;
@@ -959,7 +955,7 @@ namespace oceanbase
       };
 
       template <class T>
-        class SingleObjFreeList : public SingleObjFreeListTemp<T, ThreadAllocator<T, MutilObjAllocator<T, 1024*1024> > >
+        class SingleObjFreeList : public SingleObjFreeListTemp<T, ThreadAllocator<T, MutilObjAllocator<T, 2*1024*1024> > >
       {
       };
     }
@@ -1574,6 +1570,14 @@ namespace oceanbase
           }
           else
           {
+            //if cache is 95% full, wash out some memblocks
+            if ((free_list_.get_alloc_size() * 100 / free_list_.get_max_alloc_size() > 95)
+               && wash_out_lock_.try_wrlock())
+            {
+              wash_out_timeout_(MAX_WASH_OUT_SIZE);
+              wash_out_lock_.unlock();
+            }
+
             while (true)
             {
               if (align_kv_size > MemBlock::MEM_BLOCK_SIZE
@@ -1692,6 +1696,7 @@ namespace oceanbase
         int64_t cache_hit_cnt_;
 
         MemBlock * volatile cur_memblock_;
+        SpinRWLock wash_out_lock_;
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1702,14 +1707,15 @@ namespace oceanbase
     };
 
     template <class Key, class Value, int64_t ItemSize,
-              int64_t BlockSize = 1024 * 1024,
-              template <class> class FreeList = KVStoreCacheComponent::SingleObjFreeList>
+              int64_t BlockSize = 2 * 1024 * 1024,
+              template <class> class FreeList = KVStoreCacheComponent::SingleObjFreeList,
+              class DefendMode = hash::MultiWriteDefendMode>
     class KeyValueCache
     {
       static const int64_t DEFAULT_ITEM_SIZE = 1024;
       static const int64_t DEFAULT_TIMEOUT_US = 10 * 1000 * 1000;
 
-      typedef KeyValueCache<Key, Value, ItemSize, BlockSize, FreeList> Cache;
+      typedef KeyValueCache<Key, Value, ItemSize, BlockSize, FreeList, DefendMode> Cache;
       typedef KVStoreCache<Key, Value, BlockSize, FreeList, Cache> Store;
       typedef typename KVStoreCacheComponent::StoreHandle StoreHandle;
 
@@ -1718,7 +1724,7 @@ namespace oceanbase
       typedef ThreadAllocator<HashAllocType, MutilObjAllocator<HashAllocType, HashAllocatorPageSize, ObModIds::OB_KVSTORE_CACHE> > HashAllocator;
       //typedef ThreadAllocator<HashAllocType, SingleObjAllocator<HashAllocType> > HashAllocator;
       typedef hash::ObHashMap<Key, StoreHandle,
-                              hash::MultiWriteDefendMode,
+                              DefendMode,
                               hash::hash_func<Key>,
                               hash::equal_to<Key>,
                               HashAllocator> HashMap;
@@ -1807,6 +1813,10 @@ namespace oceanbase
         int64_t size() const
         {
           return store_.size();
+        };
+        int64_t count() const
+        {
+          return map_.size();
         };
         int64_t get_hit_cnt() const
         {
@@ -1960,16 +1970,25 @@ namespace oceanbase
           }
           return ret;
         };
-#ifdef __DEBUG_TEST__
-        int get(const Key &key, Value &value, const Value &cv, CacheHandle &handle)
-#else
         int get(const Key &key, Value &value, CacheHandle &handle, bool only_cache = true)
+        {
+          Value *pvalue = NULL;
+          int ret = get(key, pvalue, handle, only_cache);
+          if (OB_SUCCESS == ret)
+          {
+            value = *pvalue;
+          }
+          return ret;
+        }
+#ifdef __DEBUG_TEST__
+        int get(const Key &key, Value *&pvalue, const Value &cv, CacheHandle &handle)
+#else
+        int get(const Key &key, Value *&pvalue, CacheHandle &handle, bool only_cache = true)
 #endif
         {
           int ret = OB_SUCCESS;
           int hash_ret = 0;
           Key *pkey = NULL;
-          Value *pvalue = NULL;
           int64_t timeout_us = only_cache ? 0 : DEFAULT_TIMEOUT_US;
           if (!inited_)
           {
@@ -2019,7 +2038,7 @@ namespace oceanbase
           if (OB_SUCCESS == ret)
           {
             //TBSYS_TRACE_LOG("kv_store_cache hit key=[%s]", KVStoreCacheComponent::log_str(key));
-            value = *pvalue;
+            //value = *pvalue;
 #ifdef __DEBUG_TEST__
             //assert(value == cv);
 #endif

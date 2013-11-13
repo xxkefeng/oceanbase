@@ -23,8 +23,11 @@ namespace oceanbase
     {
     }
 
-    int ObRootLogManager::init(ObRootServer2* root_server, common::ObSlaveMgr* slave_mgr)
+    int ObRootLogManager::init(ObRootServer2* root_server, common::ObSlaveMgr* slave_mgr, const common::ObServer* server)
     {
+      OB_ASSERT(root_server);
+      OB_ASSERT(slave_mgr);
+      OB_ASSERT(server);
       int ret = OB_SUCCESS;
 
       if (is_initialized_)
@@ -35,6 +38,7 @@ namespace oceanbase
 
       root_server_ = root_server;
       log_worker_.set_root_server(root_server_);
+      log_worker_.set_balancer(root_server_->get_balancer());
       log_worker_.set_log_manager(this);
 
       const char* log_dir = root_server_->get_config().commit_log_dir;
@@ -142,7 +146,7 @@ namespace oceanbase
         int64_t log_file_max_size = root_server_->get_config().max_commit_log_size;
         int64_t log_sync_type = root_server_->get_config().commit_log_sync_type;
 
-        ret = ObLogWriter::init(log_dir, log_file_max_size, slave_mgr, log_sync_type);
+        ret = ObLogWriter::init(log_dir, log_file_max_size, slave_mgr, log_sync_type, NULL, server);
         if (OB_SUCCESS != ret)
         {
           TBSYS_LOG(ERROR, "ObLogWriter init failed[ret=%d]", ret);
@@ -155,6 +159,29 @@ namespace oceanbase
       }
 
       return ret;
+    }
+
+    int ObRootLogManager::write_log_hook(const bool is_master,
+                                         const ObLogCursor start_cursor, const ObLogCursor end_cursor,
+                                         const char* log_data, const int64_t len)
+    {
+      int err = OB_SUCCESS;
+      UNUSED(is_master);
+      UNUSED(log_data);
+      if (len > 0)
+      {
+        if (last_disk_elapse_ > disk_warn_threshold_us_)
+        {
+          TBSYS_LOG(WARN, "last_disk_elapse_[%ld] > disk_warn_threshold_us[%ld], cursor=[%s,%s], len=%ld",
+                    last_disk_elapse_, disk_warn_threshold_us_, to_cstring(start_cursor), to_cstring(end_cursor), len);
+        }
+
+        if (last_net_elapse_ > net_warn_threshold_us_)
+        {
+          TBSYS_LOG(WARN, "last_net_elapse_[%ld] > net_warn_threshold_us[%ld]", last_net_elapse_, net_warn_threshold_us_);
+        }
+      }
+      return err;
     }
 
     int ObRootLogManager::add_slave(const common::ObServer& server, uint64_t &new_log_file_id)
@@ -256,15 +283,18 @@ namespace oceanbase
                 ret = log_worker_.apply(cmd, log_data, log_length);
                 if (ret != OB_SUCCESS)
                 {
-                  TBSYS_LOG(ERROR, "apply log failed:command[%d], log[%s], ret[%d]", cmd, log_data, ret);
+                  TBSYS_LOG(ERROR, "apply log failed:command[%d], ret[%d]", cmd, ret);
                   //WARNING: master root server not exit when apply log failed
                   // ::exit(OB_FATAL_EXIT);
                 }
               }
-              ret = log_reader.read_log(cmd, seq, log_data, log_length);
-              if (OB_FILE_NOT_EXIST != ret && OB_READ_NOTHING != ret && OB_SUCCESS != ret)
+              if (OB_SUCCESS == ret)
               {
-                TBSYS_LOG(ERROR, "ObLogReader read error[ret=%d]", ret);
+                ret = log_reader.read_log(cmd, seq, log_data, log_length);
+                if (OB_FILE_NOT_EXIST != ret && OB_READ_NOTHING != ret && OB_SUCCESS != ret)
+                {
+                  TBSYS_LOG(ERROR, "ObLogReader read error[ret=%d]", ret);
+                }
               }
             } // end while
 

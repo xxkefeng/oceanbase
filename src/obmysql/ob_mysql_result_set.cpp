@@ -9,7 +9,7 @@ namespace oceanbase {
     {
       int ret = OB_SUCCESS;
       int64_t field_cnt = 0;
-      const ObArray<Field> &fields = get_field_columns();
+      const ObIArray<Field> &fields = get_field_columns();
       field_cnt = get_field_cnt();
       if (field_index_ >= field_cnt)
       {
@@ -27,7 +27,7 @@ namespace oceanbase {
     {
       int ret = OB_SUCCESS;
       int64_t field_cnt = 0;
-      const ObArray<Field> &fields = get_param_columns();
+      const ObIArray<Field> &fields = get_param_columns();
       field_cnt = get_param_cnt();
       if (param_index_ >= field_cnt)
       {

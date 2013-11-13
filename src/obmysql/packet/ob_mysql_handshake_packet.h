@@ -68,6 +68,7 @@ namespace oceanbase
          */
         int serialize(char* buffer, int64_t len, int64_t& pos);
 
+        void set_thread_id(const uint32_t id);
 
         /**
          * Get packet serialize size not include
@@ -93,6 +94,11 @@ namespace oceanbase
         char terminated_;
         common::ObStringBuf str_buf_;   //store ObString content
     };
+
+    inline void ObMySQLHandshakePacket::set_thread_id(const uint32_t id)
+    {
+      thread_id_ = id;
+    }
   }
 }
 #endif

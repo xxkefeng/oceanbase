@@ -93,6 +93,7 @@ namespace oceanbase
       int32_t               finished_sub_request_count_;
       common::ObVector<ObMsSqlSubScanRequest*> sub_requests_;
       ObMsSqlOperator  merger_operator_;
+      // global
       sql::ObSqlScanParam * scan_param_;
       int64_t       cs_result_mem_size_used_;
       int64_t       max_cs_result_mem_size_;
@@ -100,6 +101,7 @@ namespace oceanbase
       int64_t       timeout_us_;
       ObTabletLocationRangeIterator org_req_range_iter_;
       int64_t sharding_limit_count_;
+      bool inited_;
     };
 
     inline const int32_t ObMsSqlScanRequest::get_total_sub_request_count() const

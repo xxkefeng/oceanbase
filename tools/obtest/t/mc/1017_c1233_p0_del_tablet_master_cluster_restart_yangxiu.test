@@ -13,20 +13,21 @@ deploy ob1.prepare;
 #wait for slave cluster create tablet
 sleep 60;
 
-deploy ob1.check_cs_sstable 600;
-deploy ob2.check_cs_sstable 600;
+deploy ob1.check_cs_sstable 606;
+deploy ob2.check_cs_sstable 606;
 
 deploy ob1.mysql alter system set tablet_replicas_num=2 server_type=rootserver;
 
 deploy ob1.force_stop;
 sleep 10;
 deploy ob1.start;
+sleep 15;
 deploy ob1.set_obi_role OBI_MASTER;
 #wait for delete sstable
-sleep 90;
+sleep 60;
 
-deploy ob1.check_cs_sstable 400;
-deploy ob2.check_cs_sstable 400;
+deploy ob1.check_cs_sstable 404;
+deploy ob2.check_cs_sstable 404;
 
 
 

@@ -52,7 +52,8 @@ void ObAggregateFunctionTest::TearDown()
 
 void ObAggregateFunctionTest::test(ObItemType func, int64_t expect_res, bool is_distinct, int64_t expect_res2, bool is_distinct2)
 {
-  ObArray<ObSqlExpression> exprs;
+  //ObArray<ObSqlExpression> exprs;
+  ObExpressionArray exprs; 
   static const int64_t AGGR1_CID = 9999;
   static const int64_t AGGR2_CID = 9998;
   {
@@ -176,7 +177,8 @@ TEST_F(ObAggregateFunctionTest, basic_test)
 TEST_F(ObAggregateFunctionTest, count_star)
 {
   // count(*) and count(c8)
-  ObArray<ObSqlExpression> exprs;
+  //ObArray<ObSqlExpression> exprs;
+  ObExpressionArray exprs;
   static const int64_t AGGR1_CID = 9999;
   static const int64_t AGGR2_CID = 9998;
   {
@@ -238,7 +240,8 @@ TEST_F(ObAggregateFunctionTest, count_star)
 TEST_F(ObAggregateFunctionTest, empty_set)
 {
   // count(*) and count(c8) and avg(c1)
-  ObArray<ObSqlExpression> exprs;
+  //ObArray<ObSqlExpression> exprs;
+  ObExpressionArray exprs;
   static const int64_t AGGR1_CID = 9999;
   static const int64_t AGGR2_CID = 9998;
   static const int64_t AGGR3_CID = 9997;

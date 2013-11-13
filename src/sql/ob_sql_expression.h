@@ -25,6 +25,7 @@ namespace oceanbase
 {
   namespace sql
   {
+
     class ObSqlExpression: public common::DLink
     {
       public:
@@ -76,12 +77,14 @@ namespace oceanbase
         inline int is_simple_condition(bool &is_simple_cond_type) const;
         inline int get_column_index_expr(uint64_t &tid, uint64_t &cid, bool &is_idx_type) const;
         inline int merge_expr(const ObSqlExpression &expr1, const ObSqlExpression &expr2, const ExprItem &op);
-        inline bool is_simple_condition(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &const_val) const;
+        inline bool is_simple_condition(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &const_val, ObPostfixExpression::ObPostExprNodeType *val_type = NULL) const;
         inline bool is_simple_between(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &cond_start, ObObj &cond_end) const;
-        inline bool is_simple_in_expr(const ObRowkeyInfo &info, ObArray<ObRowkey> &rowkey_array,
+        inline bool is_simple_in_expr(bool real_val, const ObRowkeyInfo &info, ObIArray<ObRowkey> &rowkey_array,
             common::PageArena<ObObj,common::ModulePageAllocator> &allocator) const;
         inline bool is_aggr_func() const;
         inline bool is_empty() const;
+        inline void set_owner_op(ObPhyOperator *owner_op);
+        inline ObPhyOperator* get_owner_op();
         NEED_SERIALIZE_AND_DESERIALIZE;
       public:
         static ObSqlExpression* alloc();
@@ -101,7 +104,7 @@ namespace oceanbase
         int deserialize_basic_param(const char* buf, const int64_t data_len, int64_t& pos);
         int64_t get_basic_param_serialize_size(void) const;
     };
-
+    typedef common::ObArray<ObSqlExpression, ModulePageAllocator, ObArrayExpressionCallBack<ObSqlExpression> > ObExpressionArray;
     class ObSqlExpressionUtil
     {
       public:
@@ -188,18 +191,18 @@ namespace oceanbase
     {
       return post_expr_.is_column_index_expr(is_idx_type);
     }
-    inline bool ObSqlExpression::is_simple_condition(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &const_val) const
+    inline bool ObSqlExpression::is_simple_condition(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &const_val, ObPostfixExpression::ObPostExprNodeType *val_type) const
     {
-      return post_expr_.is_simple_condition(real_val, column_id, cond_op, const_val);
+      return post_expr_.is_simple_condition(real_val, column_id, cond_op, const_val, val_type);
     }
     inline bool ObSqlExpression::is_simple_between(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &cond_start, ObObj &cond_end) const
     {
       return post_expr_.is_simple_between(real_val, column_id, cond_op, cond_start, cond_end);
     }
-    inline bool ObSqlExpression::is_simple_in_expr(const ObRowkeyInfo &info, ObArray<ObRowkey> &rowkey_array,
+    inline bool ObSqlExpression::is_simple_in_expr(bool real_val, const ObRowkeyInfo &info, ObIArray<ObRowkey> &rowkey_array,
         common::PageArena<ObObj,common::ModulePageAllocator>  &allocator) const
     {
-      return post_expr_.is_simple_in_expr(info, rowkey_array, allocator);
+      return post_expr_.is_simple_in_expr(real_val, info, rowkey_array, allocator);
     }
     inline bool ObSqlExpression::is_aggr_func() const
     {
@@ -208,6 +211,14 @@ namespace oceanbase
     inline bool ObSqlExpression::is_empty() const
     {
       return post_expr_.is_empty();
+    }
+    inline void ObSqlExpression::set_owner_op(ObPhyOperator *owner_op)
+    {
+      post_expr_.set_owner_op(owner_op);
+    }
+    inline ObPhyOperator* ObSqlExpression::get_owner_op()
+    {
+      return post_expr_.get_owner_op();
     }
     inline int ObSqlExpression::merge_expr(const ObSqlExpression &expr1, const ObSqlExpression &expr2, const ExprItem &op)
     {

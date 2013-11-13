@@ -15,6 +15,7 @@
  *
  */
 #include "ob_memory_pool.h"
+#include "ob_tsi_utils.h"
 #ifndef OCEANBASE_COMMON_OB_MOD_DEFINE_H_
 #define OCEANBASE_COMMON_OB_MOD_DEFINE_H_
 namespace oceanbase
@@ -63,6 +64,9 @@ namespace oceanbase
       enum
       {
         OB_MOD_DO_NOT_USE_ME = 0,
+        OB_MOD_TC_TOTAL,
+        OB_MOD_TC_ALLOCATED,
+        OB_MOD_TCDEFAULT,
         /// define modules here
         // common modules
         OB_COMMON_NETWORK,
@@ -104,6 +108,10 @@ namespace oceanbase
         OB_ROW_ITER_ADAPTOR,
         OB_WAITABLE_POOL,
         OB_ASYNC_FILE_APPENDER,
+        OB_MODULE_PAGE_ALLOCATOR,
+        OB_PACKET_LIGHTY_QUEUE,
+        LIBEASY,
+        OB_RESULT_SET,
         OB_FIRST_TABLET_META,
         OB_FILE_CLIENT,
         OB_OLD_GROUPBY,
@@ -123,6 +131,9 @@ namespace oceanbase
         BLOCK_ALLOC,
         VECTOR,
         TEST,
+        TICKET_QUEUE,
+        ACK_QUEUE,
+        BALANCE_FILTER,
         TSI_BLOCK_ALLOC,
 
        // mergeserver modules
@@ -135,8 +146,13 @@ namespace oceanbase
         OB_MS_RPC_EVENT,
         OB_MS_GET_EVENT,
         OB_MS_SERVICE_FUNC,
+        OB_MS_FROZEN_DATA_CACHE,
+        OB_FROZEN_DATA_KEY_BUF,
         OB_MS_COMMON,
         OB_MS_SUB_SCAN_REQUEST,
+        OB_MS_UPDATE_BLOOM_FILTER,
+        OB_MS_SQL_SCAN_REQ_POOL,
+        OB_MS_SQL_GET_REQ_POOL,
 
         // updateserver modules
         OB_UPS_ENGINE,
@@ -163,6 +179,7 @@ namespace oceanbase
         OB_CS_MERGER,
         OB_CS_COMMON,
         OB_CS_FILE_RECYCLE,
+        OB_CS_BLOOM_FILTER,
 
         // sstable modules
         OB_SSTABLE_AIO,
@@ -175,6 +192,7 @@ namespace oceanbase
         // obmysql modules
         OB_MYSQL_PACKET,
         OB_COMPACTSSTABLE_WRITER,
+        OB_DELETE_SESSION_TASK,
 
         // rootserver modules
         OB_RS_ROOT_TABLE,
@@ -182,6 +200,9 @@ namespace oceanbase
         OB_RS_SERVER_MANAGER,
         OB_RS_SCHEMA_MANAGER,
         OB_RS_LOG_WORKER,
+        OB_RS_BALANCE,
+        OB_DATA_SOURCE_MANAGER,
+        OB_LOAD_DATA_INFO,
 
         // sql modules
         OB_SQL_PARSER,
@@ -192,10 +213,12 @@ namespace oceanbase
         OB_SQL_EXECUTER,
         OB_SQL_SCAN_PARAM,
         OB_SQL_GET_PARAM,
-        OB_SQL_RPC_REQUEST,
+        OB_SQL_REQUEST,
+        OB_SQL_TRANSFORMER_PS,
         OB_SQL_PS_TRANS,
         OB_SQL_ARRAY,
         OB_SQL_EXPR,
+        OB_SQL_EXPR_CALC,
         OB_SQL_AGGR_FUNC,
         OB_SQL_INSERT,
         OB_SQL_MERGE_JOIN,
@@ -204,13 +227,25 @@ namespace oceanbase
         OB_SQL_UPDATE,
         OB_SQL_READ_STRATEGY,
         OB_SQL_PRIVILEGE,
-        OB_SQL_COMMON,
+        OB_SQL_RPC_SCAN2,
+        OB_SQL_READ_STATEGY,
+        OB_SQL_TABLE_RPC_SCAN,
         OB_SQL_SCALAR_AGGR,
         OB_SQL_MERGE_GROUPBY,
         OB_SQL_PHY_PLAN,
         OB_SQL_RESULT_SET_DYN,
         OB_SQL_SESSION_HASHMAP,
         OB_SQL_SESSION_SBLOCK,
+        OB_SQL_ID_MGR,
+        OB_SQL_QUERY_CACHE,
+        OB_SQL_RPC_REQUEST,
+        OB_SQL_PS_STORE_PHYSICALPLAN,
+        OB_SQL_PS_STORE_OPERATORS,
+        OB_SQL_PS_STORE_ITEM,
+
+        // liboblog
+        OB_LOG_BINLOG_RECORD,
+        OB_LOG_STMT,
 
         OB_MOD_END
       };
@@ -219,6 +254,9 @@ namespace oceanbase
     inline void init_ob_mod_set()
     {
       ADD_MOD(OB_MOD_DO_NOT_USE_ME);
+      ADD_MOD(OB_MOD_TC_TOTAL);
+      ADD_MOD(OB_MOD_TC_ALLOCATED);
+      ADD_MOD(OB_MOD_TCDEFAULT);
       /// add modules here, modules must be first defined
       ADD_MOD(OB_COMMON_NETWORK);
       ADD_MOD(OB_THREAD_BUFFER);
@@ -258,6 +296,10 @@ namespace oceanbase
       ADD_MOD(OB_ROW_ITER_ADAPTOR);
       ADD_MOD(OB_WAITABLE_POOL);
       ADD_MOD(OB_ASYNC_FILE_APPENDER);
+      ADD_MOD(OB_MODULE_PAGE_ALLOCATOR);
+      ADD_MOD(OB_PACKET_LIGHTY_QUEUE);
+      ADD_MOD(LIBEASY);
+      ADD_MOD(OB_RESULT_SET);
       ADD_MOD(OB_FIRST_TABLET_META);
       ADD_MOD(OB_FILE_CLIENT);
       ADD_MOD(OB_OLD_GROUPBY);
@@ -277,6 +319,9 @@ namespace oceanbase
       ADD_MOD(BLOCK_ALLOC);
       ADD_MOD(VECTOR);
       ADD_MOD(TEST);
+      ADD_MOD(TICKET_QUEUE);
+      ADD_MOD(ACK_QUEUE);
+      ADD_MOD(BALANCE_FILTER);
       ADD_MOD(TSI_BLOCK_ALLOC);
 
       ADD_MOD(OB_MS_CELL_ARRAY);
@@ -288,8 +333,13 @@ namespace oceanbase
       ADD_MOD(OB_MS_RPC_EVENT);
       ADD_MOD(OB_MS_GET_EVENT);
       ADD_MOD(OB_MS_SERVICE_FUNC);
+      ADD_MOD(OB_MS_FROZEN_DATA_CACHE);
+      ADD_MOD(OB_FROZEN_DATA_KEY_BUF);
       ADD_MOD(OB_MS_COMMON);
       ADD_MOD(OB_MS_SUB_SCAN_REQUEST);
+      ADD_MOD(OB_MS_UPDATE_BLOOM_FILTER);
+      ADD_MOD(OB_MS_SQL_SCAN_REQ_POOL);
+      ADD_MOD(OB_MS_SQL_GET_REQ_POOL);
 
       ADD_MOD(OB_UPS_ENGINE);
       ADD_MOD(OB_UPS_MEMTABLE);
@@ -314,6 +364,7 @@ namespace oceanbase
       ADD_MOD(OB_CS_MERGER);
       ADD_MOD(OB_CS_COMMON);
       ADD_MOD(OB_CS_FILE_RECYCLE);
+      ADD_MOD(OB_CS_BLOOM_FILTER);
 
       ADD_MOD(OB_SSTABLE_AIO);
       ADD_MOD(OB_SSTABLE_GET_SCAN);
@@ -324,12 +375,16 @@ namespace oceanbase
 
       ADD_MOD(OB_MYSQL_PACKET);
       ADD_MOD(OB_COMPACTSSTABLE_WRITER);
+      ADD_MOD(OB_DELETE_SESSION_TASK);
 
       ADD_MOD(OB_RS_ROOT_TABLE);
       ADD_MOD(OB_RS_TABLET_MANAGER);
       ADD_MOD(OB_RS_SERVER_MANAGER);
       ADD_MOD(OB_RS_SCHEMA_MANAGER);
       ADD_MOD(OB_RS_LOG_WORKER);
+      ADD_MOD(OB_RS_BALANCE);
+      ADD_MOD(OB_DATA_SOURCE_MANAGER);
+      ADD_MOD(OB_LOAD_DATA_INFO);
 
       ADD_MOD(OB_SQL_PARSER);
       ADD_MOD(OB_SQL_TRANSFORMER);
@@ -339,10 +394,13 @@ namespace oceanbase
       ADD_MOD(OB_SQL_EXECUTER);
       ADD_MOD(OB_SQL_SCAN_PARAM);
       ADD_MOD(OB_SQL_GET_PARAM);
-      ADD_MOD(OB_SQL_RPC_REQUEST);
+      ADD_MOD(OB_SQL_REQUEST);
+      ADD_MOD(OB_SQL_TRANSFORMER_PS);
+      ADD_MOD(OB_LOG_BINLOG_RECORD);
       ADD_MOD(OB_SQL_PS_TRANS);
       ADD_MOD(OB_SQL_ARRAY);
       ADD_MOD(OB_SQL_EXPR);
+      ADD_MOD(OB_SQL_EXPR_CALC);
       ADD_MOD(OB_SQL_AGGR_FUNC);
       ADD_MOD(OB_SQL_INSERT);
       ADD_MOD(OB_SQL_MERGE_JOIN);
@@ -351,13 +409,20 @@ namespace oceanbase
       ADD_MOD(OB_SQL_UPDATE);
       ADD_MOD(OB_SQL_READ_STRATEGY);
       ADD_MOD(OB_SQL_PRIVILEGE);
-      ADD_MOD(OB_SQL_COMMON);
+      ADD_MOD(OB_SQL_RPC_SCAN2);
+      ADD_MOD(OB_SQL_READ_STATEGY);
+      ADD_MOD(OB_SQL_TABLE_RPC_SCAN);
       ADD_MOD(OB_SQL_SCALAR_AGGR);
       ADD_MOD(OB_SQL_MERGE_GROUPBY);
       ADD_MOD(OB_SQL_PHY_PLAN);
       ADD_MOD(OB_SQL_RESULT_SET_DYN);
       ADD_MOD(OB_SQL_SESSION_HASHMAP);
       ADD_MOD(OB_SQL_SESSION_SBLOCK);
+      ADD_MOD(OB_SQL_ID_MGR);
+      ADD_MOD(OB_SQL_QUERY_CACHE);
+      ADD_MOD(OB_SQL_PS_STORE_PHYSICALPLAN);
+      ADD_MOD(OB_SQL_PS_STORE_OPERATORS);
+      ADD_MOD(OB_SQL_PS_STORE_ITEM);
 
       ADD_MOD(OB_MOD_END);
     }
@@ -374,6 +439,7 @@ namespace oceanbase
     private:
       int32_t mod_num_;
     };
+    extern ExpStat g_malloc_size_stat;
   }
 }
 

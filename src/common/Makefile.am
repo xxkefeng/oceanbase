@@ -20,7 +20,7 @@ noinst_LIBRARIES = libcommon.a
 common_sources=				                                                  \
   base_main.h                      base_main.cpp                        \
   batch_packet_queue_thread.h      batch_packet_queue_thread.cpp        \
-  bloom_filter.h                                                        \
+  bloom_filter.h                   bloom_filter.cpp                     \
   check_sum.h                                                           \
   data_buffer.h                                                         \
   debug.h                                                               \
@@ -35,6 +35,11 @@ common_sources=				                                                  \
   hash/ob_hashtable.h                                                   \
   hash/ob_hashutils.h                                                   \
   hash/ob_serialization.h                                               \
+  hash/ob_placement_hashset.h                                           \
+  hash/ob_placement_hashmap.h                                           \
+	ob_fifo_allocator.h							 ob_fifo_allocator.cpp                \
+	ob_id_map.h                                                           \
+	ob_packet_lighty_queue.h         ob_packet_lighty_queue.cpp           \
 	cmbtree/btree_base.h                                                  \
 	cmbtree/btree_counter.h                                               \
 	cmbtree/btree_default_alloc.h                                         \
@@ -54,6 +59,7 @@ common_sources=				                                                  \
   limit_array.h                                                         \
   murmur_hash.h                    murmur_hash.cpp                      \
   ob_action_flag.h                                                      \
+  ob_iarray.h                                                           \
   ob_array.h                                                            \
   ob_array_helper.h                                                     \
   ob_array_lock.h                  ob_array_lock.cpp                    \
@@ -65,7 +71,8 @@ common_sources=				                                                  \
   ob_bitmap.h                                                           \
   ob_bloomfilter.h                                                      \
   ob_buffer.h                                                           \
-  ob_buffer_helper.h                                                    \
+  ob_bypass_task_info.h  ob_bypass_task_info.cpp \
+	ob_buffer_helper.h                                                    \
   ob_cache.h                       ob_cache.cpp                         \
   ob_cached_allocator.h                                                 \
   ob_cell_array.h                  ob_cell_array.cpp                    \
@@ -112,7 +119,7 @@ common_sources=				                                                  \
   ob_get_param.h                   ob_get_param.cpp                     \
   ob_groupby.h                     ob_groupby.cpp                       \
   ob_groupby_operator.h            ob_groupby_operator.cpp              \
-  ob_hint.h                                                             \
+  ob_hint.h                        ob_hint.cpp                          \
   ob_infix_expression.h            ob_infix_expression.cpp              \
   ob_iterator.h                                                         \
   ob_kv_storecache.h                                                    \
@@ -208,10 +215,16 @@ common_sources=				                                                  \
   ob_slab.h                        ob_slab.cpp                          \
   ob_slave_mgr.h                   ob_slave_mgr.cpp                     \
   ob_spin_lock.h                                                        \
+  ob_recursive_mutex.h                                                  \
   ob_spin_rwlock.h                                                      \
   ob_spop_spush_queue.h            ob_spop_spush_queue.cpp              \
   ob_sql_ups_rpc_proxy.h                                                \
+  ob_tsi_utils.h               ob_tsi_utils.cpp\
   ob_stack_allocator.h             ob_stack_allocator.cpp               \
+  ob_queued_lock.h               \
+  ob_wait_queue.h \
+  ob_ack_queue.h             ob_ack_queue.cpp                           \
+  ob_ticket_queue.h             ob_ticket_queue.cpp                     \
   ob_statistics.h                  ob_statistics.cpp                    \
   ob_common_stat.h                 ob_common_stat.cpp                   \
   ob_string.h                                                           \
@@ -223,10 +236,12 @@ common_sources=				                                                  \
   ob_tablet_info.h                 ob_tablet_info.cpp                   \
   ob_task.h                                                             \
   ob_tbnet_callback.h              ob_tbnet_callback.cpp                \
+  ob_tc_counter.h                                                       \
   ob_thread_mempool.h              ob_thread_mempool.cpp                \
   ob_thread_objpool.h                                                   \
   ob_thread_store.h                                                     \
   ob_timer.h                       ob_timer.cpp                         \
+	ob_tl_store.h                                                         \
   ob_token.h                       ob_token.cpp                         \
   ob_trace_log.h                   ob_trace_log.cpp                     \
   ob_tsi_factory.h                 ob_tsi_factory.cpp                   \
@@ -238,6 +253,7 @@ common_sources=				                                                  \
   ob_vector.h                      ob_vector.ipp                        \
   page_arena.h                                                          \
   priority_packet_queue_thread.h   priority_packet_queue_thread.cpp     \
+  ob_priority_scheduler.h                                               \
   qlock.h                                                               \
   serialization.h                                                       \
   thread_buffer.h                  thread_buffer.cpp                    \
@@ -246,7 +262,7 @@ common_sources=				                                                  \
   ob_general_rpc_stub.h            ob_general_rpc_stub.cpp              \
   ob_general_rpc_proxy.h           ob_general_rpc_proxy.cpp             \
   ob_tsi_block_allocator.h         ob_tsi_block_allocator.cpp           \
-  ob_tc_malloc.h         ob_tc_malloc.cpp           	\
+  ob_pcap.h         ob_pcap.cpp           \
   ob_iterator_adaptor.h            ob_iterator_adaptor.cpp              \
   ob_transaction.h                 ob_transaction.cpp                   \
   nb_accessor/ob_nb_accessor.h     nb_accessor/ob_nb_accessor.cpp       \
@@ -275,9 +291,22 @@ common_sources=				                                                  \
   ob_config_manager.h                ob_config_manager.cpp      \
   ob_config.h                        ob_config.cpp              \
   ob_config_helper.h                 ob_config_helper.cpp       \
-  ob_version.h                       ob_version.cpp\
-	ob_libeasy_statistics.h            ob_libeasy_statistics.cpp\
-	ob_reload_config.h
+	ob_version.h											 ob_version.cpp\
+	ob_profile_fill_log.h              ob_profile_fill_log.cpp\
+	ob_request_profile_data.h\
+  ob_queue_thread.h                  ob_queue_thread.cpp\
+	ob_libeasy_mem_pool.h              ob_libeasy_mem_pool.cpp\
+	ob_balance_filter.h								 ob_balance_filter.cpp\
+	ob_adapter_allocator.h\
+	ob_reload_config.h\
+	ob_obj_pool.h \
+	ob_data_source_desc.h              ob_data_source_desc.cpp \
+         ob_tc_factory.h\
+	ob_fifo_stream.h									 ob_fifo_stream.cpp \
+	ob_multi_wakeup.h									 ob_multi_wakeup.cpp \
+	ob_global_factory.h\
+  ob_errno.h ob_errno.cpp
+
 
 location_sources=                                                                             \
   location/ob_ms_cache_table.h    location/ob_btree_map.h                                     \
@@ -289,11 +318,15 @@ location_sources=                                                               
 
 libcommon_a_SOURCES = ${common_sources} ${location_sources}
 
+#bin_PROGRAMS=test
+#test_SOURCES=test.cpp
+#test_LDFLAGS=libcommon.a -lpthread -lc -lm  -lrt -lcrypt -lssl -laio #-pg
+SUBDIRS=btree compress roottable timezone
+DIST_SUBDIRS=btree compress roottable timezone
 
-SUBDIRS=btree compress roottable
-DIST_SUBDIRS=btree compress roottable
-
-EXTRA_DIST =
+EXTRA_DIST= ob_define.h
+pkgdata_data_DATA= ob_define.h
+pkgdata_datadir=${prefix}/include
 
 clean-local:
 	-rm -f *.gcov *.gcno *.gcda

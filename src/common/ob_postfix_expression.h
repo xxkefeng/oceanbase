@@ -748,6 +748,7 @@ namespace oceanbase
             }
             else
             {
+              tm.tm_isdst = -1;
               if(-1 == (decoded_val = (int64_t)mktime(&tm)))
               {
                 err = OB_ERROR;

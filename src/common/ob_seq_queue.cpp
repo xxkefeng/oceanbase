@@ -80,6 +80,11 @@ namespace oceanbase
       return err;
     }
 
+    int64_t ObSeqQueue::get_seq()
+    {
+      return seq_;
+    }
+
     tbsys::CThreadCond* ObSeqQueue::get_cond(const int64_t seq)
     {
       return cond_ + (seq % N_COND);

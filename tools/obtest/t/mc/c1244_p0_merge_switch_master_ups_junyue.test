@@ -33,6 +33,7 @@ let $old_master=deploy_get_value(ob1.get_master_ups);
 let $master_slave_ups=deploy_get_value(ob1.get_slave_ups);
 
 deploy ob1.change_ups_master $master_slave_ups;
+sleep 20;
 
 let $new_master=deploy_get_value(ob1.get_master_ups);
 if($new_master == $old_master)

@@ -60,6 +60,7 @@ namespace oceanbase
         inline int64_t get_file_size() const {return file_size_;};
         int64_t to_string(char* buf, const int64_t len) const;
       protected:
+        int check_eof_after_log_cursor(const ObLogCursor& cursor);
         int prepare_fd(const int64_t file_id);
         int reuse(const char* pool_file, const char* fname);
         const char* select_pool_file(char* fname, const int64_t limit);

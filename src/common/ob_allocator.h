@@ -19,7 +19,7 @@
 ////====================================================================
 #ifndef  OCEANBASE_COMMON_ALLOCATOR_H_
 #define  OCEANBASE_COMMON_ALLOCATOR_H_
-#include "common/ob_malloc.h"
+#include "common/ob_define.h"
 
 namespace oceanbase
 {
@@ -35,20 +35,6 @@ namespace oceanbase
         virtual void* mod_alloc(const int64_t size, const int32_t mod_id = 0){ UNUSED(size); UNUSED(mod_id); return NULL; }
         virtual void mod_free(void* p, const int32_t mod_id = 0) { UNUSED(p); UNUSED(mod_id); }
         virtual void set_mod_id(int32_t mod_id) = 0;
-    };
-
-    class ObMalloc : public ObIAllocator
-    {
-      public:
-        ObMalloc() : mod_id_(ObModIds::OB_MOD_DO_NOT_USE_ME) {};
-        explicit ObMalloc(int32_t mod_id) : mod_id_(mod_id) {};
-        ~ObMalloc() {};
-      public:
-        void set_mod_id(int32_t mod_id) {mod_id_ = mod_id;};
-        void *alloc(const int64_t sz) {return ob_malloc(sz, mod_id_);};
-        void free(void *ptr) {ob_free(ptr);};
-      private:
-        int32_t mod_id_;
     };
   }
 }

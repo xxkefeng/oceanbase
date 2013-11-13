@@ -31,6 +31,9 @@ namespace oceanbase
         public:
           ObUpsFileTable(const char *file_name);
           virtual ~ObUpsFileTable() { }
+          void reset() {}
+          void reuse() {}
+          virtual ObPhyOperatorType get_type() const { return PHY_INVALID; }
 
         protected:
           virtual int parse_line(const ObRow *&row);
@@ -44,4 +47,3 @@ namespace oceanbase
 }
 
 #endif /* _OB_UPS_FILE_TABLE_H */
-

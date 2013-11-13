@@ -1,3 +1,6 @@
+#ifndef __OB_COMMON_OB_PRELOAD_H__
+#define __OB_COMMON_OB_PRELOAD_H__
+
 #define _GNU_SOURCE 1
 #include <dlfcn.h>
 #include <pthread.h>
@@ -28,6 +31,7 @@ inline int64_t& bt(const char* msg)
   return enable_bt;
 }
 
+#ifdef __ENABLE_PRELOAD__
 inline int pthread_key_create(pthread_key_t *key, void (*destructor)(void*))
 {
   int (*real_func)(pthread_key_t *key, void (*destructor)(void*)) = (typeof(real_func))dlsym(RTLD_NEXT, "pthread_key_create");
@@ -41,3 +45,6 @@ inline int pthread_key_delete(pthread_key_t key)
   bt("pthread_key_delete");
   return real_func(key);
 }
+#endif
+
+#endif /* __OB_COMMON_OB_PRELOAD_H__ */

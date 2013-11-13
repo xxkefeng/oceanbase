@@ -56,10 +56,11 @@ namespace oceanbase
     int ObGeneralRpcStub::register_merge_server(const int64_t timeout,
                                                 const common::ObServer & root_server,
                                                 const common::ObServer & server,
-                                                const int32_t sql_port, int32_t &status, const char* server_version) const
+                                                const int32_t sql_port, const bool lms,
+                                                int32_t &status, const char* server_version) const
     {
-      return send_3_return_1(root_server, timeout, OB_MERGE_SERVER_REGISTER,
-                             DEFAULT_VERSION, server, sql_port, server_version, status);
+      return send_4_return_1(root_server, timeout, OB_MERGE_SERVER_REGISTER,
+                             DEFAULT_VERSION, server, sql_port, server_version, lms, status);
     }
 
     // chunk server heartbeat rpc
@@ -72,10 +73,10 @@ namespace oceanbase
 
     // merge server heartbeat rpc
     int ObGeneralRpcStub::heartbeat_merge_server(const int64_t timeout, const ObServer & root_server,
-        const ObServer & merge_server, const ObRole server_role, const int32_t sql_port) const
+        const ObServer & merge_server, const ObRole server_role, const int32_t sql_port, const bool is_listen_ms) const
     {
-      return post_request_3(root_server, timeout, OB_MERGE_SERVER_HEARTBEAT, NEW_VERSION + 1,
-          ObTbnetCallback::default_callback, NULL, merge_server, static_cast<int32_t>(server_role), sql_port);
+      return post_request_4(root_server, timeout, OB_MERGE_SERVER_HEARTBEAT, NEW_VERSION + 1,
+          ObTbnetCallback::default_callback, NULL, merge_server, static_cast<int32_t>(server_role), sql_port, is_listen_ms);
     }
 
     int ObGeneralRpcStub::find_server(const int64_t timeout, const ObServer & root_server,
@@ -200,6 +201,31 @@ namespace oceanbase
       return ret;
     }
 
+    int ObGeneralRpcStub::set_obi_role(const ObServer &rs, const int64_t timeout, const ObiRole &obi_role) const
+    {
+      int ret = OB_SUCCESS;
+      ObResultCode result_code;
+      if (OB_SUCCESS != (ret = send_1_return_0(rs, timeout, OB_SET_OBI_ROLE, DEFAULT_VERSION, result_code, obi_role)))
+      {
+        TBSYS_LOG(WARN, "set obi role to rs[%s], failed, ret=%d", to_cstring(rs), ret);
+      }
+      return ret;
+    }
+    int ObGeneralRpcStub::set_master_rs_vip_port_to_cluster(const ObServer &rs, const int64_t timeout, const char *new_master_ip, const int32_t new_master_port) const
+    {
+      int ret = OB_SUCCESS;
+      ObResultCode result_code;
+      char config_str[100];
+      memset(config_str, 0 , sizeof(config_str));
+      int cnt = snprintf(config_str, sizeof(config_str), "master_root_server_ip=%s,master_root_server_port=%d", new_master_ip, new_master_port);
+      ObString str;
+      str.assign_ptr(config_str, cnt);
+      if (OB_SUCCESS != (ret = send_1_return_0(rs, timeout, OB_SET_CONFIG, DEFAULT_VERSION, result_code, str)))
+      {
+        TBSYS_LOG(WARN, "set new master rs vip port  to cluster[%s], failed, ret=%d", to_cstring(rs), ret);
+      }
+      return ret;
+    }
     int ObGeneralRpcStub::alter_table(const int64_t timeout, const common::ObServer & root_server,
         const common::AlterTableSchema & alter_schema) const
     {
@@ -243,7 +269,7 @@ namespace oceanbase
     {
       int ret = OB_SUCCESS;
 
-      if (OB_SUCCESS != (ret = send_3_return_0(root_server, timeout, OB_REPORT_TABLETS, DEFAULT_VERSION,
+      if (OB_SUCCESS != (ret = send_3_return_0(root_server, timeout, OB_REPORT_TABLETS, DEFAULT_VERSION + 1,
               client_server, tablets, time_stamp)))
       {
         TBSYS_LOG(WARN, "send report tablets message failed, ret=%d", ret);
@@ -257,6 +283,13 @@ namespace oceanbase
       }
 
       return ret;
+    }
+
+    int ObGeneralRpcStub::delete_tablets(const int64_t timeout, const ObServer & dest_server,
+        const common::ObTabletReportInfoList& tablets, bool is_force)
+    {
+      return send_2_return_0(dest_server, timeout, OB_CS_DELETE_TABLETS, DEFAULT_VERSION,
+          tablets, is_force);
     }
 
     int ObGeneralRpcStub::delete_tablets(const int64_t timeout, const ObServer & root_server,
@@ -376,16 +409,16 @@ namespace oceanbase
     int ObGeneralRpcStub::migrate_over(
         const int64_t timeout,
         const ObServer & root_server,
-        const common::ObNewRange &range,
-        const common::ObServer &src_server,
-        const common::ObServer &dest_server,
-        const bool keep_src,
-        const int64_t tablet_version,
-        const int64_t tablet_seq_num)
+        const ObResultCode &rc,
+        const ObDataSourceDesc & desc,
+        const int64_t occupy_size,
+        const int64_t check_sum,
+        const int64_t row_checksum,
+        const int64_t row_count)
     {
-      const int32_t CS_MIGRATE_OVER_VERSION = 2;
-      return send_6_return_0(root_server, timeout, OB_MIGRATE_OVER, CS_MIGRATE_OVER_VERSION,
-          range, src_server, dest_server, keep_src, tablet_version, tablet_seq_num);
+      const int32_t CS_MIGRATE_OVER_VERSION = 3;
+      return send_6_return_0(root_server, timeout, OB_MIGRATE_OVER, CS_MIGRATE_OVER_VERSION, rc,
+          desc, occupy_size, check_sum, row_checksum, row_count);
     }
 
     int ObGeneralRpcStub::report_capacity_info(
@@ -859,7 +892,7 @@ namespace oceanbase
       ObResultCode result_code;
       ret = send_1_return_1(ups, timeout, OB_PHY_PLAN_EXECUTE, DEFAULT_VERSION,
                             result_code, plan, result);
-      if (OB_SUCCESS != ret)
+      if (OB_SUCCESS != ret || OB_SUCCESS != result.get_error_code())
       {
         TBSYS_LOG(USER_ERROR, "%.*s", result_code.message_.length(), result_code.message_.ptr());
       }
@@ -896,6 +929,113 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       ret = send_0_return_1(rootserver, timeout, OB_GET_MASTER_OBI_RS,
                             DEFAULT_VERSION, master_obi_rs);
+      return ret;
+    }
+
+
+    int ObGeneralRpcStub::kill_session(const int64_t timeout, const ObServer &server, int32_t session_id, bool is_query) const
+    {
+      int ret = OB_SUCCESS;
+      ret = send_2_return_0(server, timeout, OB_SQL_KILL_SESSION,
+                            DEFAULT_VERSION, session_id, is_query);
+      return ret;
+    }
+    int ObGeneralRpcStub::get_ups_log_seq(const common::ObServer &ups, const int64_t timeout, int64_t & log_seq) const
+    {
+      int ret = OB_SUCCESS;
+      ObResultCode result_code;
+      ret = send_0_return_1(ups, timeout, OB_RS_GET_MAX_LOG_SEQ, DEFAULT_VERSION, result_code, log_seq);
+      if (OB_SUCCESS != ret)
+      {
+        TBSYS_LOG(WARN, "get log seq from update server failed, ret=%d", ret);
+      }
+      return ret;
+    }
+
+    // function will allocate memory (use ob_tc_malloc) for store bloom filter buffer.
+    // caller is responsible to free (use ob_tc_free) %bf_buffer.ptr() after used.
+    int ObGeneralRpcStub::get_bloom_filter(
+        const int64_t timeout,
+        const common::ObServer &server,
+        const common::ObNewRange &range,
+        const int64_t tablet_version,
+        const int64_t bf_version,
+        ObString &bf_buffer) const
+    {
+      int ret = OB_SUCCESS;
+      const int32_t MY_VERSION = 1;
+      int64_t session_id = 0;
+      int64_t pos = 0;
+      int64_t total_size = 0;
+      bool is_fullfilled = true;
+      char *ptr = NULL;
+      ObResultCode result_code;
+      ObDataBuffer data_buff;
+      ObString response_buffer;
+
+      if (OB_SUCCESS != (ret = get_rpc_buffer(data_buff)))
+      {
+        TBSYS_LOG(WARN, "get_rpc_buffer error with rpc call, ret =%d", ret);
+      }
+      else if (OB_SUCCESS != (ret = serialize_param_3(data_buff, range, tablet_version, bf_version)))
+      {
+        TBSYS_LOG(ERROR, "serialize range failed[%d]", ret);
+      }
+      else if (OB_SUCCESS != (ret = rpc_frame_->send_request(server, OB_CS_FETCH_BLOOM_FILTER,
+              MY_VERSION, timeout, data_buff, session_id)))
+      {
+        TBSYS_LOG(WARN, "send request to chunkserver for get_bloomfilter,ret[%d].", ret);
+      }
+      else if (OB_SUCCESS != (ret = deserialize_result_3(data_buff, pos,
+              result_code, response_buffer, is_fullfilled, total_size)))
+      {
+        TBSYS_LOG(WARN, "get_bloomfilter deserialize_result,ret[%d].", ret);
+      }
+      else if (OB_SUCCESS != (ret = result_code.result_code_))
+      {
+        TBSYS_LOG(WARN, "get_bloomfilter result_code:[%d].", ret);
+      }
+      else if (NULL == (ptr = reinterpret_cast<char*>(ob_tc_malloc(total_size, ObModIds::OB_BLOOM_FILTER))))
+      {
+        TBSYS_LOG(WARN, "allocate memory error, size[%ld].", total_size);
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else
+      {
+        TBSYS_LOG(INFO, "BF:first rpc return res[%p,%d], is_fullfilled[%d], total_size[%ld]",
+            response_buffer.ptr(), response_buffer.length(), is_fullfilled, total_size);
+        bf_buffer.assign_ptr(ptr, static_cast<int32_t>(total_size));
+        memcpy(ptr, response_buffer.ptr(), response_buffer.length());
+        ptr += response_buffer.length();
+
+        while (OB_SUCCESS == ret && !is_fullfilled && session_id != 0)
+        {
+          data_buff.get_position() = 0;
+          pos = 0;
+          if (OB_SUCCESS != (ret = rpc_frame_->get_next(server, session_id,
+                  timeout, data_buff, data_buff)))
+          {
+            TBSYS_LOG(WARN, "send request to chunkserver for get_bloomfilter,ret[%d].", ret);
+          }
+          else if (OB_SUCCESS != (ret = deserialize_result_3(data_buff, pos,
+                  result_code, response_buffer, is_fullfilled, total_size)))
+          {
+            TBSYS_LOG(WARN, "get_bloomfilter deserialize_result,ret[%d].", ret);
+          }
+          else if (OB_SUCCESS != (ret = result_code.result_code_))
+          {
+            TBSYS_LOG(WARN, "get_bloomfilter result_code:[%d].", ret);
+          }
+          else
+          {
+            TBSYS_LOG(INFO, "BF:next rpc return res[%p,%d], is_fullfilled[%d], total_size[%ld]",
+                response_buffer.ptr(), response_buffer.length(), is_fullfilled, total_size);
+            memcpy(ptr, response_buffer.ptr(), response_buffer.length());
+            ptr += response_buffer.length();
+          }
+
+        }
+      }
       return ret;
     }
 

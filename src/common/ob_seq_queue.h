@@ -68,6 +68,7 @@ namespace oceanbase
         int get(int64_t& seq, void*& data, const int64_t timeout_us);
         int update(const int64_t seq);
         bool next_is_ready() const;
+        int64_t get_seq();
       protected:
         bool is_inited() const;
         tbsys::CThreadCond* get_cond(const int64_t seq);

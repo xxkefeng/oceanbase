@@ -167,7 +167,7 @@ namespace oceanbase
       }
       else
       {
-        node->modify_time = INT64_MAX;
+        node->modify_time = ccw.get_ctime_recorder().get_ctime();
         node->next = NULL;
         memcpy(node->buf, ccw.get_buf(), ccw.size());
         if (NULL == uci.uc_list_tail)
@@ -231,10 +231,14 @@ namespace oceanbase
       int ret = OB_SUCCESS;
       if (!is_nop_(cell_info.value_))
       {
+        ccw.get_ctime_recorder().add(ccw.is_row_deleted(), cell_info.value_);
         if (ccw.is_row_deleted())
         {
-          ret = build_mtime_cell_(session.get_trans_id(), table_id, ccw);
-          uci.uc_cell_info_cnt ++;
+          if (0 != session.get_trans_id())
+          {
+            ret = build_mtime_cell_(session.get_trans_id(), table_id, ccw);
+            uci.uc_cell_info_cnt ++;
+          }
           ccw.set_row_deleted(false);
         }
         if (OB_SUCCESS == ret)
@@ -314,7 +318,7 @@ namespace oceanbase
           {
             if (OB_SUCCESS != (ret = lock_info.on_write_begin(cur_key, *cur_value)))
             {
-              TBSYS_LOG(WARN, "lock info on write begin fail, ret=%d %s", ret, cur_key.log_str());
+              //TBSYS_LOG(WARN, "lock info on write begin fail, ret=%d %s", ret, cur_key.log_str());
             }
             else
             {
@@ -381,14 +385,15 @@ namespace oceanbase
           && NULL != cur_value)
       {
         if (NULL == (cur_uci = cur_value->cur_uc_info)
-            || session.get_session_descriptor() != cur_uci->session_descriptor)
+            || (is_row_changed && !session.get_need_gen_mutator()))
         {
+          cur_value->cur_uc_info = NULL;
           if (NULL == (cur_uci = session.alloc_tevalue_uci()))
           {
             TBSYS_LOG(WARN, "alloc tevalue callback info from session ctx fail");
             ret = OB_MEM_OVERFLOW;
           }
-          else if (OB_SUCCESS != (ret = session.add_callback_info(session, &tevalue_cb_, cur_uci)))
+          else if (OB_SUCCESS != (ret = session.prepare_callback_info(session, &tevalue_cb_, cur_uci)))
           {
             TBSYS_LOG(WARN, "add tevalue callback info fail, ret=%d", ret);
           }
@@ -513,12 +518,12 @@ namespace oceanbase
           ret = update_value_(session, cur_key.table_id, cell_info, *cur_uci, ccw, bc);
           if (OB_SUCCESS == ret)
           {
-            if ((is_row_changed || is_row_finished)
-                && (MAX_ROW_SIZE / 2) < cur_value->cell_info_size)
-            {
-              // 大于门限值的一半时 就强制重新计算min flying trans id
-              session.flush_min_flying_trans_id();
-            }
+            //if ((is_row_changed || is_row_finished)
+            //    && (MAX_ROW_SIZE / 2) < cur_value->cell_info_size)
+            //{
+            //  // 大于门限值的一半时 就强制重新计算min flying trans id
+            //  session.flush_min_flying_trans_id();
+            //}
             if ((is_row_changed || is_row_finished)
                 && (get_max_row_cell_num() < cur_value->cell_info_cnt
                     || MAX_ROW_SIZE < cur_value->cell_info_size))
@@ -527,12 +532,14 @@ namespace oceanbase
             }
             if (is_row_finished)
             {
+              OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_ROW_COUNT);
+              OB_STAT_INC(UPDATESERVER, UPS_STAT_APPLY_ROW_UNMERGED_CELL_COUNT, cur_value->cell_info_cnt);
               ccw.row_finish();
               ret = copy_cells_(*cur_uci, ccw);
               ccw.reset();
             }
             if (OB_SUCCESS == ret
-                && !session.get_is_replaying()
+                && session.get_need_gen_mutator()
                 && is_row_too_long_(session, cur_key, *cur_value))
             {
               TBSYS_LOG(WARN, "row size overflow [%s] [%s]", cur_key.log_str(), cur_value->log_str());
@@ -540,6 +547,7 @@ namespace oceanbase
             }
             if (is_row_finished)
             {
+              session.prepare_checksum_callback(cur_value);
               lock_info.on_precommit_end();
             }
           }
@@ -664,10 +672,12 @@ namespace oceanbase
       new_value.index_stat = te_value.index_stat;
       new_value.cur_uc_info = te_value.cur_uc_info;
       new_value.row_lock = te_value.row_lock;
+      new_value.undo_list = te_value.undo_list;
 
       MemTableGetIter get_iter;
       BaseSessionCtx merge_session(session.get_type(), session.get_host());
-      merge_session.set_trans_id(session.get_min_flying_trans_id());
+      //merge_session.set_trans_id(session.get_min_flying_trans_id());
+      merge_session.set_trans_id(session.get_trans_id());
       get_iter.set_(te_key, &te_value, NULL, false, &merge_session);
       ObRowCompaction *rc_iter = GET_TSI_MULT(ObRowCompaction, TSI_UPS_ROW_COMPACTION_1);
       FixedSizeBuffer<OB_MAX_PACKET_LENGTH> *tbuf = GET_TSI_MULT(FixedSizeBuffer<OB_MAX_PACKET_LENGTH>, TSI_UPS_FIXED_SIZE_BUFFER_2);
@@ -710,10 +720,14 @@ namespace oceanbase
           ret = OB_EAGAIN;
           break;
         }
-        if (0 == mtime
-            && ObModifyTimeType == ci->value_.get_type())
+        if (ObModifyTimeType == ci->value_.get_type())
         {
-          ci->value_.get_modifytime(mtime);
+          int64_t tmp  = 0;
+          ci->value_.get_modifytime(tmp);
+          if (tmp > mtime)
+          {
+            mtime = tmp;
+          }
         }
 
         if (is_delete_row_(ci->value_))
@@ -731,6 +745,22 @@ namespace oceanbase
         TBSYS_LOG(DEBUG, "merge new obj [%s]", print_obj(ci->value_));
         new_value.cell_info_cnt++;
         new_value.cell_info_size = static_cast<int16_t>(new_value.cell_info_size + get_varchar_length_kb_(ci->value_));
+      }
+
+      if (0 == mtime
+          && 0 < ccw.size())
+      {
+        ObCellInfoNode *end = const_cast<ObCellInfoNode*>(get_iter.get_cur_node_iter_());
+        ObCellInfoNode *iter = te_value.list_head;
+        while (NULL != iter)
+        {
+          if (end == iter->next)
+          {
+            mtime = iter->modify_time;
+            break;
+          }
+          iter = iter->next;
+        }
       }
 
       if (OB_ITER_END == ret)
@@ -789,10 +819,21 @@ namespace oceanbase
                   te_value.log_list(), new_value.log_list(), &te_value, timeu);
         if (NULL != new_value.list_head)
         {
-          // change te_value to new_value
-          te_value = new_value;
-          OB_STAT_INC(UPDATESERVER, UPS_STAT_MERGE_COUNT, 1);
-          OB_STAT_INC(UPDATESERVER, UPS_STAT_MERGE_TIMEU, timeu);
+          ObUndoNode *undo_node = (ObUndoNode*)mem_tank_.undo_node_alloc(sizeof(ObUndoNode));
+          if (NULL == undo_node)
+          {
+            TBSYS_LOG(WARN, "alloc undo node fail");
+          }
+          else
+          {
+            undo_node->head = te_value.list_head;
+            undo_node->next = new_value.undo_list;
+            new_value.undo_list = undo_node;
+            // change te_value to new_value
+            te_value = new_value;
+            OB_STAT_INC(UPDATESERVER, UPS_STAT_MERGE_COUNT, 1);
+            OB_STAT_INC(UPDATESERVER, UPS_STAT_MERGE_TIMEU, timeu);
+          }
         }
       }
       return ret;
@@ -1103,13 +1144,15 @@ namespace oceanbase
     }
 
     int MemTable::set(RWSessionCtx &session_ctx,
-                      ObIterator &iter)
+                      ObIterator &iter,
+                      const ObDmlType dml_type)
     {
       int ret = OB_SUCCESS;
       ILockInfo *lock_info = session_ctx.get_lock_info();
       FixedSizeBuffer<OB_MAX_PACKET_LENGTH> *tbuf = GET_TSI_MULT(FixedSizeBuffer<OB_MAX_PACKET_LENGTH>, TSI_UPS_FIXED_SIZE_BUFFER_1);
       ObBatchChecksum bc;
       bc.set_base(session_ctx.get_uc_info().uc_checksum);
+      session_ctx.get_ups_mutator().get_mutator().mark();
       if (!inited_)
       {
         TBSYS_LOG(WARN, "have not inited");
@@ -1174,8 +1217,13 @@ namespace oceanbase
             if (OB_SUCCESS == ret)
             {
               // 处理后的mutator全转化为update语义
-              if (session_ctx.get_is_replaying())
+              if (!session_ctx.get_need_gen_mutator())
               {}
+              else if (is_row_changed
+                      && OB_SUCCESS != (ret = session_ctx.get_ups_mutator().get_mutator().set_dml_type(dml_type)))
+              {
+                TBSYS_LOG(WARN, "set dml type to mutator fail, ret=%d", ret);
+              }
               else if (OB_SUCCESS != (ret = session_ctx.get_ups_mutator().get_mutator().update(cell_info->table_id_,
                                                                                               cell_info->row_key_,
                                                                                               cell_info->column_id_,
@@ -1192,14 +1240,22 @@ namespace oceanbase
           }
         }
         ret = (OB_ITER_END == ret) ? OB_SUCCESS : ret;
-        FILL_TRACE_BUF(session_ctx.get_tlog_buffer(), "total_row_num=%ld new_row_num=%ld cell_num=%ld ret=%d",
-                      total_row_counter, new_row_counter, cell_counter, ret);
-        session_ctx.get_uc_info().uc_row_counter += new_row_counter;
-        session_ctx.get_uc_info().uc_checksum = bc.calc();
+        FILL_TRACE_BUF(session_ctx.get_tlog_buffer(), "dml_type=%s total_row_num=%ld new_row_num=%ld cell_num=%ld ret=%d",
+                      str_dml_type(dml_type), total_row_counter, new_row_counter, cell_counter, ret);
         if (OB_SUCCESS == ret)
         {
           session_ctx.get_ups_result().set_affected_rows(total_row_counter);
+          session_ctx.get_uc_info().uc_row_counter += new_row_counter;
+          session_ctx.get_uc_info().uc_checksum = bc.calc();
+          //session_ctx.commit_prepare_list();
+          //session_ctx.commit_prepare_checksum();
         }
+        //else
+        //{
+        //  session_ctx.get_ups_mutator().get_mutator().rollback();
+        //  session_ctx.rollback_prepare_list(session_ctx);
+        //  session_ctx.rollback_prepare_checksum();
+        //}
       }
       return ret;
     }
@@ -1212,6 +1268,7 @@ namespace oceanbase
       FixedSizeBuffer<OB_MAX_PACKET_LENGTH> *tbuf = GET_TSI_MULT(FixedSizeBuffer<OB_MAX_PACKET_LENGTH>, TSI_UPS_FIXED_SIZE_BUFFER_1);
       ObBatchChecksum bc;
       bc.set_base(session_ctx.get_uc_info().uc_checksum);
+      session_ctx.get_ups_mutator().get_mutator().mark();
       if (!inited_)
       {
         TBSYS_LOG(WARN, "have not inited");
@@ -1284,7 +1341,7 @@ namespace oceanbase
             {
               // 处理后的mutator全转化为update语义
               mutator_cell_info->op_type.set_ext(common::ObActionFlag::OP_UPDATE);
-              if (session_ctx.get_is_replaying())
+              if (!session_ctx.get_need_gen_mutator())
               {}
               else if (OB_SUCCESS != (ret = session_ctx.get_ups_mutator().get_mutator().add_cell(*mutator_cell_info)))
               {
@@ -1302,8 +1359,19 @@ namespace oceanbase
         mutator.reset_iter();
         FILL_TRACE_BUF(session_ctx.get_tlog_buffer(), "total_row_num=%ld new_row_num=%ld cell_num=%ld ret=%d",
                       total_row_counter, new_row_counter, cell_counter, ret);
-        session_ctx.get_uc_info().uc_row_counter += new_row_counter;
-        session_ctx.get_uc_info().uc_checksum = bc.calc();
+        if (OB_SUCCESS == ret)
+        {
+          session_ctx.get_uc_info().uc_row_counter += new_row_counter;
+          session_ctx.get_uc_info().uc_checksum = bc.calc();
+          session_ctx.commit_prepare_list();
+          session_ctx.commit_prepare_checksum();
+        }
+        else
+        {
+          session_ctx.get_ups_mutator().get_mutator().rollback();
+          session_ctx.rollback_prepare_list(session_ctx);
+          session_ctx.rollback_prepare_checksum();
+        }
       }
       return ret;
     }
@@ -1337,9 +1405,22 @@ namespace oceanbase
       value = NULL;
       while (OB_SUCCESS == ret && NULL == value)
       {
-        if (NULL != (value = table_engine_.get(key)))
-        {}
-        else if (NULL == (new_value = (TEValue*)mem_tank_.tevalue_alloc(sizeof(TEValue))))
+        if (using_memtable_bloomfilter())
+        {
+          if (table_bf_.may_contain(key.table_id, key.row_key))
+          {
+            value = table_engine_.get(key);
+          }
+        }
+        else
+        {
+          value = table_engine_.get(key);
+        }
+        if (NULL != value)
+        {
+          break;
+        }
+        if (NULL == (new_value = (TEValue*)mem_tank_.tevalue_alloc(sizeof(TEValue))))
         {
           ret = OB_MEM_OVERFLOW;
         }
@@ -1401,7 +1482,7 @@ namespace oceanbase
       {
         if (OB_SUCCESS != (ret = lock_info->on_write_begin(key, *value)))
         {
-          TBSYS_LOG(WARN, "lock info on write begin fail, ret=%d %s", ret, key.log_str());
+          //TBSYS_LOG(WARN, "lock info on write begin fail, ret=%d %s", ret, key.log_str());
           ret = OB_ERR_SHARED_LOCK_CONFLICT;
         }
       }
@@ -1439,13 +1520,16 @@ namespace oceanbase
         }
         else if (OB_SUCCESS != (ret = rdlock_row(lock_info, key, value, lock_flag)))
         {
-          TBSYS_LOG(WARN, "rdlock_row()=>%d", ret);
+          if (!IS_SQL_ERR(ret))
+          {
+            TBSYS_LOG(WARN, "rdlock_row()=>%d", ret);
+          }
         }
       }
       if (OB_SUCCESS == ret && NULL == value)
       {
         if (using_memtable_bloomfilter()
-            && !table_bf_.contain(table_id, row_key))
+            && !table_bf_.may_contain(table_id, row_key))
         {} // 保持value=NULL, iterator迭代时可以处理
         else
         {
@@ -1486,7 +1570,7 @@ namespace oceanbase
         ret = OB_ERROR;
       }
       else if (using_memtable_bloomfilter()
-              && !table_bf_.contain(table_id, row_key))
+              && !table_bf_.may_contain(table_id, row_key))
       {
         iterator.get_get_iter_().set_(key, NULL, column_filter, tn);
       }
@@ -2083,18 +2167,43 @@ namespace oceanbase
       ObCellInfoNode *ret = NULL;
       if (NULL != te_value_)
       {
-        ret = te_value_->list_head;
-        if (NULL != te_value_->cur_uc_info
-            && read_uncommited_data_())
+        if (NULL != session_ctx_
+            && ST_READ_ONLY == session_ctx_->get_type()
+            && NULL != te_value_->list_head
+            && session_ctx_->get_trans_id() < te_value_->list_head->modify_time)
         {
-          if (NULL == ret)
+          // need to lookup undo list
+          ObUndoNode *iter = te_value_->undo_list;
+          while (NULL != iter)
           {
-            ret = te_value_->cur_uc_info->uc_list_head;
+            if (NULL != iter->head
+                && session_ctx_->get_trans_id() >= iter->head->modify_time)
+            {
+              ret = iter->head;
+              break;
+            }
+            else
+            {
+              iter = iter->next;
+            }
           }
-          else if (NULL != te_value_->list_tail)
+        }
+
+        if (NULL == ret)
+        {
+          ret = te_value_->list_head;
+          if (NULL != te_value_->cur_uc_info
+              && read_uncommited_data_())
           {
-            // 将未提交数据接到链表尾部 方便后续遍历链表 但不修改list_tail 因此对事务提交没有影响
-            te_value_->list_tail->next = te_value_->cur_uc_info->uc_list_head;
+            if (NULL == ret)
+            {
+              ret = te_value_->cur_uc_info->uc_list_head;
+            }
+            else if (NULL != te_value_->list_tail)
+            {
+              // 将未提交数据接到链表尾部 方便后续遍历链表 但不修改list_tail 因此对事务提交没有影响
+              te_value_->list_tail->next = te_value_->cur_uc_info->uc_list_head;
+            }
           }
         }
       }

@@ -25,7 +25,6 @@
 #include "sql/ob_sql_session_info.h"
 #include "common/ob_define.h"
 #include "ob_mysql_callback.h"
-#include "mergeserver/ob_merge_server_config.h"
 #include "easy_io.h"
 #include "ob_mysql_define.h"
 #include "ob_mysql_result_set.h"
@@ -34,6 +33,15 @@
 #include "sql/ob_sql.h"
 #include "common/location/ob_tablet_location_cache_proxy.h"
 #include "mergeserver/ob_merge_server_service.h"
+#include "common/ob_se_array.h"
+#include "common/ob_resource_pool.h"
+#include "sql/ob_sql_session_mgr.h"
+#include "mergeserver/ob_merge_server_config.h"
+#include "mergeserver/ob_bloom_filter_task_queue_thread.h"
+#include "sql/ob_sql_query_cache.h"
+#include "common/ob_timer.h"
+#include "sql/ob_ps_store.h"
+#include "common/ob_fifo_stream.h"
 
 namespace oceanbase
 {
@@ -51,7 +59,6 @@ namespace oceanbase
 
   namespace obmysql
   {
-
     typedef int ObMySQLSessionKey;
     //This server is not inherit from baseserver
     //ObBaseServer used to send obpacket
@@ -124,11 +131,19 @@ namespace oceanbase
         /*set obmysql param using mergeserver param*/
         void set_config(const mergeserver::ObMergeServerConfig *config);
         void set_env(MergeServerEnv &env);
+        const mergeserver::ObMergeServerConfig *get_config() const {return config_;};
+        const MergeServerEnv& get_env() const{return env_;};
 
-        inline common::hash::ObHashMap<ObMySQLSessionKey, sql::ObSQLSessionInfo*>* get_session_mgr()
+        sql::ObSQLSessionMgr* get_session_mgr()
         {
           return &session_mgr_;
         }
+
+        ObServer* get_server()
+        {
+          return &self_;
+        }
+
 
         int set_io_thread_count(const int32_t io_thread_count);
 
@@ -138,7 +153,11 @@ namespace oceanbase
         bool has_too_many_sessions() const;
         typedef common::ObPooledAllocator<sql::ObSQLSessionInfo, ObMalloc, ObSpinLock> SessionPool;
         SessionPool& get_session_pool() {return session_pool_;};
-
+        ObPsStore* get_ps_store()
+        {
+          return &ps_store_;
+        }
+        ObFIFOStream& get_packet_recorder() {return packet_recorder_;};
       private:
         int initialize();
 
@@ -149,7 +168,7 @@ namespace oceanbase
         int do_request();
 
         /** perf stat */
-        inline int do_stat(ObBasicStmt::StmtType stmt_type, int64_t consumed_time);
+        inline int do_stat(bool is_compound_stmt, ObBasicStmt::StmtType stmt_type, int64_t consumed_time);
 
         int set_port(const int32_t port);
         int set_task_queue_size(const int32_t task_queue_size);
@@ -198,7 +217,7 @@ namespace oceanbase
          */
         int init_sql_env(const ObMySQLCommandPacket& packet, ObSqlContext &context,
                          int64_t &schema_version, ObMySQLResultSet &result);
-        void cleanup_sql_env(ObSqlContext &context, ObMySQLResultSet &result);
+        void cleanup_sql_env(ObSqlContext &context, ObMySQLResultSet &result, bool unlock = true);
 
         /**
          * Parse param in COM_STMT_EXECUTE packet
@@ -222,7 +241,7 @@ namespace oceanbase
          *
          * @return int             return OB_SUCCESS if parse params success, else return OB_ERROR
          */
-        int parse_execute_params(ObSqlContext *context, ObMySQLCommandPacket *packet, ObArray<ObObj> &params, uint32_t &stmt_id, ObArray<EMySQLFieldType> &params_type);
+        int parse_execute_params(ObSqlContext *context, ObMySQLCommandPacket *packet, ObIArray<ObObj> &params, uint32_t &stmt_id, ObIArray<EMySQLFieldType> &params_type);
 
         /**
          * get param value from buffer
@@ -278,7 +297,8 @@ namespace oceanbase
          * @return int    return OB_SUCCESS if all packets sended
          *                else return OB_ERROR
          */
-        int send_response(ObMySQLCommandPacket* packet, ObMySQLResultSet* result, MYSQL_PROTOCOL_TYPE type);
+        int send_response(ObMySQLCommandPacket* packet, ObMySQLResultSet* result,
+                          MYSQL_PROTOCOL_TYPE type, sql::ObSQLSessionInfo *session);
 
         /**
          * Parse result set and send COM_STMT_PREPARE_RESPONSE
@@ -306,7 +326,8 @@ namespace oceanbase
          *                                           ERROR packet sended
          *                                        else return OB_ERROR
          */
-        int send_stmt_prepare_response(ObMySQLCommandPacket* packet, ObMySQLResultSet* result);
+        int send_stmt_prepare_response(ObMySQLCommandPacket* packet, ObMySQLResultSet* result,
+                                       sql::ObSQLSessionInfo *session);
 
 
         /**
@@ -342,7 +363,7 @@ namespace oceanbase
          *                                      else return OB_ERROR/OB_INVALID_ARGUMENT
          */
         int send_ok_packet(ObMySQLCommandPacket* packet,
-                              ObMySQLResultSet *result);
+                           ObMySQLResultSet *result, uint16_t server_status);
 
         //优化发送结果集
         //TODO 涉及到的packet 都要加上encode方法
@@ -352,11 +373,13 @@ namespace oceanbase
          * @param    req    request pointer
          * @param    result query result
          * @param    type   protocol type
+         * @param    charset
          *
          * @return   int    OB_SUCCESS if send successful
          *                  else return OB_ERROR
          */
-        int send_result_set(easy_request_t *req, ObMySQLResultSet *result, MYSQL_PROTOCOL_TYPE type);
+        int send_result_set(easy_request_t *req, ObMySQLResultSet *result,
+                            MYSQL_PROTOCOL_TYPE type, uint16_t server_status, uint16_t charset);
 
         /**
          * 发送绑定变量结果集
@@ -367,7 +390,8 @@ namespace oceanbase
          * @return   int    OB_SUCCESS if send successful
          *                  else return OB_ERROR
          */
-        int send_stmt_prepare_result_set(ObMySQLCommandPacket *packet, ObMySQLResultSet *result);
+        int send_stmt_prepare_result_set(ObMySQLCommandPacket *packet, ObMySQLResultSet *result,
+                                         uint16_t server_status, uint16_t charset);
 
         /**
          * 同步发送已经链接到req->output上的数据
@@ -389,14 +413,16 @@ namespace oceanbase
          */
         int post_raw_packet(easy_request_t *req);
 
+        int post_raw_bytes(easy_request_t * req, const char * bytes, int64_t len);
+
         int process_spr_packet(easy_buf_t *&buff, int64_t &buff_pos,
                                easy_request_t *req, ObMySQLResultSet *result);
         int process_resheader_packet(easy_buf_t *&buff, int64_t &buff_pos,
                                      easy_request_t *req, ObMySQLResultSet *result);
         int process_field_packets(easy_buf_t *&buff, int64_t &buff_pos,
-                                  easy_request_t *req, ObMySQLResultSet *result, bool is_field);
+                                  easy_request_t *req, ObMySQLResultSet *result, bool is_field, uint16_t charset);
         int process_eof_packet(easy_buf_t *&buff, int64_t &buff_pos,
-                               easy_request_t *req, ObMySQLResultSet *result);
+                               easy_request_t *req, ObMySQLResultSet *result, uint16_t server_status);
 
         /**
          * Send field/params packets as response
@@ -425,6 +451,11 @@ namespace oceanbase
         int process_single_packet(easy_buf_t *&buff, int64_t &buff_pos, easy_request_t *req, ObMySQLPacket *packet);
         //end of 优化发送结果集
 
+        int access_cache(ObMySQLCommandPacket * packet, uint32_t stmt_id,
+            ObSqlContext & context, const ObIArray<ObObj> & param);
+
+        int fill_cache();
+        int store_query_string(const ObMySQLCommandPacket& packet, ObSqlContext &context);
         inline void wait_client_obj(easy_client_wait_t& client_wait)
         {
           pthread_mutex_lock(&client_wait.mutex);
@@ -452,6 +483,47 @@ namespace oceanbase
           return ret;
         }
 
+        inline int check_req(easy_request_t *req)
+        {
+          int ret = OB_ERROR;
+          if (OB_LIKELY(NULL != req && NULL != req->ms
+                        && NULL != req->ms->c))
+          {
+            ret = OB_SUCCESS;
+          }
+          return ret;
+        }
+
+        int trans_exe_command_with_type(ObSqlContext* context, ObMySQLCommandPacket* packet, char* buf, int32_t &len, bool &trans_flag);
+
+        static void easy_on_ioth_start(void *arg)
+        {
+          if (arg != NULL)
+          {
+            ObMySQLServer *server = reinterpret_cast<ObMySQLServer*>(arg);
+            server->on_ioth_start();
+          }
+          
+        }
+        void on_ioth_start()
+        {
+          int64_t affinity_start_cpu = config_->obmysql_io_thread_start_cpu;
+          int64_t affinity_end_cpu = config_->obmysql_io_thread_end_cpu;
+          if (0 <= affinity_start_cpu
+              && affinity_start_cpu <= affinity_end_cpu)
+          {
+            static volatile int64_t cpu = 0;
+            int64_t local_cpu = __sync_fetch_and_add(&cpu, 1) % (affinity_end_cpu - affinity_start_cpu + 1) + affinity_start_cpu;
+            cpu_set_t cpuset;
+            CPU_ZERO(&cpuset);
+            CPU_SET(local_cpu, &cpuset);
+            int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+            TBSYS_LOG(INFO, "io thread setaffinity tid=%ld ret=%d cpu=%ld start=%ld end=%ld",
+                      GETTID(), ret, local_cpu, affinity_start_cpu, affinity_end_cpu);
+          }
+        }
+
+
       private:
         static const int64_t SEQ_OFFSET = 3; /* offset of seq in MySQL packet */
       private:
@@ -474,6 +546,7 @@ namespace oceanbase
         //working thread handle close rquest
         ObMySQLCommandQueueThread close_command_queue_thread_;
 
+
         //libeasy stuff
         easy_io_t* eio_;
         easy_io_handler_pt handler_;
@@ -483,10 +556,27 @@ namespace oceanbase
         // session info pool
         SessionPool session_pool_;
         // session manager
-        common::hash::ObHashMap<ObMySQLSessionKey, sql::ObSQLSessionInfo*> session_mgr_;
+        sql::ObSQLSessionMgr session_mgr_;
         // global block allocator
         common::DefaultBlockAllocator block_allocator_;
+
         ObServer self_;
+
+        typedef ObSEArray<ObObj, OB_PREALLOCATED_NUM>           ParamArray;
+        typedef ObSEArray<EMySQLFieldType, OB_PREALLOCATED_NUM> ParamTypeArray;
+        typedef common::ObResourcePool<ParamArray, 1>           ParamArrayPool;
+        typedef common::ObResourcePool<ParamTypeArray, 1>       ParamTypeArrayPool;
+        ParamArrayPool param_pool_;
+        ParamTypeArrayPool param_type_pool_;
+
+        ObSQLIdMgr sql_id_mgr_;
+        ObSQLQueryCache query_cache_;
+        common::ObTimer timer_;
+        // ps store
+        ObPsStore ps_store_;
+
+        static const int64_t FIFO_STREAM_BUFF_SIZE = 100LL*1024*1024;
+        common::ObFIFOStream packet_recorder_;
     };
   }
 }

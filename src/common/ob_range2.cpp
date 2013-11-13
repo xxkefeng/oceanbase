@@ -184,66 +184,12 @@ namespace oceanbase
 
         int64_t ObNewRange::to_string(char* buffer, const int64_t length) const
         {
-          int ret = OB_SUCCESS;
           int64_t pos = 0;
-          int64_t byte_len = 0;
-          const int64_t min_header = 20;
-          const int64_t key_length = 2 * start_key_.length() + 2 * end_key_.length() + 3 ;
-          const int64_t min_body = 9; // (MIN,MAX)
-          const int64_t min_length = min_header + ((key_length > min_body) ? key_length : min_body);
 
-          if (NULL == buffer || length <= 0)
+          if (pos < length)
           {
-            ret = OB_INVALID_ARGUMENT;
-          }
-          else if (length < min_length)
-          {
-            ret = OB_SIZE_OVERFLOW;
-          }
-          if (OB_SUCCESS == ret)
-          {
-
-            const char* lb = 0;
-            if (border_flag_.inclusive_start()) lb = "[";
-            else lb = "(";
-            if (start_key_.is_min_row())
-            {
-              if (border_flag_.inclusive_start()) lb = "[MIN";
-              else lb = "(MIN";
-            }
-
-            snprintf(buffer, length, "table:%ld,%s", table_id_, lb);
-            pos += strlen(buffer);
-
-            // add start_key_
-            if (!start_key_.is_min_row())
-            {
-              byte_len = start_key_.to_string(buffer + pos, length - pos);
-              pos += byte_len ;
-            }
-
-            // add ,
-            buffer[pos++] = ';';
-            buffer[pos++] = ' ';
-
-            // add end_key_
-            if (!end_key_.is_max_row())
-            {
-              byte_len = end_key_.to_string(buffer + pos, length - pos);
-              pos += byte_len ;
-            }
-
-            const char* rb = 0;
-            if (border_flag_.inclusive_end()) rb = "]";
-            else rb = ")";
-            if (end_key_.is_max_row())
-            {
-              if(border_flag_.inclusive_end()) rb = "MAX]";
-              else rb = "MAX)";
-            }
-
-            pos += snprintf(buffer + pos, length - pos, "%s", rb);
-
+            databuff_printf(buffer, length, pos, "table_id:%lu,%s%s; %s%s",
+                table_id_, border_flag_.inclusive_start() ? "[":"(", to_cstring(start_key_), to_cstring(end_key_), border_flag_.inclusive_end() ? "]":")");
           }
 
           return pos;

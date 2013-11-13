@@ -31,6 +31,18 @@ ObCreateTable::~ObCreateTable()
 {
 }
 
+void ObCreateTable::reset()
+{
+  if_not_exists_ = false;
+  local_context_.rs_rpc_proxy_ = NULL;
+}
+
+void ObCreateTable::reuse()
+{
+  if_not_exists_ = false;
+  local_context_.rs_rpc_proxy_ = NULL;
+}
+
 void ObCreateTable::set_sql_context(const ObSqlContext &context)
 {
   local_context_ = context;
@@ -168,6 +180,12 @@ int ObCreateTable::close()
   return OB_SUCCESS;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObCreateTable, PHY_CREATE_TABLE);
+  }
+}
+
 int64_t ObCreateTable::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -190,6 +208,14 @@ int64_t ObCreateTable::to_string(char* buf, const int64_t buf_len) const
   databuff_printf(buf, buf_len, pos, "tablet_max_size=%ld, ", table_schema_.tablet_max_size_);
   databuff_printf(buf, buf_len, pos, "tablet_block_size_=%ld, ", table_schema_.tablet_block_size_);
   databuff_printf(buf, buf_len, pos, "max_rowkey_length=%ld, ", table_schema_.max_rowkey_length_);
+  if (table_schema_.expire_condition_[0] != '\0')
+  {
+    databuff_printf(buf, buf_len, pos, "expire_info=%s, ", table_schema_.expire_condition_);
+  }
+  if (table_schema_.comment_str_[0] != '\0')
+  {
+    databuff_printf(buf, buf_len, pos, "comment_str=%s, ", table_schema_.comment_str_);
+  }
   databuff_printf(buf, buf_len, pos, "create_time_column_id=%lu, ", table_schema_.create_time_column_id_);
   databuff_printf(buf, buf_len, pos, "modify_time_column_id_=%lu, ", table_schema_.modify_time_column_id_);
 

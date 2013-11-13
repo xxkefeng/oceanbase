@@ -29,6 +29,7 @@
 #include "common/ob_row.h"
 #include "common/ob_expr_obj.h"
 #include "common/ob_se_array.h"
+#include "ob_phy_operator.h"
 using namespace oceanbase::common;
 
 namespace oceanbase
@@ -77,9 +78,6 @@ namespace oceanbase
       SYS_FUNC_LENGTH = 0,
       SYS_FUNC_SUBSTR,
       SYS_FUNC_CAST,
-      SYS_FUNC_CUR_TIME,
-      SYS_FUNC_CUR_DATE,
-      SYS_FUNC_CUR_TIMESTAMP,
       SYS_FUNC_CUR_USER,
       SYS_FUNC_TRIM,
       SYS_FUNC_LOWER,
@@ -89,7 +87,8 @@ namespace oceanbase
       SYS_FUNC_UNHEX,
       SYS_FUNC_IP_TO_INT,
       SYS_FUNC_INT_TO_IP,
-
+      SYS_FUNC_GREATEST,
+      SYS_FUNC_LEAST,
       /* SYS_FUNC_NUM is always in the tail */
       SYS_FUNC_NUM
     };
@@ -299,12 +298,26 @@ namespace oceanbase
     class ObPostfixExpression
     {
       public:
+        enum ObPostExprNodeType {
+          BEGIN_TYPE = 0,
+          COLUMN_IDX,
+          CONST_OBJ,
+          PARAM_IDX,
+          SYSTEM_VAR,
+          TEMP_VAR,
+          OP,
+          CUR_TIME_OP,
+          UPS_TIME_OP,
+          END, /* postfix expression terminator */
+          END_TYPE
+        };
+      public:
         ObPostfixExpression();
         ~ObPostfixExpression();
         ObPostfixExpression& operator=(const ObPostfixExpression &other);
         void set_int_div_as_double(bool did);
 
-        // add expression object into array directly, 
+        // add expression object into array directly,
         // user assure objects of postfix expr sequence.
         int add_expr_obj(const common::ObObj &obj);
         int add_expr_item(const ExprItem &item);
@@ -324,10 +337,15 @@ namespace oceanbase
         int merge_expr(const ObPostfixExpression &expr1, const ObPostfixExpression &expr2, const ExprItem &op);
         bool is_empty() const;
         bool is_equijoin_cond(ExprItem::SqlCellInfo &c1, ExprItem::SqlCellInfo &c2) const;
-        bool is_simple_condition(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &const_val) const;
+        // NB: Ugly interface, wish it will not exist in futher. In fact, this interfaces should not appears in post-expression
+        // Since it so ugly, we do not change is_simple_between() and is_simple_in_expr() because their out values are not used so far.
+        // val_type: 0 - const, 1 - system variable,
+        bool is_simple_condition(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &const_val, ObPostExprNodeType *val_type = NULL) const;
         bool is_simple_between(bool real_val, uint64_t &column_id, int64_t &cond_op, ObObj &cond_start, ObObj &cond_end) const;
-        bool is_simple_in_expr(const ObRowkeyInfo &info, ObArray<ObRowkey> &rowkey_array, 
-            common::PageArena<ObObj,common::ModulePageAllocator> &allocator) const; 
+        bool is_simple_in_expr(bool real_val, const ObRowkeyInfo &info, ObIArray<ObRowkey> &rowkey_array,
+            common::PageArena<ObObj,common::ModulePageAllocator> &allocator) const;
+        inline void set_owner_op(ObPhyOperator *owner_op);
+        inline ObPhyOperator* get_owner_op();
         static const char *get_sys_func_name(enum ObSqlSysFunc func_id);
         static int get_sys_func_param_num(const common::ObString& name, int32_t& param_num);
         // print the postfix expression
@@ -335,14 +353,6 @@ namespace oceanbase
 
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
-        enum {
-          BEGIN_TYPE = 0,
-          COLUMN_IDX,
-          CONST_OBJ,
-          OP,
-          END, /* postfix expression terminator */
-          END_TYPE
-        };
         class ExprUtil
         {
           public:
@@ -402,14 +412,14 @@ namespace oceanbase
         static inline int sys_func_length(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int sys_func_substr(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int sys_func_cast(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
-        static inline int sys_func_cur_time(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
-        static inline int sys_func_cur_date(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
-        static inline int sys_func_cur_timestamp(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
+        static inline int sys_func_current_timestamp(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int sys_func_cur_user(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int sys_func_trim(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int sys_func_lower(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int sys_func_upper(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int sys_func_coalesce(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
+        static inline int sys_func_greatest(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
+        static inline int sys_func_least(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int concat_func(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int left_param_end_func(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
         static inline int row_func(ObExprObj *stack_i, int &idx_i, ObExprObj &result, const ObPostExprExtraParams &params);
@@ -422,6 +432,7 @@ namespace oceanbase
         // 辅助函数，检查表达式是否表示const或者column index
         int check_expr_type(const int64_t type_val, bool &is_type, const int64_t stack_len) const;
         int get_sys_func(const common::ObString &sys_func, ObSqlSysFunc &func_type) const;
+        int get_var_obj(ObPostExprNodeType type, const ObObj& expr_node, const ObObj*& val) const;
       private:
         static const int64_t DEF_STRING_BUF_SIZE = 64 * 1024L;
         static const int64_t BASIC_SYMBOL_COUNT = 64;
@@ -437,13 +448,13 @@ namespace oceanbase
         bool did_int_div_as_double_;
         ObObj result_;
         ObStringBuf str_buf_;
+        ObPhyOperator *owner_op_;
+        ObStringBuf calc_buf_;
     }; // class ObPostfixExpression
-
     inline void ObPostfixExpression::set_int_div_as_double(bool did)
     {
       did_int_div_as_double_ = did;
     }
-
     inline bool ObPostfixExpression::is_empty() const
     {
       int64_t type = 0;
@@ -452,13 +463,22 @@ namespace oceanbase
             && common::OB_SUCCESS == expr_[0].get_int(type)
             && END == type);
     }
-
     inline void ObPostfixExpression::reset(void)
     {
-      str_buf_.reset();
+      //str_buf_.reset();
+      str_buf_.clear();
       expr_.clear();
+      owner_op_ = NULL;
+      calc_buf_.clear();
     }
-
+    inline void ObPostfixExpression::set_owner_op(ObPhyOperator *owner_op)
+    {
+      owner_op_ = owner_op;
+    }
+    inline ObPhyOperator* ObPostfixExpression::get_owner_op()
+    {
+      return owner_op_;
+    }
   } // namespace commom
 }// namespace oceanbae
 

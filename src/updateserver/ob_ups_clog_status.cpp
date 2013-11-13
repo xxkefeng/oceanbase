@@ -95,7 +95,10 @@ namespace oceanbase
               || OB_SUCCESS != serialization::encode_i64(buf, len, pos, next_submit_log_id_)
               || OB_SUCCESS != serialization::encode_i64(buf, len, pos, next_commit_log_id_)
               || OB_SUCCESS != serialization::encode_i64(buf, len, pos, next_flush_log_id_)
-              || OB_SUCCESS != serialization::encode_i64(buf, len, pos, last_barrier_log_id_))
+              || OB_SUCCESS != serialization::encode_i64(buf, len, pos, last_barrier_log_id_)
+              || OB_SUCCESS != serialization::encode_i64(buf, len, pos, wait_trans_)
+              || OB_SUCCESS != serialization::encode_i64(buf, len, pos, wait_commit_)
+              || OB_SUCCESS != serialization::encode_i64(buf, len, pos, wait_response_))
       {
         err = OB_SERIALIZE_ERROR;
         TBSYS_LOG(ERROR, "clog_status.serialize(buf=%p[%ld], pos=%ld)=>%d", buf, len, pos, err);
@@ -127,7 +130,10 @@ namespace oceanbase
               || OB_SUCCESS != serialization::decode_i64(buf, len, pos, (int64_t*)&next_submit_log_id_)
               || OB_SUCCESS != serialization::decode_i64(buf, len, pos, (int64_t*)&next_commit_log_id_)
               || OB_SUCCESS != serialization::decode_i64(buf, len, pos, (int64_t*)&next_flush_log_id_)
-              || OB_SUCCESS != serialization::decode_i64(buf, len, pos, (int64_t*)&last_barrier_log_id_))
+              || OB_SUCCESS != serialization::decode_i64(buf, len, pos, (int64_t*)&last_barrier_log_id_)
+              || OB_SUCCESS != serialization::decode_i64(buf, len, pos, (int64_t*)&wait_trans_)
+              || OB_SUCCESS != serialization::decode_i64(buf, len, pos, (int64_t*)&wait_commit_)
+              || OB_SUCCESS != serialization::decode_i64(buf, len, pos, (int64_t*)&wait_response_))
       {
         err = OB_DESERIALIZE_ERROR;
         TBSYS_LOG(ERROR, "clog_status.deserialize(buf=%p[%ld], pos=%ld)=>%d", buf, len, pos, err);
@@ -159,6 +165,7 @@ namespace oceanbase
                                       "role=%s_%s:%s[%s], replay_switch=%ld[%s]\n"
                                       "frozen_version=%ld, cursor=%ld[%ld+%ld]->%ld<-%ld[%s:%s]\n"
                                       "next_submit=%ld, next_commit=%ld, next_flush=%ld, last_barrier=%ld\n"
+                                      "wait_trans=%ld, wait_commit=%ld, wait_response=%ld\n"
                                       ,
                                       obi_role_.get_role_str(), role_mgr_.get_role_str(), role_mgr_.get_state_str(),
                                       slave_sync_type_.get_type_str(),
@@ -167,7 +174,8 @@ namespace oceanbase
                                       replayed_cursor_.log_id_, replayed_cursor_.file_id_, replayed_cursor_.offset_,
                                       max_log_id_replayable_, master_log_id_,
                                       get_clog_src_name(role), clog_src_addr,
-                                      next_submit_log_id_, next_commit_log_id_, next_flush_log_id_, last_barrier_log_id_))
+                                      next_submit_log_id_, next_commit_log_id_, next_flush_log_id_, last_barrier_log_id_,
+                                      wait_trans_, wait_commit_, wait_response_))
                      || count > len)
       {
         err = OB_BUF_NOT_ENOUGH;

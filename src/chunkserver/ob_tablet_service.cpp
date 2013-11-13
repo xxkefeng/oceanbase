@@ -47,7 +47,6 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
   common::ObMergerSchemaManager *merger_schema_mgr = NULL;
   const ObSchemaManagerV2 *schema_mgr = NULL;
   cur_row_ = NULL;
-  int64_t network_timeout = 0;
   const ObSqlScanParam *sql_scan_param = NULL;
   const ObSqlGetParam *sql_get_param = NULL;
 
@@ -70,11 +69,6 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
   else
   {
     TBSYS_LOG(DEBUG, "cs use SCAN method");
-  }
-
-  if(OB_SUCCESS == ret)
-  {
-    network_timeout = chunk_server_.get_config().network_timeout;
   }
 
   if(OB_SUCCESS == ret)
@@ -119,7 +113,7 @@ int ObTabletService::open(const sql::ObSqlReadParam &sql_read_param)
 
   if (OB_SUCCESS == ret)
   {
-    tablet_read_->set_network_timeout(network_timeout);
+    tablet_read_->set_ts_timeout_us(timeout_us_);
     if (OB_SUCCESS != (ret = tablet_read_->set_rpc_proxy(chunk_server_.get_rpc_proxy()) ))
     {
       TBSYS_LOG(WARN, "fail to set rpc proxy:ret[%d]", ret);
@@ -175,15 +169,21 @@ int ObTabletService::fill_scan_data(ObNewScanner &new_scanner)
 {
   int ret = OB_SUCCESS;
   int64_t fullfilled_row_num = 0;
-  int64_t start_time = 0;
-  int64_t timeout = timeout_us_;
+  int64_t start_time = tbsys::CTimeUtil::getTime();
+  int64_t timeout = timeout_us_ - start_time;
+
 
   INIT_PROFILE_LOG_TIMER();
+
+  if (timeout <= 0)
+  {
+    ret = OB_RESPONSE_TIME_OUT;
+    TBSYS_LOG(WARN, "cs already timeout. timeout[%ld], timeout_us_[%ld], start_time[%ld]", timeout, timeout_us_, start_time);
+  }
 
   if(OB_SUCCESS == ret)
   {
     new_scanner.reuse();
-    start_time = tbsys::CTimeUtil::getTime();
   }
 
   while(OB_SUCCESS == ret)

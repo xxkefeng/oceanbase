@@ -24,20 +24,16 @@ sleep 60;
 
 let $c=deploy_get_value(ob1.mysql_p select cluster_id,cluster_role,cluster_flow_percent from __all_cluster);
 --echo $c
-deploy ob1.mysql update __all_cluster set cluster_flow_percent=50 where cluster_id=1;
-deploy ob1.mysql update __all_cluster set cluster_flow_percent=50 where cluster_id=2;
-sleep 10;
 deploy ob1.source include/migrate.inc;
 deploy ob1.prepare;
 # wait for slave ob create tablet
 sleep 60;
-deploy ob1.start_check;
 
-deploy ob1.check_cs_sstable 200;
-deploy ob2.check_cs_sstable 200;
+deploy ob1.check_cs_sstable 202;
+deploy ob2.check_cs_sstable 202;
 
-alter system set tablet_replicas_num=2 server_type=rootserver;
-deploy ob1.cs3.check_log_until_success "begin migrate_tablet";
+deploy ob1.mysql alter system set tablet_replicas_num=2 server_type=rootserver;
+deploy ob1.cs3.check_log_until_success "begin migrate data";
 
 deploy ob2.stop;
 sleep 60;
@@ -45,7 +41,6 @@ deploy ob2.nstart;
 sleep 60;
 deploy ob2.rs0.set_obi_role OBI_SLAVE;
 sleep 120;
-deploy ob1.check_cs_sstable 400;
-deploy ob2.check_cs_sstable 400;
+deploy ob1.check_cs_sstable 404;
+deploy ob2.check_cs_sstable 404;
 sleep 30;
-deploy ob1.stop_check;

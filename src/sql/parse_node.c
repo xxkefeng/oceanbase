@@ -101,6 +101,7 @@ ParseNode* new_node(void *malloc_pool, ObItemType type, int num)
       else
       {
         parse_free(node);
+        node = NULL;
       }
     }
     else

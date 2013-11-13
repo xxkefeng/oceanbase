@@ -66,8 +66,10 @@ namespace oceanbase
         int64_t get_ipv4_server_id() const;
 
         bool operator ==(const ObServer& rv) const;
+        bool operator !=(const ObServer& rv) const;
         bool operator < (const ObServer& rv) const;
         bool compare_by_ip(const ObServer& rv) const;
+        bool is_same_ip(const ObServer& rv) const;
         int32_t get_version() const;
         int32_t get_port() const;
         uint32_t get_ipv4() const;

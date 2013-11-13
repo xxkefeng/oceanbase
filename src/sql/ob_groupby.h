@@ -55,8 +55,8 @@ namespace oceanbase
       public:
         ObGroupBy();
         virtual ~ObGroupBy();
-        void reset();
-
+        virtual void reset();
+        virtual void reuse();
         virtual int get_next_row(const common::ObRow *&row) = 0;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
 
@@ -71,6 +71,7 @@ namespace oceanbase
         virtual void set_int_div_as_double(bool did) = 0;
         virtual bool get_int_div_as_double() const = 0;
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy
@@ -78,7 +79,7 @@ namespace oceanbase
         ObGroupBy& operator=(const ObGroupBy &other);
       protected:
         common::ObArray<ObGroupColumn> group_columns_;
-        common::ObArray<ObSqlExpression> aggr_columns_;
+        ObExpressionArray aggr_columns_;
         int64_t mem_size_limit_;
     };
   } // end namespace sql

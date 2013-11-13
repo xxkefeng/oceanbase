@@ -6,6 +6,18 @@
 using namespace oceanbase;
 using namespace sql;
 
+void ObUpsScan::reset()
+{
+  cur_scan_param_.reset();
+  row_desc_.reset();
+}
+
+void ObUpsScan::reuse()
+{
+  cur_scan_param_.reset();
+  row_desc_.reset();
+}
+
 int ObUpsScan::open()
 {
   int ret = OB_SUCCESS;
@@ -150,9 +162,19 @@ int ObUpsScan::fetch_next(bool first_scan)
 
   if(OB_SUCCESS == ret)
   {
-    if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_scan(cur_scan_param_, cur_new_scanner_, network_timeout_)))
+    int64_t remain_us = 0;
+    if (is_timeout(&remain_us))
     {
-      TBSYS_LOG(WARN, "scan ups fail:ret[%d]", ret);
+      TBSYS_LOG(WARN, "process ups scan timeout, remain_us[%ld]", remain_us);
+      ret = OB_PROCESS_TIMEOUT;
+    }
+    else
+    {
+      TBSYS_LOG(DEBUG, "remain ups scan time [%ld]us", remain_us);
+      if(OB_SUCCESS != (ret = rpc_proxy_->sql_ups_scan(cur_scan_param_, cur_new_scanner_, remain_us)))
+      {
+        TBSYS_LOG(WARN, "scan ups fail:ret[%d]", ret);
+      }
     }
   }
   PROFILE_LOG_TIME(DEBUG, "ObUpsScan::fetch_next first_scan[%d] , range=%s",
@@ -187,6 +209,12 @@ int ObUpsScan::set_child(int32_t child_idx, ObPhyOperator &child_operator)
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObUpsScan, PHY_UPS_SCAN);
+  }
+}
+
 int64_t ObUpsScan::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -196,7 +224,7 @@ int64_t ObUpsScan::to_string(char* buf, const int64_t buf_len) const
 
 ObUpsScan::ObUpsScan()
   :rpc_proxy_(NULL),
-   network_timeout_(0),
+   ts_timeout_us_(0),
    row_counter_(0),
    is_read_consistency_(true)
 {
@@ -208,7 +236,7 @@ ObUpsScan::~ObUpsScan()
 
 bool ObUpsScan::check_inner_stat()
 {
-  return NULL != rpc_proxy_ && network_timeout_ > 0;
+  return NULL != rpc_proxy_ && ts_timeout_us_ > 0;
 }
 
 int ObUpsScan::set_ups_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy)
@@ -224,12 +252,6 @@ int ObUpsScan::set_ups_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy)
     rpc_proxy_ = rpc_proxy;
   }
   return ret;
-}
-
-void ObUpsScan::reset()
-{
-  cur_scan_param_.reset();
-  row_desc_.reset();
 }
 
 int ObUpsScan::get_row_desc(const common::ObRowDesc *&row_desc) const

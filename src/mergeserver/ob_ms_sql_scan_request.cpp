@@ -37,6 +37,7 @@ namespace oceanbase
       scan_param_ = NULL;
       cs_result_mem_size_used_ = 0;
       sharding_limit_count_ = 0;
+      inited_ = false;
     }
 
     ObMsSqlScanRequest::~ObMsSqlScanRequest()
@@ -47,7 +48,7 @@ namespace oceanbase
         if (sub_requests_[i] != NULL)
         {
           sub_requests_[i]->~ObMsSqlSubScanRequest();
-          ob_free(sub_requests_[i]);
+          ob_tc_free(sub_requests_[i]);
           sub_requests_[i] = NULL;
         }
       }
@@ -68,7 +69,7 @@ namespace oceanbase
         else
         {
           int ret = OB_SUCCESS;
-          if ( NULL == (ptr = ob_malloc(sizeof(ObMsSqlSubScanRequest), ObModIds::OB_MS_SUB_SCAN_REQUEST)))
+          if ( NULL == (ptr = ob_tc_malloc(sizeof(ObMsSqlSubScanRequest), ObModIds::OB_MS_SUB_SCAN_REQUEST)))
           {
             TBSYS_LOG(WARN, "ob malloc failed, ret=%d", OB_ALLOCATE_MEMORY_FAILED);
           }
@@ -79,7 +80,7 @@ namespace oceanbase
             {
               TBSYS_LOG(ERROR, "push ObMsSqlSubScanRequest* to sub_requests failed, ret=%d", ret);
               sub_req->~ObMsSqlSubScanRequest();
-              ob_free(sub_req);
+              ob_tc_free(sub_req);
               sub_req = NULL;
             }
             else
@@ -164,53 +165,53 @@ namespace oceanbase
       const ObMergerAsyncRpcStub * async_rpc_stub = NULL;
       ObMsSqlRpcEvent *rpc_event = NULL;
       ObChunkServerItem selected_server;
-      if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = create(&rpc_event))))
+      int64_t fast_retry_timeout_us = static_cast<int64_t>(timeout_us * get_timeout_percent() / 100);
+      if (OB_SUCCESS != (err = create(&rpc_event)))
       {
         TBSYS_LOG(WARN, "fail to create rpc event. [err=%d]", err);
       }
-      if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = sub_req->add_event(
-        rpc_event, this, selected_server))))
+      else
       {
-        TBSYS_LOG(WARN, "fail to init rpc event. [err=%d]", err);
-      }
-      if ((OB_SUCCESS == err) && (NULL == (async_rpc_stub = get_rpc())))
-      {
-        TBSYS_LOG(WARN, "fail to get rpc");
-        err = OB_ERROR;
-      }
-
-      // 4. send the request to selected chunkserver
-      if (OB_SUCCESS == err)
-      {
-        FILL_TRACE_LOG("cs=%s,event_id=%ld", to_cstring(selected_server.addr_), rpc_event->get_event_id());
-      }
-
-      int64_t fast_retry_timeout_us = static_cast<int64_t>(timeout_us * get_timeout_percent() / 100);
-      if ((OB_SUCCESS == err) &&
-        (OB_SUCCESS != (err = async_rpc_stub->scan(fast_retry_timeout_us,
-        selected_server.addr_,
-      /* @note range and offset set in get_scan_param() function */
-        *(sub_req->get_scan_param()),
-        *rpc_event))))
-      {
-        TBSYS_LOG(WARN, "fail to scan cs %s. event id %ld [err=%d]",
-            to_cstring(selected_server.addr_), rpc_event->get_event_id(), err);
-        /// @Exception  scan failed, no failure packet would return to the framework
-        ///             so, we need to release rpc_event manually here
-        int tmp_err = OB_SUCCESS;
-        if (OB_SUCCESS != (tmp_err = ObMsSqlRequest::destroy(rpc_event)))
+        if (OB_SUCCESS != (err = sub_req->add_event(rpc_event, this, selected_server)))
         {
-          TBSYS_LOG(WARN, "fail to destroy rpc_event. [err=%d]", tmp_err);
+          TBSYS_LOG(WARN, "fail to init rpc event. [err=%d]", err);
+        }
+        else if (NULL == (async_rpc_stub = get_rpc()))
+        {
+          TBSYS_LOG(WARN, "fail to get rpc");
+          err = OB_ERROR;
+        }
+        else if (OB_SUCCESS != (err = async_rpc_stub->scan(fast_retry_timeout_us, selected_server.addr_,
+                                                        *(sub_req->get_scan_param()), *rpc_event)))
+        // @note range and offset set in get_scan_param() function
+        {
+          TBSYS_LOG(WARN, "fail to scan cs %s. event id %ld [err=%d]",
+              to_cstring(selected_server.addr_), rpc_event->get_event_id(), err);
+          /// @Exception  scan failed, no failure packet would return to the framework
+          ///             so, we need to release rpc_event manually here
         }
         else
         {
-          TBSYS_LOG(INFO, "rpc_event destroyed.");
+          FILL_TRACE_LOG("cs=%s, event_id=%ld", to_cstring(selected_server.addr_), rpc_event->get_event_id());
+          if (NULL != triggered_rpc_event_id)
+          {
+            *triggered_rpc_event_id = rpc_event->get_event_id();
+          }
+        }
+        if (OB_SUCCESS != err)
+        {
+          int e = OB_SUCCESS;
+          if (OB_SUCCESS != (e = ObMsSqlRequest::destroy(rpc_event)))
+          {
+            TBSYS_LOG(WARN, "fail to destroy rpc_event. [err=%d]", e);
+          }
+          else
+          {
+            TBSYS_LOG(INFO, "rpc_event destroyed.");
+          }
         }
       }
-      if ((OB_SUCCESS == err) && (NULL != triggered_rpc_event_id))
-      {
-        *triggered_rpc_event_id = rpc_event->get_event_id();
-      }
+
       return err;
     }
 
@@ -221,6 +222,7 @@ namespace oceanbase
       const ObMergerAsyncRpcStub * async_rpc_stub = NULL;
       ObMsSqlRpcEvent *new_rpc_event = NULL;
       ObMsSqlSubScanRequest *sub_req = NULL;
+      //流式接口，再次扫描刚才那个server
       ObChunkServerItem only_replica;
       only_replica.addr_ = prev_rpc_event.get_server();
       int64_t limit_count = sharding_limit_count_;
@@ -246,6 +248,7 @@ namespace oceanbase
       }
       else if (OB_SUCCESS == err)
       {
+        //流式接口，设置session id
         new_rpc_event->set_session_id(prev_rpc_event.get_session_id());
       }
 
@@ -478,6 +481,9 @@ namespace oceanbase
         /// if not , create more sub request, old scan range is updated too
         if (OB_SUCCESS == err)
         {
+          // 如果err等于OB_ITER_END, 那说明这个子请求没有被满足
+          // 比如这个子请求本来是请求[1,5](sub_scan_param里面的range_), 但是只返回来了[1,3](scanner所在的tablet_range)，
+          // 那么next_scan_range就是(3,5]
           if (OB_ITER_END == (err = get_next_range(
             *sub_scan_param,
             *scanner,
@@ -505,8 +511,10 @@ namespace oceanbase
             }
             else if (is_req_fullfilled)
             {
+              //说明分裂了
               // input scan range not fully scanned, that means input scan range splited on
               // chunkserver before issue scan request. send new sub request for new split range.
+              // 专门迭代(3,5]
               ObTabletLocationRangeIterator range_iter;
               if (OB_SUCCESS != (err = range_iter.initialize(get_cache_proxy(),
                       scan_param_->get_range(),
@@ -523,7 +531,7 @@ namespace oceanbase
             else if (prev_rpc_event.is_session_end())
             {
               // prev request not fullfilled(data too big to transfer); but session end.
-              TBSYS_LOG(INFO, "prev_rpc_event from %s return OB_SESSION_END, end session, no need more request.", 
+              TBSYS_LOG(INFO, "prev_rpc_event from %s return OB_SESSION_END, end session, no need more request.",
                   to_cstring(prev_rpc_event.get_server()));
               is_session_end = true;
               err = OB_ITER_END;
@@ -626,12 +634,11 @@ namespace oceanbase
         int64_t scan_event_time_cost = tbsys::CTimeUtil::getTime() - rpc_event->get_timestamp();
         OB_STAT_INC(MERGESERVER, SQL_SCAN_EVENT_TIME,  scan_event_time_cost);
         OB_STAT_INC(MERGESERVER, SQL_SCAN_EVENT_COUNT);
-
-        TBSYS_LOG(DEBUG, "rpc_event finised [us_used:%ld,timeout_us:%ld,request_event_id:%lu,rpc_event_id:%lu,"
+        TBSYS_LOG(TRACE, "rpc_event finised [us_used:%ld,timeout_us:%ld,request_event_id:%lu,rpc_event_id:%lu,"
             "rpc_event_client_id:%lu, server:%s,session_id:%lu, err:%d]",
             rpc_event->get_time_used(),rpc_event->get_timeout_us(), get_request_id(),
-            rpc_event->get_event_id(), rpc_event->get_client_id(), to_cstring(rpc_event->get_server()), rpc_event->get_session_id(),
-            rpc_event->get_result_code());
+            rpc_event->get_event_id(), rpc_event->get_client_id(), to_cstring(rpc_event->get_server()),
+            rpc_event->get_session_id(), rpc_event->get_result_code());
       }
 
       /// param checking before start
@@ -656,12 +663,11 @@ namespace oceanbase
         belong_to_this, is_first,  sub_req_idx))))
       {
         TBSYS_LOG(WARN,"fail to find SubRequest for rpc event [from:%s,rpc_event:%p,rpc_event_id:%ld,"
-          "rpc_event->client_id:%lu,this->event_id:%lu]",  
+          "rpc_event->client_id:%lu,this->event_id:%lu]",
           to_cstring(rpc_event->get_server()),
           rpc_event, rpc_event->get_event_id(),
           rpc_event->get_client_id(), this->get_request_id());
       }
-
       if ((OB_SUCCESS == err) && (OB_SUCCESS == rpc_event->get_result_code()))
       {
         if ((OB_SUCCESS == err) && (false == belong_to_this))
@@ -675,6 +681,7 @@ namespace oceanbase
           sub_requests_[sub_req_idx]->reset_session();
         }
 
+        // get_scan_param: global scan param but range is sub request range:query range
         if ((OB_SUCCESS == err)
           && (!check_if_location_cache_valid_(rpc_event->get_result(),*sub_requests_[sub_req_idx]->get_scan_param())))
         {
@@ -695,6 +702,8 @@ namespace oceanbase
             TBSYS_LOG(WARN, "scanner is NULL. no result from server %s", to_cstring(rpc_event->get_server()));
             err = OB_ERROR;
           }
+          // check_if_need_more_req检查这个子请求有没有被满足,如果被满足了is_session_end会被置为true，如果没有
+          // 被满足，那么这个函数内部会对剩余的数据发出子请求
           if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = check_if_need_more_req(sub_req_idx, timeout_us,
             *rpc_event, is_session_end))))
           {
@@ -703,6 +712,7 @@ namespace oceanbase
           }
 
           /// (d) add result to merger operator
+          // 将这个rpc event的结果放入merger_operator_
           if ((OB_SUCCESS == err) && (OB_SUCCESS != (err = merger_operator_.add_sharding_result(
             *scanner,
             sub_requests_[sub_req_idx]->get_query_range(),sub_requests_[sub_req_idx]->get_limit_offset(),
@@ -741,9 +751,11 @@ namespace oceanbase
       }
       if ((OB_SUCCESS == err) && (OB_SUCCESS != rpc_event->get_result_code()) && belong_to_this)
       {
-        TBSYS_LOG(WARN, "rpc event return code not success. [err=%d,event_id:%lu]", rpc_event->get_result_code(),
-          rpc_event->get_event_id());
-        if (OB_SUCCESS != update_location_cache(rpc_event->get_server(),rpc_event->get_result_code(), *sub_requests_[sub_req_idx]->get_scan_param()))
+        TBSYS_LOG(WARN, "rpc event return code not success. [err=%d,sever:%s,range:%s,event_id:%lu]",
+            rpc_event->get_result_code(), rpc_event->get_server().to_cstring(),
+            to_cstring(*(sub_requests_[sub_req_idx]->get_scan_param()->get_range())), rpc_event->get_event_id());
+        if (OB_SUCCESS != update_location_cache(rpc_event->get_server(),rpc_event->get_result_code(),
+          *sub_requests_[sub_req_idx]->get_scan_param()))
         {
           TBSYS_LOG(WARN,"fail to update location cache");
         }
@@ -934,7 +946,7 @@ namespace oceanbase
       // in ps mode, should reset everything first
       reset();
 
-      if (NULL == (ptr = ob_malloc(sizeof(ObMsSqlSubScanRequest), ObModIds::OB_MS_SUB_SCAN_REQUEST)))
+      if (NULL == (ptr = ob_tc_malloc(sizeof(ObMsSqlSubScanRequest), ObModIds::OB_MS_SUB_SCAN_REQUEST)))
       {
         ret = OB_ALLOCATE_MEMORY_FAILED;
         TBSYS_LOG(WARN, "ob malloc failed, ret=%d", ret);
@@ -946,8 +958,12 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "push ObMsSqlSubScanRequest* to sub_requests failed, ret=%d", ret);
           sub_scan_req->~ObMsSqlSubScanRequest();
-          ob_free(sub_scan_req);
+          ob_tc_free(sub_scan_req);
           sub_scan_req = NULL;
+        }
+        else
+        {
+          inited_ = true;
         }
       }
       return ret;
@@ -961,12 +977,21 @@ namespace oceanbase
     {
       /// reset all finished rpc event request
       /// leave the rest to the framework
+      if (total_sub_request_count_ == 0 && inited_)
+      {
+        if (sub_requests_[0] != NULL)
+        {
+          sub_requests_[0]->~ObMsSqlSubScanRequest();
+          ob_tc_free(sub_requests_[0]);
+          sub_requests_[0] = NULL;
+        }
+      }
       for (int32_t i = 0;i < total_sub_request_count_; ++i)
       {
         if (sub_requests_[i] != NULL)
         {
           sub_requests_[i]->~ObMsSqlSubScanRequest();
-          ob_free(sub_requests_[i]);
+          ob_tc_free(sub_requests_[i]);
           sub_requests_[i] = NULL;
         }
       }
@@ -978,6 +1003,7 @@ namespace oceanbase
       scan_param_ = NULL;
       cs_result_mem_size_used_ = 0;
       sharding_limit_count_ = 0;
+      inited_ = false;
     }
 
     int ObMsSqlScanRequest::get_next_row(oceanbase::common::ObRow &row)

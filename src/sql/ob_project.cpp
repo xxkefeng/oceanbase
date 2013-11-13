@@ -31,25 +31,28 @@ ObProject::~ObProject()
 
 void ObProject::reset()
 {
+  columns_.clear(); // don't reset for performance
+  row_desc_.reset();
+  rowkey_cell_count_ = 0;
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObProject::reuse()
+{
   columns_.clear();
   row_desc_.reset();
   rowkey_cell_count_ = 0;
-}
-
-void ObProject::clear()
-{
-  ObSingleChildPhyOperator::clear();
-  reset();
+  ObSingleChildPhyOperator::reuse();
 }
 
 int ObProject::add_output_column(const ObSqlExpression& expr)
 {
   int ret = OB_SUCCESS;
-  // @todo deep copy
-  if (OB_SUCCESS != (ret = columns_.push_back(expr)))
+  if (OB_SUCCESS == (ret = columns_.push_back(expr)))
   {
-    //@todo TBSYS_LOG(WARN, "failed to add column, err=%d expr=%s", ret, to_cstring(expr));
+    columns_.at(columns_.count() - 1).set_owner_op(this);
   }
+
   return ret;
 }
 
@@ -88,7 +91,10 @@ int ObProject::open()
   int ret = OB_SUCCESS;
   if (OB_SUCCESS != (ret = ObSingleChildPhyOperator::open()))
   {
-    TBSYS_LOG(WARN, "failed to open child_op, err=%d", ret);
+    if (!IS_SQL_ERR(ret))
+    {
+      TBSYS_LOG(WARN, "failed to open child_op, err=%d", ret);
+    }
   }
   else if (OB_SUCCESS != (ret = cons_row_desc()))
   {
@@ -133,7 +139,8 @@ int ObProject::get_next_row(const common::ObRow *&row)
   }
   else if (OB_SUCCESS != (ret = child_op_->get_next_row(input_row)))
   {
-    if (OB_ITER_END != ret)
+    if (OB_ITER_END != ret
+        && !IS_SQL_ERR(ret))
     {
       TBSYS_LOG(WARN, "failed to get next row, err=%d", ret);
     }
@@ -163,6 +170,12 @@ int ObProject::get_next_row(const common::ObRow *&row)
     }
   }
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObProject, PHY_PROJECT);
+  }
 }
 
 int64_t ObProject::to_string(char* buf, const int64_t buf_len) const
@@ -234,21 +247,35 @@ DEFINE_DESERIALIZE(ObProject)
   }
   else
   {
+    //for (i = 0; i < expr_count; i++)
+    //{
+    //  ObSqlExpression expr;
+    //  if (OB_SUCCESS != (ret = expr.deserialize(buf, data_len, pos)))
+    //  {
+    //    TBSYS_LOG(WARN, "fail to deserialize expression. ret=%d", ret);
+    //    break;
+    //  }
+    //  else
+    //  {
+    //    if (OB_SUCCESS != (ret = add_output_column(expr)))
+    //    {
+    //      TBSYS_LOG(DEBUG, "fail to add expr to project ret=%d. buf=%p, data_len=%ld, pos=%ld", ret, buf, data_len, pos);
+    //      break;
+    //    }
+    //  }
+    //}
+    ObSqlExpression expr;
     for (i = 0; i < expr_count; i++)
     {
-      ObSqlExpression expr;
-      if (OB_SUCCESS != (ret = expr.deserialize(buf, data_len, pos)))
+      if (OB_SUCCESS != (ret = add_output_column(expr)))
+      {
+        TBSYS_LOG(DEBUG, "fail to add expr to project ret=%d. buf=%p, data_len=%ld, pos=%ld", ret, buf, data_len, pos);
+        break;
+      }
+      if (OB_SUCCESS != (ret = columns_.at(columns_.count() - 1).deserialize(buf, data_len, pos)))
       {
         TBSYS_LOG(WARN, "fail to deserialize expression. ret=%d", ret);
         break;
-      }
-      else
-      {
-        if (OB_SUCCESS != (ret = add_output_column(expr)))
-        {
-          TBSYS_LOG(DEBUG, "fail to add expr to project ret=%d. buf=%p, data_len=%ld, pos=%ld", ret, buf, data_len, pos);
-          break;
-        }
       }
     }
   }
@@ -269,12 +296,24 @@ DEFINE_GET_SERIALIZE_SIZE(ObProject)
   return size;
 }
 
-
-
-void ObProject::assign(const ObProject &other)
+PHY_OPERATOR_ASSIGN(ObProject)
 {
-  columns_ = other.columns_;
-  rowkey_cell_count_ = other.rowkey_cell_count_;
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObProject);
+  reset();
+  for (int64_t i = 0; i < o_ptr->columns_.count(); i++)
+  {
+    if ((ret = columns_.push_back(o_ptr->columns_.at(i))) == OB_SUCCESS)
+    {
+      columns_.at(i).set_owner_op(this);
+    }
+    else
+    {
+      break;
+    }
+  }
+  rowkey_cell_count_ = o_ptr->rowkey_cell_count_;
+  return ret;
 }
 
 ObPhyOperatorType ObProject::get_type() const

@@ -27,9 +27,8 @@ namespace oceanbase
       public:
         ObLimit();
         virtual ~ObLimit();
-
-        void reset();
-        void clear();
+        virtual void reset();
+        virtual void reuse();
         /// @param limit -1 means no limit
         int set_limit(const ObSqlExpression& limit, const ObSqlExpression& offset);
         int get_limit(int64_t &limit, int64_t &offset) const;
@@ -38,9 +37,9 @@ namespace oceanbase
         virtual int get_next_row(const common::ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
-        void assign(const ObLimit &other);
         virtual ObPhyOperatorType get_type() const;
 
+        DECLARE_PHY_OPERATOR_ASSIGN;
         NEED_SERIALIZE_AND_DESERIALIZE;
       private:
         // disallow copy

@@ -36,17 +36,19 @@ ObFilter::~ObFilter()
 void ObFilter::reset()
 {
   destroy_sql_expression_dlist(filters_);
+  ObSingleChildPhyOperator::reset();
 }
 
-void ObFilter::clear()
+void ObFilter::reuse()
 {
-  ObSingleChildPhyOperator::clear();
-  reset();
+  filters_.clear();
+  ObSingleChildPhyOperator::reuse();
 }
 
 int ObFilter::add_filter(ObSqlExpression* expr)
 {
   int ret = OB_SUCCESS;
+  expr->set_owner_op(this);
   if (!filters_.add_last(expr))
   {
     ret = OB_ERR_UNEXPECTED;
@@ -120,6 +122,12 @@ int ObFilter::get_next_row(const common::ObRow *&row)
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObFilter, PHY_FILTER);
+  }
+}
+
 int64_t ObFilter::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -143,7 +151,6 @@ DEFINE_SERIALIZE(ObFilter)
 {
   int ret = OB_SUCCESS;
   ObObj obj;
-
   obj.set_int(filters_.get_size());
   if (0 >= filters_.get_size())
   {
@@ -223,23 +230,33 @@ DEFINE_DESERIALIZE(ObFilter)
   return ret;
 }
 
-void ObFilter::assign(const ObFilter &other)
+PHY_OPERATOR_ASSIGN(ObFilter)
 {
-  destroy_sql_expression_dlist(filters_);
-  dlist_for_each_const(ObSqlExpression, p, other.filters_)
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObFilter);
+  reset();
+  dlist_for_each_const(ObSqlExpression, p, o_ptr->filters_)
   {
     ObSqlExpression *expr = ObSqlExpression::alloc();
     if (NULL == expr)
     {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
       TBSYS_LOG(WARN, "no memory");
       break;
     }
     else
     {
       *expr = *p;
-      filters_.add_last(expr);
+      expr->set_owner_op(this);
+      if (!filters_.add_last(expr))
+      {
+        ret = OB_ERR_UNEXPECTED;
+        TBSYS_LOG(WARN, "Add expression to ObFilter failed");
+        break;
+      }
     }
   }
+  return ret;
 }
 
 ObPhyOperatorType ObFilter::get_type() const

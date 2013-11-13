@@ -31,6 +31,7 @@ exec $LOCAL_DIR/tools/ups_admin  -a $MASTER_UPS_IP -p $MASTER_UPS_PORT -t minor_
 --real_sleep 10
 
 connection conn1;
+--error 119
 commit;
 set autocommit=1;
 execute stmt_select;

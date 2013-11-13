@@ -51,17 +51,22 @@ OB_SQL_CPP_START
 #include "ob_sql_struct.h"
 #include "ob_sql_global.h"
 
+/* 一致性标记 */
 void mysql_set_consistence(MYSQL *mysql);
-
 void mysql_unset_consistence(MYSQL *mysql);
-
 my_bool is_consistence(ObSQLMySQL *mysql);
+
+/* 根据错误码判断是否需要重试 */
+my_bool need_retry(ObSQLMySQL *mysql);
+
+/* 重试标记 */
+void mysql_set_retry(ObSQLMySQL *mysql);
+void mysql_unset_retry(ObSQLMySQL *mysql);
+my_bool is_retry(ObSQLMySQL *mysql);
 
 /* 事务标志 */
 void mysql_set_in_transaction(MYSQL *mysql);
-
 void mysql_unset_in_transaction(MYSQL *mysql);
-
 my_bool is_in_transaction(ObSQLMySQL *mysql);
 
 //================MySQL Client API==================================

@@ -27,8 +27,9 @@ namespace oceanbase
   {
     class ObSqlGetParam : public ObSqlReadParam
     {
-      static const int64_t DEFAULT_ROW_BUF_SIZE = 64 * 1024; // 16KB
+      static const int64_t DEFAULT_ROW_BUF_SIZE = 64 * 1024; // 64KB
       static const int64_t MAX_ROW_CAPACITY  = 10240;
+      static const int64_t DEFAULT_ROWKEY_LIST_NUM = 1024;
     public:
       explicit ObSqlGetParam();
       virtual ~ObSqlGetParam ();
@@ -50,7 +51,11 @@ namespace oceanbase
 
       int64_t to_string(char *buf, int64_t buf_size) const;
       void print_memory_usage(const char* msg) const;
+
+      virtual int assign(const ObSqlReadParam* other);
       NEED_SERIALIZE_AND_DESERIALIZE;
+    private:
+      typedef ObSEArray<common::ObRowkey, OB_PREALLOCATED_NUM> RowkeyListType;
     private:
       int init();
       int copy_rowkey(const common::ObRowkey &rowkey, common::ObRowkey &stored_rowkey);
@@ -77,15 +82,15 @@ namespace oceanbase
       int64_t get_basic_field_serialize_size(void) const;
 
       int serialize_rowkeys(char* buf, const int64_t buf_len,
-          int64_t& pos, const common::ObArray<common::ObRowkey>& rowkey_list) const;
+          int64_t& pos, const RowkeyListType & rowkey_list) const;
 
       int deserialize_rowkeys(const char* buf, const int64_t data_len,
           int64_t& pos);
-      int64_t get_serialize_rowkeys_size(const common::ObArray<common::ObRowkey> &rowkey_list) const;
+      int64_t get_serialize_rowkeys_size(const RowkeyListType & rowkey_list) const;
     private:
       DISALLOW_COPY_AND_ASSIGN(ObSqlGetParam);
       int32_t max_row_capacity_;
-      ObArray<common::ObRowkey>  rowkey_list_;
+      RowkeyListType rowkey_list_;
       ObStringBuf buffer_pool_;
     };
 

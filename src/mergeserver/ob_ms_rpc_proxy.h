@@ -93,6 +93,9 @@ namespace oceanbase
         root_server_ = server;
       }
     public:
+      int get_bloom_filter(const common::ObServer &server, const common::ObNewRange &range, const int64_t tablet_version, const int64_t bf_version, ObString &bf_buffer) const;
+      int get_ups_log_seq(const common::ObServer &ups, const int64_t timeout, int64_t & log_seq);
+    public:
       // retry interval time
       static const int64_t RETRY_INTERVAL_TIME = 20; // 20 ms usleep
 
@@ -108,7 +111,7 @@ namespace oceanbase
 
 
       // execute the plan on ups
-      int ups_plan_execute(const sql::ObPhysicalPlan &plan, sql::ObUpsResult &result);
+      int ups_plan_execute(int64_t timeout, const sql::ObPhysicalPlan &plan, sql::ObUpsResult &result);
       int ups_start_trans(const common::ObTransReq &req, common::ObTransID &trans_id);
       int ups_end_trans(const common::ObEndTransReq &req);
 
@@ -124,6 +127,9 @@ namespace oceanbase
       // get master update server
       // may fail if some server not up. the proxy user should retry
       int get_master_ups(const bool renew, common::ObServer & server);
+
+      // kill session/query on mergeserver
+      int kill_session(const uint32_t ip, const int32_t session_id, const bool is_query);
 
       // output scanner result for debug
       static void output(common::ObScanner & result);
@@ -157,6 +163,7 @@ namespace oceanbase
 
       int get_inst_master_ups(const common::ObServer &root_server, common::ObServer &ups_master);
 
+      inline bool check_need_retry_ups(const int rc);
     private:
       /// max len
       static const int64_t MAX_RANGE_LEN = 128;
@@ -187,6 +194,16 @@ namespace oceanbase
       common::ObUpsList update_server_list_;        // update server list for read
       const common::ObGeneralRpcStub *rpc_stub_;    // rpc stub bottom module
     };
+
+    inline bool ObMergerRpcProxy::check_need_retry_ups(const int rc)
+    {
+      bool need_retry = false;
+      if (OB_NOT_MASTER == rc)
+      {
+        need_retry = true;
+      }
+      return need_retry;
+    }
   }
 }
 

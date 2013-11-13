@@ -2,9 +2,9 @@
  //
  // ob_bloomfilter.h / common / Oceanbase
  //
- // Copyright (C) 2010, 2013 Taobao.com, Inc.
+ // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2011-01-18 by Yubai (yubai.lk@taobao.com)
+ // Created on 2011-01-18 by Yubai (yubai.lk@taobao.com) 
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- //
+ // 
  // Change Log
  //
 ////====================================================================
@@ -22,14 +22,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <pthread.h>
-#include <new>
 #include <limits.h>
-#include <algorithm>
 #include "ob_define.h"
-#include "ob_malloc.h"
-#include "murmur_hash.h"
-#include "ob_rowkey.h"
 
 namespace oceanbase
 {
@@ -60,7 +54,7 @@ namespace oceanbase
         void clear();
         int deep_copy(const bloom_filter_t &other);
         int insert(const T &element);
-        bool contain(const T &element) const;
+        bool may_contain(const T &element) const;
         int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
         int deserialize(const char* buf, const int64_t data_len, int64_t& pos);
         int64_t get_serialize_size(void) const;
@@ -70,6 +64,10 @@ namespace oceanbase
         const uint8_t* get_bits() const;
         int operator | (const bloom_filter_t& other);
         int reinit(const uint8_t* buf, const int64_t nbyte);
+        inline Alloc* get_allocator()
+        {
+          return &alloc_;
+        }
 
       private:
         mutable HashFunc hash_func_;
@@ -77,110 +75,6 @@ namespace oceanbase
         int64_t nhash_;
         int64_t nbit_;
         uint8_t *bits_;
-    };
-
-    class TableBloomFilter
-    {
-      struct DefaultAllocator
-      {
-        void *alloc(const int32_t nbyte) { return ob_malloc(nbyte, common::ObModIds::OB_BLOOM_FILTER); };
-        void free(void *ptr) { ob_free(ptr); };
-      };
-      struct Element
-      {
-        uint64_t table_id;
-        ObRowkey row_key;
-      };
-      struct HashFunc
-      {
-        int64_t operator () (const Element &key, const int64_t hash) const
-        {
-          return key.row_key.murmurhash2(static_cast<uint32_t>(hash)) + static_cast<int64_t>(key.table_id);
-        };
-      };
-      public:
-        TableBloomFilter() : bf_()
-        {
-        };
-        ~TableBloomFilter()
-        {
-        };
-        DISALLOW_COPY_AND_ASSIGN(TableBloomFilter);
-      public:
-        int init(const int64_t nhash, const int64_t nbyte)
-        {
-          return bf_.init(nhash, nbyte * CHAR_BIT);
-        };
-        int reinit(const uint8_t* buf, const int64_t size)
-        {
-          return bf_.reinit(buf, size);
-        }
-        void destroy()
-        {
-          bf_.destroy();
-        };
-        void clear()
-        {
-          bf_.clear();
-        };
-        int deep_copy(const TableBloomFilter &other)
-        {
-          return bf_.deep_copy(other.bf_);
-        };
-        int insert(const uint64_t table_id, const ObRowkey& row_key)
-        {
-          Element key;
-          key.table_id = table_id;
-          key.row_key = row_key;
-          return bf_.insert(key);
-        };
-        bool contain(const uint64_t table_id, const ObRowkey &row_key) const
-        {
-          Element key;
-          key.table_id = table_id;
-          key.row_key = row_key;
-          return bf_.contain(key);
-        };
-        int serialize(char* buf, const int64_t buf_len, int64_t& pos) const
-        {
-          return bf_.serialize(buf, buf_len, pos);
-        };
-        int deserialize(const char* buf, const int64_t data_len, int64_t& pos)
-        {
-          return bf_.deserialize(buf, data_len, pos);
-        };
-        int64_t get_serialize_size(void) const
-        {
-          return bf_.get_serialize_size();
-        };
-
-        const ObBloomFilter<Element, HashFunc, DefaultAllocator>* get_bf() const
-        {
-          return &bf_;
-        }
-
-        int64_t get_nbyte() const
-        {
-          int64_t nbit = bf_.get_nbit();
-          return bf_.calc_nbyte(nbit);
-        }
-
-        const uint8_t* get_buffer() const
-        {
-          return bf_.get_bits();
-        }
-
-        int operator | (const TableBloomFilter& other)
-        {
-          int ret = OB_SUCCESS;
-          const ObBloomFilter<Element, HashFunc, DefaultAllocator>* bf = other.get_bf();
-          ret = bf_ | (*bf);
-
-          return ret;
-        }
-
-      private:
-        ObBloomFilter<Element, HashFunc, DefaultAllocator> bf_;
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -281,10 +175,10 @@ namespace oceanbase
       }
       else
       {
-        int64_t hash = 0;
+        uint64_t hash = 0;
         for (int64_t i = 0; i < nhash_; ++i)
         {
-          hash = hash_func_(element, hash) % nbit_;
+          hash = (hash_func_(element, hash) % nbit_);
           bits_[hash / CHAR_BIT] = static_cast<unsigned char>(bits_[hash / CHAR_BIT] | (1 << (hash % CHAR_BIT)));
         }
       }
@@ -292,7 +186,7 @@ namespace oceanbase
     }
 
     template <class T, class HashFunc, class Alloc>
-    bool ObBloomFilter<T, HashFunc, Alloc>::contain(const T &element) const
+    bool ObBloomFilter<T, HashFunc, Alloc>::may_contain(const T &element) const
     {
       bool bret = true;
       if (NULL == bits_
@@ -304,7 +198,7 @@ namespace oceanbase
       }
       else
       {
-        uint32_t hash = 0;
+        uint64_t hash = 0;
         uint8_t byte_mask = 0;
         uint8_t byte = 0;
         for (int64_t i = 0; i < nhash_; ++i)
@@ -460,7 +354,10 @@ namespace oceanbase
       }
       return ret;
     }
+
+
   }//end namespace common
 }//end namespace oceanbase
 
 #endif //OCEANBASE_COMMON_BLOOM_FILTER_H_
+

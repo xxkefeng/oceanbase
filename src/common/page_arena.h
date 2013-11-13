@@ -8,7 +8,6 @@
 #include "ob_define.h"
 #include "ob_malloc.h"
 #include "ob_mod_define.h"
-#include "ob_malloc.h"
 #include "ob_allocator.h"
 
 
@@ -35,8 +34,8 @@ namespace oceanbase
     {
       DefaultPageAllocator():mod_id_(ObModIds::OB_PAGE_ARENA) {};
       virtual ~DefaultPageAllocator(){};
-      void *alloc(const int64_t sz) { return ob_malloc(sz, mod_id_); }
-      void free(void *p) { ob_free(p); }
+      void *alloc(const int64_t sz) { return ob_tc_malloc(sz, mod_id_); }
+      void free(void *p) { ob_tc_free(p); }
       void freed(const int64_t sz) {UNUSED(sz); /* mostly for effcient bulk stat reporting */ }
       void set_mod_id(int32_t mod_id) {mod_id_ = mod_id;};
       private:
@@ -45,12 +44,12 @@ namespace oceanbase
 
     struct ModulePageAllocator: public ObIAllocator
     {
-      explicit ModulePageAllocator(int32_t mod_id = 0) : mod_id_(mod_id), allocator_(NULL) {}
+      explicit ModulePageAllocator(int32_t mod_id = ObModIds::OB_MODULE_PAGE_ALLOCATOR) : mod_id_(mod_id), allocator_(NULL) {}
       explicit ModulePageAllocator(ObIAllocator &allocator) : allocator_(&allocator) {}
       virtual ~ModulePageAllocator(){}
       void set_mod_id(int32_t mod_id) { mod_id_ = mod_id; }
-      void *alloc(const int64_t sz) { return (NULL == allocator_) ? ob_malloc(sz, mod_id_) : allocator_->alloc(sz); }
-      void free(void *p) { (NULL == allocator_) ? ob_free(p, mod_id_) : allocator_->free(p); }
+      void *alloc(const int64_t sz) { return (NULL == allocator_) ? ob_tc_malloc(sz, mod_id_) : allocator_->alloc(sz); }
+      void free(void *p) { (NULL == allocator_) ? ob_tc_free(p, mod_id_) : allocator_->free(p); }
       void freed(const int64_t sz) {UNUSED(sz); /* mostly for effcient bulk stat reporting */ }
       private:
       int32_t mod_id_;
@@ -597,7 +596,7 @@ namespace oceanbase
     class ObArenaAllocator: public ObIAllocator
     {
       public:
-        ObArenaAllocator(int32_t mod_id, const int64_t page_size = ModuleArena::DEFAULT_PAGE_SIZE)
+        ObArenaAllocator(int32_t mod_id, const int64_t page_size = 64 * 1024)
           :arena_(page_size, ModulePageAllocator(mod_id)){};
         virtual ~ObArenaAllocator(){};
       public:

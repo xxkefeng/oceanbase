@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-      printf("timeout=%ld\n", args.request_timeout_us);
+      printf("server[%s], timeout=%ld\n", server.to_cstring(), args.request_timeout_us);
       ret = args.command.handler(client, args);
     }
     // destroy

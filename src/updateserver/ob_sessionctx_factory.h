@@ -25,7 +25,7 @@
 #include "ob_ups_mutator.h"
 #include "ob_table_engine.h"
 #include "ob_lock_mgr.h"
-#include "ob_fifo_allocator.h"
+#include "common/ob_fifo_allocator.h"
 
 namespace oceanbase
 {
@@ -87,9 +87,35 @@ namespace oceanbase
         common::ModuleArena &arena_;
     };
 
+    class TEValueChecksumCallback : public ISessionCallback
+    {
+      public:
+        TEValueChecksumCallback() : checksum_(0) {};
+        void reset() {checksum_ = 0;};
+        int cb_func(const bool rollback, void *data, BaseSessionCtx &session)
+        {
+          UNUSED(rollback);
+          UNUSED(session);
+          if (!rollback)
+          {
+            TEValue *te_value = (TEValue*)data;
+            if (NULL != te_value->list_tail)
+            {
+              checksum_ ^= te_value->list_tail->modify_time;
+            }
+          }
+          return OB_SUCCESS;
+        };
+        int64_t get_checksum() const {return checksum_;};
+      private:
+        int64_t checksum_;
+    };
+
     class SessionMgr;
     class RWSessionCtx : public BaseSessionCtx, public CallbackMgr
     {
+      typedef int64_t v4si __attribute__ ((vector_size (32)));
+      static v4si v4si_zero;
       enum Stat
       {
         // 状态转移:
@@ -103,18 +129,72 @@ namespace oceanbase
       };
       static const int64_t ALLOCATOR_PAGE_SIZE = 16L * 1024L;
       public:
-        RWSessionCtx(const SessionType type, SessionMgr &host, FIFOAllocator &fifo_allocator);
-        ~RWSessionCtx();
+        RWSessionCtx(const SessionType type, SessionMgr &host, common::FIFOAllocator &fifo_allocator, const bool need_gen_mutator=true);
+        virtual ~RWSessionCtx();
       public:
         void end(const bool need_rollback);
         void publish();
+        void on_free();
         void *alloc(const int64_t size);
         void reset();
-        void kill();
+        virtual void kill();
         int add_publish_callback(ISessionCallback *callback, void *data);
+        int add_free_callback(ISessionCallback *callback, void *data);
+        int prepare_checksum_callback(void *data)
+        {
+          return checksum_callback_list_.prepare_callback_info(*this, &checksum_callback_, data);
+        };
+        void commit_prepare_checksum()
+        {
+          checksum_callback_list_.commit_prepare_list();
+        };
+        void rollback_prepare_checksum()
+        {
+          checksum_callback_list_.rollback_prepare_list(*this);
+        };
+        int64_t get_checksum()
+        {
+          checksum_callback_list_.callback(false, *this);
+          return checksum_callback_.get_checksum();
+        };
+        void mark_stmt()
+        {
+          get_ups_mutator().get_mutator().mark();
+          mark_stmt_total_row_counter_ = get_ups_result().get_affected_rows();
+          mark_stmt_new_row_counter_ = get_uc_info().uc_row_counter;
+          mark_stmt_checksum_ = get_uc_info().uc_checksum;
+          mark_dml_count_ = dml_count_;
+        };
+        void rollback_stmt()
+        {
+          get_ups_mutator().get_mutator().rollback();
+          get_ups_result().set_affected_rows(mark_stmt_total_row_counter_);
+          get_uc_info().uc_row_counter = mark_stmt_new_row_counter_;
+          get_uc_info().uc_checksum = mark_stmt_checksum_;
+          rollback_prepare_list(*this);
+          rollback_prepare_checksum();
+          dml_count_ = mark_dml_count_;
+        };
+        void commit_stmt()
+        {
+          commit_prepare_list();
+          commit_prepare_checksum();
+        };
+        void inc_dml_count(const ObDmlType dml_type)
+        {
+          if (OB_DML_UNKNOW < dml_type
+              && OB_DML_NUM > dml_type)
+          {
+            int64_t *d = (int64_t*)&dml_count_;
+            d[dml_type - 1] += 1;
+          }
+          else
+          {
+            TBSYS_LOG(ERROR, "invalid dml_type=%d", dml_type);
+          }
+        };
       public:
-        void set_is_replaying(const bool is_replaying);
-        const bool get_is_replaying() const;
+        const bool get_need_gen_mutator() const { return need_gen_mutator_; }
         ObUpsMutator &get_ups_mutator();
         TransUCInfo &get_uc_info();
         TEValueUCInfo *alloc_tevalue_uci();
@@ -127,27 +207,45 @@ namespace oceanbase
         bool is_killed() const;
         void set_frozen();
         bool is_frozen() const;
+        void reset_stmt();
       private:
         common::ModulePageAllocator mod_;
         common::ModuleArena page_arena_;
-        PageArenaWrapper page_arena_wrapper_;
+        common::ModuleArena stmt_page_arena_;
+        PageArenaWrapper stmt_page_arena_wrapper_;
         volatile Stat stat_;
         volatile bool alive_flag_;
         bool commit_done_;
-        bool is_replaying_;
+        const bool need_gen_mutator_;
         ObUpsMutator ups_mutator_;
         sql::ObUpsResult ups_result_;
         TransUCInfo uc_info_;
         ILockInfo *lock_info_;
         CallbackMgr publish_callback_list_;
+        CallbackMgr free_callback_list_;
+        TEValueChecksumCallback checksum_callback_;
+        CallbackMgr checksum_callback_list_;
+        int64_t mark_stmt_total_row_counter_;
+        int64_t mark_stmt_new_row_counter_;
+        uint64_t mark_stmt_checksum_;
+        v4si mark_dml_count_;
+        v4si dml_count_;
     };
 
-    typedef RWSessionCtx RPSessionCtx;
+    class RPSessionCtx: public RWSessionCtx
+    {
+      public:
+        RPSessionCtx(const SessionType type, SessionMgr &host, common::FIFOAllocator &fifo_allocator): RWSessionCtx(type, host, fifo_allocator, false)
+        {}
+        ~RPSessionCtx() {}
+        void kill() { TBSYS_LOG(WARN, "replay_session can not be killed: %s", to_cstring(*this)); }
+    };
+
     class SessionCtxFactory : public ISessionCtxFactory
     {
       static const int64_t ALLOCATOR_TOTAL_LIMIT = 5L * 1024L * 1024L * 1024L;
       static const int64_t ALLOCATOR_HOLD_LIMIT = static_cast<int64_t>(1.5 * 1024L * 1024L * 1024L); //1.5G //ALLOCATOR_TOTAL_LIMIT / 2;
-      static const int64_t ALLOCATOR_PAGE_SIZE = 4L * 1024L * 1024L;
+      static const int64_t ALLOCATOR_PAGE_SIZE = 16L * 1024L * 1024L;
       public:
         SessionCtxFactory();
         ~SessionCtxFactory();
@@ -157,7 +255,7 @@ namespace oceanbase
       private:
         common::ModulePageAllocator mod_;
         common::ModuleArena allocator_;
-        FIFOAllocator ctx_allocator_;
+        common::FIFOAllocator ctx_allocator_;
     };
   }
 }

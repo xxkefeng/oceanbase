@@ -20,6 +20,7 @@
 #include "common/ob_object.h"
 #include "common/ob_string.h"
 #include "common/ob_string_buf.h"
+#include "common/ob_hint.h"
 #include "sql/ob_basic_stmt.h"
 #include "sql/ob_column_def.h"
 #include "parse_node.h"
@@ -39,17 +40,21 @@ namespace oceanbase
       void set_tablet_block_size(int64_t size);
       void set_replica_num(int32_t num);
       void set_use_bloom_filter(bool use_bloom_filter);
-      void set_read_static(bool read_static);
+      void set_consistency_level(int64_t consistency_level);
       void set_if_not_exists(bool if_not_exists);
       int set_table_name(ResultPlan& result_plan, const common::ObString& table_name);
+      int set_table_id(ResultPlan& result_plan, const uint64_t table_id);
+      int set_join_info(const common::ObString& join_info);
       int set_expire_info(const common::ObString& expire_info);
       int set_compress_method(const common::ObString& compress_method);
+      int set_comment_str(const common::ObString& comment);
       int add_primary_key_part(uint64_t primary_key_part);
       int add_primary_key_part(ResultPlan& result_plan, const common::ObString& column_name);
       int add_column_def(ResultPlan& result_plan, const ObColumnDef& column);
 
       int64_t get_tablet_max_size() const;
       int64_t get_tablet_block_size() const;
+      uint64_t get_table_id() const;
       int32_t get_replica_num() const;
       int64_t get_primary_key_size() const;
       int64_t get_column_size() const;
@@ -57,10 +62,13 @@ namespace oceanbase
       bool read_static() const;
       bool get_if_not_exists() const;
       const common::ObString& get_table_name() const;
+      const common::ObString& get_join_info() const;
       const common::ObString& get_expire_info() const;
       const common::ObString& get_compress_method() const;
+      const common::ObString& get_comment_str() const;
       const common::ObArray<uint64_t>& get_primary_key() const;
       const ObColumnDef& get_column_def(int64_t index) const;
+      common::ObConsistencyLevel get_consistency_level();
 
       virtual void print(FILE* fp, int32_t level, int32_t index = 0);
 
@@ -78,12 +86,15 @@ namespace oceanbase
 
       int64_t                     tablet_max_size_;
       int64_t                     tablet_block_size_;
+      uint64_t                    table_id_;
       int32_t                     replica_num_;
       bool                        use_bloom_filter_;
-      bool                        read_static_;
+      common::ObConsistencyLevel            consistency_level_;
       bool                        if_not_exists_;
+      common::ObString            join_info_;
       common::ObString            expire_info_;
       common::ObString            compress_method_;
+      common::ObString            comment_str_;
       // for future use: create table xxx as select ......
       //ObSelectStmt                *select_clause;
       // create table xxx as already_exist_table, pay attention to whether data are need
@@ -109,9 +120,13 @@ namespace oceanbase
     {
       use_bloom_filter_ = use_bloom_filter;
     }
-    inline void ObCreateTableStmt::set_read_static(bool read_static)
+    inline void ObCreateTableStmt::set_consistency_level(int64_t consistency_level)
     {
-      read_static_ = read_static;
+      consistency_level_ = (common::ObConsistencyLevel) consistency_level;
+    }
+    inline common::ObConsistencyLevel ObCreateTableStmt::get_consistency_level()
+    {
+      return consistency_level_;
     }
     inline void ObCreateTableStmt::set_if_not_exists(bool if_not_exists)
     {
@@ -128,6 +143,10 @@ namespace oceanbase
     inline int64_t ObCreateTableStmt::get_tablet_block_size() const
     {
       return tablet_block_size_;
+    }
+    inline uint64_t ObCreateTableStmt::get_table_id() const
+    {
+      return table_id_;
     }
     inline int64_t ObCreateTableStmt::get_primary_key_size() const
     {
@@ -147,7 +166,7 @@ namespace oceanbase
     }
     inline bool ObCreateTableStmt::read_static() const
     {
-      return read_static_;
+      return consistency_level_ == common::STATIC ? true : false;
     }
     inline bool ObCreateTableStmt::get_if_not_exists() const
     {
@@ -157,6 +176,10 @@ namespace oceanbase
     {
       return table_name_;
     }
+    inline const common::ObString& ObCreateTableStmt::get_join_info() const
+    {
+      return join_info_;
+    }
     inline const common::ObString& ObCreateTableStmt::get_expire_info() const
     {
       return expire_info_;
@@ -164,6 +187,10 @@ namespace oceanbase
     inline const common::ObString& ObCreateTableStmt::get_compress_method() const
     {
       return compress_method_;
+    }
+    inline const common::ObString& ObCreateTableStmt::get_comment_str() const
+    {
+      return comment_str_;
     }
     inline const common::ObArray<uint64_t>& ObCreateTableStmt::get_primary_key() const
     {

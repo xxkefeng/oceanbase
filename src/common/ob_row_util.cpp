@@ -209,3 +209,92 @@ int ObRowUtil::convert(const ObString &compact_row, ObRow &row, ObRowkey *rowkey
   }
   return ret;
 }
+
+
+int ObRowUtil::convert(uint64_t table_id, const ObString &compact_row, ObRow &row, bool is_ups_row)
+{
+  int ret = OB_SUCCESS;
+  ObCompactCellIterator cell_reader;
+  uint64_t column_id = OB_INVALID_ID;
+  bool is_row_finished = false;
+  const ObObj *value = NULL;
+
+  if (is_ups_row)
+  {
+    row.reset(false, ObRow::DEFAULT_NOP);
+  }
+  else
+  {
+    row.reset(false, ObRow::DEFAULT_NULL);
+  }
+
+  cell_reader.init(compact_row, SPARSE);
+
+  do
+  {
+    if(OB_SUCCESS != (ret = cell_reader.next_cell()))
+    {
+      TBSYS_LOG(WARN, "next cell fail:ret[%d]", ret);
+    }
+    else if (OB_SUCCESS != (ret = cell_reader.get_cell(column_id, value, &is_row_finished)))
+    {
+      TBSYS_LOG(WARN, "failed to get cell, column_id=%lu err=%d", column_id, ret);
+      break;
+    }
+    else if (is_row_finished)
+    {
+      ret = OB_SUCCESS;
+      break;
+    }
+    else if(ObExtendType == value->get_type())
+    {
+      if (OB_SUCCESS !=
+          (ret = row.set_cell(OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, *value)))
+      {
+        TBSYS_LOG(WARN, "failed to set action flag cell, table_id=%lu column_id=%lu "
+            " value=%s err=%d", OB_INVALID_ID, OB_ACTION_FLAG_COLUMN_ID, to_cstring(*value), ret);
+        break;
+      }
+    }
+    else if (OB_SUCCESS != (ret = row.set_cell(table_id, column_id, *value)))
+    {
+      TBSYS_LOG(WARN, "failed to set cell, table_id=%lu column_id=%lu err=%d",
+          table_id, column_id, ret);
+      break;
+    }
+  } while(OB_SUCCESS == ret);
+  return ret;
+}
+
+int64_t ObRowUtil::get_row_serialize_size(const common::ObRow& row)
+{
+  int64_t length = 0;
+  const ObObj* cell = NULL;
+  for (int64_t i = 0; i < row.get_column_num(); ++i)
+  {
+    if (OB_SUCCESS == row.raw_get_cell(i, cell) && NULL != cell)
+    {
+      length += cell->get_serialize_size();
+    }
+  }
+  return length;
+}
+
+int ObRowUtil::serialize_row(const common::ObRow& row, char* buf, int64_t buf_len, int64_t &pos)
+{
+  int ret = 0;
+  const ObObj* cell = NULL;
+  for (int64_t i = 0; i < row.get_column_num(); ++i)
+  {
+    if (OB_SUCCESS != (ret = row.raw_get_cell(i, cell)) || NULL == cell)
+    {
+      TBSYS_LOG(WARN, "serialize_row cell[%ld], ret=%d, cell=%p", i, ret, cell);
+    }
+    else
+    {
+      ret = cell->serialize(buf, buf_len, pos);
+    }
+  }
+  return ret;
+}
+

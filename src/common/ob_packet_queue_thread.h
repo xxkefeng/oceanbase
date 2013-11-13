@@ -22,6 +22,7 @@
 #include "hash/ob_hashmap.h"
 #include "ob_trace_id.h"
 #include "ob_server.h"
+#include "ob_packet_lighty_queue.h"
 
 namespace oceanbase
 {
@@ -30,7 +31,8 @@ namespace oceanbase
     class ObPacketQueueThread : public tbsys::CDefaultRunnable
     {
       public:
-        ObPacketQueueThread();
+        static const int LIGHTY_QUEUE_SIZE = 1 << 18;
+        ObPacketQueueThread(int queue_capacity = LIGHTY_QUEUE_SIZE);
 
         virtual ~ObPacketQueueThread();
 
@@ -38,13 +40,14 @@ namespace oceanbase
 
         void stop(bool waitFinish = false);
 
-        bool push(ObPacket *packet, int maxQueueLen = 0, bool block = true);
+        bool push(ObPacket *packet, int max_queue_len, bool block = true, bool deep_copy = true);
 
-        void pushQueue(ObPacketQueue &packetQueue, int maxQueueLen = 0);
+        //void pushQueue(ObPacketQueue &packetQueue, int maxQueueLen = 0);
         void set_ip_port(const IpPort & ip_port);
         void set_host(const ObServer &host);
         void run(tbsys::CThread *thread, void *arg);
 
+        /*
         ObPacket *head()
         {
           return queue_.head();
@@ -53,6 +56,7 @@ namespace oceanbase
         {
           return queue_.tail();
         }
+        */
         size_t size() const
         {
           return queue_.size();
@@ -87,11 +91,9 @@ namespace oceanbase
       protected:
         bool wait_finish_; 
         bool waiting_;
-        ObPacketQueue queue_;
+        ObPacketLightyQueue queue_;
+        timespec timeout_;
         ObPacketQueueHandler* handler_;
-        tbsys::CThreadCond cond_;
-        tbsys::CThreadCond pushcond_;
-
         void* args_;
 
       private:
@@ -115,7 +117,7 @@ namespace oceanbase
         static const int64_t MAX_PACKET_SIZE = 2*1024*1024L; // 2M
 
         tbsys::CThreadCond next_cond_[MAX_THREAD_COUNT];
-        hash::ObHashMap<int64_t, WaitObject> next_wait_map_;
+        hash::ObHashMap<int64_t, WaitObject, hash::SpinReadWriteDefendMode> next_wait_map_;
 
         volatile uint64_t session_id_;
         volatile uint64_t waiting_thread_count_;

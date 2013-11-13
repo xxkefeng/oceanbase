@@ -33,19 +33,49 @@ namespace oceanbase
       public:
         ObUpsMultiGet();
         virtual ~ObUpsMultiGet();
-
+        virtual void reset();
+        virtual void reuse();
         virtual int set_child(int32_t child_idx, ObPhyOperator &child_operator);
         virtual int open();
         virtual int close();
+        virtual ObPhyOperatorType get_type() const { return PHY_UPS_MULTI_GET; }
         virtual int get_next_row(const ObRowkey *&rowkey, const ObRow *&row);
         virtual void set_row_desc(const ObRowDesc &row_desc);
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
 
         inline int set_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy);
-        inline int set_network_timeout(int64_t network_timeout);
-        virtual void reset();
 
+        inline bool is_timeout(int64_t *remain_us /*= NULL*/) const
+        {
+          int64_t now = tbsys::CTimeUtil::getTime();
+          if (NULL != remain_us)
+          {
+            if (OB_LIKELY(ts_timeout_us_ > 0))
+            {
+              *remain_us = ts_timeout_us_ - now;
+            }
+            else
+            {
+              *remain_us = INT64_MAX; // no timeout
+            }
+          }
+          return (ts_timeout_us_ > 0 && now > ts_timeout_us_);
+        }
+
+        inline int set_ts_timeout_us(int64_t ts_timeout_us)
+        {
+          int ret = OB_SUCCESS;
+          if (ts_timeout_us > 0)
+          {
+            ts_timeout_us_ = ts_timeout_us;
+          }
+          else
+          {
+            ret = OB_INVALID_ARGUMENT;
+          }
+          return ret;
+        }
         /**
          * 设置MultiGet的参数
          */
@@ -68,23 +98,8 @@ namespace oceanbase
         ObUpsRow cur_ups_row_;
         int64_t got_row_count_;
         const ObRowDesc *row_desc_;
-        int64_t network_timeout_;
+        int64_t ts_timeout_us_;
     };
-
-    int ObUpsMultiGet::set_network_timeout(int64_t network_timeout)
-    {
-      int ret = OB_SUCCESS;
-      if(network_timeout <= 0)
-      {
-        ret = OB_INVALID_ARGUMENT;
-        TBSYS_LOG(WARN, "network_timeout should be positive[%ld]", network_timeout);
-      }
-      else
-      {
-        network_timeout_ = network_timeout;
-      }
-      return ret;
-    }
 
     int ObUpsMultiGet::set_rpc_proxy(ObSqlUpsRpcProxy *rpc_proxy)
     {

@@ -20,6 +20,23 @@
 #include "ob_get_param.h"
 #include "ob_scan_param.h"
 
+errno_sensitive_pt &tc_errno_sensitive_func()
+{
+  static __thread errno_sensitive_pt func = NULL;
+  return func;
+}
+
+bool is_errno_sensitive(const int error)
+{
+  bool bret = true;
+  errno_sensitive_pt func = tc_errno_sensitive_func();
+  if (NULL != func)
+  {
+    bret = func(error);
+  }
+  return bret;
+}
+
 namespace oceanbase
 {
   namespace common

@@ -61,7 +61,7 @@ update t1 set b='abcd' where pk1 = 2 and pk2 = 's2' and pk3 = '2012-12-12 12:00:
 select * from t1 where pk1 = 2 and pk2 = 's2' and pk3 = '2012-12-12 12:00:00' for update;
 delete from t1 where pk1 = 2 and pk2 = 's2' and pk3 = '2012-12-12 12:00:00';
 insert into t1 values(2,'s2','2012-12-12 12:00:00',200, 's200','2013-12-12 12:00:00' );
---error 23
+--error 5049
 select * from t1 where pk1 = 1 and pk2 = 's1' and pk3 = '2012-12-12 12:00:00' for update;
 connection s1;
 commit;
@@ -99,7 +99,7 @@ begin;
 update t1 set b = 's2000' where pk1 = 2 and pk2 = 's2' and pk3 = '2012-12-12 12:00:00';
 delete from t1 where pk1 = 2 and pk2 = 's2' and pk3 = '2012-12-12 12:00:00';
 insert into t1 values(2,'s2','2012-12-12 12:00:00',200, 's200','2013-12-12 12:00:00' );
---error 23
+--error 5049
 update t1 set b = 's2000' where pk1 = 1 and pk2 = 's1' and pk3 = '2012-12-12 12:00:00';
 connection s1;
 commit;
@@ -115,9 +115,9 @@ select * from t1 where pk1 = 1 and pk2 = 's1' and pk3 = '2012-12-12 12:00:00' fo
 select * from t1 where pk1 = 2 and pk2 = 's2' and pk3 = '2012-12-12 12:00:00' for update;
 connection s2;
 begin;
---error 23
+--error 5049
 update t1 set b = 's2000' where pk1 = 2 and pk2 = 's2' and pk3 = '2012-12-12 12:00:00';
---error 23
+--error 5049
 update t1 set b = 's2000' where pk1 = 1 and pk2 = 's1' and pk3 = '2012-12-12 12:00:00';
 connection s1;
 commit;

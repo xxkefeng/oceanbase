@@ -33,8 +33,8 @@ namespace oceanbase
       int ret = log_manager_->get_log_worker()->apply(cmd, log_data, data_len);
       if (ret != common::OB_SUCCESS)
       {
-        TBSYS_LOG(ERROR, "fatal error, replay log cmd:[%d], file[%s], seq[%lu], failed, err=[%d]. Quit...",
-            cmd, log_data, seq, ret);
+        TBSYS_LOG(ERROR, "fatal error, replay log cmd:[%d], log_data[%.*s], seq[%lu], failed, err=[%d]. Quit...",
+            cmd, static_cast<int32_t>(data_len), log_data, seq, ret);
         // coredump
         abort();
         // log_manager_->get_log_worker()->exit();

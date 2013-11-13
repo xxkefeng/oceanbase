@@ -568,6 +568,9 @@ namespace oceanbase
           {
             if (is_row_cache_hit)
             {
+#ifndef _SSTABLE_NO_STAT_
+              OB_STAT_TABLE_INC(SSTABLE, table_id, INDEX_SSTABLE_GET_ROWS, 1);
+#endif
               ret = fetch_cache_row(look_key, store_style, row_cache_val);
             }
             else 
@@ -806,8 +809,16 @@ namespace oceanbase
 
       if (OB_SUCCESS == ret)
       {
-        ret = block_cache_->get_block(sstable_id, block_pos_.offset_, block_pos_.size_, 
-                                      handler, table_id);
+        if (get_param_->get_is_result_cached())
+        {
+          ret = block_cache_->get_block(sstable_id, 
+              block_pos_.offset_, block_pos_.size_, handler, table_id);
+        }
+        else
+        {
+          ret = block_cache_->get_block_sync_io(sstable_id,
+              block_pos_.offset_, block_pos_.size_, handler, table_id);
+        }
         if (ret <= 0)
         {
           TBSYS_LOG(WARN, "load block from obcache failed, ret=%d", ret);

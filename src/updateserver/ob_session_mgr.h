@@ -4,7 +4,7 @@
  //
  // Copyright (C) 2010 Taobao.com, Inc.
  //
- // Created on 2012-08-19 by Yubai (yubai.lk@taobao.com) 
+ // Created on 2012-08-19 by Yubai (yubai.lk@taobao.com)
  //
  // -------------------------------------------------------------------
  //
@@ -12,7 +12,7 @@
  //
  //
  // -------------------------------------------------------------------
- // 
+ //
  // Change Log
  //
 ////====================================================================
@@ -27,8 +27,10 @@
 #include "common/ob_timer.h"
 #include "common/ob_new_scanner.h"
 #include "common/ob_transaction.h"
+#include "common/ob_id_map.h"
+#include "common/utility.h"
 #include "common/ob_spin_lock.h"
-#include "ob_id_map.h"
+#include "common/priority_packet_queue_thread.h"
 #include "ob_ups_mutator.h"
 #include "ob_inc_seq.h"
 
@@ -70,6 +72,16 @@ namespace oceanbase
     class BaseSessionCtx
     {
       public:
+        enum ES_STAT
+        {
+          ES_NONE = 0,
+          ES_ALL = ~0,
+          ES_CALLBACK = 1,
+          ES_UPDATE_COMMITED_TRANS_ID = 2,
+          ES_PUBLISH = 4,
+          ES_FREE = 8,
+        };
+      public:
         BaseSessionCtx(const SessionType type,
                        SessionMgr &host) : type_(type),
                                            host_(host)
@@ -79,23 +91,41 @@ namespace oceanbase
         };
         virtual ~BaseSessionCtx() {};
       public:
-        virtual void end(const bool need_rollback)
+        bool need_to_do(ES_STAT flag)
+        {
+          return es_stat_ & flag;
+        }
+        void mark_done(ES_STAT flag)
+        {
+          es_stat_ &= ~flag;
+        }
+        virtual void end(const bool need_rollback) // on commit
         {
           UNUSED(need_rollback);
         };
-        virtual void publish()
+        virtual void publish() // on publish
+        {
+          // do nothing
+        };
+        virtual void on_free() // on free
         {
           // do nothing
         };
         virtual void reset()
         {
           trans_id_ = INT64_MAX;
+          start_handle_time_ = 0;
           session_start_time_ = 0;
           stmt_start_time_ = 0;
           session_timeout_ = INT64_MAX;
           stmt_timeout_ = INT64_MAX;
           session_descriptor_ = UINT32_MAX;
+          es_stat_ = ES_ALL;
+          self_processor_index_ = 0;
+          conflict_processor_index_ = 0;
           CLEAR_TRACE_BUF(tlog_buffer_);
+          priority_ = common::PriorityPacketQueueThread::NORMAL_PRIV;
+          last_proc_time_ = 0;
         };
         virtual void kill()
         {
@@ -117,6 +147,12 @@ namespace oceanbase
           UNUSED(data);
           return common::OB_SUCCESS;
         };
+        virtual int add_free_callback(ISessionCallback *callback, void *data)
+        {
+          UNUSED(callback);
+          UNUSED(data);
+          return common::OB_SUCCESS;
+        };
       public:
         SessionType get_type() const
         {
@@ -124,7 +160,9 @@ namespace oceanbase
         };
 
         virtual void set_frozen(){}
-        
+
+        virtual bool is_frozen() const {return false;}
+
         int64_t get_trans_id() const
         {
           return trans_id_;
@@ -133,7 +171,15 @@ namespace oceanbase
         {
           trans_id_ = trans_id;
         };
-        
+
+        void set_start_handle_time(const int64_t time)
+        {
+          start_handle_time_ = time;
+        }
+        int64_t get_start_handle_time() const
+        {
+          return start_handle_time_;
+        }
         int64_t get_session_start_time() const
         {
           return session_start_time_;
@@ -183,7 +229,7 @@ namespace oceanbase
           }
           return bret;
         };
-        
+
         int64_t get_stmt_timeout() const
         {
           return stmt_timeout_;
@@ -191,6 +237,12 @@ namespace oceanbase
         void set_stmt_timeout(const int64_t timeout)
         {
           stmt_timeout_ = timeout;
+        };
+        bool is_stmt_expired() const
+        {
+          int64_t cur_time = tbsys::CTimeUtil::getTime();
+          bool bret = (cur_time - stmt_start_time_) > stmt_timeout_;
+          return bret;
         };
 
         int64_t get_session_idle_time() const
@@ -201,7 +253,7 @@ namespace oceanbase
         {
           session_idle_time_ = time;
         };
-        
+
         int64_t get_last_active_time() const
         {
           return last_active_time_;
@@ -229,6 +281,14 @@ namespace oceanbase
           return tlog_buffer_;
         };
 
+        int64_t to_string(char* buf, int64_t len) const
+        {
+          int64_t pos = 0;
+          common::databuff_printf(buf, len, pos, "Session type=%d trans_id=%ld start_time=%ld timeout=%ld stmt_start_time=%ld stmt_timeout=%ld idle_time=%ld last_active_time=%ld descriptor=%d",
+                          type_, trans_id_, session_start_time_, session_timeout_, stmt_start_time_, stmt_timeout_, session_idle_time_, last_active_time_, session_descriptor_);
+          return pos;
+        }
+
         void lock_session()
         {
           session_lock_.lock();
@@ -238,10 +298,47 @@ namespace oceanbase
           session_lock_.unlock();
         };
 
+        void set_self_processor_index(const int64_t processor_index)
+        {
+          self_processor_index_ = processor_index;
+        };
+        int64_t get_self_processor_index() const
+        {
+          return self_processor_index_;
+        };
+
+        void set_conflict_processor_index(const int64_t processor_index)
+        {
+          conflict_processor_index_ = processor_index;
+        };
+        int64_t get_conflict_processor_index() const
+        {
+          return conflict_processor_index_;
+        };
+
+        void set_priority(common::PriorityPacketQueueThread::QueuePriority priority)
+        {
+          priority_ = priority;
+        };
+        common::PriorityPacketQueueThread::QueuePriority get_priority() const
+        {
+          return priority_;
+        };
+
+        void set_last_proc_time(const int64_t proc_time)
+        {
+          last_proc_time_ = proc_time;
+        };
+        int64_t get_last_proc_time() const
+        {
+          return last_proc_time_;
+        };
+
       private:
         const SessionType type_;
         SessionMgr &host_;
         int64_t trans_id_;
+        int64_t start_handle_time_;
         int64_t session_start_time_;
         int64_t stmt_start_time_;
         int64_t session_timeout_;
@@ -249,8 +346,13 @@ namespace oceanbase
         int64_t session_idle_time_;
         int64_t last_active_time_;
         uint32_t session_descriptor_;
+        int32_t es_stat_; // end session state
         mutable common::TraceLog::LogBuffer tlog_buffer_;
         common::ObSpinLock session_lock_;
+        int64_t self_processor_index_;
+        int64_t conflict_processor_index_;
+        common::PriorityPacketQueueThread::QueuePriority priority_;
+        int64_t last_proc_time_;
     };
 
     class CallbackMgr
@@ -267,10 +369,15 @@ namespace oceanbase
       public:
         template <typename Allocator>
         int add_callback_info(Allocator &allocator, ISessionCallback *callback, void *data);
+        template <typename Allocator>
+        int prepare_callback_info(Allocator &allocator, ISessionCallback *callback, void *data);
+        void commit_prepare_list();
+        void rollback_prepare_list(BaseSessionCtx &session);
         void reset();
         int callback(const bool rollback, BaseSessionCtx &session);
       private:
         CallbackInfo *callback_list_;
+        CallbackInfo *prepare_list_;
     };
 
     class SessionMgr;
@@ -330,13 +437,7 @@ namespace oceanbase
                         common::SpinRWLock &lock) : lock_(NULL),
                                                     lock_succ_(false)
         {
-          if (ST_REPLAY == type)
-          {
-            lock.rdlock();
-            lock_ = &lock;
-            lock_succ_ = true;
-          }
-          else if (ST_READ_WRITE == type)
+          if (ST_READ_WRITE == type)
           {
             if (lock.try_rdlock())
             {
@@ -365,12 +466,12 @@ namespace oceanbase
         bool lock_succ_;
     };
 
-    class SessionMgr
+    class SessionMgr : public tbsys::CDefaultRunnable
     {
       typedef common::ObFixedQueue<BaseSessionCtx> SessionCtxList;
-      typedef ObIDMap<BaseSessionCtx, uint32_t> SessionCtxMap;
+      typedef common::ObIDMap<BaseSessionCtx, uint32_t> SessionCtxMap;
       public:
-        static const int64_t CALC_INTERVAL = 10000;
+        static const int64_t CALC_INTERVAL = 2000;
         static const int64_t FORCE_KILL_WAITTIME = 100000;
 
       public:
@@ -382,18 +483,23 @@ namespace oceanbase
                 const uint32_t max_rp_num,
                 const uint32_t max_rw_num,
                 ISessionCtxFactory *factory);
-        
+
         void destroy();
+
+        virtual void run(tbsys::CThread* thread, void* arg);
 
       public:
         int begin_session(const SessionType type, const int64_t start_time, const int64_t timeout, const int64_t idle_time, uint32_t &session_descriptor);
         int precommit(const uint32_t session_descriptor);
-        int end_session(const uint32_t session_descriptor, const bool rollback = true, const bool force = true);
+        int end_session(const uint32_t session_descriptor, const bool rollback = true, const bool force = true,
+                        const uint64_t es_flag = (uint64_t)BaseSessionCtx::ES_ALL);
+        int update_commited_trans_id(BaseSessionCtx* ctx);
 
         template <class CTX>
         CTX *fetch_ctx(const uint32_t session_descriptor);
         BaseSessionCtx *fetch_ctx(const uint32_t session_descriptor);
         void revert_ctx(const uint32_t session_descriptor);
+        int64_t get_processor_index(const uint32_t session_descriptor);
 
         int64_t get_min_flying_trans_id();
         void flush_min_flying_trans_id();
@@ -403,29 +509,32 @@ namespace oceanbase
         int kill_session(const uint32_t session_descriptor);
         void show_sessions(common::ObNewScanner &scanner);
         int64_t get_commited_trans_id() const;
+        int64_t get_published_trans_id() const;
         int64_t get_flying_rosession_num() const {return ctx_list_[ST_READ_ONLY].get_free();};
         int64_t get_flying_rpsession_num() const {return ctx_list_[ST_REPLAY].get_free();};
         int64_t get_flying_rwsession_num() const {return ctx_list_[ST_READ_WRITE].get_free();};
         IncSeq& get_trans_seq() { return trans_seq_; }
+        void enable_start_write_session(){ allow_start_write_session_ = true; }
+        void disable_start_write_session(){ allow_start_write_session_ = false; }
 
-    protected:
-        int do_end_session(const uint32_t session_descriptor, const bool rollback = true, const bool force = true, const bool publish = true);
       private:
         BaseSessionCtx *alloc_ctx_(const SessionType type);
         void free_ctx_(BaseSessionCtx *ctx);
 
       private:
         bool inited_;
-        ISessionCtxFactory *factory_;
-        IncSeq trans_seq_;
-        volatile int64_t commited_trans_id_;
-        mutable volatile int64_t min_flying_trans_id_;
+        ISessionCtxFactory *factory_ CACHE_ALIGNED;
+        IncSeq trans_seq_ CACHE_ALIGNED;
+        volatile int64_t published_trans_id_ CACHE_ALIGNED;
+        volatile int64_t commited_trans_id_ CACHE_ALIGNED;
+        mutable volatile int64_t min_flying_trans_id_ CACHE_ALIGNED;
         mutable volatile int64_t calc_timestamp_;
 
         SessionCtxList ctx_list_[SESSION_TYPE_NUM];
         SessionCtxMap ctx_map_;
 
         common::SpinRWLock session_lock_;
+        bool allow_start_write_session_;
     };
 
     template <class CTX>
@@ -463,6 +572,29 @@ namespace oceanbase
         cbi->data = data;
         cbi->next = callback_list_;
         callback_list_ = cbi;
+      }
+      return ret;
+    }
+
+    template <typename Allocator>
+    int CallbackMgr::prepare_callback_info(Allocator &allocator, ISessionCallback *callback, void *data)
+    {
+      int ret = common::OB_SUCCESS;
+      CallbackInfo *cbi = NULL;
+      if (NULL == callback)
+      {
+        ret = common::OB_INVALID_ARGUMENT;
+      }
+      else if (NULL == (cbi = (CallbackInfo*)allocator.alloc(sizeof(CallbackInfo))))
+      {
+        ret = common::OB_MEM_OVERFLOW;
+      }
+      else
+      {
+        cbi->callback = callback;
+        cbi->data = data;
+        cbi->next = prepare_list_;
+        prepare_list_ = cbi;
       }
       return ret;
     }

@@ -14,18 +14,46 @@
  *
  */
 #include "ob_expr_values.h"
+#include "ob_duplicate_indicator.h"
 #include "common/utility.h"
 #include "common/ob_obj_cast.h"
+#include "common/hash/ob_hashmap.h"
 using namespace oceanbase::sql;
 using namespace oceanbase::common;
 ObExprValues::ObExprValues()
-  :values_(64*1024, ModulePageAllocator(ObModIds::OB_SQL_ARRAY)),
-   from_deserialize_(false)
+  :values_(OB_TC_MALLOC_BLOCK_SIZE, ModulePageAllocator(ObModIds::OB_SQL_ARRAY)),
+   from_deserialize_(false),
+   check_rowkey_duplicat_(false),
+   do_eval_when_serialize_(false)
 {
 }
 
 ObExprValues::~ObExprValues()
 {
+}
+
+void ObExprValues::reset()
+{
+  row_desc_.reset();
+  row_desc_ext_.reset();
+  values_.clear();
+  row_store_.clear();
+  //row_.reset(false, ObRow::DEFAULT_NULL);
+  from_deserialize_ = false;
+  check_rowkey_duplicat_ = false;
+  do_eval_when_serialize_ = false;
+}
+
+void ObExprValues::reuse()
+{
+  row_desc_.reset();
+  row_desc_ext_.reset();
+  values_.clear();
+  row_store_.clear();
+  //row_.reset(false, ObRow::DEFAULT_NULL);
+  from_deserialize_ = false;
+  check_rowkey_duplicat_ = false;
+  do_eval_when_serialize_ = false;
 }
 
 int ObExprValues::set_row_desc(const common::ObRowDesc &row_desc, const common::ObRowDescExt &row_desc_ext)
@@ -37,7 +65,12 @@ int ObExprValues::set_row_desc(const common::ObRowDesc &row_desc, const common::
 
 int ObExprValues::add_value(const ObSqlExpression &v)
 {
-  return values_.push_back(v);
+  int ret = OB_SUCCESS;
+  if ((ret = values_.push_back(v)) == OB_SUCCESS)
+  {
+    values_.at(values_.count() - 1).set_owner_op(this);
+  }
+  return ret;
 }
 
 int ObExprValues::open()
@@ -108,6 +141,12 @@ int ObExprValues::get_row_desc(const common::ObRowDesc *&row_desc) const
   return OB_SUCCESS;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObExprValues, PHY_EXPR_VALUES);
+  }
+}
+
 int64_t ObExprValues::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -136,7 +175,32 @@ int ObExprValues::eval()
   else
   {
     const ObRowStore::StoredRow *stored_row = NULL;
+    ObDuplicateIndicator *indicator = NULL;
     int64_t col_num = row_desc_.get_column_num();
+    int64_t row_num = values_.count() / col_num;
+    // RowKey duplication checking doesn't need while 1 row only
+    if (check_rowkey_duplicat_ && row_num > 1)
+    {
+      void *ind_buf = NULL;
+      if (row_desc_.get_rowkey_cell_count() <= 0)
+      {
+        ret = OB_ERROR;
+        TBSYS_LOG(WARN, "RowKey is empty, ret=%d", ret);
+      }
+      else if ((ind_buf = buf.alloc(sizeof(ObDuplicateIndicator))) == NULL)
+      {
+        ret = OB_ERROR;
+        TBSYS_LOG(WARN, "Malloc ObDuplicateIndicator failed, ret=%d", ret);
+      }
+      else
+      {
+        indicator = new (ind_buf) ObDuplicateIndicator();
+        if ((ret = indicator->init(row_num)) != OB_SUCCESS)
+        {
+          TBSYS_LOG(WARN, "Init ObDuplicateIndicator failed, ret=%d", ret);
+        }
+      }
+    }
     for (int64_t i = 0; OB_SUCCESS == ret && i < values_.count(); i+=col_num) // for each row
     {
       ObRow val_row;
@@ -185,7 +249,7 @@ int ObExprValues::eval()
         }
         else
         {
-          TBSYS_LOG(DEBUG, "i=%ld j=%ld cell=%s", i, j, to_cstring(tmp_value));
+          //TBSYS_LOG(DEBUG, "i=%ld j=%ld cell=%s", i, j, to_cstring(tmp_value));
         }
       } // end for
       if (OB_LIKELY(OB_SUCCESS == ret))
@@ -194,9 +258,58 @@ int ObExprValues::eval()
         {
           TBSYS_LOG(WARN, "failed to add row into store, err=%d", ret);
         }
+        else if (indicator)
+        {
+          const ObRowkey *rowkey = NULL;
+          bool is_dup = false;
+          if ((ret = val_row.get_rowkey(rowkey)) != OB_SUCCESS)
+          {
+            TBSYS_LOG(WARN, "Get RowKey failed, err=%d", ret);
+          }
+          else if ((ret = indicator->have_seen(*rowkey, is_dup)) != OB_SUCCESS)
+          {
+            TBSYS_LOG(WARN, "Check duplication failed, err=%d", ret);
+          }
+          else if (is_dup)
+          {
+            ret = OB_ERR_PRIMARY_KEY_DUPLICATE;
+            TBSYS_LOG(USER_ERROR, "Duplicate entry \'%s\' for key \'PRIMARY\'", to_cstring(*rowkey));
+          }
+          TBSYS_LOG(INFO, "check rowkey isdup is %c rowkey=%s", is_dup?'Y':'N', to_cstring(*rowkey));
+        }
       }
     }   // end for
+    if (indicator)
+    {
+      indicator->~ObDuplicateIndicator();
+    }
   }
+  return ret;
+}
+
+PHY_OPERATOR_ASSIGN(ObExprValues)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObExprValues);
+  reset();
+  row_desc_ = o_ptr->row_desc_;
+  row_desc_ext_ = o_ptr->row_desc_ext_;
+
+  values_.reserve(o_ptr->values_.count());
+  for (int64_t i = 0; i < o_ptr->values_.count(); i++)
+  {
+    if ((ret = this->values_.push_back(o_ptr->values_.at(i))) == OB_SUCCESS)
+    {
+      this->values_.at(i).set_owner_op(this);
+    }
+    else
+    {
+      break;
+    }
+  }
+  do_eval_when_serialize_ = o_ptr->do_eval_when_serialize_;
+  check_rowkey_duplicat_ = o_ptr->check_rowkey_duplicat_;
+  // Does not need to assign row_store_, because this function is used by MS only before opening
   return ret;
 }
 
@@ -204,11 +317,15 @@ DEFINE_SERIALIZE(ObExprValues)
 {
   int ret = OB_SUCCESS;
   int64_t tmp_pos = pos;
-  if (OB_SUCCESS != (ret = (const_cast<ObExprValues*>(this))->open()))
+  if (do_eval_when_serialize_)
   {
-    TBSYS_LOG(WARN, "failed to open expr_values, err=%d", ret);
+    if (OB_SUCCESS != (ret = (const_cast<ObExprValues*>(this))->open()))
+    {
+      TBSYS_LOG(WARN, "failed to open expr_values, err=%d", ret);
+    }
   }
-  else
+
+  if (OB_LIKELY(OB_SUCCESS == ret))
   {
     if (OB_SUCCESS != (ret = row_desc_.serialize(buf, buf_len, tmp_pos)))
     {
@@ -222,6 +339,9 @@ DEFINE_SERIALIZE(ObExprValues)
     {
       pos = tmp_pos;
     }
+  }
+  if (do_eval_when_serialize_)
+  {
     (const_cast<ObExprValues*>(this))->close();
   }
   return ret;

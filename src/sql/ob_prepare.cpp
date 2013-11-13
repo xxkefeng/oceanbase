@@ -80,6 +80,12 @@ int ObPrepare::store_phy_plan_to_session()
   return ret;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObPrepare, PHY_PREPARE);
+  }
+}
+
 int64_t ObPrepare::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;

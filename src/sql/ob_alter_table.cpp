@@ -30,6 +30,19 @@ ObAlterTable::~ObAlterTable()
 {
 }
 
+void ObAlterTable::reset()
+{
+  local_context_.rs_rpc_proxy_ = NULL;
+  alter_schema_.table_id_ = OB_INVALID_ID;
+}
+
+void ObAlterTable::reuse()
+{
+  local_context_.rs_rpc_proxy_ = NULL;
+  alter_schema_.table_id_ = OB_INVALID_ID;
+}
+
+
 int ObAlterTable::open()
 {
   int ret = OB_SUCCESS;
@@ -165,6 +178,12 @@ int ObAlterTable::close()
   return OB_SUCCESS;
 }
 
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObAlterTable, PHY_ALTER_TABLE);
+  }
+}
+
 int64_t ObAlterTable::to_string(char* buf, const int64_t buf_len) const
 {
   int64_t pos = 0;
@@ -208,4 +227,3 @@ int64_t ObAlterTable::to_string(char* buf, const int64_t buf_len) const
   databuff_printf(buf, buf_len, pos, "])\n");
   return pos;
 }
-

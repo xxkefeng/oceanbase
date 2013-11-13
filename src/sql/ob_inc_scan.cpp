@@ -16,6 +16,13 @@
 #include "common/utility.h"
 #include "common/ob_trace_log.h"
 #include "common/ob_packet.h"
+
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObIncScan, PHY_INC_SCAN);
+  }
+}
 namespace oceanbase
 {
   using namespace common;
@@ -39,13 +46,34 @@ namespace oceanbase
         scan_param_guard_(get_scan_param_pool()),
         get_param_(NULL),
         scan_param_(NULL),
-        values_(NULL),
-        cons_get_param_with_rowkey_(false)
+        values_subquery_id_(common::OB_INVALID_ID),
+        cons_get_param_with_rowkey_(false),
+        hotspot_(false)
     {
     }
 
     ObIncScan::~ObIncScan()
     {
+    }
+
+    void ObIncScan::reset()
+    {
+      lock_flag_ = LF_NONE;
+      scan_type_ = ST_NONE;
+      get_param_ = NULL;
+      scan_param_ = NULL;
+      values_subquery_id_ = common::OB_INVALID_ID;
+      cons_get_param_with_rowkey_ = false;
+    }
+
+    void ObIncScan::reuse()
+    {
+      lock_flag_ = LF_NONE;
+      scan_type_ = ST_NONE;
+      get_param_ = NULL;
+      scan_param_ = NULL;
+      values_subquery_id_ = common::OB_INVALID_ID;
+      cons_get_param_with_rowkey_ = false;
     }
 
     ObGetParam* ObIncScan::get_get_param()
@@ -71,16 +99,20 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "serialize(buf=%p[%ld-%ld])=>%d", buf, new_pos, buf_len, err);
       }
+      else if (OB_SUCCESS != (err = serialization::encode_bool(buf, buf_len, new_pos, hotspot_)))
+      {
+        TBSYS_LOG(ERROR, "serialize(buf=%p[%ld-%ld])=>%d", buf, new_pos, buf_len, err);
+      }
       else if (OB_SUCCESS != (err = serialization::encode_i32(buf, buf_len, new_pos, scan_type_)))
       {
         TBSYS_LOG(ERROR, "serialize(buf=%p[%ld-%ld])=>%d", buf, new_pos, buf_len, err);
       }
       else if (ST_MGET == scan_type_)
       {
-        if (OB_UNLIKELY(NULL == values_))
+        if (OB_UNLIKELY(common::OB_INVALID_ID == values_subquery_id_))
         {
           err = OB_NOT_INIT;
-          TBSYS_LOG(ERROR, "values=%p", values_);
+          TBSYS_LOG(ERROR, "values is invalid");
         }
         else if (NULL == get_param_)
         {
@@ -144,6 +176,10 @@ namespace oceanbase
       {
         TBSYS_LOG(ERROR, "deserialize(buf=%p[%ld-%ld])=>%d", buf, new_pos, data_len, err);
       }
+      else if (OB_SUCCESS != (err = serialization::decode_bool(buf, data_len, new_pos, &hotspot_)))
+      {
+        TBSYS_LOG(ERROR, "deserialize(buf=%p[%ld-%ld])=>%d", buf, new_pos, data_len, err);
+      }
       else if (OB_SUCCESS != (err = serialization::decode_i32(buf, data_len, new_pos, (int32_t*)&scan_type_)))
       {
         TBSYS_LOG(ERROR, "deserialize(buf=%p[%ld-%ld])=>%d", buf, new_pos, data_len, err);
@@ -202,12 +238,18 @@ namespace oceanbase
     int ObIncScan::create_get_param_from_values(common::ObGetParam* get_param)
     {
       int ret = OB_SUCCESS;
-      if (NULL == values_)
+      ObExprValues *values = NULL;
+      if (common::OB_INVALID_ID == values_subquery_id_)
       {
-        TBSYS_LOG(WARN, "values is NULL");
+        TBSYS_LOG(WARN, "values is invalid");
         ret = OB_NOT_INIT;
       }
-      else if (OB_SUCCESS != (ret = values_->open()))
+      else if (NULL == (values = dynamic_cast<ObExprValues*>(my_phy_plan_->get_phy_query_by_id(values_subquery_id_))))
+      {
+        TBSYS_LOG(ERROR, "subquery not exist");
+        ret = OB_ERR_UNEXPECTED;
+      }
+      else if (OB_SUCCESS != (ret = values->open()))
       {
         TBSYS_LOG(WARN, "failed to open values, err=%d", ret);
       }
@@ -222,7 +264,7 @@ namespace oceanbase
         uint64_t request_sign = 0;
         while (OB_SUCCESS == ret)
         {
-          ret = values_->get_next_row(row);
+          ret = values->get_next_row(row);
           if (OB_ITER_END == ret)
           {
             ret = OB_SUCCESS;
@@ -240,14 +282,6 @@ namespace oceanbase
           }
           else
           {
-            if (0 == request_sign)
-            {
-              request_sign = rowkey->hash();
-            }
-            else
-            {
-              request_sign = 0;
-            }
             int64_t cell_num = cons_get_param_with_rowkey_ ? rowkey->length() : row->get_column_num();
             for (int64_t i = 0; i < cell_num; ++i)
             {
@@ -268,11 +302,34 @@ namespace oceanbase
                 }
               }
             } // end for
+            if (0 == request_sign
+                && hotspot_)
+            {
+              request_sign = rowkey->murmurhash2((uint32_t)tid);
+            }
           }
         } // end while
-        ObPacket::tsi_req_sign() = request_sign;
-        values_->close();
+        if (hotspot_)
+        {
+          ObPacket::tsi_req_sign() = request_sign;
+        }
       }
+      return ret;
+    }
+
+    PHY_OPERATOR_ASSIGN(ObIncScan)
+    {
+      int ret = OB_SUCCESS;
+      CAST_TO_INHERITANCE(ObIncScan);
+      lock_flag_ = o_ptr->lock_flag_;
+      scan_type_ = o_ptr->scan_type_;
+      scan_param_guard_.reset();
+      get_param_guard_.reset();
+      get_param_ = NULL;
+      scan_param_ = NULL;
+      values_subquery_id_ = o_ptr->values_subquery_id_;
+      cons_get_param_with_rowkey_ = o_ptr->cons_get_param_with_rowkey_;
+      hotspot_ = o_ptr->hotspot_;
       return ret;
     }
   }; // end namespace sql

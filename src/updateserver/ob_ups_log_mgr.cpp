@@ -25,6 +25,7 @@
 
 using namespace oceanbase::common;
 using namespace oceanbase::updateserver;
+#define UPS ObUpdateServerMain::get_instance()->get_update_server()
 
 namespace oceanbase
 {
@@ -219,7 +220,7 @@ int ObUpsLogMgr::init(const char* log_dir, const int64_t log_file_max_size,
   if (OB_SUCCESS == ret)
   {
     ObSlaveMgr *slave = reinterpret_cast<ObSlaveMgr*>(slave_mgr);
-    ret = ObLogWriter::init(log_dir_, log_file_max_size, slave, log_sync_type, &last_fid_before_frozen_);
+    ret = ObLogWriter::init(log_dir_, log_file_max_size, slave, log_sync_type, &last_fid_before_frozen_, &UPS.get_self());
     if (OB_SUCCESS != ret)
     {
       TBSYS_LOG(ERROR, "ObLogWriter init failed[ret=%d]", ret);
@@ -354,7 +355,14 @@ int ObUpsLogMgr::replay_local_log()
   else if (OB_SUCCESS != (err = replay_local_log_func(stop_, log_dir_, start_cursor_, end_cursor, *replay_worker_))
            && OB_ENTRY_NOT_EXIST != err)
   {
-    TBSYS_LOG(ERROR, "replay_log_func(log_dir=%s, start_cursor=%s)=>%d", log_dir_, start_cursor_.to_str(), err);
+    if (OB_CANCELED == err)
+    {
+      TBSYS_LOG(WARN, "replay_log_func(log_dir=%s, start_cursor=%s): CANCELD", log_dir_, start_cursor_.to_str());
+    }
+    else
+    {
+      TBSYS_LOG(ERROR, "replay_log_func(log_dir=%s, start_cursor=%s)=>%d", log_dir_, start_cursor_.to_str(), err);
+    }
   }
   else if (end_cursor.log_id_ <= 0
            && OB_SUCCESS != (err = get_local_max_log_cursor_func(log_dir_, get_max_file_id_by_sst(), end_cursor)))
@@ -904,11 +912,11 @@ int ObUpsLogMgr::write_log_hook(const bool is_master,
   int64_t end_id = end_cursor.log_id_;
   int64_t log_size = (end_cursor.file_id_ - 1) * get_file_size() + end_cursor.offset_;
   clog_stat_.add_disk_us(start_id, end_id, get_last_disk_elapse());
-  clog_stat_.add_net_us(start_id, end_id, get_last_net_elapse());
   OB_STAT_SET(UPDATESERVER, UPS_STAT_COMMIT_LOG_SIZE, log_size);
   OB_STAT_SET(UPDATESERVER, UPS_STAT_COMMIT_LOG_ID, end_cursor.log_id_);
   if (is_master)
   {
+    last_receive_log_time_ = tbsys::CTimeUtil::getTime();
     if (OB_SUCCESS != (err = append_to_log_buffer(&recent_log_cache_, start_id, end_id, log_data, data_len)))
     {
       TBSYS_LOG(ERROR, "append_to_log_buffer([%s,%s], data=%p[%ld])=>%d",

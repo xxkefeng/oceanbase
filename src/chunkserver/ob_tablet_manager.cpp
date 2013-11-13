@@ -408,6 +408,89 @@ namespace oceanbase
       return rc;
     }
 
+    int ObTabletManager::check_fetch_tablet_version(const common::ObNewRange& range,
+        const int64_t tablet_version, int64_t &old_tablet_version)
+    {
+      int rc = OB_SUCCESS;
+      //construct a new tablet and then add all sstable file to it
+      ObMultiVersionTabletImage & tablet_image = get_serving_tablet_image();
+
+      ObTablet * old_tablet = NULL;
+      int64_t serving_version = get_serving_data_version();
+      int tablet_exist = OB_ENTRY_NOT_EXIST;
+      if (chunk_merge_.is_pending_in_upgrade())
+      {
+        TBSYS_LOG(WARN, "local merge in upgrade, cannot migrate "
+            "new tablet = %s, version=%ld", to_cstring(range), tablet_version);
+        rc = OB_CS_EAGAIN;
+      }
+      else if (tablet_version < serving_version
+          || (serving_version > 0 && tablet_version > serving_version + 1))
+      {
+        /**
+         * 1. if server version is 0, it means cs is empty, it allow to
+         * migrate any tablet with any version
+         * 2. migrate in tablet version can't be greater than
+         * serving_vervion + 1
+         * 3. migrate in tablet version can't be less than serving
+         * version
+         */
+        TBSYS_LOG(WARN, "migrate in tablet = %s version =%ld, local serving version=%ld",
+            to_cstring(range), tablet_version, serving_version);
+        rc = OB_DATA_SOURCE_TABLET_VERSION_ERROR;
+      }
+      else if (OB_SUCCESS == ( tablet_exist =
+            tablet_image.acquire_tablet_all_version(
+              range,  ObMultiVersionTabletImage::SCAN_FORWARD,
+              ObMultiVersionTabletImage::FROM_NEWEST_INDEX, 0, old_tablet)) )
+      {
+        TBSYS_LOG(INFO, "tablet intersect with exist, input <%s> and exist <%s>",
+            to_cstring(range), to_cstring(old_tablet->get_range()));
+        if (tablet_version < old_tablet->get_data_version())
+        {
+          TBSYS_LOG(WARN, "migrate in tablet's version =%ld < local tablet's version=%ld",
+              tablet_version, old_tablet->get_data_version());
+          rc = OB_DATA_SOURCE_TABLET_VERSION_ERROR;
+        }
+        else if (tablet_version == old_tablet->get_data_version())
+        {
+          TBSYS_LOG(WARN, "migrate in tablet's version =%ld = local tablet's version=%ld",
+              tablet_version, old_tablet->get_data_version());
+          rc = OB_CS_MIGRATE_IN_EXIST;
+        }
+        else if (tablet_version == old_tablet->get_data_version() + 1)
+        {
+          // equal to local tablet's version + 1, add it;
+          TBSYS_LOG(INFO, "migrate in tablet's version=%ld == "
+              "local tablet's version+1, local_version=%ld, add it.",
+              tablet_version, old_tablet->get_data_version());
+          old_tablet_version = old_tablet->get_data_version();
+          rc = OB_SUCCESS;
+        }
+        else
+        {
+          /**
+           * if tablet is existent and migrate in tablet's version is
+           * greater than local version + 1, can't add this tablet. maybe
+           * this chunkserver merge too slow. because chunkserver must
+           * daily merge version by version and chunkserver must keep two
+           * continious tablet versions, if add a tablet whose version is
+           * larger than local versoin + 1, the tablet version isn't
+           * continious, then it can't destroy one tablet image to store
+           * the next tablet version when do next daily merge.
+           */
+          TBSYS_LOG(WARN, "migrate in tablet's version=%ld > "
+              "local tablet's version+1, local_version=%ld, can't load.",
+              tablet_version, old_tablet->get_data_version());
+          rc = OB_DATA_SOURCE_TABLET_VERSION_ERROR;
+        }
+      }
+
+      if (NULL != old_tablet) tablet_image.release_tablet(old_tablet);
+
+      return rc;
+    }
+
     int ObTabletManager::dest_load_tablet(const common::ObNewRange& range,
                                           char (*dest_path)[OB_MAX_FILE_NAME_LENGTH],
                                           const int64_t num_file,
@@ -660,13 +743,34 @@ namespace oceanbase
        * the cs_admin tool also can force sync all tablet images by
        * rpc command
        */
+      int32_t disk_avail_no_array[common::OB_MAX_DISK_NUMBER];
+      int32_t avail_disk_num = 0;
+      disk_manager_.dump();
       if (disk_num > 0 && NULL != disk_no_array)
       {
+        /**
+         * filter the error disk 
+         */
+        for(int32_t i = 0; i < disk_num; i++)
+        {
+          if(disk_manager_.is_disk_avail(disk_no_array[i]))
+          {
+            disk_avail_no_array[avail_disk_num++] = disk_no_array[i];
+          }
+          else
+          {
+            TBSYS_LOG(WARN, "disk_no:%d is unavailable", disk_no_array[i]);
+          }
+        }
+
         /**
          * ignore the write fail status, we just ensure flush meta file
          * of each disk once
          */
-        ret = tablet_image_.sync_all_images(disk_no_array, disk_num);
+        if(avail_disk_num > 0)
+        {
+          ret = tablet_image_.sync_all_images(disk_avail_no_array, avail_disk_num);
+        }
       }
       else
       {
@@ -771,7 +875,9 @@ namespace oceanbase
         // as first version of this new tablet.
         tablet->set_data_version(data_version);
         // assign a disk for new tablet.
-        tablet->set_disk_no(get_disk_manager().get_dest_disk());
+        int32_t disk_no = get_disk_manager().get_dest_disk();
+        tablet->set_disk_no(disk_no);
+        get_disk_manager().add_used_space(disk_no, 0);
         // load empty sstable files on first time, and create new tablet.
         if (OB_SUCCESS != (err = tablet_image_.add_tablet(tablet, true, true)))
         {
@@ -1123,8 +1229,15 @@ namespace oceanbase
       // since report_tablets process never use block_uncompressed_buffer_
       // so borrow it to store ObTabletReportInfoList
       int64_t num = OB_MAX_TABLET_LIST_NUMBER;
+      /**
+       * FIXME: in order to avoid call report_info_list->get_serialize_size() 
+       * too many times, we caculate the serialize size incremently here. the 
+       * report info list will serialize the tablet count and it occupy 8 bytes 
+       * at most, so we reserve 8 bytes for it.
+       */
+      const int64_t REPORT_INFO_LIST_RESERVED_SERIALIZE_SIZE = 8;
       int64_t max_serialize_size = OB_MAX_PACKET_LENGTH - 1024;
-      int64_t serialize_size = 0;
+      int64_t serialize_size = REPORT_INFO_LIST_RESERVED_SERIALIZE_SIZE;
       int64_t cur_tablet_brother_cnt = 0;
       ObTabletReportInfoList *report_info_list_first = GET_TSI_MULT(ObTabletReportInfoList, TSI_CS_TABLET_REPORT_INFO_LIST_1);
       ObTabletReportInfoList *report_info_list_second = GET_TSI_MULT(ObTabletReportInfoList, TSI_CS_TABLET_REPORT_INFO_LIST_2);
@@ -1193,11 +1306,12 @@ namespace oceanbase
 
               fill_tablet_info(*tablet, tablet_info);
               TBSYS_LOG(INFO, "add tablet <%s>, row count:[%ld], size:[%ld], "
-                  "crc:[%ld] version:[%ld] sequence_num:[%ld] to report list",
+                  "crc:[%ld] row_checksum:[%lu] version:[%ld] sequence_num:[%ld] to report list",
                   to_cstring(tablet_info.tablet_info_.range_),
                   tablet_info.tablet_info_.row_count_,
                   tablet_info.tablet_info_.occupy_size_,
                   tablet_info.tablet_info_.crc_sum_,
+                  tablet_info.tablet_info_.row_checksum_,
                   tablet_info.tablet_location_.tablet_version_,
                   tablet_info.tablet_location_.tablet_seq_);
 
@@ -1301,16 +1415,11 @@ namespace oceanbase
             {
               TBSYS_LOG(WARN, "failed to send tablet info report, err=%d", err);
             }
-            // ignore timeout error, continue report remain tablets;
-            if (OB_RESPONSE_TIME_OUT == err)
-            {
-              err = OB_SUCCESS;
-            }
           }
 
           if (OB_SUCCESS == err)
           {
-            serialize_size = 0 ;
+            serialize_size = REPORT_INFO_LIST_RESERVED_SERIALIZE_SIZE;
             num = OB_MAX_TABLET_LIST_NUMBER;
             report_info_list->reset();
           }
@@ -1835,6 +1944,7 @@ namespace oceanbase
       report_tablet_info.tablet_info_.occupy_size_ = tablet.get_occupy_size();
       report_tablet_info.tablet_info_.row_count_ = tablet.get_row_count();
       report_tablet_info.tablet_info_.crc_sum_ = tablet.get_checksum();
+      report_tablet_info.tablet_info_.row_checksum_ = tablet.get_row_checksum();
 
       const ObServer& self = THE_CHUNK_SERVER.get_self();
       report_tablet_info.tablet_location_.chunkserver_ = self;
@@ -1939,5 +2049,179 @@ namespace oceanbase
       atomic_exchange(&cur_serving_idx_ , (cur_serving_idx_ + 1) % TABLET_ARRAY_NUM);
       return OB_SUCCESS;
     }
+
+
+    int ObTabletManager::delete_tablet_on_rootserver(const common::ObVector<ObTablet*>& delete_tablets)
+    {
+      int ret = OB_SUCCESS;
+      ObTabletReportInfoList *discard_tablet_list =  GET_TSI_MULT(ObTabletReportInfoList, TSI_CS_TABLET_REPORT_INFO_LIST_1);
+      int64_t serialize_size = 0;
+
+      if (NULL == discard_tablet_list)
+      {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      }
+      else
+      {
+        discard_tablet_list->reset();
+        ObTabletReportInfo tablet_info;
+
+        for(int32_t i = 0; i < delete_tablets.size() && OB_SUCCESS == ret; i++)
+        {
+          if(OB_SUCCESS != (ret = fill_tablet_info(*(delete_tablets[i]),  tablet_info)))
+          {
+            TBSYS_LOG(WARN, "fill_tablet_info error.");
+            break;
+          }
+
+          if(serialize_size + tablet_info.get_serialize_size() > OB_MAX_PACKET_LENGTH - 1024 ||
+              discard_tablet_list->get_tablet_size() >= OB_MAX_TABLET_LIST_NUMBER - 1)
+          {
+            if (OB_SUCCESS != (ret = CS_RPC_CALL_RS(delete_tablets, THE_CHUNK_SERVER.get_self(), *discard_tablet_list)))
+            {
+              TBSYS_LOG(WARN, "delete tablets rpc error, ret= %d", ret);
+              break;
+            }
+            else
+            {
+              discard_tablet_list->reset();
+              serialize_size = 0;
+            }
+          }
+
+          if (OB_SUCCESS != (ret = discard_tablet_list->add_tablet(tablet_info)))
+          {
+            TBSYS_LOG(WARN, "add tablet(version=%ld) info to list error. ", delete_tablets[i]->get_data_version());
+            break;
+          }
+          else
+          {
+            serialize_size += tablet_info.get_serialize_size();
+          }
+        }
+      }
+
+      //report remain delete tablet
+      if(OB_SUCCESS == ret && discard_tablet_list->get_tablet_size() > 0)
+      {
+        if(OB_SUCCESS != (ret = CS_RPC_CALL_RS(delete_tablets, THE_CHUNK_SERVER.get_self(), *discard_tablet_list)))
+        {
+          TBSYS_LOG(WARN, "delete tablets rpc error, ret= %d", ret);
+        }
+      }
+
+      return ret;
+    }
+
+
+    int ObTabletManager::uninstall_disk(int32_t disk_no)
+    {
+      int ret = OB_SUCCESS;
+      is_disk_maintain_ = true;
+
+      common::ObVector<ObTablet*> delete_tablet_list;
+      common::ObVector<ObTablet*> delete_roottable_list;
+      delete_tablet_list.reset();
+      delete_roottable_list.reset();
+
+      //set the disk unvalible, so create tablet will not choose this disk
+      disk_manager_.set_disk_status(disk_no, DISK_ERROR);
+      disk_manager_.dump();
+
+      ObMultiVersionTabletImage& image = get_serving_tablet_image();
+      if(OB_SUCCESS != (ret = image.acquire_tablets_on_disk(disk_no, delete_tablet_list)))
+      {
+        TBSYS_LOG(WARN, "failed to get delete tablet, err=%d", ret);
+      }
+      else if(delete_tablet_list.size() > 0)
+      {
+        ObTablet * old_tablet = NULL;
+        common::ObVector<ObTablet*> old_tablet_list;
+        //get the tablets need to deleted by root server
+        for(ObVector<ObTablet*>::iterator it = delete_tablet_list.begin(); it != delete_tablet_list.end() && OB_SUCCESS == ret; ++it)
+        {
+          old_tablet = NULL;
+
+          if((*it)->is_merged() || (*it)->is_removed())
+          {
+            continue;
+          }
+
+          if(OB_SUCCESS == image.get_split_old_tablet((*it), old_tablet))
+          {
+            delete_roottable_list.push_back(old_tablet);
+
+            if(old_tablet->get_disk_no() != disk_no)
+            {
+              old_tablet_list.push_back(old_tablet);
+              TBSYS_LOG(INFO, "split occur old_tablet:%s split_tablet:%s", to_cstring(old_tablet->get_range()), to_cstring((*it)->get_range()));
+            }
+          }
+          else
+          {
+            delete_roottable_list.push_back((*it));
+          }
+        }
+
+        //delete tablet on rootserver
+        if(OB_SUCCESS != (ret = delete_tablet_on_rootserver(delete_roottable_list)))
+        {
+          TBSYS_LOG(WARN, "delete tablet report to rs fail, ret:%d tablet size:%d", ret, delete_roottable_list.size());
+        }
+        else if(OB_SUCCESS != (ret = image.remove_tablets(delete_tablet_list)))
+        {
+          TBSYS_LOG(WARN, "remove tablet failed, ret:%d", ret);
+        }
+        else
+        {
+          //remove all old tablets
+          for(ObVector<ObTablet*>::iterator it = old_tablet_list.begin(); it != old_tablet_list.end(); ++it)
+          {
+            if((*it)->get_disk_no() != disk_no) 
+            {
+              (*it)->set_merged();
+              (*it)->set_removed();
+            }
+          }
+
+          if(OB_SUCCESS != (ret = image.remove_tablets(old_tablet_list)))
+          {
+            TBSYS_LOG(WARN, "remove tablet failed, ret:%d", ret);
+          }
+
+        }
+
+        //release all tablets
+        if(OB_SUCCESS != image.release_tablets(delete_tablet_list))
+        {
+          TBSYS_LOG(WARN, "failed to release tablet");
+        }
+
+        if(OB_SUCCESS != image.release_tablets(old_tablet_list))
+        {
+          TBSYS_LOG(WARN, "failed to release tablet");
+        }
+      }
+
+      TBSYS_LOG(INFO, "uninstall the disk:%d remove tablets num:%d ret:%d", disk_no, delete_tablet_list.size(), ret);
+
+      is_disk_maintain_ = false;
+      return ret;
+    }
+
+    int ObTabletManager::install_disk(const int32_t disk_no)
+    {
+      int ret = OB_SUCCESS;
+      is_disk_maintain_ = true;
+
+      ret = disk_manager_.set_disk_status(disk_no, DISK_NORMAL);
+
+      TBSYS_LOG(INFO, "install the disk:%d ret:%d", disk_no, ret);
+
+      is_disk_maintain_ = false;
+
+      return ret;
+    }
+
   }
 }

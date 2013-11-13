@@ -10,6 +10,7 @@
 *
 ================================================================*/
 #include <getopt.h>
+#include <locale.h>
 
 #include "libgen.h"
 #include "base_main.h"
@@ -17,7 +18,11 @@
 #include "ob_trace_log.h"
 #include "easy_log.h"
 #include "common/ob_easy_log.h"
-#include "ob_profile_log.h"
+#include "common/ob_profile_fill_log.h"
+#include "common/ob_profile_log.h"
+#include "common/ob_preload.h"
+#include "sql/ob_physical_plan.h"
+#include "sql/ob_phy_operator_type.h"
 
 namespace
 {
@@ -30,12 +35,14 @@ namespace oceanbase
   {
     BaseMain* BaseMain::instance_ = NULL;
     bool BaseMain::restart_ = false;
+    bool PACKET_RECORDER_FLAG = false;
 
     BaseMain::BaseMain(const bool daemon)
       : cmd_cluster_id_(0), cmd_rs_port_(0), cmd_master_rs_port_(0), cmd_port_(0),
         cmd_inner_port_(0), cmd_obmysql_port_(0), pid_dir_(DEFAULT_PID_DIR),
         log_dir_(DEFAULT_LOG_DIR), server_name_(NULL), use_daemon_(daemon)
     {
+      setlocale(LC_ALL, "");
       memset(config_, 0, sizeof (config_));
       memset(cmd_rs_ip_, 0, sizeof (cmd_rs_ip_));
       memset(cmd_data_dir_, 0, sizeof (cmd_data_dir_));
@@ -45,6 +52,7 @@ namespace oceanbase
       memset(cmd_appname_, 0, sizeof (cmd_appname_));
       memset(cmd_devname_, 0, sizeof (cmd_devname_));
       memset(cmd_extra_config_, 0, sizeof (cmd_extra_config_));
+      memset(cmd_ms_type_, 0, sizeof(cmd_ms_type_));
     }
     BaseMain::~BaseMain()
     {
@@ -61,7 +69,7 @@ namespace oceanbase
     }
     void BaseMain::sign_handler(const int sig)
     {
-      TBSYS_LOG(INFO, "receive signal sig=%d", sig);
+      TBSYS_LOG(WARN, "receive signal sig=%d", sig);
       switch (sig) {
         case SIGTERM:
         case SIGINT:
@@ -115,6 +123,19 @@ namespace oceanbase
           break;
         case 49:
           ob_print_mod_memory_usage();
+          sql::ob_print_phy_operator_stat();
+          sql::ObPhyPlanTCFactory::get_instance()->stat();
+          sql::ObPhyPlanGFactory::get_instance()->stat();
+          break;
+        case 50:
+          ObProfileFillLog::open();
+          break;
+        case 51:
+          ObProfileFillLog::close();
+          break;
+        case 52:
+          PACKET_RECORDER_FLAG = !PACKET_RECORDER_FLAG;
+          TBSYS_LOG(INFO, "toggle packet_record=%s", PACKET_RECORDER_FLAG ? "ON":"OFF");
           break;
       }
       if (instance_ != NULL) instance_->do_signal(sig);
@@ -131,7 +152,7 @@ namespace oceanbase
     void BaseMain::parse_cmd_line(const int argc,  char *const argv[])
     {
       int opt = 0;
-      const char* opt_string = "r:R:p:i:C:c:n:m:o:z:D:P:hNV";
+      const char* opt_string = "r:R:p:i:C:c:n:m:o:z:D:P:hNVt:f:";
       struct option longopts[] =
         {
           {"rootserver", 1, NULL, 'r'},
@@ -147,8 +168,10 @@ namespace oceanbase
           {"mysql_port", 1, NULL, 'z'},
           {"help", 0, NULL, 'h'},
           {"version", 0, NULL, 'V'},
-          {"no_deamon", 0, NULL, 'N'},
+          {"no_daemon", 0, NULL, 'N'},
           {"extra_config", 0, NULL, 'o'},
+          {"ms_type", 0, NULL, 't'},
+          {"proxy_config_file", 0, NULL, 'f'},
           {0, 0, 0, 0}
         };
 
@@ -156,6 +179,9 @@ namespace oceanbase
         switch (opt) {
           case 'r':
             snprintf(cmd_rs_ip_, OB_IP_STR_BUFF, "%s", optarg);
+            break;
+          case 'f':
+            snprintf(proxy_config_file_, sizeof (proxy_config_file_), "%s", optarg);
             break;
           case 'R':
             snprintf(cmd_master_rs_ip_, OB_IP_STR_BUFF, "%s", optarg);
@@ -198,6 +224,9 @@ namespace oceanbase
             exit(1);
           case 'N':
             use_daemon_ = false;
+            break;
+          case 't':
+            snprintf(cmd_ms_type_, sizeof(cmd_ms_type_), "%s", optarg);
             break;
           default:
             break;
@@ -299,6 +328,17 @@ namespace oceanbase
                 "\t-N|--no_daemon\n"
                 "\t-V|--version\n");
       }
+      else if (0 == strcmp("proxyserver", prog_name))
+      {
+        fprintf(stderr, "proxyserver\n"
+                "\t-h|--help\n"
+                "\t-i|--interface DEV\n"
+                "\t-p|--port PORT\n"
+                "\t-f|--proxy config\n"
+                "\t-o|--extra_config name=value[,...]\n"
+                "\t-N|--no_daemon\n"
+                "\t-V|--version\n");
+      }
       else
       {
         fprintf(stderr, "what SERVER are you run?? [%s]\n", prog_name);
@@ -338,7 +378,7 @@ namespace oceanbase
       {
         snprintf(log_file, sizeof (log_file), "%s", log_dir_);
         if(!tbsys::CFileUtil::mkdirs(log_file)) {
-          fprintf(stderr, "create dir %s error\n", pid_file);
+          fprintf(stderr, "create dir %s error\n", log_file);
           ret = EXIT_FAILURE;
         }
         else
@@ -358,6 +398,7 @@ namespace oceanbase
           TBSYS_LOGGER.setMaxFileSize(256 * 1024L * 1024L); /* 256M */
         }
       }
+      /*
       if (EXIT_SUCCESS == ret)
       {
         ObProfileLogger *logger = ObProfileLogger::getInstance();
@@ -371,6 +412,15 @@ namespace oceanbase
           {
             TBSYS_LOG(ERROR, "init ObProfileLogger error, ret: [%d]", ret);
           }
+      }
+      */
+      if (EXIT_SUCCESS == ret)
+      {
+        char profile_dir_path[512];
+        snprintf(profile_dir_path, 512,
+            "%s/%s.profile", log_dir_, server_name_);
+        ObProfileFillLog::setLogDir(profile_dir_path);
+        ObProfileFillLog::init();
       }
       if (EXIT_SUCCESS == ret)
       {
@@ -400,11 +450,9 @@ namespace oceanbase
           add_signal_catched(47);
           add_signal_catched(48);
           add_signal_catched(49);
-          //signal(SIGINT, BaseMain::sign_handler);
-          //signal(SIGTERM, BaseMain::sign_handler);
-          //signal(40, BaseMain::sign_handler);
-          //signal(41, BaseMain::sign_handler);
-          //signal(42, BaseMain::sign_handler);
+          add_signal_catched(50);
+          add_signal_catched(51);
+          add_signal_catched(52);
           ret = do_work();
           TBSYS_LOG(INFO, "exit program.");
         }

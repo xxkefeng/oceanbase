@@ -136,6 +136,7 @@ namespace oceanbase
         static int deserialize_int_or_varchar_(const char* buf, const int64_t data_len, int64_t& pos,
             int64_t& int_value, ObString &varchar_value, ObObj &last_obj);
 
+        int64_t get_meta_param_serialize_size() const;
 
       protected:
         ObRowStore row_store_;

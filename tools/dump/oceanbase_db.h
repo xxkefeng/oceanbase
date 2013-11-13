@@ -62,6 +62,8 @@ namespace oceanbase {
       public:
         friend class DbTranscation;
       public:
+
+        int delete_row();
         int add(const char *column_name, const ObObj &val);
         int add(const std::string &column_name, const ObObj &val);
 

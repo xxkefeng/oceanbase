@@ -9,8 +9,7 @@
 #include "ob_merge_server_main.h"
 #include "ob_ms_async_rpc.h"
 #include "common/utility.h"
-#include "common/ob_profile_log.h"
-#include "common/ob_profile_type.h"
+#include "common/ob_profile_fill_log.h"
 
 namespace oceanbase
 {
@@ -85,19 +84,11 @@ namespace oceanbase
         {
           TBSYS_LOG(WARN, "r = %p r->ipacket = %p", r, r->ipacket);
         }
-        //copy packet from libeasy to oceanbase
-        //ObPacket* res = dynamic_cast<ObPacket*>(packet_factory_.createPacket());
-        //int size = sizeof(ObPacket) + packet->get_packet_buffer()->get_position();
-        //TBSYS_LOG(DEBUG, "response is %p", packet);
-        //memcpy(res, packet, size);
-        //res->set_packet_buffer((char*)res + sizeof(ObPacket), packet->get_packet_buffer()->get_position());
-
         // 这里是libeasy网络线程，所以直接将trace id，chid打印出来,忽略profile log头部打印出的东西
         else
         {
           //设置包收到的时间
           packet->set_receive_ts(tbsys::CTimeUtil::getTime());
-          PROFILE_LOG(DEBUG, TRACE_ID CHANNEL_ID ASYNC_RPC_END_TIME, packet->get_trace_id(), packet->get_channel_id(), packet->get_receive_ts());
         }
         ret = event->handle_packet(packet, NULL);
         if (OB_SUCCESS == ret)
@@ -132,27 +123,19 @@ namespace oceanbase
         ObPacket* packet = reinterpret_cast<ObPacket*>(r->ipacket);
         if (NULL == r->ipacket)
         {
-          TBSYS_LOG(WARN, "r = %p r->ipacket = %p", r, r->ipacket);
+          TBSYS_LOG(WARN, "message timeout,r = %p r->ipacket = %p", r, r->ipacket);
         }
-        //copy packet from libeasy to oceanbase
-        //ObPacket* res = dynamic_cast<ObPacket*>(packet_factory_.createPacket());
-        //int size = sizeof(ObPacket) + packet->get_packet_buffer()->get_position();
-        //TBSYS_LOG(DEBUG, "response is %p", packet);
-        //memcpy(res, packet, size);
-        //res->set_packet_buffer((char*)res + sizeof(ObPacket), packet->get_packet_buffer()->get_position());
         else
         {
           packet->set_receive_ts(tbsys::CTimeUtil::getTime());
-          int64_t trace_id = packet->get_trace_id();
           int32_t pcode = packet->get_packet_code();
-          //收包的时候打出接收时间
           if (pcode == OB_SQL_SCAN_RESPONSE || pcode == OB_SQL_GET_RESPONSE)
           {
-            PROFILE_LOG(DEBUG, TRACE_ID CHANNEL_ID ASYNC_RPC_END_TIME, trace_id, packet->get_channel_id(), packet->get_receive_ts());
+            event->set_channel_id(packet->get_channel_id());
           }
         }
-        ret = event->handle_packet(packet, NULL);
-	r->user_data = NULL;
+        ret = event->handle_packet(packet, r->ms->c);
+        r->user_data = NULL;
         if (OB_SUCCESS == ret)
         {
           ret = EASY_OK;

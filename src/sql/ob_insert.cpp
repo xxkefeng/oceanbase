@@ -30,6 +30,24 @@ ObInsert::~ObInsert()
 {
 }
 
+void ObInsert::reset()
+{
+  rpc_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  is_replace_ = true;
+  mutator_.clear();
+  ObSingleChildPhyOperator::reset();
+}
+
+void ObInsert::reuse()
+{
+  rpc_ = NULL;
+  table_id_ = OB_INVALID_ID;
+  is_replace_ = true;
+  mutator_.clear();
+  ObSingleChildPhyOperator::reuse();
+}
+
 int ObInsert::open()
 {
   int ret = OB_SUCCESS;
@@ -47,7 +65,7 @@ int ObInsert::open()
   else
   {
     mutator_.use_db_sem();
-    if (OB_SUCCESS != (ret = mutator_.reset()))
+    if (OB_SUCCESS != (ret = mutator_.reuse()))
     {
       TBSYS_LOG(WARN, "fail to reset mutator. ret=%d", ret);
     }
@@ -61,7 +79,7 @@ int ObInsert::open()
 
 int ObInsert::close()
 {
-  mutator_.reset();
+  mutator_.reuse();
   return ObSingleChildPhyOperator::close();
 }
 
@@ -238,6 +256,12 @@ int ObInsert::insert_by_mutator()
     varchar_buff = NULL;
   }
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObInsert, PHY_INSERT);
+  }
 }
 
 int64_t ObInsert::to_string(char* buf, const int64_t buf_len) const

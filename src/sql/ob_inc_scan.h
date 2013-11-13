@@ -17,10 +17,10 @@
 #define _OB_INC_SCAN_H 1
 
 #include "ob_no_children_phy_operator.h"
-#include "ob_husk_phy_operator.h"
 #include "ob_phy_operator_type.h"
 #include "ob_expr_values.h"
 #include "ob_sql_session_info.h"
+#include "ob_husk_filter.h"
 #include "common/ob_scan_param.h"
 #include "common/ob_get_param.h"
 #include "common/ob_range.h"
@@ -56,6 +56,8 @@ namespace oceanbase
       public:
         ObIncScan();
         virtual ~ObIncScan();
+        virtual void reset();
+        virtual void reuse();
       public:
         // implement virtual function
         enum ObPhyOperatorType get_type() const
@@ -87,8 +89,8 @@ namespace oceanbase
         int64_t to_string(char* buf, const int64_t buf_len) const
         {
           int64_t pos = 0;
-          databuff_printf(buf, buf_len, pos, "IncScan(scan_type=%s[%d], lock=%x, ",
-                          st_repr(scan_type_), scan_type_, lock_flag_);
+          databuff_printf(buf, buf_len, pos, "IncScan(scan_type=%s[%d], hotspot=%s, lock=%x, subquery=%lu, ",
+                          st_repr(scan_type_), scan_type_, hotspot_ ? "true" : "false", lock_flag_, values_subquery_id_);
           if (NULL != get_param_)
           {
             pos += get_param_->to_string(buf + pos, buf_len - pos);
@@ -110,13 +112,16 @@ namespace oceanbase
           return pos;
         }
         void set_write_lock_flag() { lock_flag_ = (ObLockFlag)(lock_flag_ | LF_WRITE); }
+        void set_hotspot(bool flag) { hotspot_ = flag; }
         int serialize(char* buf, const int64_t buf_len, int64_t& pos) const;
         int deserialize(const char* buf, const int64_t data_len, int64_t& pos);
         int64_t get_serialize_size() const;
         void set_scan_type(const ScanType scan_type) { scan_type_ = scan_type; }
-        void set_values(ObExprValues *values, bool with_only_rowkey) {values_ = values; cons_get_param_with_rowkey_ = with_only_rowkey;};
+        void set_values(uint64_t subquery, bool with_only_rowkey) {values_subquery_id_ = subquery;
+          cons_get_param_with_rowkey_ = with_only_rowkey;};
         common::ObGetParam* get_get_param();
         common::ObScanParam* get_scan_param();
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         int create_get_param_from_values(common::ObGetParam* get_param);
       protected:
@@ -126,8 +131,9 @@ namespace oceanbase
         ObScanParamPool::Guard scan_param_guard_;
         common::ObGetParam* get_param_;
         common::ObScanParam* scan_param_;
-        ObExprValues *values_;
+        uint64_t values_subquery_id_;
         bool cons_get_param_with_rowkey_;
+        bool hotspot_;
     };
   } // end namespace sql
 } // end namespace oceanbase

@@ -70,7 +70,7 @@ namespace oceanbase
       private:
         hashmap map_;
         int64_t version_;
-        static const int64_t MAP_SIZE = 1000;
+        static const int64_t MAP_SIZE = 512;
     };
 
     inline void ObSystemConfig::clear()

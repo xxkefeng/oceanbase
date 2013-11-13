@@ -30,6 +30,9 @@ namespace oceanbase
         virtual ~ObPrivExecutor();
         virtual int open();
         virtual int close();
+        virtual void reset();
+        virtual void reuse();
+        virtual ObPhyOperatorType get_type() const { return PHY_PRIV_EXECUTOR; }
         virtual int get_next_row(const ObRow *&row);
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const;
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;

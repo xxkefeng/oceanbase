@@ -16,18 +16,14 @@ ob2.reboot
 cluster_id	cluster_role	cluster_flow_percent
 1	1	100
 2	2	0
-ob1.mysql update __all_cluster set cluster_flow_percent=50 where cluster_id=1
-ob1.mysql update __all_cluster set cluster_flow_percent=50 where cluster_id=2
 ob1.source include/migrate.inc
 ob1.prepare
-ob1.start_check
-ob1.check_cs_sstable 200
-ob2.check_cs_sstable 200
-alter system set tablet_replicas_num=2 server_type=rootserver;
-ob1.cs3.check_log_until_success "begin migrate_tablet"
+ob1.check_cs_sstable 202
+ob2.check_cs_sstable 202
+ob1.mysql alter system set tablet_replicas_num=2 server_type=rootserver
+ob1.cs3.check_log_until_success "begin migrate data"
 ob2.stop
 ob2.nstart
 ob2.rs0.set_obi_role OBI_SLAVE
-ob1.check_cs_sstable 400
-ob2.check_cs_sstable 400
-ob1.stop_check
+ob1.check_cs_sstable 404
+ob2.check_cs_sstable 404

@@ -34,6 +34,14 @@ ObAlterSysCnf::~ObAlterSysCnf()
 {
 }
 
+void ObAlterSysCnf::reset()
+{
+}
+
+void ObAlterSysCnf::reuse()
+{
+}
+
 void ObAlterSysCnf::set_sql_context(ObSqlContext& context)
 {
   local_context_ = context;
@@ -289,6 +297,12 @@ int ObAlterSysCnf::execute_transaction_stmt(const int& trans_type)
     }
   }
   return ret;
+}
+
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObAlterSysCnf, PHY_ALTER_SYS_CNF);
+  }
 }
 
 int64_t ObAlterSysCnf::to_string(char* buf, const int64_t buf_len) const

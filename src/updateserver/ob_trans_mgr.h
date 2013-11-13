@@ -23,8 +23,8 @@
 #include "common/page_arena.h"
 #include "common/ob_fixed_queue.h"
 #include "common/ob_list.h"
+#include "common/ob_id_map.h"
 #include "ob_table_engine.h"
-#include "ob_id_map.h"
 
 namespace oceanbase
 {
@@ -117,7 +117,7 @@ namespace oceanbase
       friend class TransNode;
       static const int64_t MAX_TRANS_NODE_NUM = 1024;
       typedef common::ObFixedQueue<TransNode> TransNodeList;
-      typedef ObIDMap<TransNode> TransNodeMap;
+      typedef common::ObIDMap<TransNode> TransNodeMap;
       class MapTraverseCallback
       {
         public:

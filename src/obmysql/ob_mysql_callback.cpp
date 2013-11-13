@@ -7,10 +7,10 @@
 #include "common/utility.h"
 #include "common/hash/ob_hashutils.h"
 #include "obmysql/packet/ob_mysql_error_packet.h"
-
+#include "common/base_main.h"
+#include <sys/uio.h>
 using namespace oceanbase::common;
 using namespace oceanbase::common::hash;
-
 namespace oceanbase
 {
   namespace obmysql
@@ -79,6 +79,28 @@ namespace oceanbase
               packet->get_command().assign(buffer + sizeof(ObMySQLCommandPacket), pkt_len - 1);
               TBSYS_LOG(DEBUG, "decode comand packet command is \"%.*s\"", packet->get_command().length(),
                         packet->get_command().ptr());
+              if (PACKET_RECORDER_FLAG)
+              {
+                // record the packet to FIFO stream if required
+                ObMySQLServer* server = reinterpret_cast<ObMySQLServer*>(m->c->handler->user_data);
+                ObMySQLCommandPacketRecord record;
+                record.socket_fd_ = m->c->fd;
+                record.cseq_ = m->c->seq;
+                record.addr_ = m->c->addr;
+                record.pkt_length_ = pkt_len;
+                record.pkt_seq_ = pkt_seq;
+                record.cmd_type_ = pkt_type;
+                struct iovec buffers[2];
+                buffers[0].iov_base = &record;
+                buffers[0].iov_len = sizeof(record);
+                buffers[1].iov_base = m->input->pos;
+                buffers[1].iov_len = pkt_len - 1;
+                int err = OB_SUCCESS;
+                if (OB_SUCCESS != (err = server->get_packet_recorder().push(buffers, 2)))
+                {
+                  TBSYS_LOG(WARN, "failed to record MySQL packet, err=%d", err);
+                }
+              }
               m->input->pos += pkt_len - 1;
             }
           }
@@ -113,6 +135,10 @@ namespace oceanbase
         //EASY_AGAIN说明后续服务器端还有包需要发给客户端
         if (NULL != r->client_wait)
         {
+          if (r->ms->c->conn_has_error == 1)
+          {
+            r->client_wait->status = EASY_CONN_CLOSE;
+          }
           easy_client_wait_wakeup_request(r);
           ret = EASY_AGAIN;
         }
@@ -121,7 +147,7 @@ namespace oceanbase
       {
         ObMySQLServer* server = reinterpret_cast<ObMySQLServer*>(r->ms->c->handler->user_data);
         ObMySQLCommandPacket* packet = reinterpret_cast<ObMySQLCommandPacket*>(r->ipacket);
-        TBSYS_LOG(DEBUG, "handlde packet command is %s", packet->get_command().ptr());
+        TBSYS_LOG(DEBUG, "handle packet command=%.*s", packet->get_command().length(), packet->get_command().ptr());
         packet->set_request(r);
         easy_pool_set_lock(r->ms->pool);
         if (packet->get_command_length() + static_cast<int32_t>(sizeof(ObMySQLCommandPacket)) > ThreadSpecificBuffer::MAX_THREAD_BUFFER_SIZE)
@@ -205,7 +231,6 @@ namespace oceanbase
     int ObMySQLCallback::on_disconnect(easy_connection_t* c)
     {
       int ret = EASY_OK;
-
       if (NULL == c || NULL == c->handler)
       {
         TBSYS_LOG(WARN, "invalid argument c or c->handler is NULL");
@@ -218,12 +243,10 @@ namespace oceanbase
           c->auto_reconn = 0;
         }
         ObMySQLServer* server = reinterpret_cast<ObMySQLServer*>(c->handler->user_data);
-        ObSQLSessionInfo *expired_session = NULL;
-        ret = server->get_session_mgr()->get(c->seq, expired_session);
-        if (HASH_EXIST == ret)
+        ret = server->get_session_mgr()->erase(c->seq);
+        if (OB_SUCCESS != ret)
         {
-          TBSYS_LOG(INFO, "client disconnect, session key is %d, session value is %s",
-                         c->seq, to_cstring(*expired_session));
+          TBSYS_LOG(INFO, "submit async delete request, session key is %d ret is %d", c->seq, ret);
           //generate a async request to delete session later
           ret = server->submit_session_delete_task(c->seq);
           if (OB_SUCCESS != ret)
@@ -238,8 +261,29 @@ namespace oceanbase
         }
         else
         {
-          TBSYS_LOG(WARN, "can not found session key is %d", c->seq);
+          OB_STAT_INC(OBMYSQL, SUCC_LOGOUT_COUNT);
+          TBSYS_LOG(INFO, "client disconnect, session key is %d, fd is %d", c->seq, c->fd);
         }
+        if (PACKET_RECORDER_FLAG)
+        {
+          ObMySQLCommandPacketRecord record;
+          record.socket_fd_ = c->fd;
+          record.cseq_ = c->seq;
+          record.addr_ = c->addr;
+          record.pkt_seq_ = 0;
+          record.pkt_length_ = 0;
+          record.cmd_type_ = COM_END;
+          record.obmysql_type_ = OBMYSQL_LOGOUT;
+          struct iovec buffers;
+          buffers.iov_base = &record;
+          buffers.iov_len = sizeof(record);
+          int err = OB_SUCCESS;
+          if (OB_SUCCESS != (err = server->get_packet_recorder().push(&buffers, 1)))
+          {
+            TBSYS_LOG(WARN, "failed to record MySQL packet, err=%d", err);
+          }
+        }
+
       }
       return ret;
     }

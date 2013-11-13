@@ -13,19 +13,33 @@
  */
 #ifndef __OB_SQL_OB_HUSK_SINGLE_CHILD_PHY_OPERATOR_H__
 #define __OB_SQL_OB_HUSK_SINGLE_CHILD_PHY_OPERATOR_H__
-#include "ob_husk_phy_operator.h"
+#include "ob_single_child_phy_operator.h"
+#include "ob_affected_rows.h"
 #include "common/utility.h"
 namespace oceanbase
 {
   using namespace common;
   namespace sql
   {
+    enum ObLockFlag
+    {
+      LF_NONE = 0,
+      LF_WRITE = 1,
+    };
     template<ObPhyOperatorType PHY_TYPE>
-    class ObHuskFilter: public ObSingleChildPhyOperator
+    class ObHuskFilter: public ObSingleChildPhyOperator, public ObAffectedRows
     {
       public:
         ObHuskFilter(){}
         virtual ~ObHuskFilter() {}
+        virtual void reset()
+        {
+          ObSingleChildPhyOperator::reset();
+        }
+        virtual void reuse()
+        {
+          ObSingleChildPhyOperator::reuse();
+        }
       public:
         enum ObPhyOperatorType get_type() const
         {
@@ -84,6 +98,18 @@ namespace oceanbase
         virtual int64_t get_serialize_size(void) const
         {
           return 0;
+        }
+
+        virtual int get_affected_rows(int64_t& row_count)
+        {
+          UNUSED(row_count);
+          return OB_NOT_SUPPORTED;
+        }
+
+        DECLARE_PHY_OPERATOR_ASSIGN
+        {
+          UNUSED(other);
+          return common::OB_SUCCESS;
         }
     };
   }; // end namespace sql

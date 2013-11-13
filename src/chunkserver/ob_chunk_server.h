@@ -82,6 +82,8 @@ namespace oceanbase
         common::ObMergerSchemaManager* get_schema_manager();
         int init_merge_join_rpc();
 
+        int schedule_report_tablet() { return service_.schedule_report_tablet(); }
+
       private:
         DISALLOW_COPY_AND_ASSIGN(ObChunkServer);
         int set_self(const char* dev_name, const int32_t port);

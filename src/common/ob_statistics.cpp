@@ -20,9 +20,9 @@ namespace oceanbase
 {
   namespace common
   {
-    ObStat::ObStat() : 
+    ObStat::ObStat() :
         mod_id_(OB_INVALID_ID),
-        table_id_(OB_INVALID_ID) 
+        table_id_(OB_INVALID_ID)
 
     {
       memset((void*)(values_), 0, sizeof(int64_t) * MAX_STATICS_PER_TABLE);
@@ -32,7 +32,7 @@ namespace oceanbase
     {
       return mod_id_;
     }
- 
+
     uint64_t ObStat::get_table_id() const
     {
       return table_id_;
@@ -85,7 +85,7 @@ namespace oceanbase
       }
       return;
     }
-  
+
     void ObStat::set_table_id(const uint64_t table_id)
     {
       if (table_id_ == OB_INVALID_ID)
@@ -194,6 +194,33 @@ namespace oceanbase
     {
       server_type_ = server_type;
     }
+    int ObStatManager::add_new_stat(const ObStat& stat)
+    {
+      int ret = OB_SUCCESS;
+      uint64_t table_id = stat.get_table_id();
+      uint64_t mod_id = stat.get_mod_id();
+      if (table_id != OB_INVALID_ID && mod_id != OB_INVALID_ID)
+      {
+        tbsys::CThreadGuard guard(&lock_);
+        for (int32_t i = 0; i < table_stats_[mod_id].get_array_index(); i++)
+        {
+          if (data_holder_[mod_id][i].get_table_id() == table_id)
+          {
+            ret = OB_ENTRY_EXIST;
+            break;
+          }
+        }
+        if (ret != OB_ENTRY_EXIST)
+        {
+          if (!table_stats_[mod_id].push_back(stat))
+          {
+            TBSYS_LOG(WARN, "too much tables");
+            ret = OB_ERROR;
+          }
+        }
+      }
+      return ret;
+    }
     int ObStatManager::set_value(const uint64_t mod_id, const uint64_t table_id, const int32_t index, const int64_t value)
     {
       int ret = OB_ERROR;
@@ -215,10 +242,9 @@ namespace oceanbase
         ret = stat.set_value(index, value);
         if (OB_SUCCESS == ret)
         {
-          if (!table_stats_[mod_id].push_back(stat))
+          if ((ret = add_new_stat(stat)) == OB_ENTRY_EXIST)
           {
-            TBSYS_LOG(WARN, "too much tables");
-            ret = OB_ERROR;
+            ret = set_value(mod_id, table_id, index, value);
           }
         }
       }
@@ -245,16 +271,15 @@ namespace oceanbase
         ret = stat.set_value(index, inc_value);
         if (OB_SUCCESS == ret)
         {
-          if (!table_stats_[mod_id].push_back(stat))
+          if ((ret = add_new_stat(stat)) == OB_ENTRY_EXIST)
           {
-            TBSYS_LOG(WARN, "too much tables");
-            ret = OB_ERROR;
+            ret = inc(mod_id, table_id, index, inc_value);
           }
         }
       }
       return ret;
     }
-    
+
     ObStatManager::const_iterator ObStatManager::begin(uint64_t mod) const
     {
       return data_holder_[mod];
@@ -263,7 +288,7 @@ namespace oceanbase
     {
       return data_holder_[mod] + table_stats_[mod].get_array_index();
     }
-    
+
     DEFINE_SERIALIZE(ObStatManager)
     {
       int ret = OB_SUCCESS;
@@ -438,12 +463,16 @@ namespace oceanbase
     {
       int ret = OB_ENTRY_NOT_EXIST;
       stat = NULL;
-      for (int32_t i = 0; table_id != OB_INVALID_ID && mod_id != OB_INVALID_ID && i < table_stats_[mod_id].get_array_index(); i++)
+      if (table_id != OB_INVALID_ID && mod_id != OB_INVALID_ID)
       {
-        if (table_stats_[mod_id].at(i)->get_table_id() == table_id)
+        for (int32_t i = 0; i < table_stats_[mod_id].get_array_index(); i++)
         {
-          stat = table_stats_[mod_id].at(i);
-          ret = OB_SUCCESS;
+          if (table_stats_[mod_id].at(i)->get_table_id() == table_id)
+          {
+            stat = table_stats_[mod_id].at(i);
+            ret = OB_SUCCESS;
+            break;
+          }
         }
       }
       return ret;
@@ -493,8 +522,8 @@ namespace oceanbase
         for (int32_t i = 0; i < stat_cnt_[mod]; i++)
         {
           column_id = OB_APP_MIN_COLUMN_ID;
-          row.reset(false, ObRow::DEFAULT_NULL);
           row.set_row_desc(row_desc);
+          row.reset(false, ObRow::DEFAULT_NULL);
           /* server type */
           obj.set_type(ObVarcharType);
           obj.set_varchar(server_name);

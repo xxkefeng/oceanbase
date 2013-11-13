@@ -33,7 +33,7 @@ AM_LDFLAGS+=-lgcov
 endif
 
 #bin_PROGRAMS = sstable_checker test_client mergemeta gen_sstable cs_admin merge_meta_new cs_info_reader ups_admin gen_meta databuilder dumpsst gen_data_test gen_data_testV3 log_reader
-bin_PROGRAMS = sstable_checker gen_sstable gen_meta gen_data_testV3 log_reader cs_admin dumpsst ups_admin convert_idx_file search_sstable
+bin_PROGRAMS = sstable_checker gen_sstable gen_meta gen_data_testV3 log_reader cs_admin dumpsst ups_admin convert_idx_file search_sstable oberror
 
 sstable_checker_SOURCES = ob_sstable_checker.cpp
 test_client_SOURCES = test_client.cpp  $(top_builddir)/src/updateserver/ob_ups_stat.cpp
@@ -57,6 +57,7 @@ log_locator_SOURCES = log_locator.cpp
 #authority_admin_SOURCES = ob_authority_manager_main.cpp ob_authority_manager.cpp
 convert_idx_file_SOURCES = convert_idx_file.cpp feak_disk_path.cpp
 search_sstable_SOURCES = search_sstable.cpp feak_disk_path.cpp common_func.cpp
+oberror_SOURCES=oberror.cpp
 
 EXTRA_DIST = \
 			 data_syntax.h \
@@ -94,7 +95,7 @@ if WITH_MYSQLTEST
 MYSQLTEST:=mysqltest
 endif
 
-SUBDIRS=sstable_builder syschecker $(NEWSQLTEST) mixed_test log_tool compactsstablev2 getquerytest profiler_helper dump $(MYSQLTEST)
+SUBDIRS=benchmark sstable_builder syschecker $(NEWSQLTEST) mixed_test log_tool compactsstablev2 getquerytest dump $(MYSQLTEST) liboblog
 
 clean-local:
 	-rm -f *.gcov *.gcno *.gcda

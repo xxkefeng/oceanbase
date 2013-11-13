@@ -4,6 +4,7 @@
 #include "common/ob_string.h"
 #include "common/ob_string_buf.h"
 #include "common/ob_vector.h"
+#include "common/ob_hint.h"
 #include "sql/ob_basic_stmt.h"
 #include "parse_node.h"
 
@@ -15,10 +16,12 @@ namespace oceanbase
     {
       ObQueryHint()
       {
-        read_static_ = false;
+        hotspot_ = false;
+        read_consistency_ = common::NO_CONSISTENCY;
       }
 
-      bool    read_static_;
+      bool    hotspot_;
+      common::ObConsistencyLevel    read_consistency_;
     };
     
     struct TableItem
@@ -112,6 +115,8 @@ namespace oceanbase
       int32_t get_table_size() const { return table_items_.size(); }
       int32_t get_column_size() const { return column_items_.size(); }
       int32_t get_condition_size() const { return where_expr_ids_.size(); }
+      int32_t get_when_fun_size() const { return when_func_ids_.size(); }
+      int32_t get_when_expr_size() const { return when_expr_ids_.size(); }
       int check_table_column(
           ResultPlan& result_plan,
           const common::ObString& column_name, 
@@ -165,6 +170,11 @@ namespace oceanbase
         return where_expr_ids_;
       }
 
+      common::ObVector<uint64_t>& get_when_exprs() 
+      {
+        return when_expr_ids_;
+      }
+
       common::ObStringBuf* get_name_pool() const 
       {
         return name_pool_;
@@ -173,6 +183,33 @@ namespace oceanbase
       ObQueryHint& get_query_hint()
       {
         return query_hint_;
+      }
+      
+      int add_when_func(uint64_t expr_id)
+      {
+        return when_func_ids_.push_back(expr_id);
+      }
+
+      uint64_t get_when_func_id(int32_t index) const
+      {
+        OB_ASSERT(0 <= index && index < when_func_ids_.size());
+        return when_func_ids_[index];
+      }
+
+      uint64_t get_when_expr_id(int32_t index) const
+      {
+        OB_ASSERT(0 <= index && index < when_expr_ids_.size());
+        return when_expr_ids_[index];
+      }
+
+      void set_when_number(const int64_t when_num)
+      {
+        when_number_ = when_num;
+      }
+
+      int64_t get_when_number() const
+      {
+        return when_number_;
       }
 
       virtual void print(FILE* fp, int32_t level, int32_t index = 0);
@@ -185,7 +222,11 @@ namespace oceanbase
     private:
       //uint64_t  where_expr_id_;
       common::ObVector<uint64_t>     where_expr_ids_;
+      common::ObVector<uint64_t>     when_expr_ids_;
+      common::ObVector<uint64_t>     when_func_ids_;
       ObQueryHint                    query_hint_;
+
+      int64_t  when_number_;
 
       // it is only used to record the table_id--bit_index map
       // although it is a little weird, but it is high-performance than ObHashMap

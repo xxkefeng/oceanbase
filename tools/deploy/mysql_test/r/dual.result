@@ -111,3 +111,7 @@ create table dual(name varchar primary key,a int);
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'dual(name varchar primary key,a int)' at line 1
 insert into dual values(1);
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your OceanBase version for the right syntax to use near 'dual values(1)' at line 1
+select *;
+ERROR HY000: No tables used
+select * from dual;
+ERROR HY000: No tables used

@@ -30,10 +30,19 @@ ObScalarAggregate::~ObScalarAggregate()
 
 void ObScalarAggregate::reset()
 {
-  ObSingleChildPhyOperator::clear();
   merge_groupby_.reset();
   is_first_row_ = true;
   is_input_empty_ = false;
+  ObSingleChildPhyOperator::reset();
+}
+
+
+void ObScalarAggregate::reuse()
+{
+  merge_groupby_.reuse();
+  is_first_row_ = true;
+  is_input_empty_ = false;
+  ObSingleChildPhyOperator::reuse();
 }
 
 int ObScalarAggregate::set_child(int32_t child_idx, ObPhyOperator &child_operator)
@@ -103,9 +112,10 @@ int ObScalarAggregate::add_aggr_column(const ObSqlExpression& expr)
   return merge_groupby_.add_aggr_column(expr);
 }
 
-void ObScalarAggregate::assign(const ObScalarAggregate &other)
-{
-  merge_groupby_.assign(other.merge_groupby_);
+namespace oceanbase{
+  namespace sql{
+    REGISTER_PHY_OPERATOR(ObScalarAggregate, PHY_SCALAR_AGGREGATE);
+  }
 }
 
 int64_t ObScalarAggregate::to_string(char* buf, const int64_t buf_len) const
@@ -156,3 +166,13 @@ DEFINE_GET_SERIALIZE_SIZE(ObScalarAggregate)
   size = merge_groupby_.get_serialize_size();
   return size;
 }
+
+PHY_OPERATOR_ASSIGN(ObScalarAggregate)
+{
+  int ret = OB_SUCCESS;
+  CAST_TO_INHERITANCE(ObScalarAggregate);
+  reset();
+  ret = merge_groupby_.assign(&o_ptr->merge_groupby_);
+  return ret;
+}
+

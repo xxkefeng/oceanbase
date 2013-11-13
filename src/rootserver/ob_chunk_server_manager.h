@@ -15,8 +15,10 @@
 #include "common/ob_server.h"
 #include "common/ob_array.h"
 #include "common/ob_range2.h"
+#include "common/ob_data_source_desc.h"
 #include "ob_server_balance_info.h"
 #include "ob_migrate_info.h"
+#include "ob_root_server_config.h"
 
 namespace oceanbase
 {
@@ -36,21 +38,35 @@ namespace oceanbase
       /// total count of all sstables for one particular table in this CS
       int64_t table_sstable_count_;
       /// the count of currently migrate-in tablets
-      int32_t curr_migrate_in_num_;
+      int32_t cur_in_;
       /// the count of currently migrate-out tablets
-      int32_t curr_migrate_out_num_;
-      ObCsMigrateTo migrate_to_;
+      int32_t cur_out_;
 
       ObBalanceInfo();
       ~ObBalanceInfo();
       void reset();
       void reset_for_table();
+      void inc_in();
+      void inc_out();
+      void dec_in();
+      void dec_out();
     };
 
     const int64_t CHUNK_LEASE_DURATION = 1000000;
     const int16_t CHUNK_SERVER_MAGIC = static_cast<int16_t>(0xCDFF);
     struct ObServerStatus
     {
+      enum CsOperationProcess
+      {
+        FAILED = -1,
+        INIT = 0,
+        LOADED = 1,
+        REPORTED = 2,
+        START_SAMPLE = 3,
+        SAMPLED = 4,
+        START_INDEX = 5,
+        INDEXED = 6,
+      };
       enum EStatus {
         STATUS_DEAD = 0,
         STATUS_WAITING_REPORT,
@@ -63,8 +79,10 @@ namespace oceanbase
       NEED_SERIALIZE_AND_DESERIALIZE;
       void set_hb_time(int64_t hb_t);
       void set_hb_time_ms(int64_t hb_t);
+      void set_lms(bool lms);
       bool is_alive(int64_t now, int64_t lease) const;
       bool is_ms_alive(int64_t now, int64_t lease) const;
+      bool is_lms() const;
       void dump(const int32_t index) const;
       const char* get_cs_stat_str() const;
 
@@ -86,6 +104,8 @@ namespace oceanbase
       ObBalanceInfo balance_info_;
       bool wait_restart_;
       bool can_restart_; //all the tablet in this chunkserver has safe copy num replicas, means that this server can be restarted;
+      bool lms_;         /* listen mergeserver flag */
+      CsOperationProcess bypass_process_;
     };
     class ObChunkServerManager
     {
@@ -109,9 +129,10 @@ namespace oceanbase
         const_iterator find_by_ip(const common::ObServer& server) const;
         const_iterator get_serving_ms() const;
         // regist or receive heartbeat
-        int receive_hb(const common::ObServer& server, const int64_t time_stamp,
-            const bool is_merge_server = false, const int32_t sql_port = 0, const bool is_regist = false);
+        int receive_hb(const common::ObServer& server, const int64_t time_stamp, const bool is_merge_server = false,
+            const bool is_listen_ms = false, const int32_t sql_port = 0, const bool is_regist = false);
         int update_disk_info(const common::ObServer& server, const ObServerDiskInfo& disk_info);
+        int get_ms_port(const common::ObServer &server, int32_t &sql_port)const;
         int get_array_length() const;
         ObServerStatus* get_server_status(const int32_t index);
         const ObServerStatus* get_server_status(const int32_t index) const;
@@ -122,12 +143,20 @@ namespace oceanbase
 
         void set_server_down(iterator& it);
         void set_server_down_ms(iterator& it);
-        void reset_balance_info(int32_t max_migrate_out_per_cs);
+        void reset_balance_info();
         void reset_balance_info_for_table(int32_t &cs_num, int32_t &shutdown_num);
         bool is_migrate_infos_full() const;
-        int add_migrate_info(ObServerStatus& cs, const common::ObNewRange &range, int32_t dest_cs_idx);
-        int add_copy_info(ObServerStatus& cs, const common::ObNewRange &range, int32_t dest_cs_idx);
-        int32_t get_max_migrate_num() const;
+        int add_migrate_info(const common::ObServer& src_server, const common::ObServer& dest_server,
+            const ObDataSourceDesc& data_source_desc);
+        int free_migrate_info(const common::ObNewRange& range, const common::ObServer& src_server,
+            const common::ObServer& dest_server);
+        void print_migrate_info();
+        bool check_migrate_info_timeout(int64_t timeout, common::ObServer& src_server,
+            common::ObServer& dest_server, common::ObDataSourceDesc::ObDataSourceType& type);
+
+        int64_t get_migrate_num() const;
+        int64_t get_max_migrate_num() const;
+        void set_max_migrate_num(int64_t size);
 
         int shutdown_cs(const common::ObArray<common::ObServer> &servers, enum ShutdownOperation op);
         void restart_all_cs();
@@ -141,10 +170,12 @@ namespace oceanbase
         int serialize_ms(const ObServerStatus *it, char* buf, const int64_t buf_len, int64_t& pos) const;
         int serialize_cs_list(char* buf, const int64_t buf_len, int64_t& pos) const;
         int serialize_ms_list(char* buf, const int64_t buf_len, int64_t& pos) const;
+
       public:
         int write_to_file(const char* filename);
         int read_from_file(const char* filename, int32_t &cs_num, int32_t &ms_num);
       private:
+        mutable tbsys::CRWLock migrate_infos_lock_;
         ObServerStatus data_holder_[MAX_SERVER_COUNT];
         common::ObArrayHelper<ObServerStatus> servers_;
         ObMigrateInfos migrate_infos_;

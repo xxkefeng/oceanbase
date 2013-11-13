@@ -147,6 +147,26 @@ pk	t
 620	2001-01-01 12:01:01
 720	1970-01-01 08:00:00
 drop table t1;
+create table t1 (c1 datetime primary key, c2 datetime, c3 datetime, c4 datetime, c5 datetime, c6 datetime, c7 datetime, c8 datetime, c9 datetime, c10 datetime, c11 datetime, c12 datetime, c13 datetime, c14 datetime, c15 datetime, c16 datetime, c17 datetime, c18 datetime, c19 datetime, c20 datetime);
+insert into t1 values(current_timestamp(), current_time(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now());
+select c1-c20 from t1;
+c1-c20
+0
+select c1-c0 from (select now() c0, now(),now(),now(),now(),now(),now(),now(),now(),now(),now(), now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(), now() c1) t3;
+c1-c0
+0
+select c1-c0 from (select now() c0, strict_current_timestamp(),now(),now(),now(),now(),now(),now(),now(),now(),now(), now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(), now() c1) t3;
+c1-c0
+0
+prepare stmt1 from insert into t1 values(?, now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),now(),?,now(),now(),now(),now(),now());
+prepare stmt2 from select c2-c20, c1, c15 from t1 where c1=?;
+set @a = timestamp'2003-01-01 24:00:00';
+set @b = timestamp'2013-02-07 23:00:01';
+execute stmt1 using @a, @b;
+execute stmt2 using @a;
+c2-c20	c1	c15
+0	2003-01-02 00:00:00	2013-02-07 23:00:01
+drop table t1;
 create table t1 (id int primary key, dt datetime);
 insert into t1 values (1,'2001-08-14 00:00:00'),(2,'2001-08-15 00:00:00'),(3,'2001-08-16 00:00:00'),(4,'2003-09-15 01:20:30');
 select * from t1 where dt='2001-08-14 00:00:00';

@@ -29,6 +29,7 @@
 #include "common/ob_array.h"
 #include "common/ob_string_buf.h"
 #include "common/utility.h"
+#include "common/ob_hint.h"
 #include <stdint.h>
 
 using namespace oceanbase::common;
@@ -102,6 +103,19 @@ int resolve_hints(
     ResultPlan * result_plan,
     ObStmt* stmt,
     ParseNode* node);
+int resolve_when_clause(
+    ResultPlan * result_plan,
+    ObStmt* stmt,
+    ParseNode* node);
+int resolve_when_func(
+    ResultPlan * result_plan,
+    ObStmt* stmt,
+    ParseNode* node,
+    ObSqlRawExpr*& ret_sql_expr);
+ObSqlRawExpr* create_middle_sql_raw_expr(
+    ResultPlan& result_plan,
+    ParseNode& node,
+    uint64_t& expr_id);
 
 static int add_all_rowkey_columns_to_stmt(ResultPlan* result_plan, uint64_t table_id, ObStmt *stmt)
 {
@@ -453,6 +467,19 @@ int resolve_expr(
       expr = c_expr;
       break;
     }
+    case T_CUR_TIME_UPS:
+      logical_plan->set_cur_time_fun_ups(); // same as T_CUR_TIME, except run cur time on ups
+    case T_CUR_TIME:
+    {
+      logical_plan->set_cur_time_fun(); // do nothing if called after set_cur_time_fun_ups()
+      ObCurTimeExpr *c_expr = NULL;
+      if (CREATE_RAW_EXPR(c_expr, ObCurTimeExpr, result_plan) == NULL)
+        break;
+      c_expr->set_expr_type(T_CUR_TIME);
+      c_expr->set_result_type(ObPreciseDateTimeType);
+      expr = c_expr;
+      break;
+    }
     case T_OP_NAME_FIELD:
     {
       OB_ASSERT(node->children_[0]->type_ == T_IDENT);
@@ -473,6 +500,13 @@ int resolve_expr(
         ret = OB_ERR_PARSER_SYNTAX;
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
             "Illegal usage %s.%s", table_str, column_str);
+        break;
+      }
+      else if (expr_scope_type == T_WHEN_LIMIT)
+      {
+        ret = OB_ERR_PARSER_SYNTAX;
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+            "Column name %s.%s cannot be used in WHEN clause", table_str, column_str);
         break;
       }
 
@@ -537,6 +571,13 @@ int resolve_expr(
         ret = OB_ERR_PARSER_SYNTAX;
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
             "Unknown value %s", node->str_value_);
+        break;
+      }
+      else if (expr_scope_type == T_WHEN_LIMIT)
+      {
+        ret = OB_ERR_PARSER_SYNTAX;
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+            "Column name %s cannot be used in WHEN clause", node->str_value_);
         break;
       }
 
@@ -1203,6 +1244,55 @@ int resolve_expr(
       expr = sub_query_expr;
       break;
     }
+    case T_INSERT:
+    case T_DELETE:
+    case T_UPDATE:
+    {
+      uint64_t query_id = OB_INVALID_ID;
+      ObUnaryRefRawExpr *sub_query_expr = NULL;
+      if (expr_scope_type != T_WHEN_LIMIT)
+      {
+        ret = OB_ERR_PARSER_SYNTAX;
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+            "INSERT/DELTE/UPDATE statement is illeagal when out of when function");
+        break;
+      }
+      switch (node->type_)
+      {
+        case T_INSERT:
+          ret = resolve_insert_stmt(result_plan, node, query_id);
+          break;
+        case T_DELETE:
+          ret = resolve_delete_stmt(result_plan, node, query_id);
+          break;
+        case T_UPDATE:
+          ret = resolve_update_stmt(result_plan, node, query_id);
+          break;
+        default:
+          ret = OB_ERR_ILLEGAL_TYPE;
+          snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+            "Unknown statement type in when function");
+          break;
+      }
+      if (ret != OB_SUCCESS)
+      {
+        break;
+      }
+      else if (CREATE_RAW_EXPR(sub_query_expr, ObUnaryRefRawExpr, result_plan) == NULL)
+      {
+        break;
+      }
+      else
+      {
+        sub_query_expr->set_expr_type(T_REF_QUERY);
+        // not mathematic expression, result type is of no use.
+        // should be ObRowType
+        sub_query_expr->set_result_type(ObMinType);
+        sub_query_expr->set_ref_id(query_id);
+        expr = sub_query_expr;
+      }
+      break;
+    }
     case T_FUN_COUNT:
     case T_FUN_MAX:
     case T_FUN_MIN:
@@ -1373,18 +1463,6 @@ int resolve_expr(
             TBSYS_LOG(WARN, "CAST function must only take 2 params");
           }
         }
-        else if (0 == strncasecmp(oceanbase::sql::ObPostfixExpression::get_sys_func_name(SYS_FUNC_CUR_TIME), func_name.ptr(), func_name.length()))
-        {
-          func_expr->set_result_type(ObDateTimeType);
-        }
-        else if (0 == strncasecmp(oceanbase::sql::ObPostfixExpression::get_sys_func_name(SYS_FUNC_CUR_DATE), func_name.ptr(), func_name.length()))
-        {
-          func_expr->set_result_type(ObDateTimeType);
-        }
-        else if (0 == strncasecmp(oceanbase::sql::ObPostfixExpression::get_sys_func_name(SYS_FUNC_CUR_TIMESTAMP), func_name.ptr(), func_name.length()))
-        {
-          func_expr->set_result_type(ObPreciseDateTimeType);
-        }
         else if (0 == strncasecmp(oceanbase::sql::ObPostfixExpression::get_sys_func_name(SYS_FUNC_CUR_USER), func_name.ptr(), func_name.length()))
         {
           func_expr->set_result_type(ObVarcharType);
@@ -1406,6 +1484,16 @@ int resolve_expr(
           // always cast to varchar as it is an all-mighty type
           func_expr->set_result_type(ObVarcharType);
         }
+        else if (0 == strncasecmp(oceanbase::sql::ObPostfixExpression::get_sys_func_name(SYS_FUNC_GREATEST), func_name.ptr(), func_name.length()))
+        {
+          // always cast to varchar as it is an all-mighty type
+          func_expr->set_result_type(ObVarcharType);
+        }
+        else if (0 == strncasecmp(oceanbase::sql::ObPostfixExpression::get_sys_func_name(SYS_FUNC_LEAST), func_name.ptr(), func_name.length()))
+        {
+          // always cast to varchar as it is an all-mighty type
+          func_expr->set_result_type(ObVarcharType);
+        }
         else if (0 == strncasecmp(oceanbase::sql::ObPostfixExpression::get_sys_func_name(SYS_FUNC_HEX), func_name.ptr(), func_name.length()))
         {
           func_expr->set_result_type(ObVarcharType);
@@ -1422,6 +1510,14 @@ int resolve_expr(
         {
           func_expr->set_result_type(ObVarcharType);
         }
+        else if (0 == strncasecmp(oceanbase::sql::ObPostfixExpression::get_sys_func_name(SYS_FUNC_GREATEST), func_name.ptr(), func_name.length()))
+        {
+          func_expr->set_result_type(ObVarcharType);
+        }
+        else if (0 == strncasecmp(oceanbase::sql::ObPostfixExpression::get_sys_func_name(SYS_FUNC_LEAST), func_name.ptr(), func_name.length()))
+        {
+          func_expr->set_result_type(ObVarcharType);
+        }
         else
         {
           ret = OB_ERR_UNKNOWN_SYS_FUNC;
@@ -1435,6 +1531,32 @@ int resolve_expr(
       }
       break;
     }
+    case T_ROW_COUNT:
+    {
+      if (expr_scope_type != T_WHEN_LIMIT)
+      {
+        ret = OB_ERR_PARSER_SYNTAX;
+        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+            "Invalid use of row_count function, it can be in WHEN clause only");
+        break;
+      }
+      ObSqlRawExpr *ret_sql_expr = NULL;
+      ObBinaryRefRawExpr *col_expr = NULL;
+      if ((ret = resolve_when_func(result_plan, stmt, node, ret_sql_expr)) != OB_SUCCESS)
+      {
+        break;
+      }
+      else if (CREATE_RAW_EXPR(col_expr, ObBinaryRefRawExpr, result_plan) == NULL)
+      {
+        break;
+      }
+      col_expr->set_expr_type(T_REF_COLUMN);
+      col_expr->set_result_type(ObIntType);
+      col_expr->set_first_ref_id(ret_sql_expr->get_table_id());
+      col_expr->set_second_ref_id(ret_sql_expr->get_column_id());
+      expr = col_expr;
+      break;
+    }
     default:
       ret = OB_ERR_PARSER_SYNTAX;
       snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
@@ -1442,6 +1564,129 @@ int resolve_expr(
       break;
   }
 
+  return ret;
+}
+
+ObSqlRawExpr* create_middle_sql_raw_expr(
+    ResultPlan& result_plan,
+    ParseNode& node,
+    uint64_t& expr_id)
+{
+  int& ret = result_plan.err_stat_.err_code_ = OB_SUCCESS;
+  ObSqlRawExpr* sql_expr = NULL;
+  ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan.plan_tree_);
+
+  if (logical_plan == NULL)
+  {
+    TBSYS_LOG(WARN, "Logical Plan is empty");
+  }
+  else if ((sql_expr = (ObSqlRawExpr*)parse_malloc(
+                            sizeof(ObSqlRawExpr),
+                            result_plan.name_pool_)) == NULL)
+  {
+    ret = OB_ERR_PARSER_MALLOC_FAILED;
+    TBSYS_LOG(WARN, "out of memory");
+    snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
+             "Can not malloc space for ObSqlRawExpr");
+  }
+  else
+  {
+    sql_expr = new(sql_expr) ObSqlRawExpr();
+    if ((ret = logical_plan->add_expr(sql_expr)) != OB_SUCCESS)
+    {
+      snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
+               "Add ObSqlRawExpr error");
+    }
+  }
+  if (ret == OB_SUCCESS)
+  {
+    expr_id = logical_plan->generate_expr_id();
+    sql_expr->set_expr_id(expr_id);
+    sql_expr->set_table_id(OB_INVALID_ID);
+    switch(node.type_)
+    {
+      case T_FUN_COUNT:
+      case T_FUN_MAX:
+      case T_FUN_MIN:
+      case T_FUN_SUM:
+      case T_FUN_AVG:
+        sql_expr->set_column_id(logical_plan->generate_range_column_id());
+        break;
+      case T_ROW_COUNT:
+        sql_expr->set_column_id(logical_plan->generate_column_id());
+        break;
+      default:
+        ret = OB_ERR_ILLEGAL_TYPE;
+        snprintf(result_plan.err_stat_.err_msg_, MAX_ERROR_MSG,
+               "Unknown function type");
+        break;
+    }
+  }
+  if (ret != OB_SUCCESS)
+  {
+    sql_expr = NULL;
+  }
+  return sql_expr;
+}
+
+int resolve_when_func(
+    ResultPlan * result_plan,
+    ObStmt* stmt,
+    ParseNode* node,
+    ObSqlRawExpr*& ret_sql_expr)
+{
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  uint64_t expr_id = OB_INVALID_ID;
+  ObSqlRawExpr* sql_expr = NULL;
+  if (node != NULL)
+  {
+    if ((sql_expr = create_middle_sql_raw_expr(
+                        *result_plan,
+                        *node,
+                        expr_id)) == NULL)
+    {
+      TBSYS_LOG(WARN, "Create middle sql raw expr failed");
+    }
+    else if ((ret = stmt->add_when_func(expr_id)) != OB_SUCCESS)
+    {
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+               "Add when function error");
+    }
+    else
+    {
+      ObRawExpr *sub_expr = NULL;
+      ObUnaryOpRawExpr *row_count_expr = NULL;
+      if ((ret = resolve_expr(
+                    result_plan,
+                    stmt,
+                    node->children_[0],
+                    sql_expr,
+                    sub_expr,
+                    T_WHEN_LIMIT,
+                    false)) != OB_SUCCESS)
+      {
+      }
+      else if (CREATE_RAW_EXPR(row_count_expr, ObUnaryOpRawExpr, result_plan) == NULL)
+      {
+        ret = OB_ERR_PARSER_MALLOC_FAILED;
+        TBSYS_LOG(WARN, "Create row_count expression failed");
+      }
+      else
+      {
+        row_count_expr->set_expr_type(node->type_);
+        row_count_expr->set_result_type(ObIntType);
+        row_count_expr->set_op_expr(sub_expr);
+        sql_expr->set_expr(row_count_expr);
+        ret_sql_expr = sql_expr;
+      }
+    }
+  }
+  else
+  {
+    ret = OB_ERR_PARSER_SYNTAX;
+    snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
+        "Wrong usage of When function");
+  }
   return ret;
 }
 
@@ -1456,33 +1701,17 @@ int resolve_agg_func(
   ObSqlRawExpr* sql_expr = NULL;
   if (node != NULL)
   {
-    ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
-    sql_expr = (ObSqlRawExpr*)parse_malloc(sizeof(ObSqlRawExpr), result_plan->name_pool_);
-    if (sql_expr == NULL)
+    if ((sql_expr = create_middle_sql_raw_expr(
+                        *result_plan,
+                        *node,
+                        expr_id)) == NULL)
     {
-      ret = OB_ERR_PARSER_MALLOC_FAILED;
-      TBSYS_LOG(WARN, "out of memory");
+      TBSYS_LOG(WARN, "Create middle sql raw expr failed");
+    }
+    else if ((ret = select_stmt->add_agg_func(expr_id)) != OB_SUCCESS)
+    {
       snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
-        "Can not malloc space for ObSqlRawExpr");
-    }
-    if (ret == OB_SUCCESS)
-    {
-      sql_expr = new(sql_expr) ObSqlRawExpr();
-      ret = logical_plan->add_expr(sql_expr);
-      if (ret != OB_SUCCESS)
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
-            "Add ObSqlRawExpr error");
-    }
-    if (ret == OB_SUCCESS)
-    {
-      expr_id = logical_plan->generate_expr_id();
-      sql_expr->set_expr_id(expr_id);
-      sql_expr->set_table_id(OB_INVALID_ID);
-      sql_expr->set_column_id(logical_plan->generate_range_column_id());
-      ret = select_stmt->add_agg_func(expr_id);
-      if (ret != OB_SUCCESS)
-        snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
-            "Add aggregate function error");
+               "Add aggregate function error");
     }
 
     // When '*', do not set parameter
@@ -2468,7 +2697,7 @@ int resolve_select_stmt(
     uint64_t& query_id)
 {
   int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
-  OB_ASSERT(node && node->num_child_ >= 12);
+  OB_ASSERT(node && node->num_child_ >= 15);
   query_id = OB_INVALID_ID;
 
   ObStringBuf* name_pool = static_cast<ObStringBuf*>(result_plan->name_pool_);
@@ -2545,7 +2774,7 @@ int resolve_select_stmt(
     {
       ret = OB_ERR_ILLEGAL_ID;
       snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
-          "Select for update statement can not process set query");
+          "Select for update statement can not be processed in set query");
     }
 
     // assign set type
@@ -2636,13 +2865,13 @@ int resolve_select_stmt(
     }
     if (ret == OB_SUCCESS && node->children_[12] && node->children_[12]->value_ == 1)
     {
-      if (select_stmt->get_table_size() != 1)
+      if (select_stmt->get_table_size() > 1)
       {
         ret = OB_ERR_ILLEGAL_ID;
         snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG,
-            "Select for update statement can only process one table");
+            "Select for update statement can not process more than one table");
       }
-      else
+      else if (select_stmt->get_table_size() > 0)
       {
         TableItem& table_item = select_stmt->get_table_item(0);
         uint64_t table_id = table_item.table_id_;
@@ -2687,8 +2916,13 @@ int resolve_select_stmt(
   // Example:
   // 1. select count(*) from t1;
   // 2. select t1.c1 from t1, t2;
-  if (ret == OB_SUCCESS && select_stmt->get_table_size() > 0)
+  if (ret == OB_SUCCESS)
   {
+    if (select_stmt->get_select_item_size() <= 0 && select_stmt->get_table_size() <= 0)
+    {
+      ret = OB_ERR_RESOLVE_SQL;
+      snprintf(result_plan->err_stat_.err_msg_, MAX_ERROR_MSG, "No tables used");
+    }
     for (int32_t i = 0; ret == OB_SUCCESS && i < select_stmt->get_table_size(); i++)
     {
       TableItem& table_item = select_stmt->get_table_item(i);
@@ -2700,6 +2934,10 @@ int resolve_select_stmt(
   if (ret == OB_SUCCESS && node->children_[13])
   {
     ret = resolve_hints(result_plan, select_stmt, node->children_[13]);
+  }
+  if (ret == OB_SUCCESS && node->children_[14])
+  {
+    ret = resolve_when_clause(result_plan, select_stmt, node->children_[14]);
   }
 
   return ret;
@@ -2714,15 +2952,42 @@ int resolve_hints(
   if (node)
   {
     ObQueryHint& query_hint = stmt->get_query_hint();
-    OB_ASSERT(node->type_ == T_HINT_OPTION_LIST && node->num_child_ > 0);
+    OB_ASSERT(node->type_ == T_HINT_OPTION_LIST);
     for (int32_t i = 0; i < node->num_child_; i++)
     {
       ParseNode* hint_node = node->children_[i];
-      assert(hint_node);
+      if (!hint_node)
+        continue;
       switch (hint_node->type_)
       {
         case T_READ_STATIC:
-          query_hint.read_static_ = true;
+          query_hint.read_consistency_ = STATIC;
+          break;
+        case T_HOTSPOT:
+          query_hint.hotspot_= true;
+          break;
+        case T_READ_CONSISTENCY:
+          if (hint_node->value_ == 1)
+          {
+            query_hint.read_consistency_ = STATIC;
+          }
+          else if (hint_node->value_ == 2)
+          {
+            query_hint.read_consistency_ = FROZEN;
+          }
+          else if (hint_node->value_ == 3)
+          {
+            query_hint.read_consistency_ = WEAK;
+          }
+          else if (hint_node->value_ == 4)
+          {
+            query_hint.read_consistency_ = STRONG;
+          }
+          else
+          {
+            ret = OB_ERR_UNEXPECTED;
+            TBSYS_LOG(ERROR, "unknown hint value, ret=%d", ret);
+          }
           break;
         default:
           ret = OB_ERR_HINT_UNKNOWN;
@@ -2742,7 +3007,7 @@ int resolve_delete_stmt(
 {
   int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
   uint64_t table_id = OB_INVALID_ID;
-  OB_ASSERT(node && node->type_ == T_DELETE && node->num_child_ >= 2);
+  OB_ASSERT(node && node->type_ == T_DELETE && node->num_child_ >= 3);
   query_id = OB_INVALID_ID;
 
   ObLogicalPlan* logical_plan = NULL;
@@ -2810,6 +3075,10 @@ int resolve_delete_stmt(
         {
           delete_stmt->set_delete_table(table_id);
           ret = resolve_where_clause(result_plan, delete_stmt, node->children_[1]);
+        }
+        if (ret == OB_SUCCESS && node->children_[2])
+        {
+          ret = resolve_when_clause(result_plan, delete_stmt, node->children_[2]);
         }
       }
     }
@@ -2912,6 +3181,7 @@ int resolve_insert_values(
   OB_ASSERT(node->type_ == T_VALUE_LIST);
   int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
 
+  insert_stmt->set_values_size(node->num_child_);
   ObArray<uint64_t> value_row;
   for (int32_t i = 0; ret == OB_SUCCESS && i < node->num_child_; i++)
   {
@@ -2953,7 +3223,7 @@ int resolve_insert_stmt(
 {
   int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
   uint64_t table_id = OB_INVALID_ID;
-  OB_ASSERT(node && node->type_ == T_INSERT && node->num_child_ >= 5);
+  OB_ASSERT(node && node->type_ == T_INSERT && node->num_child_ >= 6);
   query_id = OB_INVALID_ID;
 
   ObLogicalPlan* logical_plan = NULL;
@@ -3058,6 +3328,10 @@ int resolve_insert_stmt(
           else
             insert_stmt->set_replace(false);
         }
+        if (ret == OB_SUCCESS && node->children_[5])
+        {
+          ret = resolve_when_clause(result_plan, insert_stmt, node->children_[5]);
+        }
       }
     }
   }
@@ -3071,7 +3345,7 @@ int resolve_update_stmt(
 {
   int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
   uint64_t table_id = OB_INVALID_ID;
-  OB_ASSERT(node && node->type_ == T_UPDATE && node->num_child_ >= 3);
+  OB_ASSERT(node && node->type_ == T_UPDATE && node->num_child_ >= 5);
   query_id = OB_INVALID_ID;
 
   ObLogicalPlan* logical_plan = NULL;
@@ -3182,7 +3456,34 @@ int resolve_update_stmt(
         }
         if (ret == OB_SUCCESS)
           ret = resolve_where_clause(result_plan, update_stmt, node->children_[2]);
+        if (ret == OB_SUCCESS && node->children_[3])
+          ret = resolve_when_clause(result_plan, update_stmt, node->children_[3]);
+        if (ret == OB_SUCCESS && node->children_[4])
+          ret = resolve_hints(result_plan, update_stmt, node->children_[4]);
       }
+    }
+  }
+  return ret;
+}
+
+int resolve_when_clause(
+    ResultPlan * result_plan,
+    ObStmt* stmt,
+    ParseNode* node)
+{
+  int& ret = result_plan->err_stat_.err_code_ = OB_SUCCESS;
+  if (node)
+  {
+    if ((ret = resolve_and_exprs(
+                    result_plan,
+                    stmt,
+                    node,
+                    stmt->get_when_exprs(),
+                    T_WHEN_LIMIT
+                    )) == OB_SUCCESS)
+    {
+      ObLogicalPlan* logical_plan = static_cast<ObLogicalPlan*>(result_plan->plan_tree_);
+      stmt->set_when_number(logical_plan->generate_when_number());
     }
   }
   return ret;

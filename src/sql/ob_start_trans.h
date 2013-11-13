@@ -27,16 +27,20 @@ namespace oceanbase
       public:
         ObStartTrans();
         virtual ~ObStartTrans(){};
-
+        virtual void reset();
+        virtual void reuse();
         void set_rpc_stub(mergeserver::ObMergerRpcProxy* rpc){rpc_ = rpc;}
         void set_trans_param(TransType type) {req_.type_ = type;};
         /// execute the insert statement
         virtual int open();
         virtual int close() {return common::OB_SUCCESS;}
+        virtual ObPhyOperatorType get_type() const { return PHY_START_TRANS; }
         virtual int64_t to_string(char* buf, const int64_t buf_len) const;
 
         virtual int get_next_row(const common::ObRow *&row) {UNUSED(row); return common::OB_NOT_SUPPORTED;}
         virtual int get_row_desc(const common::ObRowDesc *&row_desc) const {UNUSED(row_desc); return common::OB_NOT_SUPPORTED;}
+
+        DECLARE_PHY_OPERATOR_ASSIGN;
       private:
         // disallow copy
         ObStartTrans(const ObStartTrans &other);
@@ -51,6 +55,16 @@ namespace oceanbase
     inline ObStartTrans::ObStartTrans()
       :rpc_(NULL)
     {
+    }
+
+    inline void ObStartTrans::reset()
+    {
+      rpc_ = NULL;
+    }
+
+    inline void ObStartTrans::reuse()
+    {
+      rpc_ = NULL;
     }
 
     inline int64_t ObStartTrans::to_string(char* buf, const int64_t buf_len) const

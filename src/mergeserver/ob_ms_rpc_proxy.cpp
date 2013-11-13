@@ -220,32 +220,25 @@ int ObMergerRpcProxy::ups_mutate(const ObMutator & mutate_param, const bool has_
   else
   {
     ObServer update_server;
-    for (int64_t i = 0; i < rpc_retry_times_; ++i)
+    int64_t end_time = rpc_timeout_ + tbsys::CTimeUtil::getTime();
+    for (int64_t i = 0; tbsys::CTimeUtil::getTime() < end_time; ++i)
     {
       // may be need update server list
-      /* ret = get_master_ups((OB_NOT_MASTER == ret), update_server); */
-      ret = get_master_ups((OB_NOT_MASTER == ret), update_server);
+      ret = get_master_ups((OB_NOT_MASTER == ret || OB_RESPONSE_TIME_OUT == ret), update_server);
       if (ret != OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "get master update server failed:ret[%d]", ret);
-        continue;
+        break;
       }
       ret = rpc_stub_->mutate(rpc_timeout_, update_server, mutate_param, has_data, scanner);
-      if (OB_NOT_MASTER == ret)
+      if (false == check_need_retry_ups(ret))
       {
-        TBSYS_LOG(WARN, "mutate update server check role failed, err=%d ups=%s",
-                  ret, to_cstring(update_server));
-        continue;
-      }
-      else if (OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(WARN, "update server mutate failed, err=%d ups=%s",
-                  ret, to_cstring(update_server));
         break;
       }
       else
       {
-        break;
+        TBSYS_LOG(WARN, "mutate fail. retry. ret=%d, i=%ld, rpc_timeout_=%ld.", ret, i, rpc_timeout_);
+        usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME + (i + 1)));
       }
     }
   }
@@ -491,8 +484,34 @@ int ObMergerRpcProxy::get_master_ups(const bool force_renew, common::ObServer &m
   return ret;
 }
 
+int ObMergerRpcProxy::kill_session(const uint32_t ip, const int32_t session_id, const bool is_query)
+{
+  int ret = OB_SUCCESS;
+  if (!check_inner_stat())
+  {
+    TBSYS_LOG(ERROR, "%s", "check inner stat failed");
+    ret = OB_INNER_STAT_ERROR;
+  }
+  else
+  {
+    ObServer server;
+    server.set_ipv4_addr(ip, merge_server_.get_port());
+    ret = rpc_stub_->kill_session(rpc_timeout_, server, session_id, is_query);
+    if (OB_SUCCESS != ret)
+    {
+      TBSYS_LOG(WARN, "kill session failed: ret[%d] server is %s, session id=%d", ret,
+                to_cstring(server), session_id);
+    }
+    else
+    {
+      TBSYS_LOG(DEBUG, "kill session succ: server is %s, session id=%d",
+                to_cstring(server), session_id);
+    }
+  }
+  return ret;
+}
 
-int ObMergerRpcProxy::ups_plan_execute(const sql::ObPhysicalPlan &plan, sql::ObUpsResult &result)
+int ObMergerRpcProxy::ups_plan_execute(int64_t timeout, const sql::ObPhysicalPlan &plan, sql::ObUpsResult &result)
 {
   int ret = OB_SUCCESS;
   if (!check_inner_stat())
@@ -503,30 +522,25 @@ int ObMergerRpcProxy::ups_plan_execute(const sql::ObPhysicalPlan &plan, sql::ObU
   else
   {
     ObServer update_server;
-    for (int64_t i = 0; i < rpc_retry_times_; ++i)
+    int64_t end_time = timeout + tbsys::CTimeUtil::getTime();
+    for (int64_t i = 0; tbsys::CTimeUtil::getTime() < end_time; ++i)
     {
       // may be need update server list
-      ret = get_master_ups((OB_NOT_MASTER == ret), update_server);
+      ret = get_master_ups((OB_NOT_MASTER == ret || OB_RESPONSE_TIME_OUT == ret), update_server);
       if (ret != OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "get master update server failed:ret[%d]", ret);
-        continue;
+        break;
       }
-      ret = rpc_stub_->ups_plan_execute(rpc_timeout_, update_server, plan, result);
-      if (OB_NOT_MASTER == ret)
-      {
-        TBSYS_LOG(WARN, "mutate update server check role failed, err=%d ups=%s",
-                  ret, to_cstring(update_server));
-        continue;
-      }
-      else if (OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(WARN, "updateserver execute failed, err=%d ups=%s", ret, to_cstring(update_server));
+      ret = rpc_stub_->ups_plan_execute(timeout, update_server, plan, result);
+      if (false == check_need_retry_ups(ret))
+      { 
         break;
       }
       else
       {
-        break;
+        TBSYS_LOG(WARN, "ups plan execute fail. retry. ret=%d, i=%ld, timeout=%ld.", ret, i, timeout);
+        usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME + (i + 1)));
       }
     } // end for
   }
@@ -544,33 +558,37 @@ int ObMergerRpcProxy::ups_start_trans(const common::ObTransReq &req, common::ObT
   else
   {
     ObServer update_server;
-    for (int64_t i = 0; i < rpc_retry_times_; ++i)
+    int64_t end_time = rpc_timeout_ + tbsys::CTimeUtil::getTime();
+    for (int64_t i = 0; tbsys::CTimeUtil::getTime() < end_time; ++i)
     {
       // may be need update server list
-      ret = get_master_ups((OB_NOT_MASTER == ret), update_server);
+      ret = get_master_ups((OB_NOT_MASTER == ret || OB_RESPONSE_TIME_OUT == ret), update_server);
       if (ret != OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "get master update server failed:ret[%d]", ret);
-        continue;
+        break;
       }
       ret = rpc_stub_->ups_start_trans(rpc_timeout_, update_server, req, trans_id);
-      if (OB_NOT_MASTER == ret)
+      if (false == check_need_retry_ups(ret))
       {
-        TBSYS_LOG(WARN, "mutate update server check role failed:ret[%d]", ret);
-        continue;
-      }
-      else if (OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(WARN, "updateserver start transaction failed:ret[%d]", ret);
         break;
       }
       else
-      {
-        break;
+      { 
+        TBSYS_LOG(WARN, "ups start trans fail. retry. ret=%d, i=%ld, rpc_timeout_=%ld.", ret, i, rpc_timeout_);
+        usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME + (i + 1)));
       }
     } // end for
   }
   return ret;
+}
+int ObMergerRpcProxy::get_bloom_filter(const common::ObServer &server, const common::ObNewRange &range, const int64_t tablet_version, const int64_t bf_version, ObString &bf_buffer) const
+{
+  return rpc_stub_->get_bloom_filter(rpc_timeout_, server, range, tablet_version, bf_version, bf_buffer);
+}
+int ObMergerRpcProxy::get_ups_log_seq(const common::ObServer &ups, const int64_t timeout, int64_t & log_seq)
+{
+  return rpc_stub_->get_ups_log_seq(ups, timeout, log_seq);
 }
 
 int ObMergerRpcProxy::ups_end_trans(const common::ObEndTransReq &req)
@@ -584,29 +602,25 @@ int ObMergerRpcProxy::ups_end_trans(const common::ObEndTransReq &req)
   else
   {
     ObServer update_server;
-    for (int64_t i = 0; i < rpc_retry_times_; ++i)
+    int64_t end_time = rpc_timeout_ + tbsys::CTimeUtil::getTime();
+    for (int64_t i = 0; tbsys::CTimeUtil::getTime() < end_time; ++i)
     {
       // may be need update server list
-      ret = get_master_ups((OB_NOT_MASTER == ret), update_server);
+      ret = get_master_ups((OB_NOT_MASTER == ret || OB_RESPONSE_TIME_OUT == ret), update_server);
       if (ret != OB_SUCCESS)
       {
         TBSYS_LOG(WARN, "get master update server failed:ret[%d]", ret);
         continue;
       }
       ret = rpc_stub_->ups_end_trans(rpc_timeout_, update_server, req);
-      if (OB_NOT_MASTER == ret)
+      if (false == check_need_retry_ups(ret))
       {
-        TBSYS_LOG(WARN, "mutate update server check role failed:ret[%d]", ret);
-        continue;
-      }
-      else if (OB_SUCCESS != ret)
-      {
-        TBSYS_LOG(WARN, "updateserver end transaction failed:ret[%d]", ret);
         break;
       }
       else
       {
-        break;
+        TBSYS_LOG(WARN, "ups end trans fail. retry. ret=%d, i=%ld, rpc_timeout_=%ld.", ret, i, rpc_timeout_);
+        usleep(static_cast<useconds_t>(RETRY_INTERVAL_TIME + (i + 1)));
       }
     } // end for
   }

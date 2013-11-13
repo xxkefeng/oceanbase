@@ -37,10 +37,12 @@ namespace oceanbase
     int do_rs_admin(ObBaseClient &client, Arguments &args);
     int do_change_log_level(ObBaseClient &client, Arguments &args);
     int do_rs_stat(ObBaseClient &client, Arguments &args);
+    int do_cs_create_table(ObBaseClient &client, Arguments &args);
     int do_set_ups_config(ObBaseClient &client, Arguments &args);
     int do_set_master_ups_config(ObBaseClient &client, Arguments &args);
     int do_change_ups_master(ObBaseClient &client, Arguments &args);
     int do_import_tablets(ObBaseClient &client, Arguments &args);
+    int do_get_row_checksum(ObBaseClient &client, Arguments &args);
     int do_print_schema(ObBaseClient &client, Arguments &args);
     int do_print_root_table(ObBaseClient &client, Arguments &args);
     int do_shutdown_servers(ObBaseClient &client, Arguments &args);
@@ -51,72 +53,83 @@ namespace oceanbase
     int do_check_roottable(ObBaseClient &client, Arguments &args);
     int do_set_config(ObBaseClient &client, Arguments &args);
     int do_get_config(ObBaseClient &client, Arguments &args);
-
+    int do_change_table_id(ObBaseClient &client, Arguments &args);
+    int read_root_table_point(ObBaseClient &client, Arguments &args);
+    int do_import(ObBaseClient &client, Arguments &args);
+    int do_kill_import(ObBaseClient &client, Arguments &args);
+    int do_create_table_for_emergency(ObBaseClient &client, Arguments &args);
+    int do_drop_table_for_emergency(ObBaseClient &client, Arguments &args);
     struct Command
     {
-        const char* cmdstr;
-        int pcode;
-        CmdHandler handler;
+      const char* cmdstr;
+      int pcode;
+      CmdHandler handler;
     };
 
     struct Arguments
     {
-        Command command;
-        const char* rs_host;
-        int rs_port;
-        int64_t request_timeout_us;
-        oceanbase::common::ObiRole obi_role;
-        int log_level;
-        int stat_key;
-        int32_t obi_read_percentage;
-        const char* ups_ip;           // ups or rs ip
-        int ups_port;                 // ups or rs port
-        const char* cs_ip;
-        int cs_port;
-        int32_t ms_read_percentage;
-        int32_t cs_read_percentage;
-        int32_t master_master_ups_read_percentage;
-        int32_t slave_master_ups_read_percentage;
-        int32_t force_change_ups_master;
-        uint64_t table_id;
-        int64_t table_version;
-        const char* server_list;
-        int32_t flag_cancel;
-        int64_t tablet_version;
-        char config_str[MAX_CONFIG_STR_LENGTH];
-        Arguments()
-        {
-          command.cmdstr = NULL;
-          command.pcode = -1;
-          command.handler = NULL;
-          rs_host = DEFAULT_RS_HOST;
-          rs_port = DEFAULT_RS_PORT;
-          request_timeout_us = DEFAULT_REQUEST_TIMEOUT_US;
-          log_level = INVALID_LOG_LEVEL;
-          stat_key = OB_RS_STAT_COMMON;
-          obi_read_percentage = -1;
-          ups_ip = NULL;
-          ups_port = 0;
-          cs_ip = NULL;
-          cs_port = 0;
-          table_version = 0;
-          cs_read_percentage = -1;
-          ms_read_percentage = -1;
-          master_master_ups_read_percentage = -1;
-          slave_master_ups_read_percentage = -1;
-          force_change_ups_master = 0;
-          table_id = common::OB_INVALID_ID;
-          server_list = NULL;
-          flag_cancel = 0;
-          config_str[0] = '\0';
-        }
-        void print();
+      Command command;
+      const char* rs_host;
+      int rs_port;
+      int64_t request_timeout_us;
+      oceanbase::common::ObiRole obi_role;
+      int log_level;
+      int stat_key;
+      int32_t obi_read_percentage;
+      const char* ups_ip;           // ups or rs ip
+      int ups_port;                 // ups or rs port
+      const char* cs_ip;
+      int cs_port;
+      int32_t ms_read_percentage;
+      int32_t cs_read_percentage;
+      int32_t master_master_ups_read_percentage;
+      int32_t slave_master_ups_read_percentage;
+      int32_t force_change_ups_master;
+      uint64_t table_id;
+      int64_t table_version;
+      const char* server_list;
+      int32_t flag_cancel;
+      int64_t tablet_version;
+      char config_str[MAX_CONFIG_STR_LENGTH];
+      const char* location;
+      int argc;
+      char **argv;
+      Arguments()
+      {
+        command.cmdstr = NULL;
+        command.pcode = -1;
+        command.handler = NULL;
+        rs_host = DEFAULT_RS_HOST;
+        rs_port = DEFAULT_RS_PORT;
+        request_timeout_us = DEFAULT_REQUEST_TIMEOUT_US;
+        log_level = INVALID_LOG_LEVEL;
+        stat_key = OB_RS_STAT_COMMON;
+        obi_read_percentage = -1;
+        ups_ip = NULL;
+        ups_port = 0;
+        cs_ip = NULL;
+        cs_port = 0;
+        table_version = 0;
+        cs_read_percentage = -1;
+        ms_read_percentage = -1;
+        master_master_ups_read_percentage = -1;
+        slave_master_ups_read_percentage = -1;
+        force_change_ups_master = 0;
+        table_id = common::OB_INVALID_ID;
+        server_list = NULL;
+        flag_cancel = 0;
+        config_str[0] = '\0';
+        location = NULL;
+        argc = 0;
+        argv = NULL;
+      }
+      void print();
       public:
-        static const int INVALID_LOG_LEVEL = -1;
+      static const int INVALID_LOG_LEVEL = -1;
       private:
-        static const char* DEFAULT_RS_HOST;
-        static const int DEFAULT_RS_PORT = 2500;
-        static const int64_t DEFAULT_REQUEST_TIMEOUT_US = 10000000; // 10s
+      static const char* DEFAULT_RS_HOST;
+      static const int DEFAULT_RS_PORT = 2500;
+      static const int64_t DEFAULT_REQUEST_TIMEOUT_US = 20000000; // 20s
     };
 
     void usage();

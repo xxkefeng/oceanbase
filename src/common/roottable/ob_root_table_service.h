@@ -23,7 +23,7 @@ namespace oceanbase
   {
     class ObServer;
     class ObTabletReportInfoList;
-    template<typename T, typename BlockAllocatorT> class ObArray;
+    template<typename T, typename BlockAllocatorT, typename CallBack> class ObArray;
     class ObScanner;
     class ObTabletReportInfo;
   } // end namespace common

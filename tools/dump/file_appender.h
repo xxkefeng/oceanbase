@@ -23,6 +23,7 @@
 // file before reading from it, or for log files, the reading code
 // knows enough to skip zero suffixes.
 using namespace oceanbase::common;
+using namespace tbsys;
 
 class AppendableFile {
   private:
@@ -35,6 +36,7 @@ class AppendableFile {
     char* dst_;             // Where to write next  (in range [base_,limit_])
     char* last_sync_;       // Where have we synced up to
     uint64_t file_offset_;  // Offset of base_ in file
+    CThreadMutex append_lock_;
 
     // Have we done an munmap of unsynced data?
     bool pending_sync_;
@@ -113,6 +115,7 @@ class AppendableFile {
     }
 
     virtual int Append(const char *src, size_t left) {
+      CThreadGuard guard(&append_lock_);
       while (left > 0) {
         assert(base_ <= dst_);
         assert(dst_ <= limit_);

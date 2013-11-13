@@ -88,6 +88,12 @@
 #define RT_AN5   RT_AN4, result4
 #define RT_AN6   RT_AN5, result5
 
+typedef bool (*errno_sensitive_pt)(const int);
+
+extern errno_sensitive_pt &tc_errno_sensitive_func();
+
+extern bool is_errno_sensitive(const int error);
+
 // -----------------------------------------------------------
 // serialize_param_* MACROS
 #define SERIALIZE_PARAM_DECLARE(NUM_ARG) \
@@ -324,7 +330,8 @@ int ObRpcStub::RPC_FUNC_NAME_JOIN(NUM_ARG, NUM_RESULT)(const ObServer& server, c
         ret, to_cstring(server), pcode, version, timeout); \
   } \
   else if (OB_SUCCESS != (ret = OCEANBASE_JOIN(deserialize_result_, NUM_RESULT)( \
-          data_buffer, pos, rc, RT_ANS))) \
+          data_buffer, pos, rc, RT_ANS)) \
+          && is_errno_sensitive(ret)) \
   { \
     TBSYS_LOG(WARN, "deserialize_result error, ret=%d, server=%s, pcode=%d, version=%d, timeout=%ld", \
         ret, to_cstring(server), pcode, version, timeout); \
