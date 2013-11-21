@@ -21,7 +21,8 @@ TEST(TestBalanceFilter, init)
   {
     uint64_t hash = rand();
     uint64_t filted = bf.filt(hash);
-    EXPECT_LE(0, filted);
+    uint64_t zero = 0;
+    EXPECT_LE(zero, filted);
     h_map[hash] = filted;
     fprintf(stdout, "filt %lu==>%lu\n", hash, filted);
   }

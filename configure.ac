@@ -273,7 +273,6 @@
                      tests/sstable/Makefile \
                      tests/compactsstablev2/Makefile \
                      tests/lsync/Makefile \
-                     tests/liboblog/Makefile \
                      tools/log_tool/Makefile \
                      tools/mixed_test/Makefile \
                      tools/newsqltest/Makefile \
@@ -281,8 +280,6 @@
                      tools/compactsstablev2/Makefile \
                      tools/getquerytest/Makefile \
                      tools/liboblog/Makefile \
-                     tools/mysqltest/Makefile\
-                     tools/benchmark/runner/Makefile\
-					 tools/benchmark/Makefile
+                     tools/mysqltest/Makefile
                      ])
     AC_OUTPUT

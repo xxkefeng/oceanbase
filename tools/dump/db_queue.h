@@ -31,7 +31,7 @@ class ComsumerQueue : public tbsys::CDefaultRunnable {
     static const int QUEUE_SUCCESS = 0;
     static const int QUEUE_QUITING = 1;
   public:
-    ComsumerQueue() { 
+    ComsumerQueue() {
       cap_ = 0;
       producer_ = NULL;
       comsumer_ = NULL;
@@ -43,7 +43,7 @@ class ComsumerQueue : public tbsys::CDefaultRunnable {
       atomic_set(&queue_size_, 0);
     }
 
-    ComsumerQueue(QueueProducer<T> *producer, QueueComsumer<T> *comsumer, size_t cap = LONG_MAX) { 
+    ComsumerQueue(QueueProducer<T> *producer, QueueComsumer<T> *comsumer, size_t cap = LONG_MAX) {
       cap_ = cap;
       comsumer_ = comsumer;
       producer_ = producer;
@@ -68,7 +68,7 @@ class ComsumerQueue : public tbsys::CDefaultRunnable {
     //start produce and comsume process
     int produce_and_comsume(int nr_producer, int nr_comsumer);
 
-    //(long)arg is thread id, id < nr_producer_ is producer thread 
+    //(long)arg is thread id, id < nr_producer_ is producer thread
     //or is comsume thread
     virtual void run(tbsys::CThread *thread, void *arg);
 
