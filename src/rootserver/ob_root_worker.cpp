@@ -5352,7 +5352,7 @@ int ObRootWorker::rt_change_table_id(const int32_t version, common::ObDataBuffer
       int ret = OB_SUCCESS;
       static const int32_t MY_VERSION = 1;
       ObString table_name;
-      uint64_t table_id;
+      uint64_t table_id = 0;
 
       if (MY_VERSION != version)
       {
@@ -5405,7 +5405,7 @@ int ObRootWorker::rt_change_table_id(const int32_t version, common::ObDataBuffer
       int ret = OB_SUCCESS;
       static const int32_t MY_VERSION = 1;
       ObString table_name;
-      uint64_t table_id;
+      uint64_t table_id = 0;
 
       if (MY_VERSION != version)
       {
@@ -5458,7 +5458,7 @@ int ObRootWorker::rt_change_table_id(const int32_t version, common::ObDataBuffer
       int ret = OB_SUCCESS;
       static const int32_t MY_VERSION = 1;
       ObString table_name;
-      uint64_t table_id;
+      uint64_t table_id = 0;
       ObLoadDataInfo::ObLoadDataStatus status;
 
       if (MY_VERSION != version)
@@ -5517,8 +5517,8 @@ int ObRootWorker::rt_change_table_id(const int32_t version, common::ObDataBuffer
       int ret = OB_SUCCESS;
       static const int32_t MY_VERSION = 1;
       ObString table_name;
-      uint64_t table_id;
-      int32_t status_i32;
+      uint64_t table_id = 0;
+      int32_t status_i32 = 0;
       ObLoadDataInfo::ObLoadDataStatus status;
 
       if (MY_VERSION != version)
