@@ -95,7 +95,7 @@ if WITH_MYSQLTEST
 MYSQLTEST:=mysqltest
 endif
 
-SUBDIRS=benchmark sstable_builder syschecker $(NEWSQLTEST) mixed_test log_tool compactsstablev2 getquerytest dump $(MYSQLTEST) liboblog
+SUBDIRS=sstable_builder syschecker $(NEWSQLTEST) mixed_test log_tool compactsstablev2 getquerytest dump $(MYSQLTEST) liboblog
 
 clean-local:
 	-rm -f *.gcov *.gcno *.gcda
